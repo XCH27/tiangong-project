@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omnisee-tui-v1"
+version = "0.1.0"
+description = "OmniVerse Vision V1 Terminal UI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "textual>=0.52.1",
+    "typer>=0.15.2",
+    "httpx>=0.27.0",
+    "omnisee-every",
+]
+
+[tool.uv.sources]
+omnisee-every = { path = "../../OmniVerse Vision_Antigravity", editable = true }
+
+[project.scripts]
+oe = "omnisee_every_v1.cli.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["omnisee_every_v1*"]
+
+[tool.setuptools.package-data]
+omnisee_every_v1 = ["tui/providers_catalog.json"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+]

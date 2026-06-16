@@ -1,0 +1,30 @@
+Metadata-Version: 2.4
+Name: omnisee-tui-v1
+Version: 0.1.0
+Summary: OmniVerse Vision V1 Terminal UI
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: textual>=0.52.1
+Requires-Dist: typer>=0.15.2
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: omnisee-every
+
+# OmniVerse Vision V1 Terminal UI
+
+This repository contains the standalone Textual Terminal UI (TUI) and legacy Typer CLI for the OmniVerse Vision project.
+
+## Relationship to Core Project
+This is an independent frontend shell. It relies on a standard OmniVerse REST backend to perform semantic video parsing and retrieval.
+
+## Installation
+Use `uv` to sync dependencies and install the local backend:
+```bash
+uv sync
+```
+
+## Usage
+Run the TUI using the `oe` command:
+```bash
+uv run oe
+```

@@ -1,0 +1,58 @@
+{
+  "_doc": "Single source of truth for OmniVerse Vision visual tokens (docs/CLIENT_DESIGN §4). 水墨宣纸 four-season x day/night. role keys are shared by V1(Textual CSS vars), V2(this Web GUI), and future pi-tui. Each theme: exactly one accent + one laser highlight, never mixed. Semantic colors (success/warning/error + plan/progress/cost) are reserved and not reused as accent.",
+  "themes": {
+    "spring-day": {
+      "name": "Spring", "name_zh": "立春", "glyph": "✿", "mode": "day",
+      "bg_base": "#F4F1EA", "bg_panel": "#FBFAF5", "bg_elev": "#FFFFFF", "bg_input": "#EDE9DF",
+      "text_l1": "#23211C", "text_l2": "#3E3A32", "text_l3": "#6B655A", "text_l4": "#9A9388",
+      "accent": "#5E8C6A", "laser": "#7FB286",
+      "border_subtle": "#DED9CD", "border_strong": "#C3BCAC",
+      "success": "#5E8C6A", "warning": "#C08A3E", "error": "#B5524C",
+      "user_bar": "#8FA98F", "ai_bar": "#5E8C6A"
+    },
+    "summer-day": {
+      "name": "Summer", "name_zh": "盛夏", "glyph": "☀", "mode": "day",
+      "bg_base": "#F2F4F3", "bg_panel": "#FAFBFB", "bg_elev": "#FFFFFF", "bg_input": "#E6EAE9",
+      "text_l1": "#1B2422", "text_l2": "#33403C", "text_l3": "#5C6B66", "text_l4": "#8C9893",
+      "accent": "#2E8B8B", "laser": "#43B3AE",
+      "border_subtle": "#D6DEDC", "border_strong": "#B6C2BE",
+      "success": "#2E8B8B", "warning": "#C08A3E", "error": "#B5524C",
+      "user_bar": "#7FB0AE", "ai_bar": "#2E8B8B"
+    },
+    "autumn-day": {
+      "name": "Autumn", "name_zh": "深秋", "glyph": "🍂", "mode": "day",
+      "bg_base": "#F5F1E9", "bg_panel": "#FCF9F2", "bg_elev": "#FFFFFF", "bg_input": "#EEE7D9",
+      "text_l1": "#2A2118", "text_l2": "#46392B", "text_l3": "#75634E", "text_l4": "#A3917A",
+      "accent": "#B5662E", "laser": "#D98A45",
+      "border_subtle": "#E1D7C5", "border_strong": "#C8B89F",
+      "success": "#6E8B4A", "warning": "#C08A3E", "error": "#B5524C",
+      "user_bar": "#C29A6E", "ai_bar": "#B5662E"
+    },
+    "winter-night": {
+      "name": "Winter", "name_zh": "寒冬", "glyph": "❄", "mode": "night",
+      "bg_base": "#14171C", "bg_panel": "#1B1F26", "bg_elev": "#232831", "bg_input": "#1F242C",
+      "text_l1": "#ECEFF3", "text_l2": "#C8CDD5", "text_l3": "#919AA6", "text_l4": "#626B77",
+      "accent": "#5E9BD1", "laser": "#7FB8E8",
+      "border_subtle": "#2A303A", "border_strong": "#3A4250",
+      "success": "#5FA985", "warning": "#D0A046", "error": "#D96A63",
+      "user_bar": "#4A6E8E", "ai_bar": "#5E9BD1"
+    },
+    "ink-night": {
+      "name": "Ink", "name_zh": "玄墨", "glyph": "☾", "mode": "night",
+      "bg_base": "#101114", "bg_panel": "#17191D", "bg_elev": "#1F2226", "bg_input": "#1B1D21",
+      "text_l1": "#EDEDEC", "text_l2": "#C6C6C4", "text_l3": "#8E8E8B", "text_l4": "#5E5E5C",
+      "accent": "#C0875A", "laser": "#E0A56F",
+      "border_subtle": "#26282C", "border_strong": "#383B40",
+      "success": "#73A580", "warning": "#CFA152", "error": "#D2685F",
+      "user_bar": "#7A6048", "ai_bar": "#C0875A"
+    }
+  },
+  "semantic": {
+    "_doc": "Reserved semantic colors for 诚实可见 (CLIENT_DESIGN §4). Independent of accent so plan/progress/cost/degrade always read the same.",
+    "plan": "#6E80C0",
+    "progress": "#3E9C8E",
+    "cost": "#C08A3E",
+    "degrade": "#B5762E",
+    "fallback": "#B5524C"
+  }
+}

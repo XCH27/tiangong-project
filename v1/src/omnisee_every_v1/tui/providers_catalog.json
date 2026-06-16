@@ -1,0 +1,303 @@
+{
+  "version": "2026-05-26",
+  "comment": "Provider metadata catalog. Model lists are NOT hardcoded here — fetched live from each provider's OpenAI-compatible models endpoint. fallback_models are shown only when fetch fails. Remote catalog updates are disabled unless OMNISEE_CATALOG_URL is set.",
+  "remote_url": null,
+  "providers": [
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "tagline": "国内推荐 · 注册送免费额度 · V4 推理模型上线",
+      "url": "https://api.deepseek.com/v1",
+      "key_url": "https://platform.deepseek.com/api-keys",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "model_context_lengths": {
+        "deepseek-v4-flash": 1000000,
+        "deepseek-v4-pro": 1000000,
+        "deepseek-chat": 1000000,
+        "deepseek-reasoner": 1000000
+      },
+      "fallback_models": [
+        [
+          "deepseek-v4-flash",
+          "REASON",
+          "V4 Flash · 轻量推理"
+        ],
+        [
+          "deepseek-v4-pro",
+          "REASON",
+          "V4 Pro · 旗舰推理"
+        ],
+        [
+          "deepseek-chat",
+          "TEXT  ",
+          "V3 · 通用对话（legacy alias）"
+        ],
+        [
+          "deepseek-reasoner",
+          "REASON",
+          "R1 · 推理模式（legacy alias）"
+        ]
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic Claude",
+      "tagline": "Claude 系列 · Anthropic 原生 Messages API",
+      "url": "https://api.anthropic.com",
+      "key_url": "https://console.anthropic.com/settings/keys",
+      "need_key": true,
+      "fetch_strategy": "manual",
+      "protocol": "anthropic",
+      "fallback_models": [
+        [
+          "claude-3-5-sonnet-20241022",
+          "TEXT  ",
+          "Sonnet 3.5 · 通用旗舰（稳定）"
+        ],
+        [
+          "claude-3-5-haiku-20241022",
+          "FAST  ",
+          "Haiku 3.5 · 快速低成本（稳定）"
+        ]
+      ]
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "tagline": "GPT/o 系列 · 自动拉取你账号实际可用模型",
+      "url": "https://api.openai.com/v1",
+      "key_url": "https://platform.openai.com/api-keys",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "model_filter_exclude": [
+        "whisper",
+        "tts",
+        "dall-e",
+        "embedding",
+        "moderation",
+        "babbage",
+        "davinci",
+        "curie",
+        "ada",
+        "audio"
+      ],
+      "fallback_models": [
+        [
+          "gpt-4o",
+          "VISION",
+          "通用多模态（稳定）"
+        ],
+        [
+          "gpt-4o-mini",
+          "FAST  ",
+          "经济多模态（稳定）"
+        ]
+      ]
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "tagline": "Google AI Studio · OpenAI 兼容端点",
+      "url": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "key_url": "https://aistudio.google.com/apikey",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "model_filter_exclude": [
+        "embedding",
+        "aqa",
+        "imagen"
+      ],
+      "fallback_models": [
+        [
+          "gemini-1.5-pro",
+          "REASON",
+          "1.5 Pro · 复杂推理（稳定）"
+        ],
+        [
+          "gemini-1.5-flash",
+          "FAST  ",
+          "1.5 Flash · 性价比（稳定）"
+        ]
+      ]
+    },
+    {
+      "id": "qwen",
+      "name": "通义千问 (DashScope)",
+      "tagline": "阿里云百炼 · OpenAI 兼容模式",
+      "url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "key_url": "https://dashscope.console.aliyun.com/apiKey",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "qwen-plus",
+          "TEXT  ",
+          "均衡文本模型"
+        ],
+        [
+          "qwen-turbo",
+          "FAST  ",
+          "轻量快速"
+        ]
+      ]
+    },
+    {
+      "id": "moonshot",
+      "name": "Moonshot Kimi",
+      "tagline": "Kimi · 长上下文 · 国内访问稳定",
+      "url": "https://api.moonshot.cn/v1",
+      "key_url": "https://platform.moonshot.cn/console/api-keys",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "moonshot-v1-8k",
+          "TEXT  ",
+          "8K 上下文"
+        ],
+        [
+          "moonshot-v1-32k",
+          "TEXT  ",
+          "32K 上下文"
+        ],
+        [
+          "moonshot-v1-128k",
+          "TEXT  ",
+          "128K 超长文本"
+        ]
+      ]
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱 GLM",
+      "tagline": "GLM 系列 · 国内访问快 · glm-4-flash 永久免费",
+      "url": "https://open.bigmodel.cn/api/paas/v4",
+      "key_url": "https://bigmodel.cn/usercenter/apikeys",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "glm-4-flash",
+          "FAST  ",
+          "永久免费"
+        ],
+        [
+          "glm-4-plus",
+          "TEXT  ",
+          "旗舰文本"
+        ]
+      ]
+    },
+    {
+      "id": "doubao",
+      "name": "豆包 (Volcengine Ark)",
+      "tagline": "火山方舟 · 模型 ID 是控制台 endpoint ID（ep-xxxxx），必须手填",
+      "url": "https://ark.cn-beijing.volces.com/api/v3",
+      "key_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+      "need_key": true,
+      "fetch_strategy": "manual",
+      "manual_hint": "请填写方舟控制台的接入点 ID，格式如 ep-20250101-xxxxx",
+      "fallback_models": []
+    },
+    {
+      "id": "siliconflow",
+      "name": "SiliconFlow",
+      "tagline": "托管开源模型 · 注册有免费额度",
+      "url": "https://api.siliconflow.cn/v1",
+      "key_url": "https://cloud.siliconflow.cn/account/ak",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "Qwen/Qwen2.5-7B-Instruct",
+          "FAST  ",
+          "7B · 免费"
+        ],
+        [
+          "OpenBMB/MiniCPM-V-2_6",
+          "VISION",
+          "MiniCPM-V-2.6"
+        ]
+      ]
+    },
+    {
+      "id": "modelbest",
+      "name": "ModelBest (MiniCPM)",
+      "tagline": "面壁智能 · 内置免费公共 Key",
+      "url": "https://api.modelbest.cn/v1",
+      "key_url": "https://github.com/OpenBMB/MiniCPM-V/blob/main/docs/api.md",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "MiniCPM-V-4.6-Instruct",
+          "VISION",
+          "MiniCPM-V 4.6 (1.3B) · 免费公共 Key"
+        ],
+        [
+          "MiniCPM-V-4.6-Thinking",
+          "REASON",
+          "MiniCPM-V 4.6 Thinking · 免费公共 Key"
+        ]
+      ]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "tagline": "聚合多厂商模型 · 自动拉取实际可用列表",
+      "url": "https://openrouter.ai/api/v1",
+      "key_url": "https://openrouter.ai/settings/keys",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "openai/gpt-4o-mini",
+          "VISION",
+          "OpenAI GPT-4o-mini"
+        ]
+      ]
+    },
+    {
+      "id": "groq",
+      "name": "Groq (快速推理)",
+      "tagline": "低延迟推理 · OpenAI 兼容",
+      "url": "https://api.groq.com/openai/v1",
+      "key_url": "https://console.groq.com/keys",
+      "need_key": true,
+      "fetch_strategy": "openai",
+      "fallback_models": [
+        [
+          "llama-3.3-70b-versatile",
+          "TEXT  ",
+          "Llama 3.3 70B"
+        ]
+      ]
+    },
+    {
+      "id": "ollama",
+      "name": "本地 Ollama",
+      "tagline": "完全本地·免费 · 无需 Key · 自动列出已 pull 模型",
+      "url": "http://localhost:11434/v1",
+      "key_url": "https://ollama.com/library",
+      "need_key": false,
+      "fetch_strategy": "ollama_tags",
+      "fallback_models": []
+    },
+    {
+      "id": "custom",
+      "name": "自定义",
+      "tagline": "任何 OpenAI 兼容接口 · 自填地址、Key 和模型名",
+      "url": "",
+      "key_url": "",
+      "need_key": true,
+      "fetch_strategy": "manual",
+      "supports_protocols": [
+        "openai",
+        "anthropic"
+      ],
+      "manual_hint": "fetch 失败时请手动填写模型名",
+      "fallback_models": []
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/mock/mocktransport.ts","./src/mock/data.ts","./src/theme/theme.ts","./src/transport/client.ts","./src/types/contracts.ts","./src/ui/app.tsx","./src/ui/components/bits.tsx","./src/ui/states/asset.tsx","./src/ui/states/plan.tsx","./src/ui/states/run.tsx","./src/ui/states/settings.tsx","./vite.config.ts"],"version":"5.9.3"}
