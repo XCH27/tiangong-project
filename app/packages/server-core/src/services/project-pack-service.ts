@@ -13,6 +13,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
   ProjectPackRequest,
+  ProjectPackPlanPreviewResult,
+  ProjectPackPlanPreviewSummary,
   ProjectPackResult,
   ProjectPackSummary,
   ProjectPackExcludedEntry,
@@ -210,7 +212,7 @@ async function readCandidateFile(
 }
 
 function buildMarkdown(
-  summary: Omit<ProjectPackSummary, 'bundleId' | 'bundleHash' | 'bundlePath' | 'markdownBytes' | 'createdAt' | 'externalExportAllowed'>,
+  summary: ProjectPackPlanPreviewSummary,
   files: PackedFile[],
 ): string {
   const header = [
@@ -245,7 +247,47 @@ function buildPreview(markdown: string): string {
 }
 
 export class ProjectPackService {
+  constructor(private readonly dataDir = getProjectPackDataDir()) {}
+
+  async previewPlan(request: ProjectPackRequest): Promise<ProjectPackPlanPreviewResult> {
+    const plan = await this.buildPlan(request)
+    return {
+      summary: plan.summary,
+    }
+  }
+
   async pack(request: ProjectPackRequest): Promise<ProjectPackResult> {
+    const plan = await this.buildPlan(request)
+    const { summary: planSummary, markdown } = plan
+
+    const bundleId = randomUUID()
+    const bundleHash = createHash('sha256').update(markdown).digest('hex')
+    const dataDir = this.dataDir
+    await mkdir(dataDir, { recursive: true })
+    const bundlePath = join(dataDir, `${bundleId}.md`)
+    await writeFile(bundlePath, markdown, 'utf-8')
+
+    const summary: ProjectPackSummary = {
+      ...planSummary,
+      bundleId,
+      bundleHash,
+      bundlePath,
+      createdAt: Date.now(),
+      markdownBytes: Buffer.byteLength(markdown, 'utf-8'),
+    }
+
+    const summaryPath = join(dataDir, `${bundleId}.summary.json`)
+    await writeFile(summaryPath, JSON.stringify(summary, null, 2), 'utf-8')
+
+    return {
+      summary,
+      markdownPreview: buildPreview(markdown),
+    }
+  }
+
+  private async buildPlan(
+    request: ProjectPackRequest,
+  ): Promise<{ summary: ProjectPackPlanPreviewSummary; markdown: string }> {
     const maxFileBytes = request.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES
     const maxFiles = request.maxFiles ?? DEFAULT_MAX_FILES
     const scope: ProjectPackScope = request.scope
@@ -281,7 +323,7 @@ export class ProjectPackService {
 
     const totalBytes = packed.reduce((sum, f) => sum + f.bytes, 0)
 
-    const partialSummary = {
+    const partialSummary: ProjectPackPlanPreviewSummary = {
       scope,
       rootPath: request.rootPath,
       ...gitMeta,
@@ -297,39 +339,21 @@ export class ProjectPackService {
         findings: secretFindings,
         hasHighSeverity,
       },
+      externalExportAllowed: !hasHighSeverity,
     }
 
     const markdown = buildMarkdown(partialSummary, packed)
     const estimatedTokens = estimateTokensFromText(markdown)
-    const bundleId = randomUUID()
-    const bundleHash = createHash('sha256').update(markdown).digest('hex')
-    const dataDir = getProjectPackDataDir()
-    await mkdir(dataDir, { recursive: true })
-    const bundlePath = join(dataDir, `${bundleId}.md`)
-    await writeFile(bundlePath, markdown, 'utf-8')
-
-    const summary: ProjectPackSummary = {
+    const summary: ProjectPackPlanPreviewSummary = {
       ...partialSummary,
-      bundleId,
-      bundleHash,
-      bundlePath,
       estimatedTokens,
-      createdAt: Date.now(),
-      markdownBytes: Buffer.byteLength(markdown, 'utf-8'),
-      externalExportAllowed: !hasHighSeverity,
     }
 
-    const summaryPath = join(dataDir, `${bundleId}.summary.json`)
-    await writeFile(summaryPath, JSON.stringify(summary, null, 2), 'utf-8')
-
-    return {
-      summary,
-      markdownPreview: buildPreview(markdown),
-    }
+    return { summary, markdown }
   }
 
   async getSummary(bundleId: string): Promise<ProjectPackSummary | null> {
-    const summaryPath = join(getProjectPackDataDir(), `${bundleId}.summary.json`)
+    const summaryPath = join(this.dataDir, `${bundleId}.summary.json`)
     try {
       const raw = await readFile(summaryPath, 'utf-8')
       return JSON.parse(raw) as ProjectPackSummary

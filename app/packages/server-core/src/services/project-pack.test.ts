@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { scanTextForSecrets } from './project-pack-secret-scan'
@@ -49,6 +49,30 @@ describe('project-pack-ignore helpers', () => {
 })
 
 describe('ProjectPackService', () => {
+  it('previews a pack plan without bundle metadata or bundle files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'project-pack-'))
+    const dataDir = await mkdtemp(join(tmpdir(), 'project-pack-data-'))
+    await mkdir(join(root, 'src'), { recursive: true })
+    await writeFile(join(root, 'src', 'config.ts'), 'const key = "sk-abcdefghijklmnopqrstuvwxyz123456"\n')
+    await writeFile(join(root, '.env'), 'API_SECRET=supersecretvalue123456\n')
+
+    const service = new ProjectPackService(dataDir)
+    const result = await service.previewPlan({ rootPath: root, scope: 'directory' })
+
+    expect(result.summary.fileCount).toBe(1)
+    expect(result.summary.estimatedTokens).toBeGreaterThan(0)
+    expect(result.summary.excluded.some((e) => e.reason === 'env_file')).toBe(true)
+    expect(result.summary.secretScan.findingCount).toBeGreaterThan(0)
+    expect(result.summary.secretScan.hasHighSeverity).toBe(true)
+    expect(result.summary.externalExportAllowed).toBe(false)
+    expect('bundleId' in result.summary).toBe(false)
+    expect('bundlePath' in result.summary).toBe(false)
+    expect(await readdir(dataDir)).toEqual([])
+
+    await rm(root, { recursive: true, force: true })
+    await rm(dataDir, { recursive: true, force: true })
+  })
+
   it('packs a small directory with markdown output and summary', async () => {
     const root = await mkdtemp(join(tmpdir(), 'project-pack-'))
     await mkdir(join(root, 'src'), { recursive: true })
