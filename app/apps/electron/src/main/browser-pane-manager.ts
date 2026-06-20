@@ -933,6 +933,28 @@ export class BrowserPaneManager implements IBrowserPaneManager {
           }
           return parts.join(' > ');
         };
+        const xpathFor = (element) => {
+          const parts = [];
+          let node = element;
+          while (node && node.nodeType === Node.ELEMENT_NODE) {
+            let index = 1;
+            let sibling = node.previousElementSibling;
+            while (sibling) {
+              if (sibling.tagName === node.tagName) index++;
+              sibling = sibling.previousElementSibling;
+            }
+            parts.unshift(node.tagName.toLowerCase() + '[' + index + ']');
+            node = node.parentElement;
+          }
+          return '/' + parts.join('/');
+        };
+        const accessibleNameFor = (element) => (
+          element.getAttribute('aria-label') ||
+          element.getAttribute('alt') ||
+          element.getAttribute('title') ||
+          element.getAttribute('name') ||
+          ''
+        ).trim().replace(/\\s+/g, ' ').slice(0, 240);
         const cleanup = (result) => {
           delete window.__fleetElementPickerCancel;
           overlay.remove();
@@ -962,7 +984,12 @@ export class BrowserPaneManager implements IBrowserPaneManager {
           const styles = getComputedStyle(current);
           cleanup({
             selector: selectorFor(current),
+            xpath: xpathFor(current),
+            url: window.location.href,
+            title: document.title,
             tagName: current.tagName.toLowerCase(),
+            role: current.getAttribute('role') || undefined,
+            accessibleName: accessibleNameFor(current) || undefined,
             text: (current.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 500),
             rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
             styles: {
@@ -1021,6 +1048,28 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         }
         return parts.join(' > ');
       };
+      const xpathFor = (element) => {
+        const parts = [];
+        let node = element;
+        while (node && node.nodeType === Node.ELEMENT_NODE) {
+          let index = 1;
+          let sibling = node.previousElementSibling;
+          while (sibling) {
+            if (sibling.tagName === node.tagName) index++;
+            sibling = sibling.previousElementSibling;
+          }
+          parts.unshift(node.tagName.toLowerCase() + '[' + index + ']');
+          node = node.parentElement;
+        }
+        return '/' + parts.join('/');
+      };
+      const accessibleNameFor = (element) => (
+        element.getAttribute('aria-label') ||
+        element.getAttribute('alt') ||
+        element.getAttribute('title') ||
+        element.getAttribute('name') ||
+        ''
+      ).trim().replace(/\\s+/g, ' ').slice(0, 240);
 
       const viewportRect = {
         x: 0,
@@ -1069,7 +1118,12 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         seenSelectors.add(selector);
         selected.push({
           selector,
+          xpath: xpathFor(element),
+          url: window.location.href,
+          title: document.title,
           tagName: element.tagName.toLowerCase(),
+          role: element.getAttribute('role') || undefined,
+          accessibleName: accessibleNameFor(element) || undefined,
           text: query.includeText ? (element.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 500) : '',
           rect: candidateRect,
           styles: {

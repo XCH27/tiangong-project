@@ -119,7 +119,12 @@ export interface BrowserPaneDockBounds {
 
 export interface BrowserElementSelection {
   selector: string
+  xpath?: string
+  url?: string
+  title?: string
   tagName: string
+  role?: string
+  accessibleName?: string
   text: string
   rect: { x: number; y: number; width: number; height: number }
   styles: {

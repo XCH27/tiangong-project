@@ -292,10 +292,17 @@ describe('BrowserPaneManager', () => {
     instance.pageView.webContents.executeJavaScript = mock(async (script: string) => {
       expect(script).toContain('"mode":"rect"')
       expect(script).toContain('"maxResults":2')
+      expect(script).toContain('xpathFor')
+      expect(script).toContain('accessibleNameFor')
       return [
         {
           selector: '#hero',
+          xpath: '/html[1]/body[1]/section[1]',
+          url: 'https://example.test/',
+          title: 'Example',
           tagName: 'section',
+          role: 'region',
+          accessibleName: 'Hero section',
           text: 'Hero',
           rect: { x: 20, y: 30, width: 280, height: 120 },
           styles: {
@@ -330,6 +337,13 @@ describe('BrowserPaneManager', () => {
 
     expect(selected).toHaveLength(2)
     expect(selected.map((item) => item.selector)).toEqual(['#hero', '#cta'])
+    expect(selected[0]).toMatchObject({
+      xpath: '/html[1]/body[1]/section[1]',
+      url: 'https://example.test/',
+      title: 'Example',
+      role: 'region',
+      accessibleName: 'Hero section',
+    })
     expect(instance.pageView.webContents.executeJavaScript).toHaveBeenCalledTimes(1)
   })
 
