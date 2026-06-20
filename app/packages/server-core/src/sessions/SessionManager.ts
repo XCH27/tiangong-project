@@ -100,7 +100,15 @@ import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAtta
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
-import { resizeImageForAPI, resizeIconBuffer } from '@craft-agent/server-core/services'
+import {
+  CliRuntimeAcpAdapter,
+  formatCliRuntimePromptResult,
+  getCliRuntimeAttachmentRejectionMessage,
+  resizeImageForAPI,
+  resizeIconBuffer,
+  resolveCliRuntimeForSend,
+  type ResolvedCliRuntimeForSend,
+} from '@craft-agent/server-core/services'
 export { sanitizeForTitle }
 
 // Module-level platform ref — set once during init via setSessionPlatform()
@@ -157,6 +165,10 @@ function buildBackendHostRuntimeContext(): BackendHostRuntimeContext {
     resourcesPath: _platform.resourcesPath,
     isPackaged: _platform.isPackaged,
   }
+}
+
+function errorMessageFromUnknown(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -1229,6 +1241,169 @@ export class SessionManager implements ISessionManager {
   private agentActorFor(sessionId: string): ActorRef {
     const managed = this.sessions.get(sessionId)
     return { kind: 'agent', runtime: managed?.llmConnection ?? 'api' }
+  }
+
+  private cliRuntimeActorFor(resolved: Extract<ResolvedCliRuntimeForSend, { kind: 'detected' | 'custom' }>): ActorRef {
+    return {
+      kind: 'agent',
+      runtime: resolved.runtimeId,
+      displayName: resolved.kind === 'detected' ? resolved.displayName : resolved.runtimeId,
+    }
+  }
+
+  private async appendCliRuntimeError(managed: ManagedSession, sessionId: string, error: string): Promise<void> {
+    const errorMessage: Message = {
+      id: generateMessageId(),
+      role: 'error',
+      content: error,
+      timestamp: this.monotonic(),
+    }
+    managed.messages.push(errorMessage)
+    this.sendEvent({
+      type: 'error',
+      sessionId,
+      error,
+      timestamp: errorMessage.timestamp,
+    }, managed.workspace.id)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+  }
+
+  private async sendMessageViaCliRuntime(
+    managed: ManagedSession,
+    sessionId: string,
+    message: string,
+    attachments: FileAttachment[] | undefined,
+    storedAttachments: StoredAttachment[] | undefined,
+    options: SendMessageOptions | undefined,
+    resolved: ResolvedCliRuntimeForSend,
+  ): Promise<void> {
+    const attachmentRejection = getCliRuntimeAttachmentRejectionMessage(attachments, storedAttachments)
+    if (attachmentRejection) {
+      await this.appendCliRuntimeError(managed, sessionId, attachmentRejection)
+      return
+    }
+
+    if (resolved.kind === 'unsupported') {
+      await this.appendCliRuntimeError(managed, sessionId, resolved.message)
+      return
+    }
+
+    if (resolved.kind === 'none') {
+      return
+    }
+
+    managed.lastMessageAt = Date.now()
+    this.setProcessing(managed, true)
+    managed.streamingText = ''
+    managed.processingGeneration++
+    managed.turnStartFinalMessageId = this.getLastFinalAssistantMessageId(managed.messages)
+    managed.lastSentMessage = message
+    managed.lastSentAttachments = attachments
+    managed.lastSentStoredAttachments = storedAttachments
+    managed.lastSentOptions = options
+
+    const actor = this.cliRuntimeActorFor(resolved)
+    const toolUseId = generateMessageId()
+    const runtimeLabel = resolved.kind === 'detected' ? resolved.displayName : resolved.runtimeId
+
+    this.sendEvent({
+      type: 'tool_start',
+      sessionId,
+      toolName: 'cli_runtime',
+      toolUseId,
+      toolInput: {
+        runtimeId: resolved.runtimeId,
+        command: resolved.command,
+        args: resolved.args,
+        ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+        ...(resolved.effort ? { effort: resolved.effort } : {}),
+      },
+      toolDisplayName: `CLI Runtime · ${runtimeLabel}`,
+      toolIntent: 'Run selected CLI runtime over ACP',
+      timestamp: this.monotonic(),
+      actor,
+    }, managed.workspace.id)
+
+    const adapter = new CliRuntimeAcpAdapter({
+      runtimeId: resolved.runtimeId,
+      displayName: runtimeLabel,
+      command: resolved.command,
+      args: resolved.args,
+      ...(resolved.kind === 'custom' && resolved.env ? { env: resolved.env } : {}),
+    }, {
+      cwd: managed.workingDirectory ?? managed.workspace.rootPath,
+    })
+
+    try {
+      const result = await adapter.sendPrompt(message, {
+        modelId: resolved.modelId,
+        effort: resolved.effort,
+      })
+      const text = formatCliRuntimePromptResult(result)
+      const assistantMessage: Message = {
+        id: generateMessageId(),
+        role: 'assistant',
+        content: text,
+        timestamp: this.monotonic(),
+      }
+      managed.messages.push(assistantMessage)
+      managed.streamingText = ''
+      managed.lastMessageRole = 'assistant'
+      managed.lastFinalMessageId = assistantMessage.id
+
+      this.sendEvent({
+        type: 'tool_result',
+        sessionId,
+        toolUseId,
+        toolName: 'cli_runtime',
+        result: 'CLI Runtime completed',
+        timestamp: this.monotonic(),
+        actor,
+      }, managed.workspace.id)
+      this.sendEvent({
+        type: 'text_complete',
+        sessionId,
+        text,
+        timestamp: assistantMessage.timestamp,
+        messageId: assistantMessage.id,
+        actor,
+      }, managed.workspace.id)
+
+      this.persistSession(managed)
+      await this.flushSession(managed.id)
+      await this.onProcessingStopped(sessionId, 'complete')
+    } catch (error) {
+      const errorText = `CLI Runtime 执行失败：${errorMessageFromUnknown(error)}`
+      const errorMessage: Message = {
+        id: generateMessageId(),
+        role: 'error',
+        content: errorText,
+        timestamp: this.monotonic(),
+      }
+      managed.messages.push(errorMessage)
+      this.sendEvent({
+        type: 'tool_result',
+        sessionId,
+        toolUseId,
+        toolName: 'cli_runtime',
+        result: errorText,
+        isError: true,
+        timestamp: errorMessage.timestamp,
+        actor,
+      }, managed.workspace.id)
+      this.sendEvent({
+        type: 'error',
+        sessionId,
+        error: errorText,
+        timestamp: errorMessage.timestamp,
+      }, managed.workspace.id)
+      this.persistSession(managed)
+      await this.flushSession(managed.id)
+      await this.onProcessingStopped(sessionId, 'error')
+    } finally {
+      adapter.dispose()
+    }
   }
 
   setBrowserPaneManager(bpm: IBrowserPaneManager): void {
@@ -5664,6 +5839,20 @@ export class SessionManager implements ISessionManager {
       }
     } catch (e) {
       sessionLog.warn(`Auto-label evaluation failed for session ${sessionId}:`, e)
+    }
+
+    const resolvedCliRuntime = resolveCliRuntimeForSend(options)
+    if (resolvedCliRuntime.kind !== 'none') {
+      await this.sendMessageViaCliRuntime(
+        managed,
+        sessionId,
+        message,
+        attachments,
+        storedAttachments,
+        options,
+        resolvedCliRuntime,
+      )
+      return
     }
 
     managed.lastMessageAt = Date.now()
