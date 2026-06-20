@@ -3,6 +3,8 @@ import { useAtomValue } from 'jotai'
 import { MousePointer2, PanelRight, RotateCcw, ShieldCheck } from 'lucide-react'
 import { designLatestSelectionAtom, designTickerAtom } from '@/atoms/design'
 import { cn } from '@/lib/utils'
+import { useAppShellContext } from '@/context/AppShellContext'
+import { ProjectPackPanel } from './ProjectPackPanel'
 
 const tabs = ['选区', '动作', '上下文'] as const
 
@@ -10,6 +12,8 @@ export function WorkbenchInspectorRail() {
   const [activeTab, setActiveTab] = React.useState<(typeof tabs)[number]>('选区')
   const selection = useAtomValue(designLatestSelectionAtom)
   const ticker = useAtomValue(designTickerAtom)
+  const { activeWorkspaceId, workspaces } = useAppShellContext()
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
 
   return (
     <aside
@@ -107,6 +111,9 @@ export function WorkbenchInspectorRail() {
 
         {activeTab === '上下文' && (
           <div className="space-y-3 text-xs">
+            <div className="rounded-[8px] border border-border/70 overflow-hidden">
+              <ProjectPackPanel rootPath={activeWorkspace?.rootPath ?? ''} />
+            </div>
             <div className="rounded-[8px] border border-border/70 p-3">
               <div className="flex items-center gap-2 font-medium">
                 <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
