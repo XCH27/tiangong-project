@@ -3,6 +3,7 @@ import type { ProjectEnvironmentProfile, ToolCapability } from './system-tools'
 
 export type ContextSignalConfidence = 'real' | 'estimate' | 'unknown'
 export type ContextSignalLocality = 'local' | 'external' | 'unknown'
+export type ContextCenterReviewReadinessStatus = 'ready' | 'blocked' | 'needs_pack' | 'unknown'
 
 export interface ContextSignal<T> {
   value: T
@@ -40,7 +41,10 @@ export interface ContextCenterOverview {
   contextTools: ContextSignal<ToolCapability[]>
   projectPackSummary?: ContextSignal<ProjectPackSummary | null>
   reviewReadiness: {
+    status: ContextSignal<ContextCenterReviewReadinessStatus>
+    reasons: ContextSignal<string[]>
     externalExportAllowed: ContextSignal<boolean>
+    secretHighSeverityBlocked?: ContextSignal<boolean>
     secretFindingCount?: ContextSignal<number>
     estimatedPackTokens?: ContextSignal<number>
   }
