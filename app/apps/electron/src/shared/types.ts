@@ -131,6 +131,14 @@ export interface BrowserElementSelection {
   }
 }
 
+export interface BrowserElementSelectionQuery {
+  mode: 'viewport' | 'rect'
+  rect?: { x: number; y: number; width: number; height: number }
+  maxResults?: number
+  minArea?: number
+  includeText?: boolean
+}
+
 /**
  * Empty-state launch request from the browser empty-state renderer.
  */
@@ -670,6 +678,7 @@ export interface ElectronAPI {
     dock(id: string, bounds: BrowserPaneDockBounds): Promise<void>
     undock(id: string): Promise<void>
     pickElement(id: string): Promise<BrowserElementSelection | null>
+    selectElements(id: string, query: BrowserElementSelectionQuery): Promise<BrowserElementSelection[]>
     emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void

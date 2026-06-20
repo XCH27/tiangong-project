@@ -286,6 +286,53 @@ describe('BrowserPaneManager', () => {
     expect(instance.window.addBrowserView.mock.calls.length).toBeGreaterThan(3)
   })
 
+  it('selects multiple elements from a rectangle for batch annotation', async () => {
+    manager.createInstance('stage-multi-select')
+    const instance = (manager as any).instances.get('stage-multi-select')
+    instance.pageView.webContents.executeJavaScript = mock(async (script: string) => {
+      expect(script).toContain('"mode":"rect"')
+      expect(script).toContain('"maxResults":2')
+      return [
+        {
+          selector: '#hero',
+          tagName: 'section',
+          text: 'Hero',
+          rect: { x: 20, y: 30, width: 280, height: 120 },
+          styles: {
+            color: 'rgb(0, 0, 0)',
+            backgroundColor: 'rgb(255, 255, 255)',
+            fontSize: '16px',
+            fontWeight: '400',
+            borderRadius: '8px',
+          },
+        },
+        {
+          selector: '#cta',
+          tagName: 'button',
+          text: 'Buy',
+          rect: { x: 40, y: 90, width: 120, height: 44 },
+          styles: {
+            color: 'rgb(255, 255, 255)',
+            backgroundColor: 'rgb(59, 130, 246)',
+            fontSize: '14px',
+            fontWeight: '600',
+            borderRadius: '6px',
+          },
+        },
+      ]
+    })
+
+    const selected = await manager.selectElements('stage-multi-select', {
+      mode: 'rect',
+      rect: { x: 10, y: 20, width: 320, height: 180 },
+      maxResults: 2,
+    })
+
+    expect(selected).toHaveLength(2)
+    expect(selected.map((item) => item.selector)).toEqual(['#hero', '#cta'])
+    expect(instance.pageView.webContents.executeJavaScript).toHaveBeenCalledTimes(1)
+  })
+
   it('is idempotent when explicit ID already exists', () => {
     const first = manager.createInstance('same-id')
     const second = manager.createInstance('same-id')

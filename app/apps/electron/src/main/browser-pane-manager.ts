@@ -18,6 +18,7 @@ import {
   type BrowserEmptyStateLaunchResult,
   type BrowserPaneDockBounds,
   type BrowserElementSelection,
+  type BrowserElementSelectionQuery,
   type BrowserInstanceInfo,
 } from '../shared/types'
 import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@craft-agent/shared/config'
@@ -981,6 +982,107 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         document.addEventListener('click', onClick, true);
         document.addEventListener('keydown', onKey, true);
       });
+    })()`)
+  }
+
+  async selectElements(id: string, query: BrowserElementSelectionQuery): Promise<BrowserElementSelection[]> {
+    const instance = this.requireAliveInstance(id)
+    const normalizedQuery = {
+      mode: query?.mode === 'viewport' ? 'viewport' : 'rect',
+      rect: query?.rect
+        ? {
+            x: Math.max(0, Math.floor(query.rect.x)),
+            y: Math.max(0, Math.floor(query.rect.y)),
+            width: Math.max(0, Math.floor(query.rect.width)),
+            height: Math.max(0, Math.floor(query.rect.height)),
+          }
+        : undefined,
+      maxResults: Math.min(200, Math.max(1, Math.floor(query?.maxResults ?? 50))),
+      minArea: Math.max(0, Math.floor(query?.minArea ?? 16)),
+      includeText: query?.includeText !== false,
+    }
+
+    return instance.pageView.webContents.executeJavaScript(`(() => {
+      const query = ${JSON.stringify(normalizedQuery)};
+
+      const selectorFor = (element) => {
+        if (element.id) return '#' + CSS.escape(element.id);
+        const parts = [];
+        let node = element;
+        while (node && node.nodeType === Node.ELEMENT_NODE && node !== document.documentElement) {
+          let part = node.tagName.toLowerCase();
+          const parent = node.parentElement;
+          if (parent) {
+            const siblings = Array.from(parent.children).filter((child) => child.tagName === node.tagName);
+            if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(node) + 1) + ')';
+          }
+          parts.unshift(part);
+          node = parent;
+        }
+        return parts.join(' > ');
+      };
+
+      const viewportRect = {
+        x: 0,
+        y: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+      const targetRect = query.mode === 'viewport' || !query.rect ? viewportRect : query.rect;
+      const intersects = (a, b) => (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+      const contains = (outer, inner) => (
+        inner.x >= outer.x &&
+        inner.y >= outer.y &&
+        inner.x + inner.width <= outer.x + outer.width &&
+        inner.y + inner.height <= outer.y + outer.height
+      );
+      const isUsefulElement = (element, rect, styles) => {
+        if (element === document.documentElement || element === document.body) return false;
+        if (element.closest('[data-fleet-element-picker]')) return false;
+        if (rect.width <= 0 || rect.height <= 0) return false;
+        if (rect.width * rect.height < query.minArea) return false;
+        if (styles.visibility === 'hidden' || styles.display === 'none' || styles.opacity === '0') return false;
+        return intersects(targetRect, rect);
+      };
+
+      const elements = Array.from(document.querySelectorAll('body *'));
+      const selected = [];
+      const seenSelectors = new Set();
+      for (const element of elements) {
+        const rect = element.getBoundingClientRect();
+        const candidateRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        const styles = getComputedStyle(element);
+        if (!isUsefulElement(element, candidateRect, styles)) continue;
+
+        // Prefer leaf or visually bounded nodes. Avoid returning large parents
+        // when a child already occupies the same selected rectangle.
+        const hasSelectedChild = selected.some((item) => contains(candidateRect, item.rect));
+        if (hasSelectedChild && candidateRect.width * candidateRect.height > targetRect.width * targetRect.height * 0.5) continue;
+
+        const selector = selectorFor(element);
+        if (!selector || seenSelectors.has(selector)) continue;
+        seenSelectors.add(selector);
+        selected.push({
+          selector,
+          tagName: element.tagName.toLowerCase(),
+          text: query.includeText ? (element.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 500) : '',
+          rect: candidateRect,
+          styles: {
+            color: styles.color,
+            backgroundColor: styles.backgroundColor,
+            fontSize: styles.fontSize,
+            fontWeight: styles.fontWeight,
+            borderRadius: styles.borderRadius,
+          },
+        });
+        if (selected.length >= query.maxResults) break;
+      }
+      return selected;
     })()`)
   }
 

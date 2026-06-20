@@ -179,6 +179,7 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.browserPane.DOCK,
   RPC_CHANNELS.browserPane.UNDOCK,
   RPC_CHANNELS.browserPane.PICK_ELEMENT,
+  RPC_CHANNELS.browserPane.SELECT_ELEMENTS,
   RPC_CHANNELS.browserPane.SNAPSHOT,
   RPC_CHANNELS.browserPane.CLICK,
   RPC_CHANNELS.browserPane.FILL,

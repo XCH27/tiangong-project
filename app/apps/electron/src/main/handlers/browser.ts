@@ -1,4 +1,4 @@
-import { RPC_CHANNELS, type BrowserPaneCreateOptions, type BrowserEmptyStateLaunchPayload, type BrowserPaneDockBounds } from '../../shared/types'
+import { RPC_CHANNELS, type BrowserPaneCreateOptions, type BrowserEmptyStateLaunchPayload, type BrowserPaneDockBounds, type BrowserElementSelectionQuery } from '../../shared/types'
 import type { BrowserScreenshotOptions } from '../browser-pane-manager'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from './handler-deps'
@@ -16,6 +16,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.browserPane.DOCK,
   RPC_CHANNELS.browserPane.UNDOCK,
   RPC_CHANNELS.browserPane.PICK_ELEMENT,
+  RPC_CHANNELS.browserPane.SELECT_ELEMENTS,
   RPC_CHANNELS.browserPane.LAUNCH,
   RPC_CHANNELS.browserPane.SNAPSHOT,
   RPC_CHANNELS.browserPane.CLICK,
@@ -114,6 +115,10 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
 
   server.handle(RPC_CHANNELS.browserPane.PICK_ELEMENT, async (_ctx, id: string) => {
     return browserPaneManager.pickElement(id)
+  })
+
+  server.handle(RPC_CHANNELS.browserPane.SELECT_ELEMENTS, async (_ctx, id: string, query: BrowserElementSelectionQuery) => {
+    return browserPaneManager.selectElements(id, query)
   })
 
   server.handle(RPC_CHANNELS.browserPane.LAUNCH, async (ctx, payload: BrowserEmptyStateLaunchPayload) => {

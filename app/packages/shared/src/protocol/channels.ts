@@ -372,6 +372,7 @@ export const RPC_CHANNELS = {
     DOCK: 'browser-pane:dock',
     UNDOCK: 'browser-pane:undock',
     PICK_ELEMENT: 'browser-pane:pick-element',
+    SELECT_ELEMENTS: 'browser-pane:select-elements',
     SNAPSHOT: 'browser-pane:snapshot',
     CLICK: 'browser-pane:click',
     FILL: 'browser-pane:fill',
