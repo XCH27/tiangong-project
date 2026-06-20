@@ -807,7 +807,10 @@ export type WhatsAppUiEvent =
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
   | { type: 'history' }
+  | { type: 'inspector' }
   | { type: 'none' }
+
+export type StageMode = 'browser' | 'artifact' | 'canvas' | 'code' | 'timeline' | 'board'
 
 /**
  * Session filter options
@@ -895,6 +898,19 @@ export interface AutomationsNavigationState {
 }
 
 /**
+ * Stage navigation state
+ *
+ * Stage is Fleet's workbench surface. It is a real panel-stack route, not a
+ * ChatPage wrapper, so Browser/Artifact/Canvas modes can later host native panes
+ * beside the shared Inspector.
+ */
+export interface StageNavigationState {
+  navigator: 'stage'
+  mode: StageMode
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -903,6 +919,7 @@ export type NavigationState =
   | SettingsNavigationState
   | SkillsNavigationState
   | AutomationsNavigationState
+  | StageNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -923,6 +940,10 @@ export const isSkillsNavigation = (
 export const isAutomationsNavigation = (
   state: NavigationState
 ): state is AutomationsNavigationState => state.navigator === 'automations'
+
+export const isStageNavigation = (
+  state: NavigationState
+): state is StageNavigationState => state.navigator === 'stage'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -948,6 +969,9 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `automations/automation/${state.details.automationId}`
     }
     return 'automations'
+  }
+  if (state.navigator === 'stage') {
+    return `stage:${state.mode}`
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -997,6 +1021,15 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     return { navigator: 'automations', details: null }
   }
 
+  // Handle stage
+  if (key === 'stage') return { navigator: 'stage', mode: 'browser' }
+  if (key.startsWith('stage:')) {
+    const mode = key.slice(6)
+    if (isStageMode(mode)) {
+      return { navigator: 'stage', mode }
+    }
+  }
+
   // Handle settings
   if (key === 'settings') return { navigator: 'settings', subpage: null }
   if (key.startsWith('settings:')) {
@@ -1042,6 +1075,12 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
 
   // Simple filter key
   return parseSessionsKey(key)
+}
+
+export const STAGE_MODES: readonly StageMode[] = ['browser', 'artifact', 'canvas', 'code', 'timeline', 'board']
+
+export function isStageMode(value: string): value is StageMode {
+  return (STAGE_MODES as readonly string[]).includes(value)
 }
 
 declare global {

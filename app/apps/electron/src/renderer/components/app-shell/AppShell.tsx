@@ -113,6 +113,7 @@ import {
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
+  isStageNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import type { SettingsSubpage } from "../../../shared/types"
@@ -142,6 +143,7 @@ import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
 import { ActionTickerBar } from "@/components/workbench/ActionTickerBar"
+import { WorkbenchInspectorRail } from "@/components/workbench/WorkbenchInspectorRail"
 
 /**
  * AppShellProps - Minimal props interface for AppShell component
@@ -589,6 +591,7 @@ function AppShellContent({
   // UNIFIED NAVIGATION STATE - single source of truth from NavigationContext
   // Derived from focused panel's route — all panels are peers
   const navState = useNavigationState()
+  const isWorkbenchInspectorVisible = !isAutoCompact && navState.rightSidebar?.type === 'inspector'
 
   const store = useStore()
   const panelStack = useAtomValue(panelStackAtom)
@@ -1682,6 +1685,10 @@ function AppShellContent({
     navigate(routes.view.sources())
   }, [])
 
+  const handleStageClick = useCallback(() => {
+    navigate(routes.view.stage())
+  }, [])
+
   // Handlers for source type filter views (subcategories in Sources dropdown)
   const handleSourcesApiClick = useCallback(() => {
     navigate(routes.view.sourcesApi())
@@ -1958,7 +1965,8 @@ function AppShellContent({
     }
     flattenTree(labelTree)
 
-    // 3. Sources, Skills, Settings
+    // 3. Workbench, Sources, Skills, Settings
+    result.push({ id: 'nav:stage', type: 'nav', action: handleStageClick })
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
@@ -1966,7 +1974,7 @@ function AppShellContent({
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleStageClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2095,6 +2103,8 @@ function AppShellContent({
         default: return t("sidebar.allAutomations")
       }
     }
+
+    if (isStageNavigation(navState)) return "工作台"
 
     // Settings navigator
     if (isSettingsNavigation(navState)) return t("sidebar.settings")
@@ -2357,6 +2367,13 @@ function AppShellContent({
                     },
                     // --- Separator ---
                     { id: "separator:chats-sources", type: "separator" },
+                    {
+                      id: "nav:stage",
+                      title: "工作台",
+                      icon: Layers,
+                      variant: isStageNavigation(navState) ? "default" : "ghost",
+                      onClick: handleStageClick,
+                    },
                     // --- Sources & Skills Section ---
                     {
                       id: "nav:sources",
@@ -3156,6 +3173,17 @@ function AppShellContent({
               }
             />
             {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}
+            {isStageNavigation(navState) && (
+              <div className="flex-1 min-h-0 px-3 py-3 text-xs text-muted-foreground space-y-2">
+                <div className="rounded-[8px] border border-border/70 bg-foreground/[0.02] p-3">
+                  <div className="text-foreground font-medium">Stage 模式</div>
+                  <div className="mt-1">当前：{navState.mode}</div>
+                </div>
+                <div className="rounded-[8px] border border-border/70 p-3 leading-relaxed">
+                  这里以后承载项目画布列表、Artifact 和浏览器目标。第一刀先把正式路由与右侧 Inspector 接好。
+                </div>
+              </div>
+            )}
             {isSourcesNavigation(navState) && (
               /* Sources List - filtered by type if sourceFilter is active */
               <SourcesListPanel
@@ -3267,10 +3295,14 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={false}
+          isRightSidebarVisible={isWorkbenchInspectorVisible}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
+
+        {isWorkbenchInspectorVisible && (
+          <WorkbenchInspectorRail />
+        )}
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
         {!effectiveSidebarAndNavigatorHidden && (

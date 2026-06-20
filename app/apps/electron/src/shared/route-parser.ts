@@ -16,6 +16,7 @@ import type {
   AutomationFilter,
   RightSidebarPanel,
 } from './types'
+import { isStageMode } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
 
 // =============================================================================
@@ -35,7 +36,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'settings'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'settings' | 'stage'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -61,7 +62,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'sources', 'skills', 'automations', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'sources', 'skills', 'automations', 'settings', 'stage'
 ]
 
 /**
@@ -93,6 +94,16 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
   if (segments.length === 0) return null
 
   const first = segments[0]
+
+  // Stage workbench surface
+  if (first === 'stage') {
+    const mode = segments[1] ?? 'browser'
+    if (!isStageMode(mode)) return null
+    return {
+      navigator: 'stage',
+      details: { type: 'stage', id: mode },
+    }
+  }
 
   // Settings navigator
   if (first === 'settings') {
@@ -259,6 +270,11 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
  * Build a compound route string from parsed state
  */
 export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
+  if (parsed.navigator === 'stage') {
+    const mode = parsed.details?.id ?? 'browser'
+    return `stage/${mode}`
+  }
+
   if (parsed.navigator === 'settings') {
     if (!parsed.details) return 'settings'
     return `settings/${parsed.details.type}`
@@ -379,6 +395,11 @@ export function parseRoute(route: string): ParsedRoute | null {
  * Convert a parsed compound route to ParsedRoute format (type: 'view')
  */
 function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute {
+  // Stage
+  if (compound.navigator === 'stage') {
+    return { type: 'view', name: 'stage', id: compound.details?.id ?? 'browser', params: {} }
+  }
+
   // Settings
   if (compound.navigator === 'settings') {
     const subpage = compound.details?.type || 'app'
@@ -496,6 +517,14 @@ export function parseRouteToNavigationState(
  * Convert a ParsedCompoundRoute to NavigationState
  */
 function convertCompoundToNavigationState(compound: ParsedCompoundRoute): NavigationState {
+  if (compound.navigator === 'stage') {
+    const mode = compound.details?.id ?? 'browser'
+    return {
+      navigator: 'stage',
+      mode: isStageMode(mode) ? mode : 'browser',
+    }
+  }
+
   // Settings
   if (compound.navigator === 'settings') {
     if (!compound.details) {
@@ -573,6 +602,11 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
   }
 
   switch (parsed.name) {
+    case 'stage':
+      return {
+        navigator: 'stage',
+        mode: parsed.id && isStageMode(parsed.id) ? parsed.id : 'browser',
+      }
     case 'settings':
       return { navigator: 'settings', subpage: 'app' }
     case 'workspace':
@@ -699,6 +733,13 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
  * Convert NavigationState to ParsedCompoundRoute
  */
 function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundRoute {
+  if (state.navigator === 'stage') {
+    return {
+      navigator: 'stage',
+      details: { type: 'stage', id: state.mode },
+    }
+  }
+
   if (state.navigator === 'settings') {
     if (state.subpage === null) {
       return { navigator: 'settings', details: null }
@@ -766,6 +807,9 @@ export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel |
   if (sidebarStr === 'history') {
     return { type: 'history' }
   }
+  if (sidebarStr === 'inspector') {
+    return { type: 'inspector' }
+  }
   if (sidebarStr.startsWith('files')) {
     const path = sidebarStr.substring(6) // Remove 'files/' prefix
     return { type: 'files', path: path || undefined }
@@ -788,6 +832,8 @@ export function buildRightSidebarParam(panel?: RightSidebarPanel): string | unde
   switch (panel.type) {
     case 'history':
       return 'history'
+    case 'inspector':
+      return 'inspector'
     case 'files':
       return panel.path ? `files/${panel.path}` : 'files'
     default:
