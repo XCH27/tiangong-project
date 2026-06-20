@@ -90,6 +90,7 @@ import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSourc
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
+import { workbenchSessionIdAtom } from "@/atoms/design"
 import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
@@ -597,6 +598,7 @@ function AppShellContent({
   const panelStack = useAtomValue(panelStackAtom)
   const panelCount = useAtomValue(panelCountAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const setWorkbenchSessionId = useSetAtom(workbenchSessionIdAtom)
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -1686,8 +1688,9 @@ function AppShellContent({
   }, [])
 
   const handleStageClick = useCallback(() => {
+    setWorkbenchSessionId(focusedSessionId ?? session.selected)
     navigate(routes.view.stage())
-  }, [])
+  }, [focusedSessionId, navigate, session.selected, setWorkbenchSessionId])
 
   // Handlers for source type filter views (subcategories in Sources dropdown)
   const handleSourcesApiClick = useCallback(() => {
@@ -1890,8 +1893,9 @@ function AppShellContent({
   // Browser creation enters the Stage first. Native BrowserPane docking is the
   // next slice; avoid creating another floating browser window from the main UI.
   const handleOpenStageBrowser = useCallback(() => {
+    setWorkbenchSessionId(focusedSessionId ?? session.selected)
     navigate(routes.view.stage('browser'))
-  }, [])
+  }, [focusedSessionId, navigate, session.selected, setWorkbenchSessionId])
 
   // Delete Source - simplified since agents system is removed
   const handleDeleteSource = useCallback(async (sourceSlug: string) => {

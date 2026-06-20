@@ -27,6 +27,9 @@ export interface DesignTickerEntry {
 /** 当前选区（最近一次 selection_changed）。Inspector 选区/属性 tab 读它。 */
 export const designLatestSelectionAtom = atom<DesignSelection | null>(null)
 
+/** Session that owns the current Stage work. Set when entering Stage from chat. */
+export const workbenchSessionIdAtom = atom<string | null>(null)
+
 /** 最近的动作事件流（capped）。Action Ticker 读它。 */
 export const designTickerAtom = atom<DesignTickerEntry[]>([])
 

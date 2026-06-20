@@ -110,6 +110,27 @@ export interface BrowserPaneCreateOptions {
   bindToSessionId?: string
 }
 
+export interface BrowserPaneDockBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface BrowserElementSelection {
+  selector: string
+  tagName: string
+  text: string
+  rect: { x: number; y: number; width: number; height: number }
+  styles: {
+    color: string
+    backgroundColor: string
+    fontSize: string
+    fontWeight: string
+    borderRadius: string
+  }
+}
+
 /**
  * Empty-state launch request from the browser empty-state renderer.
  */
@@ -646,6 +667,9 @@ export interface ElectronAPI {
     reload(id: string): Promise<void>
     stop(id: string): Promise<void>
     focus(id: string): Promise<void>
+    dock(id: string, bounds: BrowserPaneDockBounds): Promise<void>
+    undock(id: string): Promise<void>
+    pickElement(id: string): Promise<BrowserElementSelection | null>
     emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void

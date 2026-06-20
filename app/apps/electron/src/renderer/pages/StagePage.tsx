@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { routes, useNavigation, useNavigationState } from '@/contexts/NavigationContext'
 import type { StageMode } from '../../shared/types'
-import { designClient } from '@/atoms/design'
+import { designClient, workbenchSessionIdAtom } from '@/atoms/design'
 import { useSession } from '@/hooks/useSession'
+import { useAtomValue } from 'jotai'
 import { USER_ACTOR } from '@craft-agent/shared/protocol'
+import { BrowserStageSurface } from '@/components/workbench/BrowserStageSurface'
 
 const stageModes: Array<{ id: StageMode; label: string; icon: React.ComponentType<{ className?: string }>; enabled: boolean }> = [
   { id: 'browser', label: 'Browser', icon: Globe2, enabled: true },
@@ -46,6 +48,8 @@ export default function StagePage({ mode }: { mode: StageMode }) {
   const { navigate, toggleRightSidebar, updateRightSidebar } = useNavigation()
   const navState = useNavigationState()
   const [session] = useSession()
+  const workbenchSessionId = useAtomValue(workbenchSessionIdAtom)
+  const designSessionId = workbenchSessionId ?? session.selected
   const copy = getModeCopy(mode)
   const openedInspectorRef = React.useRef(false)
   const [selectionError, setSelectionError] = React.useState<string | null>(null)
@@ -58,15 +62,15 @@ export default function StagePage({ mode }: { mode: StageMode }) {
   }, [navState, updateRightSidebar])
 
   const handleCreateSelection = React.useCallback(async () => {
-    if (!session.selected) return
+    if (!designSessionId) return
     setSelectionError(null)
     const selectionId = `stage-sel-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`
     try {
       await designClient.setSelection({
-        sessionId: session.selected,
+        sessionId: designSessionId,
         selection: {
           selectionId,
-          sessionId: session.selected,
+          sessionId: designSessionId,
           createdBy: USER_ACTOR,
           createdAt: Date.now(),
           label: `${copy.title} 测试选区`,
@@ -89,7 +93,7 @@ export default function StagePage({ mode }: { mode: StageMode }) {
     } catch (error) {
       setSelectionError(error instanceof Error ? error.message : String(error))
     }
-  }, [copy.title, mode, session.selected])
+  }, [copy.title, designSessionId, mode])
 
   return (
     <Panel variant="grow" className="bg-background">
@@ -146,6 +150,9 @@ export default function StagePage({ mode }: { mode: StageMode }) {
             </span>
           </div>
 
+          {mode === 'browser' ? (
+            <BrowserStageSurface />
+          ) : (
           <div className="flex-1 min-h-0 grid place-items-center p-6">
             <div className="w-full max-w-[680px] rounded-[10px] border border-dashed border-border bg-background/70 p-4">
               <div className="text-sm font-medium">{copy.title}</div>
@@ -167,14 +174,14 @@ export default function StagePage({ mode }: { mode: StageMode }) {
                   size="sm"
                   variant="outline"
                   className="h-8 text-xs"
-                  disabled={!session.selected}
+                  disabled={!designSessionId}
                   onClick={handleCreateSelection}
                   data-stage-test-selection
                 >
                   创建测试选区
                 </Button>
                 <span className="text-[11px] text-muted-foreground">
-                  {session.selected ? '走真实 DesignEngine 选区事件' : '需要先有一个会话'}
+                  {designSessionId ? '走真实 DesignEngine 选区事件' : '需要从一个会话进入工作台'}
                 </span>
               </div>
               {selectionError && (
@@ -182,6 +189,7 @@ export default function StagePage({ mode }: { mode: StageMode }) {
               )}
             </div>
           </div>
+          )}
 
           <div className="h-12 shrink-0 border-t border-border/60 px-3 flex items-center gap-2">
             <div className="flex-1 h-8 rounded-[8px] border border-border/70 bg-background px-3 flex items-center text-xs text-muted-foreground">

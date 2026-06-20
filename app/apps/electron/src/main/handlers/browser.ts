@@ -1,4 +1,4 @@
-import { RPC_CHANNELS, type BrowserPaneCreateOptions, type BrowserEmptyStateLaunchPayload } from '../../shared/types'
+import { RPC_CHANNELS, type BrowserPaneCreateOptions, type BrowserEmptyStateLaunchPayload, type BrowserPaneDockBounds } from '../../shared/types'
 import type { BrowserScreenshotOptions } from '../browser-pane-manager'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from './handler-deps'
@@ -13,6 +13,9 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.browserPane.RELOAD,
   RPC_CHANNELS.browserPane.STOP,
   RPC_CHANNELS.browserPane.FOCUS,
+  RPC_CHANNELS.browserPane.DOCK,
+  RPC_CHANNELS.browserPane.UNDOCK,
+  RPC_CHANNELS.browserPane.PICK_ELEMENT,
   RPC_CHANNELS.browserPane.LAUNCH,
   RPC_CHANNELS.browserPane.SNAPSHOT,
   RPC_CHANNELS.browserPane.CLICK,
@@ -98,6 +101,19 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
 
   server.handle(RPC_CHANNELS.browserPane.FOCUS, (_ctx, id: string) => {
     browserPaneManager.focus(id)
+  })
+
+  server.handle(RPC_CHANNELS.browserPane.DOCK, (ctx, id: string, bounds: BrowserPaneDockBounds) => {
+    if (ctx.webContentsId == null) throw new Error('Browser Stage dock requires a local renderer')
+    browserPaneManager.dock(id, ctx.webContentsId, bounds)
+  })
+
+  server.handle(RPC_CHANNELS.browserPane.UNDOCK, (ctx, id: string) => {
+    browserPaneManager.undock(id, ctx.webContentsId ?? undefined)
+  })
+
+  server.handle(RPC_CHANNELS.browserPane.PICK_ELEMENT, async (_ctx, id: string) => {
+    return browserPaneManager.pickElement(id)
   })
 
   server.handle(RPC_CHANNELS.browserPane.LAUNCH, async (ctx, payload: BrowserEmptyStateLaunchPayload) => {
