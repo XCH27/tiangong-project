@@ -287,4 +287,4 @@ export {
 } from './components/icons'
 
 // Usage / token ledger (T-USAGE v1, read-only self-contained)
-export { UsageLedger, type UsageLedgerProps } from './components/usage'
+export { UsageLedger, type UsageLedgerData, type UsageLedgerProps } from './components/usage'

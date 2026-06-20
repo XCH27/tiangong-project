@@ -93,9 +93,10 @@ export function UsageLedger({ ledger, connectionName, model, className }: UsageL
         fontSize: 12,
         lineHeight: 1.5,
         padding: 8,
-        border: '1px solid #e5e5e5',
+        border: '1px solid hsl(var(--border, 0 0% 89%))',
         borderRadius: 6,
-        background: '#fafafa',
+        background: 'hsl(var(--background, 0 0% 98%))',
+        color: 'hsl(var(--foreground, 0 0% 12%))',
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: 6 }}>
@@ -106,7 +107,7 @@ export function UsageLedger({ ledger, connectionName, model, className }: UsageL
 
       {/* 真实 token 区块 */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ color: '#444', marginBottom: 2 }}>真实 Token（来自 provider / agent）</div>
+        <div style={{ color: 'hsl(var(--muted-foreground, 0 0% 40%))', marginBottom: 2 }}>真实 Token（来自 provider / agent）</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 12px' }}>
           <div>Input</div>
           <div data-testid="real-input" style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -122,9 +123,9 @@ export function UsageLedger({ ledger, connectionName, model, className }: UsageL
 
       {/* 缓存：只有真实报告的正值才展示具体数字；否则明确未知 */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ color: '#444', marginBottom: 2 }}>缓存（真实命中才显示）</div>
+        <div style={{ color: 'hsl(var(--muted-foreground, 0 0% 40%))', marginBottom: 2 }}>缓存（真实命中才显示）</div>
         {!hasCache && (
-          <div data-testid="cache-unknown" style={{ color: '#777' }}>
+          <div data-testid="cache-unknown" style={{ color: 'hsl(var(--muted-foreground, 0 0% 47%))' }}>
             缓存读写：未知（本次会话未报告）
           </div>
         )}
@@ -145,20 +146,20 @@ export function UsageLedger({ ledger, connectionName, model, className }: UsageL
 
       {/* 成本：真实 / 本地 / 未知 严格分开 */}
       <div style={{ marginBottom: 8 }}>
-        <div style={{ color: '#444', marginBottom: 2 }}>成本</div>
+        <div style={{ color: 'hsl(var(--muted-foreground, 0 0% 40%))', marginBottom: 2 }}>成本</div>
         <div data-testid="cost-line">
           <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatCost(ledger)}</span>
-          <span style={{ marginLeft: 8, color: '#666' }}>
+          <span style={{ marginLeft: 8, color: 'hsl(var(--muted-foreground, 0 0% 40%))' }}>
             [{costKindLabel(ledger.costAttribution)}]
           </span>
         </div>
         {isLocalCost && (
-          <div style={{ fontSize: 11, color: '#856404', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'hsl(var(--warning, 43 74% 40%))', marginTop: 2 }}>
             说明：外部网站 / 本地 CLI 不消耗 Fleet API token，不等于“免费”。
           </div>
         )}
         {isRealCost && (
-          <div style={{ fontSize: 11, color: '#155724', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'hsl(var(--success, 142 71% 35%))', marginTop: 2 }}>
             以上为 provider 实际报告的累计用量费用。
           </div>
         )}
@@ -166,7 +167,7 @@ export function UsageLedger({ ledger, connectionName, model, className }: UsageL
 
       {/* 估算区块（仅当有真实依据时才显示数字，否则未知） */}
       <div style={{ marginBottom: 6 }}>
-        <div style={{ color: '#444', marginBottom: 2 }}>上下文（估算）</div>
+        <div style={{ color: 'hsl(var(--muted-foreground, 0 0% 40%))', marginBottom: 2 }}>上下文（估算）</div>
         <div>
           窗口大小：{ledger.contextWindow ? formatTokens(ledger.contextWindow) : '未知'}
         </div>
@@ -182,9 +183,9 @@ export function UsageLedger({ ledger, connectionName, model, className }: UsageL
           style={{
             marginTop: 6,
             paddingTop: 6,
-            borderTop: '1px dashed #ddd',
+            borderTop: '1px dashed hsl(var(--border, 0 0% 86%))',
             fontSize: 11,
-            color: '#666',
+            color: 'hsl(var(--muted-foreground, 0 0% 40%))',
           }}
         >
           {ledger.notes.map((n: string, i: number) => (
