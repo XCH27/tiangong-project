@@ -40,7 +40,9 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 | **T-PROJECTPACK** | `work/integration-prep` | **已集成**：`5b7ea955` | ProjectPack 测试随 services 整组通过；routing/channel-map/ipc：`15 pass / 0 fail`；shared/server-core/electron typecheck 通过 | 本地打包、secret scan、token 估算、目录越界保护；已挂入上下文效率设置页；不外发、不上传。 |
 | **T-USAGE** | `work/integration-prep` | **已集成**：`a97eb7dd` + UI `d306262f` | usage 测试随 services 整组通过；electron/shared/ui typecheck 通过；`git diff --check` 通过 | 真实 token / 估算 / 未知成本分离；当前会话 Usage Ledger 已挂入上下文效率设置页。 |
 | **T-CLI Runtime** | `work/integration-prep` | **已集成**：`ff39566a` + 发送入口 `072ea88a` | CLI Runtime 测试随 services 整组通过；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | Grok/Hermes/OpenCode detected mapping、custom ACP、health、model/effort、附件硬拒绝、SessionManager CLI 发送分支已接；聊天输入选择器/最终产品化仍待接 Stage/Conversation UI。 |
-| **Stage / Inspector / Browser 第一闭环** | `work/integration-prep` | **已集成**：`ff120bb0` 至 `1fbd8535` | route/panel-stack 测试、IPC/routing 测试、BrowserPane dock 目标测试通过；electron/shared/server-core typecheck 通过；`git diff --check` 通过；Electron 实机确认 BrowserView 位于 Stage 且切换模式后释放 | `stage/{mode}` 正式 route、右侧 Inspector、Usage Ledger、ProjectPack 已接；现有 BrowserPane 三个原生 BrowserView 可停靠 Stage，保持登录态/CDP/Agent 工具链；从会话进入 Stage 后可启动网页元素选择并写入统一 DesignSelection。框选、多选、批量标注和 Comment AI 仍待接。 |
+| **Stage / Inspector / Browser 第一闭环** | `work/integration-prep` | **已集成**：`ff120bb0` 至 `8c91a2f8` | route/panel-stack 测试、IPC/routing 测试、BrowserPane dock 与批量选区目标测试通过；electron/shared/server-core typecheck 通过；`git diff --check` 通过；Electron 实机确认 BrowserView 位于 Stage 且切换模式后释放 | `stage/{mode}` 正式 route、右侧 Inspector、Usage Ledger、ProjectPack 已接；现有 BrowserPane 三个原生 BrowserView 可停靠 Stage，保持登录态/CDP/Agent 工具链；从会话进入 Stage 后可启动网页元素选择并写入统一 DesignSelection；后端已支持矩形/视口批量元素选择。批量标注和 Comment AI 仍待接。 |
+| **Context Center 后端总览** | `work/integration-prep` | **已集成**：`8f2d5be8` | ContextCenter service 测试、IPC/routing/channel-map 测试通过；shared/server-core/electron typecheck 通过 | 只读聚合 Usage、Project Environment、context 类工具、可选 ProjectPack summary；不触发 pack、不写 bundle、不外发；所有字段标真实/估算/未知与本地/外发口径。 |
+| **Agent Registry M0** | `work/integration-prep` | **已集成**：`d5e5f03d` | AgentRegistry service 测试、IPC/routing/channel-map 测试通过；shared/server-core/electron typecheck 通过 | 增加 `agents:list/get`、内存 registry 和稳定 `project:<sessionId>` actor；普通 API 与 CLI Runtime 工具事件开始带稳定 `agentId/role/displayName/runtime`；不建第二套 session/store/process registry。 |
 
 **当前集成线**：`work/integration-prep` 已把 T-ENGINE、T-SYSTOOLS、T-PROJECTPACK、T-USAGE、T-CLI Runtime、Stage / Inspector 第一刀合到同一基线。后续不要再从旧服务 worktree 二次合并同一批改动；继续在集成线或从它分出新工作。
 
@@ -92,12 +94,12 @@ git diff --check
 
 当前主线已经从 R0 进入 M0 承重墙阶段：
 
-1. **已完成并集成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、Agent tool/text actor、底部 Action Ticker、System Tools、ProjectPack、Usage Ledger、CLI Runtime 后端与发送分支、Stage route/panel/Inspector 第一刀。
-2. **已完成第一闭环**：BrowserPane 原生 docked Stage + 单元素选择；复用 craft BrowserPane/CDP，选区写入原会话的 DesignEngine / SessionEvent。
-3. **下一刀**：框选、多选、批量标注、Comment AI 与已有 annotation 体系接线；随后接 Artifact selection source 和 surface applier。
-4. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、浏览器框选/多选/注释、Artifact applier、permission 化真实 surface 回滚。
+1. **已完成并集成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、稳定 Agent actor、底部 Action Ticker、System Tools、ProjectPack、Usage Ledger、ContextCenter 只读总览、CLI Runtime 后端与发送分支、Stage route/panel/Inspector 第一刀。
+2. **已完成第一闭环**：BrowserPane 原生 docked Stage + 单元素选择 + 后端批量元素选择；复用 craft BrowserPane/CDP，选区写入原会话的 DesignEngine / SessionEvent。
+3. **下一刀**：批量标注、Comment AI 与已有 annotation 体系接线；随后接 Artifact selection source 和 surface applier。
+4. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、浏览器批量注释、Artifact applier、permission 化真实 surface 回滚。
 
-M1 起（open-design Artifact Studio、ProjectPack 接审查中心、管理/项目 Agent registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
+M1 起（open-design Artifact Studio、ProjectPack 接审查中心、Agent process registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
 
 ## 7 · 当前必须坚持的口径
 
