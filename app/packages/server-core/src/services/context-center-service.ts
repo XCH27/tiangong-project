@@ -4,6 +4,7 @@ import type {
   ContextCenterReviewReadinessStatus,
   ContextCenterUsageOverview,
   ProjectEnvironmentProfile,
+  ProjectPackPlanPreviewSummary,
   ProjectPackSummary,
   ToolCapability,
 } from '@craft-agent/shared/protocol'
@@ -36,13 +37,13 @@ function unknown<T>(value: T, note: string) {
 
 function buildReviewReadiness(
   input: ContextCenterOverviewInput,
-  projectPackSummary?: ProjectPackSummary | null,
+  projectPackEvidence?: ProjectPackSummary | ProjectPackPlanPreviewSummary | null,
 ): ContextCenterOverview['reviewReadiness'] {
-  if (projectPackSummary === undefined) {
-    if (input.bundleId) {
+  if (projectPackEvidence === undefined) {
+    if (input.bundleId || input.projectPackPreviewRequest) {
       return {
         status: unknown<ContextCenterReviewReadinessStatus>('unknown', '请求了项目包摘要但未读取到结果'),
-        reasons: unknown(['请求了 bundleId，但没有读取到对应项目包摘要；不能确认外部审查 readiness'], '缺少项目包摘要'),
+        reasons: unknown(['请求了项目包摘要或 dry-run 预览，但没有读取到结果；不能确认外部审查 readiness'], '缺少项目包摘要'),
         externalExportAllowed: unknown(false, '没有可外发的项目包摘要'),
       }
     }
@@ -54,7 +55,7 @@ function buildReviewReadiness(
     }
   }
 
-  if (projectPackSummary === null) {
+  if (projectPackEvidence === null) {
     return {
       status: unknown<ContextCenterReviewReadinessStatus>('unknown', '项目包摘要为空'),
       reasons: unknown(['项目包摘要为空；不能确认外部审查 readiness'], '缺少项目包摘要'),
@@ -62,12 +63,12 @@ function buildReviewReadiness(
     }
   }
 
-  const highSeverityBlocked = projectPackSummary.secretScan.hasHighSeverity
+  const highSeverityBlocked = projectPackEvidence.secretScan.hasHighSeverity
   const reasons: string[] = []
   if (highSeverityBlocked) {
     reasons.push('发现 high severity secret，外部审查被阻断')
   }
-  if (!projectPackSummary.externalExportAllowed && !highSeverityBlocked) {
+  if (!projectPackEvidence.externalExportAllowed && !highSeverityBlocked) {
     reasons.push('项目包摘要禁止外发；需要重新检查项目包策略或 secret scan 结果')
   }
   if (reasons.length === 0) {
@@ -75,15 +76,15 @@ function buildReviewReadiness(
   }
 
   const status: ContextCenterReviewReadinessStatus =
-    highSeverityBlocked || !projectPackSummary.externalExportAllowed ? 'blocked' : 'ready'
+    highSeverityBlocked || !projectPackEvidence.externalExportAllowed ? 'blocked' : 'ready'
 
   return {
     status: realLocal(status),
     reasons: realLocal(reasons),
-    externalExportAllowed: realLocal(projectPackSummary.externalExportAllowed),
+    externalExportAllowed: realLocal(projectPackEvidence.externalExportAllowed),
     secretHighSeverityBlocked: realLocal(highSeverityBlocked),
-    secretFindingCount: realLocal(projectPackSummary.secretScan.findingCount),
-    estimatedPackTokens: estimateLocal(projectPackSummary.estimatedTokens),
+    secretFindingCount: realLocal(projectPackEvidence.secretScan.findingCount),
+    estimatedPackTokens: estimateLocal(projectPackEvidence.estimatedTokens),
   }
 }
 
@@ -111,14 +112,16 @@ export function buildContextCenterOverview(params: {
   contextTools: ToolCapability[]
   projectEnvironment?: ProjectEnvironmentProfile
   projectPackSummary?: ProjectPackSummary | null
+  projectPackPlanPreview?: ProjectPackPlanPreviewSummary
   generatedAt?: number
 }): ContextCenterOverview {
-  const { input, session, contextTools, projectEnvironment, projectPackSummary } = params
+  const { input, session, contextTools, projectEnvironment, projectPackSummary, projectPackPlanPreview } = params
   const notes: string[] = []
   if (!input.sessionId) notes.push('未提供 sessionId，无法读取真实用量')
   if (input.sessionId && !session) notes.push('未找到 session，无法读取真实用量')
   if (input.rootPath && !projectEnvironment) notes.push('未生成项目环境摘要')
   if (input.bundleId && projectPackSummary === undefined) notes.push('未读取到项目包摘要')
+  if (input.projectPackPreviewRequest && projectPackPlanPreview === undefined) notes.push('未生成项目包 dry-run 预览')
 
   const overview: ContextCenterOverview = {
     generatedAt: params.generatedAt ?? Date.now(),
@@ -129,7 +132,8 @@ export function buildContextCenterOverview(params: {
     projectEnvironment: projectEnvironment ? realLocal(projectEnvironment) : undefined,
     contextTools: realLocal(contextTools),
     projectPackSummary: projectPackSummary !== undefined ? realLocal(projectPackSummary) : undefined,
-    reviewReadiness: buildReviewReadiness(input, projectPackSummary),
+    projectPackPlanPreview: projectPackPlanPreview !== undefined ? realLocal(projectPackPlanPreview) : undefined,
+    reviewReadiness: buildReviewReadiness(input, projectPackSummary !== undefined ? projectPackSummary : projectPackPlanPreview),
     notes,
   }
 

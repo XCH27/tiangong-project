@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { ProjectEnvironmentProfile, ProjectPackSummary, ToolCapability } from '@craft-agent/shared/protocol'
+import type { ProjectEnvironmentProfile, ProjectPackPlanPreviewSummary, ProjectPackSummary, ToolCapability } from '@craft-agent/shared/protocol'
 import { buildContextCenterOverview } from './context-center-service'
 
 function tool(toolId: string): ToolCapability {
@@ -177,6 +177,44 @@ describe('ContextCenter overview', () => {
     expect(overview.notes).toContain('未提供 sessionId，无法读取真实用量')
   })
 
+  it('uses dry-run ProjectPack preview for review readiness without requiring a saved bundle', () => {
+    const projectPackPlanPreview = {
+      scope: 'diff',
+      rootPath: '/repo',
+      gitCommit: 'abc',
+      gitBranch: 'main',
+      gitDirty: true,
+      fileCount: 3,
+      totalBytes: 1200,
+      estimatedTokens: 900,
+      tokenEstimateKind: 'estimate',
+      excluded: [],
+      files: [],
+      secretScan: {
+        scannedFileCount: 3,
+        findingCount: 0,
+        findings: [],
+        hasHighSeverity: false,
+      },
+      externalExportAllowed: true,
+    } satisfies ProjectPackPlanPreviewSummary
+
+    const overview = buildContextCenterOverview({
+      input: {
+        rootPath: '/repo',
+        projectPackPreviewRequest: { rootPath: '/repo', scope: 'diff' },
+      },
+      contextTools: [],
+      projectPackPlanPreview,
+      generatedAt: 1,
+    })
+
+    expect(overview.projectPackSummary).toBeUndefined()
+    expect(overview.projectPackPlanPreview?.value).toEqual(projectPackPlanPreview)
+    expect(overview.reviewReadiness.status).toEqual({ value: 'ready', confidence: 'real', locality: 'local' })
+    expect(overview.reviewReadiness.estimatedPackTokens).toEqual({ value: 900, confidence: 'estimate', locality: 'local' })
+  })
+
   it('marks review readiness unknown when a requested pack summary is unavailable', () => {
     const overview = buildContextCenterOverview({
       input: { bundleId: 'missing-bundle' },
@@ -191,7 +229,7 @@ describe('ContextCenter overview', () => {
       note: '请求了项目包摘要但未读取到结果',
     })
     expect(overview.reviewReadiness.reasons).toEqual({
-      value: ['请求了 bundleId，但没有读取到对应项目包摘要；不能确认外部审查 readiness'],
+      value: ['请求了项目包摘要或 dry-run 预览，但没有读取到结果；不能确认外部审查 readiness'],
       confidence: 'unknown',
       locality: 'unknown',
       note: '缺少项目包摘要',

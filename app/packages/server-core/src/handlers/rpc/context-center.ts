@@ -26,6 +26,9 @@ export function registerContextCenterHandlers(server: RpcServer, deps: HandlerDe
     const projectPackSummary = input.bundleId
       ? await projectPackService.getSummary(input.bundleId)
       : undefined
+    const projectPackPlanPreview = input.projectPackPreviewRequest
+      ? (await projectPackService.previewPlan(input.projectPackPreviewRequest)).summary
+      : undefined
 
     return buildContextCenterOverview({
       input,
@@ -33,6 +36,7 @@ export function registerContextCenterHandlers(server: RpcServer, deps: HandlerDe
       contextTools,
       projectEnvironment,
       projectPackSummary,
+      projectPackPlanPreview,
     })
   })
 }

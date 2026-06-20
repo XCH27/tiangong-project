@@ -1,4 +1,4 @@
-import type { ProjectPackSummary } from './project-pack'
+import type { ProjectPackPlanPreviewSummary, ProjectPackRequest, ProjectPackSummary } from './project-pack'
 import type { ProjectEnvironmentProfile, ToolCapability } from './system-tools'
 
 export type ContextSignalConfidence = 'real' | 'estimate' | 'unknown'
@@ -28,6 +28,8 @@ export interface ContextCenterOverviewInput {
   rootPath?: string
   workspaceId?: string
   bundleId?: string
+  /** Optional dry-run ProjectPack request. Read-only: no bundle file is written. */
+  projectPackPreviewRequest?: ProjectPackRequest
   forceToolDetection?: boolean
 }
 
@@ -40,6 +42,7 @@ export interface ContextCenterOverview {
   projectEnvironment?: ContextSignal<ProjectEnvironmentProfile>
   contextTools: ContextSignal<ToolCapability[]>
   projectPackSummary?: ContextSignal<ProjectPackSummary | null>
+  projectPackPlanPreview?: ContextSignal<ProjectPackPlanPreviewSummary>
   reviewReadiness: {
     status: ContextSignal<ContextCenterReviewReadinessStatus>
     reasons: ContextSignal<string[]>
