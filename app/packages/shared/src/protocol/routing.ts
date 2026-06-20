@@ -208,6 +208,17 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.settings.GET_SERVER_CONFIG,
   RPC_CHANNELS.settings.SET_SERVER_CONFIG,
   RPC_CHANNELS.settings.GET_SERVER_STATUS,
+
+  // systemTools — 本机 OS 能力探测/项目环境诊断（rule 14 LOCAL_ONLY）。
+  // v1 全部只读；安装/修复不在此组。
+  RPC_CHANNELS.systemTools.LIST_TOOLS,
+  RPC_CHANNELS.systemTools.DETECT_ALL,
+  RPC_CHANNELS.systemTools.DETECT_TOOL,
+  RPC_CHANNELS.systemTools.DETECT_CATEGORY,
+  RPC_CHANNELS.systemTools.GET_BEST_TOOL,
+  RPC_CHANNELS.systemTools.CLEAR_CACHE,
+  RPC_CHANNELS.systemTools.DIAGNOSE_PROJECT,
+  RPC_CHANNELS.systemTools.GET_PROJECT_PROFILE,
 ])
 
 // ---------------------------------------------------------------------------

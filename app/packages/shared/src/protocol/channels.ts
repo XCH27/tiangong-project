@@ -438,6 +438,19 @@ export const RPC_CHANNELS = {
     ALLOW_PENDING_SENDER: 'messaging:access:allowPending',
     SET_BINDING_ACCESS: 'messaging:access:setBindingAccess',
   },
+  // Fleet 系统工具 / 项目环境检测通道（T-SYSTOOLS · docs/28）。
+  // 全部 LOCAL_ONLY（rule 14：探测本机 OS 能力）。v1 只做只读检测/诊断；
+  // 安装/改 PATH/写配置/修复命令不在此组——那需要 permission + timeline，是后续切片。
+  systemTools: {
+    LIST_TOOLS: 'systemTools:listTools',
+    DETECT_ALL: 'systemTools:detectAll',
+    DETECT_TOOL: 'systemTools:detectTool',
+    DETECT_CATEGORY: 'systemTools:detectCategory',
+    GET_BEST_TOOL: 'systemTools:getBestTool',
+    CLEAR_CACHE: 'systemTools:clearCache',
+    DIAGNOSE_PROJECT: 'systemTools:diagnoseProject',
+    GET_PROJECT_PROFILE: 'systemTools:getProjectProfile',
+  },
 } as const
 
 // IPC_CHANNELS compat alias removed — all consumers now use RPC_CHANNELS

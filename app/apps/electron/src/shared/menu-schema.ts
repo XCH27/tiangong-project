@@ -388,6 +388,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   labels: 'Tag',
   messaging: 'MessageSquare',
   server: 'Server',
+  systemTools: 'Wrench',
   shortcuts: 'Keyboard',
   preferences: 'UserCircle',
 }

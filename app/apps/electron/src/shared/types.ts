@@ -211,6 +211,17 @@ import type {
   DirectoryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
+  ToolCapability,
+  ProjectEnvironmentProfile,
+  ProjectDiagnosisResult,
+  DetectOptions,
+  DetectToolInput,
+  DetectCategoryInput,
+  GetBestToolInput,
+  ProjectEnvInput,
+  ClearCacheResult,
+  ToolCategory,
+  ToolCapabilityTag,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -625,6 +636,18 @@ export interface ElectronAPI {
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void
     onInteracted(callback: (id: string) => void): () => void
+  }
+
+  // System tools / project environment detection (T-SYSTOOLS · docs/28) — read-only
+  systemTools: {
+    listTools(opts?: DetectOptions): Promise<ToolCapability[]>
+    detectAll(opts?: DetectOptions): Promise<ToolCapability[]>
+    detectTool(input: DetectToolInput): Promise<ToolCapability>
+    detectCategory(input: DetectCategoryInput): Promise<ToolCapability[]>
+    getBestTool(input: GetBestToolInput): Promise<ToolCapability | null>
+    clearCache(toolId?: string): Promise<ClearCacheResult>
+    diagnoseProject(input: ProjectEnvInput): Promise<ProjectDiagnosisResult>
+    getProjectProfile(input: ProjectEnvInput): Promise<ProjectEnvironmentProfile>
   }
 
   // LLM Connections (provider configurations)

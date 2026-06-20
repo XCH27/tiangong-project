@@ -423,4 +423,14 @@ export const CHANNEL_MAP = {
   allowMessagingPendingSender: invoke(RPC_CHANNELS.messaging.ALLOW_PENDING_SENDER),
   setMessagingBindingAccess: invoke(RPC_CHANNELS.messaging.SET_BINDING_ACCESS),
   onMessagingPendingChanged: listener(RPC_CHANNELS.messaging.PENDING_CHANGED),
+
+  // System tools / project environment detection (T-SYSTOOLS) — read-only
+  'systemTools.listTools': invoke(RPC_CHANNELS.systemTools.LIST_TOOLS),
+  'systemTools.detectAll': invoke(RPC_CHANNELS.systemTools.DETECT_ALL),
+  'systemTools.detectTool': invoke(RPC_CHANNELS.systemTools.DETECT_TOOL),
+  'systemTools.detectCategory': invoke(RPC_CHANNELS.systemTools.DETECT_CATEGORY),
+  'systemTools.getBestTool': invoke(RPC_CHANNELS.systemTools.GET_BEST_TOOL),
+  'systemTools.clearCache': invoke(RPC_CHANNELS.systemTools.CLEAR_CACHE),
+  'systemTools.diagnoseProject': invoke(RPC_CHANNELS.systemTools.DIAGNOSE_PROJECT),
+  'systemTools.getProjectProfile': invoke(RPC_CHANNELS.systemTools.GET_PROJECT_PROFILE),
 } satisfies ChannelMap

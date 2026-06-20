@@ -44,6 +44,7 @@ export const SETTINGS_PAGES = [
   { id: 'labels' as const, labelKey: 'settings.labels.title', descriptionKey: 'settings.labels.description' },
   { id: 'messaging' as const, labelKey: 'settings.messaging.title', descriptionKey: 'settings.messaging.description' },
   { id: 'server' as const, labelKey: 'settings.server.title', descriptionKey: 'settings.server.description' },
+  { id: 'systemTools' as const, labelKey: 'settings.systemTools.title', descriptionKey: 'settings.systemTools.description' },
   { id: 'shortcuts' as const, labelKey: 'settings.shortcuts.title', descriptionKey: 'settings.shortcuts.description' },
   { id: 'preferences' as const, labelKey: 'settings.preferences.title', descriptionKey: 'settings.preferences.description' },
 ] satisfies readonly SettingsPageDefinition[]
