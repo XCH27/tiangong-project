@@ -1,10 +1,14 @@
 import * as React from 'react'
 import { useAtomValue } from 'jotai'
 import { MousePointer2, PanelRight, RotateCcw, ShieldCheck } from 'lucide-react'
+import { UsageLedger } from '@craft-agent/ui'
 import { designLatestSelectionAtom, designTickerAtom } from '@/atoms/design'
+import { focusedSessionIdAtom } from '@/atoms/panel-stack'
+import { sessionAtomFamily, sessionMetaMapAtom } from '@/atoms/sessions'
 import { cn } from '@/lib/utils'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { ProjectPackPanel } from './ProjectPackPanel'
+import { buildUsageLedgerData } from '@/lib/usage-ledger'
 
 const tabs = ['选区', '动作', '上下文'] as const
 
@@ -12,8 +16,26 @@ export function WorkbenchInspectorRail() {
   const [activeTab, setActiveTab] = React.useState<(typeof tabs)[number]>('选区')
   const selection = useAtomValue(designLatestSelectionAtom)
   const ticker = useAtomValue(designTickerAtom)
-  const { activeWorkspaceId, workspaces } = useAppShellContext()
+  const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
+  const session = useAtomValue(sessionAtomFamily(focusedSessionId ?? '__no-session__'))
+  const { activeWorkspaceId, workspaces, llmConnections } = useAppShellContext()
   const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId)
+  const meta = focusedSessionId ? sessionMetaMap.get(focusedSessionId) : undefined
+  const connectionSlug = session?.llmConnection ?? meta?.llmConnection
+  const connection = llmConnections.find((item) => item.slug === connectionSlug)
+  const model = session?.model ?? meta?.model ?? undefined
+  const ledger = React.useMemo(() => {
+    if (!focusedSessionId) return null
+    return buildUsageLedgerData({
+      sessionId: focusedSessionId,
+      tokenUsage: session?.tokenUsage ?? meta?.tokenUsage,
+      connectionSlug,
+      connectionName: connection?.name,
+      authType: connection?.authType,
+      model,
+    })
+  }, [connection?.authType, connection?.name, connectionSlug, focusedSessionId, meta?.tokenUsage, model, session?.tokenUsage])
 
   return (
     <aside
@@ -111,6 +133,19 @@ export function WorkbenchInspectorRail() {
 
         {activeTab === '上下文' && (
           <div className="space-y-3 text-xs">
+            {ledger ? (
+              <div className="rounded-[8px] border border-border/70 overflow-hidden p-2">
+                <UsageLedger
+                  ledger={ledger}
+                  connectionName={connection?.name ?? connectionSlug}
+                  model={model}
+                />
+              </div>
+            ) : (
+              <div className="rounded-[8px] border border-border/70 p-3 text-muted-foreground">
+                当前没有可统计的会话用量。
+              </div>
+            )}
             <div className="rounded-[8px] border border-border/70 overflow-hidden">
               <ProjectPackPanel rootPath={activeWorkspace?.rootPath ?? ''} />
             </div>
