@@ -76,7 +76,7 @@ describe('buildWorkbenchAnnotation', () => {
 
     expect(evidence.selectionId).toBe('sel-browser-1')
     expect(evidence.objectCount).toBe(1)
-    expect(evidence.evidenceHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(evidence.evidenceHash).toMatch(/^[a-f0-9]{16}$/)
     expect(evidence.objects[0]).toMatchObject({
       selector: '.hero-card',
       url: 'https://example.test',
