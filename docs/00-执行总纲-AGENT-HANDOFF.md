@@ -35,13 +35,13 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 
 | 工作 | 分支 / 路径 | 状态 | 已验证 | 合并备注 |
 |---|---|---|---|---|
-| **T-ENGINE + T-EVENT-ACTOR** | `work/t-engine-mainline` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/t-engine-mainline` | **已提交** `a54bc62b`；状态文档 `a28d523f` | DesignEngine 测试 + channel-map + ipc-channels + routing：`23 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 主线承重墙：`DesignAction/DesignPatch/ActorRef`、`RPC_CHANNELS.design`、`design_*` 事件、`SessionManager.emitSessionEvent`、tool/text actor、底部 `ActionTickerBar` 已落地。 |
-| **T-SYSTOOLS** | `work/t-systools` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/t-systools` | **已提交** `064dc06c`，待主线统一合并 | 目标测试：`75 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 只读系统工具 / 项目环境探测；已修正登录 shell PATH 测试和无效项目路径诊断。 |
-| **T-PROJECTPACK** | `T-PROJECTPACK` · `/Users/lullwen/Documents/GUI 终端-T-PROJECTPACK` | **已提交** `c3f910e1`，待主线统一合并 | ProjectPack 测试：`12 pass / 0 fail`；routing/channel-map/ipc：`15 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 已清除 `bun.lock` 噪音；已补目录越界保护；不外发、不上传。 |
-| **T-USAGE** | `T-USAGE` · `/Users/lullwen/Documents/GUI 终端` | **已提交** `710ae059`，待主线统一合并 | usage 测试：`11 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 真实 token / 估算 / 未知成本分离；已修正 `client` 被误判 CLI、本缺失 inputTokens 时误算 0%、缓存 0 与未报告混淆。 |
-| **T-CLI Runtime** | `work/t-cli-runtime-codex` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/t-cli-runtime-codex` | **已提交** `140f3b76`，待主线统一合并 | CLI Runtime 测试：`25 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | Grok/Hermes/OpenCode detected mapping、custom ACP、health、model/effort、附件硬拒绝已做；`session/new` 缺 `sessionId` 会明确失败。 |
+| **T-ENGINE + T-EVENT-ACTOR** | `work/integration-prep` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/integration-prep` | **已集成**：`a54bc62b` → `f00a0b8b` | DesignEngine / channel-map / ipc / routing：`23 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 主线承重墙：`DesignAction/DesignPatch/ActorRef`、`RPC_CHANNELS.design`、`design_*` 事件、`SessionManager.emitSessionEvent`、tool/text actor、底部 `ActionTickerBar` 已落地。 |
+| **T-SYSTOOLS** | `work/integration-prep` | **已集成**：`af96e047` | server-core services：随整组 `119 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 只读系统工具 / 项目环境探测 + 设置页；已修正登录 shell PATH 测试和无效项目路径诊断。 |
+| **T-PROJECTPACK** | `work/integration-prep` | **已集成**：`5b7ea955` | ProjectPack 测试随 services 整组通过；routing/channel-map/ipc：`15 pass / 0 fail`；shared/server-core/electron typecheck 通过 | 本地打包、secret scan、token 估算、目录越界保护；已挂入上下文效率设置页；不外发、不上传。 |
+| **T-USAGE** | `work/integration-prep` | **已集成**：`a97eb7dd` + UI `d306262f` | usage 测试随 services 整组通过；electron/shared/ui typecheck 通过；`git diff --check` 通过 | 真实 token / 估算 / 未知成本分离；当前会话 Usage Ledger 已挂入上下文效率设置页。 |
+| **T-CLI Runtime** | `work/integration-prep` | **已集成**：`ff39566a` + 发送入口 `072ea88a` | CLI Runtime 测试随 services 整组通过；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | Grok/Hermes/OpenCode detected mapping、custom ACP、health、model/effort、附件硬拒绝、SessionManager CLI 发送分支已接；聊天输入选择器/最终产品化仍待接 Stage/Conversation UI。 |
 
-**合并纪律**：上述服务分支都会碰 `channels.ts`、`routing.ts`、`channel-map.ts`、`types.ts`、`server-core/services/index.ts` 或 RPC registry。不要让各 agent 自己合并；等 `work/t-engine-mainline` 稳定后，由主线统一合并并逐项跑验证。
+**当前集成线**：`work/integration-prep` 已把 T-ENGINE、T-SYSTOOLS、T-PROJECTPACK、T-USAGE、T-CLI Runtime 合到同一基线。后续不要再从旧服务 worktree 二次合并同一批改动；继续在集成线或从它分出新工作。
 
 ## 3 · 当前推进方式
 
@@ -91,10 +91,10 @@ git diff --check
 
 当前主线已经从 R0 进入 M0 承重墙阶段：
 
-1. **已完成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、Agent tool/text actor、底部 Action Ticker 最小可见闭环。
+1. **已完成并集成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、Agent tool/text actor、底部 Action Ticker、System Tools、ProjectPack、Usage Ledger、CLI Runtime 后端与发送分支。
 2. **下一刀**：Stage / Inspector 第一刀。按 craft 原结构接 `PanelType`、`routes.view`、`MainContentPanel` 和现有 `RightSidebarPanel`；不要新建 `WorkbenchScaffold` 包住 `ChatPage`。
 3. **随后**：BrowserPane docked Stage + 选择/框选/标注/Comment AI；这一步必须复用 craft BrowserPane/CDP/annotation，不换浏览器主栈。
-4. **并行待合并**：System Tools、ProjectPack、Usage、CLI Runtime 后端切片，统一由主线合并。
+4. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、Inspector Context tab 正式接 ProjectPack/Usage、Browser selection source、真实 surface applier、permission 化回滚。
 
 M1 起（open-design Artifact Studio、ProjectPack 接审查中心、管理/项目 Agent registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
 
