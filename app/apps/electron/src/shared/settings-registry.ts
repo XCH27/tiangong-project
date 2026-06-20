@@ -37,6 +37,8 @@ export interface SettingsPageDefinition {
 export const SETTINGS_PAGES = [
   { id: 'app' as const, labelKey: 'settings.app.title', descriptionKey: 'settings.app.description' },
   { id: 'ai' as const, labelKey: 'settings.ai.title', descriptionKey: 'settings.ai.description' },
+  { id: 'cliRuntime' as const, labelKey: 'settings.cliRuntime.title', descriptionKey: 'settings.cliRuntime.description' },
+  { id: 'contextEfficiency' as const, labelKey: 'settings.contextEfficiency.title', descriptionKey: 'settings.contextEfficiency.description' },
   { id: 'appearance' as const, labelKey: 'settings.appearance.title', descriptionKey: 'settings.appearance.description' },
   { id: 'input' as const, labelKey: 'settings.input.title', descriptionKey: 'settings.input.description' },
   { id: 'workspace' as const, labelKey: 'settings.workspace.title', descriptionKey: 'settings.workspace.description' },
