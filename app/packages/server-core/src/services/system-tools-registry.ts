@@ -30,7 +30,25 @@ export interface RegistryOptions {
   initialPath?: string
   /** 额外探测器（与内置合并）。 */
   extraDetectors?: ToolDetectorDef[]
+  /** App 内置能力，不需要 PATH 探测。 */
+  staticCapabilities?: ToolCapability[]
 }
+
+export const BUILTIN_STATIC_CAPABILITIES: ToolCapability[] = [
+  {
+    toolId: 'fleet-project-pack',
+    category: 'context',
+    displayName: 'Fleet ProjectPack',
+    status: 'available',
+    source: 'bundled',
+    scope: 'workspace',
+    priority: 1,
+    capabilities: ['repo-pack'],
+    risk: 'read-only',
+    diagnostics: [],
+    usedBy: ['Context Center', '外部 AI 审查'],
+  },
+]
 
 /**
  * 进程内工具能力注册表。一个 Electron server 一个实例。
@@ -38,6 +56,7 @@ export interface RegistryOptions {
  */
 export class SystemToolsRegistry {
   private readonly detectors: Map<string, ToolDetectorDef> = new Map()
+  private readonly staticCapabilities: Map<string, ToolCapability> = new Map()
   private readonly cache: Map<string, ToolCapability> = new Map()
   private readonly spawn: SpawnAdapter
   private readonly platform: DetectPlatform
@@ -50,6 +69,8 @@ export class SystemToolsRegistry {
     this.initialPath = opts.initialPath ?? process.env.PATH ?? ''
     for (const d of BUILTIN_DETECTORS) this.detectors.set(d.toolId, d)
     for (const d of opts.extraDetectors ?? []) this.detectors.set(d.toolId, d)
+    for (const cap of BUILTIN_STATIC_CAPABILITIES) this.staticCapabilities.set(cap.toolId, cap)
+    for (const cap of opts.staticCapabilities ?? []) this.staticCapabilities.set(cap.toolId, cap)
   }
 
   /** 注册/覆盖一个探测器。 */
@@ -60,11 +81,21 @@ export class SystemToolsRegistry {
 
   /** 列出全部已注册的 toolId。 */
   listToolIds(): string[] {
-    return Array.from(this.detectors.keys())
+    return [...new Set([...this.detectors.keys(), ...this.staticCapabilities.keys()])]
   }
 
   /** 探测单个工具（带缓存）。 */
   async detectTool(toolId: string, force = false): Promise<ToolCapability> {
+    const staticCapability = this.staticCapabilities.get(toolId)
+    if (staticCapability) {
+      if (!force && this.cache.has(toolId)) {
+        return this.cache.get(toolId)!
+      }
+      const cap = { ...staticCapability, lastCheckedAt: Date.now() }
+      this.cache.set(toolId, cap)
+      return cap
+    }
+
     const def = this.detectors.get(toolId)
     if (!def) {
       throw new Error(`Unknown toolId: ${toolId}`)
@@ -84,13 +115,16 @@ export class SystemToolsRegistry {
 
   /** 探测某分类下全部工具。 */
   async detectCategory(category: ToolCategory, force = false): Promise<ToolCapability[]> {
-    const ids = Array.from(this.detectors.values()).filter((d) => d.category === category).map((d) => d.toolId)
+    const ids = [
+      ...Array.from(this.detectors.values()).filter((d) => d.category === category).map((d) => d.toolId),
+      ...Array.from(this.staticCapabilities.values()).filter((cap) => cap.category === category).map((cap) => cap.toolId),
+    ]
     return Promise.all(ids.map((id) => this.detectTool(id, force)))
   }
 
   /** 探测全部已注册工具。 */
   async detectAll(force = false): Promise<ToolCapability[]> {
-    return Promise.all(Array.from(this.detectors.keys()).map((id) => this.detectTool(id, force)))
+    return Promise.all(this.listToolIds().map((id) => this.detectTool(id, force)))
   }
 
   /**

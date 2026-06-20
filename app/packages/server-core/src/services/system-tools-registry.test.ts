@@ -96,6 +96,31 @@ describe('SystemToolsRegistry', () => {
     expect(best!.capabilities).toContain('run-js')
   })
 
+  it('exposes app-bundled ProjectPack as a context capability without PATH probing', async () => {
+    let calls = 0
+    const spawn: SpawnAdapter = {
+      exec() {
+        calls++
+        return makeResult({ status: 127 })
+      },
+    }
+    const reg = new SystemToolsRegistry({ spawn, platform: 'darwin', initialPath: '/x' })
+
+    const projectPack = await reg.detectTool('fleet-project-pack')
+    expect(projectPack).toMatchObject({
+      toolId: 'fleet-project-pack',
+      category: 'context',
+      status: 'available',
+      source: 'bundled',
+      risk: 'read-only',
+    })
+    expect(projectPack.capabilities).toContain('repo-pack')
+    expect(calls).toBe(0)
+
+    const best = await reg.getBestTool('context', 'repo-pack')
+    expect(best?.toolId).toBe('fleet-project-pack')
+  })
+
   it('getBestTool returns null when all missing', async () => {
     const reg = new SystemToolsRegistry({ spawn: missingSpawn(), platform: 'darwin', initialPath: '/x' })
     const best = await reg.getBestTool('runtime')
@@ -106,7 +131,11 @@ describe('SystemToolsRegistry', () => {
     const reg = new SystemToolsRegistry({ spawn: missingSpawn(), platform: 'darwin', initialPath: '/x' })
     const tools = await reg.listTools()
     expect(tools.length).toBe(reg.listToolIds().length)
-    expect(tools.every((t) => t.status === 'missing' || t.status === 'unknown')).toBe(true)
+    expect(tools.every((t) =>
+      t.toolId === 'fleet-project-pack'
+        ? t.status === 'available'
+        : t.status === 'missing' || t.status === 'unknown',
+    )).toBe(true)
   })
 
   it('clearCache removes single entry', async () => {
