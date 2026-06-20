@@ -14,6 +14,18 @@ function sanitizeIdPart(value: string): string {
   return value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
 }
 
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== 'string') throw new Error(`${field} must be a string`)
+  if (!value.trim()) throw new Error(`${field} is required`)
+  return value
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string') throw new Error(`${field} must be a string`)
+  return value.trim() ? value : undefined
+}
+
 export class AgentRegistryService {
   private readonly agents = new Map<string, AgentDescriptor>()
   private readonly now: () => number
@@ -36,31 +48,39 @@ export class AgentRegistryService {
   }
 
   ensureProjectAgentForSession(input: AgentRegistryEnsureProjectInput): AgentDescriptor {
-    const agentId = `project:${sanitizeIdPart(input.sessionId)}`
+    const sessionId = requireString(input.sessionId, 'sessionId')
+    const agentId = `project:${sanitizeIdPart(sessionId)}`
     return this.upsert(agentId, {
       kind: 'project',
       role: input.role ?? 'leader',
       displayName: input.displayName ?? '项目 Agent',
       runtime: input.runtime,
-      sessionId: input.sessionId,
+      sessionId,
       workspaceId: input.workspaceId,
       status: 'active',
     })
   }
 
   actorForSession(sessionId: string): ActorRef | null {
-    const agent = this.agents.get(`project:${sanitizeIdPart(sessionId)}`)
+    const agent = this.getProjectAgentForSession(sessionId)
     return agent ? actorFromAgentDescriptor(agent) : null
   }
 
+  getProjectAgentForSession(sessionId: string): AgentDescriptor | null {
+    return this.agents.get(`project:${sanitizeIdPart(requireString(sessionId, 'sessionId'))}`) ?? null
+  }
+
   getAgent(agentId: string): AgentDescriptor | null {
-    return this.agents.get(agentId) ?? null
+    return this.agents.get(requireString(agentId, 'agentId')) ?? null
   }
 
   listAgents(input: AgentRegistryListInput = {}): AgentDescriptor[] {
+    const workspaceId = optionalString(input.workspaceId, 'workspaceId')
+    const sessionId = optionalString(input.sessionId, 'sessionId')
+
     return Array.from(this.agents.values())
-      .filter((agent) => input.workspaceId ? agent.workspaceId === input.workspaceId : true)
-      .filter((agent) => input.sessionId ? agent.sessionId === input.sessionId : true)
+      .filter((agent) => workspaceId ? agent.workspaceId === workspaceId : true)
+      .filter((agent) => sessionId ? agent.sessionId === sessionId : true)
       .sort((a, b) => a.agentId.localeCompare(b.agentId))
   }
 
