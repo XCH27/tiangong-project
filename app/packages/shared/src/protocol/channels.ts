@@ -63,6 +63,11 @@ export const RPC_CHANNELS = {
     COMMIT: 'transfer:commit',
     ABORT: 'transfer:abort',
   },
+  /** ProjectPack v1 — 本地打包 / secret scan / token 估算（T-PROJECTPACK） */
+  projectPack: {
+    PACK: 'projectPack:pack',
+    GET_SUMMARY: 'projectPack:getSummary',
+  },
   tasks: {
     GET_OUTPUT: 'tasks:getOutput',
   },

@@ -330,6 +330,11 @@ export const CHANNEL_MAP = {
 
   // Git
   getGitBranch: invoke(RPC_CHANNELS.git.GET_BRANCH),
+
+  // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
+  packProject: invoke(RPC_CHANNELS.projectPack.PACK),
+  getProjectPackSummary: invoke(RPC_CHANNELS.projectPack.GET_SUMMARY),
+
   checkGitBash: invoke(RPC_CHANNELS.gitbash.CHECK),
   browseForGitBash: invoke(RPC_CHANNELS.gitbash.BROWSE),
   setGitBashPath: invoke(RPC_CHANNELS.gitbash.SET_PATH),

@@ -222,6 +222,9 @@ import type {
   ClearCacheResult,
   ToolCategory,
   ToolCapabilityTag,
+  ProjectPackRequest,
+  ProjectPackResult,
+  ProjectPackSummary,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -599,6 +602,10 @@ export interface ElectronAPI {
 
   // Git operations
   getGitBranch(dirPath: string): Promise<string | null>
+
+  // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
+  packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
+  getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>

@@ -196,6 +196,10 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   // debug — local debug logging
   RPC_CHANNELS.debug.LOG,
 
+  // projectPack — 本机文件系统打包（T-PROJECTPACK）
+  RPC_CHANNELS.projectPack.PACK,
+  RPC_CHANNELS.projectPack.GET_SUMMARY,
+
   // onboarding — local auth setup flow
   RPC_CHANNELS.onboarding.GET_AUTH_STATE,
   RPC_CHANNELS.onboarding.VALIDATE_MCP,
