@@ -1887,18 +1887,10 @@ function AppShellContent({
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
   }, [activeWorkspace, focusZone, navigate])
 
-  // Create a brand new dedicated browser window and focus it.
-  // Intentionally unbound: this action should always create a NEW window.
-  const handleNewBrowserWindow = useCallback(async () => {
-    try {
-      const instanceId = await window.electronAPI.browserPane.create({
-        show: true,
-      })
-      await window.electronAPI.browserPane.focus(instanceId)
-    } catch (error) {
-      console.error('[Chat] Failed to create browser window:', error)
-      toast.error(t('toast.failedToCreateBrowser'))
-    }
+  // Browser creation enters the Stage first. Native BrowserPane docking is the
+  // next slice; avoid creating another floating browser window from the main UI.
+  const handleOpenStageBrowser = useCallback(() => {
+    navigate(routes.view.stage('browser'))
   }, [])
 
   // Delete Source - simplified since agents system is removed
@@ -2208,7 +2200,7 @@ function AppShellContent({
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
           onAddSessionPanel={() => handleNewChat(true)}
-          onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
+          onAddBrowserPanel={handleOpenStageBrowser}
           isCompact={isAutoCompact}
         />
 
