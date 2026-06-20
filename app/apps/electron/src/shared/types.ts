@@ -256,6 +256,10 @@ import type {
   ProjectPackSummary,
   ContextCenterOverview,
   ContextCenterOverviewInput,
+  AgentRegistryListInput,
+  AgentRegistryListResult,
+  AgentRegistryGetInput,
+  AgentRegistryGetResult,
   CliRuntimeCatalogItem,
   CliRuntimeHealthResult,
   CliRuntimeHealthTestInput,
@@ -645,6 +649,8 @@ export interface ElectronAPI {
   packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
   getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
   getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
+  listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
+  getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>

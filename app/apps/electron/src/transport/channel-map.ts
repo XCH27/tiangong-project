@@ -339,6 +339,8 @@ export const CHANNEL_MAP = {
   packProject: invoke(RPC_CHANNELS.projectPack.PACK),
   getProjectPackSummary: invoke(RPC_CHANNELS.projectPack.GET_SUMMARY),
   getContextCenterOverview: invoke(RPC_CHANNELS.contextCenter.GET_OVERVIEW),
+  listAgents: invoke(RPC_CHANNELS.agents.LIST),
+  getAgent: invoke(RPC_CHANNELS.agents.GET),
 
   checkGitBash: invoke(RPC_CHANNELS.gitbash.CHECK),
   browseForGitBash: invoke(RPC_CHANNELS.gitbash.BROWSE),

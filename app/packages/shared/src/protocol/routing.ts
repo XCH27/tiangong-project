@@ -290,6 +290,10 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.design.ROLLBACK_PATCH,
   RPC_CHANNELS.design.GET_SELECTION,
 
+  // agents — server-owned actor registry for sessions in this workspace.
+  RPC_CHANNELS.agents.LIST,
+  RPC_CHANNELS.agents.GET,
+
   // transfer — chunked large-payload import (sessions, resources)
   RPC_CHANNELS.transfer.START,
   RPC_CHANNELS.transfer.CHUNK,

@@ -72,6 +72,10 @@ export const RPC_CHANNELS = {
   contextCenter: {
     GET_OVERVIEW: 'contextCenter:getOverview',
   },
+  agents: {
+    LIST: 'agents:list',
+    GET: 'agents:get',
+  },
   tasks: {
     GET_OUTPUT: 'tasks:getOutput',
   },

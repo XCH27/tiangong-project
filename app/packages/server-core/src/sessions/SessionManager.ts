@@ -21,7 +21,7 @@ import {
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
 import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior } from '@craft-agent/shared/config'
-import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
+import { PrivilegedExecutionBroker, agentRegistryService } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
 import { i18n, LOCALE_REGISTRY, type LanguageCode } from '@craft-agent/shared/i18n'
@@ -1240,14 +1240,38 @@ export class SessionManager implements ISessionManager {
    */
   private agentActorFor(sessionId: string): ActorRef {
     const managed = this.sessions.get(sessionId)
-    return { kind: 'agent', runtime: managed?.llmConnection ?? 'api' }
-  }
-
-  private cliRuntimeActorFor(resolved: Extract<ResolvedCliRuntimeForSend, { kind: 'detected' | 'custom' }>): ActorRef {
+    if (!managed) return { kind: 'agent', runtime: 'api' }
+    const agent = agentRegistryService.ensureProjectAgentForSession({
+      sessionId,
+      workspaceId: managed.workspace.id,
+      runtime: managed.llmConnection ?? 'api',
+      role: 'leader',
+      displayName: '项目 Agent',
+    })
     return {
       kind: 'agent',
+      agentId: agent.agentId,
+      runtime: agent.runtime,
+      role: agent.role,
+      displayName: agent.displayName,
+    }
+  }
+
+  private cliRuntimeActorFor(sessionId: string, resolved: Extract<ResolvedCliRuntimeForSend, { kind: 'detected' | 'custom' }>): ActorRef {
+    const managed = this.sessions.get(sessionId)
+    const agent = agentRegistryService.ensureProjectAgentForSession({
+      sessionId,
+      workspaceId: managed?.workspace.id,
       runtime: resolved.runtimeId,
+      role: 'leader',
       displayName: resolved.kind === 'detected' ? resolved.displayName : resolved.runtimeId,
+    })
+    return {
+      kind: 'agent',
+      agentId: agent.agentId,
+      runtime: agent.runtime,
+      role: agent.role,
+      displayName: agent.displayName,
     }
   }
 
@@ -1303,7 +1327,7 @@ export class SessionManager implements ISessionManager {
     managed.lastSentStoredAttachments = storedAttachments
     managed.lastSentOptions = options
 
-    const actor = this.cliRuntimeActorFor(resolved)
+    const actor = this.cliRuntimeActorFor(sessionId, resolved)
     const toolUseId = generateMessageId()
     const runtimeLabel = resolved.kind === 'detected' ? resolved.displayName : resolved.runtimeId
 
