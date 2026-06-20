@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { routes, useNavigation, useNavigationState } from '@/contexts/NavigationContext'
 import type { StageMode } from '../../shared/types'
+import { designClient } from '@/atoms/design'
+import { useSession } from '@/hooks/useSession'
+import { USER_ACTOR } from '@craft-agent/shared/protocol'
 
 const stageModes: Array<{ id: StageMode; label: string; icon: React.ComponentType<{ className?: string }>; enabled: boolean }> = [
   { id: 'browser', label: 'Browser', icon: Globe2, enabled: true },
@@ -42,8 +45,10 @@ function getModeCopy(mode: StageMode) {
 export default function StagePage({ mode }: { mode: StageMode }) {
   const { navigate, toggleRightSidebar, updateRightSidebar } = useNavigation()
   const navState = useNavigationState()
+  const [session] = useSession()
   const copy = getModeCopy(mode)
   const openedInspectorRef = React.useRef(false)
+  const [selectionError, setSelectionError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     if (!openedInspectorRef.current && navState.navigator === 'stage' && navState.rightSidebar?.type !== 'inspector') {
@@ -51,6 +56,40 @@ export default function StagePage({ mode }: { mode: StageMode }) {
       updateRightSidebar({ type: 'inspector' })
     }
   }, [navState, updateRightSidebar])
+
+  const handleCreateSelection = React.useCallback(async () => {
+    if (!session.selected) return
+    setSelectionError(null)
+    const selectionId = `stage-sel-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`
+    try {
+      await designClient.setSelection({
+        sessionId: session.selected,
+        selection: {
+          selectionId,
+          sessionId: session.selected,
+          createdBy: USER_ACTOR,
+          createdAt: Date.now(),
+          label: `${copy.title} 测试选区`,
+          objects: [
+            {
+              type: 'design_node',
+              surface: mode === 'artifact' ? 'artifact' : 'browser',
+              locator: {
+                source: 'stage-shell',
+                mode,
+                selector: '[data-stage-test-selection]',
+              },
+              preview: {
+                text: `${copy.title} 中由人类 UI 创建的测试选区`,
+              },
+            },
+          ],
+        },
+      })
+    } catch (error) {
+      setSelectionError(error instanceof Error ? error.message : String(error))
+    }
+  }, [copy.title, mode, session.selected])
 
   return (
     <Panel variant="grow" className="bg-background">
@@ -123,6 +162,24 @@ export default function StagePage({ mode }: { mode: StageMode }) {
                   <div className="mt-1 text-muted-foreground">同一动作通道、同一 timeline、同一回滚点</div>
                 </div>
               </div>
+              <div className="mt-4 flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  disabled={!session.selected}
+                  onClick={handleCreateSelection}
+                  data-stage-test-selection
+                >
+                  创建测试选区
+                </Button>
+                <span className="text-[11px] text-muted-foreground">
+                  {session.selected ? '走真实 DesignEngine 选区事件' : '需要先有一个会话'}
+                </span>
+              </div>
+              {selectionError && (
+                <div className="mt-2 text-[11px] text-destructive">{selectionError}</div>
+              )}
             </div>
           </div>
 
