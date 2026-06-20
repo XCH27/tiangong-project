@@ -252,6 +252,7 @@ import type {
   ToolCategory,
   ToolCapabilityTag,
   ProjectPackRequest,
+  ProjectPackPlanPreviewResult,
   ProjectPackResult,
   ProjectPackSummary,
   ContextCenterOverview,
@@ -646,6 +647,7 @@ export interface ElectronAPI {
   getGitBranch(dirPath: string): Promise<string | null>
 
   // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
+  previewProjectPackPlan(request: ProjectPackRequest): Promise<ProjectPackPlanPreviewResult>
   packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
   getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
   getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>

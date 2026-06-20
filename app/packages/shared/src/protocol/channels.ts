@@ -65,6 +65,7 @@ export const RPC_CHANNELS = {
   },
   /** ProjectPack v1 — 本地打包 / secret scan / token 估算（T-PROJECTPACK） */
   projectPack: {
+    PREVIEW_PLAN: 'projectPack:previewPlan',
     PACK: 'projectPack:pack',
     GET_SUMMARY: 'projectPack:getSummary',
   },

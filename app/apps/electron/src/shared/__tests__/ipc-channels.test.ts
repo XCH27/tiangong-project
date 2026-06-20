@@ -208,6 +208,7 @@ const EXPECTED_CHANNELS: string[] = [
   'preferences:write',
   'projectPack:getSummary',
   'projectPack:pack',
+  'projectPack:previewPlan',
   'releaseNotes:get',
   'releaseNotes:getLatestVersion',
   'remote:testConnection',

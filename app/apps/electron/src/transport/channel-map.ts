@@ -336,6 +336,7 @@ export const CHANNEL_MAP = {
   getGitBranch: invoke(RPC_CHANNELS.git.GET_BRANCH),
 
   // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
+  previewProjectPackPlan: invoke(RPC_CHANNELS.projectPack.PREVIEW_PLAN),
   packProject: invoke(RPC_CHANNELS.projectPack.PACK),
   getProjectPackSummary: invoke(RPC_CHANNELS.projectPack.GET_SUMMARY),
   getContextCenterOverview: invoke(RPC_CHANNELS.contextCenter.GET_OVERVIEW),

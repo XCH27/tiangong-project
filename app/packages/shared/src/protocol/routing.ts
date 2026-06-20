@@ -201,6 +201,7 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.debug.LOG,
 
   // projectPack — 本机文件系统打包（T-PROJECTPACK）
+  RPC_CHANNELS.projectPack.PREVIEW_PLAN,
   RPC_CHANNELS.projectPack.PACK,
   RPC_CHANNELS.projectPack.GET_SUMMARY,
 
