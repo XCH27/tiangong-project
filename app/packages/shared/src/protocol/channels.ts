@@ -68,6 +68,10 @@ export const RPC_CHANNELS = {
     PACK: 'projectPack:pack',
     GET_SUMMARY: 'projectPack:getSummary',
   },
+  /** Context Center — read-only overview; no pack/write/external submit. */
+  contextCenter: {
+    GET_OVERVIEW: 'contextCenter:getOverview',
+  },
   tasks: {
     GET_OUTPUT: 'tasks:getOutput',
   },

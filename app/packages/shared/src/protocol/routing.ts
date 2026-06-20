@@ -231,6 +231,9 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.systemTools.CLEAR_CACHE,
   RPC_CHANNELS.systemTools.DIAGNOSE_PROJECT,
   RPC_CHANNELS.systemTools.GET_PROJECT_PROFILE,
+
+  // context center — local environment + local bundle summaries, read-only.
+  RPC_CHANNELS.contextCenter.GET_OVERVIEW,
 ])
 
 // ---------------------------------------------------------------------------

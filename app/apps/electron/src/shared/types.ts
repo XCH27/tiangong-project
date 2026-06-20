@@ -254,6 +254,8 @@ import type {
   ProjectPackRequest,
   ProjectPackResult,
   ProjectPackSummary,
+  ContextCenterOverview,
+  ContextCenterOverviewInput,
   CliRuntimeCatalogItem,
   CliRuntimeHealthResult,
   CliRuntimeHealthTestInput,
@@ -642,6 +644,7 @@ export interface ElectronAPI {
   // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
   packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
   getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
+  getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>
