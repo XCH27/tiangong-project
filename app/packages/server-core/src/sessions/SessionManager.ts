@@ -7459,9 +7459,11 @@ export class SessionManager implements ISessionManager {
           managed.tokenUsage.outputTokens += event.usage.outputTokens
           managed.tokenUsage.totalTokens = managed.tokenUsage.inputTokens + managed.tokenUsage.outputTokens
           managed.tokenUsage.costUsd += event.usage.costUsd ?? 0
-          // Cache tokens reflect current state, not accumulated
-          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens ?? 0
-          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens ?? 0
+          // Cache tokens reflect current state, not accumulated.
+          // Assign directly (may be undefined) to preserve "absent" vs "reported 0".
+          // Only real reported values from provider will be present; absent means unknown for display.
+          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens
+          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens
           // Update context window (use latest value - may change if model switches)
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
@@ -7487,6 +7489,7 @@ export class SessionManager implements ISessionManager {
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
           }
+          // Do not touch cache* here; they come only from 'complete' events with real provider data.
 
           // Send to renderer for immediate UI update
           this.sendEvent({
