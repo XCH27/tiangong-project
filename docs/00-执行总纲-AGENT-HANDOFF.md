@@ -40,8 +40,9 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 | **T-PROJECTPACK** | `work/integration-prep` | **已集成**：`5b7ea955` | ProjectPack 测试随 services 整组通过；routing/channel-map/ipc：`15 pass / 0 fail`；shared/server-core/electron typecheck 通过 | 本地打包、secret scan、token 估算、目录越界保护；已挂入上下文效率设置页；不外发、不上传。 |
 | **T-USAGE** | `work/integration-prep` | **已集成**：`a97eb7dd` + UI `d306262f` | usage 测试随 services 整组通过；electron/shared/ui typecheck 通过；`git diff --check` 通过 | 真实 token / 估算 / 未知成本分离；当前会话 Usage Ledger 已挂入上下文效率设置页。 |
 | **T-CLI Runtime** | `work/integration-prep` | **已集成**：`ff39566a` + 发送入口 `072ea88a` | CLI Runtime 测试随 services 整组通过；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | Grok/Hermes/OpenCode detected mapping、custom ACP、health、model/effort、附件硬拒绝、SessionManager CLI 发送分支已接；聊天输入选择器/最终产品化仍待接 Stage/Conversation UI。 |
+| **Stage / Inspector 第一刀** | `work/integration-prep` | **已集成**：`ff120bb0` + `b1b58763` + `fbb6ba8c` | route/panel-stack 目标测试 `21 pass / 0 fail`；electron/shared/server-core typecheck 通过；`git diff --check` 通过 | `stage/{mode}` 已是正式 route + `PanelType`；左侧“工作台”入口、`StagePage`、右侧 `Inspector` 壳、测试选区按钮、Inspector Context 中的 ProjectPack 已接入。BrowserPane 原生 dock 和真实网页选区仍未接。 |
 
-**当前集成线**：`work/integration-prep` 已把 T-ENGINE、T-SYSTOOLS、T-PROJECTPACK、T-USAGE、T-CLI Runtime 合到同一基线。后续不要再从旧服务 worktree 二次合并同一批改动；继续在集成线或从它分出新工作。
+**当前集成线**：`work/integration-prep` 已把 T-ENGINE、T-SYSTOOLS、T-PROJECTPACK、T-USAGE、T-CLI Runtime、Stage / Inspector 第一刀合到同一基线。后续不要再从旧服务 worktree 二次合并同一批改动；继续在集成线或从它分出新工作。
 
 ## 3 · 当前推进方式
 
@@ -91,10 +92,10 @@ git diff --check
 
 当前主线已经从 R0 进入 M0 承重墙阶段：
 
-1. **已完成并集成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、Agent tool/text actor、底部 Action Ticker、System Tools、ProjectPack、Usage Ledger、CLI Runtime 后端与发送分支。
-2. **下一刀**：Stage / Inspector 第一刀。按 craft 原结构接 `PanelType`、`routes.view`、`MainContentPanel` 和现有 `RightSidebarPanel`；不要新建 `WorkbenchScaffold` 包住 `ChatPage`。
-3. **随后**：BrowserPane docked Stage + 选择/框选/标注/Comment AI；这一步必须复用 craft BrowserPane/CDP/annotation，不换浏览器主栈。
-4. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、Inspector Context tab 正式接 ProjectPack/Usage、Browser selection source、真实 surface applier、permission 化回滚。
+1. **已完成并集成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、Agent tool/text actor、底部 Action Ticker、System Tools、ProjectPack、Usage Ledger、CLI Runtime 后端与发送分支、Stage route/panel/Inspector 第一刀。
+2. **下一刀**：BrowserPane docked Stage + 选择/框选/标注/Comment AI；这一步必须复用 craft BrowserPane/CDP/annotation，不换浏览器主栈。
+3. **随后**：真实 Browser / Artifact selection source、surface applier、permission 化回滚，把测试选区按钮替换成真实选择来源。
+4. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、Inspector Context tab 接 Usage Ledger、BrowserPane 原生 dock、真实网页选区、Artifact applier。
 
 M1 起（open-design Artifact Studio、ProjectPack 接审查中心、管理/项目 Agent registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
 
