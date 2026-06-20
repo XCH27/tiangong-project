@@ -29,7 +29,21 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 
 贯穿全程的 craft 原始哲学：这个软件本身也是给 AI 操作和编辑的。人类 UI 与 AI 工具必须提交同一套 `DesignAction`，经 `DesignPatch` 写入同一个 session timeline、permission、diff、rollback。接手者动代码前先看 craft 的 `SessionManager`、session tools、`browser_tool`、annotation、permission、file diff/config 写入模式。
 
-## 2 · 当前推进方式
+## 2 · 当前完成标注（2026-06-20）
+
+以下状态以本机实际 worktree / 测试为准，不按 agent 口头汇报判断。
+
+| 工作 | 分支 / 路径 | 状态 | 已验证 | 合并备注 |
+|---|---|---|---|---|
+| **T-ENGINE + T-EVENT-ACTOR** | `work/t-engine-mainline` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/t-engine-mainline` | **已提交** `a54bc62b` | DesignEngine 测试 + channel-map + ipc-channels + routing：`23 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 主线承重墙：`DesignAction/DesignPatch/ActorRef`、`RPC_CHANNELS.design`、`design_*` 事件、`SessionManager.emitSessionEvent`、tool/text actor、底部 `ActionTickerBar` 已落地。 |
+| **T-SYSTOOLS** | `work/t-systools` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/t-systools` | **已加固，待主线统一合并** | 目标测试：`75 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 只读系统工具 / 项目环境探测；已修正登录 shell PATH 测试和无效项目路径诊断。 |
+| **T-PROJECTPACK** | `T-PROJECTPACK` · `/Users/lullwen/Documents/GUI 终端-T-PROJECTPACK` | **已加固，待主线统一合并** | ProjectPack 测试：`12 pass / 0 fail`；routing/channel-map/ipc：`15 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 已清除 `bun.lock` 噪音；已补目录越界保护；不外发、不上传。 |
+| **T-USAGE** | `T-USAGE` · `/Users/lullwen/Documents/GUI 终端` | **已加固，待主线统一合并** | usage 测试：`11 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 真实 token / 估算 / 未知成本分离；已修正 `client` 被误判 CLI、本缺失 inputTokens 时误算 0%、缓存 0 与未报告混淆。 |
+| **T-CLI Runtime** | `work/t-cli-runtime-codex` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/t-cli-runtime-codex` | **后端核心切片已加固，待主线统一合并** | CLI Runtime 测试：`25 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | Grok/Hermes/OpenCode detected mapping、custom ACP、health、model/effort、附件硬拒绝已做；`session/new` 缺 `sessionId` 会明确失败。 |
+
+**合并纪律**：上述服务分支都会碰 `channels.ts`、`routing.ts`、`channel-map.ts`、`types.ts`、`server-core/services/index.ts` 或 RPC registry。不要让各 agent 自己合并；等 `work/t-engine-mainline` 稳定后，由主线统一合并并逐项跑验证。
+
+## 3 · 当前推进方式
 
 - 默认由 Codex 单人主线推进，不再默认拆多个智能体互相审查。
 - 不反复向用户确认；边界清楚时直接做一个用户可见产品闭环。
@@ -38,7 +52,7 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 - 不再保留过程性快照和流水记录；需要恢复点时用 Git 分支/提交。
 - 每轮完成必须同步文档，否则后续接手会按过期口径继续犯错。
 
-## 3 · 必读顺序
+## 4 · 必读顺序
 
 1. `AGENTS.md`（铁律）
 2. `docs/04-产品决策记录.md`（决策真相）
@@ -53,7 +67,7 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 11. `docs/26-源码参考使用规则与索引.md` + `docs/14-源码参考目录专项审计.md`（红绿灯）
 12. 具体要改的 craft 模块源码
 
-## 4 · 当前验证入口
+## 5 · 当前验证入口
 
 默认验证不依赖真实 CLI 登录态：
 
@@ -73,18 +87,18 @@ git diff --check
 - `FLEET_HERMES_SMOKE=1`
 - `FLEET_OPENCODE_SMOKE=1`
 
-## 5 · 下一步主线建议
+## 6 · 下一步主线建议
 
-当前阶段先做 **R0 · 干净基座重启**，再回到 `docs/01` 的 M0：
+当前主线已经从 R0 进入 M0 承重墙阶段：
 
-1. 确认干净 craft 基座能安装、typecheck、Electron dev。
-2. 第一批重做 CLI Runtime/ACP：shared DTO/channel、server-core services、RPC handler、输入框/设置页必要接线和测试。
-3. 第二批重做设计基础契约：`DesignAction` 类型/纯函数、selection overlay/helper。
-4. 新界面从干净基座实现 `WorkbenchShell`：Conversation / Stage / Inspector / Context / Action Ticker。
+1. **已完成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、Agent tool/text actor、底部 Action Ticker 最小可见闭环。
+2. **下一刀**：Stage / Inspector 第一刀。按 craft 原结构接 `PanelType`、`routes.view`、`MainContentPanel` 和现有 `RightSidebarPanel`；不要新建 `WorkbenchScaffold` 包住 `ChatPage`。
+3. **随后**：BrowserPane docked Stage + 选择/框选/标注/Comment AI；这一步必须复用 craft BrowserPane/CDP/annotation，不换浏览器主栈。
+4. **并行待合并**：System Tools、ProjectPack、Usage、CLI Runtime 后端切片，统一由主线合并。
 
-R0 完成后再进入 M0：DesignAction/Patch 引擎、BrowserPane docked Stage、Usage/Context Report v1。M1 起（open-design Artifact Studio、ProjectPack、管理/项目 Agent registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
+M1 起（open-design Artifact Studio、ProjectPack 接审查中心、管理/项目 Agent registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
 
-## 6 · 当前必须坚持的口径
+## 7 · 当前必须坚持的口径
 
 - 新 session 默认走 API 模型，不自动启用 CLI Runtime。
 - 浏览器标注是设计工作流入口，必须支持框选、多选、批量注释，并作为 Open Design / Figma / Stitch 打通的第一块画布。
