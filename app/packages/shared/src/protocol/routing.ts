@@ -200,6 +200,10 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.projectPack.PACK,
   RPC_CHANNELS.projectPack.GET_SUMMARY,
 
+  // cliRuntime — 本机 CLI/ACP 进程探测与健康测试（rule 14 LOCAL_ONLY）。
+  RPC_CHANNELS.cliRuntime.GET_CATALOG,
+  RPC_CHANNELS.cliRuntime.TEST,
+
   // onboarding — local auth setup flow
   RPC_CHANNELS.onboarding.GET_AUTH_STATE,
   RPC_CHANNELS.onboarding.VALIDATE_MCP,

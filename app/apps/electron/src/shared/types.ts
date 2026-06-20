@@ -225,6 +225,9 @@ import type {
   ProjectPackRequest,
   ProjectPackResult,
   ProjectPackSummary,
+  CliRuntimeCatalogItem,
+  CliRuntimeHealthResult,
+  CliRuntimeHealthTestInput,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -579,6 +582,10 @@ export interface ElectronAPI {
   setRtkEnabled(enabled: boolean): Promise<void>
   getRtkStatus(opts?: { forceRecheck?: boolean }): Promise<{ installed: boolean; path: string | null; version: string | null }>
   getRtkGain(): Promise<{ totalCommands: number; totalInput: number; totalOutput: number; totalSaved: number; avgSavingsPct: number; totalTimeMs: number; avgTimeMs: number } | null>
+
+  // CLI Runtime
+  getCliRuntimeCatalog(): Promise<CliRuntimeCatalogItem[]>
+  testCliRuntime(input: CliRuntimeHealthTestInput): Promise<CliRuntimeHealthResult>
 
   // Network proxy settings
   getNetworkProxySettings(): Promise<NetworkProxySettings | undefined>

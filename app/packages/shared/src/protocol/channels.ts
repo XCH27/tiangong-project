@@ -337,6 +337,10 @@ export const RPC_CHANNELS = {
     GET_STATUS: 'rtk:getStatus',
     GET_GAIN: 'rtk:getGain',
   },
+  cliRuntime: {
+    GET_CATALOG: 'cli-runtime:getCatalog',
+    TEST: 'cli-runtime:test',
+  },
   badge: {
     REFRESH: 'badge:refresh',
     SET_ICON: 'badge:setIcon',

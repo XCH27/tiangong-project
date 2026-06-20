@@ -221,6 +221,54 @@ export interface SendMessageOptions {
   skillSlugs?: string[]
   badges?: ContentBadge[]
   optimisticMessageId?: string
+  cliRuntime?: CliRuntimeSendSelection
+}
+
+export type CliRuntimeHealthStatus = 'available' | 'fail_cli' | 'fail_acp' | 'disabled'
+
+export interface CliRuntimeSendSelection {
+  runtimeId: string
+  modelId?: string
+  effort?: string
+  custom?: {
+    command: string
+    args?: string[]
+    env?: Record<string, string>
+  }
+}
+
+export interface CliRuntimeCatalogItem {
+  id: string
+  displayName: string
+  source: 'managed' | 'detected' | 'custom'
+  supported: boolean
+  enabled: boolean
+  command?: string
+  args?: string[]
+  mapping?: {
+    command: string
+    args: string[]
+  }
+  unsupportedReason?: string
+  lastHealth?: CliRuntimeHealthStatus
+  lastCheckedAt?: number
+}
+
+export interface CliRuntimeHealthResult {
+  status: CliRuntimeHealthStatus
+  stage: 'resolve' | 'launch' | 'initialize' | 'session/new' | 'session/prompt' | 'disabled'
+  message: string
+  checkedAt: number
+  stdoutTail?: string
+  stderrTail?: string
+}
+
+export interface CliRuntimeHealthTestInput {
+  runtimeId: string
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  acpMode?: boolean
 }
 
 // ---------------------------------------------------------------------------

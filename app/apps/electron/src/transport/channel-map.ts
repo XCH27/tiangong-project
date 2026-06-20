@@ -317,6 +317,10 @@ export const CHANNEL_MAP = {
   getRtkStatus: invoke(RPC_CHANNELS.rtk.GET_STATUS),
   getRtkGain: invoke(RPC_CHANNELS.rtk.GET_GAIN),
 
+  // CLI Runtime
+  getCliRuntimeCatalog: invoke(RPC_CHANNELS.cliRuntime.GET_CATALOG),
+  testCliRuntime: invoke(RPC_CHANNELS.cliRuntime.TEST),
+
   // Badge
   refreshBadge: invoke(RPC_CHANNELS.badge.REFRESH),
   setDockIconWithBadge: invoke(RPC_CHANNELS.badge.SET_ICON),
