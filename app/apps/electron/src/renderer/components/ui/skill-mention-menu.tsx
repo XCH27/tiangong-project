@@ -7,7 +7,6 @@ import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { SkillAvatar } from '@/components/ui/skill-avatar'
 import type { LoadedSkill } from '../../../shared/types'
-import { LocalizationService, type TranslationStore } from '@craft-agent/shared/localization'
 
 // ============================================================================
 // Types
@@ -32,66 +31,6 @@ const MENU_CONTAINER_STYLE = 'min-w-[240px] overflow-hidden rounded-[8px] bg-bac
 const MENU_LIST_STYLE = 'max-h-[240px] overflow-y-auto p-1'
 const MENU_ITEM_STYLE = 'flex cursor-pointer select-none items-center gap-3 rounded-[6px] px-3 py-2 text-[13px]'
 const MENU_ITEM_SELECTED = 'bg-foreground/5'
-
-// ============================================================================
-// Display-only localization
-// ============================================================================
-
-const skillTranslationCache = new Map<string, string>()
-const skillTranslationStore: TranslationStore = {
-  get: key => skillTranslationCache.get(key),
-  set: (key, value) => {
-    skillTranslationCache.set(key, value)
-  },
-}
-
-const skillLocalizationService = new LocalizationService(
-  skillTranslationStore,
-  async text => text,
-  { maxChars: 24 },
-)
-
-export function getSkillDescriptionForDisplay(description: string): string {
-  const original = description.trim()
-  if (!original) return description
-  return skillLocalizationService.peek(original, 'skill') ?? original
-}
-
-function useLocalizedSkillDescription(description: string): string {
-  const [localized, setLocalized] = React.useState(() => getSkillDescriptionForDisplay(description))
-
-  React.useEffect(() => {
-    const original = description.trim()
-    if (!original) {
-      setLocalized(description)
-      return
-    }
-
-    let cancelled = false
-    setLocalized(skillLocalizationService.peek(original, 'skill') ?? original)
-    void skillLocalizationService.localize(original, 'skill').then(value => {
-      if (!cancelled) setLocalized(value)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [description])
-
-  return localized
-}
-
-function LocalizedSkillDescription({ description }: { description: string }) {
-  const localized = useLocalizedSkillDescription(description)
-
-  if (!localized) return null
-
-  return (
-    <div className="text-[11px] text-foreground/50 truncate">
-      {localized}
-    </div>
-  )
-}
 
 // ============================================================================
 // Filter skills utility
@@ -213,7 +152,9 @@ export function InlineSkillMention({
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{skill.metadata.name}</div>
                 {skill.metadata.description && (
-                  <LocalizedSkillDescription description={skill.metadata.description} />
+                  <div className="text-[11px] text-foreground/50 truncate">
+                    {skill.metadata.description}
+                  </div>
                 )}
               </div>
             </div>

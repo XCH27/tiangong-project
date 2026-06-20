@@ -5,7 +5,6 @@ import { Check, Minimize2 } from 'lucide-react'
 import { Icon_Folder } from '@craft-agent/ui'
 import { cn } from '@/lib/utils'
 import { PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER, type PermissionMode } from '@craft-agent/shared/agent/modes'
-import { LocalizationService, type TextKind, type TranslationStore } from '@craft-agent/shared/localization'
 
 // ============================================================================
 // Types
@@ -118,61 +117,6 @@ const MENU_ITEM_SELECTED = 'bg-foreground/5'
 const MENU_SECTION_HEADER = 'px-3 py-1.5 mb-0.5 text-[12px] font-medium text-muted-foreground border-b border-foreground/5'
 
 // ============================================================================
-// Display-only localization
-// ============================================================================
-
-const slashDescriptionCurated: Readonly<Record<string, string>> = {
-  [PERMISSION_MODE_CONFIG.safe.description]: '只读探索',
-  [PERMISSION_MODE_CONFIG.ask.description]: '编辑前询问',
-  [PERMISSION_MODE_CONFIG['allow-all'].description]: '自动执行',
-  [compactCommand.description]: '压缩上下文',
-}
-
-const slashTranslationCache = new Map<string, string>()
-const slashTranslationStore: TranslationStore = {
-  get: key => slashTranslationCache.get(key),
-  set: (key, value) => {
-    slashTranslationCache.set(key, value)
-  },
-}
-
-const slashLocalizationService = new LocalizationService(
-  slashTranslationStore,
-  async text => text,
-  { curated: slashDescriptionCurated, maxChars: 24 },
-)
-
-export function getSlashCommandDescriptionForDisplay(description: string): string {
-  const original = description.trim()
-  if (!original) return description
-  return slashLocalizationService.peek(original, 'command') ?? original
-}
-
-function useLocalizedDescription(description: string, kind: TextKind): string {
-  const [localized, setLocalized] = React.useState(() => getSlashCommandDescriptionForDisplay(description))
-
-  React.useEffect(() => {
-    const original = description.trim()
-    if (!original) {
-      setLocalized(description)
-      return
-    }
-
-    let cancelled = false
-    setLocalized(slashLocalizationService.peek(original, kind) ?? original)
-    void slashLocalizationService.localize(original, kind).then(value => {
-      if (!cancelled) setLocalized(value)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [description, kind])
-
-  return localized
-}
-
-// ============================================================================
 // Shared: Filter utilities
 // ============================================================================
 
@@ -223,18 +167,10 @@ const MODE_COMMAND_IDS = new Set<string>(['safe', 'ask', 'allow-all'])
 function CommandItemContent({ command, isActive }: { command: SlashCommand; isActive: boolean }) {
   const { t } = useTranslation()
   const label = MODE_COMMAND_IDS.has(command.id) ? t(`mode.${command.id}`, command.label) : command.label
-  const description = useLocalizedDescription(command.description, 'command')
   return (
     <>
       <div className="shrink-0 text-muted-foreground">{command.icon}</div>
-      <div className="flex-1 min-w-0">
-        <div className="truncate">{label}</div>
-        {description && (
-          <div className="text-[11px] leading-4 text-muted-foreground truncate">
-            {description}
-          </div>
-        )}
-      </div>
+      <div className="flex-1 min-w-0">{label}</div>
       {isActive && (
         <div className="shrink-0 h-4 w-4 rounded-full bg-current flex items-center justify-center">
           <Check className="h-2.5 w-2.5 text-white dark:text-black" strokeWidth={3} />

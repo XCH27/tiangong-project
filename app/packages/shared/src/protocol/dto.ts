@@ -217,64 +217,6 @@ export interface SendMessageOptions {
 }
 
 // ---------------------------------------------------------------------------
-// CLI Runtime Host probing (local-only)
-// ---------------------------------------------------------------------------
-
-export type CliRuntimeId =
-  | 'aionrs'
-  | 'claude'
-  | 'codex'
-  | 'qwen'
-  | 'opencode'
-  | 'cursor'
-  | 'antigravity'
-  | 'hermes'
-  | 'openclaw'
-  | 'grok'
-  | 'goose'
-  | 'codebuddy'
-  | 'kimi'
-  | 'droid'
-  | 'auggie'
-  | 'copilot'
-  | 'qoder'
-  | 'vibe'
-  | 'nanobot'
-  | 'snow'
-
-export type CliRuntimeFailureReason =
-  | 'not_found'
-  | 'broken_link'
-  | 'version_failed'
-  | 'timeout'
-  | 'unsupported_platform'
-  | 'unknown'
-
-export interface CliRuntimeConfigDirStatus {
-  path: string
-  exists: boolean
-}
-
-export interface CliRuntimeProbeResult {
-  id: CliRuntimeId
-  command: string
-  displayName: string
-  available: boolean
-  resolvedPath?: string
-  version?: string
-  configDirs: CliRuntimeConfigDirStatus[]
-  failureReason?: CliRuntimeFailureReason
-  stderr?: string
-  durationMs?: number
-  checkedAt: number
-}
-
-export interface CliRuntimeDetectResult {
-  checkedAt: number
-  tools: CliRuntimeProbeResult[]
-}
-
-// ---------------------------------------------------------------------------
 // Session commands (consolidated operations)
 // ---------------------------------------------------------------------------
 

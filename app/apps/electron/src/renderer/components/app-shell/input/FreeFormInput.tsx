@@ -12,7 +12,6 @@ import {
   ChevronUp,
   AlertCircle,
   Image as ImageIcon,
-  Terminal,
   X,
 } from 'lucide-react'
 import { Icon_Home, Icon_Folder, Spinner } from '@craft-agent/ui'
@@ -75,9 +74,9 @@ import { CompactWorkingDirectorySelector } from '@/components/ui/CompactWorkingD
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
-import type { CliRuntimeProbeResult, FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
+import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import { type ThinkingLevel, THINKING_LEVELS } from '@craft-agent/shared/agent/thinking-levels'
+import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
@@ -91,13 +90,6 @@ import {
 import { useWorkingDirectoryState } from './use-working-directory-state'
 import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
 import { CompactModelSelector } from './CompactModelSelector'
-import { CliRuntimePanel } from '@/components/cli-runtime/CliRuntimePanel'
-import {
-  getCliRuntimeModelLabel,
-  getCliRuntimeModelOptions,
-  getCliRuntimeShortLabel,
-  getDefaultCliRuntimeModel,
-} from '@/lib/cli-runtime-models'
 import {
   formatTokenCount,
   groupConnectionsByProvider,
@@ -128,164 +120,6 @@ function shuffleArray<T>(array: T[]): T[] {
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
-}
-
-const THINKING_DISPLAY_LABELS: Record<ThinkingLevel, string> = {
-  off: '无思考',
-  low: '低',
-  medium: '中等',
-  high: '高',
-  xhigh: '超高',
-  max: '最大',
-}
-
-interface CliRuntimeModelSelectorProps {
-  runtime: CliRuntimeProbeResult
-  modelId: string
-  onModelChange: (modelId: string) => void
-  compact?: boolean
-}
-
-function CliRuntimeModelSelector({
-  runtime,
-  modelId,
-  onModelChange,
-  compact = false,
-}: CliRuntimeModelSelectorProps) {
-  const [open, setOpen] = React.useState(false)
-  const modelOptions = React.useMemo(() => getCliRuntimeModelOptions(runtime.id), [runtime.id])
-  const currentLabel = getCliRuntimeModelLabel(runtime.id, modelId)
-
-  return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className={cn(
-                compact
-                  ? 'inline-flex h-7 max-w-[150px] shrink-0 items-center gap-1 rounded-[6px] px-2 text-xs font-medium text-foreground/70 transition-colors hover:bg-foreground/5'
-                  : 'input-toolbar-btn inline-flex h-7 max-w-[190px] shrink-0 items-center gap-1 rounded-[6px] px-1.5 text-[13px] transition-colors hover:bg-foreground/5',
-                open && 'bg-foreground/5',
-              )}
-            >
-              <span className="min-w-0 truncate">{currentLabel}</span>
-              <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
-            </button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          {runtime.displayName}
-        </TooltipContent>
-      </Tooltip>
-      <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[220px]">
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-          {runtime.displayName}
-        </div>
-        <StyledDropdownMenuSeparator className="my-1" />
-        {modelOptions.map(model => {
-          const isSelected = model.id === modelId
-          return (
-            <StyledDropdownMenuItem
-              key={model.id}
-              onSelect={() => onModelChange(model.id)}
-              className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-2"
-            >
-              <span className="text-sm font-medium">{model.label}</span>
-              {isSelected && <Check className="ml-3 h-3 w-3 shrink-0 text-foreground" />}
-            </StyledDropdownMenuItem>
-          )
-        })}
-      </StyledDropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-interface ThinkingEffortSelectorProps {
-  value: ThinkingLevel
-  onChange?: (level: ThinkingLevel) => void
-  disabled?: boolean
-}
-
-function ThinkingEffortSelector({
-  value,
-  onChange,
-  disabled = false,
-}: ThinkingEffortSelectorProps) {
-  const [open, setOpen] = React.useState(false)
-  const activeIndex = THINKING_LEVELS.findIndex(level => level.id === value)
-  const activeLabel = THINKING_DISPLAY_LABELS[value] ?? value
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled || !onChange}
-          className={cn(
-            'input-toolbar-btn inline-flex h-7 max-w-[92px] shrink-0 items-center gap-1 rounded-[6px] px-2 text-[13px] transition-colors',
-            disabled || !onChange
-              ? 'cursor-not-allowed text-foreground/35'
-              : 'text-foreground/80 hover:bg-foreground/5',
-            open && 'bg-foreground/5',
-          )}
-          title={disabled ? '当前模型不支持推理深度' : '推理深度'}
-        >
-          <span className="truncate">{activeLabel}</span>
-          <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="end"
-        sideOffset={8}
-        collisionPadding={12}
-        className="w-[260px] rounded-xl border border-border/60 bg-background p-4 shadow-modal-small"
-      >
-        <div className="flex items-center justify-between text-sm">
-          <div>
-            <span className="text-muted-foreground">推理 </span>
-            <span className="font-medium text-primary">{activeLabel}</span>
-          </div>
-        </div>
-        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-          <span>更快</span>
-          <span>更聪明</span>
-        </div>
-        <div className="mt-3 grid grid-cols-6 gap-1 rounded-full bg-foreground/10 p-1">
-          {THINKING_LEVELS.map((level, index) => {
-            const isActive = level.id === value
-            const isBeforeActive = activeIndex >= 0 && index <= activeIndex
-            return (
-              <button
-                key={level.id}
-                type="button"
-                aria-label={`推理 ${THINKING_DISPLAY_LABELS[level.id]}`}
-                className={cn(
-                  'flex h-6 items-center justify-center rounded-full transition-colors',
-                  isActive
-                    ? 'bg-background shadow-minimal'
-                    : isBeforeActive
-                      ? 'bg-primary/15'
-                      : 'hover:bg-background/70',
-                )}
-                onClick={() => {
-                  onChange?.(level.id)
-                  setOpen(false)
-                }}
-              >
-                <span className={cn(
-                  'size-1.5 rounded-full',
-                  isActive ? 'bg-primary' : isBeforeActive ? 'bg-primary/60' : 'bg-muted-foreground/35',
-                )} />
-              </button>
-            )
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
 }
 
 export interface FollowUpInputItem {
@@ -538,6 +372,8 @@ export function FreeFormInput({
     return connection.models || ANTHROPIC_MODELS
   }, [llmConnections, currentConnection, workspaceDefaultConnection, connectionUnavailable])
 
+  const availableThinkingLevels = THINKING_LEVELS
+
   // Disable thinking selector when the current model explicitly doesn't support it
   const thinkingDisabled = React.useMemo(() => {
     const model = availableModels.find(m => typeof m !== 'string' && m.id === currentModel)
@@ -732,30 +568,9 @@ export function FreeFormInput({
   const [isDraggingOver, setIsDraggingOver] = React.useState(false)
   const [loadingCount, setLoadingCount] = React.useState(0)
   const [sourceDropdownOpen, setSourceDropdownOpen] = React.useState(false)
-  const [cliRuntimeOpen, setCliRuntimeOpen] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
   const [inputMaxHeight, setInputMaxHeight] = React.useState(540)
   const [modelDropdownOpen, setModelDropdownOpen] = React.useState(false)
-  const [selectedCliRuntime, setSelectedCliRuntime] = React.useState<CliRuntimeProbeResult | null>(null)
-  const [selectedCliModel, setSelectedCliModel] = React.useState<string | null>(null)
-  const selectedCliModelId = selectedCliRuntime
-    ? selectedCliModel ?? getDefaultCliRuntimeModel(selectedCliRuntime.id)
-    : null
-  const cliRuntimeBadgeLabel = selectedCliRuntime
-    ? getCliRuntimeShortLabel(selectedCliRuntime)
-    : 'CLI'
-
-  const handleSelectCliRuntime = React.useCallback((tool: CliRuntimeProbeResult) => {
-    setSelectedCliRuntime(tool)
-    setSelectedCliModel(getDefaultCliRuntimeModel(tool.id))
-    setCliRuntimeOpen(false)
-  }, [])
-
-  const handleClearCliRuntime = React.useCallback(() => {
-    setSelectedCliRuntime(null)
-    setSelectedCliModel(null)
-    setCliRuntimeOpen(false)
-  }, [])
 
   // Input settings (loaded from config)
   const [autoCapitalisation, setAutoCapitalisation] = React.useState(true)
@@ -1976,29 +1791,17 @@ export function FreeFormInput({
               onPermissionModeChange={onPermissionModeChange}
             />
           )}
-          {enableCompactModelPicker && selectedCliRuntime && selectedCliModelId ? (
-            <CliRuntimeModelSelector
-              runtime={selectedCliRuntime}
-              modelId={selectedCliModelId}
-              onModelChange={setSelectedCliModel}
-              compact
-            />
-          ) : enableCompactModelPicker && (
+          {enableCompactModelPicker && (
             <CompactModelSelector
               currentModel={currentModel}
               currentConnection={currentConnection}
               onModelChange={onModelChange}
               onConnectionChange={onConnectionChange}
+              thinkingLevel={thinkingLevel}
+              onThinkingLevelChange={onThinkingLevelChange}
               isEmptySession={isEmptySession}
               connectionUnavailable={connectionUnavailable}
               contextStatus={contextStatus}
-            />
-          )}
-          {onThinkingLevelChange && (
-            <ThinkingEffortSelector
-              value={thinkingLevel}
-              onChange={onThinkingLevelChange}
-              disabled={!selectedCliRuntime && thinkingDisabled}
             />
           )}
           <FreeFormInputContextBadge
@@ -2014,37 +1817,6 @@ export function FreeFormInput({
             tooltip={t("chat.attachFilesTooltip")}
             disabled={disabled}
           />
-          <Popover open={cliRuntimeOpen} onOpenChange={setCliRuntimeOpen}>
-            <PopoverTrigger asChild>
-              <FreeFormInputContextBadge
-                icon={<Terminal className="h-4 w-4" />}
-                label={cliRuntimeBadgeLabel}
-                isExpanded={false}
-                hasSelection={selectedCliRuntime !== null}
-                showChevron={false}
-                isOpen={cliRuntimeOpen}
-                tooltip={selectedCliRuntime ? `CLI: ${selectedCliRuntime.displayName}` : '本机 CLI'}
-                disabled={disabled}
-              />
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              collisionPadding={12}
-              className="max-h-[min(420px,calc(100vh-96px))] w-[min(320px,calc(100vw-24px))] overflow-y-auto rounded-[8px] border border-border/60 bg-background p-0 shadow-modal-small"
-            >
-              <CliRuntimePanel
-                compact
-                variant="popover"
-                showCustom={false}
-                showSettingsLink
-                selectedRuntimeId={selectedCliRuntime?.id ?? null}
-                onSelectRuntime={handleSelectCliRuntime}
-                onClearRuntime={handleClearCliRuntime}
-              />
-            </PopoverContent>
-          </Popover>
           {onSourcesChange && (
             <div className="relative shrink min-w-0">
               <FreeFormInputContextBadge
@@ -2145,37 +1917,6 @@ export function FreeFormInput({
             tooltip={t("chat.attachFilesTooltip")}
             disabled={disabled}
           />
-          <Popover open={cliRuntimeOpen} onOpenChange={setCliRuntimeOpen}>
-            <PopoverTrigger asChild>
-              <FreeFormInputContextBadge
-                icon={<Terminal className="h-4 w-4" />}
-                label={cliRuntimeBadgeLabel}
-                isExpanded={isEmptySession}
-                hasSelection={selectedCliRuntime !== null}
-                showChevron={true}
-                isOpen={cliRuntimeOpen}
-                tooltip={selectedCliRuntime ? `CLI: ${selectedCliRuntime.displayName}` : '本机 CLI'}
-                disabled={disabled}
-              />
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="start"
-              sideOffset={8}
-              collisionPadding={12}
-              className="max-h-[min(420px,calc(100vh-96px))] w-[min(320px,calc(100vw-24px))] overflow-y-auto rounded-[8px] border border-border/60 bg-background p-0 shadow-modal-small"
-            >
-              <CliRuntimePanel
-                compact
-                variant="popover"
-                showCustom={false}
-                showSettingsLink
-                selectedRuntimeId={selectedCliRuntime?.id ?? null}
-                onSelectRuntime={handleSelectCliRuntime}
-                onClearRuntime={handleClearCliRuntime}
-              />
-            </PopoverContent>
-          </Popover>
 
           {/* 2. Source Selector Badge - only show if onSourcesChange is provided */}
           {onSourcesChange && (
@@ -2287,13 +2028,7 @@ export function FreeFormInput({
           {/* Right side: Model + Send - never shrink so they're always visible */}
           <div className="flex items-center shrink-0">
           {/* 5. Model/Connection Selector - Hidden in compact mode (EditPopover embedding) */}
-          {!compactMode && selectedCliRuntime && selectedCliModelId ? (
-          <CliRuntimeModelSelector
-            runtime={selectedCliRuntime}
-            modelId={selectedCliModelId}
-            onModelChange={setSelectedCliModel}
-          />
-          ) : !compactMode && (
+          {!compactMode && (
           <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -2588,6 +2323,43 @@ export function FreeFormInput({
                 </>
               )}
 
+              {/* Thinking level selector — only shown when thinking levels are available
+                  (Claude supports extended thinking, OpenAI backends may not) */}
+              {availableThinkingLevels.length > 0 && (
+                <>
+                  <StyledDropdownMenuSeparator className="my-1" />
+
+                  <DropdownMenuSub>
+                    <StyledDropdownMenuSubTrigger disabled={thinkingDisabled} className={cn("flex items-center justify-between px-2 py-2 rounded-lg", thinkingDisabled && "opacity-50 cursor-not-allowed")}>
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{t(getThinkingLevelNameKey(thinkingLevel))}</div>
+                        <div className="text-xs text-muted-foreground">{thinkingDisabled ? t('thinking.notSupported') : t('thinking.extendedDesc')}</div>
+                      </div>
+                    </StyledDropdownMenuSubTrigger>
+                    <StyledDropdownMenuSubContent className="min-w-[220px]">
+                      {availableThinkingLevels.map(({ id, nameKey, descriptionKey }) => {
+                        const isSelected = thinkingLevel === id
+                        return (
+                          <StyledDropdownMenuItem
+                            key={id}
+                            onSelect={() => onThinkingLevelChange?.(id)}
+                            className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
+                          >
+                            <div className="text-left">
+                              <div className="font-medium text-sm">{t(nameKey)}</div>
+                              <div className="text-xs text-muted-foreground">{t(descriptionKey)}</div>
+                            </div>
+                            {isSelected && (
+                              <Check className="h-3 w-3 text-foreground shrink-0 ml-3" />
+                            )}
+                          </StyledDropdownMenuItem>
+                        )
+                      })}
+                    </StyledDropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </>
+              )}
+
               {/* Context usage footer - only show when we have token data */}
               {contextStatus?.inputTokens != null && contextStatus.inputTokens > 0 && (
                 <>
@@ -2607,13 +2379,6 @@ export function FreeFormInput({
               )}
             </StyledDropdownMenuContent>
           </DropdownMenu>
-          )}
-          {!compactMode && onThinkingLevelChange && (
-            <ThinkingEffortSelector
-              value={thinkingLevel}
-              onChange={onThinkingLevelChange}
-              disabled={!selectedCliRuntime && thinkingDisabled}
-            />
           )}
 
           {/* 5.5 Context Usage Warning Badge - shows when approaching auto-compaction threshold */}

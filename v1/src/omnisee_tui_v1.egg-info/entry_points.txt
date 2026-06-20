@@ -1,2 +1,0 @@
-[console_scripts]
-oe = omnisee_every_v1.cli.main:app

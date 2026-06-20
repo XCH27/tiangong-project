@@ -666,11 +666,7 @@ export class ClaudeAgent extends BaseAgent {
   override async postInit(): Promise<PostInitResult> {
     const slug = this.config.connectionSlug;
     if (!slug) {
-      return {
-        authInjected: false,
-        authWarning: '未找到可用的 API 连接。当前 CLI 选择只是运行时意图，尚未接入会话执行；请先在右下角选择已配置的 API 模型，或等待后续 CLI Runtime Adapter 接管。',
-        authWarningLevel: 'error',
-      };
+      return { authInjected: false, authWarning: 'No connection slug available', authWarningLevel: 'error' };
     }
 
     const connection = getLlmConnection(slug);

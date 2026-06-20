@@ -211,7 +211,6 @@ import type {
   DirectoryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
-  CliRuntimeDetectResult,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -367,9 +366,6 @@ export interface ElectronAPI {
   openUrl(url: string): Promise<void>
   openFile(path: string): Promise<void>
   showInFolder(path: string): Promise<void>
-
-  // CLI Runtime Host probing (local-only)
-  detectCliRuntimes(): Promise<CliRuntimeDetectResult>
 
   // Menu event listeners
   onMenuNewChat(callback: () => void): () => void

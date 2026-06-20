@@ -106,9 +106,6 @@ export const CHANNEL_MAP = {
   openFile: invoke(RPC_CHANNELS.shell.OPEN_FILE),
   showInFolder: invoke(RPC_CHANNELS.shell.SHOW_IN_FOLDER),
 
-  // CLI Runtime Host probing
-  detectCliRuntimes: invoke(RPC_CHANNELS.cliRuntime.DETECT),
-
   // Menu event listeners
   onMenuNewChat: listener(RPC_CHANNELS.menu.NEW_CHAT),
   onMenuOpenSettings: listener(RPC_CHANNELS.menu.OPEN_SETTINGS),
