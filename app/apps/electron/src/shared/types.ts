@@ -227,6 +227,12 @@ export interface ElectronAPI {
   getTaskOutput(taskId: string): Promise<string | null>
   respondToPermission(sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean, options?: PermissionResponseOptions): Promise<boolean>
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
+  // Fleet 工作台动作通道（T-ENGINE）：人类 UI 和 AI 工具走同一组 channel → 同一引擎。
+  setDesignSelection(input: import('@craft-agent/shared/protocol').SetSelectionInput): Promise<void>
+  getDesignSelection(sessionId: string): Promise<import('@craft-agent/shared/protocol').DesignSelection | null>
+  proposeDesignAction(input: import('@craft-agent/shared/protocol').ProposeActionInput): Promise<import('@craft-agent/shared/protocol').ProposeActionResult>
+  commitDesignPatch(input: import('@craft-agent/shared/protocol').CommitPatchInput): Promise<import('@craft-agent/shared/protocol').CommitPatchResult>
+  rollbackDesignPatch(input: import('@craft-agent/shared/protocol').RollbackPatchInput): Promise<import('@craft-agent/shared/protocol').RollbackPatchResult>
 
   // Consolidated session command handler
   sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>

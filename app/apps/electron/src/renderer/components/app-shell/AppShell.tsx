@@ -141,6 +141,7 @@ import {
 import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
+import { ActionTickerBar } from "@/components/workbench/ActionTickerBar"
 
 /**
  * AppShellProps - Minimal props interface for AppShell component
@@ -2201,12 +2202,14 @@ function AppShellContent({
           isCompact={isAutoCompact}
         />
 
-      {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
+      {/* === OUTER LAYOUT: [Unified Panel Stack | Right Sidebar] 之上叠加底部 Action Ticker（Fleet 工作台 · AppShell 级全局底部条） === */}
+      <div className="flex flex-col" style={{ height: '100%', minHeight: 0 }}>
       <div
         ref={shellRef}
         className="flex items-stretch relative"
         style={{
-          height: '100%',
+          flex: 1,
+          minHeight: 0,
           paddingRight: isAutoCompact ? 0 : PANEL_EDGE_INSET,
           paddingBottom: isAutoCompact ? 0 : PANEL_EDGE_INSET,
           paddingLeft: 0,
@@ -3337,6 +3340,9 @@ function AppShellContent({
         </div>
         )}
 
+      </div>
+        {/* Fleet 工作台：AppShell 级全局底部动作流（订阅 SessionEvent，显示人和 Agent 真实操作）。与输入区 ActiveTasksBar 分开。 */}
+        <ActionTickerBar />
       </div>
 
       {/* ============================================================================

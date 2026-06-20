@@ -81,7 +81,7 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type ActorRef, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
@@ -1202,6 +1202,33 @@ export class SessionManager implements ISessionManager {
 
   setEventSink(sink: EventSink): void {
     this.eventSink = sink
+  }
+
+  /**
+   * Public seam for emitting a SessionEvent from outside the manager (e.g. the
+   * Fleet 工作台 DesignEngine, T-ENGINE). Resolves the workspace from the
+   * session's managed record and routes through the same event sink as every
+   * other session event — no second timeline. No-op for unknown sessions.
+   */
+  emitSessionEvent(event: SessionEvent): void {
+    const managed = this.sessions.get(event.sessionId)
+    if (!managed) {
+      sessionLog.warn(`Cannot emit ${event.type} event - unknown session ${event.sessionId}`)
+      return
+    }
+    this.sendEvent(event, managed.workspace.id)
+  }
+
+  /**
+   * Actor metadata for assistant-produced events (tool/text). The assistant's
+   * tool calls and text are agent actions (T-EVENT-ACTOR). v1 carries the
+   * runtime (connection slug or 'api'); precise `agentId`/`role`/`displayName`
+   * are populated later by the multi-agent registry (M1, AionUi). Until then
+   * the UI labels these "Agent" — honest: there is one assistant per session.
+   */
+  private agentActorFor(sessionId: string): ActorRef {
+    const managed = this.sessions.get(sessionId)
+    return { kind: 'agent', runtime: managed?.llmConnection ?? 'api' }
   }
 
   setBrowserPaneManager(bpm: IBrowserPaneManager): void {
@@ -6871,7 +6898,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, actor: this.agentActorFor(sessionId) }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)
@@ -7024,6 +7051,7 @@ export class SessionManager implements ISessionManager {
             turnId: event.turnId,
             parentToolUseId,
             timestamp,
+            actor: this.agentActorFor(sessionId),
           }, workspaceId)
         }
         break
@@ -7107,6 +7135,7 @@ export class SessionManager implements ISessionManager {
             parentToolUseId,
             isError: inferredError,
             timestamp: toolResultTimestamp,
+            actor: this.agentActorFor(sessionId),
           }, workspaceId)
         }
 
@@ -7131,6 +7160,7 @@ export class SessionManager implements ISessionManager {
               result: child.toolResult || '',
               turnId: child.turnId,
               parentToolUseId: event.toolUseId,
+              actor: this.agentActorFor(sessionId),
             }, workspaceId)
           }
         }

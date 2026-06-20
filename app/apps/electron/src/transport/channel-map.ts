@@ -31,6 +31,12 @@ export const CHANNEL_MAP = {
   respondToPermission: invoke(RPC_CHANNELS.sessions.RESPOND_TO_PERMISSION),
   respondToCredential: invoke(RPC_CHANNELS.sessions.RESPOND_TO_CREDENTIAL),
   sessionCommand: invoke(RPC_CHANNELS.sessions.COMMAND),
+  // Fleet 工作台动作通道（T-ENGINE）：人类 UI 和 AI 工具走同一组 channel。
+  setDesignSelection: invoke(RPC_CHANNELS.design.SET_SELECTION),
+  getDesignSelection: invoke(RPC_CHANNELS.design.GET_SELECTION),
+  proposeDesignAction: invoke(RPC_CHANNELS.design.PROPOSE_ACTION),
+  commitDesignPatch: invoke(RPC_CHANNELS.design.COMMIT_PATCH),
+  rollbackDesignPatch: invoke(RPC_CHANNELS.design.ROLLBACK_PATCH),
   exportSession: invoke(RPC_CHANNELS.sessions.EXPORT),
   importSession: invoke(RPC_CHANNELS.sessions.IMPORT),
   exportRemoteSessionTransfer: invoke(RPC_CHANNELS.sessions.EXPORT_REMOTE_TRANSFER),

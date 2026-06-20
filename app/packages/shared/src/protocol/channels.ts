@@ -48,6 +48,15 @@ export const RPC_CHANNELS = {
     EXPORT_REMOTE_TRANSFER: 'sessions:exportRemoteTransfer',
     IMPORT_REMOTE_TRANSFER: 'sessions:importRemoteTransfer',
   },
+  // Fleet 工作台动作通道（承重墙 · 冻结的 wire 名，供 design engine 与 UI 共用）。
+  // 实现见 docs/32 工作令 T-ENGINE；这些是契约名，先冻结再实现，避免多 Agent 各起一套。
+  design: {
+    SET_SELECTION: 'design:setSelection',
+    PROPOSE_ACTION: 'design:proposeAction',
+    COMMIT_PATCH: 'design:commitPatch',
+    ROLLBACK_PATCH: 'design:rollbackPatch',
+    GET_SELECTION: 'design:getSelection',
+  },
   transfer: {
     START: 'transfer:start',
     CHUNK: 'transfer:chunk',

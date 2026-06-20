@@ -17,6 +17,8 @@ import type {
 import type { PermissionMode } from '../agent/mode-types'
 import type { ThinkingLevel } from '../agent/thinking-levels'
 import type { CustomEndpointConfig } from '../config/llm-connections'
+// Fleet 工作台契约（承重墙）：人和 Agent 是对等 actor，动作进同一条 timeline。
+import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
 import type {
   AuthRequest as SharedAuthRequest,
   CredentialInputMode as SharedCredentialInputMode,
@@ -166,9 +168,9 @@ export interface PermissionModeState {
 // turnId: Correlation ID from the API's message.id, groups all events in an assistant turn
 export type SessionEvent =
   | { type: 'text_delta'; sessionId: string; delta: string; turnId?: string }
-  | { type: 'text_complete'; sessionId: string; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; timestamp?: number; messageId?: string }
-  | { type: 'tool_start'; sessionId: string; toolName: string; toolUseId: string; toolInput: Record<string, unknown>; toolIntent?: string; toolDisplayName?: string; toolDisplayMeta?: ToolDisplayMeta; turnId?: string; parentToolUseId?: string; timestamp?: number }
-  | { type: 'tool_result'; sessionId: string; toolUseId: string; toolName: string; result: string; turnId?: string; parentToolUseId?: string; isError?: boolean; timestamp?: number }
+  | { type: 'text_complete'; sessionId: string; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; timestamp?: number; messageId?: string; actor?: ActorRef }
+  | { type: 'tool_start'; sessionId: string; toolName: string; toolUseId: string; toolInput: Record<string, unknown>; toolIntent?: string; toolDisplayName?: string; toolDisplayMeta?: ToolDisplayMeta; turnId?: string; parentToolUseId?: string; timestamp?: number; actor?: ActorRef }
+  | { type: 'tool_result'; sessionId: string; toolUseId: string; toolName: string; result: string; turnId?: string; parentToolUseId?: string; isError?: boolean; timestamp?: number; actor?: ActorRef }
   | { type: 'error'; sessionId: string; error: string; timestamp?: number }
   | { type: 'typed_error'; sessionId: string; error: TypedError; timestamp?: number }
   | { type: 'complete'; sessionId: string; tokenUsage?: Session['tokenUsage']; hasUnread?: boolean }
@@ -209,6 +211,11 @@ export type SessionEvent =
   | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
+  // Fleet 工作台动作事件（T-ENGINE）：人和 Agent 共用，进同一条 timeline，带 actor、可回放可回滚。
+  | { type: 'selection_changed'; sessionId: string; selection: DesignSelection }
+  | { type: 'design_action_proposed'; sessionId: string; action: DesignAction; patchPreview?: DesignPatch }
+  | { type: 'design_patch_committed'; sessionId: string; patch: DesignPatch; actor: ActorRef }
+  | { type: 'design_patch_rolled_back'; sessionId: string; patchId: string; actor: ActorRef }
 
 export interface SendMessageOptions {
   skillSlugs?: string[]

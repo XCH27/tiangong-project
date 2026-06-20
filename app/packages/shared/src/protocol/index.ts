@@ -1,5 +1,7 @@
 export * from './types'
 export * from './channels'
 export * from './dto'
+export * from './design'
+export * from './design-service'
 export * from './events'
 export * from './routing'

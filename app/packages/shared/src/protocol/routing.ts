@@ -256,6 +256,14 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.sessions.EXPORT_REMOTE_TRANSFER,
   RPC_CHANNELS.sessions.IMPORT_REMOTE_TRANSFER,
 
+  // design — workspace/session-bound workbench actions. These must run where
+  // the owning session lives so remote workspaces do not mutate local state.
+  RPC_CHANNELS.design.SET_SELECTION,
+  RPC_CHANNELS.design.PROPOSE_ACTION,
+  RPC_CHANNELS.design.COMMIT_PATCH,
+  RPC_CHANNELS.design.ROLLBACK_PATCH,
+  RPC_CHANNELS.design.GET_SELECTION,
+
   // transfer — chunked large-payload import (sessions, resources)
   RPC_CHANNELS.transfer.START,
   RPC_CHANNELS.transfer.CHUNK,
