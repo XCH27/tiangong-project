@@ -3,6 +3,9 @@ import type { HandlerDeps } from '../handler-deps'
 
 import { registerAuthHandlers } from './auth'
 import { registerAgentRegistryHandlers } from './agents'
+import { registerAgentLifecycleHandlers } from './agent-lifecycle'
+import { registerMemoryHandlers } from './memory'
+import { registerDecisionHandlers } from './decision'
 import { registerAutomationsHandlers } from './automations'
 import { registerCliRuntimeHandlers } from './cli-runtime'
 import { registerFilesHandlers } from './files'
@@ -40,6 +43,9 @@ export function registerCoreRpcHandlers(
   serverCtx?: ServerHandlerContext,
 ): void {
   registerAgentRegistryHandlers(server, deps)
+  registerAgentLifecycleHandlers(server, deps)
+  registerMemoryHandlers(server, deps)
+  registerDecisionHandlers(server, deps)
   registerAuthHandlers(server, deps)
   registerAutomationsHandlers(server, deps)
   registerCliRuntimeHandlers(server, deps)

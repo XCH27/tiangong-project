@@ -5,12 +5,12 @@ import { randomUUID } from 'node:crypto'
 
 export const MEMORY_PARTITIONS = [
   'user',
-  'software',
+  'app',
   'project',
   'agent',
   'task',
-  'design-asset',
-  'external-review',
+  'design',
+  'review',
 ] as const
 
 export type MemoryPartition = (typeof MEMORY_PARTITIONS)[number]
@@ -25,6 +25,7 @@ export interface MemoryRecord {
   createdAt: number
   updatedAt: number
   meta?: Record<string, unknown>
+  risk?: 'low' | 'medium' | 'high'
 }
 
 export interface MemoryQuery {

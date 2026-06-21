@@ -1,7 +1,10 @@
 import {
   actorFromAgentDescriptor,
+  actorFromLifecycleDescriptor,
   type ActorRef,
   type AgentDescriptor,
+  type AgentLifecycleDescriptor,
+  type AgentLifecycleStatus,
   type AgentRegistryEnsureManagerInput,
   type AgentRegistryEnsureProjectInput,
   type AgentRegistryListInput,
@@ -104,6 +107,94 @@ export class AgentRegistryService {
     }
     this.agents.set(agentId, next)
     return next
+  }
+
+  // --- lifecycle wired on top of registry (no separate store) ---
+
+  create(input: {
+    agentId: string
+    kind: 'manager' | 'project'
+    workspaceId?: string
+    sessionId?: string
+    runtime?: string
+    role?: import('@craft-agent/shared/protocol').AgentRole
+    displayName?: string
+  }): AgentDescriptor {
+    const id = requireString(input.agentId, 'agentId')
+    const kind = input.kind
+    return this.upsert(id, {
+      kind,
+      role: input.role ?? (kind === 'manager' ? 'manager' : 'leader'),
+      displayName: input.displayName ?? (kind === 'manager' ? '管理 Agent' : '项目 Agent'),
+      runtime: input.runtime,
+      workspaceId: input.workspaceId,
+      sessionId: input.sessionId,
+      status: 'active',
+    })
+  }
+
+  update(input: { agentId: string; runtime?: string; role?: import('@craft-agent/shared/protocol').AgentRole; displayName?: string; status?: AgentDescriptor['status'] }): AgentDescriptor {
+    const id = requireString(input.agentId, 'agentId')
+    const existing = this.agents.get(id)
+    if (!existing) throw new Error(`agent not found: ${id}`)
+    return this.upsert(id, {
+      kind: existing.kind,
+      role: input.role ?? existing.role,
+      displayName: input.displayName ?? existing.displayName,
+      runtime: input.runtime ?? existing.runtime,
+      workspaceId: existing.workspaceId,
+      sessionId: existing.sessionId,
+      status: input.status ?? existing.status,
+    })
+  }
+
+  markActive(agentId: string): AgentDescriptor {
+    const id = requireString(agentId, 'agentId')
+    const existing = this.agents.get(id)
+    if (!existing) throw new Error(`agent not found: ${id}`)
+    const ts = this.now()
+    const next: AgentDescriptor = { ...existing, status: 'active', lastActiveAt: ts, updatedAt: ts }
+    this.agents.set(id, next)
+    return next
+  }
+
+  stop(agentId: string): AgentDescriptor {
+    const id = requireString(agentId, 'agentId')
+    const existing = this.agents.get(id)
+    if (!existing) throw new Error(`agent not found: ${id}`)
+    const ts = this.now()
+    const next: AgentDescriptor = { ...existing, status: 'stopped', updatedAt: ts }
+    this.agents.set(id, next)
+    return next
+  }
+
+  list(input: AgentRegistryListInput = {}): AgentDescriptor[] {
+    return this.listAgents(input)
+  }
+
+  get(agentId: string): AgentDescriptor | null {
+    return this.getAgent(agentId)
+  }
+
+  toLifecycleDescriptor(d: AgentDescriptor): import('@craft-agent/shared/protocol').AgentLifecycleDescriptor {
+    return {
+      agentId: d.agentId,
+      kind: d.kind,
+      role: d.role,
+      displayName: d.displayName,
+      runtime: d.runtime,
+      sessionId: d.sessionId,
+      workspaceId: d.workspaceId,
+      status: (d.status as any) ?? 'active',
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+      lastActiveAt: d.lastActiveAt,
+    }
+  }
+
+  actorFor(agentId: string): ActorRef | null {
+    const d = this.get(agentId)
+    return d ? actorFromAgentDescriptor(d) : null
   }
 }
 

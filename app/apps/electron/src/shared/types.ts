@@ -685,6 +685,24 @@ export interface ElectronAPI {
   listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
   getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>
 
+  // Agent lifecycle (state model only; LOCAL_ONLY; backed by registry)
+  createAgentLifecycle(input: import('@craft-agent/shared/protocol').AgentLifecycleCreateInput): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
+  updateAgentLifecycle(input: import('@craft-agent/shared/protocol').AgentLifecycleUpdateInput): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
+  listAgentLifecycle(input?: import('@craft-agent/shared/protocol').AgentLifecycleListInput): Promise<import('@craft-agent/shared/protocol').AgentLifecycleListResult>
+  getAgentLifecycle(input: { agentId: string }): Promise<import('@craft-agent/shared/protocol').AgentLifecycleGetResult>
+  markActiveAgentLifecycle(input: { agentId: string }): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
+  stopAgentLifecycle(input: { agentId: string }): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
+
+  // Memory partitions (LOCAL_ONLY)
+  addMemory(input: import('@craft-agent/shared/protocol').MemoryAddInput): Promise<import('@craft-agent/shared/protocol').MemoryRecord>
+  getMemory(input: import('@craft-agent/shared/protocol').MemoryGetInput): Promise<import('@craft-agent/shared/protocol').MemoryRecord | null>
+  listMemory(input?: import('@craft-agent/shared/protocol').MemoryListInput): Promise<import('@craft-agent/shared/protocol').MemoryListResult>
+  searchMemory(input: import('@craft-agent/shared/protocol').MemorySearchInput): Promise<import('@craft-agent/shared/protocol').MemorySearchResult>
+  deleteMemory(input: import('@craft-agent/shared/protocol').MemoryDeleteInput): Promise<import('@craft-agent/shared/protocol').MemoryDeleteResult>
+
+  // Decision L0-L3 (LOCAL_ONLY, pure rules)
+  evaluateDecision(input: import('@craft-agent/shared/protocol').DecisionEvaluateInput): Promise<import('@craft-agent/shared/protocol').DecisionEvaluateResult>
+
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>
   browseForGitBash(): Promise<string | null>

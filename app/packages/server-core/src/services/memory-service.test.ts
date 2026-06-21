@@ -17,16 +17,16 @@ describe('MemoryService (7 partitions, project isolation)', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('creates user/software/agent/task/design-asset/external-review without projectId', async () => {
+  it('creates user/app/project/agent/task/design/review without projectId (project still needs projectId)', async () => {
     const r1 = await svc.create({ partition: 'user', value: { name: 'alice' } })
-    const r2 = await svc.create({ partition: 'software', value: { projects: 3 } })
+    const r2 = await svc.create({ partition: 'app', value: { stage: 'm0' } })
     const r3 = await svc.create({ partition: 'agent', agentId: 'manager:ws-1', value: { skill: 'pack' } })
     const r4 = await svc.create({ partition: 'task', value: { goal: 'fix' } })
-    const r5 = await svc.create({ partition: 'design-asset', value: { font: 'Inter' } })
-    const r6 = await svc.create({ partition: 'external-review', value: { platform: 'x' } })
+    const r5 = await svc.create({ partition: 'design', value: { font: 'Inter' } })
+    const r6 = await svc.create({ partition: 'review', value: { platform: 'x' } })
 
     expect(r1.partition).toBe('user')
-    expect(r6.partition).toBe('external-review')
+    expect(r6.partition).toBe('review')
     const got = await svc.get(r3.id)
     expect(got?.agentId).toBe('manager:ws-1')
   })

@@ -355,6 +355,24 @@ export const CHANNEL_MAP = {
   listAgents: invoke(RPC_CHANNELS.agents.LIST),
   getAgent: invoke(RPC_CHANNELS.agents.GET),
 
+  // Agent lifecycle (state model only, LOCAL_ONLY, backed by agent registry)
+  createAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.CREATE),
+  updateAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.UPDATE),
+  listAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.LIST),
+  getAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.GET),
+  markActiveAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.MARK_ACTIVE),
+  stopAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.STOP),
+
+  // Memory partitions (LOCAL_ONLY, 7 partitions, explicit confirm for high-risk delete)
+  addMemory: invoke(RPC_CHANNELS.memory.ADD),
+  getMemory: invoke(RPC_CHANNELS.memory.GET),
+  listMemory: invoke(RPC_CHANNELS.memory.LIST),
+  searchMemory: invoke(RPC_CHANNELS.memory.SEARCH),
+  deleteMemory: invoke(RPC_CHANNELS.memory.DELETE),
+
+  // Decision L0-L3 (LOCAL_ONLY, pure rules)
+  evaluateDecision: invoke(RPC_CHANNELS.decision.EVALUATE),
+
   checkGitBash: invoke(RPC_CHANNELS.gitbash.CHECK),
   browseForGitBash: invoke(RPC_CHANNELS.gitbash.BROWSE),
   setGitBashPath: invoke(RPC_CHANNELS.gitbash.SET_PATH),

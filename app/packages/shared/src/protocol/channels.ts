@@ -100,6 +100,27 @@ export const RPC_CHANNELS = {
     LIST: 'agents:list',
     GET: 'agents:get',
   },
+  /** Agent lifecycle (state machine only, no real processes). Wired on top of AgentRegistry. LOCAL_ONLY. */
+  agentLifecycle: {
+    CREATE: 'agentLifecycle:create',
+    UPDATE: 'agentLifecycle:update',
+    LIST: 'agentLifecycle:list',
+    GET: 'agentLifecycle:get',
+    MARK_ACTIVE: 'agentLifecycle:markActive',
+    STOP: 'agentLifecycle:stop',
+  },
+  /** Local partitioned memory (7 partitions). No cloud, no second session. LOCAL_ONLY. */
+  memory: {
+    ADD: 'memory:add',
+    GET: 'memory:get',
+    LIST: 'memory:list',
+    SEARCH: 'memory:search',
+    DELETE: 'memory:delete',
+  },
+  /** L0-L3 decision/risk engine (pure rules + audit). LOCAL_ONLY. */
+  decision: {
+    EVALUATE: 'decision:evaluate',
+  },
   tasks: {
     GET_OUTPUT: 'tasks:getOutput',
   },

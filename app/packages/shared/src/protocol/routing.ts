@@ -249,6 +249,20 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.externalReviewJob.ADVANCE,
   RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT,
   RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE,
+
+  // agent lifecycle + memory + decision (LOCAL_ONLY per rule 14; no UI, no second session)
+  RPC_CHANNELS.agentLifecycle.CREATE,
+  RPC_CHANNELS.agentLifecycle.UPDATE,
+  RPC_CHANNELS.agentLifecycle.LIST,
+  RPC_CHANNELS.agentLifecycle.GET,
+  RPC_CHANNELS.agentLifecycle.MARK_ACTIVE,
+  RPC_CHANNELS.agentLifecycle.STOP,
+  RPC_CHANNELS.memory.ADD,
+  RPC_CHANNELS.memory.GET,
+  RPC_CHANNELS.memory.LIST,
+  RPC_CHANNELS.memory.SEARCH,
+  RPC_CHANNELS.memory.DELETE,
+  RPC_CHANNELS.decision.EVALUATE,
 ])
 
 // ---------------------------------------------------------------------------
@@ -308,6 +322,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   // agents — server-owned actor registry for sessions in this workspace.
   RPC_CHANNELS.agents.LIST,
   RPC_CHANNELS.agents.GET,
+  // agent lifecycle / memory / decision are LOCAL_ONLY only (see LOCAL_ONLY above)
 
   // transfer — chunked large-payload import (sessions, resources)
   RPC_CHANNELS.transfer.START,
