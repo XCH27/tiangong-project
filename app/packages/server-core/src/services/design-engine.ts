@@ -33,11 +33,14 @@ import type {
 /** Surface 适配器：把动作算成可应用/可回滚的补丁内容。由具体画布注册。 */
 export interface DesignPatchApplier {
   /** 根据动作算 forward/inverse（surface 专属）。同步或异步。 */
-  preview(action: DesignAction): Promise<{ forward: unknown; inverse: unknown }> | { forward: unknown; inverse: unknown }
+  preview(
+    action: DesignAction,
+    selection: DesignSelection | null,
+  ): Promise<{ forward: unknown; inverse: unknown }> | { forward: unknown; inverse: unknown }
   /** 真正应用已授权的补丁（committed 时调用）。可选——没有则只走账本。 */
-  apply?(patch: DesignPatch): Promise<void> | void
+  apply?(patch: DesignPatch, action: DesignAction, selection: DesignSelection | null): Promise<void> | void
   /** 回滚已提交补丁。可选。 */
-  revert?(patch: DesignPatch): Promise<void> | void
+  revert?(patch: DesignPatch, action: DesignAction, selection: DesignSelection | null): Promise<void> | void
 }
 
 interface PatchRecord {
@@ -72,8 +75,9 @@ export class DesignEngineService implements DesignEngine {
 
     let forward: unknown = { op: action.op }
     let inverse: unknown = { kind: 'unavailable', reason: 'no surface adapter; rollback is ledger-only until applier wired' }
+    const selection = this.selectionForAction(sessionId, action)
     if (this.applier) {
-      const computed = await this.applier.preview(action)
+      const computed = await this.applier.preview(action, selection)
       forward = computed.forward
       inverse = computed.inverse
     }
@@ -102,7 +106,7 @@ export class DesignEngineService implements DesignEngine {
     }
 
     if (this.applier?.apply) {
-      await this.applier.apply(record.patch)
+      await this.applier.apply(record.patch, record.action, this.selectionForAction(input.sessionId, record.action))
     }
 
     record.patch.status = 'committed'
@@ -123,7 +127,7 @@ export class DesignEngineService implements DesignEngine {
     }
 
     if (this.applier?.revert) {
-      await this.applier.revert(record.patch)
+      await this.applier.revert(record.patch, record.action, this.selectionForAction(input.sessionId, record.action))
     }
 
     record.patch.status = 'rolled_back'
@@ -145,5 +149,10 @@ export class DesignEngineService implements DesignEngine {
       throw new Error(`Patch ${patchId} does not belong to session ${sessionId}`)
     }
     return record
+  }
+
+  private selectionForAction(sessionId: string, action: DesignAction): DesignSelection | null {
+    const selection = this.selections.get(sessionId) ?? null
+    return selection?.selectionId === action.selectionId ? selection : null
   }
 }

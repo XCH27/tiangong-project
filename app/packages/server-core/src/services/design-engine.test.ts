@@ -105,13 +105,13 @@ describe('DesignEngineService', () => {
     let applied = 0
     let reverted = 0
     const applier: DesignPatchApplier = {
-      preview: () => ({ forward: { real: true }, inverse: { undo: true } }),
+      preview: (_action, selection) => ({ forward: { real: true, selectionId: selection?.selectionId }, inverse: { undo: true } }),
       apply: () => { applied++ },
       revert: () => { reverted++ },
     }
     const { engine } = makeEngine(applier)
     const { patch } = await engine.proposeAction({ sessionId: SESSION, action: makeAction() })
-    expect(patch.forward).toEqual({ real: true })
+    expect(patch.forward).toEqual({ real: true, selectionId: undefined })
     expect(patch.inverse).toEqual({ undo: true })
 
     await engine.commitPatch({ sessionId: SESSION, patchId: patch.patchId })

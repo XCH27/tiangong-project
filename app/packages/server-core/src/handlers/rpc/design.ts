@@ -15,13 +15,17 @@ import {
   type RollbackPatchInput,
 } from '@craft-agent/shared/protocol'
 import type { HandlerDeps } from '../handler-deps'
+import { DesignAnnotationApplier } from '../../services/design-annotation-applier'
 import { DesignEngineService } from '../../services/design-engine'
 
 export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): void {
   const { sessionManager } = deps
 
   // 唯一引擎实例（进程内账本）。emit 经 SessionManager 进同一条 timeline。
-  const engine = new DesignEngineService((event) => sessionManager.emitSessionEvent(event))
+  const engine = new DesignEngineService(
+    (event) => sessionManager.emitSessionEvent(event),
+    new DesignAnnotationApplier(sessionManager),
+  )
 
   server.handle(RPC_CHANNELS.design.SET_SELECTION, async (_ctx, input: SetSelectionInput) => {
     await engine.setSelection(input)

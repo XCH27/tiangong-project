@@ -129,7 +129,7 @@ export type DesignActionOp =
   | { kind: 'board_op'; op: 'reorder' | 'regenerate_cell'; payload: unknown }
   | { kind: 'doc_edit'; op: 'replace' | 'insert' | 'annotate'; payload: unknown }
   | { kind: 'code_patch'; payload: unknown }
-  | { kind: 'annotate'; annotationId?: string; text: string }
+  | { kind: 'annotate'; messageId: string; annotationId?: string; text: string }
   | { kind: string; payload?: unknown }
 
 /** 动作来源：人打字/点鼠标 vs Agent 调工具。一体两面，进同一条管线。 */
