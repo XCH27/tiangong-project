@@ -4,7 +4,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -158,6 +158,26 @@ export class ExternalReviewJobStore {
     const next = applyExternalReviewJobTransition(job, transition)
     await this.save(next)
     return next
+  }
+
+  async listByBundle(bundleId: string): Promise<ExternalReviewJob[]> {
+    const target = bundleId.trim()
+    if (!target) throw new Error('bundleId is required')
+
+    let names: string[]
+    try {
+      names = await readdir(this.dataDir)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+      throw error
+    }
+
+    const jobs = await Promise.all(
+      names
+        .filter((name) => name.endsWith('.json'))
+        .map(async (name) => JSON.parse(await readFile(join(this.dataDir, name), 'utf-8')) as ExternalReviewJob),
+    )
+    return jobs.filter((job) => job.bundleId === target).sort((a, b) => b.updatedAt - a.updatedAt)
   }
 }
 

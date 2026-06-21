@@ -81,12 +81,27 @@ describe('resolveCliRuntimeForSend', () => {
 })
 
 describe('getCliRuntimeAttachmentRejectionMessage', () => {
-  it('rejects live and stored attachments for the first CLI runtime version', () => {
-    const live = [{ name: 'image.png' }] as FileAttachment[]
-    const stored = [{ name: 'doc.md' }] as StoredAttachment[]
+  it('rejects binary live attachments with actionable Chinese guidance', () => {
+    const live = [{ name: 'image.png', type: 'image', path: '/tmp/image.png', mimeType: 'image/png', base64: 'abc', size: 3 }] as FileAttachment[]
 
-    expect(getCliRuntimeAttachmentRejectionMessage(live, undefined)).toContain('CLI Runtime 第一版暂不支持附件')
-    expect(getCliRuntimeAttachmentRejectionMessage(undefined, stored)).toContain('CLI Runtime 第一版暂不支持附件')
+    expect(getCliRuntimeAttachmentRejectionMessage(live, undefined)).toContain('CLI Runtime')
+    expect(getCliRuntimeAttachmentRejectionMessage(live, undefined)).toContain('image')
+  })
+
+  it('allows small text attachments', () => {
+    const live = [{
+      type: 'text',
+      path: '/tmp/notes.md',
+      name: 'notes.md',
+      mimeType: 'text/markdown',
+      text: '# hello',
+      size: 7,
+    }] as FileAttachment[]
+
+    expect(getCliRuntimeAttachmentRejectionMessage(live, undefined)).toBeNull()
+  })
+
+  it('returns null when no attachments are present', () => {
     expect(getCliRuntimeAttachmentRejectionMessage(undefined, undefined)).toBeNull()
   })
 })

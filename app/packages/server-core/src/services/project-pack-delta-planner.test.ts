@@ -59,6 +59,7 @@ describe('project pack delta planner', () => {
     await writeFile(join(root, 'logo.png'), Buffer.from([0, 1, 2, 3, 4]))
 
     const plan = await planProjectPackDelta({ rootPath: root })
+    expect(plan.mode).toBe('diff')
     expect(plan.gitChangedFiles).toContain('src/index.ts')
     expect(plan.relatedFiles).toContain('src/helper.ts')
     expect(plan.included.some((f) => f.relativePath === 'src/index.ts' && f.source === 'git_changed')).toBe(true)
@@ -67,6 +68,22 @@ describe('project pack delta planner', () => {
     expect(plan.excluded.some((e) => e.reason === 'binary')).toBe(true)
     expect(plan.estimatedTokens).toBeGreaterThan(0)
     expect(plan.tokenEstimateKind).toBe('estimate')
+
+    await rm(root, { recursive: true, force: true })
+  })
+
+  it('filters changed files by mode', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pack-delta-mode-'))
+    initGitRepo(root)
+    await writeFile(join(root, 'tracked.txt'), 'a\n')
+    execFileSync('git', ['add', 'tracked.txt'], { cwd: root, stdio: 'ignore' })
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: root, stdio: 'ignore' })
+    await writeFile(join(root, 'tracked.txt'), 'a\nb\n')
+    execFileSync('git', ['add', 'tracked.txt'], { cwd: root, stdio: 'ignore' })
+    await writeFile(join(root, 'new.txt'), 'new\n')
+
+    expect(listGitChangedFiles(root, 'staged')).toEqual(['tracked.txt'])
+    expect(listGitChangedFiles(root, 'untracked')).toEqual(['new.txt'])
 
     await rm(root, { recursive: true, force: true })
   })

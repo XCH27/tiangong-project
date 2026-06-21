@@ -239,6 +239,15 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
 
   // context center — local environment + local bundle summaries, read-only.
   RPC_CHANNELS.contextCenter.GET_OVERVIEW,
+
+  // context adapter / project pack delta / external review jobs — local-only sidecars.
+  RPC_CHANNELS.contextAdapter.QUERY_CODEGRAPH,
+  RPC_CHANNELS.contextAdapter.COMPRESS_RTK,
+  RPC_CHANNELS.projectPackDelta.PLAN,
+  RPC_CHANNELS.externalReviewJob.CREATE,
+  RPC_CHANNELS.externalReviewJob.GET,
+  RPC_CHANNELS.externalReviewJob.ADVANCE,
+  RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE,
 ])
 
 // ---------------------------------------------------------------------------

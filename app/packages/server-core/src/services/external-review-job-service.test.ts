@@ -83,4 +83,15 @@ describe('external review job state machine', () => {
     expect(submitted.status).toBe('submitted')
     expect((await store.get(created.jobId))?.status).toBe('submitted')
   })
+
+  it('lists jobs by bundle id', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'external-review-job-list-'))
+    tempDirs.push(dir)
+    const store = new ExternalReviewJobStore(dir)
+    await store.create({ bundleId: 'bundle-a', bundleHash: 'h1', platformId: 'p1' })
+    await store.create({ bundleId: 'bundle-b', bundleHash: 'h2', platformId: 'p2' })
+    const listed = await store.listByBundle('bundle-a')
+    expect(listed).toHaveLength(1)
+    expect(listed[0]?.bundleId).toBe('bundle-a')
+  })
 })

@@ -35,8 +35,11 @@ export interface ProjectPackDeltaIncludedEntry {
   estimatedTokens?: number
 }
 
+export type ProjectPackDeltaMode = 'diff' | 'staged' | 'untracked'
+
 export interface ProjectPackDeltaPlanRequest {
   rootPath: string
+  mode?: ProjectPackDeltaMode
   maxRelatedDepth?: number
   maxFiles?: number
   maxFileBytes?: number
@@ -44,6 +47,7 @@ export interface ProjectPackDeltaPlanRequest {
 
 export interface ProjectPackDeltaPlan {
   rootPath: string
+  mode: ProjectPackDeltaMode
   gitChangedFiles: string[]
   relatedFiles: string[]
   included: ProjectPackDeltaIncludedEntry[]
@@ -71,19 +75,29 @@ function runGit(cwd: string, args: string[]): string | null {
   }
 }
 
-export function listGitChangedFiles(rootPath: string): string[] {
-  const out = runGit(rootPath, ['diff', '--name-only', 'HEAD'])
-  const staged = runGit(rootPath, ['diff', '--cached', '--name-only'])
-  const untracked = runGit(rootPath, ['ls-files', '--others', '--exclude-standard'])
-  const set = new Set<string>()
-  for (const block of [out, staged, untracked]) {
-    if (!block) continue
-    for (const line of block.split('\n')) {
-      const trimmed = line.trim()
-      if (trimmed) set.add(trimmed.replace(/\\/g, '/'))
+function parseGitLines(block: string | null): string[] {
+  if (!block) return []
+  return block
+    .split('\n')
+    .map((line) => line.trim().replace(/\\/g, '/'))
+    .filter(Boolean)
+    .sort()
+}
+
+export function listGitChangedFiles(rootPath: string, mode: ProjectPackDeltaMode = 'diff'): string[] {
+  switch (mode) {
+    case 'staged':
+      return parseGitLines(runGit(rootPath, ['diff', '--cached', '--name-only']))
+    case 'untracked':
+      return parseGitLines(runGit(rootPath, ['ls-files', '--others', '--exclude-standard']))
+    case 'diff':
+    default: {
+      const unstaged = parseGitLines(runGit(rootPath, ['diff', '--name-only']))
+      const staged = parseGitLines(runGit(rootPath, ['diff', '--cached', '--name-only']))
+      const untracked = parseGitLines(runGit(rootPath, ['ls-files', '--others', '--exclude-standard']))
+      return [...new Set([...unstaged, ...staged, ...untracked])].sort()
     }
   }
-  return [...set].sort()
 }
 
 function shouldExcludePath(relativePath: string): ProjectPackDeltaExcludedEntry | null {
@@ -193,8 +207,9 @@ export async function planProjectPackDelta(request: ProjectPackDeltaPlanRequest)
   const maxFiles = request.maxFiles ?? DEFAULT_MAX_FILES
   const maxFileBytes = request.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES
   const maxRelatedDepth = request.maxRelatedDepth ?? DEFAULT_MAX_RELATED_DEPTH
+  const mode = request.mode ?? 'diff'
 
-  const gitChangedFiles = listGitChangedFiles(request.rootPath)
+  const gitChangedFiles = listGitChangedFiles(request.rootPath, mode)
   const relatedFiles = await discoverRelatedFiles(request.rootPath, gitChangedFiles, maxRelatedDepth)
 
   const included: ProjectPackDeltaIncludedEntry[] = []
@@ -251,6 +266,7 @@ export async function planProjectPackDelta(request: ProjectPackDeltaPlanRequest)
 
   return {
     rootPath: request.rootPath,
+    mode,
     gitChangedFiles,
     relatedFiles,
     included,

@@ -1,9 +1,11 @@
+import { readFileSync } from 'node:fs'
 import type { FileAttachment } from '@craft-agent/shared/protocol'
 import type { StoredAttachment } from '@craft-agent/core/types'
 import {
   DETECTED_ACP_RUNTIME_MAP,
   getUnsupportedDetectedRuntimeMessage,
 } from './cli-runtime-detected-acp-mappings'
+import { getCliRuntimeAttachmentRejectionMessageFromPolicy } from './cli-runtime-attachment-policy'
 import type { CliRuntimeEffort, CliRuntimeSendOptions, ResolvedCliRuntimeForSend } from './cli-runtime-types'
 
 const VALID_EFFORTS = new Set<CliRuntimeEffort>(['low', 'medium', 'high', 'maximum'])
@@ -58,10 +60,21 @@ export function resolveCliRuntimeForSend(options: CliRuntimeSendOptions | undefi
   }
 }
 
+function readStoredTextAttachment(attachment: StoredAttachment): string | null {
+  if (attachment.type !== 'text') return null
+  if (attachment.markdownPath || attachment.thumbnailBase64 || attachment.resizedBase64) return null
+  try {
+    return readFileSync(attachment.storedPath, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
 export function getCliRuntimeAttachmentRejectionMessage(
   attachments: FileAttachment[] | undefined,
   storedAttachments: StoredAttachment[] | undefined,
 ): string | null {
-  if (!attachments?.length && !storedAttachments?.length) return null
-  return 'CLI Runtime 第一版暂不支持附件。请移除附件后重试，或切回 API 模型发送。'
+  return getCliRuntimeAttachmentRejectionMessageFromPolicy(attachments, storedAttachments, {
+    readStoredText: readStoredTextAttachment,
+  })
 }

@@ -27,6 +27,9 @@ import { registerSystemCoreHandlers } from './system'
 import { registerSystemToolsHandlers } from './system-tools'
 import { registerProjectPackHandlers } from './project-pack'
 import { registerExternalReviewHandlers } from './external-review'
+import { registerExternalReviewJobHandlers } from './external-review-job'
+import { registerContextAdapterHandlers } from './context-adapter'
+import { registerProjectPackDeltaHandlers } from './project-pack-delta'
 import { registerTransferHandlers } from './transfer'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
@@ -58,6 +61,9 @@ export function registerCoreRpcHandlers(
   registerSystemToolsHandlers(server, deps)
   registerProjectPackHandlers(server, deps)
   registerExternalReviewHandlers(server, deps)
+  registerContextAdapterHandlers(server, deps)
+  registerProjectPackDeltaHandlers(server, deps)
+  registerExternalReviewJobHandlers(server, deps)
   registerTransferHandlers(server)
   registerWorkspaceCoreHandlers(server, deps)
   registerMessagingHandlers(server, deps)

@@ -79,6 +79,22 @@ export const RPC_CHANNELS = {
   contextCenter: {
     GET_OVERVIEW: 'contextCenter:getOverview',
   },
+  /** Context adapter — codegraph/rtk sidecars via System Tools (LOCAL_ONLY). */
+  contextAdapter: {
+    QUERY_CODEGRAPH: 'contextAdapter:queryCodegraph',
+    COMPRESS_RTK: 'contextAdapter:compressRtk',
+  },
+  /** ProjectPack delta — incremental git-scoped planning (LOCAL_ONLY). */
+  projectPackDelta: {
+    PLAN: 'projectPackDelta:plan',
+  },
+  /** External review job — local state machine, no auto submit (LOCAL_ONLY). */
+  externalReviewJob: {
+    CREATE: 'externalReviewJob:create',
+    GET: 'externalReviewJob:get',
+    ADVANCE: 'externalReviewJob:advance',
+    LIST_BY_BUNDLE: 'externalReviewJob:listByBundle',
+  },
   agents: {
     LIST: 'agents:list',
     GET: 'agents:get',

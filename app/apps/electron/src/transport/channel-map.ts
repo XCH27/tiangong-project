@@ -344,6 +344,13 @@ export const CHANNEL_MAP = {
   getExternalReviewReport: invoke(RPC_CHANNELS.externalReview.GET),
   listExternalReviewReportsByBundle: invoke(RPC_CHANNELS.externalReview.LIST_BY_BUNDLE),
   getContextCenterOverview: invoke(RPC_CHANNELS.contextCenter.GET_OVERVIEW),
+  queryContextCodegraph: invoke(RPC_CHANNELS.contextAdapter.QUERY_CODEGRAPH),
+  compressContextRtk: invoke(RPC_CHANNELS.contextAdapter.COMPRESS_RTK),
+  planProjectPackDelta: invoke(RPC_CHANNELS.projectPackDelta.PLAN),
+  createExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.CREATE),
+  getExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.GET),
+  advanceExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.ADVANCE),
+  listExternalReviewJobsByBundle: invoke(RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE),
   listAgents: invoke(RPC_CHANNELS.agents.LIST),
   getAgent: invoke(RPC_CHANNELS.agents.GET),
 

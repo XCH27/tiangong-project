@@ -263,6 +263,15 @@ import type {
   ProjectPackReviewPromptResult,
   CreateExternalReviewReportInput,
   ExternalReviewReport,
+  ContextAdapterCodegraphRequest,
+  ContextAdapterCodegraphResult,
+  ContextAdapterRtkRequest,
+  ContextAdapterRtkResult,
+  ProjectPackDeltaPlanRequest,
+  ProjectPackDeltaPlanResult,
+  CreateExternalReviewJobInput,
+  ExternalReviewJob,
+  AdvanceExternalReviewJobInput,
   ContextCenterOverview,
   ContextCenterOverviewInput,
   AgentRegistryListInput,
@@ -663,6 +672,13 @@ export interface ElectronAPI {
   getExternalReviewReport(reportId: string): Promise<ExternalReviewReport | null>
   listExternalReviewReportsByBundle(bundleId: string): Promise<ExternalReviewReport[]>
   getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
+  queryContextCodegraph(request: ContextAdapterCodegraphRequest): Promise<ContextAdapterCodegraphResult>
+  compressContextRtk(request: ContextAdapterRtkRequest): Promise<ContextAdapterRtkResult>
+  planProjectPackDelta(request: ProjectPackDeltaPlanRequest): Promise<ProjectPackDeltaPlanResult>
+  createExternalReviewJob(input: CreateExternalReviewJobInput): Promise<ExternalReviewJob>
+  getExternalReviewJob(jobId: string): Promise<ExternalReviewJob | null>
+  advanceExternalReviewJob(input: AdvanceExternalReviewJobInput): Promise<ExternalReviewJob>
+  listExternalReviewJobsByBundle(bundleId: string): Promise<ExternalReviewJob[]>
   listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
   getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>
 
