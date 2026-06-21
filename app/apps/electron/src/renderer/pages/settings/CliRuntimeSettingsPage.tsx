@@ -33,6 +33,8 @@ function healthLabel(status?: CliRuntimeHealthStatus): string {
       return 'ACP 握手失败'
     case 'disabled':
       return '已禁用'
+    case 'unsupported':
+      return '不支持'
     default:
       return '未测试'
   }
@@ -48,6 +50,7 @@ function statusIcon(status?: CliRuntimeHealthStatus, supported = true) {
     case 'fail_acp':
       return <XCircle className={`${cls} text-destructive`} />
     case 'disabled':
+    case 'unsupported':
       return <MinusCircle className={`${cls} text-muted-foreground`} />
     default:
       return <AlertCircle className={`${cls} text-muted-foreground`} />

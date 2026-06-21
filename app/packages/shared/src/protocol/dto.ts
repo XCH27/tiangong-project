@@ -225,7 +225,7 @@ export interface SendMessageOptions {
   cliRuntime?: CliRuntimeSendSelection
 }
 
-export type CliRuntimeHealthStatus = 'available' | 'fail_cli' | 'fail_acp' | 'disabled'
+export type CliRuntimeHealthStatus = 'available' | 'fail_cli' | 'fail_acp' | 'disabled' | 'unsupported'
 
 export interface CliRuntimeSendSelection {
   runtimeId: string

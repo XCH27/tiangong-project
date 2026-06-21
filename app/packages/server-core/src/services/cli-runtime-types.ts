@@ -1,4 +1,4 @@
-export type CliRuntimeHealthStatus = 'available' | 'fail_cli' | 'fail_acp' | 'disabled'
+export type CliRuntimeHealthStatus = 'available' | 'fail_cli' | 'fail_acp' | 'disabled' | 'unsupported'
 
 export type CliRuntimeHealthStage =
   | 'resolve'

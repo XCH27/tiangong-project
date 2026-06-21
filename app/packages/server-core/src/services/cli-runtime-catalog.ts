@@ -1,6 +1,10 @@
 import { accessSync, constants, existsSync } from 'node:fs'
 import { delimiter, isAbsolute, join } from 'node:path'
-import { DETECTED_ACP_RUNTIME_MAP, getUnsupportedDetectedRuntimeMessage } from './cli-runtime-detected-acp-mappings'
+import {
+  DETECTED_ACP_RUNTIME_MAP,
+  DETECTED_UNSUPPORTED_RUNTIME_NAMES,
+  getUnsupportedDetectedRuntimeMessage,
+} from './cli-runtime-detected-acp-mappings'
 import { CliRuntimeAcpStdioClient } from './cli-runtime-acp-client'
 import type { CliRuntimeCatalogItem, CliRuntimeHealthResult } from './cli-runtime-types'
 
@@ -42,9 +46,9 @@ export function buildCliRuntimeCatalog(opts: {
     },
   }))
 
-  const unsupported = ['claude', 'codex', 'qwen', 'gemini'].map(runtimeId => ({
+  const unsupported = Object.entries(DETECTED_UNSUPPORTED_RUNTIME_NAMES).map(([runtimeId, displayName]) => ({
     id: runtimeId,
-    displayName: runtimeId === 'claude' ? 'Claude Code' : runtimeId === 'codex' ? 'Codex' : runtimeId === 'qwen' ? 'Qwen Code' : 'Gemini CLI',
+    displayName,
     source: 'detected' as const,
     supported: false,
     enabled: false,
@@ -65,13 +69,22 @@ export async function performCliRuntimeHealthTest(input: {
 }): Promise<CliRuntimeHealthResult> {
   const checkedAt = Date.now()
   const resolveCommand = input.resolveCommand ?? defaultResolveCommand
+  if (Object.prototype.hasOwnProperty.call(DETECTED_UNSUPPORTED_RUNTIME_NAMES, input.runtimeId)) {
+    return {
+      status: 'unsupported',
+      stage: 'disabled',
+      checkedAt,
+      message: getUnsupportedDetectedRuntimeMessage(input.runtimeId),
+    }
+  }
+
   const resolvedCommand = resolveCommand(input.command)
   if (!resolvedCommand) {
     return {
       status: 'fail_cli',
       stage: 'resolve',
       checkedAt,
-      message: `CLI 启动失败：找不到或不可执行 ${input.command}`,
+      message: `CLI 启动失败：找不到或不可执行 ${input.command}。请检查是否已安装该工具并配置在系统 PATH 中。`,
     }
   }
 
@@ -102,7 +115,7 @@ export async function performCliRuntimeHealthTest(input: {
       status: 'fail_acp',
       stage: 'initialize',
       checkedAt,
-      message: `ACP 握手失败：${error instanceof Error ? error.message : String(error)}`,
+      message: `ACP 握手失败：${error instanceof Error ? error.message : String(error)}。请检查 ${input.runtimeId} 版本是否支持 ACP 标准（如 stdio 或 agent 模式），或尝试在终端独立运行查看报错。`,
       ...diagnostics,
     }
   }
@@ -125,7 +138,7 @@ export async function performCliRuntimeHealthTest(input: {
       status: 'fail_acp',
       stage: 'session/new',
       checkedAt,
-      message: `ACP 握手失败：${error instanceof Error ? error.message : String(error)}`,
+      message: `ACP 握手失败：${error instanceof Error ? error.message : String(error)}。请检查 ${input.runtimeId} 版本是否支持 ACP 标准（如 stdio 或 agent 模式），或尝试在终端独立运行查看报错。`,
       ...diagnostics,
     }
   }

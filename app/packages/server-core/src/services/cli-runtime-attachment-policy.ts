@@ -237,7 +237,7 @@ export function evaluateCliRuntimeAttachmentPolicy(
   if (violations.length > 0) {
     return {
       allowed: false,
-      message: 'CLI Runtime 仅接受通过大小/MIME 校验的纯文本附件；请移除二进制或未支持格式后重试。',
+      message: 'CLI Runtime 仅支持小文本附件，拒绝二进制文件；请移除或转为纯文本后重试。',
       violations,
     }
   }
