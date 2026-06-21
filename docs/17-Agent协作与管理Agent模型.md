@@ -128,7 +128,7 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 多 Agent **不抢在主干前面**。顺序：
 
-1. **M0 · 身份分层 registry 已起步**：`work/integration-prep` 已有只读 `agents:list/get`、内存 registry、session 查询和稳定 `project:<sessionId>` actor；普通 API 与 CLI Runtime 事件开始带 `agentId/role/displayName/runtime`，RPC 已补 malformed input guard。下一步再迁 AionUi 的进程生命周期 / Team / Skill 注入，不能引入第二套 session。
+1. **M0 · 身份分层 registry 已起步**：`work/integration-prep` 已有只读 `agents:list/get`、内存 registry、session 查询、稳定 `manager:<workspaceId>` actor 和稳定 `project:<sessionId>` actor；普通 API 与 CLI Runtime 事件开始带 `agentId/role/displayName/runtime`，manager agent 支持稳定 upsert、空 workspace 归一化和 `lastActiveAt`，RPC 已补 malformed input guard。下一步再迁 AionUi 的进程生命周期 / Team / Skill 注入，不能引入第二套 session。
 2. **M1–M2 · 队长 → 队员分派**：team/@提及映射成 craft session（AionUi D 批次），权限按 Agent 分组，输出带身份不混流。
 3. **M2 · 管理 Agent 软件管家能力**：软件状态目录 + 记忆生命周期（接 `docs/05`）+ 驱动审查中心（接 `docs/16`）。
 4. **M2 · 分级自动决策**：先做 L0/L1，依据来自记忆/偏好；L2 接规则授权；L3 永远明确确认。每步都要可回放。
