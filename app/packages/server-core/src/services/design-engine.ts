@@ -21,6 +21,7 @@ import type {
   DesignSelection,
   DesignAction,
   DesignPatch,
+  DesignActionPermission,
   SetSelectionInput,
   ProposeActionInput,
   ProposeActionResult,
@@ -47,6 +48,8 @@ export interface DesignPatchApplier {
 interface PatchRecord {
   patch: DesignPatch
   action: DesignAction
+  permission?: DesignActionPermission
+  permissionRequestId?: string
 }
 
 export class DesignEngineService implements DesignEngine {
@@ -89,19 +92,21 @@ export class DesignEngineService implements DesignEngine {
       inverse = computed.inverse
     }
 
+    const permission = evaluateDesignActionPermission(action)
+    const permissionRequestId = permission.required ? randomUUID() : undefined
     const patch: DesignPatch = {
       patchId: randomUUID(),
       actionId: action.actionId,
       sessionId,
       forward,
       inverse,
-      status: 'preview',
+      status: permission.required ? 'pending' : 'preview',
     }
-    this.patches.set(patch.patchId, { patch, action })
+    this.patches.set(patch.patchId, { patch, action, permission, permissionRequestId })
     await this.persistence?.savePatch({ patch, action })
 
-    this.emit({ type: 'design_action_proposed', sessionId, action, patchPreview: patch })
-    return { patch }
+    this.emit({ type: 'design_action_proposed', sessionId, action, patchPreview: patch, permissionRequestId, permission })
+    return { patch, permissionRequestId, permission }
   }
 
   async commitPatch(input: CommitPatchInput): Promise<CommitPatchResult> {
@@ -111,6 +116,9 @@ export class DesignEngineService implements DesignEngine {
     }
     if (record.patch.status === 'rolled_back') {
       throw new Error(`Cannot commit rolled-back patch ${input.patchId}`)
+    }
+    if (record.patch.status === 'pending' && !input.permissionGranted) {
+      throw new Error(`Patch ${input.patchId} requires permission before commit`)
     }
 
     if (this.applier?.apply) {
@@ -171,5 +179,22 @@ export class DesignEngineService implements DesignEngine {
   private selectionForAction(sessionId: string, action: DesignAction): DesignSelection | null {
     const selection = this.selections.get(sessionId) ?? null
     return selection?.selectionId === action.selectionId ? selection : null
+  }
+}
+
+function evaluateDesignActionPermission(action: DesignAction): DesignActionPermission {
+  if (action.origin === 'agent_tool' || action.actor.kind === 'agent') {
+    return {
+      required: true,
+      level: 'L2',
+      reason: 'Agent 写入工作台内容需要用户授权或预授权规则。',
+      actor: action.actor,
+    }
+  }
+  return {
+    required: false,
+    level: 'L1',
+    reason: '人类 UI 发起的本地低风险编辑可直接预览并提交。',
+    actor: action.actor,
   }
 }

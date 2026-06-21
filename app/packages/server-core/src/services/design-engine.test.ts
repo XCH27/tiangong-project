@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { SessionEvent, DesignSelection, DesignAction } from '@craft-agent/shared/protocol'
-import { USER_ACTOR } from '@craft-agent/shared/protocol'
+import { USER_ACTOR, type ActorRef } from '@craft-agent/shared/protocol'
 import { DesignEngineService, type DesignPatchApplier } from './design-engine'
 
 const SESSION = 'sess-1'
@@ -25,6 +25,14 @@ function makeAction(overrides: Partial<DesignAction> = {}): DesignAction {
     origin: 'human_ui',
     ...overrides,
   }
+}
+
+const AGENT_ACTOR: ActorRef = {
+  kind: 'agent',
+  agentId: 'agent-design',
+  role: 'design',
+  runtime: 'test-runtime',
+  displayName: 'Design Agent',
 }
 
 /** Collect emitted events for assertions. */
@@ -118,5 +126,33 @@ describe('DesignEngineService', () => {
     expect(applied).toBe(1)
     await engine.rollbackPatch({ sessionId: SESSION, patchId: patch.patchId })
     expect(reverted).toBe(1)
+  })
+
+  it('holds agent-originated write actions pending until permission is granted', async () => {
+    const { engine, events } = makeEngine()
+    const { patch, permissionRequestId, permission } = await engine.proposeAction({
+      sessionId: SESSION,
+      action: makeAction({
+        actor: AGENT_ACTOR,
+        origin: 'agent_tool',
+        op: { kind: 'set_style', props: { color: 'red' } },
+      }),
+    })
+
+    expect(patch.status).toBe('pending')
+    expect(permissionRequestId).toBeTruthy()
+    expect(permission).toMatchObject({ required: true, level: 'L2' })
+    const proposedEvent = events.find((e) => e.type === 'design_action_proposed')
+    expect(proposedEvent).toMatchObject({
+      type: 'design_action_proposed',
+      permissionRequestId,
+      permission: { required: true, level: 'L2' },
+    })
+    await expect(engine.commitPatch({ sessionId: SESSION, patchId: patch.patchId })).rejects.toThrow(/requires permission/)
+
+    const committed = await engine.commitPatch({ sessionId: SESSION, patchId: patch.patchId, permissionGranted: true })
+    expect(committed.patch.status).toBe('committed')
+    const committedEvent = events.find((e) => e.type === 'design_patch_committed')
+    expect(committedEvent).toMatchObject({ actor: AGENT_ACTOR })
   })
 })

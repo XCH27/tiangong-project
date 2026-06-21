@@ -16,7 +16,16 @@
  * RPC 名见 `channels.ts` 的 `RPC_CHANNELS.design`。类型见 `design.ts`。
  */
 
-import type { DesignSelection, DesignAction, DesignPatch } from './design'
+import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
+
+export type DesignPermissionLevel = 'L0' | 'L1' | 'L2' | 'L3'
+
+export interface DesignActionPermission {
+  required: boolean
+  level: DesignPermissionLevel
+  reason: string
+  actor: ActorRef
+}
 
 export interface SetSelectionInput {
   sessionId: string
@@ -33,11 +42,16 @@ export interface ProposeActionResult {
   patch: DesignPatch
   /** 若动作触发权限请求，这里带回 requestId（与 craft permission_request 对齐）。 */
   permissionRequestId?: string
+  /** 本动作的权限判定。v1 只做后端闸门；UI permission 卡片后续接入。 */
+  permission?: DesignActionPermission
 }
 
 export interface CommitPatchInput {
   sessionId: string
   patchId: string
+  /** 临时授权标记：后续由 craft permission_request result 替代，不作为第二套权限系统。 */
+  permissionGranted?: boolean
+  permissionRequestId?: string
 }
 
 export interface CommitPatchResult {
