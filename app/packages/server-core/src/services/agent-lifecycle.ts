@@ -96,7 +96,7 @@ export class AgentLifecycleService {
     this.handles.set(id, handle)
     handle.status = 'running'
     handle.lastTransitionAt = this.now()
-    this.persistence.save(this.toDesc(handle)).catch(() => {})
+    this.persistence.save(this.toLifecycleDescriptor(handle)).catch(() => {})
     return { ...handle }
   }
 
@@ -139,7 +139,7 @@ export class AgentLifecycleService {
     h.lastTransitionAt = ts
     h.status = 'stopped'
     h.stoppedAt = ts
-    this.persistence.save(this.toDesc(h)).catch(() => {})
+    this.persistence.save(this.toLifecycleDescriptor(h)).catch(() => {})
     return { ...h }
   }
 
@@ -159,7 +159,7 @@ export class AgentLifecycleService {
       displayName: input.displayName,
     }
     this.handles.set(id, h)
-    this.persistence.save(this.toDesc(h)).catch(() => {})
+    this.persistence.save(this.toLifecycleDescriptor(h)).catch(() => {})
     return { ...h }
   }
 
@@ -171,7 +171,7 @@ export class AgentLifecycleService {
     if (input.displayName !== undefined) h.displayName = input.displayName
     if (input.status !== undefined) h.status = input.status
     h.lastTransitionAt = this.now()
-    this.persistence.save(this.toDesc(h)).catch(() => {})
+    this.persistence.save(this.toLifecycleDescriptor(h)).catch(() => {})
     return { ...h }
   }
 
@@ -180,7 +180,7 @@ export class AgentLifecycleService {
     const h = this.getOrThrow(id)
     h.status = 'active'
     h.lastTransitionAt = this.now()
-    this.persistence.save(this.toDesc(h)).catch(() => {})
+    this.persistence.save(this.toLifecycleDescriptor(h)).catch(() => {})
     return { ...h }
   }
 
@@ -192,7 +192,7 @@ export class AgentLifecycleService {
     return res
   }
 
-  private toDesc(h: AgentHandle): AgentLifecycleDescriptor {
+  toLifecycleDescriptor(h: AgentHandle): AgentLifecycleDescriptor {
     return {
       agentId: h.agentId,
       kind: h.kind,
