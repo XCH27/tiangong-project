@@ -350,6 +350,7 @@ export const CHANNEL_MAP = {
   createExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.CREATE),
   getExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.GET),
   advanceExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.ADVANCE),
+  completeExternalReviewJobWithReport: invoke(RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT),
   listExternalReviewJobsByBundle: invoke(RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE),
   listAgents: invoke(RPC_CHANNELS.agents.LIST),
   getAgent: invoke(RPC_CHANNELS.agents.GET),

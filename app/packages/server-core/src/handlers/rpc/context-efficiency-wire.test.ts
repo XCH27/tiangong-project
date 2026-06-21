@@ -82,6 +82,7 @@ describe('context efficiency RPC handlers', () => {
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.CREATE)).toBe(true)
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.GET)).toBe(true)
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.ADVANCE)).toBe(true)
+    expect(handlers.has(RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT)).toBe(true)
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE)).toBe(true)
   })
 })

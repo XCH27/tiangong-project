@@ -102,6 +102,7 @@ const EXPECTED_CHANNELS: string[] = [
   'externalReview:listByBundle',
   'externalReview:save',
   'externalReviewJob:advance',
+  'externalReviewJob:completeWithReport',
   'externalReviewJob:create',
   'externalReviewJob:get',
   'externalReviewJob:listByBundle',

@@ -7,14 +7,18 @@ import type { RpcServer } from '@craft-agent/server-core/transport'
 import {
   RPC_CHANNELS,
   type AdvanceExternalReviewJobInput,
+  type CompleteExternalReviewJobWithReportInput,
+  type CompleteExternalReviewJobWithReportResult,
   type CreateExternalReviewJobInput,
   type ExternalReviewJob,
 } from '@craft-agent/shared/protocol'
 import type { HandlerDeps } from '../handler-deps'
+import { completeExternalReviewJobWithReport } from '../../services/external-review-completion-service'
 import {
   externalReviewJobStore,
   type ExternalReviewJobTransition,
 } from '../../services/external-review-job-service'
+import { externalReviewReportStore } from '../../services/external-review-report'
 
 function toTransition(input: AdvanceExternalReviewJobInput): ExternalReviewJobTransition {
   switch (input.transition) {
@@ -58,6 +62,16 @@ export function registerExternalReviewJobHandlers(server: RpcServer, _deps: Hand
       const jobId = input.jobId?.trim()
       if (!jobId) throw new Error('externalReviewJob:advance jobId is required')
       return externalReviewJobStore.transition(jobId, toTransition(input))
+    },
+  )
+
+  server.handle(
+    RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT,
+    async (_ctx, input: CompleteExternalReviewJobWithReportInput): Promise<CompleteExternalReviewJobWithReportResult> => {
+      return completeExternalReviewJobWithReport(input, {
+        jobs: externalReviewJobStore,
+        reports: externalReviewReportStore,
+      })
     },
   )
 

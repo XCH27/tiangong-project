@@ -93,6 +93,7 @@ export const RPC_CHANNELS = {
     CREATE: 'externalReviewJob:create',
     GET: 'externalReviewJob:get',
     ADVANCE: 'externalReviewJob:advance',
+    COMPLETE_WITH_REPORT: 'externalReviewJob:completeWithReport',
     LIST_BY_BUNDLE: 'externalReviewJob:listByBundle',
   },
   agents: {

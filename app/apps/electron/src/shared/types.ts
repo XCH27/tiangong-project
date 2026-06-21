@@ -272,6 +272,8 @@ import type {
   CreateExternalReviewJobInput,
   ExternalReviewJob,
   AdvanceExternalReviewJobInput,
+  CompleteExternalReviewJobWithReportInput,
+  CompleteExternalReviewJobWithReportResult,
   ContextCenterOverview,
   ContextCenterOverviewInput,
   AgentRegistryListInput,
@@ -678,6 +680,7 @@ export interface ElectronAPI {
   createExternalReviewJob(input: CreateExternalReviewJobInput): Promise<ExternalReviewJob>
   getExternalReviewJob(jobId: string): Promise<ExternalReviewJob | null>
   advanceExternalReviewJob(input: AdvanceExternalReviewJobInput): Promise<ExternalReviewJob>
+  completeExternalReviewJobWithReport(input: CompleteExternalReviewJobWithReportInput): Promise<CompleteExternalReviewJobWithReportResult>
   listExternalReviewJobsByBundle(bundleId: string): Promise<ExternalReviewJob[]>
   listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
   getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>

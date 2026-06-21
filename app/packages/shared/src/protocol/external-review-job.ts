@@ -2,6 +2,8 @@
  * External review job state machine — local-only status tracking, no auto submit.
  */
 
+import type { CreateExternalReviewReportInput, ExternalReviewReport } from './external-review'
+
 export type ExternalReviewJobStatus =
   | 'pending_auth'
   | 'submitted'
@@ -44,4 +46,14 @@ export interface AdvanceExternalReviewJobInput {
   completedAt?: number
   reportId?: string
   reason?: string
+}
+
+export interface CompleteExternalReviewJobWithReportInput {
+  jobId: string
+  report: CreateExternalReviewReportInput
+}
+
+export interface CompleteExternalReviewJobWithReportResult {
+  job: ExternalReviewJob
+  report: ExternalReviewReport
 }

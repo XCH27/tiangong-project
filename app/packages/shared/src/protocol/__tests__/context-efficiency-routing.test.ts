@@ -9,6 +9,7 @@ const CONTEXT_EFFICIENCY_LOCAL_CHANNELS = [
   RPC_CHANNELS.externalReviewJob.CREATE,
   RPC_CHANNELS.externalReviewJob.GET,
   RPC_CHANNELS.externalReviewJob.ADVANCE,
+  RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT,
   RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE,
 ] as const
 
