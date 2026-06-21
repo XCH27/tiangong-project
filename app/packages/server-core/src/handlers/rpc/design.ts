@@ -20,6 +20,7 @@ import { BrowserPaneDesignDomWriter, type BrowserPaneEvaluator } from '../../ser
 import { DesignDomPatchApplier } from '../../services/design-dom-applier'
 import { DesignEngineService } from '../../services/design-engine'
 import { FileDesignEnginePersistence } from '../../services/design-engine-persistence'
+import { DesignSurfaceDomPatchWriter } from '../../services/design-surface-dom-writer'
 import { DesignWorkbenchApplier } from '../../services/design-workbench-applier'
 
 export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): void {
@@ -31,8 +32,10 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
     new DesignWorkbenchApplier(
       new DesignAnnotationApplier(sessionManager),
       new DesignDomPatchApplier(
-        new BrowserPaneDesignDomWriter({
-          resolveBrowserPaneManager: (sessionId) => resolveBrowserPaneManager(deps, sessionId),
+        new DesignSurfaceDomPatchWriter({
+          browser: new BrowserPaneDesignDomWriter({
+            resolveBrowserPaneManager: (sessionId) => resolveBrowserPaneManager(deps, sessionId),
+          }),
         }),
       ),
     ),
