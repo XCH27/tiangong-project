@@ -107,3 +107,35 @@ export interface ProjectPackResult {
 export interface ProjectPackPlanPreviewResult {
   summary: ProjectPackPlanPreviewSummary
 }
+
+export type ProjectPackReviewPromptStatus = 'ready' | 'blocked'
+
+export interface ProjectPackReviewPromptCostMetadata {
+  status: 'unknown'
+  label: 'external-platform-cost-unknown'
+  note: string
+}
+
+export interface ProjectPackReviewPromptMetadata {
+  bundleId: string
+  bundleHash: string
+  fileCount: number
+  estimatedTokens: number
+  tokenEstimateKind: 'estimate'
+  secretScan: {
+    scannedFileCount: number
+    findingCount: number
+    hasHighSeverity: boolean
+    status: 'passed' | 'blocked'
+  }
+  externalExportAllowed: boolean
+  externalPlatformCost: ProjectPackReviewPromptCostMetadata
+}
+
+export interface ProjectPackReviewPromptResult {
+  status: ProjectPackReviewPromptStatus
+  metadata: ProjectPackReviewPromptMetadata
+  reasons: string[]
+  /** 可复制到外部审查平台的提示词；blocked 时必须为 null。 */
+  reviewPrompt: string | null
+}
