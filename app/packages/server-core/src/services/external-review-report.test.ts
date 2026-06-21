@@ -11,6 +11,30 @@ afterEach(async () => {
 })
 
 describe('external review report', () => {
+  it('extracts structured findings from pasted markdown when findings are not provided', () => {
+    const report = createExternalReviewReport({
+      bundleId: 'bundle-1',
+      bundleHash: 'abc123',
+      platformId: 'claude-web',
+      transport: 'manual',
+      rawOutput: [
+        '## Review',
+        '- High: Missing permission check in app/packages/server-core/src/sessions/SessionManager.ts:120',
+        '  Evidence: write actions can proceed before the actor is checked.',
+        '  Recommendation: gate the mutation through permission before commit.',
+        '- Medium: Context bundle includes generated files in app/tmp/report.json',
+        '  建议：exclude generated files before external review.',
+      ].join('\n'),
+    }, 1000)
+
+    expect(report.findings).toHaveLength(2)
+    expect(report.findingCounts.high).toBe(1)
+    expect(report.findingCounts.medium).toBe(1)
+    expect(report.findings[0]!.relativePath).toBe('app/packages/server-core/src/sessions/SessionManager.ts')
+    expect(report.findings[0]!.line).toBe(120)
+    expect(report.findings[0]!.recommendation).toContain('gate the mutation')
+  })
+
   it('keeps Fleet token usage separate from unknown external cost', () => {
     const report = createExternalReviewReport({
       bundleId: 'bundle-1',
@@ -84,4 +108,3 @@ describe('external review report', () => {
     expect(reports[0]!.createdAt).toBeGreaterThanOrEqual(reports[1]!.createdAt)
   })
 })
-
