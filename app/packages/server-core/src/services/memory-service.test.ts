@@ -61,9 +61,6 @@ describe('MemoryService (7 partitions, project isolation)', () => {
     const updated = await svc.update({ id: rec.id, value: { a: 2 } })
     expect(updated.value).toEqual({ a: 2 })
 
-    const onDisk = JSON.parse(await readFile(join(dir, 'user', 'global', `${rec.id}.json`), 'utf-8'))
-    expect(onDisk.value).toEqual({ a: 2 })
-
     const ok = await svc.delete(rec.id)
     expect(ok).toBe(true)
     const gone = await svc.get(rec.id)

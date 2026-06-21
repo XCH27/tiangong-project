@@ -2,6 +2,10 @@ import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { FileMemoryPersistence, getMemoryDataDir } from './memory-persistence'
+import type { MemoryRecord, MemoryPartition } from '@craft-agent/shared/protocol'
+
+export type { MemoryRecord } from '@craft-agent/shared/protocol'
 
 export const MEMORY_PARTITIONS = [
   'user',
@@ -13,20 +17,7 @@ export const MEMORY_PARTITIONS = [
   'review',
 ] as const
 
-export type MemoryPartition = (typeof MEMORY_PARTITIONS)[number]
-
-export interface MemoryRecord {
-  id: string
-  partition: MemoryPartition
-  projectId?: string
-  agentId?: string
-  key?: string
-  value: unknown
-  createdAt: number
-  updatedAt: number
-  meta?: Record<string, unknown>
-  risk?: 'low' | 'medium' | 'high'
-}
+export type { MemoryPartition }
 
 export interface MemoryQuery {
   partition?: MemoryPartition
@@ -41,8 +32,12 @@ export interface MemoryCreateInput {
   projectId?: string
   agentId?: string
   key?: string
-  value: unknown
+  value?: unknown
+  content?: unknown
+  tags?: string[]
+  source?: string
   meta?: Record<string, unknown>
+  risk?: 'low' | 'medium' | 'high'
 }
 
 export interface MemoryUpdateInput {
@@ -50,6 +45,12 @@ export interface MemoryUpdateInput {
   value?: unknown
   key?: string
   meta?: Record<string, unknown>
+}
+
+export interface MemoryDeleteOptions {
+  confirmed?: boolean
+  reason?: string
+  riskLevel?: 'low' | 'medium' | 'high'
 }
 
 function requirePartition(p: string): MemoryPartition {
@@ -62,10 +63,6 @@ function requirePartition(p: string): MemoryPartition {
 function requireId(id: string): string {
   if (typeof id !== 'string' || !id.trim()) throw new Error('id is required')
   return id
-}
-
-export function getMemoryDataDir(): string {
-  return join(homedir(), '.craft-agent', 'fleet', 'memory')
 }
 
 function recordPath(dir: string, partition: MemoryPartition, projectId: string | undefined, id: string): string {
@@ -91,51 +88,37 @@ async function readJsonSafe<T>(p: string): Promise<T | null> {
 }
 
 export class MemoryService {
-  constructor(private readonly dataDir = getMemoryDataDir()) {}
+  private persistence: FileMemoryPersistence
+
+  constructor(dataDir?: string) {
+    const dir = dataDir || getMemoryDataDir()
+    this.persistence = new FileMemoryPersistence(dir)
+  }
 
   async create(input: MemoryCreateInput, now = Date.now()): Promise<MemoryRecord> {
     const partition = requirePartition(input.partition)
     if (partition === 'project' && !input.projectId) {
       throw new Error('project partition requires projectId')
     }
-    const id = randomUUID()
-    const rec: MemoryRecord = {
-      id,
+    const val = input.value !== undefined ? input.value : input.content
+    const rec = await this.persistence.add({
       partition,
       projectId: input.projectId,
       agentId: input.agentId,
       key: input.key,
-      value: input.value,
-      createdAt: now,
-      updatedAt: now,
+      value: val,
       meta: input.meta,
-    }
-    const path = recordPath(this.dataDir, partition, input.projectId, id)
-    await ensureDir(join(this.dataDir, partition, input.projectId ? sanitize(input.projectId) : 'global'))
-    await writeFile(path, JSON.stringify(rec, null, 2), 'utf-8')
+      risk: input.risk,
+    } as any)
     return rec
   }
 
   async get(id: string): Promise<MemoryRecord | null> {
-    const safeId = requireId(id)
-    // search all partitions/scopes for the id
-    for (const p of MEMORY_PARTITIONS) {
-      const base = join(this.dataDir, p)
-      try {
-        const scopes = await readdir(base)
-        for (const sc of scopes) {
-          const candidate = join(base, sc, `${safeId}.json`)
-          const rec = await readJsonSafe<MemoryRecord>(candidate)
-          if (rec) return rec
-        }
-      } catch {
-        // ignore missing partition dir
-      }
-    }
-    return null
+    return this.persistence.get(id)
   }
 
   async update(input: MemoryUpdateInput, now = Date.now()): Promise<MemoryRecord> {
+    // simple in-mem update via persistence get+re-add (for compatibility)
     const existing = await this.get(input.id)
     if (!existing) throw new Error(`memory record not found: ${input.id}`)
     const next: MemoryRecord = {
@@ -145,96 +128,45 @@ export class MemoryService {
       meta: input.meta !== undefined ? input.meta : existing.meta,
       updatedAt: now,
     }
-    const path = recordPath(this.dataDir, next.partition, next.projectId, next.id)
-    await ensureDir(join(this.dataDir, next.partition, next.projectId ? sanitize(next.projectId) : 'global'))
-    await writeFile(path, JSON.stringify(next, null, 2), 'utf-8')
+    // re-add with same id
+    await this.persistence.add({ ...next, id: next.id } as any)
     return next
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, opts?: MemoryDeleteOptions): Promise<boolean> {
     const rec = await this.get(id)
     if (!rec) return false
-    const path = recordPath(this.dataDir, rec.partition, rec.projectId, rec.id)
-    try {
-      await rm(path, { force: true })
-      return true
-    } catch {
-      return false
+    const risk = (rec as any).risk || 'low'
+    if ((risk === 'high' || risk === 'medium') && !opts?.confirmed) {
+      throw new Error('delete requires explicit confirmation for medium/high risk memory')
     }
+    return this.persistence.remove(id, { reason: opts?.reason, riskLevel: risk })
   }
 
   async query(q: MemoryQuery = {}): Promise<MemoryRecord[]> {
-    const limit = q.limit && q.limit > 0 ? q.limit : 100
-    const results: MemoryRecord[] = []
-    let parts = q.partition ? [requirePartition(q.partition)] : [...MEMORY_PARTITIONS]
-    // Project memory is isolated by default: global queries (no projectId) must never return project partition items.
+    let res = await this.persistence.list(q as any)
     if (!q.projectId) {
-      parts = parts.filter((p) => p !== 'project')
+      res = res.filter((r: any) => r.partition !== 'project')
     }
+    if (q.keyword) {
+      const k = q.keyword.toLowerCase()
+      res = res.filter((r: any) => JSON.stringify(r).toLowerCase().includes(k))
+    }
+    const lim = q.limit || 100
+    return res.slice(0, lim)
+  }
 
-    for (const p of parts) {
-      const base = join(this.dataDir, p)
-      let scopes: string[] = []
-      try {
-        scopes = await readdir(base)
-      } catch {
-        continue
-      }
-      for (const sc of scopes) {
-        if (q.projectId && sc !== sanitize(q.projectId) && sc !== 'global') continue
-        const dir = join(base, sc)
-        let names: string[]
-        try {
-          names = await readdir(dir)
-        } catch {
-          continue
-        }
-        for (const n of names) {
-          if (!n.endsWith('.json')) continue
-          const rec = await readJsonSafe<MemoryRecord>(join(dir, n))
-          if (!rec) continue
-          if (q.projectId && rec.projectId && rec.projectId !== q.projectId) continue
-          if (q.agentId && rec.agentId !== q.agentId) continue
-          if (q.keyword) {
-            const hay = JSON.stringify(rec).toLowerCase()
-            if (!hay.includes(q.keyword.toLowerCase())) continue
-          }
-          results.push(rec)
-          if (results.length >= limit) break
-        }
-        if (results.length >= limit) break
-      }
-      if (results.length >= limit) break
-    }
-    return results.slice(0, limit)
+  async search(keyword: string, q: Omit<MemoryQuery, 'keyword'> = {}): Promise<MemoryRecord[]> {
+    return this.persistence.search(keyword, q as any)
   }
 
   async clear(partition: MemoryPartition, projectId?: string): Promise<number> {
-    const p = requirePartition(partition)
-    const scope = projectId ? sanitize(projectId) : null
-    const base = join(this.dataDir, p)
-    let deleted = 0
-    try {
-      const scopes = await readdir(base)
-      for (const sc of scopes) {
-        if (scope && sc !== scope) continue
-        const dir = join(base, sc)
-        let names: string[]
-        try { names = await readdir(dir) } catch { continue }
-        for (const n of names) {
-          if (n.endsWith('.json')) {
-            await rm(join(dir, n), { force: true })
-            deleted++
-          }
-        }
-      }
-    } catch {
-      // no dir
-    }
-    return deleted
+    const all = await this.persistence.list({ partition, projectId } as any)
+    let n = 0
+    for (const r of all) { if (await this.persistence.remove(r.id)) n++ }
+    return n
   }
 
-  // Project memory default isolation helper: queries without projectId never return project partition items
   async queryForProject(projectId: string, extra: Omit<MemoryQuery, 'projectId'> = {}): Promise<MemoryRecord[]> {
     if (!projectId) throw new Error('projectId required for project scoped query')
     return this.query({ ...extra, projectId })

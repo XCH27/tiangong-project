@@ -1,13 +1,18 @@
-import { describe, expect, it, beforeEach } from 'bun:test'
+import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { DecisionService } from './decision-service'
-import type { MemoryRecord } from './memory-service'
+import type { MemoryRecord } from '@craft-agent/shared/protocol'
 
 describe('DecisionService (L0-L3 pure rules + audit)', () => {
   let svc: DecisionService
   let memHit: MemoryRecord
+  let dataDir: string
 
-  beforeEach(() => {
-    svc = new DecisionService()
+  beforeEach(async () => {
+    dataDir = await mkdtemp(join(tmpdir(), 'decision-'))
+    svc = new DecisionService(dataDir)
     memHit = {
       id: 'm1',
       partition: 'user',
@@ -15,6 +20,10 @@ describe('DecisionService (L0-L3 pure rules + audit)', () => {
       createdAt: 1,
       updatedAt: 1,
     }
+  })
+
+  afterEach(async () => {
+    if (dataDir) await rm(dataDir, { recursive: true, force: true })
   })
 
   it('L0: local read-only always allowed, no confirm', () => {
@@ -68,6 +77,13 @@ describe('DecisionService (L0-L3 pure rules + audit)', () => {
   it('L2 can use memoryHit as rule basis', () => {
     const a = svc.decide({ action: 'execute', scope: 'local', risk: 'reversible', memoryHit: memHit })
     expect(a.allowed).toBe(true)
-    expect(a.ruleRef).toBe('L2-PREAUTH-OR-MEMORY')
+    expect(a.ruleRef).toBe('L2-PREAUTH')
+  })
+
+  it('evaluate returns structured outcome', () => {
+    const r = svc.evaluate({ action: 'read', scope: 'local', risk: 'read-only' })
+    expect(r.outcome).toBe('allow')
+    expect(r.level).toBe('L0')
+    expect(r.requiresExplicitConfirm).toBe(false)
   })
 })

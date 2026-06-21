@@ -1,16 +1,26 @@
-import { describe, expect, it, beforeEach } from 'bun:test'
+import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AgentLifecycleService } from './agent-lifecycle'
 
 describe('AgentLifecycleService', () => {
   let now = 1000
   let svc: AgentLifecycleService
+  let dataDir: string
 
-  beforeEach(() => {
+  beforeEach(async () => {
     now = 1000
+    dataDir = await mkdtemp(join(tmpdir(), 'agent-life-'))
     svc = new AgentLifecycleService({
       now: () => now,
       simulatePid: (id) => (id.includes('manager') ? 42 : 1001),
+      dataDir,
     })
+  })
+
+  afterEach(async () => {
+    if (dataDir) await rm(dataDir, { recursive: true, force: true })
   })
 
   it('starts a manager agent and transitions to running with pid', () => {
