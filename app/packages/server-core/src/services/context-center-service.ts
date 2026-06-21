@@ -118,10 +118,10 @@ export function buildContextCenterOverview(params: {
   const { input, session, contextTools, projectEnvironment, projectPackSummary, projectPackPlanPreview } = params
   const notes: string[] = []
   if (!input.sessionId) notes.push('未提供 sessionId，无法读取真实用量')
-  if (input.sessionId && !session) notes.push('未找到 session，无法读取真实用量')
+  if (input.sessionId && !session) notes.push(`sessionId=${input.sessionId} 不存在，无法读取真实用量`)
   if (input.rootPath && !projectEnvironment) notes.push('未生成项目环境摘要')
-  if (input.bundleId && projectPackSummary === undefined) notes.push('未读取到项目包摘要')
-  if (input.projectPackPreviewRequest && projectPackPlanPreview === undefined) notes.push('未生成项目包 dry-run 预览')
+  if (input.bundleId && projectPackSummary === undefined) notes.push(`bundleId=${input.bundleId} 未找到已保存的项目包摘要`)
+  if (input.projectPackPreviewRequest && projectPackPlanPreview === undefined) notes.push('ProjectPack dry-run 预览请求未返回结果')
 
   const overview: ContextCenterOverview = {
     generatedAt: params.generatedAt ?? Date.now(),

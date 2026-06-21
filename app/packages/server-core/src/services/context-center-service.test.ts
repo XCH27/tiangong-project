@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'bun:test'
-import type { ProjectEnvironmentProfile, ProjectPackPlanPreviewSummary, ProjectPackSummary, ToolCapability } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import type {
+  ProjectEnvironmentProfile,
+  ProjectPackPlanPreviewSummary,
+  ProjectPackSummary,
+  ToolCapability,
+} from '@craft-agent/shared/protocol'
+import type { HandlerFn, RequestContext, RpcServer } from '@craft-agent/server-core/transport'
+import type { HandlerDeps } from '../handlers/handler-deps'
+import { registerContextCenterHandlers } from '../handlers/rpc/context-center'
 import { buildContextCenterOverview } from './context-center-service'
 
 function tool(toolId: string): ToolCapability {
@@ -14,6 +23,47 @@ function tool(toolId: string): ToolCapability {
     risk: 'read-only',
     diagnostics: [],
   }
+}
+
+function createContextCenterRpcHarness() {
+  const handlers = new Map<string, HandlerFn>()
+
+  const server: RpcServer = {
+    handle(channel, handler) {
+      handlers.set(channel, handler)
+    },
+    push() {},
+    async invokeClient() {
+      return undefined
+    },
+    hasClientCapability() { return false },
+    findClientsWithCapability() { return [] },
+  }
+
+  const deps = {
+    sessionManager: {
+      async getSession() {
+        throw new Error('getSession should not run for invalid input')
+      },
+    },
+    platform: {},
+    oauthFlowStore: {},
+  } as unknown as HandlerDeps
+
+  registerContextCenterHandlers(server, deps)
+
+  const getOverview = handlers.get(RPC_CHANNELS.contextCenter.GET_OVERVIEW)
+  if (!getOverview) {
+    throw new Error('context-center handlers not registered')
+  }
+
+  const ctx: RequestContext = {
+    clientId: 'client-1',
+    workspaceId: 'workspace-1',
+    webContentsId: 1,
+  }
+
+  return { getOverview, ctx }
 }
 
 describe('ContextCenter overview', () => {
@@ -234,5 +284,70 @@ describe('ContextCenter overview', () => {
       locality: 'unknown',
       note: '缺少项目包摘要',
     })
+  })
+
+  it('emits distinct notes for missing session, bundle, and preview evidence', () => {
+    const overview = buildContextCenterOverview({
+      input: {
+        sessionId: 'missing-session',
+        bundleId: 'missing-bundle',
+        projectPackPreviewRequest: { rootPath: '/repo', scope: 'repo' },
+      },
+      contextTools: [],
+      generatedAt: 1,
+    })
+
+    expect(overview.notes).toContain('sessionId=missing-session 不存在，无法读取真实用量')
+    expect(overview.notes).toContain('bundleId=missing-bundle 未找到已保存的项目包摘要')
+    expect(overview.notes).toContain('ProjectPack dry-run 预览请求未返回结果')
+    expect(overview.notes).not.toContain('未提供 sessionId，无法读取真实用量')
+  })
+})
+
+describe('registerContextCenterHandlers', () => {
+  it('rejects malformed overview input before service work runs', async () => {
+    const { getOverview, ctx } = createContextCenterRpcHarness()
+
+    await expect(getOverview(ctx)).rejects.toThrow('contextCenter:getOverview input must be an object')
+    await expect(getOverview(ctx, null)).rejects.toThrow('contextCenter:getOverview input must be an object')
+    await expect(getOverview(ctx, [])).rejects.toThrow('contextCenter:getOverview input must be an object')
+    await expect(getOverview(ctx, { sessionId: 123 })).rejects.toThrow(
+      'contextCenter:getOverview sessionId must be a string',
+    )
+    await expect(getOverview(ctx, { rootPath: false })).rejects.toThrow(
+      'contextCenter:getOverview rootPath must be a string',
+    )
+    await expect(getOverview(ctx, { workspaceId: 123 })).rejects.toThrow(
+      'contextCenter:getOverview workspaceId must be a string',
+    )
+    await expect(getOverview(ctx, { bundleId: 123 })).rejects.toThrow(
+      'contextCenter:getOverview bundleId must be a string',
+    )
+    await expect(getOverview(ctx, { forceToolDetection: 'yes' })).rejects.toThrow(
+      'contextCenter:getOverview forceToolDetection must be a boolean',
+    )
+  })
+
+  it('rejects malformed ProjectPack preview requests', async () => {
+    const { getOverview, ctx } = createContextCenterRpcHarness()
+
+    await expect(getOverview(ctx, { projectPackPreviewRequest: 'repo' })).rejects.toThrow(
+      'contextCenter:getOverview projectPackPreviewRequest must be an object',
+    )
+    await expect(getOverview(ctx, { projectPackPreviewRequest: { scope: 'repo' } })).rejects.toThrow(
+      'contextCenter:getOverview projectPackPreviewRequest.rootPath must be a string',
+    )
+    await expect(getOverview(ctx, { projectPackPreviewRequest: { rootPath: '/repo', scope: 'all' } })).rejects.toThrow(
+      'contextCenter:getOverview projectPackPreviewRequest.scope must be one of repo, diff, directory',
+    )
+    await expect(
+      getOverview(ctx, { projectPackPreviewRequest: { rootPath: '/repo', scope: 'directory', relativePath: 1 } }),
+    ).rejects.toThrow('contextCenter:getOverview projectPackPreviewRequest.relativePath must be a string')
+    await expect(
+      getOverview(ctx, { projectPackPreviewRequest: { rootPath: '/repo', scope: 'repo', maxFileBytes: 'large' } }),
+    ).rejects.toThrow('contextCenter:getOverview projectPackPreviewRequest.maxFileBytes must be a number')
+    await expect(
+      getOverview(ctx, { projectPackPreviewRequest: { rootPath: '/repo', scope: 'repo', maxFiles: Number.NaN } }),
+    ).rejects.toThrow('contextCenter:getOverview projectPackPreviewRequest.maxFiles must be a number')
   })
 })
