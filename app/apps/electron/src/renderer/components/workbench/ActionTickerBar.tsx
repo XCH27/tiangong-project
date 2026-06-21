@@ -27,6 +27,7 @@ const ACTOR_FILTERS = ['全部', '我', 'Agent'] as const
 
 const KIND_COLOR: Record<DesignTickerEntry['kind'], string> = {
   selection: 'text-sky-600 dark:text-sky-400',
+  decision: 'text-blue-600 dark:text-blue-400',
   proposed: 'text-amber-600 dark:text-amber-400',
   committed: 'text-emerald-600 dark:text-emerald-400',
   rolled_back: 'text-muted-foreground',

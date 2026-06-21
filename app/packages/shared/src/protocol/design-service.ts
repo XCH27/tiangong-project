@@ -17,6 +17,7 @@
  */
 
 import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
+import type { DecisionOutcome } from './decision'
 
 export type DesignPermissionLevel = 'L0' | 'L1' | 'L2' | 'L3'
 
@@ -25,6 +26,17 @@ export interface DesignActionPermission {
   level: DesignPermissionLevel
   reason: string
   actor: ActorRef
+  outcome?: DecisionOutcome
+  ruleRef?: string
+  auditId?: string
+  timestamp?: number
+  requiresExplicitConfirm?: boolean
+}
+
+export interface DesignActionDecisionContext {
+  hasPreAuth?: boolean
+  memoryHints?: Array<{ partition: string; id?: string; key?: string }>
+  requiresExplicitConfirm?: boolean
 }
 
 export interface SetSelectionInput {
@@ -35,6 +47,8 @@ export interface SetSelectionInput {
 export interface ProposeActionInput {
   sessionId: string
   action: DesignAction
+  /** Optional automatic-decision context. Does not bypass permission; it records the basis. */
+  decision?: DesignActionDecisionContext
 }
 
 export interface ProposeActionResult {

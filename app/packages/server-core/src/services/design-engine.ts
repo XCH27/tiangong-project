@@ -22,6 +22,7 @@ import type {
   DesignAction,
   DesignPatch,
   DesignActionPermission,
+  DecisionOutcome,
   SetSelectionInput,
   ProposeActionInput,
   ProposeActionResult,
@@ -31,6 +32,7 @@ import type {
   RollbackPatchResult,
 } from '@craft-agent/shared/protocol'
 import type { DesignEnginePersistence, PersistedDesignPatch } from './design-engine-persistence'
+import { decisionService, type DecisionService, type DecisionRuleContext } from './decision-service'
 
 /** Surface 适配器：把动作算成可应用/可回滚的补丁内容。由具体画布注册。 */
 export interface DesignPatchApplier {
@@ -64,6 +66,7 @@ export class DesignEngineService implements DesignEngine {
     private readonly emit: (event: SessionEvent) => void,
     private readonly applier?: DesignPatchApplier,
     private readonly persistence?: DesignEnginePersistence,
+    private readonly decisions: Pick<DecisionService, 'evaluate'> = decisionService,
   ) {}
 
   async setSelection(input: SetSelectionInput): Promise<void> {
@@ -92,7 +95,8 @@ export class DesignEngineService implements DesignEngine {
       inverse = computed.inverse
     }
 
-    const permission = evaluateDesignActionPermission(action)
+    const decision = this.evaluateDecision(action, input.decision)
+    const permission = evaluateDesignActionPermission(action, decision)
     const permissionRequestId = permission.required ? randomUUID() : undefined
     const patch: DesignPatch = {
       patchId: randomUUID(),
@@ -105,6 +109,21 @@ export class DesignEngineService implements DesignEngine {
     this.patches.set(patch.patchId, { patch, action, permission, permissionRequestId })
     await this.persistence?.savePatch({ patch, action })
 
+    this.emit({
+      type: 'decision_evaluated',
+      sessionId,
+      source: 'design_action',
+      action: decision.action,
+      target: decision.target,
+      actor: action.actor,
+      outcome: decision.outcome,
+      level: decision.level,
+      reason: decision.reason,
+      ruleRef: decision.ruleRef,
+      auditId: decision.auditId,
+      timestamp: decision.timestamp,
+      requiresExplicitConfirm: decision.requiresExplicitConfirm,
+    })
     this.emit({ type: 'design_action_proposed', sessionId, action, patchPreview: patch, permissionRequestId, permission })
     return { patch, permissionRequestId, permission }
   }
@@ -180,21 +199,62 @@ export class DesignEngineService implements DesignEngine {
     const selection = this.selections.get(sessionId) ?? null
     return selection?.selectionId === action.selectionId ? selection : null
   }
+
+  private evaluateDecision(action: DesignAction, input: ProposeActionInput['decision'] = {}): DesignActionDecisionResult {
+    const context = decisionContextForAction(action, input)
+    const result = this.decisions.evaluate(context)
+    return { ...result, action: context.action, target: context.target }
+  }
 }
 
-function evaluateDesignActionPermission(action: DesignAction): DesignActionPermission {
-  if (action.origin === 'agent_tool' || action.actor.kind === 'agent') {
-    return {
-      required: true,
-      level: 'L2',
-      reason: 'Agent 写入工作台内容需要用户授权或预授权规则。',
-      actor: action.actor,
-    }
-  }
+interface DesignActionDecisionResult {
+  action: string
+  target?: string
+  outcome: DecisionOutcome
+  level: DesignActionPermission['level']
+  reason: string
+  ruleRef: string
+  auditId: string
+  timestamp: number
+  requiresExplicitConfirm: boolean
+}
+
+function evaluateDesignActionPermission(action: DesignAction, decision: DesignActionDecisionResult): DesignActionPermission {
   return {
-    required: false,
-    level: 'L1',
-    reason: '人类 UI 发起的本地低风险编辑可直接预览并提交。',
+    required: decision.outcome !== 'allow',
+    level: decision.level,
+    reason: decision.reason,
+    actor: action.actor,
+    outcome: decision.outcome,
+    ruleRef: decision.ruleRef,
+    auditId: decision.auditId,
+    timestamp: decision.timestamp,
+    requiresExplicitConfirm: decision.requiresExplicitConfirm,
+  }
+}
+
+function decisionContextForAction(action: DesignAction, input: ProposeActionInput['decision'] = {}): DecisionRuleContext {
+  const isWrite = writesWorkbench(action)
+  return {
+    action: isWrite ? `write-design:${action.op.kind}` : `read-design:${action.op.kind}`,
+    scope: 'local',
+    target: action.selectionId,
+    risk: isWrite ? 'reversible' : 'read-only',
+    requiresUserConfirm: input.requiresExplicitConfirm,
+    hasPreAuth: action.origin === 'human_ui' || input.hasPreAuth,
+    memoryHit: input.memoryHints?.length
+      ? {
+          id: input.memoryHints[0]?.id ?? 'design-memory-hint',
+          partition: input.memoryHints[0]?.partition as any,
+          value: {},
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }
+      : null,
     actor: action.actor,
   }
+}
+
+function writesWorkbench(action: DesignAction): boolean {
+  return action.op.kind.length > 0
 }

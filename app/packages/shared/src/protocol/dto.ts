@@ -25,6 +25,7 @@ import type {
   CredentialAuthRequest as SharedCredentialAuthRequest,
 } from '../agent/index'
 import type { DesignActionPermission } from './design-service'
+import type { DecisionLevel, DecisionOutcome } from './decision'
 
 // Re-export generateMessageId for handler convenience
 export { generateMessageId } from '@craft-agent/core/types'
@@ -214,6 +215,7 @@ export type SessionEvent =
   | { type: 'working_directory_error'; sessionId: string; error: string }
   // Fleet 工作台动作事件（T-ENGINE）：人和 Agent 共用，进同一条 timeline，带 actor、可回放可回滚。
   | { type: 'selection_changed'; sessionId: string; selection: DesignSelection }
+  | { type: 'decision_evaluated'; sessionId: string; source: 'design_action' | 'permission'; action: string; target?: string; actor?: ActorRef; outcome: DecisionOutcome; level: DecisionLevel; reason: string; ruleRef: string; auditId: string; timestamp: number; requiresExplicitConfirm: boolean }
   | { type: 'design_action_proposed'; sessionId: string; action: DesignAction; patchPreview?: DesignPatch; permissionRequestId?: string; permission?: DesignActionPermission }
   | { type: 'design_patch_committed'; sessionId: string; patch: DesignPatch; actor: ActorRef }
   | { type: 'design_patch_rolled_back'; sessionId: string; patchId: string; actor: ActorRef }

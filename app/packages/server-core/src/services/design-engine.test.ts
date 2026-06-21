@@ -155,4 +155,54 @@ describe('DesignEngineService', () => {
     const committedEvent = events.find((e) => e.type === 'design_patch_committed')
     expect(committedEvent).toMatchObject({ actor: AGENT_ACTOR })
   })
+
+  it('records the automatic decision basis for agent-originated write actions', async () => {
+    const { engine, events } = makeEngine()
+    const { patch, permission } = await engine.proposeAction({
+      sessionId: SESSION,
+      action: makeAction({
+        actor: AGENT_ACTOR,
+        origin: 'agent_tool',
+        op: { kind: 'set_style', props: { color: 'red' } },
+      }),
+    })
+
+    expect(patch.status).toBe('pending')
+    expect(permission).toMatchObject({ required: true, level: 'L2', ruleRef: 'L2-NO-AUTH' })
+    expect(events.find((e) => e.type === 'decision_evaluated')).toMatchObject({
+      type: 'decision_evaluated',
+      sessionId: SESSION,
+      actor: AGENT_ACTOR,
+      source: 'design_action',
+      outcome: 'deny',
+      level: 'L2',
+      ruleRef: 'L2-NO-AUTH',
+    })
+  })
+
+  it('allows a preauthorized agent write while still emitting a decision audit event', async () => {
+    const { engine, events } = makeEngine()
+    const { patch, permission } = await engine.proposeAction({
+      sessionId: SESSION,
+      decision: { hasPreAuth: true },
+      action: makeAction({
+        actor: AGENT_ACTOR,
+        origin: 'agent_tool',
+        op: { kind: 'set_style', props: { color: 'red' } },
+      }),
+    })
+
+    expect(patch.status).toBe('preview')
+    expect(permission).toMatchObject({ required: false, level: 'L2', ruleRef: 'L2-PREAUTH' })
+    await expect(engine.commitPatch({ sessionId: SESSION, patchId: patch.patchId })).resolves.toMatchObject({
+      patch: { status: 'committed' },
+    })
+    expect(events.find((e) => e.type === 'decision_evaluated')).toMatchObject({
+      type: 'decision_evaluated',
+      source: 'design_action',
+      outcome: 'allow',
+      level: 'L2',
+      ruleRef: 'L2-PREAUTH',
+    })
+  })
 })

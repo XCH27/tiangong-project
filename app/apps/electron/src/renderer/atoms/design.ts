@@ -13,7 +13,7 @@
 import { atom } from 'jotai'
 import type { SessionEvent, DesignSelection, ActorRef } from '@craft-agent/shared/protocol'
 
-export type DesignTickerKind = 'selection' | 'proposed' | 'committed' | 'rolled_back' | 'tool'
+export type DesignTickerKind = 'selection' | 'decision' | 'proposed' | 'committed' | 'rolled_back' | 'tool'
 
 export interface DesignTickerEntry {
   id: string
@@ -47,6 +47,14 @@ export function mapDesignEventToEntry(event: SessionEvent): DesignTickerEntry | 
   switch (event.type) {
     case 'selection_changed':
       return { id, ts, kind: 'selection', actorLabel: designActorLabel(event.selection.createdBy), summary: `选择 ${event.selection.objects.length} 个对象` }
+    case 'decision_evaluated':
+      return {
+        id,
+        ts,
+        kind: 'decision',
+        actorLabel: designActorLabel(event.actor),
+        summary: `决策 ${event.level}/${event.outcome} · ${event.ruleRef}`,
+      }
     case 'design_action_proposed':
       return { id, ts, kind: 'proposed', actorLabel: designActorLabel(event.action.actor), summary: `提案 ${event.action.op.kind}` }
     case 'design_patch_committed':
