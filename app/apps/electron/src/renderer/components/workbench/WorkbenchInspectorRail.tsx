@@ -1,13 +1,13 @@
 import * as React from 'react'
 import { useAtomValue } from 'jotai'
-import { MousePointer2, PanelRight, RotateCcw, ShieldCheck } from 'lucide-react'
+import { MousePointer2, PanelRight } from 'lucide-react'
 import { UsageLedger } from '@craft-agent/ui'
 import { designLatestSelectionAtom, designTickerAtom } from '@/atoms/design'
 import { focusedSessionIdAtom } from '@/atoms/panel-stack'
 import { sessionAtomFamily, sessionMetaMapAtom } from '@/atoms/sessions'
 import { cn } from '@/lib/utils'
 import { useAppShellContext } from '@/context/AppShellContext'
-import { ProjectPackPanel } from './ProjectPackPanel'
+import { ContextEfficiencyPanel } from './ContextEfficiencyPanel'
 import { buildUsageLedgerData } from '@/lib/usage-ledger'
 
 const tabs = ['选区', '动作', '上下文'] as const
@@ -147,25 +147,12 @@ export function WorkbenchInspectorRail() {
               </div>
             )}
             <div className="rounded-[8px] border border-border/70 overflow-hidden">
-              <ProjectPackPanel rootPath={activeWorkspace?.rootPath ?? ''} />
-            </div>
-            <div className="rounded-[8px] border border-border/70 p-3">
-              <div className="flex items-center gap-2 font-medium">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
-                权限和证据
-              </div>
-              <p className="mt-2 text-muted-foreground leading-relaxed">
-                后续 ProjectPack、用量账本和外部审查结果会从这里接入，但共享壳由主线统一管理。
-              </p>
-            </div>
-            <div className="rounded-[8px] border border-border/70 p-3">
-              <div className="flex items-center gap-2 font-medium">
-                <RotateCcw className="h-3.5 w-3.5 text-muted-foreground" />
-                回滚点
-              </div>
-              <p className="mt-2 text-muted-foreground leading-relaxed">
-                committed patch 接入后，这里显示可回滚动作，不展示不可恢复的临时 DOM 状态。
-              </p>
+              <ContextEfficiencyPanel
+                variant="compact"
+                workspacePath={activeWorkspace?.rootPath ?? ''}
+                workspaceId={activeWorkspaceId ?? undefined}
+                sessionId={focusedSessionId ?? undefined}
+              />
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { ContextCenterOverview, ToolCapability } from '@craft-agent/shared/protocol'
-import { buildContextEfficiencyRecommendations } from './context-efficiency-advisor'
+import { buildContextEfficiencyRecommendations, buildContextCenterSidecarNotes } from './context-efficiency-advisor'
 
 function tool(toolId: string, capabilities: ToolCapability['capabilities']): ToolCapability {
   return {
@@ -52,6 +52,35 @@ describe('context efficiency advisor', () => {
       status: 'ready',
       requiresPermission: true,
     })
+  })
+
+  it('recommends unavailable sidecar actions when tools are missing', () => {
+    const base = overview()
+    const recommendations = buildContextEfficiencyRecommendations({
+      ...base,
+      contextTools: { value: [], confidence: 'real', locality: 'local' },
+    })
+    expect(recommendations.find((item) => item.action === 'query_code_graph')?.status).toBe('unavailable')
+    expect(recommendations.find((item) => item.action === 'compress_command_output')?.reason).toContain(
+      'Fleet 本地降级压缩逻辑',
+    )
+  })
+
+  it('buildContextCenterSidecarNotes describes missing and available tools', () => {
+    expect(buildContextCenterSidecarNotes([])).toEqual([
+      'codegraph 未纳入 System Tools 检测结果。',
+      'rtk 未纳入 System Tools 检测结果。',
+    ])
+    const notes = buildContextCenterSidecarNotes([
+      tool('codegraph', ['graph-query']),
+      {
+        ...tool('rtk', ['search-content']),
+        status: 'missing',
+        diagnostics: [{ level: 'info', code: 'missing', message: 'not found', repairSuggestion: 'brew install rtk' }],
+      },
+    ])
+    expect(notes[0]).toContain('codegraph 可用')
+    expect(notes[1]).toContain('不在 PATH')
   })
 })
 

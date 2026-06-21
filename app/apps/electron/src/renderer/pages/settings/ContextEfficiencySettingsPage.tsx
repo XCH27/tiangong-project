@@ -3,11 +3,11 @@ import { useAtomValue } from 'jotai'
 import { AlertCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { UsageLedger } from '@craft-agent/ui'
+import { ContextEfficiencyPanel } from '@/components/workbench/ContextEfficiencyPanel'
 import { focusedSessionIdAtom } from '@/atoms/panel-stack'
 import { sessionAtomFamily, sessionMetaMapAtom } from '@/atoms/sessions'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ProjectPackPanel } from '@/components/workbench/ProjectPackPanel'
 import { SettingsCard, SettingsRow, SettingsSection } from '@/components/settings'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { buildUsageLedgerData } from '@/lib/usage-ledger'
@@ -64,6 +64,7 @@ function ActiveSessionUsageSection() {
 export default function ContextEfficiencySettingsPage() {
   const { t } = useTranslation()
   const { workspaces, activeWorkspaceId } = useAppShellContext()
+  const focusedSessionId = useAtomValue(focusedSessionIdAtom)
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
 
   return (
@@ -78,15 +79,16 @@ export default function ContextEfficiencySettingsPage() {
 
           <ActiveSessionUsageSection />
 
-          <SettingsSection title={t('settings.contextEfficiency.projectPack')}>
+          <SettingsSection title="Context Center">
             {activeWorkspace ? (
               <SettingsCard>
-                <SettingsRow label={t('settings.contextEfficiency.workspace')}>
-                  <span className="text-xs text-muted-foreground break-all">{activeWorkspace.rootPath}</span>
-                </SettingsRow>
-                <div className="border-t">
-                  <ProjectPackPanel rootPath={activeWorkspace.rootPath} />
-                </div>
+                <ContextEfficiencyPanel
+                  variant="full"
+                  showFullProjectPack
+                  workspacePath={activeWorkspace.rootPath}
+                  workspaceId={activeWorkspaceId ?? undefined}
+                  sessionId={focusedSessionId ?? undefined}
+                />
               </SettingsCard>
             ) : (
               <SettingsCard>
@@ -95,12 +97,6 @@ export default function ContextEfficiencySettingsPage() {
                 </SettingsRow>
               </SettingsCard>
             )}
-          </SettingsSection>
-
-          <SettingsSection title={t('settings.contextEfficiency.next')}>
-            <SettingsCard className="px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-              {t('settings.contextEfficiency.nextDescription')}
-            </SettingsCard>
           </SettingsSection>
         </div>
       </ScrollArea>

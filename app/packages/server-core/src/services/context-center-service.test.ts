@@ -286,6 +286,20 @@ describe('ContextCenter overview', () => {
     })
   })
 
+  it('adds sidecar notes when context tools are present or missing', () => {
+    const overview = buildContextCenterOverview({
+      input: {},
+      contextTools: [
+        tool('codegraph'),
+        { ...tool('rtk'), status: 'missing', diagnostics: [{ level: 'info', code: 'missing', message: 'missing' }] },
+      ],
+      generatedAt: 1,
+    })
+
+    expect(overview.notes.some((n) => n.includes('codegraph 可用'))).toBe(true)
+    expect(overview.notes.some((n) => n.includes('rtk'))).toBe(true)
+  })
+
   it('emits distinct notes for missing session, bundle, and preview evidence', () => {
     const overview = buildContextCenterOverview({
       input: {

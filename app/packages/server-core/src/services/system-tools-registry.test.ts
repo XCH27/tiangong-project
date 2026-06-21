@@ -161,6 +161,12 @@ describe('SystemToolsRegistry', () => {
     expect(reg.listCached().length).toBe(0)
   })
 
+  it('registers codegraph and rtk sidecar tool ids', () => {
+    const reg = new SystemToolsRegistry({ spawn: missingSpawn(), platform: 'darwin', initialPath: '/x' })
+    expect(reg.listToolIds()).toContain('codegraph')
+    expect(reg.listToolIds()).toContain('rtk')
+  })
+
   it('throws on unknown toolId', async () => {
     const reg = new SystemToolsRegistry({ spawn: okSpawn(), platform: 'darwin', initialPath: '/opt/bin' })
     await expect(reg.detectTool('nope')).rejects.toThrow(/Unknown toolId/)

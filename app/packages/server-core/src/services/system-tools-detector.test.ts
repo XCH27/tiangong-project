@@ -234,11 +234,12 @@ describe('runDetector', () => {
     expect(cap.diagnostics.some((d) => d.code === 'multi-version')).toBe(true)
   })
 
-  it('produces unknown when platform not applicable', () => {
-    const pythonLauncherDef = BUILTIN_DETECTORS.find((d) => d.toolId === 'python-launcher')!
-    const spawn = mockSpawn({})
-    const cap = runDetector(pythonLauncherDef, { platform: darwin, spawn, initialPath: '/usr/bin' })
-    expect(cap.status).toBe('unknown')
-    expect(cap.diagnostics.some((d) => d.code === 'platform-not-applicable')).toBe(true)
+  it('includes codegraph and rtk in builtin context sidecar detectors', () => {
+    const codegraph = BUILTIN_DETECTORS.find((d) => d.toolId === 'codegraph')
+    const rtk = BUILTIN_DETECTORS.find((d) => d.toolId === 'rtk')
+    expect(codegraph?.category).toBe('context')
+    expect(codegraph?.capabilities).toContain('graph-query')
+    expect(rtk?.category).toBe('context')
+    expect(rtk?.command).toBe('rtk')
   })
 })

@@ -404,6 +404,36 @@ export const BUILTIN_DETECTORS: ToolDetectorDef[] = [
     usedBy: ['文件搜索'],
   },
 
+  // ── 上下文效率 sidecar（§5.5 · docs/16/28）────────────────────────
+  {
+    toolId: 'codegraph',
+    category: 'context',
+    displayName: 'Codegraph',
+    capabilities: ['graph-query'],
+    risk: 'read-only',
+    command: 'codegraph',
+    priority: 3,
+    versionArgs: ['--version'],
+    versionRegex: /(\d+\.\d+\.\d+)/,
+    helpArgs: ['--help'],
+    identityKeyword: 'codegraph',
+    usedBy: ['Context Center', '上下文压缩'],
+  },
+  {
+    toolId: 'rtk',
+    category: 'context',
+    displayName: 'rtk',
+    capabilities: ['search-content'],
+    risk: 'local-exec',
+    command: 'rtk',
+    priority: 4,
+    versionArgs: ['--version'],
+    versionRegex: /(\d+\.\d+\.\d+)/,
+    helpArgs: ['--help'],
+    identityKeyword: 'rtk',
+    usedBy: ['Context Center', '命令输出压缩'],
+  },
+
   // ── CLI Agent / ACP Runtime（§5.3）───────────────────────────────
   // 只检测二进制存在 + 身份验证；不读 token/不查额度/不启动交互会话。
   {
