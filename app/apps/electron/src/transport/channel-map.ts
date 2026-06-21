@@ -372,6 +372,9 @@ export const CHANNEL_MAP = {
 
   // Decision L0-L3 (LOCAL_ONLY, pure rules)
   evaluateDecision: invoke(RPC_CHANNELS.decision.EVALUATE),
+  listDecisionRules: invoke(RPC_CHANNELS.decision.LIST_RULES),
+  upsertDecisionRule: invoke(RPC_CHANNELS.decision.UPSERT_RULE),
+  deleteDecisionRule: invoke(RPC_CHANNELS.decision.DELETE_RULE),
 
   checkGitBash: invoke(RPC_CHANNELS.gitbash.CHECK),
   browseForGitBash: invoke(RPC_CHANNELS.gitbash.BROWSE),

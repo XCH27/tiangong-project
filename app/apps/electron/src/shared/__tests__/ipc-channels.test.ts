@@ -93,7 +93,10 @@ const EXPECTED_CHANNELS: string[] = [
   "copilot:startOAuth",
   "credentials:healthCheck",
   "debug:log",
+  "decision:deleteRule",
   "decision:evaluate",
+  "decision:listRules",
+  "decision:upsertRule",
   "deeplink:navigate",
   "design:commitPatch",
   "design:getSelection",
@@ -374,7 +377,7 @@ const EXPECTED_CHANNELS: string[] = [
   "workspaces:updateRemote",
 ]
 
-const EXPECTED_COUNT = 361;
+const EXPECTED_COUNT = 364;
 // End auto-generated
 
 describe('RPC_CHANNELS wire-format stability', () => {

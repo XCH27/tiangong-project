@@ -702,6 +702,9 @@ export interface ElectronAPI {
 
   // Decision L0-L3 (LOCAL_ONLY, pure rules)
   evaluateDecision(input: import('@craft-agent/shared/protocol').DecisionEvaluateInput): Promise<import('@craft-agent/shared/protocol').DecisionEvaluateResult>
+  listDecisionRules(): Promise<import('@craft-agent/shared/protocol').DecisionRuleListResult>
+  upsertDecisionRule(input: import('@craft-agent/shared/protocol').DecisionRuleUpsertInput): Promise<import('@craft-agent/shared/protocol').DecisionRuleActionResult>
+  deleteDecisionRule(input: import('@craft-agent/shared/protocol').DecisionRuleDeleteInput): Promise<import('@craft-agent/shared/protocol').DecisionRuleDeleteResult>
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>

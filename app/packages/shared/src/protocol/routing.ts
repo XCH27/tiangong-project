@@ -263,6 +263,9 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.memory.SEARCH,
   RPC_CHANNELS.memory.DELETE,
   RPC_CHANNELS.decision.EVALUATE,
+  RPC_CHANNELS.decision.LIST_RULES,
+  RPC_CHANNELS.decision.UPSERT_RULE,
+  RPC_CHANNELS.decision.DELETE_RULE,
 ])
 
 // ---------------------------------------------------------------------------

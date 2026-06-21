@@ -17,6 +17,7 @@ export interface DecisionRule {
 export interface DecisionPersistence {
   saveRule(rule: DecisionRule): Promise<void>
   loadRules(): Promise<DecisionRule[]>
+  deleteRule(id: string): Promise<boolean>
 }
 
 export function getDecisionDataDir(): string {
@@ -45,6 +46,18 @@ export class FileDecisionPersistence implements DecisionPersistence {
 
   async loadRules(): Promise<DecisionRule[]> {
     return (await readJson<DecisionRule[]>(this.file())) || []
+  }
+
+  async deleteRule(id: string): Promise<boolean> {
+    await mkdir(this.dataDir, { recursive: true })
+    const p = this.file()
+    const existing = (await readJson<DecisionRule[]>(p)) || []
+    const next = existing.filter((rule) => rule.id !== id)
+    if (next.length === existing.length) return false
+    const tmp = `${p}.${process.pid}.tmp`
+    await writeFile(tmp, JSON.stringify(next, null, 2), 'utf-8')
+    await rename(tmp, p)
+    return true
   }
 }
 

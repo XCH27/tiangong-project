@@ -120,6 +120,9 @@ export const RPC_CHANNELS = {
   /** L0-L3 decision/risk engine (pure rules + audit). LOCAL_ONLY. */
   decision: {
     EVALUATE: 'decision:evaluate',
+    LIST_RULES: 'decision:listRules',
+    UPSERT_RULE: 'decision:upsertRule',
+    DELETE_RULE: 'decision:deleteRule',
   },
   tasks: {
     GET_OUTPUT: 'tasks:getOutput',

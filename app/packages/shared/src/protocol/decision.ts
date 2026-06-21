@@ -29,3 +29,41 @@ export interface DecisionEvaluateResult {
   timestamp: number
   requiresExplicitConfirm: boolean
 }
+
+export interface DecisionRuleDescriptor {
+  id: string
+  level: DecisionLevel
+  action: string
+  target?: string
+  scope?: 'local' | 'external'
+  allow: boolean
+  reason: string
+  updatedAt: number
+}
+
+export interface DecisionRuleUpsertInput {
+  id: string
+  level?: DecisionLevel
+  action: string
+  target?: string
+  scope?: 'local' | 'external'
+  allow: boolean
+  reason?: string
+}
+
+export interface DecisionRuleListResult {
+  rules: DecisionRuleDescriptor[]
+}
+
+export interface DecisionRuleActionResult {
+  rule: DecisionRuleDescriptor
+}
+
+export interface DecisionRuleDeleteInput {
+  id: string
+}
+
+export interface DecisionRuleDeleteResult {
+  deleted: boolean
+  id: string
+}

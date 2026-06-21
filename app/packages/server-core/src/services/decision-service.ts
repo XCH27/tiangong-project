@@ -105,6 +105,7 @@ export class DecisionService {
 
   async saveRule(rule: DecisionRule) { await this.persistence.saveRule(rule); this.rules = await this.persistence.loadRules() }
   async loadRules(): Promise<DecisionRule[]> { return this.persistence.loadRules() }
+  async deleteRule(id: string): Promise<boolean> { const deleted = await this.persistence.deleteRule(id); this.rules = await this.persistence.loadRules(); return deleted }
 
   listAudits(): DecisionAudit[] { return [...this.audits] }
   clearAudits() { this.audits = [] }
