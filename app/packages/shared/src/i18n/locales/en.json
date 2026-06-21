@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "Used for relative dates like 'tomorrow' or 'next week'.",
   "settings.preferences.timezonePlaceholder": "e.g., America/New_York",
   "settings.preferences.title": "Preferences",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "Allow connections from other machines on the network.",
   "settings.server.certificate": "Certificate",
   "settings.server.certificateRequired": "Certificate is required when a private key is provided",

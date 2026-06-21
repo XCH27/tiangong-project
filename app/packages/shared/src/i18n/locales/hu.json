@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "Relatív dátumokhoz használatos, például „holnap” vagy „jövő héten”.",
   "settings.preferences.timezonePlaceholder": "pl. Europe/Budapest",
   "settings.preferences.title": "Preferenciák",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "Kapcsolatok engedélyezése a hálózat más gépeiről.",
   "settings.server.certificate": "Tanúsítvány",
   "settings.server.certificateRequired": "Tanúsítvány szükséges, ha privát kulcsot adtak meg",

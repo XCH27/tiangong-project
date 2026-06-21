@@ -15,6 +15,7 @@ function selection(): DesignSelection {
         type: 'design_node',
         surface: 'artifact',
         locator: {
+          artifactId: 'artifact-demo',
           selector: '#hero',
           computedStyle: { color: 'blue', width: '120px', borderRadius: '4px' },
           textContent: 'Old hero',
@@ -25,6 +26,7 @@ function selection(): DesignSelection {
         type: 'design_node',
         surface: 'artifact',
         locator: {
+          artifactId: 'artifact-demo',
           selector: '.cta',
           computedStyle: { color: 'green', width: '80px', borderRadius: '2px' },
           textContent: 'Buy',

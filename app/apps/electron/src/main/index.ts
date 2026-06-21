@@ -109,6 +109,7 @@ import { initializeBackendHostRuntime } from '@craft-agent/shared/agent/backend'
 import { setPowerShellValidatorRoot } from '@craft-agent/shared/agent'
 import { handleDeepLink } from './deep-link'
 import { BrowserPaneManager } from './browser-pane-manager'
+import { ArtifactPreviewBridge } from './artifact-preview-bridge'
 import { OAuthFlowStore } from '@craft-agent/shared/auth'
 import { registerThumbnailScheme, registerThumbnailHandler } from './thumbnail-protocol'
 import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog } from './logger'
@@ -210,6 +211,7 @@ const DEEPLINK_SCHEME = process.env.CRAFT_DEEPLINK_SCHEME || 'craftagents'
 let windowManager: WindowManager | null = null
 let sessionManager: SessionManager | null = null
 let browserPaneManager: BrowserPaneManager | null = null
+let artifactPreviewBridge: ArtifactPreviewBridge | null = null
 let oauthFlowStore: OAuthFlowStore | null = null
 let moduleSink: EventSink | null = null
 let moduleClientResolver: ((webContentsId: number) => string | undefined) | null = null
@@ -478,6 +480,9 @@ app.whenReady().then(async () => {
     browserPaneManager.registerToolbarIpc()
     browserPaneManager.registerCapabilityIpc()
 
+    artifactPreviewBridge = new ArtifactPreviewBridge()
+    artifactPreviewBridge.registerIpc()
+
     // Build real PlatformServices from Electron APIs
     const platform: PlatformServices = createElectronPlatform({
       app,
@@ -691,6 +696,7 @@ app.whenReady().then(async () => {
             platform: p,
             windowManager: windowManager ?? undefined,
             browserPaneManager: browserPaneManager ?? undefined,
+            artifactPreviewBridge: artifactPreviewBridge ?? undefined,
             oauthFlowStore: ofs,
             messagingRegistry: messagingHandle.registry,
           }

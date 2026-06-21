@@ -16,6 +16,7 @@ import {
 } from '@craft-agent/shared/protocol'
 import type { HandlerDeps } from '../handler-deps'
 import { DesignAnnotationApplier } from '../../services/design-annotation-applier'
+import { ArtifactDesignDomWriter, type ArtifactDomEvaluator } from '../../services/design-artifact-dom-writer'
 import { BrowserPaneDesignDomWriter, type BrowserPaneEvaluator } from '../../services/design-browser-dom-writer'
 import { DesignDomPatchApplier } from '../../services/design-dom-applier'
 import { DesignEngineService } from '../../services/design-engine'
@@ -35,6 +36,9 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
         new DesignSurfaceDomPatchWriter({
           browser: new BrowserPaneDesignDomWriter({
             resolveBrowserPaneManager: (sessionId) => resolveBrowserPaneManager(deps, sessionId),
+          }),
+          artifact: new ArtifactDesignDomWriter({
+            resolveArtifactEvaluator: (sessionId) => resolveArtifactEvaluator(deps, sessionId),
           }),
         }),
       ),
@@ -68,4 +72,12 @@ function resolveBrowserPaneManager(deps: HandlerDeps, sessionId: string): Browse
     getBrowserPaneManagerForSession?: (sid: string) => BrowserPaneEvaluator | null
   }
   return sessionScoped.getBrowserPaneManagerForSession?.(sessionId) ?? deps.browserPaneManager ?? null
+}
+
+function resolveArtifactEvaluator(deps: HandlerDeps, sessionId: string): ArtifactDomEvaluator | null {
+  const bridge = deps.artifactPreviewBridge
+  if (!bridge) return null
+  return {
+    evaluate: (artifactId, expression) => bridge.evaluate(sessionId, artifactId, expression),
+  }
 }

@@ -393,6 +393,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   systemTools: 'Wrench',
   shortcuts: 'Keyboard',
   preferences: 'UserCircle',
+  memoryDecision: 'Brain',
 }
 
 /**

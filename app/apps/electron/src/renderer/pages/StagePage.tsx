@@ -11,6 +11,7 @@ import { useSession } from '@/hooks/useSession'
 import { useAtomValue } from 'jotai'
 import { USER_ACTOR } from '@craft-agent/shared/protocol'
 import { BrowserStageSurface } from '@/components/workbench/BrowserStageSurface'
+import { ArtifactPreviewSurface } from '@/components/workbench/ArtifactPreviewSurface'
 
 const stageModes: Array<{ id: StageMode; label: string; icon: React.ComponentType<{ className?: string }>; enabled: boolean }> = [
   { id: 'browser', label: 'Browser', icon: Globe2, enabled: true },
@@ -152,6 +153,8 @@ export default function StagePage({ mode }: { mode: StageMode }) {
 
           {mode === 'browser' ? (
             <BrowserStageSurface />
+          ) : mode === 'artifact' ? (
+            <ArtifactPreviewSurface />
           ) : (
           <div className="flex-1 min-h-0 grid place-items-center p-6">
             <div className="w-full max-w-[680px] rounded-[10px] border border-dashed border-border bg-background/70 p-4">

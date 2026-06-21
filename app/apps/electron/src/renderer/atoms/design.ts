@@ -11,7 +11,13 @@
  */
 
 import { atom } from 'jotai'
-import type { SessionEvent, DesignSelection, ActorRef } from '@craft-agent/shared/protocol'
+import type { SessionEvent, DesignSelection, DesignAction, DesignPatch, ActorRef } from '@craft-agent/shared/protocol'
+
+export interface DesignPendingPatch {
+  sessionId: string
+  patch: DesignPatch
+  action: DesignAction
+}
 
 export type DesignTickerKind = 'selection' | 'decision' | 'proposed' | 'committed' | 'rolled_back' | 'tool'
 
@@ -29,6 +35,12 @@ export const designLatestSelectionAtom = atom<DesignSelection | null>(null)
 
 /** Session that owns the current Stage work. Set when entering Stage from chat. */
 export const workbenchSessionIdAtom = atom<string | null>(null)
+
+/** Active editable artifact preview id (Artifact Studio surface). */
+export const activeArtifactIdAtom = atom<string | null>(null)
+
+/** Latest proposed patch awaiting commit/rollback in Inspector. */
+export const designPendingPatchAtom = atom<DesignPendingPatch | null>(null)
 
 /** 最近的动作事件流（capped）。Action Ticker 读它。 */
 export const designTickerAtom = atom<DesignTickerEntry[]>([])

@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "Se usa para fechas relativas como «mañana» o «la semana que viene».",
   "settings.preferences.timezonePlaceholder": "p. ej., America/New_York",
   "settings.preferences.title": "Preferencias",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "Permitir conexiones desde otras máquinas en la red.",
   "settings.server.certificate": "Certificado",
   "settings.server.certificateRequired": "El certificado es obligatorio cuando se proporciona una clave privada",

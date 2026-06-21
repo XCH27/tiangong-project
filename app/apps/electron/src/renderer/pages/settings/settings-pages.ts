@@ -28,6 +28,7 @@ import ServerSettingsPage from './ServerSettingsPage'
 import SystemToolsSettingsPage from './SystemToolsSettingsPage'
 import ShortcutsPage from './ShortcutsPage'
 import PreferencesPage from './PreferencesPage'
+import MemoryDecisionSettingsPage from './MemoryDecisionSettingsPage'
 
 /**
  * Map of settings subpage IDs to their page components.
@@ -48,6 +49,7 @@ export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = 
   systemTools: SystemToolsSettingsPage,
   shortcuts: ShortcutsPage,
   preferences: PreferencesPage,
+  memoryDecision: MemoryDecisionSettingsPage,
 }
 
 /**

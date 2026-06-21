@@ -117,6 +117,7 @@ export function BrowserStageSurface() {
             type: 'web_element',
             surface: 'browser',
             locator: {
+              browserPaneId: activeInstanceId,
               browserInstanceId: activeInstanceId,
               selector: element.selector,
               rect: element.rect,

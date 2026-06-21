@@ -7,6 +7,7 @@
  */
 
 import {
+  Brain,
   Building2,
   Gauge,
   Keyboard,
@@ -39,6 +40,7 @@ export const ServerSettingsIcon = ({ className }: IconProps) => <Server classNam
 export const SystemToolsIcon = ({ className }: IconProps) => <Wrench className={className} />
 export const ShortcutsIcon = ({ className }: IconProps) => <Keyboard className={className} />
 export const PreferencesIcon = ({ className }: IconProps) => <UserCircle className={className} />
+export const MemoryDecisionIcon = ({ className }: IconProps) => <Brain className={className} />
 
 /**
  * Map of settings subpage IDs to their icon components.
@@ -59,4 +61,5 @@ export const SETTINGS_ICONS: Record<SettingsSubpage, React.ComponentType<IconPro
   systemTools: SystemToolsIcon,
   shortcuts: ShortcutsIcon,
   preferences: PreferencesIcon,
+  memoryDecision: MemoryDecisionIcon,
 }

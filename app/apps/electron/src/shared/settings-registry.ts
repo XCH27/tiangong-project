@@ -49,6 +49,7 @@ export const SETTINGS_PAGES = [
   { id: 'systemTools' as const, labelKey: 'settings.systemTools.title', descriptionKey: 'settings.systemTools.description' },
   { id: 'shortcuts' as const, labelKey: 'settings.shortcuts.title', descriptionKey: 'settings.shortcuts.description' },
   { id: 'preferences' as const, labelKey: 'settings.preferences.title', descriptionKey: 'settings.preferences.description' },
+  { id: 'memoryDecision' as const, labelKey: 'settings.memoryDecision.title', descriptionKey: 'settings.memoryDecision.description' },
 ] satisfies readonly SettingsPageDefinition[]
 
 /**

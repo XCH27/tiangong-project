@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "「明日」や「来週」などの相対的な日付に使用されます。",
   "settings.preferences.timezonePlaceholder": "例：Asia/Tokyo",
   "settings.preferences.title": "環境設定",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "ネットワーク上の他のマシンからの接続を許可します。",
   "settings.server.certificate": "証明書",
   "settings.server.certificateRequired": "秘密鍵が指定されている場合は証明書が必要です",

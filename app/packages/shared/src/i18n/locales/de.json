@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "Wird für relative Datumsangaben wie „morgen“ oder „nächste Woche“ verwendet.",
   "settings.preferences.timezonePlaceholder": "z. B. Europe/Berlin",
   "settings.preferences.title": "Einstellungen",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "Verbindungen von anderen Geräten im Netzwerk erlauben.",
   "settings.server.certificate": "Zertifikat",
   "settings.server.certificateRequired": "Zertifikat ist erforderlich, wenn ein privater Schlüssel angegeben wird",

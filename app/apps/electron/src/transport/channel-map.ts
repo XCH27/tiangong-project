@@ -411,6 +411,7 @@ export const CHANNEL_MAP = {
   'browserPane.undock': invoke(RPC_CHANNELS.browserPane.UNDOCK),
   'browserPane.pickElement': invoke(RPC_CHANNELS.browserPane.PICK_ELEMENT),
   'browserPane.selectElements': invoke(RPC_CHANNELS.browserPane.SELECT_ELEMENTS),
+  'browserPane.evaluate': invoke(RPC_CHANNELS.browserPane.EVALUATE),
   'browserPane.emptyStateLaunch': invoke(RPC_CHANNELS.browserPane.LAUNCH),
   'browserPane.onStateChanged': listener(RPC_CHANNELS.browserPane.STATE_CHANGED),
   'browserPane.onRemoved': listener(RPC_CHANNELS.browserPane.REMOVED),

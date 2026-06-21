@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "用于\"明天\"或\"下周\"等相对日期。",
   "settings.preferences.timezonePlaceholder": "如: Asia/Shanghai",
   "settings.preferences.title": "偏好",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "允许网络上其他设备的连接。",
   "settings.server.certificate": "证书",
   "settings.server.certificateRequired": "提供私钥时需要证书",

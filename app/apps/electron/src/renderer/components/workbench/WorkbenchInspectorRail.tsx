@@ -8,6 +8,7 @@ import { sessionAtomFamily, sessionMetaMapAtom } from '@/atoms/sessions'
 import { cn } from '@/lib/utils'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { ContextEfficiencyPanel } from './ContextEfficiencyPanel'
+import { DesignInspectorActions } from './DesignInspectorActions'
 import { buildUsageLedgerData } from '@/lib/usage-ledger'
 
 const tabs = ['选区', '动作', '上下文'] as const
@@ -108,6 +109,8 @@ export function WorkbenchInspectorRail() {
                 )}
               </div>
             ))}
+
+            <DesignInspectorActions />
           </div>
         )}
 

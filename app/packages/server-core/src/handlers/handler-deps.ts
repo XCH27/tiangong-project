@@ -4,6 +4,7 @@ import type { IOAuthFlowStore } from './oauth-flow-store-interface'
 import type { IBrowserPaneManager } from './browser-pane-manager-interface'
 import type { IWindowManager } from './window-manager-interface'
 import type { IMessagingGatewayRegistry } from './messaging-registry-interface'
+import type { IArtifactPreviewBridge } from './artifact-preview-bridge-interface'
 
 /**
  * Generic handler dependency bag.
@@ -25,6 +26,7 @@ export interface HandlerDeps<
   platform: PlatformServices
   windowManager?: TWindowManager
   browserPaneManager?: TBrowserPaneManager
+  artifactPreviewBridge?: IArtifactPreviewBridge
   oauthFlowStore: TOAuthFlowStore
   messagingRegistry?: IMessagingGatewayRegistry
 }

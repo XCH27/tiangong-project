@@ -1016,6 +1016,8 @@
   "settings.preferences.timezoneDesc": "Używana do dat względnych, takich jak 'jutro' czy 'następny tydzień'.",
   "settings.preferences.timezonePlaceholder": "np. Europe/Warsaw",
   "settings.preferences.title": "Preferencje",
+  "settings.memoryDecision.description": "Agent lifecycle, memory partitions (7), decision L0-L3 evaluate",
+  "settings.memoryDecision.title": "Memory & Decision",
   "settings.server.allowRemoteConnections": "Zezwól na połączenia z innych urządzeń w sieci.",
   "settings.server.certificate": "Certyfikat",
   "settings.server.certificateRequired": "Certyfikat jest wymagany, gdy podano klucz prywatny",

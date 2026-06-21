@@ -18,6 +18,7 @@ import type { SessionEvent } from '@craft-agent/shared/protocol'
 import {
   designTickerAtom,
   designLatestSelectionAtom,
+  designPendingPatchAtom,
   mapDesignEventToEntry,
   DESIGN_TICKER_MAX,
   type DesignTickerEntry,
@@ -39,6 +40,7 @@ export function ActionTickerBar() {
   const entries = useAtomValue(designTickerAtom)
   const setTicker = useSetAtom(designTickerAtom)
   const setSelection = useSetAtom(designLatestSelectionAtom)
+  const setPendingPatch = useSetAtom(designPendingPatchAtom)
 
   // 订阅同一条 SessionEvent 流，只挑动作事件。design_* / tool_start 和别的事件同通道，无需新 listener。
   React.useEffect(() => {
@@ -46,9 +48,18 @@ export function ActionTickerBar() {
       const entry = mapDesignEventToEntry(event)
       if (entry) setTicker((prev) => [entry, ...prev].slice(0, DESIGN_TICKER_MAX))
       if (event.type === 'selection_changed') setSelection(event.selection)
+      if (event.type === 'design_action_proposed' && event.patchPreview) {
+        setPendingPatch({ sessionId: event.sessionId, patch: event.patchPreview, action: event.action })
+      }
+      if (event.type === 'design_patch_committed') {
+        setPendingPatch((current) => (current?.patch.patchId === event.patch.patchId ? null : current))
+      }
+      if (event.type === 'design_patch_rolled_back') {
+        setPendingPatch((current) => (current?.patch.patchId === event.patchId ? null : current))
+      }
     })
     return cleanup
-  }, [setTicker, setSelection])
+  }, [setTicker, setSelection, setPendingPatch])
 
   const visible = entries.filter((e) =>
     filter === '全部' ? true : filter === '我' ? e.actorLabel === '我' : e.actorLabel !== '我',

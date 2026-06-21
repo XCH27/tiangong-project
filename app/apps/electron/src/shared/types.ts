@@ -744,10 +744,17 @@ export interface ElectronAPI {
     undock(id: string): Promise<void>
     pickElement(id: string): Promise<BrowserElementSelection | null>
     selectElements(id: string, query: BrowserElementSelectionQuery): Promise<BrowserElementSelection[]>
+    evaluate(id: string, expression: string): Promise<unknown>
     emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void
     onInteracted(callback: (id: string) => void): () => void
+  }
+
+  /** Editable artifact preview bridge (renderer iframe ↔ DesignEngine DOM writer). */
+  artifactPreview: {
+    bindSession(sessionId: string): Promise<void>
+    unbindSession(sessionId: string): Promise<void>
   }
 
   // System tools / project environment detection (T-SYSTOOLS · docs/28) — read-only
