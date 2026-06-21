@@ -4,6 +4,21 @@ import type { ProjectEnvironmentProfile, ToolCapability } from './system-tools'
 export type ContextSignalConfidence = 'real' | 'estimate' | 'unknown'
 export type ContextSignalLocality = 'local' | 'external' | 'unknown'
 export type ContextCenterReviewReadinessStatus = 'ready' | 'blocked' | 'needs_pack' | 'unknown'
+export type ContextEfficiencyAction =
+  | 'inspect_usage'
+  | 'create_project_pack'
+  | 'query_code_graph'
+  | 'compress_command_output'
+  | 'submit_external_review'
+export type ContextEfficiencyRecommendationStatus = 'ready' | 'unavailable' | 'not_needed'
+
+export interface ContextEfficiencyRecommendation {
+  action: ContextEfficiencyAction
+  status: ContextEfficiencyRecommendationStatus
+  reason: string
+  toolId?: string
+  requiresPermission: boolean
+}
 
 export interface ContextSignal<T> {
   value: T
@@ -51,5 +66,6 @@ export interface ContextCenterOverview {
     secretFindingCount?: ContextSignal<number>
     estimatedPackTokens?: ContextSignal<number>
   }
+  recommendations: ContextEfficiencyRecommendation[]
   notes: string[]
 }

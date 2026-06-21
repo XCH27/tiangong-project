@@ -8,6 +8,7 @@ import type {
   ProjectPackSummary,
   ToolCapability,
 } from '@craft-agent/shared/protocol'
+import { buildContextEfficiencyRecommendations } from './context-efficiency-advisor'
 
 type SessionLike = {
   id: string
@@ -123,7 +124,7 @@ export function buildContextCenterOverview(params: {
   if (input.bundleId && projectPackSummary === undefined) notes.push(`bundleId=${input.bundleId} 未找到已保存的项目包摘要`)
   if (input.projectPackPreviewRequest && projectPackPlanPreview === undefined) notes.push('ProjectPack dry-run 预览请求未返回结果')
 
-  const overview: ContextCenterOverview = {
+  const baseOverview: Omit<ContextCenterOverview, 'recommendations'> = {
     generatedAt: params.generatedAt ?? Date.now(),
     sessionId: input.sessionId,
     workspaceId: input.workspaceId,
@@ -136,6 +137,8 @@ export function buildContextCenterOverview(params: {
     reviewReadiness: buildReviewReadiness(input, projectPackSummary !== undefined ? projectPackSummary : projectPackPlanPreview),
     notes,
   }
-
-  return overview
+  return {
+    ...baseOverview,
+    recommendations: buildContextEfficiencyRecommendations(baseOverview),
+  }
 }
