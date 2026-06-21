@@ -16,8 +16,10 @@ import {
 } from '@craft-agent/shared/protocol'
 import type { HandlerDeps } from '../handler-deps'
 import { DesignAnnotationApplier } from '../../services/design-annotation-applier'
+import { DesignDomPatchApplier } from '../../services/design-dom-applier'
 import { DesignEngineService } from '../../services/design-engine'
 import { FileDesignEnginePersistence } from '../../services/design-engine-persistence'
+import { DesignWorkbenchApplier } from '../../services/design-workbench-applier'
 
 export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): void {
   const { sessionManager } = deps
@@ -25,7 +27,10 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
   // 唯一引擎实例（进程内账本）。emit 经 SessionManager 进同一条 timeline。
   const engine = new DesignEngineService(
     (event) => sessionManager.emitSessionEvent(event),
-    new DesignAnnotationApplier(sessionManager),
+    new DesignWorkbenchApplier(
+      new DesignAnnotationApplier(sessionManager),
+      new DesignDomPatchApplier(),
+    ),
     new FileDesignEnginePersistence(),
   )
 
