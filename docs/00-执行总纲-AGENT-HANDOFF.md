@@ -29,19 +29,20 @@ CLI Runtime 之外，设计工作流要在新基座重新落地：`WorkbenchShel
 
 贯穿全程的 craft 原始哲学：这个软件本身也是给 AI 操作和编辑的。人类 UI 与 AI 工具必须提交同一套 `DesignAction`，经 `DesignPatch` 写入同一个 session timeline、permission、diff、rollback。接手者动代码前先看 craft 的 `SessionManager`、session tools、`browser_tool`、annotation、permission、file diff/config 写入模式。
 
-## 2 · 当前完成标注（2026-06-20）
+## 2 · 当前完成标注（2026-06-21）
 
 以下状态以本机实际 worktree / 测试为准，不按 agent 口头汇报判断。
 
 | 工作 | 分支 / 路径 | 状态 | 已验证 | 合并备注 |
 |---|---|---|---|---|
-| **T-ENGINE + T-EVENT-ACTOR** | `work/integration-prep` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/integration-prep` | **已集成**：`a54bc62b` → `c47b87aa` | DesignEngine / annotation applier / channel-map / ipc / routing：目标整组 `63 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 主线承重墙：`DesignAction/DesignPatch/ActorRef`、`RPC_CHANNELS.design`、`design_*` 事件、`SessionManager.emitSessionEvent`、tool/text actor、底部 `ActionTickerBar` 已落地；`annotate` action 已通过 `DesignAnnotationApplier` 复用 craft 现有 `AnnotationV1` 写入与回滚，不另建 annotation RPC。 |
+| **T-ENGINE + T-EVENT-ACTOR** | `work/integration-prep` · `/Users/lullwen/.config/superpowers/worktrees/GUI 终端/integration-prep` | **已集成**：至 `85e615fa` | DesignEngine / persistence / annotation / DOM / workbench applier 目标测试 `15 pass / 0 fail`；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 主线承重墙：`DesignAction/DesignPatch/ActorRef`、`RPC_CHANNELS.design`、`design_*` 事件、`SessionManager.emitSessionEvent`、tool/text actor、底部 `ActionTickerBar` 已落地；选区和 patch 已落盘；Agent 发起写动作默认 `pending`，未授权不能 commit；`annotate` action 复用 craft 现有 `AnnotationV1` 写入/回滚；`set_style` / `set_transform` / 文本替换已能生成可回滚 DOM/Artifact patch，并由 Workbench applier 路由。 |
 | **T-SYSTOOLS** | `work/integration-prep` | **已集成**：`af96e047` + `602f4255` | server-core services：随整组通过；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | 只读系统工具 / 项目环境探测 + 设置页；已修正登录 shell PATH 测试和无效项目路径诊断；`fleet-project-pack` 已作为 app-bundled context capability 注册进统一 registry。 |
 | **T-PROJECTPACK / 外部审查数据层** | `work/integration-prep` | **已集成** | ProjectPack、review prompt、external review report 目标测试通过；routing/channel-map/ipc 通过；shared/server-core/electron typecheck 通过 | 本地打包、secret scan、token 估算、dry-run、审查提示词 RPC 已完成；外部审查原始输出、结构化 findings、bundle hash、平台和独立成本口径可本地归档并通过 LOCAL_ONLY RPC 读写。仍不自动登录、不自动外发。 |
 | **T-USAGE** | `work/integration-prep` | **已集成**：`a97eb7dd` + UI `d306262f` | usage 测试随 services 整组通过；electron/shared/ui typecheck 通过；`git diff --check` 通过 | 真实 token / 估算 / 未知成本分离；当前会话 Usage Ledger 已挂入上下文效率设置页。 |
 | **T-CLI Runtime** | `work/integration-prep` | **已集成**：`ff39566a` + 发送入口 `072ea88a` | CLI Runtime 测试随 services 整组通过；shared/server-core/electron typecheck 通过；`git diff --check` 通过 | Grok/Hermes/OpenCode detected mapping、custom ACP、health、model/effort、附件硬拒绝、SessionManager CLI 发送分支已接；聊天输入选择器/最终产品化仍待接 Stage/Conversation UI。 |
 | **Stage / Inspector / Browser 第一闭环** | `work/integration-prep` | **已集成**：`ff120bb0` 至 `8c91a2f8` + `f7e2fc4f` + `02b82633` | route/panel-stack 测试、IPC/routing 测试、BrowserPane dock 与批量选区目标测试、annotation evidence 测试通过；electron/shared/server-core typecheck 通过；`git diff --check` 通过；Electron 实机确认 BrowserView 位于 Stage 且切换模式后释放 | `stage/{mode}` 正式 route、右侧 Inspector、Usage Ledger、ProjectPack 已接；现有 BrowserPane 三个原生 BrowserView 可停靠 Stage，保持登录态/CDP/Agent 工具链；从会话进入 Stage 后可启动网页元素选择并写入统一 DesignSelection；后端已支持矩形/视口批量元素选择；选区→`AnnotationV1` 证据构造器已放入 shared protocol，后续 UI 直接复用 `sessions:command addAnnotation`。批量标注按钮和 Comment AI 仍待接。 |
 | **Context Center 后端总览** | `work/integration-prep` | **已集成** | ContextCenter service/handler 和效率建议测试通过；IPC/routing/channel-map 通过；shared/server-core/electron typecheck 通过 | 聚合 Usage、Project Environment、context 工具、ProjectPack 和 review readiness；已能根据真实用量和工具可用性生成可解释的打包/图谱/命令压缩/外部审查建议，高风险动作仍需 permission。 |
+| **Context efficiency adapters** | `work/integration-prep` | **已集成**：`5dc1b9a3` | context adapter / delta planner / review job / attachment policy 测试 `22 pass / 0 fail`；server-core typecheck 通过；`git diff --check` 通过 | rtk/codegraph adapter、ProjectPack delta planner、外部审查 job 状态机、CLI Runtime 文本附件 policy 已进入 server-core；目前是后端 service 层，RPC/UI/发送链路最终接线由后续工作继续。 |
 | **Agent Registry M0** | `work/integration-prep` | **已集成**：`d5e5f03d` + `433a67a4` + `08f5edc3` | AgentRegistry service 测试、IPC/routing/channel-map 测试通过；shared/server-core/electron typecheck 通过 | 增加 `agents:list/get`、内存 registry、稳定 `manager:<workspaceId>` 与 `project:<sessionId>` actor；普通 API 与 CLI Runtime 工具事件开始带稳定 `agentId/role/displayName/runtime`；manager agent 支持稳定 upsert、空 workspace 归一化和 `lastActiveAt`；补齐 session 查询和 malformed input guard；不建第二套 session/store/process registry。 |
 
 **当前集成线**：`work/integration-prep` 已把 T-ENGINE、T-SYSTOOLS、T-PROJECTPACK、T-USAGE、T-CLI Runtime、Stage / Inspector 第一刀合到同一基线。后续不要再从旧服务 worktree 二次合并同一批改动；继续在集成线或从它分出新工作。
@@ -96,9 +97,9 @@ git diff --check
 
 1. **已完成并集成**：`DesignAction / DesignPatch / ActorRef` 契约、DesignEngine 状态机、`design_*` SessionEvent、稳定 Agent actor、底部 Action Ticker、System Tools、ProjectPack、Usage Ledger、ContextCenter 只读总览、CLI Runtime 后端与发送分支、Stage route/panel/Inspector 第一刀。
 2. **已完成第一闭环**：BrowserPane 原生 docked Stage + 单元素选择 + 后端批量元素选择；复用 craft BrowserPane/CDP，选区写入原会话的 DesignEngine / SessionEvent。
-3. **已完成 annotation 后端接线**：`DesignAction(kind:'annotate')` 可提交到 `DesignAnnotationApplier`，复用 `sessions:command addAnnotation/removeMessageAnnotation` 写入和回滚现有 `AnnotationV1`。
-4. **下一刀**：浏览器 toolbar 的批量标注 / Comment AI / 保存证据入口接真实 action；随后接 Artifact selection source 和 surface applier。
-5. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、Artifact applier、permission 化真实 surface 回滚、外部审查浏览器提交/回收（报告归一化和存储已完成）。
+3. **已完成 action 后端接线**：`annotate` 可提交到 `DesignAnnotationApplier`，复用 `AnnotationV1` 写入和回滚；`set_style` / `set_transform` / 文本替换已能通过 DOM/Artifact patch applier 生成 forward/inverse 并由 Workbench applier 路由；Agent 写动作先进入 `pending`，没有授权标记不能 commit。
+4. **下一刀**：浏览器 toolbar 的批量标注 / Comment AI / 保存证据入口接真实 action；随后把 BrowserPane / Artifact 的实际 writer 接到 DOM patch apply/revert。
+5. **仍未完成**：聊天输入里的 CLI Runtime 选择器最终产品化、Artifact 真实 writer、permission UI 卡片、外部审查浏览器提交/回收（报告归一化和存储已完成）。
 
 M1 起（open-design Artifact Studio、ProjectPack 接审查中心、Agent process registry）和 M2/M3（字体颜色、外部审查、记忆、Fusion、多账号、Figma/Stitch）见 `docs/01`。
 
