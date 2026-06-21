@@ -429,6 +429,16 @@ export const RPC_CHANNELS = {
     ALLOW_PENDING_SENDER: 'messaging:access:allowPending',
     SET_BINDING_ACCESS: 'messaging:access:setBindingAccess',
   },
+
+  // Fleet 工作台动作引擎（承重墙 · docs/31 §1）。LOCAL_ONLY：进程内账本 + 本地持久化。
+  // 人类 UI 和 AI 工具调用走的是同一组 channel —— 没有第二条写入路径。
+  design: {
+    SET_SELECTION: 'design:setSelection',
+    GET_SELECTION: 'design:getSelection',
+    PROPOSE_ACTION: 'design:proposeAction',
+    COMMIT_PATCH: 'design:commitPatch',
+    ROLLBACK_PATCH: 'design:rollbackPatch',
+  },
 } as const
 
 // IPC_CHANNELS compat alias removed — all consumers now use RPC_CHANNELS

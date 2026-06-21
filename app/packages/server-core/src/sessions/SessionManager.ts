@@ -7483,6 +7483,16 @@ export class SessionManager implements ISessionManager {
     }
   }
 
+  /**
+   * Emit a SessionEvent into the one shared timeline (Fleet 工作台动作引擎用)。
+   * Resolves the workspace from the session so design/action events reach the
+   * same broadcast channel as model/tool events —— 没有第二条 timeline（docs/31 §1）。
+   */
+  emitSessionEvent(event: SessionEvent): void {
+    const workspaceId = this.sessions.get(event.sessionId)?.workspace.id
+    this.sendEvent(event, workspaceId)
+  }
+
   private sendEvent(event: SessionEvent, workspaceId?: string): void {
     if (!this.eventSink) {
       sessionLog.warn('Cannot send event - no event sink')

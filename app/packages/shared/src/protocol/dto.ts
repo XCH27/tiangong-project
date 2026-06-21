@@ -22,6 +22,8 @@ import type {
   CredentialInputMode as SharedCredentialInputMode,
   CredentialAuthRequest as SharedCredentialAuthRequest,
 } from '../agent/index'
+import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
+import type { DesignActionPermission } from './design-service'
 
 // Re-export generateMessageId for handler convenience
 export { generateMessageId } from '@craft-agent/core/types'
@@ -209,6 +211,11 @@ export type SessionEvent =
   | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
+  // Fleet 工作台动作引擎事件（承重墙 · docs/31 §1）——人/AI 共用一条 timeline。
+  | { type: 'selection_changed'; sessionId: string; selection: DesignSelection }
+  | { type: 'design_action_proposed'; sessionId: string; action: DesignAction; patchPreview: DesignPatch; permissionRequestId?: string; permission?: DesignActionPermission }
+  | { type: 'design_patch_committed'; sessionId: string; patch: DesignPatch; actor: ActorRef }
+  | { type: 'design_patch_rolled_back'; sessionId: string; patchId: string; actor: ActorRef }
 
 export interface SendMessageOptions {
   skillSlugs?: string[]

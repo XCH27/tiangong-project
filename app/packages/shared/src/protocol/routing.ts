@@ -208,6 +208,13 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.settings.GET_SERVER_CONFIG,
   RPC_CHANNELS.settings.SET_SERVER_CONFIG,
   RPC_CHANNELS.settings.GET_SERVER_STATUS,
+
+  // design — Fleet 工作台动作引擎（进程内账本 + 本地持久化，承重墙 · docs/31）
+  RPC_CHANNELS.design.SET_SELECTION,
+  RPC_CHANNELS.design.GET_SELECTION,
+  RPC_CHANNELS.design.PROPOSE_ACTION,
+  RPC_CHANNELS.design.COMMIT_PATCH,
+  RPC_CHANNELS.design.ROLLBACK_PATCH,
 ])
 
 // ---------------------------------------------------------------------------

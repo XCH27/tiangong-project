@@ -22,6 +22,7 @@ import type {
   PermissionModeState,
   UnreadSummary,
   ShareResult,
+  SessionEvent,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -242,6 +243,13 @@ export interface ISessionManager {
   setAutomationBinder?(
     fn: (input: { workspaceId: string; sessionId: string; topicName: string }) => Promise<void>,
   ): void
+
+  /**
+   * Emit a SessionEvent into the one shared timeline (Fleet 工作台动作引擎用)。
+   * Used by the design action engine so human/AI actions land on the same
+   * broadcast channel as model/tool events — no second timeline (docs/31 §1).
+   */
+  emitSessionEvent(event: SessionEvent): void
 }
 
 /**
