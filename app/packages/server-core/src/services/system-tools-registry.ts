@@ -48,6 +48,19 @@ export const BUILTIN_STATIC_CAPABILITIES: ToolCapability[] = [
     diagnostics: [],
     usedBy: ['Context Center', '外部 AI 审查'],
   },
+  {
+    toolId: 'fleet-markitdown',
+    category: 'context',
+    displayName: 'Fleet Document Converter',
+    status: 'available',
+    source: 'bundled',
+    scope: 'workspace',
+    priority: 2,
+    capabilities: ['doc-convert'],
+    risk: 'read-only',
+    diagnostics: [],
+    usedBy: ['Context Center', 'ProjectPack', '文档读取'],
+  },
 ]
 
 /**

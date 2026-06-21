@@ -119,6 +119,13 @@ describe('SystemToolsRegistry', () => {
 
     const best = await reg.getBestTool('context', 'repo-pack')
     expect(best?.toolId).toBe('fleet-project-pack')
+
+    const converter = await reg.getBestTool('context', 'doc-convert')
+    expect(converter).toMatchObject({
+      toolId: 'fleet-markitdown',
+      status: 'available',
+      source: 'bundled',
+    })
   })
 
   it('getBestTool returns null when all missing', async () => {
@@ -132,7 +139,7 @@ describe('SystemToolsRegistry', () => {
     const tools = await reg.listTools()
     expect(tools.length).toBe(reg.listToolIds().length)
     expect(tools.every((t) =>
-      t.toolId === 'fleet-project-pack'
+      t.toolId === 'fleet-project-pack' || t.toolId === 'fleet-markitdown'
         ? t.status === 'available'
         : t.status === 'missing' || t.status === 'unknown',
     )).toBe(true)
