@@ -343,6 +343,7 @@ export const CHANNEL_MAP = {
   saveExternalReviewReport: invoke(RPC_CHANNELS.externalReview.SAVE),
   getExternalReviewReport: invoke(RPC_CHANNELS.externalReview.GET),
   listExternalReviewReportsByBundle: invoke(RPC_CHANNELS.externalReview.LIST_BY_BUNDLE),
+  summarizeExternalReviewBundle: invoke(RPC_CHANNELS.externalReview.SUMMARIZE_BUNDLE),
   getContextCenterOverview: invoke(RPC_CHANNELS.contextCenter.GET_OVERVIEW),
   queryContextCodegraph: invoke(RPC_CHANNELS.contextAdapter.QUERY_CODEGRAPH),
   compressContextRtk: invoke(RPC_CHANNELS.contextAdapter.COMPRESS_RTK),

@@ -262,6 +262,7 @@ import type {
   ProjectPackSummary,
   ProjectPackReviewPromptResult,
   CreateExternalReviewReportInput,
+  ExternalReviewBundleSummary,
   ExternalReviewReport,
   ContextAdapterCodegraphRequest,
   ContextAdapterCodegraphResult,
@@ -673,6 +674,7 @@ export interface ElectronAPI {
   saveExternalReviewReport(input: CreateExternalReviewReportInput): Promise<ExternalReviewReport>
   getExternalReviewReport(reportId: string): Promise<ExternalReviewReport | null>
   listExternalReviewReportsByBundle(bundleId: string): Promise<ExternalReviewReport[]>
+  summarizeExternalReviewBundle(bundleId: string): Promise<ExternalReviewBundleSummary>
   getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
   queryContextCodegraph(request: ContextAdapterCodegraphRequest): Promise<ContextAdapterCodegraphResult>
   compressContextRtk(request: ContextAdapterRtkRequest): Promise<ContextAdapterRtkResult>

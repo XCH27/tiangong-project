@@ -16,5 +16,8 @@ export function registerExternalReviewHandlers(server: RpcServer, _deps: Handler
     RPC_CHANNELS.externalReview.LIST_BY_BUNDLE,
     async (_ctx, bundleId: string) => externalReviewReportStore.listByBundle(bundleId),
   )
+  server.handle(
+    RPC_CHANNELS.externalReview.SUMMARIZE_BUNDLE,
+    async (_ctx, bundleId: string) => externalReviewReportStore.summarizeBundle(bundleId),
+  )
 }
-

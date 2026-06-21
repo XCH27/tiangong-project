@@ -111,6 +111,7 @@ const EXPECTED_CHANNELS: string[] = [
   "externalReview:get",
   "externalReview:listByBundle",
   "externalReview:save",
+  "externalReview:summarizeBundle",
   "externalReviewJob:advance",
   "externalReviewJob:completeWithReport",
   "externalReviewJob:create",
@@ -377,7 +378,7 @@ const EXPECTED_CHANNELS: string[] = [
   "workspaces:updateRemote",
 ]
 
-const EXPECTED_COUNT = 364;
+const EXPECTED_COUNT = 365;
 // End auto-generated
 
 describe('RPC_CHANNELS wire-format stability', () => {

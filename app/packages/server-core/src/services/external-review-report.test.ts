@@ -2,7 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { ExternalReviewReportStore, createExternalReviewReport } from './external-review-report'
+import {
+  ExternalReviewReportStore,
+  createExternalReviewReport,
+  summarizeExternalReviewReports,
+} from './external-review-report'
 
 const tempDirs: string[] = []
 
@@ -106,5 +110,46 @@ describe('external review report', () => {
     expect(reports).toHaveLength(2)
     expect(reports.map((report) => report.platformId).sort()).toEqual(['chatgpt-web', 'claude-web'])
     expect(reports[0]!.createdAt).toBeGreaterThanOrEqual(reports[1]!.createdAt)
+  })
+
+  it('groups duplicate findings across platforms by file and line', () => {
+    const claude = createExternalReviewReport({
+      bundleId: 'bundle-1',
+      bundleHash: 'hash-a',
+      platformId: 'claude-web',
+      transport: 'manual',
+      rawOutput: 'High: Missing auth in handler.ts:42',
+      findings: [{
+        severity: 'high',
+        title: 'Missing auth',
+        evidence: 'handler.ts accepts unchecked actor',
+        recommendation: 'Validate permissions before mutation',
+        relativePath: 'handler.ts',
+        line: 42,
+      }],
+    }, 1000)
+    const chatgpt = createExternalReviewReport({
+      bundleId: 'bundle-1',
+      bundleHash: 'hash-a',
+      platformId: 'chatgpt-web',
+      transport: 'manual',
+      rawOutput: 'Medium: Authorization gap in handler.ts:42',
+      findings: [{
+        severity: 'medium',
+        title: 'Authorization gap',
+        evidence: 'Mutation path does not verify the actor',
+        recommendation: 'Route through permission gate',
+        relativePath: 'handler.ts',
+        line: 42,
+      }],
+    }, 1100)
+
+    const summary = summarizeExternalReviewReports([claude, chatgpt])
+    expect(summary.reportCount).toBe(2)
+    expect(summary.platformIds).toEqual(['chatgpt-web', 'claude-web'])
+    expect(summary.groupedFindings).toHaveLength(1)
+    expect(summary.groupedFindings[0]!.severity).toBe('high')
+    expect(summary.groupedFindings[0]!.reportIds).toHaveLength(2)
+    expect(summary.findingCounts.high).toBe(1)
   })
 })

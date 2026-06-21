@@ -8,6 +8,7 @@ import type { HandlerDeps } from '../handler-deps'
 import { registerContextAdapterHandlers } from './context-adapter'
 import { registerProjectPackDeltaHandlers } from './project-pack-delta'
 import { registerExternalReviewJobHandlers } from './external-review-job'
+import { registerExternalReviewHandlers } from './external-review'
 
 function createHarness(register: (server: RpcServer, deps: HandlerDeps) => void) {
   const handlers = new Map<string, HandlerFn>()
@@ -84,5 +85,13 @@ describe('context efficiency RPC handlers', () => {
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.ADVANCE)).toBe(true)
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT)).toBe(true)
     expect(handlers.has(RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE)).toBe(true)
+  })
+
+  it('registers external review report summary channel', () => {
+    const handlers = createHarness(registerExternalReviewHandlers)
+    expect(handlers.has(RPC_CHANNELS.externalReview.SAVE)).toBe(true)
+    expect(handlers.has(RPC_CHANNELS.externalReview.GET)).toBe(true)
+    expect(handlers.has(RPC_CHANNELS.externalReview.LIST_BY_BUNDLE)).toBe(true)
+    expect(handlers.has(RPC_CHANNELS.externalReview.SUMMARIZE_BUNDLE)).toBe(true)
   })
 })

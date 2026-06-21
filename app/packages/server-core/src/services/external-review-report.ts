@@ -4,12 +4,21 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type {
   CreateExternalReviewReportInput,
+  ExternalReviewBundleSummary,
   ExternalReviewFinding,
+  ExternalReviewFindingGroup,
   ExternalReviewReport,
   ExternalReviewSeverity,
 } from '@craft-agent/shared/protocol'
 
 const SEVERITIES: ExternalReviewSeverity[] = ['critical', 'high', 'medium', 'low', 'info']
+const SEVERITY_WEIGHT: Record<ExternalReviewSeverity, number> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+}
 const MAX_AUTO_FINDINGS = 50
 
 const SEVERITY_ALIASES: Array<[ExternalReviewSeverity, RegExp]> = [
@@ -142,6 +151,85 @@ function countFindings(findings: ExternalReviewFinding[]): Record<ExternalReview
   return counts
 }
 
+function countGroups(groups: ExternalReviewFindingGroup[]): Record<ExternalReviewSeverity, number> {
+  const counts: Record<ExternalReviewSeverity, number> = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    info: 0,
+  }
+  for (const group of groups) counts[group.severity] += 1
+  return counts
+}
+
+function dedupe(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b))
+}
+
+function normalizeKeyText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, ' ').trim().slice(0, 80)
+}
+
+function findingGroupKey(finding: ExternalReviewFinding): string {
+  if (finding.relativePath && finding.line) return `loc:${finding.relativePath}:${finding.line}`
+  if (finding.relativePath) return `file:${finding.relativePath}:${normalizeKeyText(finding.title)}`
+  return `title:${normalizeKeyText(finding.title)}`
+}
+
+function preferSeverity(a: ExternalReviewSeverity, b: ExternalReviewSeverity): ExternalReviewSeverity {
+  return SEVERITY_WEIGHT[b] > SEVERITY_WEIGHT[a] ? b : a
+}
+
+export function summarizeExternalReviewReports(reports: ExternalReviewReport[]): ExternalReviewBundleSummary {
+  const bundleId = reports[0]?.bundleId ?? ''
+  const groups = new Map<string, ExternalReviewFindingGroup>()
+
+  for (const report of reports) {
+    for (const finding of report.findings) {
+      const key = findingGroupKey(finding)
+      const existing = groups.get(key)
+      if (existing) {
+        existing.severity = preferSeverity(existing.severity, finding.severity)
+        existing.findingIds = dedupe([...existing.findingIds, finding.findingId])
+        existing.reportIds = dedupe([...existing.reportIds, report.reportId])
+        existing.platformIds = dedupe([...existing.platformIds, report.platformId])
+        existing.evidence = dedupe([...existing.evidence, finding.evidence]).slice(0, 5)
+        existing.recommendations = dedupe([...existing.recommendations, finding.recommendation]).slice(0, 5)
+        continue
+      }
+
+      groups.set(key, {
+        groupId: createHash('sha1').update(key).digest('hex').slice(0, 16),
+        severity: finding.severity,
+        title: finding.title,
+        relativePath: finding.relativePath,
+        line: finding.line,
+        findingIds: [finding.findingId],
+        reportIds: [report.reportId],
+        platformIds: [report.platformId],
+        evidence: [finding.evidence],
+        recommendations: [finding.recommendation],
+      })
+    }
+  }
+
+  const groupedFindings = [...groups.values()].sort((a, b) => {
+    const severityDelta = SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity]
+    if (severityDelta) return severityDelta
+    return b.reportIds.length - a.reportIds.length
+  })
+
+  return {
+    bundleId,
+    reportCount: reports.length,
+    platformIds: dedupe(reports.map((report) => report.platformId)),
+    groupedFindings,
+    findingCounts: countGroups(groupedFindings),
+    latestReceivedAt: reports.length ? Math.max(...reports.map((report) => report.receivedAt)) : null,
+  }
+}
+
 export function createExternalReviewReport(
   input: CreateExternalReviewReportInput,
   now = Date.now(),
@@ -213,6 +301,10 @@ export class ExternalReviewReportStore {
       }),
     )
     return reports.filter((report) => report.bundleId === target).sort((a, b) => b.createdAt - a.createdAt)
+  }
+
+  async summarizeBundle(bundleId: string): Promise<ExternalReviewBundleSummary> {
+    return summarizeExternalReviewReports(await this.listByBundle(bundleId))
   }
 }
 

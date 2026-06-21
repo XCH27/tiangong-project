@@ -74,6 +74,7 @@ export const RPC_CHANNELS = {
     SAVE: 'externalReview:save',
     GET: 'externalReview:get',
     LIST_BY_BUNDLE: 'externalReview:listByBundle',
+    SUMMARIZE_BUNDLE: 'externalReview:summarizeBundle',
   },
   /** Context Center — read-only overview; no pack/write/external submit. */
   contextCenter: {

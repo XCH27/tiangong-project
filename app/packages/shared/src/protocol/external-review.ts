@@ -40,6 +40,28 @@ export interface ExternalReviewReport {
   createdAt: number
 }
 
+export interface ExternalReviewFindingGroup {
+  groupId: string
+  severity: ExternalReviewSeverity
+  title: string
+  relativePath?: string
+  line?: number
+  findingIds: string[]
+  reportIds: string[]
+  platformIds: string[]
+  evidence: string[]
+  recommendations: string[]
+}
+
+export interface ExternalReviewBundleSummary {
+  bundleId: string
+  reportCount: number
+  platformIds: string[]
+  groupedFindings: ExternalReviewFindingGroup[]
+  findingCounts: Record<ExternalReviewSeverity, number>
+  latestReceivedAt: number | null
+}
+
 export interface CreateExternalReviewReportInput {
   bundleId: string
   bundleHash: string
@@ -52,4 +74,3 @@ export interface CreateExternalReviewReportInput {
   submittedAt?: number | null
   receivedAt?: number
 }
-
