@@ -70,6 +70,11 @@ export const RPC_CHANNELS = {
     GET_SUMMARY: 'projectPack:getSummary',
     BUILD_REVIEW_PROMPT: 'projectPack:buildReviewPrompt',
   },
+  externalReview: {
+    SAVE: 'externalReview:save',
+    GET: 'externalReview:get',
+    LIST_BY_BUNDLE: 'externalReview:listByBundle',
+  },
   /** Context Center — read-only overview; no pack/write/external submit. */
   contextCenter: {
     GET_OVERVIEW: 'contextCenter:getOverview',

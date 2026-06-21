@@ -26,6 +26,7 @@ import { registerStatusesHandlers } from './statuses'
 import { registerSystemCoreHandlers } from './system'
 import { registerSystemToolsHandlers } from './system-tools'
 import { registerProjectPackHandlers } from './project-pack'
+import { registerExternalReviewHandlers } from './external-review'
 import { registerTransferHandlers } from './transfer'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
@@ -56,6 +57,7 @@ export function registerCoreRpcHandlers(
   registerSystemCoreHandlers(server, deps)
   registerSystemToolsHandlers(server, deps)
   registerProjectPackHandlers(server, deps)
+  registerExternalReviewHandlers(server, deps)
   registerTransferHandlers(server)
   registerWorkspaceCoreHandlers(server, deps)
   registerMessagingHandlers(server, deps)

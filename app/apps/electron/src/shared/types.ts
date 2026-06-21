@@ -261,6 +261,8 @@ import type {
   ProjectPackResult,
   ProjectPackSummary,
   ProjectPackReviewPromptResult,
+  CreateExternalReviewReportInput,
+  ExternalReviewReport,
   ContextCenterOverview,
   ContextCenterOverviewInput,
   AgentRegistryListInput,
@@ -657,6 +659,9 @@ export interface ElectronAPI {
   packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
   getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
   buildProjectPackReviewPrompt(bundleId: string): Promise<ProjectPackReviewPromptResult>
+  saveExternalReviewReport(input: CreateExternalReviewReportInput): Promise<ExternalReviewReport>
+  getExternalReviewReport(reportId: string): Promise<ExternalReviewReport | null>
+  listExternalReviewReportsByBundle(bundleId: string): Promise<ExternalReviewReport[]>
   getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
   listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
   getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>

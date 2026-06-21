@@ -205,6 +205,9 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.projectPack.PACK,
   RPC_CHANNELS.projectPack.GET_SUMMARY,
   RPC_CHANNELS.projectPack.BUILD_REVIEW_PROMPT,
+  RPC_CHANNELS.externalReview.SAVE,
+  RPC_CHANNELS.externalReview.GET,
+  RPC_CHANNELS.externalReview.LIST_BY_BUNDLE,
 
   // cliRuntime — 本机 CLI/ACP 进程探测与健康测试（rule 14 LOCAL_ONLY）。
   RPC_CHANNELS.cliRuntime.GET_CATALOG,
