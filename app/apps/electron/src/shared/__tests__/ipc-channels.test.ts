@@ -206,6 +206,7 @@ const EXPECTED_CHANNELS: string[] = [
   'power:setKeepAwake',
   'preferences:read',
   'preferences:write',
+  'projectPack:buildReviewPrompt',
   'projectPack:getSummary',
   'projectPack:pack',
   'projectPack:previewPlan',

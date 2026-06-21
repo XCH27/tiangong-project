@@ -260,6 +260,7 @@ import type {
   ProjectPackPlanPreviewResult,
   ProjectPackResult,
   ProjectPackSummary,
+  ProjectPackReviewPromptResult,
   ContextCenterOverview,
   ContextCenterOverviewInput,
   AgentRegistryListInput,
@@ -655,6 +656,7 @@ export interface ElectronAPI {
   previewProjectPackPlan(request: ProjectPackRequest): Promise<ProjectPackPlanPreviewResult>
   packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
   getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
+  buildProjectPackReviewPrompt(bundleId: string): Promise<ProjectPackReviewPromptResult>
   getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
   listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
   getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>

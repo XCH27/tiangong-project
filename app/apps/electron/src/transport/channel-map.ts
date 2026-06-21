@@ -339,6 +339,7 @@ export const CHANNEL_MAP = {
   previewProjectPackPlan: invoke(RPC_CHANNELS.projectPack.PREVIEW_PLAN),
   packProject: invoke(RPC_CHANNELS.projectPack.PACK),
   getProjectPackSummary: invoke(RPC_CHANNELS.projectPack.GET_SUMMARY),
+  buildProjectPackReviewPrompt: invoke(RPC_CHANNELS.projectPack.BUILD_REVIEW_PROMPT),
   getContextCenterOverview: invoke(RPC_CHANNELS.contextCenter.GET_OVERVIEW),
   listAgents: invoke(RPC_CHANNELS.agents.LIST),
   getAgent: invoke(RPC_CHANNELS.agents.GET),

@@ -68,6 +68,7 @@ export const RPC_CHANNELS = {
     PREVIEW_PLAN: 'projectPack:previewPlan',
     PACK: 'projectPack:pack',
     GET_SUMMARY: 'projectPack:getSummary',
+    BUILD_REVIEW_PROMPT: 'projectPack:buildReviewPrompt',
   },
   /** Context Center — read-only overview; no pack/write/external submit. */
   contextCenter: {
