@@ -16,9 +16,6 @@ import { BrowserCDP, type AccessibilitySnapshot, type ElementGeometry } from './
 import {
   type BrowserEmptyStateLaunchPayload,
   type BrowserEmptyStateLaunchResult,
-  type BrowserPaneDockBounds,
-  type BrowserElementSelection,
-  type BrowserElementSelectionQuery,
   type BrowserInstanceInfo,
 } from '../shared/types'
 import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@craft-agent/shared/config'
@@ -140,13 +137,6 @@ interface AgentControlLockState {
   previousResizable: boolean
 }
 
-interface BrowserDockState {
-  hostWindow: BrowserWindow
-  rendererWebContentsId: number
-  bounds: BrowserPaneDockBounds
-  onHostClose: () => void
-}
-
 interface BrowserInstance {
   id: string
   window: BrowserWindow
@@ -170,7 +160,6 @@ interface BrowserInstance {
    * subsequent rebinds may overwrite it with the new binder's workspace.
    */
   workspaceId: string | null
-  dock: BrowserDockState | null
   isVisible: boolean
   isHiding: boolean
   keepAliveOnWindowClose: boolean
@@ -471,7 +460,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       ownerType,
       ownerSessionId,
       workspaceId,
-      dock: null,
       isVisible: false,
       isHiding: false,
       keepAliveOnWindowClose: true,
@@ -551,10 +539,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     instance.themeObserverToken = null
     instance.pendingShowOnReady = false
     instance.pendingShowToken += 1
-
-    if (instance.dock) {
-      this.undockInternal(instance, instance.dock.rendererWebContentsId)
-    }
 
     // Clean up in-flight network tracking for this instance's webContents
     const wcId = instance.pageView.webContents.id
@@ -812,17 +796,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     const win = instance.window
     if (win.isDestroyed()) return
 
-    if (instance.dock) {
-      if (!instance.dock.hostWindow.isDestroyed()) {
-        instance.dock.hostWindow.show()
-        instance.dock.hostWindow.focus()
-        this.layoutAllViews(instance)
-        instance.isVisible = true
-        this.emitStateChange(instance)
-      }
-      return
-    }
-
     // If toolbar hasn't painted yet, defer showing until markToolbarReady runs.
     // Token guard prevents stale deferred focus from showing after hide/destroy.
     if (!instance.toolbarReady) {
@@ -841,305 +814,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     this.emitStateChange(instance)
   }
 
-  dock(id: string, rendererWebContentsId: number, bounds: BrowserPaneDockBounds): void {
-    const instance = this.requireAliveInstance(id)
-    const hostWindow = this.windowManager?.getWindowByWebContentsId(rendererWebContentsId)
-    if (!hostWindow || hostWindow.isDestroyed()) {
-      throw new Error('Unable to resolve the local Stage host window')
-    }
-
-    const normalizedBounds = this.normalizeDockBounds(bounds)
-    if (instance.dock?.rendererWebContentsId === rendererWebContentsId) {
-      instance.dock.bounds = normalizedBounds
-      this.layoutAllViews(instance)
-      return
-    }
-
-    if (instance.dock) {
-      this.undockInternal(instance, undefined)
-    }
-
-    const previousHost = instance.window
-    this.removeViewsFromWindow(previousHost, instance)
-    try {
-      this.addViewsToWindow(hostWindow, instance)
-    } catch (error) {
-      this.addViewsToWindow(previousHost, instance)
-      this.layoutAllViews(instance)
-      throw error
-    }
-
-    const onHostClose = () => {
-      if (instance.dock?.rendererWebContentsId === rendererWebContentsId) {
-        this.undockInternal(instance, rendererWebContentsId)
-      }
-    }
-    instance.dock = {
-      hostWindow,
-      rendererWebContentsId,
-      bounds: normalizedBounds,
-      onHostClose,
-    }
-    hostWindow.once('close', onHostClose)
-    instance.window.hide()
-    instance.isVisible = true
-    this.layoutAllViews(instance)
-    this.emitStateChange(instance)
-    mainLog.info(`[browser-pane] docked id=${id} renderer=${rendererWebContentsId}`)
-  }
-
-  undock(id: string, rendererWebContentsId?: number): void {
-    const instance = this.instances.get(id)
-    if (!instance?.dock) return
-    if (rendererWebContentsId != null && instance.dock.rendererWebContentsId !== rendererWebContentsId) return
-    this.undockInternal(instance, rendererWebContentsId)
-    this.emitStateChange(instance)
-  }
-
-  async pickElement(id: string): Promise<BrowserElementSelection | null> {
-    const instance = this.requireAliveInstance(id)
-    return instance.pageView.webContents.executeJavaScript(`(() => {
-      const previous = window.__fleetElementPickerCancel;
-      if (typeof previous === 'function') previous();
-
-      return new Promise((resolve) => {
-        const overlay = document.createElement('div');
-        overlay.setAttribute('data-fleet-element-picker', '');
-        Object.assign(overlay.style, {
-          position: 'fixed',
-          zIndex: '2147483647',
-          pointerEvents: 'none',
-          border: '2px solid #3b82f6',
-          background: 'rgba(59, 130, 246, 0.12)',
-          boxSizing: 'border-box',
-          display: 'none',
-        });
-        document.documentElement.appendChild(overlay);
-
-        let current = null;
-        const selectorFor = (element) => {
-          if (element.id) return '#' + CSS.escape(element.id);
-          const parts = [];
-          let node = element;
-          while (node && node.nodeType === Node.ELEMENT_NODE && node !== document.documentElement) {
-            let part = node.tagName.toLowerCase();
-            const parent = node.parentElement;
-            if (parent) {
-              const siblings = Array.from(parent.children).filter((child) => child.tagName === node.tagName);
-              if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(node) + 1) + ')';
-            }
-            parts.unshift(part);
-            node = parent;
-          }
-          return parts.join(' > ');
-        };
-        const xpathFor = (element) => {
-          const parts = [];
-          let node = element;
-          while (node && node.nodeType === Node.ELEMENT_NODE) {
-            let index = 1;
-            let sibling = node.previousElementSibling;
-            while (sibling) {
-              if (sibling.tagName === node.tagName) index++;
-              sibling = sibling.previousElementSibling;
-            }
-            parts.unshift(node.tagName.toLowerCase() + '[' + index + ']');
-            node = node.parentElement;
-          }
-          return '/' + parts.join('/');
-        };
-        const accessibleNameFor = (element) => (
-          element.getAttribute('aria-label') ||
-          element.getAttribute('alt') ||
-          element.getAttribute('title') ||
-          element.getAttribute('name') ||
-          ''
-        ).trim().replace(/\\s+/g, ' ').slice(0, 240);
-        const cleanup = (result) => {
-          delete window.__fleetElementPickerCancel;
-          overlay.remove();
-          document.removeEventListener('mousemove', onMove, true);
-          document.removeEventListener('click', onClick, true);
-          document.removeEventListener('keydown', onKey, true);
-          resolve(result);
-        };
-        const onMove = (event) => {
-          const target = event.target;
-          if (!(target instanceof Element) || target === overlay) return;
-          current = target;
-          const rect = target.getBoundingClientRect();
-          Object.assign(overlay.style, {
-            display: 'block',
-            left: rect.left + 'px',
-            top: rect.top + 'px',
-            width: rect.width + 'px',
-            height: rect.height + 'px',
-          });
-        };
-        const onClick = (event) => {
-          if (!current) return;
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          const rect = current.getBoundingClientRect();
-          const styles = getComputedStyle(current);
-          cleanup({
-            selector: selectorFor(current),
-            xpath: xpathFor(current),
-            url: window.location.href,
-            title: document.title,
-            tagName: current.tagName.toLowerCase(),
-            role: current.getAttribute('role') || undefined,
-            accessibleName: accessibleNameFor(current) || undefined,
-            text: (current.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 500),
-            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-            styles: {
-              color: styles.color,
-              backgroundColor: styles.backgroundColor,
-              fontSize: styles.fontSize,
-              fontWeight: styles.fontWeight,
-              borderRadius: styles.borderRadius,
-            },
-          });
-        };
-        const onKey = (event) => {
-          if (event.key === 'Escape') cleanup(null);
-        };
-        window.__fleetElementPickerCancel = () => cleanup(null);
-        document.addEventListener('mousemove', onMove, true);
-        document.addEventListener('click', onClick, true);
-        document.addEventListener('keydown', onKey, true);
-      });
-    })()`)
-  }
-
-  async selectElements(id: string, query: BrowserElementSelectionQuery): Promise<BrowserElementSelection[]> {
-    const instance = this.requireAliveInstance(id)
-    const normalizedQuery = {
-      mode: query?.mode === 'viewport' ? 'viewport' : 'rect',
-      rect: query?.rect
-        ? {
-            x: Math.max(0, Math.floor(query.rect.x)),
-            y: Math.max(0, Math.floor(query.rect.y)),
-            width: Math.max(0, Math.floor(query.rect.width)),
-            height: Math.max(0, Math.floor(query.rect.height)),
-          }
-        : undefined,
-      maxResults: Math.min(200, Math.max(1, Math.floor(query?.maxResults ?? 50))),
-      minArea: Math.max(0, Math.floor(query?.minArea ?? 16)),
-      includeText: query?.includeText !== false,
-    }
-
-    return instance.pageView.webContents.executeJavaScript(`(() => {
-      const query = ${JSON.stringify(normalizedQuery)};
-
-      const selectorFor = (element) => {
-        if (element.id) return '#' + CSS.escape(element.id);
-        const parts = [];
-        let node = element;
-        while (node && node.nodeType === Node.ELEMENT_NODE && node !== document.documentElement) {
-          let part = node.tagName.toLowerCase();
-          const parent = node.parentElement;
-          if (parent) {
-            const siblings = Array.from(parent.children).filter((child) => child.tagName === node.tagName);
-            if (siblings.length > 1) part += ':nth-of-type(' + (siblings.indexOf(node) + 1) + ')';
-          }
-          parts.unshift(part);
-          node = parent;
-        }
-        return parts.join(' > ');
-      };
-      const xpathFor = (element) => {
-        const parts = [];
-        let node = element;
-        while (node && node.nodeType === Node.ELEMENT_NODE) {
-          let index = 1;
-          let sibling = node.previousElementSibling;
-          while (sibling) {
-            if (sibling.tagName === node.tagName) index++;
-            sibling = sibling.previousElementSibling;
-          }
-          parts.unshift(node.tagName.toLowerCase() + '[' + index + ']');
-          node = node.parentElement;
-        }
-        return '/' + parts.join('/');
-      };
-      const accessibleNameFor = (element) => (
-        element.getAttribute('aria-label') ||
-        element.getAttribute('alt') ||
-        element.getAttribute('title') ||
-        element.getAttribute('name') ||
-        ''
-      ).trim().replace(/\\s+/g, ' ').slice(0, 240);
-
-      const viewportRect = {
-        x: 0,
-        y: 0,
-        width: window.innerWidth,
-        height: window.innerHeight,
-      };
-      const targetRect = query.mode === 'viewport' || !query.rect ? viewportRect : query.rect;
-      const intersects = (a, b) => (
-        a.x < b.x + b.width &&
-        a.x + a.width > b.x &&
-        a.y < b.y + b.height &&
-        a.y + a.height > b.y
-      );
-      const contains = (outer, inner) => (
-        inner.x >= outer.x &&
-        inner.y >= outer.y &&
-        inner.x + inner.width <= outer.x + outer.width &&
-        inner.y + inner.height <= outer.y + outer.height
-      );
-      const isUsefulElement = (element, rect, styles) => {
-        if (element === document.documentElement || element === document.body) return false;
-        if (element.closest('[data-fleet-element-picker]')) return false;
-        if (rect.width <= 0 || rect.height <= 0) return false;
-        if (rect.width * rect.height < query.minArea) return false;
-        if (styles.visibility === 'hidden' || styles.display === 'none' || styles.opacity === '0') return false;
-        return intersects(targetRect, rect);
-      };
-
-      const elements = Array.from(document.querySelectorAll('body *'));
-      const selected = [];
-      const seenSelectors = new Set();
-      for (const element of elements) {
-        const rect = element.getBoundingClientRect();
-        const candidateRect = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        const styles = getComputedStyle(element);
-        if (!isUsefulElement(element, candidateRect, styles)) continue;
-
-        // Prefer leaf or visually bounded nodes. Avoid returning large parents
-        // when a child already occupies the same selected rectangle.
-        const hasSelectedChild = selected.some((item) => contains(candidateRect, item.rect));
-        if (hasSelectedChild && candidateRect.width * candidateRect.height > targetRect.width * targetRect.height * 0.5) continue;
-
-        const selector = selectorFor(element);
-        if (!selector || seenSelectors.has(selector)) continue;
-        seenSelectors.add(selector);
-        selected.push({
-          selector,
-          xpath: xpathFor(element),
-          url: window.location.href,
-          title: document.title,
-          tagName: element.tagName.toLowerCase(),
-          role: element.getAttribute('role') || undefined,
-          accessibleName: accessibleNameFor(element) || undefined,
-          text: query.includeText ? (element.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 500) : '',
-          rect: candidateRect,
-          styles: {
-            color: styles.color,
-            backgroundColor: styles.backgroundColor,
-            fontSize: styles.fontSize,
-            fontWeight: styles.fontWeight,
-            borderRadius: styles.borderRadius,
-          },
-        });
-        if (selected.length >= query.maxResults) break;
-      }
-      return selected;
-    })()`)
-  }
-
   hide(id: string): void {
     const instance = this.instances.get(id)
     if (!instance) return
@@ -1148,13 +822,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     // 'close' listener from re-entering hide() during teardown, which can crash
     // Chromium's compositor when the BrowserView is mid-load.
     if (instance.isHiding) return
-
-    if (instance.dock) {
-      this.undockInternal(instance, instance.dock.rendererWebContentsId)
-      instance.isVisible = false
-      this.emitStateChange(instance)
-      return
-    }
 
     const win = instance.window
     if (win.isDestroyed()) return
@@ -2327,73 +1994,16 @@ export class BrowserPaneManager implements IBrowserPaneManager {
   private getToolbarEffectiveHeight(instance: BrowserInstance): number {
     if (!instance.toolbarMenuOpen) return TOOLBAR_HEIGHT
 
-    const contentHeight = instance.dock?.bounds.height ?? instance.window.getContentSize()[1]
+    const [, contentHeight] = instance.window.getContentSize()
     return Math.max(TOOLBAR_HEIGHT, contentHeight)
   }
 
-  private normalizeDockBounds(bounds: BrowserPaneDockBounds): BrowserPaneDockBounds {
-    return {
-      x: Math.max(0, Math.floor(bounds.x)),
-      y: Math.max(0, Math.floor(bounds.y)),
-      width: Math.max(320, Math.floor(bounds.width)),
-      height: Math.max(240, Math.floor(bounds.height)),
-    }
-  }
-
-  private getViewHostWindow(instance: BrowserInstance): BrowserWindow {
-    return instance.dock?.hostWindow ?? instance.window
-  }
-
-  private getViewHostBounds(instance: BrowserInstance): BrowserPaneDockBounds {
-    if (instance.dock) return instance.dock.bounds
-    const [width, height] = instance.window.getContentSize()
-    return { x: 0, y: 0, width, height }
-  }
-
-  private removeViewsFromWindow(window: BrowserWindow, instance: BrowserInstance): void {
-    if (window.isDestroyed()) return
-    for (const view of [instance.toolbarView, instance.nativeOverlayView, instance.pageView]) {
-      try {
-        window.removeBrowserView(view)
-      } catch {
-        // A BrowserView may already have been detached by Electron teardown.
-      }
-    }
-  }
-
-  private addViewsToWindow(window: BrowserWindow, instance: BrowserInstance): void {
-    window.addBrowserView(instance.pageView)
-    window.addBrowserView(instance.nativeOverlayView)
-    window.addBrowserView(instance.toolbarView)
-    window.setTopBrowserView(instance.toolbarView)
-  }
-
-  private undockInternal(instance: BrowserInstance, rendererWebContentsId?: number): void {
-    const dock = instance.dock
-    if (!dock) return
-    if (rendererWebContentsId != null && dock.rendererWebContentsId !== rendererWebContentsId) return
-
-    void instance.pageView.webContents.executeJavaScript(
-      "typeof window.__fleetElementPickerCancel === 'function' && window.__fleetElementPickerCancel()",
-    ).catch(() => {})
-    dock.hostWindow.removeListener('close', dock.onHostClose)
-    this.removeViewsFromWindow(dock.hostWindow, instance)
-    instance.dock = null
-
-    if (!instance.window.isDestroyed()) {
-      this.addViewsToWindow(instance.window, instance)
-      this.layoutAllViews(instance)
-    }
-    instance.isVisible = false
-    mainLog.info(`[browser-pane] undocked id=${instance.id} renderer=${dock.rendererWebContentsId}`)
-  }
-
   private layoutToolbarView(instance: BrowserInstance): void {
-    const { x, y, width } = this.getViewHostBounds(instance)
+    const [width] = instance.window.getContentSize()
     const toolbarHeight = this.getToolbarEffectiveHeight(instance)
 
-    instance.toolbarView.setBounds({ x, y, width, height: toolbarHeight })
-    instance.toolbarView.setAutoResize({ width: !instance.dock, height: false })
+    instance.toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
+    instance.toolbarView.setAutoResize({ width: true, height: false })
   }
 
   private updateNativeOverlayState(instance: BrowserInstance): void {
@@ -2402,20 +2012,19 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     const menuActive = !!instance.toolbarMenuOverlayActive
     const shouldShow = agentActive || menuActive
 
-    const hostWindow = this.getViewHostWindow(instance)
-    if (!shouldShow || !instance.nativeOverlayReady || instance.window.isDestroyed() || hostWindow.isDestroyed()) {
+    if (!shouldShow || !instance.nativeOverlayReady || instance.window.isDestroyed()) {
       instance.nativeOverlayView.setBounds({ x: 0, y: 0, width: 0, height: 0 })
-      if (!hostWindow.isDestroyed()) {
-        hostWindow.setTopBrowserView(instance.toolbarView)
+      if (!instance.window.isDestroyed()) {
+        instance.window.setTopBrowserView(instance.toolbarView)
       }
       return
     }
 
-    const { x, y, width, height } = this.getViewHostBounds(instance)
+    const [width, height] = instance.window.getContentSize()
     const overlayHeight = Math.max(100, height - TOOLBAR_HEIGHT)
-    instance.nativeOverlayView.setBounds({ x, y: y + TOOLBAR_HEIGHT, width, height: overlayHeight })
-    instance.nativeOverlayView.setAutoResize({ width: !instance.dock, height: !instance.dock })
-    hostWindow.setTopBrowserView(instance.toolbarView)
+    instance.nativeOverlayView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width, height: overlayHeight })
+    instance.nativeOverlayView.setAutoResize({ width: true, height: true })
+    instance.window.setTopBrowserView(instance.toolbarView)
 
     if (agentActive) {
       const label = this.getAgentControlLabel(control)
@@ -2504,18 +2113,17 @@ export class BrowserPaneManager implements IBrowserPaneManager {
   }
 
   private layoutPageView(instance: BrowserInstance): void {
-    const { x, y, width, height } = this.getViewHostBounds(instance)
-    instance.pageView.setBounds({ x, y: y + TOOLBAR_HEIGHT, width, height: Math.max(100, height - TOOLBAR_HEIGHT) })
-    instance.pageView.setAutoResize({ width: !instance.dock, height: !instance.dock })
+    const [width, height] = instance.window.getContentSize()
+    instance.pageView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width, height: Math.max(100, height - TOOLBAR_HEIGHT) })
+    instance.pageView.setAutoResize({ width: true, height: true })
     this.updateNativeOverlayState(instance)
   }
 
   private layoutAllViews(instance: BrowserInstance): void {
     this.layoutToolbarView(instance)
     this.layoutPageView(instance)
-    const hostWindow = this.getViewHostWindow(instance)
-    if (!hostWindow.isDestroyed()) {
-      hostWindow.setTopBrowserView(instance.toolbarView)
+    if (!instance.window.isDestroyed()) {
+      instance.window.setTopBrowserView(instance.toolbarView)
     }
   }
 
@@ -3137,11 +2745,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
 
     instance.toolbarReady = true
     mainLog.info(`[browser-pane] toolbar ready id=${instance.id} reason=${reason}`)
-
-    if (instance.dock) {
-      this.layoutAllViews(instance)
-      return
-    }
 
     const shouldShowNow = instance.showOnCreate || instance.pendingShowOnReady
     if (!shouldShowNow) return

@@ -6,7 +6,6 @@ import {
   pushPanelAtom,
   reconcilePanelStackAtom,
   updateFocusedPanelRouteAtom,
-  getPanelTypeFromRoute,
   type PanelStackEntry,
 } from '../panel-stack'
 
@@ -61,17 +60,6 @@ describe('panel stack single-lane behavior', () => {
     expect(stack[0].route).toBe('allSessions/session/s1')
     expect(stack[1].route).toBe('sources/source/linear')
     expect(stack[2].route).toBe('allSessions/session/s2')
-  })
-
-  it('classifies stage routes as stage panel type', () => {
-    expect(getPanelTypeFromRoute('stage/browser')).toBe('stage')
-
-    const store = createStore()
-    store.set(pushPanelAtom, { route: 'stage/artifact' })
-
-    const stack = getStack(store)
-    expect(stack).toHaveLength(1)
-    expect(stack[0].panelType).toBe('stage')
   })
 
   it('reconcile focuses by focusedIndex first when duplicate routes exist', () => {

@@ -7,9 +7,7 @@
  */
 
 import {
-  Brain,
   Building2,
-  Gauge,
   Keyboard,
   MessageSquare,
   Palette,
@@ -17,10 +15,8 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
-  TerminalSquare,
   ToggleRight,
   UserCircle,
-  Wrench,
 } from 'lucide-react'
 import type { SettingsSubpage } from '../../../shared/types'
 
@@ -28,8 +24,6 @@ type IconProps = { className?: string }
 
 export const AppSettingsIcon = ({ className }: IconProps) => <ToggleRight className={className} />
 export const AiSettingsIcon = ({ className }: IconProps) => <Sparkles className={className} />
-export const CliRuntimeIcon = ({ className }: IconProps) => <TerminalSquare className={className} />
-export const ContextEfficiencyIcon = ({ className }: IconProps) => <Gauge className={className} />
 export const AppearanceIcon = ({ className }: IconProps) => <Palette className={className} />
 export const InputIcon = ({ className }: IconProps) => <Keyboard className={className} />
 export const WorkspaceIcon = ({ className }: IconProps) => <Building2 className={className} />
@@ -37,10 +31,8 @@ export const PermissionsIcon = ({ className }: IconProps) => <ShieldCheck classN
 export const LabelsIcon = ({ className }: IconProps) => <Tag className={className} />
 export const MessagingSettingsIcon = ({ className }: IconProps) => <MessageSquare className={className} />
 export const ServerSettingsIcon = ({ className }: IconProps) => <Server className={className} />
-export const SystemToolsIcon = ({ className }: IconProps) => <Wrench className={className} />
 export const ShortcutsIcon = ({ className }: IconProps) => <Keyboard className={className} />
 export const PreferencesIcon = ({ className }: IconProps) => <UserCircle className={className} />
-export const MemoryDecisionIcon = ({ className }: IconProps) => <Brain className={className} />
 
 /**
  * Map of settings subpage IDs to their icon components.
@@ -49,8 +41,6 @@ export const MemoryDecisionIcon = ({ className }: IconProps) => <Brain className
 export const SETTINGS_ICONS: Record<SettingsSubpage, React.ComponentType<IconProps>> = {
   app: AppSettingsIcon,
   ai: AiSettingsIcon,
-  cliRuntime: CliRuntimeIcon,
-  contextEfficiency: ContextEfficiencyIcon,
   appearance: AppearanceIcon,
   input: InputIcon,
   workspace: WorkspaceIcon,
@@ -58,8 +48,6 @@ export const SETTINGS_ICONS: Record<SettingsSubpage, React.ComponentType<IconPro
   labels: LabelsIcon,
   messaging: MessagingSettingsIcon,
   server: ServerSettingsIcon,
-  systemTools: SystemToolsIcon,
   shortcuts: ShortcutsIcon,
   preferences: PreferencesIcon,
-  memoryDecision: MemoryDecisionIcon,
 }

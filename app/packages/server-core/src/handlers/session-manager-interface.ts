@@ -14,7 +14,6 @@ import type { AuthResult } from '@craft-agent/shared/agent'
 import type {
   Session,
   SessionStatus,
-  SessionEvent,
   CreateSessionOptions,
   FileAttachment,
   SendMessageOptions,
@@ -36,8 +35,6 @@ export interface ISessionManager {
   initialize(): Promise<void>
   cleanup(): void
   setEventSink(sink: EventSink): void
-  /** Emit a SessionEvent from outside (e.g. Fleet 工作台 DesignEngine). Resolves workspace internally. */
-  emitSessionEvent(event: SessionEvent): void
   flushAllSessions(): Promise<void>
 
   // ---------------------------------------------------------------------------

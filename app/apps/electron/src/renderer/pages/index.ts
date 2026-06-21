@@ -5,7 +5,6 @@
  */
 
 export { default as ChatPage } from './ChatPage'
-export { default as StagePage } from './StagePage'
 export { default as SourceInfoPage } from './SourceInfoPage'
 // Settings pages
 export {

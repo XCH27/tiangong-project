@@ -31,12 +31,6 @@ export const CHANNEL_MAP = {
   respondToPermission: invoke(RPC_CHANNELS.sessions.RESPOND_TO_PERMISSION),
   respondToCredential: invoke(RPC_CHANNELS.sessions.RESPOND_TO_CREDENTIAL),
   sessionCommand: invoke(RPC_CHANNELS.sessions.COMMAND),
-  // Fleet 工作台动作通道（T-ENGINE）：人类 UI 和 AI 工具走同一组 channel。
-  setDesignSelection: invoke(RPC_CHANNELS.design.SET_SELECTION),
-  getDesignSelection: invoke(RPC_CHANNELS.design.GET_SELECTION),
-  proposeDesignAction: invoke(RPC_CHANNELS.design.PROPOSE_ACTION),
-  commitDesignPatch: invoke(RPC_CHANNELS.design.COMMIT_PATCH),
-  rollbackDesignPatch: invoke(RPC_CHANNELS.design.ROLLBACK_PATCH),
   exportSession: invoke(RPC_CHANNELS.sessions.EXPORT),
   importSession: invoke(RPC_CHANNELS.sessions.IMPORT),
   exportRemoteSessionTransfer: invoke(RPC_CHANNELS.sessions.EXPORT_REMOTE_TRANSFER),
@@ -317,10 +311,6 @@ export const CHANNEL_MAP = {
   getRtkStatus: invoke(RPC_CHANNELS.rtk.GET_STATUS),
   getRtkGain: invoke(RPC_CHANNELS.rtk.GET_GAIN),
 
-  // CLI Runtime
-  getCliRuntimeCatalog: invoke(RPC_CHANNELS.cliRuntime.GET_CATALOG),
-  testCliRuntime: invoke(RPC_CHANNELS.cliRuntime.TEST),
-
   // Badge
   refreshBadge: invoke(RPC_CHANNELS.badge.REFRESH),
   setDockIconWithBadge: invoke(RPC_CHANNELS.badge.SET_ICON),
@@ -334,49 +324,6 @@ export const CHANNEL_MAP = {
 
   // Git
   getGitBranch: invoke(RPC_CHANNELS.git.GET_BRANCH),
-
-  // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
-  previewProjectPackPlan: invoke(RPC_CHANNELS.projectPack.PREVIEW_PLAN),
-  packProject: invoke(RPC_CHANNELS.projectPack.PACK),
-  getProjectPackSummary: invoke(RPC_CHANNELS.projectPack.GET_SUMMARY),
-  buildProjectPackReviewPrompt: invoke(RPC_CHANNELS.projectPack.BUILD_REVIEW_PROMPT),
-  saveExternalReviewReport: invoke(RPC_CHANNELS.externalReview.SAVE),
-  getExternalReviewReport: invoke(RPC_CHANNELS.externalReview.GET),
-  listExternalReviewReportsByBundle: invoke(RPC_CHANNELS.externalReview.LIST_BY_BUNDLE),
-  summarizeExternalReviewBundle: invoke(RPC_CHANNELS.externalReview.SUMMARIZE_BUNDLE),
-  getContextCenterOverview: invoke(RPC_CHANNELS.contextCenter.GET_OVERVIEW),
-  queryContextCodegraph: invoke(RPC_CHANNELS.contextAdapter.QUERY_CODEGRAPH),
-  compressContextRtk: invoke(RPC_CHANNELS.contextAdapter.COMPRESS_RTK),
-  planProjectPackDelta: invoke(RPC_CHANNELS.projectPackDelta.PLAN),
-  createExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.CREATE),
-  getExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.GET),
-  advanceExternalReviewJob: invoke(RPC_CHANNELS.externalReviewJob.ADVANCE),
-  completeExternalReviewJobWithReport: invoke(RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT),
-  listExternalReviewJobsByBundle: invoke(RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE),
-  listAgents: invoke(RPC_CHANNELS.agents.LIST),
-  getAgent: invoke(RPC_CHANNELS.agents.GET),
-
-  // Agent lifecycle (state model only, LOCAL_ONLY, backed by agent registry)
-  createAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.CREATE),
-  updateAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.UPDATE),
-  listAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.LIST),
-  getAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.GET),
-  markActiveAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.MARK_ACTIVE),
-  stopAgentLifecycle: invoke(RPC_CHANNELS.agentLifecycle.STOP),
-
-  // Memory partitions (LOCAL_ONLY, 7 partitions, explicit confirm for high-risk delete)
-  addMemory: invoke(RPC_CHANNELS.memory.ADD),
-  getMemory: invoke(RPC_CHANNELS.memory.GET),
-  listMemory: invoke(RPC_CHANNELS.memory.LIST),
-  searchMemory: invoke(RPC_CHANNELS.memory.SEARCH),
-  deleteMemory: invoke(RPC_CHANNELS.memory.DELETE),
-
-  // Decision L0-L3 (LOCAL_ONLY, pure rules)
-  evaluateDecision: invoke(RPC_CHANNELS.decision.EVALUATE),
-  listDecisionRules: invoke(RPC_CHANNELS.decision.LIST_RULES),
-  upsertDecisionRule: invoke(RPC_CHANNELS.decision.UPSERT_RULE),
-  deleteDecisionRule: invoke(RPC_CHANNELS.decision.DELETE_RULE),
-
   checkGitBash: invoke(RPC_CHANNELS.gitbash.CHECK),
   browseForGitBash: invoke(RPC_CHANNELS.gitbash.BROWSE),
   setGitBashPath: invoke(RPC_CHANNELS.gitbash.SET_PATH),
@@ -407,11 +354,6 @@ export const CHANNEL_MAP = {
   'browserPane.reload': invoke(RPC_CHANNELS.browserPane.RELOAD),
   'browserPane.stop': invoke(RPC_CHANNELS.browserPane.STOP),
   'browserPane.focus': invoke(RPC_CHANNELS.browserPane.FOCUS),
-  'browserPane.dock': invoke(RPC_CHANNELS.browserPane.DOCK),
-  'browserPane.undock': invoke(RPC_CHANNELS.browserPane.UNDOCK),
-  'browserPane.pickElement': invoke(RPC_CHANNELS.browserPane.PICK_ELEMENT),
-  'browserPane.selectElements': invoke(RPC_CHANNELS.browserPane.SELECT_ELEMENTS),
-  'browserPane.evaluate': invoke(RPC_CHANNELS.browserPane.EVALUATE),
   'browserPane.emptyStateLaunch': invoke(RPC_CHANNELS.browserPane.LAUNCH),
   'browserPane.onStateChanged': listener(RPC_CHANNELS.browserPane.STATE_CHANGED),
   'browserPane.onRemoved': listener(RPC_CHANNELS.browserPane.REMOVED),
@@ -475,14 +417,4 @@ export const CHANNEL_MAP = {
   allowMessagingPendingSender: invoke(RPC_CHANNELS.messaging.ALLOW_PENDING_SENDER),
   setMessagingBindingAccess: invoke(RPC_CHANNELS.messaging.SET_BINDING_ACCESS),
   onMessagingPendingChanged: listener(RPC_CHANNELS.messaging.PENDING_CHANGED),
-
-  // System tools / project environment detection (T-SYSTOOLS) — read-only
-  'systemTools.listTools': invoke(RPC_CHANNELS.systemTools.LIST_TOOLS),
-  'systemTools.detectAll': invoke(RPC_CHANNELS.systemTools.DETECT_ALL),
-  'systemTools.detectTool': invoke(RPC_CHANNELS.systemTools.DETECT_TOOL),
-  'systemTools.detectCategory': invoke(RPC_CHANNELS.systemTools.DETECT_CATEGORY),
-  'systemTools.getBestTool': invoke(RPC_CHANNELS.systemTools.GET_BEST_TOOL),
-  'systemTools.clearCache': invoke(RPC_CHANNELS.systemTools.CLEAR_CACHE),
-  'systemTools.diagnoseProject': invoke(RPC_CHANNELS.systemTools.DIAGNOSE_PROJECT),
-  'systemTools.getProjectProfile': invoke(RPC_CHANNELS.systemTools.GET_PROJECT_PROFILE),
 } satisfies ChannelMap

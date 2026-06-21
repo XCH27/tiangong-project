@@ -37,8 +37,6 @@ export interface SettingsPageDefinition {
 export const SETTINGS_PAGES = [
   { id: 'app' as const, labelKey: 'settings.app.title', descriptionKey: 'settings.app.description' },
   { id: 'ai' as const, labelKey: 'settings.ai.title', descriptionKey: 'settings.ai.description' },
-  { id: 'cliRuntime' as const, labelKey: 'settings.cliRuntime.title', descriptionKey: 'settings.cliRuntime.description' },
-  { id: 'contextEfficiency' as const, labelKey: 'settings.contextEfficiency.title', descriptionKey: 'settings.contextEfficiency.description' },
   { id: 'appearance' as const, labelKey: 'settings.appearance.title', descriptionKey: 'settings.appearance.description' },
   { id: 'input' as const, labelKey: 'settings.input.title', descriptionKey: 'settings.input.description' },
   { id: 'workspace' as const, labelKey: 'settings.workspace.title', descriptionKey: 'settings.workspace.description' },
@@ -46,10 +44,8 @@ export const SETTINGS_PAGES = [
   { id: 'labels' as const, labelKey: 'settings.labels.title', descriptionKey: 'settings.labels.description' },
   { id: 'messaging' as const, labelKey: 'settings.messaging.title', descriptionKey: 'settings.messaging.description' },
   { id: 'server' as const, labelKey: 'settings.server.title', descriptionKey: 'settings.server.description' },
-  { id: 'systemTools' as const, labelKey: 'settings.systemTools.title', descriptionKey: 'settings.systemTools.description' },
   { id: 'shortcuts' as const, labelKey: 'settings.shortcuts.title', descriptionKey: 'settings.shortcuts.description' },
   { id: 'preferences' as const, labelKey: 'settings.preferences.title', descriptionKey: 'settings.preferences.description' },
-  { id: 'memoryDecision' as const, labelKey: 'settings.memoryDecision.title', descriptionKey: 'settings.memoryDecision.description' },
 ] satisfies readonly SettingsPageDefinition[]
 
 /**

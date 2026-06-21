@@ -16,8 +16,6 @@ import type { SettingsSubpage } from '../../../shared/settings-registry'
 
 import AppSettingsPage from './AppSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
-import CliRuntimeSettingsPage from './CliRuntimeSettingsPage'
-import ContextEfficiencySettingsPage from './ContextEfficiencySettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
 import InputSettingsPage from './InputSettingsPage'
 import WorkspaceSettingsPage from './WorkspaceSettingsPage'
@@ -25,10 +23,8 @@ import PermissionsSettingsPage from './PermissionsSettingsPage'
 import LabelsSettingsPage from './LabelsSettingsPage'
 import MessagingSettingsPage from './MessagingSettingsPage'
 import ServerSettingsPage from './ServerSettingsPage'
-import SystemToolsSettingsPage from './SystemToolsSettingsPage'
 import ShortcutsPage from './ShortcutsPage'
 import PreferencesPage from './PreferencesPage'
-import MemoryDecisionSettingsPage from './MemoryDecisionSettingsPage'
 
 /**
  * Map of settings subpage IDs to their page components.
@@ -37,8 +33,6 @@ import MemoryDecisionSettingsPage from './MemoryDecisionSettingsPage'
 export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = {
   app: AppSettingsPage,
   ai: AiSettingsPage,
-  cliRuntime: CliRuntimeSettingsPage,
-  contextEfficiency: ContextEfficiencySettingsPage,
   appearance: AppearanceSettingsPage,
   input: InputSettingsPage,
   workspace: WorkspaceSettingsPage,
@@ -46,10 +40,8 @@ export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = 
   labels: LabelsSettingsPage,
   messaging: MessagingSettingsPage,
   server: ServerSettingsPage,
-  systemTools: SystemToolsSettingsPage,
   shortcuts: ShortcutsPage,
   preferences: PreferencesPage,
-  memoryDecision: MemoryDecisionSettingsPage,
 }
 
 /**

@@ -90,7 +90,6 @@ import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSourc
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
-import { workbenchSessionIdAtom } from "@/atoms/design"
 import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
@@ -114,7 +113,6 @@ import {
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
-  isStageNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import type { SettingsSubpage } from "../../../shared/types"
@@ -143,8 +141,6 @@ import {
 import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
-import { ActionTickerBar } from "@/components/workbench/ActionTickerBar"
-import { WorkbenchInspectorRail } from "@/components/workbench/WorkbenchInspectorRail"
 
 /**
  * AppShellProps - Minimal props interface for AppShell component
@@ -592,13 +588,11 @@ function AppShellContent({
   // UNIFIED NAVIGATION STATE - single source of truth from NavigationContext
   // Derived from focused panel's route — all panels are peers
   const navState = useNavigationState()
-  const isWorkbenchInspectorVisible = !isAutoCompact && navState.rightSidebar?.type === 'inspector'
 
   const store = useStore()
   const panelStack = useAtomValue(panelStackAtom)
   const panelCount = useAtomValue(panelCountAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
-  const setWorkbenchSessionId = useSetAtom(workbenchSessionIdAtom)
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -1687,11 +1681,6 @@ function AppShellContent({
     navigate(routes.view.sources())
   }, [])
 
-  const handleStageClick = useCallback(() => {
-    setWorkbenchSessionId(focusedSessionId ?? session.selected)
-    navigate(routes.view.stage())
-  }, [focusedSessionId, navigate, session.selected, setWorkbenchSessionId])
-
   // Handlers for source type filter views (subcategories in Sources dropdown)
   const handleSourcesApiClick = useCallback(() => {
     navigate(routes.view.sourcesApi())
@@ -1890,12 +1879,19 @@ function AppShellContent({
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
   }, [activeWorkspace, focusZone, navigate])
 
-  // Browser creation enters the Stage first. Native BrowserPane docking is the
-  // next slice; avoid creating another floating browser window from the main UI.
-  const handleOpenStageBrowser = useCallback(() => {
-    setWorkbenchSessionId(focusedSessionId ?? session.selected)
-    navigate(routes.view.stage('browser'))
-  }, [focusedSessionId, navigate, session.selected, setWorkbenchSessionId])
+  // Create a brand new dedicated browser window and focus it.
+  // Intentionally unbound: this action should always create a NEW window.
+  const handleNewBrowserWindow = useCallback(async () => {
+    try {
+      const instanceId = await window.electronAPI.browserPane.create({
+        show: true,
+      })
+      await window.electronAPI.browserPane.focus(instanceId)
+    } catch (error) {
+      console.error('[Chat] Failed to create browser window:', error)
+      toast.error(t('toast.failedToCreateBrowser'))
+    }
+  }, [])
 
   // Delete Source - simplified since agents system is removed
   const handleDeleteSource = useCallback(async (sourceSlug: string) => {
@@ -1961,8 +1957,7 @@ function AppShellContent({
     }
     flattenTree(labelTree)
 
-    // 3. Workbench, Sources, Skills, Settings
-    result.push({ id: 'nav:stage', type: 'nav', action: handleStageClick })
+    // 3. Sources, Skills, Settings
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
@@ -1970,7 +1965,7 @@ function AppShellContent({
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleStageClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2100,8 +2095,6 @@ function AppShellContent({
       }
     }
 
-    if (isStageNavigation(navState)) return "工作台"
-
     // Settings navigator
     if (isSettingsNavigation(navState)) return t("sidebar.settings")
 
@@ -2204,18 +2197,16 @@ function AppShellContent({
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
           onAddSessionPanel={() => handleNewChat(true)}
-          onAddBrowserPanel={handleOpenStageBrowser}
+          onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
         />
 
-      {/* === OUTER LAYOUT: [Unified Panel Stack | Right Sidebar] 之上叠加底部 Action Ticker（Fleet 工作台 · AppShell 级全局底部条） === */}
-      <div className="flex flex-col" style={{ height: '100%', minHeight: 0 }}>
+      {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
       <div
         ref={shellRef}
         className="flex items-stretch relative"
         style={{
-          flex: 1,
-          minHeight: 0,
+          height: '100%',
           paddingRight: isAutoCompact ? 0 : PANEL_EDGE_INSET,
           paddingBottom: isAutoCompact ? 0 : PANEL_EDGE_INSET,
           paddingLeft: 0,
@@ -2363,13 +2354,6 @@ function AppShellContent({
                     },
                     // --- Separator ---
                     { id: "separator:chats-sources", type: "separator" },
-                    {
-                      id: "nav:stage",
-                      title: "工作台",
-                      icon: Layers,
-                      variant: isStageNavigation(navState) ? "default" : "ghost",
-                      onClick: handleStageClick,
-                    },
                     // --- Sources & Skills Section ---
                     {
                       id: "nav:sources",
@@ -3169,17 +3153,6 @@ function AppShellContent({
               }
             />
             {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}
-            {isStageNavigation(navState) && (
-              <div className="flex-1 min-h-0 px-3 py-3 text-xs text-muted-foreground space-y-2">
-                <div className="rounded-[8px] border border-border/70 bg-foreground/[0.02] p-3">
-                  <div className="text-foreground font-medium">Stage 模式</div>
-                  <div className="mt-1">当前：{navState.mode}</div>
-                </div>
-                <div className="rounded-[8px] border border-border/70 p-3 leading-relaxed">
-                  这里以后承载项目画布列表、Artifact 和浏览器目标。第一刀先把正式路由与右侧 Inspector 接好。
-                </div>
-              </div>
-            )}
             {isSourcesNavigation(navState) && (
               /* Sources List - filtered by type if sourceFilter is active */
               <SourcesListPanel
@@ -3291,14 +3264,10 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={isWorkbenchInspectorVisible}
+          isRightSidebarVisible={false}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
-
-        {isWorkbenchInspectorVisible && (
-          <WorkbenchInspectorRail />
-        )}
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
         {!effectiveSidebarAndNavigatorHidden && (
@@ -3368,9 +3337,6 @@ function AppShellContent({
         </div>
         )}
 
-      </div>
-        {/* Fleet 工作台：AppShell 级全局底部动作流（订阅 SessionEvent，显示人和 Agent 真实操作）。与输入区 ActiveTasksBar 分开。 */}
-        <ActionTickerBar />
       </div>
 
       {/* ============================================================================

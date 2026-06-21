@@ -285,6 +285,3 @@ export {
   Icon_Inbox,
   type IconProps,
 } from './components/icons'
-
-// Usage / token ledger (T-USAGE v1, read-only self-contained)
-export { UsageLedger, type UsageLedgerData, type UsageLedgerProps } from './components/usage'

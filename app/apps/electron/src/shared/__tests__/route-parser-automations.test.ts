@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { parseCompoundRoute, buildCompoundRoute, parseRouteToNavigationState, buildRouteFromNavigationState, parseRightSidebarParam, buildRightSidebarParam } from '../route-parser'
+import { parseCompoundRoute, buildCompoundRoute } from '../route-parser'
 
 describe('route-parser: automations routes', () => {
   it('parses "automations" as automations navigator with no filter or details', () => {
@@ -74,36 +74,5 @@ describe('route-parser: automations routes', () => {
     const parsed = parseCompoundRoute('automations/automation/automation-1')!
     const built = buildCompoundRoute(parsed)
     expect(built).toBe('automations/automation/automation-1')
-  })
-})
-
-describe('route-parser: stage routes', () => {
-  it('parses stage browser mode', () => {
-    const parsed = parseCompoundRoute('stage/browser')
-    expect(parsed).not.toBeNull()
-    expect(parsed!.navigator).toBe('stage')
-    expect(parsed!.details).toEqual({ type: 'stage', id: 'browser' })
-  })
-
-  it('defaults bare stage to browser mode', () => {
-    const state = parseRouteToNavigationState('stage')
-    expect(state).toEqual({ navigator: 'stage', mode: 'browser' })
-  })
-
-  it('roundtrips stage artifact mode through NavigationState', () => {
-    const state = parseRouteToNavigationState('stage/artifact')
-    expect(state).toEqual({ navigator: 'stage', mode: 'artifact' })
-    expect(buildRouteFromNavigationState(state!)).toBe('stage/artifact')
-  })
-
-  it('rejects unknown stage modes', () => {
-    expect(parseCompoundRoute('stage/random')).toBeNull()
-    expect(parseRouteToNavigationState('stage/random')).toBeNull()
-  })
-
-  it('roundtrips inspector right sidebar param', () => {
-    const panel = parseRightSidebarParam('inspector')
-    expect(panel).toEqual({ type: 'inspector' })
-    expect(buildRightSidebarParam(panel)).toBe('inspector')
   })
 })

@@ -7,8 +7,6 @@
 export { default as SettingsNavigator } from './SettingsNavigator'
 export { default as AppSettingsPage, meta as AppSettingsMeta } from './AppSettingsPage'
 export { default as AiSettingsPage, meta as AiSettingsMeta } from './AiSettingsPage'
-export { default as CliRuntimeSettingsPage, meta as CliRuntimeSettingsMeta } from './CliRuntimeSettingsPage'
-export { default as ContextEfficiencySettingsPage, meta as ContextEfficiencySettingsMeta } from './ContextEfficiencySettingsPage'
 export { default as AppearanceSettingsPage, meta as AppearanceMeta } from './AppearanceSettingsPage'
 export { default as InputSettingsPage, meta as InputMeta } from './InputSettingsPage'
 export { default as WorkspaceSettingsPage, meta as WorkspaceSettingsMeta } from './WorkspaceSettingsPage'

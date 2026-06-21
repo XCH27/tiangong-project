@@ -381,8 +381,6 @@ export interface SettingsMenuItem {
 const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   app: 'ToggleRight',
   ai: 'Sparkles',
-  cliRuntime: 'TerminalSquare',
-  contextEfficiency: 'Gauge',
   appearance: 'Palette',
   input: 'Keyboard',
   workspace: 'Building2',
@@ -390,10 +388,8 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   labels: 'Tag',
   messaging: 'MessageSquare',
   server: 'Server',
-  systemTools: 'Wrench',
   shortcuts: 'Keyboard',
   preferences: 'UserCircle',
-  memoryDecision: 'Brain',
 }
 
 /**

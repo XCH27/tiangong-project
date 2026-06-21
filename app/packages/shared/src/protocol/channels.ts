@@ -48,82 +48,11 @@ export const RPC_CHANNELS = {
     EXPORT_REMOTE_TRANSFER: 'sessions:exportRemoteTransfer',
     IMPORT_REMOTE_TRANSFER: 'sessions:importRemoteTransfer',
   },
-  // Fleet 工作台动作通道（承重墙 · 冻结的 wire 名，供 design engine 与 UI 共用）。
-  // 实现见 docs/32 工作令 T-ENGINE；这些是契约名，先冻结再实现，避免多 Agent 各起一套。
-  design: {
-    SET_SELECTION: 'design:setSelection',
-    PROPOSE_ACTION: 'design:proposeAction',
-    COMMIT_PATCH: 'design:commitPatch',
-    ROLLBACK_PATCH: 'design:rollbackPatch',
-    GET_SELECTION: 'design:getSelection',
-  },
   transfer: {
     START: 'transfer:start',
     CHUNK: 'transfer:chunk',
     COMMIT: 'transfer:commit',
     ABORT: 'transfer:abort',
-  },
-  /** ProjectPack v1 — 本地打包 / secret scan / token 估算（T-PROJECTPACK） */
-  projectPack: {
-    PREVIEW_PLAN: 'projectPack:previewPlan',
-    PACK: 'projectPack:pack',
-    GET_SUMMARY: 'projectPack:getSummary',
-    BUILD_REVIEW_PROMPT: 'projectPack:buildReviewPrompt',
-  },
-  externalReview: {
-    SAVE: 'externalReview:save',
-    GET: 'externalReview:get',
-    LIST_BY_BUNDLE: 'externalReview:listByBundle',
-    SUMMARIZE_BUNDLE: 'externalReview:summarizeBundle',
-  },
-  /** Context Center — read-only overview; no pack/write/external submit. */
-  contextCenter: {
-    GET_OVERVIEW: 'contextCenter:getOverview',
-  },
-  /** Context adapter — codegraph/rtk sidecars via System Tools (LOCAL_ONLY). */
-  contextAdapter: {
-    QUERY_CODEGRAPH: 'contextAdapter:queryCodegraph',
-    COMPRESS_RTK: 'contextAdapter:compressRtk',
-  },
-  /** ProjectPack delta — incremental git-scoped planning (LOCAL_ONLY). */
-  projectPackDelta: {
-    PLAN: 'projectPackDelta:plan',
-  },
-  /** External review job — local state machine, no auto submit (LOCAL_ONLY). */
-  externalReviewJob: {
-    CREATE: 'externalReviewJob:create',
-    GET: 'externalReviewJob:get',
-    ADVANCE: 'externalReviewJob:advance',
-    COMPLETE_WITH_REPORT: 'externalReviewJob:completeWithReport',
-    LIST_BY_BUNDLE: 'externalReviewJob:listByBundle',
-  },
-  agents: {
-    LIST: 'agents:list',
-    GET: 'agents:get',
-  },
-  /** Agent lifecycle (state machine only, no real processes). Wired on top of AgentRegistry. LOCAL_ONLY. */
-  agentLifecycle: {
-    CREATE: 'agentLifecycle:create',
-    UPDATE: 'agentLifecycle:update',
-    LIST: 'agentLifecycle:list',
-    GET: 'agentLifecycle:get',
-    MARK_ACTIVE: 'agentLifecycle:markActive',
-    STOP: 'agentLifecycle:stop',
-  },
-  /** Local partitioned memory (7 partitions). No cloud, no second session. LOCAL_ONLY. */
-  memory: {
-    ADD: 'memory:add',
-    GET: 'memory:get',
-    LIST: 'memory:list',
-    SEARCH: 'memory:search',
-    DELETE: 'memory:delete',
-  },
-  /** L0-L3 decision/risk engine (pure rules + audit). LOCAL_ONLY. */
-  decision: {
-    EVALUATE: 'decision:evaluate',
-    LIST_RULES: 'decision:listRules',
-    UPSERT_RULE: 'decision:upsertRule',
-    DELETE_RULE: 'decision:deleteRule',
   },
   tasks: {
     GET_OUTPUT: 'tasks:getOutput',
@@ -394,10 +323,6 @@ export const RPC_CHANNELS = {
     GET_STATUS: 'rtk:getStatus',
     GET_GAIN: 'rtk:getGain',
   },
-  cliRuntime: {
-    GET_CATALOG: 'cli-runtime:getCatalog',
-    TEST: 'cli-runtime:test',
-  },
   badge: {
     REFRESH: 'badge:refresh',
     SET_ICON: 'badge:setIcon',
@@ -426,10 +351,6 @@ export const RPC_CHANNELS = {
     RELOAD: 'browser-pane:reload',
     STOP: 'browser-pane:stop',
     FOCUS: 'browser-pane:focus',
-    DOCK: 'browser-pane:dock',
-    UNDOCK: 'browser-pane:undock',
-    PICK_ELEMENT: 'browser-pane:pick-element',
-    SELECT_ELEMENTS: 'browser-pane:select-elements',
     SNAPSHOT: 'browser-pane:snapshot',
     CLICK: 'browser-pane:click',
     FILL: 'browser-pane:fill',
@@ -507,19 +428,6 @@ export const RPC_CHANNELS = {
     DISMISS_PENDING_SENDER: 'messaging:access:dismissPending',
     ALLOW_PENDING_SENDER: 'messaging:access:allowPending',
     SET_BINDING_ACCESS: 'messaging:access:setBindingAccess',
-  },
-  // Fleet 系统工具 / 项目环境检测通道（T-SYSTOOLS · docs/28）。
-  // 全部 LOCAL_ONLY（rule 14：探测本机 OS 能力）。v1 只做只读检测/诊断；
-  // 安装/改 PATH/写配置/修复命令不在此组——那需要 permission + timeline，是后续切片。
-  systemTools: {
-    LIST_TOOLS: 'systemTools:listTools',
-    DETECT_ALL: 'systemTools:detectAll',
-    DETECT_TOOL: 'systemTools:detectTool',
-    DETECT_CATEGORY: 'systemTools:detectCategory',
-    GET_BEST_TOOL: 'systemTools:getBestTool',
-    CLEAR_CACHE: 'systemTools:clearCache',
-    DIAGNOSE_PROJECT: 'systemTools:diagnoseProject',
-    GET_PROJECT_PROFILE: 'systemTools:getProjectProfile',
   },
 } as const
 

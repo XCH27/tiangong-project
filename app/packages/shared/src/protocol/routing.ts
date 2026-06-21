@@ -176,10 +176,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.browserPane.RELOAD,
   RPC_CHANNELS.browserPane.STOP,
   RPC_CHANNELS.browserPane.FOCUS,
-  RPC_CHANNELS.browserPane.DOCK,
-  RPC_CHANNELS.browserPane.UNDOCK,
-  RPC_CHANNELS.browserPane.PICK_ELEMENT,
-  RPC_CHANNELS.browserPane.SELECT_ELEMENTS,
   RPC_CHANNELS.browserPane.SNAPSHOT,
   RPC_CHANNELS.browserPane.CLICK,
   RPC_CHANNELS.browserPane.FILL,
@@ -200,20 +196,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   // debug — local debug logging
   RPC_CHANNELS.debug.LOG,
 
-  // projectPack — 本机文件系统打包（T-PROJECTPACK）
-  RPC_CHANNELS.projectPack.PREVIEW_PLAN,
-  RPC_CHANNELS.projectPack.PACK,
-  RPC_CHANNELS.projectPack.GET_SUMMARY,
-  RPC_CHANNELS.projectPack.BUILD_REVIEW_PROMPT,
-  RPC_CHANNELS.externalReview.SAVE,
-  RPC_CHANNELS.externalReview.GET,
-  RPC_CHANNELS.externalReview.LIST_BY_BUNDLE,
-  RPC_CHANNELS.externalReview.SUMMARIZE_BUNDLE,
-
-  // cliRuntime — 本机 CLI/ACP 进程探测与健康测试（rule 14 LOCAL_ONLY）。
-  RPC_CHANNELS.cliRuntime.GET_CATALOG,
-  RPC_CHANNELS.cliRuntime.TEST,
-
   // onboarding — local auth setup flow
   RPC_CHANNELS.onboarding.GET_AUTH_STATE,
   RPC_CHANNELS.onboarding.VALIDATE_MCP,
@@ -226,47 +208,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.settings.GET_SERVER_CONFIG,
   RPC_CHANNELS.settings.SET_SERVER_CONFIG,
   RPC_CHANNELS.settings.GET_SERVER_STATUS,
-
-  // systemTools — 本机 OS 能力探测/项目环境诊断（rule 14 LOCAL_ONLY）。
-  // v1 全部只读；安装/修复不在此组。
-  RPC_CHANNELS.systemTools.LIST_TOOLS,
-  RPC_CHANNELS.systemTools.DETECT_ALL,
-  RPC_CHANNELS.systemTools.DETECT_TOOL,
-  RPC_CHANNELS.systemTools.DETECT_CATEGORY,
-  RPC_CHANNELS.systemTools.GET_BEST_TOOL,
-  RPC_CHANNELS.systemTools.CLEAR_CACHE,
-  RPC_CHANNELS.systemTools.DIAGNOSE_PROJECT,
-  RPC_CHANNELS.systemTools.GET_PROJECT_PROFILE,
-
-  // context center — local environment + local bundle summaries, read-only.
-  RPC_CHANNELS.contextCenter.GET_OVERVIEW,
-
-  // context adapter / project pack delta / external review jobs — local-only sidecars.
-  RPC_CHANNELS.contextAdapter.QUERY_CODEGRAPH,
-  RPC_CHANNELS.contextAdapter.COMPRESS_RTK,
-  RPC_CHANNELS.projectPackDelta.PLAN,
-  RPC_CHANNELS.externalReviewJob.CREATE,
-  RPC_CHANNELS.externalReviewJob.GET,
-  RPC_CHANNELS.externalReviewJob.ADVANCE,
-  RPC_CHANNELS.externalReviewJob.COMPLETE_WITH_REPORT,
-  RPC_CHANNELS.externalReviewJob.LIST_BY_BUNDLE,
-
-  // agent lifecycle + memory + decision (LOCAL_ONLY per rule 14; no UI, no second session)
-  RPC_CHANNELS.agentLifecycle.CREATE,
-  RPC_CHANNELS.agentLifecycle.UPDATE,
-  RPC_CHANNELS.agentLifecycle.LIST,
-  RPC_CHANNELS.agentLifecycle.GET,
-  RPC_CHANNELS.agentLifecycle.MARK_ACTIVE,
-  RPC_CHANNELS.agentLifecycle.STOP,
-  RPC_CHANNELS.memory.ADD,
-  RPC_CHANNELS.memory.GET,
-  RPC_CHANNELS.memory.LIST,
-  RPC_CHANNELS.memory.SEARCH,
-  RPC_CHANNELS.memory.DELETE,
-  RPC_CHANNELS.decision.EVALUATE,
-  RPC_CHANNELS.decision.LIST_RULES,
-  RPC_CHANNELS.decision.UPSERT_RULE,
-  RPC_CHANNELS.decision.DELETE_RULE,
 ])
 
 // ---------------------------------------------------------------------------
@@ -314,19 +255,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.sessions.IMPORT,
   RPC_CHANNELS.sessions.EXPORT_REMOTE_TRANSFER,
   RPC_CHANNELS.sessions.IMPORT_REMOTE_TRANSFER,
-
-  // design — workspace/session-bound workbench actions. These must run where
-  // the owning session lives so remote workspaces do not mutate local state.
-  RPC_CHANNELS.design.SET_SELECTION,
-  RPC_CHANNELS.design.PROPOSE_ACTION,
-  RPC_CHANNELS.design.COMMIT_PATCH,
-  RPC_CHANNELS.design.ROLLBACK_PATCH,
-  RPC_CHANNELS.design.GET_SELECTION,
-
-  // agents — server-owned actor registry for sessions in this workspace.
-  RPC_CHANNELS.agents.LIST,
-  RPC_CHANNELS.agents.GET,
-  // agent lifecycle / memory / decision are LOCAL_ONLY only (see LOCAL_ONLY above)
 
   // transfer — chunked large-payload import (sessions, resources)
   RPC_CHANNELS.transfer.START,

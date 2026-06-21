@@ -23,9 +23,9 @@ import type {
 } from '@craft-agent/core/types';
 
 // Mode types from dedicated subpath export (avoids pulling in SDK)
-import type { PermissionMode } from '@craft-agent/shared/agent/mode-types';
+import type { PermissionMode } from '@craft-agent/shared/agent/modes';
 export type { PermissionMode };
-export { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/mode-types';
+export { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/modes';
 
 // Thinking level types
 import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels';
@@ -108,40 +108,6 @@ export interface BrowserPaneCreateOptions {
   id?: string
   show?: boolean
   bindToSessionId?: string
-}
-
-export interface BrowserPaneDockBounds {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export interface BrowserElementSelection {
-  selector: string
-  xpath?: string
-  url?: string
-  title?: string
-  tagName: string
-  role?: string
-  accessibleName?: string
-  text: string
-  rect: { x: number; y: number; width: number; height: number }
-  styles: {
-    color: string
-    backgroundColor: string
-    fontSize: string
-    fontWeight: string
-    borderRadius: string
-  }
-}
-
-export interface BrowserElementSelectionQuery {
-  mode: 'viewport' | 'rect'
-  rect?: { x: number; y: number; width: number; height: number }
-  maxResults?: number
-  minArea?: number
-  includeText?: boolean
 }
 
 /**
@@ -245,45 +211,6 @@ import type {
   DirectoryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
-  ToolCapability,
-  ProjectEnvironmentProfile,
-  ProjectDiagnosisResult,
-  DetectOptions,
-  DetectToolInput,
-  DetectCategoryInput,
-  GetBestToolInput,
-  ProjectEnvInput,
-  ClearCacheResult,
-  ToolCategory,
-  ToolCapabilityTag,
-  ProjectPackRequest,
-  ProjectPackPlanPreviewResult,
-  ProjectPackResult,
-  ProjectPackSummary,
-  ProjectPackReviewPromptResult,
-  CreateExternalReviewReportInput,
-  ExternalReviewBundleSummary,
-  ExternalReviewReport,
-  ContextAdapterCodegraphRequest,
-  ContextAdapterCodegraphResult,
-  ContextAdapterRtkRequest,
-  ContextAdapterRtkResult,
-  ProjectPackDeltaPlanRequest,
-  ProjectPackDeltaPlanResult,
-  CreateExternalReviewJobInput,
-  ExternalReviewJob,
-  AdvanceExternalReviewJobInput,
-  CompleteExternalReviewJobWithReportInput,
-  CompleteExternalReviewJobWithReportResult,
-  ContextCenterOverview,
-  ContextCenterOverviewInput,
-  AgentRegistryListInput,
-  AgentRegistryListResult,
-  AgentRegistryGetInput,
-  AgentRegistryGetResult,
-  CliRuntimeCatalogItem,
-  CliRuntimeHealthResult,
-  CliRuntimeHealthTestInput,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -300,12 +227,6 @@ export interface ElectronAPI {
   getTaskOutput(taskId: string): Promise<string | null>
   respondToPermission(sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean, options?: PermissionResponseOptions): Promise<boolean>
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
-  // Fleet 工作台动作通道（T-ENGINE）：人类 UI 和 AI 工具走同一组 channel → 同一引擎。
-  setDesignSelection(input: import('@craft-agent/shared/protocol').SetSelectionInput): Promise<void>
-  getDesignSelection(sessionId: string): Promise<import('@craft-agent/shared/protocol').DesignSelection | null>
-  proposeDesignAction(input: import('@craft-agent/shared/protocol').ProposeActionInput): Promise<import('@craft-agent/shared/protocol').ProposeActionResult>
-  commitDesignPatch(input: import('@craft-agent/shared/protocol').CommitPatchInput): Promise<import('@craft-agent/shared/protocol').CommitPatchResult>
-  rollbackDesignPatch(input: import('@craft-agent/shared/protocol').RollbackPatchInput): Promise<import('@craft-agent/shared/protocol').RollbackPatchResult>
 
   // Consolidated session command handler
   sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
@@ -639,10 +560,6 @@ export interface ElectronAPI {
   getRtkStatus(opts?: { forceRecheck?: boolean }): Promise<{ installed: boolean; path: string | null; version: string | null }>
   getRtkGain(): Promise<{ totalCommands: number; totalInput: number; totalOutput: number; totalSaved: number; avgSavingsPct: number; totalTimeMs: number; avgTimeMs: number } | null>
 
-  // CLI Runtime
-  getCliRuntimeCatalog(): Promise<CliRuntimeCatalogItem[]>
-  testCliRuntime(input: CliRuntimeHealthTestInput): Promise<CliRuntimeHealthResult>
-
   // Network proxy settings
   getNetworkProxySettings(): Promise<NetworkProxySettings | undefined>
   setNetworkProxySettings(settings: NetworkProxySettings): Promise<void>
@@ -665,48 +582,6 @@ export interface ElectronAPI {
 
   // Git operations
   getGitBranch(dirPath: string): Promise<string | null>
-
-  // ProjectPack v1 (T-PROJECTPACK · LOCAL_ONLY)
-  previewProjectPackPlan(request: ProjectPackRequest): Promise<ProjectPackPlanPreviewResult>
-  packProject(request: ProjectPackRequest): Promise<ProjectPackResult>
-  getProjectPackSummary(bundleId: string): Promise<ProjectPackSummary | null>
-  buildProjectPackReviewPrompt(bundleId: string): Promise<ProjectPackReviewPromptResult>
-  saveExternalReviewReport(input: CreateExternalReviewReportInput): Promise<ExternalReviewReport>
-  getExternalReviewReport(reportId: string): Promise<ExternalReviewReport | null>
-  listExternalReviewReportsByBundle(bundleId: string): Promise<ExternalReviewReport[]>
-  summarizeExternalReviewBundle(bundleId: string): Promise<ExternalReviewBundleSummary>
-  getContextCenterOverview(input: ContextCenterOverviewInput): Promise<ContextCenterOverview>
-  queryContextCodegraph(request: ContextAdapterCodegraphRequest): Promise<ContextAdapterCodegraphResult>
-  compressContextRtk(request: ContextAdapterRtkRequest): Promise<ContextAdapterRtkResult>
-  planProjectPackDelta(request: ProjectPackDeltaPlanRequest): Promise<ProjectPackDeltaPlanResult>
-  createExternalReviewJob(input: CreateExternalReviewJobInput): Promise<ExternalReviewJob>
-  getExternalReviewJob(jobId: string): Promise<ExternalReviewJob | null>
-  advanceExternalReviewJob(input: AdvanceExternalReviewJobInput): Promise<ExternalReviewJob>
-  completeExternalReviewJobWithReport(input: CompleteExternalReviewJobWithReportInput): Promise<CompleteExternalReviewJobWithReportResult>
-  listExternalReviewJobsByBundle(bundleId: string): Promise<ExternalReviewJob[]>
-  listAgents(input?: AgentRegistryListInput): Promise<AgentRegistryListResult>
-  getAgent(input: AgentRegistryGetInput): Promise<AgentRegistryGetResult>
-
-  // Agent lifecycle (state model only; LOCAL_ONLY; backed by registry)
-  createAgentLifecycle(input: import('@craft-agent/shared/protocol').AgentLifecycleCreateInput): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
-  updateAgentLifecycle(input: import('@craft-agent/shared/protocol').AgentLifecycleUpdateInput): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
-  listAgentLifecycle(input?: import('@craft-agent/shared/protocol').AgentLifecycleListInput): Promise<import('@craft-agent/shared/protocol').AgentLifecycleListResult>
-  getAgentLifecycle(input: { agentId: string }): Promise<import('@craft-agent/shared/protocol').AgentLifecycleGetResult>
-  markActiveAgentLifecycle(input: { agentId: string }): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
-  stopAgentLifecycle(input: { agentId: string }): Promise<import('@craft-agent/shared/protocol').AgentLifecycleActionResult>
-
-  // Memory partitions (LOCAL_ONLY)
-  addMemory(input: import('@craft-agent/shared/protocol').MemoryAddInput): Promise<import('@craft-agent/shared/protocol').MemoryRecord>
-  getMemory(input: import('@craft-agent/shared/protocol').MemoryGetInput): Promise<import('@craft-agent/shared/protocol').MemoryRecord | null>
-  listMemory(input?: import('@craft-agent/shared/protocol').MemoryListInput): Promise<import('@craft-agent/shared/protocol').MemoryListResult>
-  searchMemory(input: import('@craft-agent/shared/protocol').MemorySearchInput): Promise<import('@craft-agent/shared/protocol').MemorySearchResult>
-  deleteMemory(input: import('@craft-agent/shared/protocol').MemoryDeleteInput): Promise<import('@craft-agent/shared/protocol').MemoryDeleteResult>
-
-  // Decision L0-L3 (LOCAL_ONLY, pure rules)
-  evaluateDecision(input: import('@craft-agent/shared/protocol').DecisionEvaluateInput): Promise<import('@craft-agent/shared/protocol').DecisionEvaluateResult>
-  listDecisionRules(): Promise<import('@craft-agent/shared/protocol').DecisionRuleListResult>
-  upsertDecisionRule(input: import('@craft-agent/shared/protocol').DecisionRuleUpsertInput): Promise<import('@craft-agent/shared/protocol').DecisionRuleActionResult>
-  deleteDecisionRule(input: import('@craft-agent/shared/protocol').DecisionRuleDeleteInput): Promise<import('@craft-agent/shared/protocol').DecisionRuleDeleteResult>
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>
@@ -740,33 +615,10 @@ export interface ElectronAPI {
     reload(id: string): Promise<void>
     stop(id: string): Promise<void>
     focus(id: string): Promise<void>
-    dock(id: string, bounds: BrowserPaneDockBounds): Promise<void>
-    undock(id: string): Promise<void>
-    pickElement(id: string): Promise<BrowserElementSelection | null>
-    selectElements(id: string, query: BrowserElementSelectionQuery): Promise<BrowserElementSelection[]>
-    evaluate(id: string, expression: string): Promise<unknown>
     emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void
     onInteracted(callback: (id: string) => void): () => void
-  }
-
-  /** Editable artifact preview bridge (renderer iframe ↔ DesignEngine DOM writer). */
-  artifactPreview: {
-    bindSession(sessionId: string): Promise<void>
-    unbindSession(sessionId: string): Promise<void>
-  }
-
-  // System tools / project environment detection (T-SYSTOOLS · docs/28) — read-only
-  systemTools: {
-    listTools(opts?: DetectOptions): Promise<ToolCapability[]>
-    detectAll(opts?: DetectOptions): Promise<ToolCapability[]>
-    detectTool(input: DetectToolInput): Promise<ToolCapability>
-    detectCategory(input: DetectCategoryInput): Promise<ToolCapability[]>
-    getBestTool(input: GetBestToolInput): Promise<ToolCapability | null>
-    clearCache(toolId?: string): Promise<ClearCacheResult>
-    diagnoseProject(input: ProjectEnvInput): Promise<ProjectDiagnosisResult>
-    getProjectProfile(input: ProjectEnvInput): Promise<ProjectEnvironmentProfile>
   }
 
   // LLM Connections (provider configurations)
@@ -912,10 +764,7 @@ export type WhatsAppUiEvent =
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
   | { type: 'history' }
-  | { type: 'inspector' }
   | { type: 'none' }
-
-export type StageMode = 'browser' | 'artifact' | 'canvas' | 'code' | 'timeline' | 'board'
 
 /**
  * Session filter options
@@ -1003,19 +852,6 @@ export interface AutomationsNavigationState {
 }
 
 /**
- * Stage navigation state
- *
- * Stage is Fleet's workbench surface. It is a real panel-stack route, not a
- * ChatPage wrapper, so Browser/Artifact/Canvas modes can later host native panes
- * beside the shared Inspector.
- */
-export interface StageNavigationState {
-  navigator: 'stage'
-  mode: StageMode
-  rightSidebar?: RightSidebarPanel
-}
-
-/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -1024,7 +860,6 @@ export type NavigationState =
   | SettingsNavigationState
   | SkillsNavigationState
   | AutomationsNavigationState
-  | StageNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -1045,10 +880,6 @@ export const isSkillsNavigation = (
 export const isAutomationsNavigation = (
   state: NavigationState
 ): state is AutomationsNavigationState => state.navigator === 'automations'
-
-export const isStageNavigation = (
-  state: NavigationState
-): state is StageNavigationState => state.navigator === 'stage'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1074,9 +905,6 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `automations/automation/${state.details.automationId}`
     }
     return 'automations'
-  }
-  if (state.navigator === 'stage') {
-    return `stage:${state.mode}`
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -1126,15 +954,6 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     return { navigator: 'automations', details: null }
   }
 
-  // Handle stage
-  if (key === 'stage') return { navigator: 'stage', mode: 'browser' }
-  if (key.startsWith('stage:')) {
-    const mode = key.slice(6)
-    if (isStageMode(mode)) {
-      return { navigator: 'stage', mode }
-    }
-  }
-
   // Handle settings
   if (key === 'settings') return { navigator: 'settings', subpage: null }
   if (key.startsWith('settings:')) {
@@ -1180,12 +999,6 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
 
   // Simple filter key
   return parseSessionsKey(key)
-}
-
-export const STAGE_MODES: readonly StageMode[] = ['browser', 'artifact', 'canvas', 'code', 'timeline', 'board']
-
-export function isStageMode(value: string): value is StageMode {
-  return (STAGE_MODES as readonly string[]).includes(value)
 }
 
 declare global {

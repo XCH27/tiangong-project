@@ -23,9 +23,6 @@ function createMockWebContents() {
       if (!listeners[event]) listeners[event] = []
       listeners[event].push(cb)
     },
-    removeListener: (event: string, cb: Function) => {
-      listeners[event] = (listeners[event] || []).filter(fn => fn !== cb)
-    },
     loadURL: mock(async (url: string) => {
       currentUrl = url
       const isToolbarUrl = typeof url === 'string' && url.includes('browser-toolbar.html')
@@ -100,9 +97,6 @@ function createMockWindow(opts?: { width?: number; height?: number; minWidth?: n
       if (!listeners[event]) listeners[event] = []
       listeners[event].push(cb)
     },
-    removeListener: (event: string, cb: Function) => {
-      listeners[event] = (listeners[event] || []).filter(fn => fn !== cb)
-    },
     once: (event: string, cb: Function) => {
       const wrapped = (...args: any[]) => {
         listeners[event] = (listeners[event] || []).filter(fn => fn !== wrapped)
@@ -129,7 +123,6 @@ function createMockWindow(opts?: { width?: number; height?: number; minWidth?: n
     }),
     setBrowserView: mock((_view: any) => {}),
     addBrowserView: mock((_view: any) => {}),
-    removeBrowserView: mock((_view: any) => {}),
     setTopBrowserView: mock((_view: any) => {}),
     getContentSize: mock(() => [contentWidth, contentHeight]),
     setContentSize: mock((width: number, height: number) => {
@@ -263,88 +256,6 @@ describe('BrowserPaneManager', () => {
     expect(list).toHaveLength(1)
     expect(list[0].id).toBe('test-1')
     expect(list[0].agentControlActive).toBe(false)
-  })
-
-  it('docks existing BrowserViews into a Stage host and restores them on undock', () => {
-    manager.createInstance('stage-dock')
-    const instance = (manager as any).instances.get('stage-dock')
-    const stageHost = createMockWindow({ width: 1400, height: 900 })
-    manager.setWindowManager({
-      getWindowByWebContentsId: (id: number) => id === 42 ? stageHost : null,
-    } as any)
-
-    manager.dock('stage-dock', 42, { x: 120.8, y: 80.2, width: 900.9, height: 640.1 })
-
-    expect(instance.window.hide).toHaveBeenCalled()
-    expect(stageHost.addBrowserView).toHaveBeenCalledTimes(3)
-    expect(instance.toolbarView.setBounds).toHaveBeenLastCalledWith({ x: 120, y: 80, width: 900, height: 48 })
-    expect(instance.pageView.setBounds).toHaveBeenLastCalledWith({ x: 120, y: 128, width: 900, height: 592 })
-
-    manager.undock('stage-dock', 42)
-
-    expect(stageHost.removeBrowserView).toHaveBeenCalledTimes(3)
-    expect(instance.window.addBrowserView.mock.calls.length).toBeGreaterThan(3)
-  })
-
-  it('selects multiple elements from a rectangle for batch annotation', async () => {
-    manager.createInstance('stage-multi-select')
-    const instance = (manager as any).instances.get('stage-multi-select')
-    instance.pageView.webContents.executeJavaScript = mock(async (script: string) => {
-      expect(script).toContain('"mode":"rect"')
-      expect(script).toContain('"maxResults":2')
-      expect(script).toContain('xpathFor')
-      expect(script).toContain('accessibleNameFor')
-      return [
-        {
-          selector: '#hero',
-          xpath: '/html[1]/body[1]/section[1]',
-          url: 'https://example.test/',
-          title: 'Example',
-          tagName: 'section',
-          role: 'region',
-          accessibleName: 'Hero section',
-          text: 'Hero',
-          rect: { x: 20, y: 30, width: 280, height: 120 },
-          styles: {
-            color: 'rgb(0, 0, 0)',
-            backgroundColor: 'rgb(255, 255, 255)',
-            fontSize: '16px',
-            fontWeight: '400',
-            borderRadius: '8px',
-          },
-        },
-        {
-          selector: '#cta',
-          tagName: 'button',
-          text: 'Buy',
-          rect: { x: 40, y: 90, width: 120, height: 44 },
-          styles: {
-            color: 'rgb(255, 255, 255)',
-            backgroundColor: 'rgb(59, 130, 246)',
-            fontSize: '14px',
-            fontWeight: '600',
-            borderRadius: '6px',
-          },
-        },
-      ]
-    })
-
-    const selected = await manager.selectElements('stage-multi-select', {
-      mode: 'rect',
-      rect: { x: 10, y: 20, width: 320, height: 180 },
-      maxResults: 2,
-    })
-
-    expect(selected).toHaveLength(2)
-    expect(selected.map((item) => item.selector)).toEqual(['#hero', '#cta'])
-    expect(selected[0]).toMatchObject({
-      xpath: '/html[1]/body[1]/section[1]',
-      url: 'https://example.test/',
-      title: 'Example',
-      role: 'region',
-      accessibleName: 'Hero section',
-    })
-    expect(instance.pageView.webContents.executeJavaScript).toHaveBeenCalledTimes(1)
   })
 
   it('is idempotent when explicit ID already exists', () => {

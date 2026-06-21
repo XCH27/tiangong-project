@@ -21,7 +21,7 @@ import {
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
 import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior } from '@craft-agent/shared/config'
-import { PrivilegedExecutionBroker, agentRegistryService } from '@craft-agent/server-core/services'
+import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
 import { i18n, LOCALE_REGISTRY, type LanguageCode } from '@craft-agent/shared/i18n'
@@ -81,7 +81,7 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type ActorRef, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
@@ -100,15 +100,7 @@ import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAtta
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
-import {
-  CliRuntimeAcpAdapter,
-  formatCliRuntimePromptResult,
-  getCliRuntimeAttachmentRejectionMessage,
-  resizeImageForAPI,
-  resizeIconBuffer,
-  resolveCliRuntimeForSend,
-  type ResolvedCliRuntimeForSend,
-} from '@craft-agent/server-core/services'
+import { resizeImageForAPI, resizeIconBuffer } from '@craft-agent/server-core/services'
 export { sanitizeForTitle }
 
 // Module-level platform ref — set once during init via setSessionPlatform()
@@ -165,10 +157,6 @@ function buildBackendHostRuntimeContext(): BackendHostRuntimeContext {
     resourcesPath: _platform.resourcesPath,
     isPackaged: _platform.isPackaged,
   }
-}
-
-function errorMessageFromUnknown(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /**
@@ -1214,220 +1202,6 @@ export class SessionManager implements ISessionManager {
 
   setEventSink(sink: EventSink): void {
     this.eventSink = sink
-  }
-
-  /**
-   * Public seam for emitting a SessionEvent from outside the manager (e.g. the
-   * Fleet 工作台 DesignEngine, T-ENGINE). Resolves the workspace from the
-   * session's managed record and routes through the same event sink as every
-   * other session event — no second timeline. No-op for unknown sessions.
-   */
-  emitSessionEvent(event: SessionEvent): void {
-    const managed = this.sessions.get(event.sessionId)
-    if (!managed) {
-      sessionLog.warn(`Cannot emit ${event.type} event - unknown session ${event.sessionId}`)
-      return
-    }
-    this.sendEvent(event, managed.workspace.id)
-  }
-
-  /**
-   * Actor metadata for assistant-produced events (tool/text). The assistant's
-   * tool calls and text are agent actions (T-EVENT-ACTOR). v1 carries the
-   * runtime (connection slug or 'api'); precise `agentId`/`role`/`displayName`
-   * are populated later by the multi-agent registry (M1, AionUi). Until then
-   * the UI labels these "Agent" — honest: there is one assistant per session.
-   */
-  private agentActorFor(sessionId: string): ActorRef {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return { kind: 'agent', runtime: 'api' }
-    const agent = agentRegistryService.ensureProjectAgentForSession({
-      sessionId,
-      workspaceId: managed.workspace.id,
-      runtime: managed.llmConnection ?? 'api',
-      role: 'leader',
-      displayName: '项目 Agent',
-    })
-    return {
-      kind: 'agent',
-      agentId: agent.agentId,
-      runtime: agent.runtime,
-      role: agent.role,
-      displayName: agent.displayName,
-    }
-  }
-
-  private cliRuntimeActorFor(sessionId: string, resolved: Extract<ResolvedCliRuntimeForSend, { kind: 'detected' | 'custom' }>): ActorRef {
-    const managed = this.sessions.get(sessionId)
-    const agent = agentRegistryService.ensureProjectAgentForSession({
-      sessionId,
-      workspaceId: managed?.workspace.id,
-      runtime: resolved.runtimeId,
-      role: 'leader',
-      displayName: resolved.kind === 'detected' ? resolved.displayName : resolved.runtimeId,
-    })
-    return {
-      kind: 'agent',
-      agentId: agent.agentId,
-      runtime: agent.runtime,
-      role: agent.role,
-      displayName: agent.displayName,
-    }
-  }
-
-  private async appendCliRuntimeError(managed: ManagedSession, sessionId: string, error: string): Promise<void> {
-    const errorMessage: Message = {
-      id: generateMessageId(),
-      role: 'error',
-      content: error,
-      timestamp: this.monotonic(),
-    }
-    managed.messages.push(errorMessage)
-    this.sendEvent({
-      type: 'error',
-      sessionId,
-      error,
-      timestamp: errorMessage.timestamp,
-    }, managed.workspace.id)
-    this.persistSession(managed)
-    await this.flushSession(managed.id)
-  }
-
-  private async sendMessageViaCliRuntime(
-    managed: ManagedSession,
-    sessionId: string,
-    message: string,
-    attachments: FileAttachment[] | undefined,
-    storedAttachments: StoredAttachment[] | undefined,
-    options: SendMessageOptions | undefined,
-    resolved: ResolvedCliRuntimeForSend,
-  ): Promise<void> {
-    const attachmentRejection = getCliRuntimeAttachmentRejectionMessage(attachments, storedAttachments)
-    if (attachmentRejection) {
-      await this.appendCliRuntimeError(managed, sessionId, attachmentRejection)
-      return
-    }
-
-    if (resolved.kind === 'unsupported') {
-      await this.appendCliRuntimeError(managed, sessionId, resolved.message)
-      return
-    }
-
-    if (resolved.kind === 'none') {
-      return
-    }
-
-    managed.lastMessageAt = Date.now()
-    this.setProcessing(managed, true)
-    managed.streamingText = ''
-    managed.processingGeneration++
-    managed.turnStartFinalMessageId = this.getLastFinalAssistantMessageId(managed.messages)
-    managed.lastSentMessage = message
-    managed.lastSentAttachments = attachments
-    managed.lastSentStoredAttachments = storedAttachments
-    managed.lastSentOptions = options
-
-    const actor = this.cliRuntimeActorFor(sessionId, resolved)
-    const toolUseId = generateMessageId()
-    const runtimeLabel = resolved.kind === 'detected' ? resolved.displayName : resolved.runtimeId
-
-    this.sendEvent({
-      type: 'tool_start',
-      sessionId,
-      toolName: 'cli_runtime',
-      toolUseId,
-      toolInput: {
-        runtimeId: resolved.runtimeId,
-        command: resolved.command,
-        args: resolved.args,
-        ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
-        ...(resolved.effort ? { effort: resolved.effort } : {}),
-      },
-      toolDisplayName: `CLI Runtime · ${runtimeLabel}`,
-      toolIntent: 'Run selected CLI runtime over ACP',
-      timestamp: this.monotonic(),
-      actor,
-    }, managed.workspace.id)
-
-    const adapter = new CliRuntimeAcpAdapter({
-      runtimeId: resolved.runtimeId,
-      displayName: runtimeLabel,
-      command: resolved.command,
-      args: resolved.args,
-      ...(resolved.kind === 'custom' && resolved.env ? { env: resolved.env } : {}),
-    }, {
-      cwd: managed.workingDirectory ?? managed.workspace.rootPath,
-    })
-
-    try {
-      const result = await adapter.sendPrompt(message, {
-        modelId: resolved.modelId,
-        effort: resolved.effort,
-      })
-      const text = formatCliRuntimePromptResult(result)
-      const assistantMessage: Message = {
-        id: generateMessageId(),
-        role: 'assistant',
-        content: text,
-        timestamp: this.monotonic(),
-      }
-      managed.messages.push(assistantMessage)
-      managed.streamingText = ''
-      managed.lastMessageRole = 'assistant'
-      managed.lastFinalMessageId = assistantMessage.id
-
-      this.sendEvent({
-        type: 'tool_result',
-        sessionId,
-        toolUseId,
-        toolName: 'cli_runtime',
-        result: 'CLI Runtime completed',
-        timestamp: this.monotonic(),
-        actor,
-      }, managed.workspace.id)
-      this.sendEvent({
-        type: 'text_complete',
-        sessionId,
-        text,
-        timestamp: assistantMessage.timestamp,
-        messageId: assistantMessage.id,
-        actor,
-      }, managed.workspace.id)
-
-      this.persistSession(managed)
-      await this.flushSession(managed.id)
-      await this.onProcessingStopped(sessionId, 'complete')
-    } catch (error) {
-      const errorText = `CLI Runtime 执行失败：${errorMessageFromUnknown(error)}`
-      const errorMessage: Message = {
-        id: generateMessageId(),
-        role: 'error',
-        content: errorText,
-        timestamp: this.monotonic(),
-      }
-      managed.messages.push(errorMessage)
-      this.sendEvent({
-        type: 'tool_result',
-        sessionId,
-        toolUseId,
-        toolName: 'cli_runtime',
-        result: errorText,
-        isError: true,
-        timestamp: errorMessage.timestamp,
-        actor,
-      }, managed.workspace.id)
-      this.sendEvent({
-        type: 'error',
-        sessionId,
-        error: errorText,
-        timestamp: errorMessage.timestamp,
-      }, managed.workspace.id)
-      this.persistSession(managed)
-      await this.flushSession(managed.id)
-      await this.onProcessingStopped(sessionId, 'error')
-    } finally {
-      adapter.dispose()
-    }
   }
 
   setBrowserPaneManager(bpm: IBrowserPaneManager): void {
@@ -5865,20 +5639,6 @@ export class SessionManager implements ISessionManager {
       sessionLog.warn(`Auto-label evaluation failed for session ${sessionId}:`, e)
     }
 
-    const resolvedCliRuntime = resolveCliRuntimeForSend(options)
-    if (resolvedCliRuntime.kind !== 'none') {
-      await this.sendMessageViaCliRuntime(
-        managed,
-        sessionId,
-        message,
-        attachments,
-        storedAttachments,
-        options,
-        resolvedCliRuntime,
-      )
-      return
-    }
-
     managed.lastMessageAt = Date.now()
     this.setProcessing(managed, true)
     managed.streamingText = ''
@@ -7111,7 +6871,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, actor: this.agentActorFor(sessionId) }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)
@@ -7264,7 +7024,6 @@ export class SessionManager implements ISessionManager {
             turnId: event.turnId,
             parentToolUseId,
             timestamp,
-            actor: this.agentActorFor(sessionId),
           }, workspaceId)
         }
         break
@@ -7348,7 +7107,6 @@ export class SessionManager implements ISessionManager {
             parentToolUseId,
             isError: inferredError,
             timestamp: toolResultTimestamp,
-            actor: this.agentActorFor(sessionId),
           }, workspaceId)
         }
 
@@ -7373,7 +7131,6 @@ export class SessionManager implements ISessionManager {
               result: child.toolResult || '',
               turnId: child.turnId,
               parentToolUseId: event.toolUseId,
-              actor: this.agentActorFor(sessionId),
             }, workspaceId)
           }
         }
@@ -7672,11 +7429,9 @@ export class SessionManager implements ISessionManager {
           managed.tokenUsage.outputTokens += event.usage.outputTokens
           managed.tokenUsage.totalTokens = managed.tokenUsage.inputTokens + managed.tokenUsage.outputTokens
           managed.tokenUsage.costUsd += event.usage.costUsd ?? 0
-          // Cache tokens reflect current state, not accumulated.
-          // Assign directly (may be undefined) to preserve "absent" vs "reported 0".
-          // Only real reported values from provider will be present; absent means unknown for display.
-          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens
-          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens
+          // Cache tokens reflect current state, not accumulated
+          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens ?? 0
+          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens ?? 0
           // Update context window (use latest value - may change if model switches)
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
@@ -7702,7 +7457,6 @@ export class SessionManager implements ISessionManager {
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
           }
-          // Do not touch cache* here; they come only from 'complete' events with real provider data.
 
           // Send to renderer for immediate UI update
           this.sendEvent({
