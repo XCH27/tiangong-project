@@ -112,7 +112,9 @@ export function buildContextCenterSidecarNotes(tools: ToolCapability[]): string[
       continue
     }
     if (tool.status === 'available') {
-      notes.push(`${tool.displayName} 可用：${tool.path ?? '路径未知'}${tool.version ? ` (${tool.version})` : ''}。`)
+      notes.push(
+        `${tool.displayName} 可用（来源：${tool.source}）：${tool.path ?? '路径未知'}${tool.version ? ` · 版本 ${tool.version}` : ''}。`,
+      )
     } else if (tool.status === 'conflict') {
       notes.push(`${tool.displayName} 可用但存在版本冲突；运行时将使用 ${tool.path ?? '当前路径'}。`)
     } else {

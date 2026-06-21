@@ -81,7 +81,7 @@ export default function ContextEfficiencySettingsPage() {
 
           <SettingsSection title="Context Center">
             {activeWorkspace ? (
-              <SettingsCard>
+              <SettingsCard className="min-w-0 overflow-hidden">
                 <ContextEfficiencyPanel
                   variant="full"
                   showFullProjectPack

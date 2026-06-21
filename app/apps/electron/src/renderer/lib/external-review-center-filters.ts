@@ -7,6 +7,7 @@ import type { ExternalReviewFinding, ExternalReviewReport, ExternalReviewSeverit
 export interface ExternalReviewFindingFilters {
   severities: ExternalReviewSeverity[]
   relativePath: string
+  keyword: string
 }
 
 export const ALL_EXTERNAL_REVIEW_SEVERITIES: ExternalReviewSeverity[] = [
@@ -27,6 +28,18 @@ export function filterExternalReviewFindings(
   return findings.filter((finding) => {
     if (severitySet.size > 0 && !severitySet.has(finding.severity)) return false
     if (pathNeedle && !(finding.relativePath?.toLowerCase().includes(pathNeedle) ?? false)) return false
+    if (filters.keyword.trim()) {
+      const keyword = filters.keyword.trim().toLowerCase()
+      const haystack = [
+        finding.title,
+        finding.evidence,
+        finding.recommendation,
+        finding.relativePath ?? '',
+      ]
+        .join('\n')
+        .toLowerCase()
+      if (!haystack.includes(keyword)) return false
+    }
     return true
   })
 }

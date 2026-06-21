@@ -1,8 +1,5 @@
 /**
- * ExternalReviewCenterPanel — bundle / job / report 审查中心（T-CONTEXT-REVIEW-REPORT-UI）。
- *
- * 串联 ProjectPack bundle、external review jobs 与结构化 reports。
- * 仅本地读写；不自动登录、不自动提交、不读取 cookies/token、不外发。
+ * ExternalReviewCenterPanel — bundle → job → report 审查中心（T-CONTEXT-REVIEW-POLISH）。
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -13,11 +10,22 @@ import type {
   ProjectPackSummary,
 } from '@craft-agent/shared/protocol'
 import {
+  formatExternalCostKind,
+  JOB_STATUS_CLASS,
+  JOB_STATUS_LABEL,
+  MANUAL_PASTE_PRIVACY_NOTE,
+  FLEET_TOKEN_EXTERNAL_REVIEW_NOTE,
+  validateBundleId,
+  validatePasteOutput,
+  validateRequiredText,
+} from '@/lib/context-efficiency-ui'
+import {
   ALL_EXTERNAL_REVIEW_SEVERITIES,
   collectReportPlatformIds,
   filterExternalReviewFindings,
   filterReportsByProvider,
 } from '@/lib/external-review-center-filters'
+import { MetricKindBadge, ScrollPre, SectionBlock } from './context-efficiency-section'
 
 type LoadState =
   | { status: 'idle' }
@@ -33,38 +41,39 @@ const SEVERITY_TONE: Record<ExternalReviewSeverity, string> = {
   info: 'text-muted-foreground',
 }
 
-function CostNote({ report }: { report: ExternalReviewReport }) {
+function CostBreakdown({ report }: { report: ExternalReviewReport }) {
   return (
-    <p className="text-[10px] text-muted-foreground">
-      Fleet token：{report.fleetTokenUsage.value}（真实） · 外部成本：{report.externalCost.kind}
-      {report.externalCost.note ? ` — ${report.externalCost.note}` : ''}
-    </p>
+    <div className="space-y-1 text-[10px] break-words">
+      <div className="flex flex-wrap items-center gap-1">
+        <span>Fleet API token</span>
+        <span>{report.fleetTokenUsage.value}</span>
+        <MetricKindBadge kind="real" suffix="本机记录" />
+      </div>
+      <div className="text-muted-foreground">{FLEET_TOKEN_EXTERNAL_REVIEW_NOTE}</div>
+      <div className="flex flex-wrap items-center gap-1">
+        <span>{formatExternalCostKind(report.externalCost.kind)}</span>
+        <MetricKindBadge kind={report.externalCost.kind === 'unknown' ? 'unknown' : report.externalCost.kind === 'actual' ? 'real' : 'estimate'} />
+      </div>
+      {report.externalCost.note && <div className="text-muted-foreground">{report.externalCost.note}</div>}
+    </div>
   )
 }
 
-function FindingRow({
-  finding,
-  showPath,
-}: {
-  finding: ExternalReviewReport['findings'][number]
-  showPath?: boolean
-}) {
+function FindingRow({ finding }: { finding: ExternalReviewReport['findings'][number] }) {
   return (
-    <li className="border-b border-border/40 py-2 last:border-0">
-      <div className="flex items-center gap-2">
-        <span className={`text-[10px] font-semibold uppercase ${SEVERITY_TONE[finding.severity]}`}>
-          {finding.severity}
-        </span>
-        <span className="font-medium">{finding.title}</span>
+    <li className="border-b border-border/40 py-2 last:border-0 min-w-0">
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
+        <span className={`text-[10px] font-semibold uppercase ${SEVERITY_TONE[finding.severity]}`}>{finding.severity}</span>
+        <span className="font-medium break-words">{finding.title}</span>
       </div>
-      {showPath && finding.relativePath && (
-        <div className="font-mono text-[10px] text-muted-foreground mt-0.5">
+      {finding.relativePath && (
+        <div className="font-mono text-[10px] text-muted-foreground mt-0.5 break-all">
           {finding.relativePath}
           {finding.line != null ? `:${finding.line}` : ''}
         </div>
       )}
-      <p className="text-[10px] text-muted-foreground mt-1">{finding.evidence}</p>
-      <p className="text-[10px] mt-0.5">{finding.recommendation}</p>
+      <p className="text-[10px] text-muted-foreground mt-1 break-words">{finding.evidence}</p>
+      <p className="text-[10px] mt-0.5 break-words">{finding.recommendation}</p>
     </li>
   )
 }
@@ -75,31 +84,27 @@ function ReportColumn({
   compact,
 }: {
   report: ExternalReviewReport
-  filters: { severities: ExternalReviewSeverity[]; relativePath: string }
+  filters: { severities: ExternalReviewSeverity[]; relativePath: string; keyword: string }
   compact: boolean
 }) {
   const findings = useMemo(
-    () =>
-      filterExternalReviewFindings(report.findings, {
-        severities: filters.severities,
-        relativePath: filters.relativePath,
-      }),
-    [report.findings, filters.severities, filters.relativePath],
+    () => filterExternalReviewFindings(report.findings, filters),
+    [report.findings, filters],
   )
 
   return (
     <article
-      className={`min-w-0 flex flex-col border border-border/70 rounded-md bg-muted/15 ${compact ? 'min-w-[240px] shrink-0' : ''}`}
+      className={`min-w-0 flex flex-col border border-border/70 rounded-md bg-muted/15 overflow-hidden ${compact ? 'min-w-[220px] max-w-[280px] shrink-0' : ''}`}
       data-testid={`review-report-${report.platformId}`}
     >
-      <header className="px-2.5 py-2 border-b border-border/60 space-y-1">
+      <header className="px-2.5 py-2 border-b border-border/60 space-y-1 min-w-0">
         <div className="font-medium truncate" title={report.platformId}>
           {report.platformId}
         </div>
         <div className="text-[10px] text-muted-foreground font-mono truncate" title={report.reportId}>
-          {report.reportId.slice(0, 8)}…
+          report {report.reportId.slice(0, 8)}…
         </div>
-        <CostNote report={report} />
+        <CostBreakdown report={report} />
         <div className="flex flex-wrap gap-1 text-[10px]">
           {ALL_EXTERNAL_REVIEW_SEVERITIES.map((severity) =>
             report.findingCounts[severity] > 0 ? (
@@ -112,19 +117,19 @@ function ReportColumn({
       </header>
       <div className="flex-1 min-h-0 overflow-auto px-2.5 py-2">
         {findings.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground">无匹配 findings（可能仅有原文或未结构化）。</p>
+          <p className="text-[10px] text-muted-foreground break-words">
+            无匹配 findings；可能仅有原文或未结构化条目。
+          </p>
         ) : (
-          <ul>
+          <ul className="min-w-0">
             {findings.map((finding) => (
-              <FindingRow key={finding.findingId} finding={finding} showPath />
+              <FindingRow key={finding.findingId} finding={finding} />
             ))}
           </ul>
         )}
-        <details className="mt-2 text-[10px]">
-          <summary className="cursor-pointer text-muted-foreground">原文（本地保存，未外发）</summary>
-          <pre className="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-all bg-background/60 p-1.5 rounded">
-            {report.rawOutput}
-          </pre>
+        <details className="mt-2 text-[10px] min-w-0">
+          <summary className="cursor-pointer text-muted-foreground">原文（本地保存）</summary>
+          <ScrollPre maxClass="max-h-32">{report.rawOutput}</ScrollPre>
         </details>
       </div>
     </article>
@@ -134,11 +139,14 @@ function ReportColumn({
 export interface ExternalReviewCenterPanelProps {
   initialBundleId?: string
   variant?: 'compact' | 'full'
+  /** 嵌入 ContextEfficiencyPanel Review 区块时不重复外层标题 */
+  embedded?: boolean
 }
 
 export function ExternalReviewCenterPanel({
   initialBundleId,
   variant = 'full',
+  embedded = false,
 }: ExternalReviewCenterPanelProps) {
   const compact = variant === 'compact'
 
@@ -152,10 +160,12 @@ export function ExternalReviewCenterPanel({
   const [activeJob, setActiveJob] = useState<ExternalReviewJob | null>(null)
   const [jobBusy, setJobBusy] = useState(false)
   const [panelError, setPanelError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const [severityFilter, setSeverityFilter] = useState<ExternalReviewSeverity[]>(ALL_EXTERNAL_REVIEW_SEVERITIES)
   const [providerFilter, setProviderFilter] = useState('')
   const [fileFilter, setFileFilter] = useState('')
+  const [keywordFilter, setKeywordFilter] = useState('')
 
   const [pastePlatformId, setPastePlatformId] = useState('manual-web')
   const [pasteRawOutput, setPasteRawOutput] = useState('')
@@ -166,22 +176,19 @@ export function ExternalReviewCenterPanel({
   }, [initialBundleId])
 
   const bundleHash =
-    bundleSummary?.bundleHash ??
-    (bundleHashInput.trim() || activeJob?.bundleHash || '')
+    bundleSummary?.bundleHash ?? (bundleHashInput.trim() || activeJob?.bundleHash || '')
 
   const loadBundleContext = useCallback(async (bundleId: string) => {
-    const id = bundleId.trim()
-    if (!id) {
-      setBundleSummary(null)
-      setJobs([])
-      setReports([])
-      setLoadState({ status: 'idle' })
+    const validation = validateBundleId(bundleId)
+    if (validation) {
+      setLoadState({ status: 'error', message: validation })
       return
     }
 
     setLoadState({ status: 'loading' })
     setPanelError(null)
     try {
+      const id = bundleId.trim()
       const [summary, jobList, reportList] = await Promise.all([
         window.electronAPI.getProjectPackSummary(id),
         window.electronAPI.listExternalReviewJobsByBundle(id),
@@ -228,6 +235,10 @@ export function ExternalReviewCenterPanel({
   )
 
   const platformOptions = useMemo(() => collectReportPlatformIds(reports), [reports])
+  const findingFilters = useMemo(
+    () => ({ severities: severityFilter, relativePath: fileFilter, keyword: keywordFilter }),
+    [severityFilter, fileFilter, keywordFilter],
+  )
 
   const toggleSeverity = useCallback((severity: ExternalReviewSeverity) => {
     setSeverityFilter((current) =>
@@ -237,17 +248,26 @@ export function ExternalReviewCenterPanel({
 
   const createJob = useCallback(async () => {
     const bundleId = bundleIdInput.trim()
-    if (!bundleId || !bundleHash) {
-      setPanelError('需要 bundleId 与 bundleHash（可先加载 ProjectPack 摘要）')
+    const errors: Record<string, string> = {}
+    const bundleErr = validateBundleId(bundleId)
+    if (bundleErr) errors.bundleId = bundleErr
+    if (!bundleHash) errors.bundleHash = '需要 bundleHash（先加载 ProjectPack 摘要或手动填写）'
+    const platformErr = validateRequiredText(newJobPlatformId, 'platformId')
+    if (platformErr) errors.platformId = platformErr
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      setPanelError(Object.values(errors).join('；'))
       return
     }
+
+    setFieldErrors({})
     setPanelError(null)
     setJobBusy(true)
     try {
       const job = await window.electronAPI.createExternalReviewJob({
         bundleId,
         bundleHash,
-        platformId: newJobPlatformId.trim() || 'manual-web',
+        platformId: newJobPlatformId.trim(),
       })
       setActiveJob(job)
       await loadBundleContext(bundleId)
@@ -286,26 +306,33 @@ export function ExternalReviewCenterPanel({
   const savePastedReport = useCallback(
     async (options?: { completeActiveJob?: boolean }) => {
       const bundleId = bundleIdInput.trim()
-      if (!bundleId || !bundleHash) {
-        setPanelError('需要 bundleId 与 bundleHash')
+      const errors: Record<string, string> = {}
+      const bundleErr = validateBundleId(bundleId)
+      if (bundleErr) errors.bundleId = bundleErr
+      if (!bundleHash) errors.bundleHash = '需要 bundleHash'
+      const platformErr = validateRequiredText(pastePlatformId, 'platformId')
+      if (platformErr) errors.platformId = platformErr
+      const pasteErr = validatePasteOutput(pasteRawOutput)
+      if (pasteErr) errors.paste = pasteErr
+      if (Object.keys(errors).length > 0) {
+        setFieldErrors(errors)
+        setPanelError(Object.values(errors).join('；'))
         return
       }
-      if (!pasteRawOutput.trim()) {
-        setPanelError('请粘贴外部 AI 返回原文（不会自动抓取网页）')
-        return
-      }
+
+      setFieldErrors({})
       setPanelError(null)
       setJobBusy(true)
       try {
         const report = await window.electronAPI.saveExternalReviewReport({
           bundleId,
           bundleHash,
-          platformId: pastePlatformId.trim() || activeJob?.platformId || 'manual-web',
+          platformId: pastePlatformId.trim(),
           transport: 'manual',
           rawOutput: pasteRawOutput,
           externalCost: {
             kind: 'unknown',
-            note: '外部平台成本未知；Fleet 未自动登录、上传或读取 cookies/token。',
+            note: '外部平台成本未知；不等于免费。',
           },
         })
         if (options?.completeActiveJob && activeJob) {
@@ -326,239 +353,279 @@ export function ExternalReviewCenterPanel({
     [activeJob, bundleHash, bundleIdInput, loadBundleContext, pastePlatformId, pasteRawOutput],
   )
 
-  const sectionClass = compact
-    ? 'rounded-[8px] border border-border/70 p-2.5 space-y-2'
-    : 'rounded-[8px] border border-border/70 p-3 space-y-3'
+  const bundlePhase =
+    loadState.status === 'loading'
+      ? 'loading'
+      : loadState.status === 'error'
+        ? 'error'
+        : loadState.status === 'done'
+          ? 'ready'
+          : 'empty'
+
+  const jobsPhase =
+    loadState.status !== 'done'
+      ? loadState.status === 'loading'
+        ? 'loading'
+        : 'empty'
+      : jobs.length === 0
+        ? 'empty'
+        : 'ready'
+
+  const reportsPhase =
+    loadState.status !== 'done'
+      ? 'empty'
+      : visibleReports.length === 0
+        ? 'empty'
+        : 'ready'
+
+  const rootClass = embedded
+    ? 'flex flex-col gap-3 text-xs min-w-0 overflow-hidden'
+    : 'flex flex-col gap-3 text-xs min-w-0 overflow-hidden rounded-[8px] border border-border/70 p-2.5 sm:p-3'
 
   return (
-    <div className="flex flex-col gap-3 text-xs" data-testid="external-review-center-panel">
-      <div className={sectionClass}>
-        <div className="font-medium">审查中心</div>
-        <p className="text-[10px] text-amber-800 dark:text-amber-200 leading-relaxed">
-          选择 ProjectPack bundle，查看关联 jobs 与多平台 reports。所有保存均为本地；不自动登录、不自动提交、不读取
-          cookies/token、不外发 bundle。
-        </p>
-
-        <div className="flex flex-wrap gap-2 items-end">
-          <label className="flex-1 min-w-[160px] space-y-1">
-            <span className="text-muted-foreground">bundleId</span>
-            <input
-              className="w-full rounded border bg-background px-2 py-1 font-mono text-[10px]"
-              value={bundleIdInput}
-              onChange={(e) => setBundleIdInput(e.target.value)}
-              placeholder="已保存 ProjectPack 的 bundleId"
-            />
-          </label>
-          <button
-            type="button"
-            className="px-3 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
-            disabled={loadState.status === 'loading' || !bundleIdInput.trim()}
-            onClick={() => void loadBundleContext(bundleIdInput)}
-          >
-            {loadState.status === 'loading' ? '加载中…' : '加载 bundle'}
-          </button>
+    <div className={rootClass} data-testid="external-review-center-panel">
+      {!embedded && (
+        <div className="space-y-1 min-w-0">
+          <div className="font-medium">审查中心</div>
+          <p className="text-[10px] text-muted-foreground leading-relaxed break-words">
+            Bundle → Job → Report 三层本地工作流；不外发、不自动登录。
+          </p>
         </div>
+      )}
 
-        {loadState.status === 'error' && <div className="text-destructive">{loadState.message}</div>}
-
-        {bundleSummary && (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] border rounded p-2 bg-muted/20">
-            <span className="text-muted-foreground">bundleHash</span>
-            <span className="font-mono truncate" title={bundleSummary.bundleHash}>
-              {bundleSummary.bundleHash.slice(0, 16)}…
-            </span>
-            <span className="text-muted-foreground">文件 / Token（估算）</span>
-            <span>
-              {bundleSummary.fileCount} 文件 · {bundleSummary.estimatedTokens.toLocaleString()} tokens
-            </span>
-            <span className="text-muted-foreground">Secret scan</span>
-            <span>
-              {bundleSummary.secretScan.findingCount} 条
-              {bundleSummary.secretScan.hasHighSeverity ? ' · 含高危' : ''}
-            </span>
-            <span className="text-muted-foreground">外发许可</span>
-            <span>{bundleSummary.externalExportAllowed ? '无高危 secret（仍需人工确认）' : '阻断'}</span>
-          </div>
-        )}
-
-        {!bundleSummary && loadState.status === 'done' && (
-          <div className="space-y-2">
-            <p className="text-[10px] text-muted-foreground">
-              未找到已保存的 ProjectPack 摘要；仍可管理 jobs/reports，请手动填写 bundleHash。
-            </p>
-            <label className="block space-y-1">
-              <span className="text-muted-foreground">bundleHash（手动）</span>
+      <SectionBlock
+        step={1}
+        title="Bundle · 项目包"
+        description="选择一个已保存的 ProjectPack bundle，作为审查上下文。"
+        phase={bundlePhase}
+        error={loadState.status === 'error' ? loadState.message : undefined}
+        empty={<p className="text-[10px] text-muted-foreground">输入 bundleId 并加载。</p>}
+      >
+        <div className="space-y-2 min-w-0">
+          <div className="flex flex-wrap gap-2 items-end min-w-0">
+            <label className="flex-1 min-w-[140px] space-y-1 min-w-0">
+              <span className="text-muted-foreground">bundleId</span>
               <input
-                className="w-full rounded border bg-background px-2 py-1 font-mono text-[10px]"
-                value={bundleHashInput}
-                onChange={(e) => setBundleHashInput(e.target.value)}
+                className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
+                value={bundleIdInput}
+                onChange={(e) => setBundleIdInput(e.target.value)}
               />
+              {fieldErrors.bundleId && <span className="text-[10px] text-destructive">{fieldErrors.bundleId}</span>}
             </label>
-          </div>
-        )}
-      </div>
-
-      <div className={sectionClass}>
-        <div className="font-medium">筛选</div>
-        <div className="flex flex-wrap gap-1">
-          {ALL_EXTERNAL_REVIEW_SEVERITIES.map((severity) => (
             <button
-              key={severity}
               type="button"
-              className={`px-1.5 py-0.5 rounded border text-[10px] ${severityFilter.includes(severity) ? 'bg-accent' : ''}`}
-              onClick={() => toggleSeverity(severity)}
+              className="px-3 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50 shrink-0"
+              disabled={loadState.status === 'loading'}
+              onClick={() => void loadBundleContext(bundleIdInput)}
             >
-              {severity}
+              {loadState.status === 'loading' ? '加载中…' : '加载 bundle'}
             </button>
-          ))}
+          </div>
+
+          {bundleSummary ? (
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-[10px] rounded border bg-muted/15 p-2 min-w-0">
+              <span className="text-muted-foreground">bundleHash</span>
+              <span className="font-mono truncate" title={bundleSummary.bundleHash}>
+                {bundleSummary.bundleHash.slice(0, 20)}…
+              </span>
+              <span className="text-muted-foreground">规模</span>
+              <span className="break-words">
+                {bundleSummary.fileCount} 文件 · {bundleSummary.estimatedTokens.toLocaleString()} tokens{' '}
+                <MetricKindBadge kind="estimate" />
+              </span>
+              <span className="text-muted-foreground">Secret scan</span>
+              <span>
+                {bundleSummary.secretScan.findingCount} 条
+                {bundleSummary.secretScan.hasHighSeverity ? ' · 含高危' : ''}
+              </span>
+            </div>
+          ) : (
+            loadState.status === 'done' && (
+              <label className="block space-y-1 min-w-0">
+                <span className="text-muted-foreground">bundleHash（手动）</span>
+                <input
+                  className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
+                  value={bundleHashInput}
+                  onChange={(e) => setBundleHashInput(e.target.value)}
+                />
+                {fieldErrors.bundleHash && <span className="text-[10px] text-destructive">{fieldErrors.bundleHash}</span>}
+              </label>
+            )
+          )}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="space-y-1">
-            <span className="text-muted-foreground">provider / platform</span>
+      </SectionBlock>
+
+      <SectionBlock
+        step={2}
+        title="Jobs · 审查任务"
+        description="人工推进状态；Fleet 不会自动提交到外部平台。"
+        phase={jobsPhase}
+        empty={<p className="text-[10px] text-muted-foreground">加载 bundle 后可创建 job，或此 bundle 尚无任务。</p>}
+      >
+        <div className="space-y-2 min-w-0">
+          <div className="flex flex-wrap gap-2 items-end">
+            <input
+              className="min-w-0 flex-1 rounded border bg-background px-2 py-1 text-[10px]"
+              placeholder="platformId"
+              value={newJobPlatformId}
+              onChange={(e) => setNewJobPlatformId(e.target.value)}
+            />
+            <button
+              type="button"
+              className="px-2 py-1 rounded border text-[10px] disabled:opacity-50 shrink-0"
+              disabled={jobBusy || loadState.status !== 'done'}
+              onClick={() => void createJob()}
+            >
+              创建 job
+            </button>
+          </div>
+          {fieldErrors.platformId && <div className="text-[10px] text-destructive">{fieldErrors.platformId}</div>}
+
+          <ul className="space-y-1 min-w-0">
+            {jobs.map((job) => (
+              <li
+                key={job.jobId}
+                className={`rounded border px-2 py-1.5 min-w-0 ${activeJob?.jobId === job.jobId ? 'border-primary/50 bg-primary/5' : 'border-border/50'}`}
+              >
+                <button
+                  type="button"
+                  className="w-full text-left min-w-0"
+                  onClick={() => setActiveJob(job)}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
+                    <span className="font-medium truncate">{job.platformId}</span>
+                    <span className={`text-[10px] shrink-0 ${JOB_STATUS_CLASS[job.status]}`}>
+                      {JOB_STATUS_LABEL[job.status]}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-mono truncate">{job.jobId}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {activeJob && (
+            <div className="rounded border bg-muted/15 p-2 space-y-2 min-w-0">
+              <div className="text-[10px]">
+                当前 job：<span className={JOB_STATUS_CLASS[activeJob.status]}>{JOB_STATUS_LABEL[activeJob.status]}</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button type="button" className="px-2 py-0.5 rounded border text-[10px]" disabled={jobBusy} onClick={() => void advanceJob('authorize')}>
+                  1. 授权提交
+                </button>
+                <button type="button" className="px-2 py-0.5 rounded border text-[10px]" disabled={jobBusy} onClick={() => void advanceJob('mark_awaiting_result')}>
+                  2. 等待结果
+                </button>
+                <button type="button" className="px-2 py-0.5 rounded border text-[10px]" disabled={jobBusy} onClick={() => void advanceJob('fail', { reason: '用户标记失败' })}>
+                  标记失败
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        step={3}
+        title="Reports · 多平台对比"
+        description="按 severity / provider / 文件 / 关键词筛选 findings。"
+        phase={reportsPhase}
+        empty={<p className="text-[10px] text-muted-foreground">尚无 report；完成 job 或在下方粘贴保存。</p>}
+      >
+        <div className="space-y-2 min-w-0">
+          <div className="flex flex-wrap gap-1">
+            {ALL_EXTERNAL_REVIEW_SEVERITIES.map((severity) => (
+              <button
+                key={severity}
+                type="button"
+                className={`px-1.5 py-0.5 rounded border text-[10px] ${severityFilter.includes(severity) ? 'bg-accent' : ''}`}
+                onClick={() => toggleSeverity(severity)}
+              >
+                {severity}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-2 min-w-0">
             <input
               list="review-platform-options"
-              className="w-full rounded border bg-background px-2 py-1 text-[10px]"
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
               value={providerFilter}
               onChange={(e) => setProviderFilter(e.target.value)}
-              placeholder="留空显示全部"
+              placeholder="provider / platform 筛选"
             />
             <datalist id="review-platform-options">
               {platformOptions.map((id) => (
                 <option key={id} value={id} />
               ))}
             </datalist>
-          </label>
-          <label className="space-y-1">
-            <span className="text-muted-foreground">file（relativePath 包含）</span>
             <input
-              className="w-full rounded border bg-background px-2 py-1 font-mono text-[10px]"
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
               value={fileFilter}
               onChange={(e) => setFileFilter(e.target.value)}
-              placeholder="例如 handler.ts"
+              placeholder="文件名包含…"
             />
-          </label>
-        </div>
-      </div>
-
-      <div className={sectionClass}>
-        <div className="font-medium">Jobs（{jobs.length}）</div>
-        <div className="flex flex-wrap gap-2 items-end">
-          <input
-            className="rounded border bg-background px-2 py-1 text-[10px] min-w-[120px]"
-            placeholder="新 job platformId"
-            value={newJobPlatformId}
-            onChange={(e) => setNewJobPlatformId(e.target.value)}
-          />
-          <button
-            type="button"
-            className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
-            disabled={jobBusy}
-            onClick={() => void createJob()}
-          >
-            创建 job
-          </button>
-        </div>
-        {jobs.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground">此 bundle 尚无 external review jobs。</p>
-        ) : (
-          <ul className="space-y-1">
-            {jobs.map((job) => (
-              <li
-                key={job.jobId}
-                className={`flex flex-wrap items-center justify-between gap-2 border rounded px-2 py-1.5 ${activeJob?.jobId === job.jobId ? 'border-primary/50 bg-primary/5' : 'border-border/50'}`}
-              >
-                <button type="button" className="text-left underline font-mono text-[10px]" onClick={() => setActiveJob(job)}>
-                  {job.platformId} · {job.jobId.slice(0, 8)}…
-                </button>
-                <span className="text-muted-foreground">{job.status}</span>
-                {job.status === 'completed' && job.reportId && (
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300">report 已关联</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {activeJob && (
-          <div className="border rounded p-2 space-y-2 bg-muted/20">
-            <div className="font-medium">{activeJob.platformId}</div>
-            <div className="text-[10px] text-muted-foreground">状态：{activeJob.status}</div>
-            <div className="flex flex-wrap gap-1">
-              <button type="button" className="px-2 py-0.5 rounded border text-[10px]" disabled={jobBusy} onClick={() => void advanceJob('authorize')}>
-                授权提交（人工）
-              </button>
-              <button type="button" className="px-2 py-0.5 rounded border text-[10px]" disabled={jobBusy} onClick={() => void advanceJob('mark_awaiting_result')}>
-                标记等待结果
-              </button>
-              <button type="button" className="px-2 py-0.5 rounded border text-[10px]" disabled={jobBusy} onClick={() => void advanceJob('fail', { reason: '用户标记失败' })}>
-                标记失败
-              </button>
-            </div>
+            <input
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
+              value={keywordFilter}
+              onChange={(e) => setKeywordFilter(e.target.value)}
+              placeholder="关键词搜索 title / evidence / recommendation"
+            />
           </div>
-        )}
-      </div>
 
-      <div className={sectionClass}>
-        <div className="font-medium">Reports 对比（{visibleReports.length}）</div>
-        {visibleReports.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground">尚无已保存报告；可在下方粘贴外部 AI 结果。</p>
-        ) : (
-          <div
-            className={
-              compact
-                ? 'flex gap-3 overflow-x-auto pb-1'
-                : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3'
-            }
-          >
+          <div className={compact ? 'flex gap-3 overflow-x-auto pb-1 min-w-0' : 'grid gap-3 sm:grid-cols-2 min-w-0'}>
             {visibleReports.map((report) => (
-              <ReportColumn
-                key={report.reportId}
-                report={report}
-                compact={compact}
-                filters={{ severities: severityFilter, relativePath: fileFilter }}
-              />
+              <ReportColumn key={report.reportId} report={report} compact={compact} filters={findingFilters} />
             ))}
           </div>
-        )}
-      </div>
-
-      <div className={sectionClass}>
-        <div className="font-medium">人工粘贴并保存</div>
-        <p className="text-[10px] text-muted-foreground">
-          仅保存粘贴内容到本地 report store；不会打开浏览器或读取登录态。
-        </p>
-        <input
-          className="w-full rounded border bg-background px-2 py-1 text-[10px]"
-          placeholder="platformId"
-          value={pastePlatformId}
-          onChange={(e) => setPastePlatformId(e.target.value)}
-        />
-        <textarea
-          className="w-full min-h-[80px] rounded border bg-background px-2 py-1 text-[10px]"
-          placeholder="粘贴外部 AI 审查原文"
-          value={pasteRawOutput}
-          onChange={(e) => setPasteRawOutput(e.target.value)}
-        />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
-            disabled={jobBusy}
-            onClick={() => void savePastedReport()}
-          >
-            仅保存 report
-          </button>
-          <button
-            type="button"
-            className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
-            disabled={jobBusy || !activeJob}
-            onClick={() => void savePastedReport({ completeActiveJob: true })}
-          >
-            保存并完成当前 job
-          </button>
         </div>
-        {panelError && <div className="text-destructive">{panelError}</div>}
-      </div>
+      </SectionBlock>
+
+      <SectionBlock
+        step={4}
+        title="人工粘贴并保存"
+        description={MANUAL_PASTE_PRIVACY_NOTE}
+        phase="ready"
+      >
+        <div className="space-y-2 min-w-0">
+          <input
+            className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
+            placeholder="platformId"
+            value={pastePlatformId}
+            onChange={(e) => setPastePlatformId(e.target.value)}
+          />
+          {fieldErrors.platformId && <div className="text-[10px] text-destructive">{fieldErrors.platformId}</div>}
+          <textarea
+            className="w-full min-w-0 min-h-[80px] rounded border bg-background px-2 py-1 text-[10px]"
+            placeholder="粘贴外部 AI 审查原文"
+            value={pasteRawOutput}
+            onChange={(e) => setPasteRawOutput(e.target.value)}
+          />
+          {fieldErrors.paste && <div className="text-[10px] text-destructive">{fieldErrors.paste}</div>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
+              disabled={jobBusy}
+              onClick={() => void savePastedReport()}
+            >
+              仅保存 report
+            </button>
+            <button
+              type="button"
+              className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
+              disabled={jobBusy || !activeJob}
+              onClick={() => void savePastedReport({ completeActiveJob: true })}
+            >
+              保存并完成当前 job
+            </button>
+          </div>
+          {panelError && (
+            <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[10px] text-destructive break-words">
+              {panelError}
+            </div>
+          )}
+        </div>
+      </SectionBlock>
     </div>
   )
 }

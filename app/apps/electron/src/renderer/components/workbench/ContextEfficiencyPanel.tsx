@@ -1,9 +1,5 @@
 /**
- * ContextEfficiencyPanel — 自包含 Context Center UI（T-CONTEXT-EFF-UI）。
- *
- * 展示 ProjectPack delta、rtk/codegraph 测试、外部审查 job 与 overview。
- * 文案区分：真实 token / 估算 token / 外部平台成本未知 / 本地未外发。
- * 不改 AppShell / Stage / SessionManager。
+ * ContextEfficiencyPanel — 四段式上下文效率工作区（T-CONTEXT-REVIEW-POLISH）。
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -11,93 +7,40 @@ import type {
   ContextAdapterCodegraphResult,
   ContextAdapterRtkResult,
   ContextCenterOverview,
-  ContextSignalConfidence,
   ProjectPackDeltaMode,
   ProjectPackDeltaPlanResult,
-  ToolCapability,
 } from '@craft-agent/shared/protocol'
-import { ProjectPackPanel } from './ProjectPackPanel'
+import {
+  deriveSectionPhase,
+  FLEET_TOKEN_EXTERNAL_REVIEW_NOTE,
+  REVIEW_READINESS_LABEL,
+  type AsyncLoadState,
+  validateWorkspacePath,
+} from '@/lib/context-efficiency-ui'
+import { MetricKindBadge, ScrollPre, SectionBlock, ToolCapabilityCard } from './context-efficiency-section'
 import { ExternalReviewCenterPanel } from './ExternalReviewCenterPanel'
-
-type AsyncState<T> =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'done'; data: T }
+import { ProjectPackPanel } from './ProjectPackPanel'
 
 const DELTA_MODE_LABELS: Record<ProjectPackDeltaMode, string> = {
-  diff: 'Git diff（工作区改动）',
+  diff: '工作区改动',
   staged: '已暂存',
   untracked: '未跟踪',
 }
 
-function ConfidenceBadge({
-  confidence,
-  locality,
-  note,
-}: {
-  confidence: ContextSignalConfidence
-  locality?: string
-  note?: string
-}) {
-  const label =
-    confidence === 'real'
-      ? '真实 token / 本机记录'
-      : confidence === 'estimate'
-        ? '估算 token'
-        : '未知 / 外部平台成本未知'
-  const tone =
-    confidence === 'real'
-      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-      : confidence === 'estimate'
-        ? 'bg-amber-500/10 text-amber-800 dark:text-amber-200'
-        : 'bg-muted text-muted-foreground'
-
-  return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${tone}`}
-      title={note ?? (locality === 'local' ? '本地未外发' : undefined)}
-    >
-      {label}
-      {locality === 'local' ? ' · 本地未外发' : ''}
-    </span>
-  )
-}
-
-function ToolStatusRow({ tool }: { tool: ToolCapability }) {
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border/50 py-2 last:border-0">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{tool.displayName}</span>
-        <span className="text-muted-foreground">{tool.status}</span>
-      </div>
-      {tool.path && <div className="font-mono text-[10px] break-all text-muted-foreground">{tool.path}</div>}
-      {tool.version && <div className="text-[10px] text-muted-foreground">版本 {tool.version}</div>}
-      {tool.diagnostics[0]?.message && (
-        <div className="text-[10px] text-muted-foreground">{tool.diagnostics[0].message}</div>
-      )}
-      {tool.diagnostics[0]?.repairSuggestion && (
-        <div className="text-[10px] text-amber-700 dark:text-amber-300">{tool.diagnostics[0].repairSuggestion}</div>
-      )}
-    </div>
-  )
-}
-
-function SidecarNote({ result }: { result: ContextAdapterRtkResult | ContextAdapterCodegraphResult }) {
+function SidecarExecutionNote({ result }: { result: ContextAdapterRtkResult | ContextAdapterCodegraphResult }) {
   if (result.applied) {
     return (
-      <p className="text-[10px] text-emerald-700 dark:text-emerald-300">
-        已通过 System Tools 解析的 sidecar 执行（{result.availability.available ? result.availability.path : '—'}）。
+      <p className="text-[10px] text-emerald-700 dark:text-emerald-300 break-words">
+        已通过 System Tools 解析 sidecar 执行
+        {result.availability.available ? `（${result.availability.path}）` : ''}。
       </p>
     )
   }
   return (
-    <p className="text-[10px] text-amber-800 dark:text-amber-200">
+    <p className="text-[10px] text-amber-800 dark:text-amber-200 break-words">
       使用 Fleet 本地降级逻辑，不是 rtk/codegraph sidecar。
       {result.note ? ` ${result.note}` : ''}
-      {!result.availability.available && 'reason' in result.availability
-        ? ` (${result.availability.reason})`
-        : ''}
+      {!result.availability.available && 'reason' in result.availability ? ` ${result.availability.reason}` : ''}
     </p>
   )
 }
@@ -121,17 +64,15 @@ export function ContextEfficiencyPanel({
 }: ContextEfficiencyPanelProps) {
   const compact = variant === 'compact'
 
-  const [overviewState, setOverviewState] = useState<AsyncState<ContextCenterOverview>>({ status: 'idle' })
-
+  const [overviewState, setOverviewState] = useState<AsyncLoadState<ContextCenterOverview>>({ status: 'idle' })
   const [deltaPath, setDeltaPath] = useState(workspacePath)
   const [deltaMode, setDeltaMode] = useState<ProjectPackDeltaMode>('diff')
-  const [deltaState, setDeltaState] = useState<AsyncState<ProjectPackDeltaPlanResult>>({ status: 'idle' })
-
+  const [deltaState, setDeltaState] = useState<AsyncLoadState<ProjectPackDeltaPlanResult>>({ status: 'idle' })
   const [rtkInput, setRtkInput] = useState('npm test\n'.repeat(8))
-  const [rtkState, setRtkState] = useState<AsyncState<ContextAdapterRtkResult>>({ status: 'idle' })
-
+  const [rtkState, setRtkState] = useState<AsyncLoadState<ContextAdapterRtkResult>>({ status: 'idle' })
   const [codegraphQuery, setCodegraphQuery] = useState('findUser')
-  const [codegraphState, setCodegraphState] = useState<AsyncState<ContextAdapterCodegraphResult>>({ status: 'idle' })
+  const [codegraphState, setCodegraphState] = useState<AsyncLoadState<ContextAdapterCodegraphResult>>({ status: 'idle' })
+  const [deltaValidationError, setDeltaValidationError] = useState<string | null>(null)
 
   useEffect(() => {
     setDeltaPath(workspacePath)
@@ -166,10 +107,13 @@ export function ContextEfficiencyPanel({
   }, [loadOverview])
 
   const runDeltaPlan = useCallback(async () => {
-    if (!deltaPath.trim()) {
-      setDeltaState({ status: 'error', message: '请填写 workspacePath' })
+    const validation = validateWorkspacePath(deltaPath)
+    if (validation) {
+      setDeltaValidationError(validation)
+      setDeltaState({ status: 'error', message: validation })
       return
     }
+    setDeltaValidationError(null)
     setDeltaState({ status: 'loading' })
     try {
       const data = await window.electronAPI.planProjectPackDelta({
@@ -183,6 +127,10 @@ export function ContextEfficiencyPanel({
   }, [deltaPath, deltaMode])
 
   const runRtk = useCallback(async () => {
+    if (!rtkInput.trim()) {
+      setRtkState({ status: 'error', message: '请输入要压缩的文本' })
+      return
+    }
     setRtkState({ status: 'loading' })
     try {
       const data = await window.electronAPI.compressContextRtk({ input: rtkInput })
@@ -193,8 +141,13 @@ export function ContextEfficiencyPanel({
   }, [rtkInput])
 
   const runCodegraph = useCallback(async () => {
-    if (!workspacePath.trim()) {
-      setCodegraphState({ status: 'error', message: '需要项目根路径' })
+    const validation = validateWorkspacePath(workspacePath)
+    if (validation) {
+      setCodegraphState({ status: 'error', message: validation })
+      return
+    }
+    if (!codegraphQuery.trim()) {
+      setCodegraphState({ status: 'error', message: '请输入 codegraph 查询' })
       return
     }
     setCodegraphState({ status: 'loading' })
@@ -215,263 +168,281 @@ export function ContextEfficiencyPanel({
     [overview],
   )
 
-  const sectionClass = compact
-    ? 'rounded-[8px] border border-border/70 p-2.5 space-y-2'
-    : 'rounded-[8px] border border-border/70 p-3 space-y-3'
+  const overviewPhase = deriveSectionPhase(overviewState)
+  const packPhase = deriveSectionPhase(deltaState)
+  const optimizePhase: ReturnType<typeof deriveSectionPhase> =
+    rtkState.status === 'loading' || codegraphState.status === 'loading'
+      ? 'loading'
+      : rtkState.status === 'error' || codegraphState.status === 'error'
+        ? 'error'
+        : rtkState.status === 'done' || codegraphState.status === 'done'
+          ? 'ready'
+          : 'empty'
+
+  const optimizeError =
+    rtkState.status === 'error'
+      ? `rtk：${rtkState.message}`
+      : codegraphState.status === 'error'
+        ? `codegraph：${codegraphState.message}`
+        : undefined
+
+  const reviewPhase = overviewPhase === 'ready' ? 'ready' : overviewPhase
 
   return (
-    <div className="flex flex-col gap-3 text-xs" data-testid="context-efficiency-panel">
-      <div className={sectionClass}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-medium">Context Center 概览</div>
+    <div className="flex flex-col gap-3 text-xs min-w-0 overflow-hidden" data-testid="context-efficiency-panel">
+      <SectionBlock
+        step={1}
+        title="Overview · 当前上下文状态"
+        description="会话用量为真实 token；打包/压缩/图谱为估算 token。"
+        phase={overviewPhase}
+        error={overviewState.status === 'error' ? overviewState.message : undefined}
+        actions={
           <button
             type="button"
-            className="text-[10px] text-muted-foreground hover:text-foreground underline"
+            className="text-[10px] text-muted-foreground hover:text-foreground underline disabled:opacity-50"
             onClick={() => void loadOverview()}
             disabled={overviewState.status === 'loading'}
           >
             刷新
           </button>
-        </div>
-        <p className="text-[10px] text-muted-foreground leading-relaxed">
-          会话用量为真实 token（若已连接 session）；压缩/打包/图谱为估算 token。外部审查不自动登录、不自动上传、不绕过平台限制。
-        </p>
-
-        {overviewState.status === 'loading' && <div className="text-muted-foreground">加载中…</div>}
-        {overviewState.status === 'error' && (
-          <div className="text-destructive">{overviewState.message}</div>
-        )}
-
+        }
+        empty={<p className="text-[10px] text-muted-foreground">连接 session 或 workspace 后可查看上下文概览。</p>}
+      >
         {overview && (
-          <div className="space-y-2">
-            {overview.usage && (
-              <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                <span className="text-muted-foreground">输入 token</span>
-                <span className="flex items-center gap-1 flex-wrap">
+          <div className="space-y-3 min-w-0">
+            {overview.usage ? (
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+                <span className="text-muted-foreground">Fleet 输入 token</span>
+                <span className="flex flex-wrap items-center gap-1 min-w-0">
                   {overview.usage.inputTokens.value.toLocaleString()}
-                  <ConfidenceBadge confidence={overview.usage.inputTokens.confidence} locality={overview.usage.inputTokens.locality} />
+                  <MetricKindBadge kind={overview.usage.inputTokens.confidence} suffix="本机 session" />
                 </span>
                 <span className="text-muted-foreground">上下文占用</span>
-                <span className="flex items-center gap-1 flex-wrap">
+                <span className="flex flex-wrap items-center gap-1">
                   {overview.usage.estimatedContextPercent
                     ? `${Math.round(overview.usage.estimatedContextPercent.value * 100)}%`
                     : '—'}
                   {overview.usage.estimatedContextPercent && (
-                    <ConfidenceBadge confidence={overview.usage.estimatedContextPercent.confidence} />
+                    <MetricKindBadge kind={overview.usage.estimatedContextPercent.confidence} />
                   )}
                 </span>
               </div>
+            ) : (
+              <p className="text-[10px] text-muted-foreground">暂无真实 session 用量。</p>
             )}
 
-            <div>
-              <div className="text-[10px] font-medium mb-1">审查 readiness</div>
-              <div className="text-muted-foreground">{overview.reviewReadiness.status.value}</div>
-              <ul className="mt-1 list-disc pl-4 text-[10px] text-muted-foreground">
-                {overview.reviewReadiness.reasons.value.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
+            <div className="space-y-1">
+              <div className="text-[10px] font-medium">Sidecar 工具（System Tools）</div>
+              {sidecarTools.length === 0 ? (
+                <p className="text-[10px] text-muted-foreground">尚未检测到 rtk / codegraph。</p>
+              ) : (
+                <div className="grid gap-2">
+                  {sidecarTools.map((tool) => (
+                    <ToolCapabilityCard key={tool.toolId} tool={tool} />
+                  ))}
+                </div>
+              )}
             </div>
 
             {overview.recommendations.length > 0 && (
               <details open={!compact}>
-                <summary className="cursor-pointer font-medium">建议 ({overview.recommendations.length})</summary>
+                <summary className="cursor-pointer text-[10px] font-medium">建议 ({overview.recommendations.length})</summary>
                 <ul className="mt-2 space-y-2">
                   {overview.recommendations.map((rec) => (
-                    <li key={rec.action} className="border border-border/50 rounded p-2">
-                      <div className="flex justify-between gap-2">
-                        <span className="font-medium">{rec.action}</span>
-                        <span className="text-muted-foreground">{rec.status}</span>
+                    <li key={rec.action} className="rounded border border-border/50 p-2 min-w-0">
+                      <div className="flex justify-between gap-2 min-w-0">
+                        <span className="font-medium truncate">{rec.action}</span>
+                        <span className="text-muted-foreground shrink-0">{rec.status}</span>
                       </div>
-                      <p className="mt-1 text-[10px] text-muted-foreground">{rec.reason}</p>
-                      {rec.requiresPermission && (
-                        <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">需要用户授权</p>
-                      )}
+                      <p className="mt-1 text-[10px] text-muted-foreground break-words">{rec.reason}</p>
                     </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            {overview.notes.length > 0 && (
-              <details>
-                <summary className="cursor-pointer text-muted-foreground">备注</summary>
-                <ul className="mt-1 list-disc pl-4 text-[10px] text-muted-foreground">
-                  {overview.notes.map((n) => (
-                    <li key={n}>{n}</li>
                   ))}
                 </ul>
               </details>
             )}
           </div>
         )}
-      </div>
+      </SectionBlock>
 
-      {sidecarTools.length > 0 && (
-        <div className={sectionClass}>
-          <div className="font-medium">Sidecar 工具（System Tools）</div>
-          <p className="text-[10px] text-muted-foreground">状态来自统一 registry，非直接 which。</p>
-          {sidecarTools.map((tool) => (
-            <ToolStatusRow key={tool.toolId} tool={tool} />
-          ))}
-        </div>
-      )}
-
-      <div className={sectionClass}>
-        <div className="font-medium">ProjectPack Delta（只读规划）</div>
-        <p className="text-[10px] text-muted-foreground">不写 bundle、不外发，仅规划增量范围。</p>
-        <label className="block space-y-1">
-          <span className="text-muted-foreground">workspacePath</span>
-          <input
-            className="w-full rounded border bg-background px-2 py-1 font-mono text-[10px]"
-            value={deltaPath}
-            onChange={(e) => setDeltaPath(e.target.value)}
-          />
-        </label>
-        <div className="flex flex-wrap gap-1">
-          {(Object.keys(DELTA_MODE_LABELS) as ProjectPackDeltaMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={`px-2 py-0.5 rounded border text-[10px] ${deltaMode === mode ? 'bg-accent' : ''}`}
-              onClick={() => setDeltaMode(mode)}
-            >
-              {DELTA_MODE_LABELS[mode]}
-            </button>
-          ))}
+      <SectionBlock
+        step={2}
+        title="Pack · ProjectPack Delta"
+        description="只读规划增量范围；不写 bundle、不外发。"
+        phase={packPhase}
+        error={deltaState.status === 'error' ? deltaState.message : undefined}
+        empty={
+          <p className="text-[10px] text-muted-foreground">
+            选择 git 范围后点击「规划 delta」，先确认会纳入哪些文件。
+          </p>
+        }
+      >
+        <div className="space-y-2 min-w-0">
+          <label className="block space-y-1 min-w-0">
+            <span className="text-muted-foreground">workspacePath</span>
+            <input
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
+              value={deltaPath}
+              onChange={(e) => {
+                setDeltaPath(e.target.value)
+                setDeltaValidationError(null)
+              }}
+            />
+            {deltaValidationError && <span className="text-[10px] text-destructive">{deltaValidationError}</span>}
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {(Object.keys(DELTA_MODE_LABELS) as ProjectPackDeltaMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`px-2 py-0.5 rounded border text-[10px] ${deltaMode === mode ? 'bg-accent' : ''}`}
+                onClick={() => setDeltaMode(mode)}
+              >
+                {DELTA_MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            className="px-2 py-0.5 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
+            className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
             disabled={deltaState.status === 'loading'}
             onClick={() => void runDeltaPlan()}
           >
-            {deltaState.status === 'loading' ? '规划中…' : '规划 delta'}
+            {deltaState.status === 'loading' ? '规划中…' : '1. 规划 delta'}
           </button>
+          {deltaState.status === 'done' && (
+            <div className="space-y-2 rounded border bg-muted/15 p-2 min-w-0">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1">
+                <span>改动 / 关联 / 纳入</span>
+                <span>
+                  {deltaState.data.changedFiles.length} / {deltaState.data.relatedFiles.length} /{' '}
+                  {deltaState.data.included.length}
+                </span>
+                <span>Token</span>
+                <span className="flex flex-wrap items-center gap-1">
+                  {deltaState.data.estimatedTokens.toLocaleString()}
+                  <MetricKindBadge kind="estimate" suffix="本地未外发" />
+                </span>
+              </div>
+              {deltaState.data.excluded.length > 0 && (
+                <details>
+                  <summary className="cursor-pointer">排除原因 ({deltaState.data.excluded.length})</summary>
+                  <ScrollPre maxClass="max-h-24">
+                    {deltaState.data.excluded
+                      .slice(0, 40)
+                      .map((e) => `${e.relativePath} — ${e.reason}`)
+                      .join('\n')}
+                  </ScrollPre>
+                </details>
+              )}
+            </div>
+          )}
         </div>
-        {deltaState.status === 'error' && <div className="text-destructive">{deltaState.message}</div>}
-        {deltaState.status === 'done' && (
-          <div className="space-y-2 border rounded p-2 bg-muted/20">
-            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-              <span>改动文件</span>
-              <span>{deltaState.data.changedFiles.length}</span>
-              <span>关联文件</span>
-              <span>{deltaState.data.relatedFiles.length}</span>
-              <span>纳入</span>
-              <span>{deltaState.data.included.length}</span>
-              <span>Token</span>
-              <span className="flex items-center gap-1">
-                {deltaState.data.estimatedTokens.toLocaleString()}
-                <ConfidenceBadge confidence="estimate" locality="local" />
-              </span>
-            </div>
-            {deltaState.data.changedFiles.length > 0 && (
-              <details>
-                <summary>changedFiles ({deltaState.data.changedFiles.length})</summary>
-                <ul className="mt-1 max-h-24 overflow-auto font-mono text-[10px]">
-                  {deltaState.data.changedFiles.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {deltaState.data.relatedFiles.length > 0 && (
-              <details>
-                <summary>relatedFiles ({deltaState.data.relatedFiles.length})</summary>
-                <ul className="mt-1 max-h-24 overflow-auto font-mono text-[10px]">
-                  {deltaState.data.relatedFiles.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {deltaState.data.excluded.length > 0 && (
-              <details>
-                <summary>excluded ({deltaState.data.excluded.length})</summary>
-                <ul className="mt-1 max-h-24 overflow-auto font-mono text-[10px]">
-                  {deltaState.data.excluded.slice(0, 40).map((e) => (
-                    <li key={`${e.relativePath}:${e.reason}`}>
-                      {e.relativePath} — {e.reason}
-                    </li>
-                  ))}
-                </ul>
-              </details>
+      </SectionBlock>
+
+      <SectionBlock
+        step={3}
+        title="Optimize · rtk / codegraph"
+        description="先确认工具状态，再按顺序测试压缩与结构查询。"
+        phase={optimizePhase}
+        error={optimizeError}
+        empty={<p className="text-[10px] text-muted-foreground">输入样例文本或 query 后运行测试。</p>}
+      >
+        <div className="space-y-3 min-w-0">
+          <div className="space-y-2">
+            <div className="text-[10px] font-medium">3a · rtk 压缩</div>
+            <textarea
+              className="w-full min-w-0 min-h-[64px] rounded border bg-background px-2 py-1 font-mono text-[10px]"
+              value={rtkInput}
+              onChange={(e) => setRtkInput(e.target.value)}
+            />
+            <button
+              type="button"
+              className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
+              disabled={rtkState.status === 'loading'}
+              onClick={() => void runRtk()}
+            >
+              {rtkState.status === 'loading' ? '压缩中…' : '运行 rtk 测试'}
+            </button>
+            {rtkState.status === 'done' && (
+              <div className="space-y-1 rounded border bg-muted/15 p-2 min-w-0">
+                <SidecarExecutionNote result={rtkState.data} />
+                <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                  节省 token {rtkState.data.stats.savedTokens}
+                  <MetricKindBadge kind="estimate" />
+                </div>
+                <ScrollPre>{rtkState.data.output}</ScrollPre>
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      <div className={sectionClass}>
-        <div className="font-medium">rtk 压缩测试</div>
-        <textarea
-          className="w-full min-h-[72px] rounded border bg-background px-2 py-1 font-mono text-[10px]"
-          value={rtkInput}
-          onChange={(e) => setRtkInput(e.target.value)}
-        />
-        <button
-          type="button"
-          className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
-          disabled={rtkState.status === 'loading'}
-          onClick={() => void runRtk()}
-        >
-          {rtkState.status === 'loading' ? '压缩中…' : '测试压缩'}
-        </button>
-        {rtkState.status === 'error' && <div className="text-destructive">{rtkState.message}</div>}
-        {rtkState.status === 'done' && (
-          <div className="space-y-1 border rounded p-2 bg-muted/20">
-            <SidecarNote result={rtkState.data} />
-            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
-              <span>压缩前 chars</span>
-              <span>{rtkState.data.stats.beforeChars}</span>
-              <span>压缩后 chars</span>
-              <span>{rtkState.data.stats.afterChars}</span>
-              <span>节省 token（估算）</span>
-              <span className="flex items-center gap-1">
-                {rtkState.data.stats.savedTokens}
-                <ConfidenceBadge confidence="estimate" />
-              </span>
+          <div className="space-y-2">
+            <div className="text-[10px] font-medium">3b · codegraph 查询</div>
+            <input
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
+              value={codegraphQuery}
+              onChange={(e) => setCodegraphQuery(e.target.value)}
+              placeholder="query"
+            />
+            <button
+              type="button"
+              className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
+              disabled={codegraphState.status === 'loading' || !workspacePath}
+              onClick={() => void runCodegraph()}
+            >
+              {codegraphState.status === 'loading' ? '查询中…' : '运行 codegraph 测试'}
+            </button>
+            {codegraphState.status === 'done' && (
+              <div className="space-y-1 rounded border bg-muted/15 p-2 min-w-0">
+                <SidecarExecutionNote result={codegraphState.data} />
+                <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                  输出 token {codegraphState.data.stats.afterTokens}
+                  <MetricKindBadge kind="estimate" />
+                </div>
+                <ScrollPre>{codegraphState.data.structuredOutput}</ScrollPre>
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        step={4}
+        title="Review · 外部审查准备度"
+        description={FLEET_TOKEN_EXTERNAL_REVIEW_NOTE}
+        phase={reviewPhase}
+        error={overviewState.status === 'error' ? overviewState.message : undefined}
+        empty={<p className="text-[10px] text-muted-foreground">等待 Overview 加载审查 readiness。</p>}
+      >
+        {overview && (
+          <div className="space-y-3 min-w-0">
+            <div className="rounded border bg-muted/15 p-2 space-y-1 min-w-0">
+              <div className="font-medium">
+                {REVIEW_READINESS_LABEL[overview.reviewReadiness.status.value] ?? overview.reviewReadiness.status.value}
+              </div>
+              <ul className="list-disc pl-4 text-[10px] text-muted-foreground space-y-0.5">
+                {overview.reviewReadiness.reasons.value.map((reason) => (
+                  <li key={reason} className="break-words">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <MetricKindBadge kind={overview.reviewReadiness.externalExportAllowed.confidence} suffix="外发许可" />
+                {overview.reviewReadiness.estimatedPackTokens && (
+                  <span className="text-[10px] flex items-center gap-1">
+                    包 token {overview.reviewReadiness.estimatedPackTokens.value.toLocaleString()}
+                    <MetricKindBadge kind="estimate" />
+                  </span>
+                )}
+              </div>
             </div>
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all text-[10px] bg-background/50 p-1 rounded">
-              {rtkState.data.output}
-            </pre>
+            <ExternalReviewCenterPanel initialBundleId={bundleId} variant={compact ? 'compact' : 'full'} embedded />
           </div>
         )}
-      </div>
-
-      <div className={sectionClass}>
-        <div className="font-medium">codegraph 查询测试</div>
-        <input
-          className="w-full rounded border bg-background px-2 py-1 font-mono text-[10px]"
-          placeholder="query"
-          value={codegraphQuery}
-          onChange={(e) => setCodegraphQuery(e.target.value)}
-        />
-        <button
-          type="button"
-          className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
-          disabled={codegraphState.status === 'loading' || !workspacePath}
-          onClick={() => void runCodegraph()}
-        >
-          {codegraphState.status === 'loading' ? '查询中…' : '测试查询'}
-        </button>
-        {codegraphState.status === 'error' && <div className="text-destructive">{codegraphState.message}</div>}
-        {codegraphState.status === 'done' && (
-          <div className="space-y-1 border rounded p-2 bg-muted/20">
-            <SidecarNote result={codegraphState.data} />
-            <div className="flex items-center gap-1 text-[10px]">
-              输出 token（估算） {codegraphState.data.stats.afterTokens}
-              <ConfidenceBadge confidence="estimate" />
-            </div>
-            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all text-[10px] bg-background/50 p-1 rounded">
-              {codegraphState.data.structuredOutput}
-            </pre>
-          </div>
-        )}
-      </div>
-
-      <ExternalReviewCenterPanel initialBundleId={bundleId} variant={compact ? 'compact' : 'full'} />
+      </SectionBlock>
 
       {showFullProjectPack && workspacePath && (
-        <div className={sectionClass}>
+        <div className="rounded-[8px] border border-border/70 p-3 min-w-0 overflow-hidden">
           <ProjectPackPanel rootPath={workspacePath} />
         </div>
       )}

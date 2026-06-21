@@ -146,7 +146,7 @@ export function WorkbenchInspectorRail() {
                 当前没有可统计的会话用量。
               </div>
             )}
-            <div className="rounded-[8px] border border-border/70 overflow-hidden">
+            <div className="rounded-[8px] border border-border/70 overflow-hidden min-w-0">
               <ContextEfficiencyPanel
                 variant="compact"
                 workspacePath={activeWorkspace?.rootPath ?? ''}
