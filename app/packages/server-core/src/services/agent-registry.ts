@@ -2,6 +2,7 @@ import {
   actorFromAgentDescriptor,
   type ActorRef,
   type AgentDescriptor,
+  type AgentRegistryEnsureManagerInput,
   type AgentRegistryEnsureProjectInput,
   type AgentRegistryListInput,
 } from '@craft-agent/shared/protocol'
@@ -34,15 +35,16 @@ export class AgentRegistryService {
     this.now = options.now ?? (() => Date.now())
   }
 
-  ensureManagerAgent(input: { workspaceId?: string; runtime?: string; displayName?: string } = {}): AgentDescriptor {
-    const scope = input.workspaceId ? sanitizeIdPart(input.workspaceId) : 'global'
+  ensureManagerAgent(input: AgentRegistryEnsureManagerInput = {}): AgentDescriptor {
+    const workspaceId = optionalString(input.workspaceId, 'workspaceId')
+    const scope = workspaceId ? sanitizeIdPart(workspaceId) : 'global'
     const agentId = `manager:${scope}`
     return this.upsert(agentId, {
       kind: 'manager',
       role: 'manager',
       displayName: input.displayName ?? '管理 Agent',
       runtime: input.runtime,
-      workspaceId: input.workspaceId,
+      workspaceId,
       status: 'active',
     })
   }
@@ -70,6 +72,12 @@ export class AgentRegistryService {
     return this.agents.get(`project:${sanitizeIdPart(requireString(sessionId, 'sessionId'))}`) ?? null
   }
 
+  getManagerAgent(workspaceId?: string): AgentDescriptor | null {
+    const normalizedWorkspaceId = optionalString(workspaceId, 'workspaceId')
+    const scope = normalizedWorkspaceId ? sanitizeIdPart(normalizedWorkspaceId) : 'global'
+    return this.agents.get(`manager:${scope}`) ?? null
+  }
+
   getAgent(agentId: string): AgentDescriptor | null {
     return this.agents.get(requireString(agentId, 'agentId')) ?? null
   }
@@ -92,6 +100,7 @@ export class AgentRegistryService {
       ...patch,
       agentId,
       updatedAt: timestamp,
+      lastActiveAt: patch.status === 'active' ? timestamp : existing?.lastActiveAt,
     }
     this.agents.set(agentId, next)
     return next

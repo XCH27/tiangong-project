@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import { actorFromAgentDescriptor, RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import type { HandlerFn, RequestContext, RpcServer } from '@craft-agent/server-core/transport'
 import { registerAgentRegistryHandlers } from '../handlers/rpc/agents'
 import { AgentRegistryService } from './agent-registry'
@@ -38,6 +38,47 @@ function createAgentRpcHarness() {
 }
 
 describe('AgentRegistryService', () => {
+  it('creates a stable metadata-only manager agent per workspace', () => {
+    let now = 100
+    const registry = new AgentRegistryService({ now: () => now })
+
+    expect(registry.getManagerAgent('workspace-1')).toBeNull()
+    expect(registry.listAgents()).toEqual([])
+
+    const first = registry.ensureManagerAgent({
+      workspaceId: 'workspace-1',
+      runtime: 'local-manager',
+    })
+    now = 200
+    const second = registry.ensureManagerAgent({
+      workspaceId: 'workspace-1',
+      runtime: 'local-manager-v2',
+      displayName: 'Workspace Manager',
+    })
+
+    expect(first.agentId).toBe('manager:workspace-1')
+    expect(second.agentId).toBe(first.agentId)
+    expect(second.sessionId).toBeUndefined()
+    expect(second.runtime).toBe('local-manager-v2')
+    expect(second.displayName).toBe('Workspace Manager')
+    expect(second.createdAt).toBe(100)
+    expect(second.updatedAt).toBe(200)
+    expect(second.lastActiveAt).toBe(200)
+    expect(registry.getManagerAgent('workspace-1')).toEqual(second)
+    expect(registry.getProjectAgentForSession('workspace-1')).toBeNull()
+  })
+
+  it('normalizes an empty manager workspace without crashing', () => {
+    const registry = new AgentRegistryService({ now: () => 100 })
+
+    const manager = registry.ensureManagerAgent({ workspaceId: '   ' })
+
+    expect(manager.agentId).toBe('manager:global')
+    expect(manager.workspaceId).toBeUndefined()
+    expect(registry.getManagerAgent('   ')).toEqual(manager)
+    expect(registry.listAgents({ workspaceId: '   ' }).map((agent) => agent.agentId)).toEqual(['manager:global'])
+  })
+
   it('creates a stable project agent actor per session', () => {
     const registry = new AgentRegistryService({ now: () => 100 })
 
@@ -56,6 +97,7 @@ describe('AgentRegistryService', () => {
     expect(second.agentId).toBe(first.agentId)
     expect(second.runtime).toBe('grok')
     expect(second.role).toBe('leader')
+    expect(second.lastActiveAt).toBe(100)
     expect(registry.actorForSession('session-1')).toEqual({
       kind: 'agent',
       agentId: 'project:session-1',
@@ -90,6 +132,7 @@ describe('AgentRegistryService', () => {
 
   it('filters agents by workspace and session without storing conversations', () => {
     const registry = new AgentRegistryService({ now: () => 100 })
+    registry.ensureManagerAgent()
     registry.ensureManagerAgent({ workspaceId: 'workspace-1' })
     registry.ensureProjectAgentForSession({ sessionId: 's1', workspaceId: 'workspace-1' })
     registry.ensureProjectAgentForSession({ sessionId: 's2', workspaceId: 'workspace-2' })
@@ -99,6 +142,33 @@ describe('AgentRegistryService', () => {
       'project:s1',
     ])
     expect(registry.listAgents({ sessionId: 's2' }).map((agent) => agent.agentId)).toEqual(['project:s2'])
+  })
+
+  it('keeps actorFromAgentDescriptor compatible with manager and project descriptors', () => {
+    const registry = new AgentRegistryService({ now: () => 100 })
+    const manager = registry.ensureManagerAgent({ workspaceId: 'workspace-1', runtime: 'local-manager' })
+    const project = registry.ensureProjectAgentForSession({
+      sessionId: 'session-1',
+      workspaceId: 'workspace-1',
+      runtime: 'claude-max',
+      role: 'designer',
+      displayName: 'Design Agent',
+    })
+
+    expect(actorFromAgentDescriptor(manager)).toEqual({
+      kind: 'agent',
+      agentId: 'manager:workspace-1',
+      runtime: 'local-manager',
+      role: 'manager',
+      displayName: '管理 Agent',
+    })
+    expect(actorFromAgentDescriptor(project)).toEqual({
+      kind: 'agent',
+      agentId: 'project:session-1',
+      runtime: 'claude-max',
+      role: 'designer',
+      displayName: 'Design Agent',
+    })
   })
 })
 

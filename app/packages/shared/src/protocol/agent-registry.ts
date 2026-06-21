@@ -14,6 +14,7 @@ export interface AgentDescriptor {
   status: AgentRegistryStatus
   createdAt: number
   updatedAt: number
+  lastActiveAt?: number
 }
 
 export interface AgentRegistryListInput {
@@ -38,6 +39,12 @@ export interface AgentRegistryEnsureProjectInput {
   workspaceId?: string
   runtime?: string
   role?: AgentRole
+  displayName?: string
+}
+
+export interface AgentRegistryEnsureManagerInput {
+  workspaceId?: string
+  runtime?: string
   displayName?: string
 }
 
