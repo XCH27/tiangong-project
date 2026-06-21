@@ -35,7 +35,7 @@
    - `源码参考/plugins/codegraph`（MIT，补本地代码图谱、索引、结构化查询、MCP installer 经验；接入必须走 Fleet/craft 权限与本地数据边界）
    - `源码参考/software/DeepSeek-Reasonix`（MIT，补 ACP/stdio、稳定前缀缓存、planner/executor 分层、权限/沙箱/配置思路）
    - `源码参考/plugins/deepcode-cli`（MIT，补跨客户端 Skill 路径、推理强度、MCP、CLI/session 管理）
-4. **红灯/黄灯/候选项目只能黑盒参考。** Kun、Cherry Studio、Zed、LobeHub、Warp、OpenCode、Gemini CLI、Qwen Code、Cline、Roo Code、OpenHands、OpenClaw、ACP SDK/schema、browser-harness、CloakBrowser、cmux、golutra、multica、hermes-agent、cc-switch、AstrBot、cockpit-tools、context-mode、headroom、repomix、markitdown、HyperFrames、Kdenlive、Remotion、SVGator、Adobe Firefly/Express 等在未逐项核准许可证并写入绿灯表前，不允许复制源码进 `app/`。最新候选状态见 `docs/12-最新开源Agent与CLI参考更新.md`，`源码参考/` 全量矩阵见 `docs/14-源码参考目录专项审计.md`。
+4. **红灯/黄灯/候选项目只能黑盒参考。** Kun、Cherry Studio、Zed、LobeHub、Warp、OpenCode、Gemini CLI、Qwen Code、Cline、Roo Code、OpenHands、OpenClaw、ACP SDK/schema、browser-harness、CloakBrowser、cmux、golutra、multica、hermes-agent、cc-switch、AstrBot、cockpit-tools、context-mode、headroom、repomix、markitdown、OpenUI、HyperFrames、Kdenlive、Remotion、SVGator、Adobe Firefly/Express 等在未逐项核准许可证并写入绿灯表前，不允许复制源码进 `app/`。最新候选状态见 `docs/12-最新开源Agent与CLI参考更新.md`，`源码参考/` 全量矩阵见 `docs/14-源码参考目录专项审计.md`。
 5. **源码参考目录按使用方式分层。** `源码参考/software/` 放完整软件、客户端、Agent 平台和编辑器；`源码参考/plugins/` 放可作为能力模块、sidecar、CLI、库、引擎或协议适配参考的项目。这个分层只解决查找路径，不改变红绿灯；复制源码仍必须按规则 3/4 和 `docs/26`。
 6. **保留许可证和 NOTICE。** 迁移绿灯源码时必须保留原文件版权、SPDX/许可证标识；craft 的 `NOTICE` 必须随产品保留；复制带子目录独立 LICENSE 的文件前必须单独核对并记录。
 7. **先保基座可跑，再迁能力。** 先保持干净 craft 原项目能跑，再按 `docs/19` 小步迁 CLI Runtime、WorkbenchShell、DesignAction 契约、BrowserPane Stage 等能力。
