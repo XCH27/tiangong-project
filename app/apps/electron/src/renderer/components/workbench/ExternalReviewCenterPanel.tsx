@@ -1,5 +1,6 @@
 /**
- * ExternalReviewCenterPanel — bundle → job → report 审查中心（T-CONTEXT-REVIEW-POLISH）。
+ * ExternalReviewCenterPanel — 外部 AI 审查手动闭环（T-EXTERNAL-REVIEW-MANUAL-FLOW）。
+ * Bundle → 生成 prompt → 手动复制 → 粘贴保存 → 多平台 report 归档。
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -7,6 +8,7 @@ import type {
   ExternalReviewJob,
   ExternalReviewReport,
   ExternalReviewSeverity,
+  ProjectPackReviewPromptResult,
   ProjectPackSummary,
 } from '@craft-agent/shared/protocol'
 import {
@@ -25,6 +27,14 @@ import {
   filterExternalReviewFindings,
   filterReportsByProvider,
 } from '@/lib/external-review-center-filters'
+import {
+  buildManualFlowCostMetrics,
+  canCopyReviewPrompt,
+  derivePromptSectionPhase,
+  MANUAL_REVIEW_PROMPT_NOTE,
+  type ManualFlowCostMetric,
+  type PromptLoadState,
+} from '@/lib/external-review-manual-flow'
 import { MetricKindBadge, ScrollPre, SectionBlock } from './context-efficiency-section'
 
 type LoadState =
@@ -39,6 +49,23 @@ const SEVERITY_TONE: Record<ExternalReviewSeverity, string> = {
   medium: 'text-amber-700 dark:text-amber-300',
   low: 'text-sky-700 dark:text-sky-300',
   info: 'text-muted-foreground',
+}
+
+function ManualFlowCostMetrics({ metrics }: { metrics: ManualFlowCostMetric[] }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-3 min-w-0" data-testid="manual-flow-cost-metrics">
+      {metrics.map((metric) => (
+        <div key={metric.id} className="rounded border border-border/60 bg-muted/10 p-2 space-y-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-1 text-[10px]">
+            <span className="font-medium">{metric.label}</span>
+            <MetricKindBadge kind={metric.kind} />
+          </div>
+          <div className="text-sm font-semibold tabular-nums">{metric.value}</div>
+          {metric.note && <p className="text-[10px] text-muted-foreground leading-relaxed break-words">{metric.note}</p>}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function CostBreakdown({ report }: { report: ExternalReviewReport }) {
@@ -171,6 +198,9 @@ export function ExternalReviewCenterPanel({
   const [pasteRawOutput, setPasteRawOutput] = useState('')
   const [newJobPlatformId, setNewJobPlatformId] = useState('manual-web')
 
+  const [promptState, setPromptState] = useState<PromptLoadState>({ status: 'idle' })
+  const [copyFeedback, setCopyFeedback] = useState<'idle' | 'copied' | 'failed'>('idle')
+
   useEffect(() => {
     if (initialBundleId) setBundleIdInput(initialBundleId)
   }, [initialBundleId])
@@ -199,6 +229,8 @@ export function ExternalReviewCenterPanel({
       if (summary?.bundleHash) setBundleHashInput(summary.bundleHash)
       setJobs(jobList)
       setReports(reportList)
+      setPromptState({ status: 'idle' })
+      setCopyFeedback('idle')
 
       const reportIds = new Set(reportList.map((r) => r.reportId))
       const missingReportJobs = jobList.filter(
@@ -244,6 +276,46 @@ export function ExternalReviewCenterPanel({
     setSeverityFilter((current) =>
       current.includes(severity) ? current.filter((s) => s !== severity) : [...current, severity],
     )
+  }, [])
+
+  const promptResult = promptState.status === 'done' ? promptState.result : null
+  const manualFlowMetrics = useMemo(
+    () => buildManualFlowCostMetrics(promptResult, bundleSummary),
+    [promptResult, bundleSummary],
+  )
+
+  const generateReviewPrompt = useCallback(async () => {
+    const bundleId = bundleIdInput.trim()
+    const bundleErr = validateBundleId(bundleId)
+    if (bundleErr) {
+      setPromptState({ status: 'error', message: bundleErr })
+      return
+    }
+
+    setPromptState({ status: 'loading' })
+    setCopyFeedback('idle')
+    try {
+      const result = await window.electronAPI.buildProjectPackReviewPrompt(bundleId)
+      setPromptState({ status: 'done', result })
+    } catch (err) {
+      setPromptState({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }, [bundleIdInput])
+
+  const copyReviewPrompt = useCallback(async (result: ProjectPackReviewPromptResult) => {
+    if (!canCopyReviewPrompt(result) || !result.reviewPrompt) {
+      setCopyFeedback('failed')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(result.reviewPrompt)
+      setCopyFeedback('copied')
+    } catch {
+      setCopyFeedback('failed')
+    }
   }, [])
 
   const createJob = useCallback(async () => {
@@ -324,7 +396,7 @@ export function ExternalReviewCenterPanel({
       setPanelError(null)
       setJobBusy(true)
       try {
-        const report = await window.electronAPI.saveExternalReviewReport({
+        const reportInput = {
           bundleId,
           bundleHash,
           platformId: pastePlatformId.trim(),
@@ -334,13 +406,14 @@ export function ExternalReviewCenterPanel({
             kind: 'unknown',
             note: '外部平台成本未知；不等于免费。',
           },
-        })
+        } as const
         if (options?.completeActiveJob && activeJob) {
-          await window.electronAPI.advanceExternalReviewJob({
+          await window.electronAPI.completeExternalReviewJobWithReport({
             jobId: activeJob.jobId,
-            transition: 'complete',
-            reportId: report.reportId,
+            report: reportInput,
           })
+        } else {
+          await window.electronAPI.saveExternalReviewReport(reportInput)
         }
         setPasteRawOutput('')
         await loadBundleContext(bundleId)
@@ -361,6 +434,8 @@ export function ExternalReviewCenterPanel({
         : loadState.status === 'done'
           ? 'ready'
           : 'empty'
+
+  const promptPhase = derivePromptSectionPhase(loadState.status === 'done', promptState)
 
   const jobsPhase =
     loadState.status !== 'done'
@@ -388,7 +463,7 @@ export function ExternalReviewCenterPanel({
         <div className="space-y-1 min-w-0">
           <div className="font-medium">审查中心</div>
           <p className="text-[10px] text-muted-foreground leading-relaxed break-words">
-            Bundle → Job → Report 三层本地工作流；不外发、不自动登录。
+            手动闭环：生成 prompt → 复制到外部 AI → 粘贴结果归档；同一 bundleId 可保存多平台 report。
           </p>
         </div>
       )}
@@ -457,10 +532,191 @@ export function ExternalReviewCenterPanel({
 
       <SectionBlock
         step={2}
-        title="Jobs · 审查任务"
+        title="Prompt · 生成审查提示词"
+        description={MANUAL_REVIEW_PROMPT_NOTE}
+        phase={promptPhase}
+        error={promptState.status === 'error' ? promptState.message : undefined}
+        empty={
+          <p className="text-[10px] text-muted-foreground">
+            加载 bundle 后点击「生成 prompt」，再手动复制到外部 AI。
+          </p>
+        }
+      >
+        <div className="space-y-2 min-w-0">
+          <ManualFlowCostMetrics metrics={manualFlowMetrics} />
+
+          <div className="flex flex-wrap gap-2 items-center">
+            <button
+              type="button"
+              className="px-3 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50 shrink-0"
+              disabled={loadState.status !== 'done' || promptState.status === 'loading'}
+              onClick={() => void generateReviewPrompt()}
+              data-testid="generate-review-prompt"
+            >
+              {promptState.status === 'loading' ? '生成中…' : '生成 prompt'}
+            </button>
+            {promptResult && canCopyReviewPrompt(promptResult) && (
+              <button
+                type="button"
+                className="px-3 py-1 rounded border text-[10px] shrink-0"
+                onClick={() => void copyReviewPrompt(promptResult)}
+                data-testid="copy-review-prompt"
+              >
+                复制 prompt
+              </button>
+            )}
+            {copyFeedback === 'copied' && (
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-300">已复制到剪贴板</span>
+            )}
+            {copyFeedback === 'failed' && (
+              <span className="text-[10px] text-destructive">复制失败，请手动选中下方文本</span>
+            )}
+          </div>
+
+          {promptResult && (
+            <div className="space-y-2 min-w-0">
+              {promptResult.status === 'blocked' ? (
+                <div className="rounded border border-destructive/30 bg-destructive/5 p-2 space-y-1">
+                  <div className="text-[10px] font-medium text-destructive">无法生成外发 prompt</div>
+                  <ul className="text-[10px] text-muted-foreground list-disc pl-4 space-y-0.5">
+                    {promptResult.reasons.map((reason) => (
+                      <li key={reason} className="break-words">
+                        {reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <>
+                  <div className="text-[10px] text-muted-foreground break-words">
+                    将 ProjectPack 内容与下方 metadata 一并粘贴到外部平台；Fleet 不会自动提交。
+                  </div>
+                  <div data-testid="review-prompt-preview">
+                    <ScrollPre maxClass="max-h-48">{promptResult.reviewPrompt}</ScrollPre>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        step={3}
+        title="粘贴 · 保存外部审查结果"
+        description={MANUAL_PASTE_PRIVACY_NOTE}
+        phase={loadState.status === 'done' ? 'ready' : 'empty'}
+        empty={<p className="text-[10px] text-muted-foreground">先加载 bundle，再粘贴外部 AI 返回的原文。</p>}
+      >
+        <div className="space-y-2 min-w-0">
+          <input
+            className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
+            placeholder="platformId（如 claude-web / chatgpt-web）"
+            value={pastePlatformId}
+            onChange={(e) => setPastePlatformId(e.target.value)}
+          />
+          {fieldErrors.platformId && <div className="text-[10px] text-destructive">{fieldErrors.platformId}</div>}
+          <textarea
+            className="w-full min-w-0 min-h-[80px] rounded border bg-background px-2 py-1 text-[10px]"
+            placeholder="粘贴外部 AI 审查原文"
+            value={pasteRawOutput}
+            onChange={(e) => setPasteRawOutput(e.target.value)}
+            data-testid="paste-review-output"
+          />
+          {fieldErrors.paste && <div className="text-[10px] text-destructive">{fieldErrors.paste}</div>}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
+              disabled={jobBusy || loadState.status !== 'done'}
+              onClick={() => void savePastedReport()}
+              data-testid="save-pasted-report"
+            >
+              保存 report 到 bundle
+            </button>
+            <button
+              type="button"
+              className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
+              disabled={jobBusy || activeJob?.status !== 'awaiting_result'}
+              onClick={() => void savePastedReport({ completeActiveJob: true })}
+            >
+              保存并完成当前 job
+            </button>
+          </div>
+          {reports.length > 0 && (
+            <p className="text-[10px] text-muted-foreground break-words">
+              此 bundle 已归档 {reports.length} 份 report（{platformOptions.join('、') || pastePlatformId}）。
+            </p>
+          )}
+          {panelError && (
+            <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[10px] text-destructive break-words">
+              {panelError}
+            </div>
+          )}
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        step={4}
+        title="Reports · 多平台对比"
+        description="同一 bundleId 下多平台 report 本地归档与筛选。"
+        phase={reportsPhase}
+        empty={<p className="text-[10px] text-muted-foreground">尚无 report；完成上方粘贴保存后在此对比。</p>}
+      >
+        <div className="space-y-2 min-w-0">
+          <div className="flex flex-wrap gap-1">
+            {ALL_EXTERNAL_REVIEW_SEVERITIES.map((severity) => (
+              <button
+                key={severity}
+                type="button"
+                className={`px-1.5 py-0.5 rounded border text-[10px] ${severityFilter.includes(severity) ? 'bg-accent' : ''}`}
+                onClick={() => toggleSeverity(severity)}
+              >
+                {severity}
+              </button>
+            ))}
+          </div>
+          <div className="grid gap-2 min-w-0">
+            <input
+              list="review-platform-options"
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
+              value={providerFilter}
+              onChange={(e) => setProviderFilter(e.target.value)}
+              placeholder="provider / platform 筛选"
+            />
+            <datalist id="review-platform-options">
+              {platformOptions.map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+            <input
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
+              value={fileFilter}
+              onChange={(e) => setFileFilter(e.target.value)}
+              placeholder="文件名包含…"
+            />
+            <input
+              className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
+              value={keywordFilter}
+              onChange={(e) => setKeywordFilter(e.target.value)}
+              placeholder="关键词搜索 title / evidence / recommendation"
+            />
+          </div>
+
+          <div className={compact ? 'flex gap-3 overflow-x-auto pb-1 min-w-0' : 'grid gap-3 sm:grid-cols-2 min-w-0'}>
+            {visibleReports.map((report) => (
+              <ReportColumn key={report.reportId} report={report} compact={compact} filters={findingFilters} />
+            ))}
+          </div>
+        </div>
+      </SectionBlock>
+
+      <SectionBlock
+        step={5}
+        title="Jobs · 审查任务（可选）"
         description="人工推进状态；Fleet 不会自动提交到外部平台。"
         phase={jobsPhase}
-        empty={<p className="text-[10px] text-muted-foreground">加载 bundle 后可创建 job，或此 bundle 尚无任务。</p>}
+        empty={<p className="text-[10px] text-muted-foreground">此 bundle 尚无 job；可直接粘贴保存 report。</p>}
       >
         <div className="space-y-2 min-w-0">
           <div className="flex flex-wrap gap-2 items-end">
@@ -520,108 +776,6 @@ export function ExternalReviewCenterPanel({
                   标记失败
                 </button>
               </div>
-            </div>
-          )}
-        </div>
-      </SectionBlock>
-
-      <SectionBlock
-        step={3}
-        title="Reports · 多平台对比"
-        description="按 severity / provider / 文件 / 关键词筛选 findings。"
-        phase={reportsPhase}
-        empty={<p className="text-[10px] text-muted-foreground">尚无 report；完成 job 或在下方粘贴保存。</p>}
-      >
-        <div className="space-y-2 min-w-0">
-          <div className="flex flex-wrap gap-1">
-            {ALL_EXTERNAL_REVIEW_SEVERITIES.map((severity) => (
-              <button
-                key={severity}
-                type="button"
-                className={`px-1.5 py-0.5 rounded border text-[10px] ${severityFilter.includes(severity) ? 'bg-accent' : ''}`}
-                onClick={() => toggleSeverity(severity)}
-              >
-                {severity}
-              </button>
-            ))}
-          </div>
-          <div className="grid gap-2 min-w-0">
-            <input
-              list="review-platform-options"
-              className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
-              value={providerFilter}
-              onChange={(e) => setProviderFilter(e.target.value)}
-              placeholder="provider / platform 筛选"
-            />
-            <datalist id="review-platform-options">
-              {platformOptions.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
-            <input
-              className="w-full min-w-0 rounded border bg-background px-2 py-1 font-mono text-[10px]"
-              value={fileFilter}
-              onChange={(e) => setFileFilter(e.target.value)}
-              placeholder="文件名包含…"
-            />
-            <input
-              className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
-              value={keywordFilter}
-              onChange={(e) => setKeywordFilter(e.target.value)}
-              placeholder="关键词搜索 title / evidence / recommendation"
-            />
-          </div>
-
-          <div className={compact ? 'flex gap-3 overflow-x-auto pb-1 min-w-0' : 'grid gap-3 sm:grid-cols-2 min-w-0'}>
-            {visibleReports.map((report) => (
-              <ReportColumn key={report.reportId} report={report} compact={compact} filters={findingFilters} />
-            ))}
-          </div>
-        </div>
-      </SectionBlock>
-
-      <SectionBlock
-        step={4}
-        title="人工粘贴并保存"
-        description={MANUAL_PASTE_PRIVACY_NOTE}
-        phase="ready"
-      >
-        <div className="space-y-2 min-w-0">
-          <input
-            className="w-full min-w-0 rounded border bg-background px-2 py-1 text-[10px]"
-            placeholder="platformId"
-            value={pastePlatformId}
-            onChange={(e) => setPastePlatformId(e.target.value)}
-          />
-          {fieldErrors.platformId && <div className="text-[10px] text-destructive">{fieldErrors.platformId}</div>}
-          <textarea
-            className="w-full min-w-0 min-h-[80px] rounded border bg-background px-2 py-1 text-[10px]"
-            placeholder="粘贴外部 AI 审查原文"
-            value={pasteRawOutput}
-            onChange={(e) => setPasteRawOutput(e.target.value)}
-          />
-          {fieldErrors.paste && <div className="text-[10px] text-destructive">{fieldErrors.paste}</div>}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="px-2 py-1 rounded bg-primary text-primary-foreground text-[10px] disabled:opacity-50"
-              disabled={jobBusy}
-              onClick={() => void savePastedReport()}
-            >
-              仅保存 report
-            </button>
-            <button
-              type="button"
-              className="px-2 py-1 rounded border text-[10px] disabled:opacity-50"
-              disabled={jobBusy || !activeJob}
-              onClick={() => void savePastedReport({ completeActiveJob: true })}
-            >
-              保存并完成当前 job
-            </button>
-          </div>
-          {panelError && (
-            <div className="rounded border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[10px] text-destructive break-words">
-              {panelError}
             </div>
           )}
         </div>
