@@ -29,6 +29,7 @@ import type {
   RollbackPatchInput,
   RollbackPatchResult,
 } from '@craft-agent/shared/protocol'
+import type { DesignEnginePersistence, PersistedDesignPatch } from './design-engine-persistence'
 
 /** Surface 适配器：把动作算成可应用/可回滚的补丁内容。由具体画布注册。 */
 export interface DesignPatchApplier {
@@ -59,15 +60,21 @@ export class DesignEngineService implements DesignEngine {
   constructor(
     private readonly emit: (event: SessionEvent) => void,
     private readonly applier?: DesignPatchApplier,
+    private readonly persistence?: DesignEnginePersistence,
   ) {}
 
   async setSelection(input: SetSelectionInput): Promise<void> {
     this.selections.set(input.sessionId, input.selection)
+    await this.persistence?.saveSelection(input.selection)
     this.emit({ type: 'selection_changed', sessionId: input.sessionId, selection: input.selection })
   }
 
   async getSelection(sessionId: string): Promise<DesignSelection | null> {
-    return this.selections.get(sessionId) ?? null
+    const cached = this.selections.get(sessionId)
+    if (cached) return cached
+    const persisted = await this.persistence?.loadSelection(sessionId)
+    if (persisted) this.selections.set(sessionId, persisted)
+    return persisted ?? null
   }
 
   async proposeAction(input: ProposeActionInput): Promise<ProposeActionResult> {
@@ -91,13 +98,14 @@ export class DesignEngineService implements DesignEngine {
       status: 'preview',
     }
     this.patches.set(patch.patchId, { patch, action })
+    await this.persistence?.savePatch({ patch, action })
 
     this.emit({ type: 'design_action_proposed', sessionId, action, patchPreview: patch })
     return { patch }
   }
 
   async commitPatch(input: CommitPatchInput): Promise<CommitPatchResult> {
-    const record = this.requirePatch(input.sessionId, input.patchId)
+    const record = await this.requirePatch(input.sessionId, input.patchId)
     if (record.patch.status === 'committed') {
       return { patch: record.patch }
     }
@@ -111,6 +119,7 @@ export class DesignEngineService implements DesignEngine {
 
     record.patch.status = 'committed'
     record.patch.committedAt = Date.now()
+    await this.persistence?.savePatch(record)
     this.emit({
       type: 'design_patch_committed',
       sessionId: input.sessionId,
@@ -121,7 +130,7 @@ export class DesignEngineService implements DesignEngine {
   }
 
   async rollbackPatch(input: RollbackPatchInput): Promise<RollbackPatchResult> {
-    const record = this.requirePatch(input.sessionId, input.patchId)
+    const record = await this.requirePatch(input.sessionId, input.patchId)
     if (record.patch.status === 'rolled_back') {
       return { patch: record.patch }
     }
@@ -131,6 +140,7 @@ export class DesignEngineService implements DesignEngine {
     }
 
     record.patch.status = 'rolled_back'
+    await this.persistence?.savePatch(record)
     this.emit({
       type: 'design_patch_rolled_back',
       sessionId: input.sessionId,
@@ -140,8 +150,15 @@ export class DesignEngineService implements DesignEngine {
     return { patch: record.patch }
   }
 
-  private requirePatch(sessionId: string, patchId: string): PatchRecord {
-    const record = this.patches.get(patchId)
+  private async requirePatch(sessionId: string, patchId: string): Promise<PatchRecord> {
+    let record = this.patches.get(patchId)
+    if (!record && this.persistence) {
+      const persisted: PersistedDesignPatch | null = await this.persistence.loadPatch(sessionId, patchId)
+      if (persisted) {
+        record = persisted
+        this.patches.set(patchId, persisted)
+      }
+    }
     if (!record) {
       throw new Error(`Unknown patch ${patchId}`)
     }

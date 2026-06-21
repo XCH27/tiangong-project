@@ -17,6 +17,7 @@ import {
 import type { HandlerDeps } from '../handler-deps'
 import { DesignAnnotationApplier } from '../../services/design-annotation-applier'
 import { DesignEngineService } from '../../services/design-engine'
+import { FileDesignEnginePersistence } from '../../services/design-engine-persistence'
 
 export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): void {
   const { sessionManager } = deps
@@ -25,6 +26,7 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
   const engine = new DesignEngineService(
     (event) => sessionManager.emitSessionEvent(event),
     new DesignAnnotationApplier(sessionManager),
+    new FileDesignEnginePersistence(),
   )
 
   server.handle(RPC_CHANNELS.design.SET_SELECTION, async (_ctx, input: SetSelectionInput) => {
