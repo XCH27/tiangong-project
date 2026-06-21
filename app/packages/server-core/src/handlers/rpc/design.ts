@@ -16,6 +16,7 @@ import {
 } from '@craft-agent/shared/protocol'
 import type { HandlerDeps } from '../handler-deps'
 import { DesignAnnotationApplier } from '../../services/design-annotation-applier'
+import { BrowserPaneDesignDomWriter, type BrowserPaneEvaluator } from '../../services/design-browser-dom-writer'
 import { DesignDomPatchApplier } from '../../services/design-dom-applier'
 import { DesignEngineService } from '../../services/design-engine'
 import { FileDesignEnginePersistence } from '../../services/design-engine-persistence'
@@ -29,7 +30,11 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
     (event) => sessionManager.emitSessionEvent(event),
     new DesignWorkbenchApplier(
       new DesignAnnotationApplier(sessionManager),
-      new DesignDomPatchApplier(),
+      new DesignDomPatchApplier(
+        new BrowserPaneDesignDomWriter({
+          resolveBrowserPaneManager: (sessionId) => resolveBrowserPaneManager(deps, sessionId),
+        }),
+      ),
     ),
     new FileDesignEnginePersistence(),
   )
@@ -53,4 +58,11 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
   server.handle(RPC_CHANNELS.design.ROLLBACK_PATCH, async (_ctx, input: RollbackPatchInput) => {
     return engine.rollbackPatch(input)
   })
+}
+
+function resolveBrowserPaneManager(deps: HandlerDeps, sessionId: string): BrowserPaneEvaluator | null {
+  const sessionScoped = deps.sessionManager as typeof deps.sessionManager & {
+    getBrowserPaneManagerForSession?: (sid: string) => BrowserPaneEvaluator | null
+  }
+  return sessionScoped.getBrowserPaneManagerForSession?.(sessionId) ?? deps.browserPaneManager ?? null
 }

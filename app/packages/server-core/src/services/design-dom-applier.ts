@@ -25,9 +25,15 @@ export interface DomPatchBatch {
   operations: DomPatchOperation[]
 }
 
+export interface DomPatchContext {
+  sessionId: string
+  action: DesignAction
+  selection: DesignSelection | null
+}
+
 export interface DesignDomPatchWriter {
-  applyDomPatch(batch: DomPatchBatch): Promise<void> | void
-  revertDomPatch(batch: DomPatchBatch): Promise<void> | void
+  applyDomPatch(batch: DomPatchBatch, context?: DomPatchContext): Promise<void> | void
+  revertDomPatch(batch: DomPatchBatch, context?: DomPatchContext): Promise<void> | void
 }
 
 export class DesignDomPatchApplier implements DesignPatchApplier {
@@ -67,16 +73,16 @@ export class DesignDomPatchApplier implements DesignPatchApplier {
     throw new Error(`DesignDomPatchApplier does not support action ${action.op.kind}`)
   }
 
-  async apply(patch: DesignPatch): Promise<void> {
+  async apply(patch: DesignPatch, action: DesignAction, selection: DesignSelection | null): Promise<void> {
     const batchPatch = asDomBatch(patch.forward)
     if (!batchPatch || !this.writer) return
-    await this.writer.applyDomPatch(batchPatch)
+    await this.writer.applyDomPatch(batchPatch, { sessionId: patch.sessionId, action, selection })
   }
 
-  async revert(patch: DesignPatch): Promise<void> {
+  async revert(patch: DesignPatch, action: DesignAction, selection: DesignSelection | null): Promise<void> {
     const batchPatch = asDomBatch(patch.inverse)
     if (!batchPatch || !this.writer) return
-    await this.writer.revertDomPatch(batchPatch)
+    await this.writer.revertDomPatch(batchPatch, { sessionId: patch.sessionId, action, selection })
   }
 }
 
