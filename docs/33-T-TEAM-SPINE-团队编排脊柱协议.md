@@ -1,6 +1,6 @@
 # 33 · T-TEAM-SPINE 团队编排脊柱协议
 
-> 状态：共享协议与团队规则基础服务已落地；命令写入、业务路由、输入迁移和 UI 尚未实现。
+> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具和会话列表顶部最小团队群聊入口已落地；`@`/`/` 输入迁移、身份标签设置页、完整团队 UI 仍未完成。
 > 目的：固定“会话即 Agent、队长、团队群聊、身份标签、状态、`@`/`/`、管理 Agent”的共同契约，让后端和 UI 可以并行开发而不产生第二套 session/team/permission。
 > 参考：AionUi 可按绿灯范围迁 Team/进程生命周期；Warp 只黑盒学习 task/run、Agent 间消息、长任务 block 和失败信息。
 
@@ -16,7 +16,7 @@
 3. **待审队列 = 派生态，不持久化。** `getReviewQueue(teamId)` 扫描状态= `statusMap.awaitingReview` 的成员会话，关联其最新 `team_report_submitted`，按报告时间排序；`team_review_queued` 仅作通知/回放事件，队列与 position 都是算出来的，不落第二份真相。
 4. **v1 一个 workspace 一个团队。** `.fleet/team.rules.json` 单团队。删除 “其它 team 私聊” 多团队语义（移到地平线）。workspace = 项目 = 团队，简化协调与一致性维护。
 5. **成员序号派生自 `createdAt`，不写 metadata。** craft `Session` 无自由 metadata 字段；`G-01/G-02` 按成员 `createdAt` 排名实时算（createdAt 不变所以稳定），前缀取文件夹首字母（可配）。不写 label、不双写。
-6. **Agent 参与走 session 工具**（`submit_team_report` / `send_team_message`），经同一条 `SessionCommand → permission → timeline`。v1 由 Coordinator 处理命令；工具壳是独立工作令 T-TEAM-AGENT-TOOLS（`submitTeamReport` 命令已在契约内，工具只是调用它）。
+6. **Agent 参与走 session 工具**（`get_team` / `send_team_message` / `assign_team_task` / `submit_team_report`），经同一条 `SessionCommand → permission → timeline`。v1 由 Coordinator 处理命令，工具只是调用它。
 7. **事件锚点（为回放）：** 团队级事件（rules/leader/broadcast/validation_failed）落**团队会话** timeline（`conversationId===sessionId`）；成员级事件（task_assigned/report_submitted/identity_changed/review_queued）`sessionId`=成员会话、`conversationId`=团队会话——单条 SessionEvent 同时带两 id，UI 按 `sessionId` 看成员视图、按 `conversationId` 看群聊视图，**不重复发**。
 8. **成员对账：** 收到 `session_deleted`/归档时，Coordinator 从 `memberSessionIds`/`identityAssignments` 移除该会话；若是队长则清空 `leaderSessionId` 并发 `team_leader_changed`。
 
@@ -28,9 +28,16 @@
 - `app/packages/shared/src/protocol/dto.ts` 中的 `SessionEvent | TeamSessionEvent` 与 `SessionCommand | TeamSessionCommand`
 - `app/packages/shared/src/protocol/__tests__/team.test.ts`
 - `app/packages/server-core/src/services/team-rules-service.ts`
+- `app/packages/server-core/src/services/team-store.ts`
+- `app/packages/server-core/src/services/team-coordinator.ts`
 - `app/packages/server-core/src/handlers/rpc/team-rules.ts`
+- `app/packages/server-core/src/handlers/rpc/team.ts`
+- `app/packages/server-core/src/sessions/SessionManager.ts` 中团队事件持久化、收件箱注入、权限请求接线
+- `app/packages/session-tools-core/src/handlers/team.ts`
+- `app/apps/electron/src/renderer/components/app-shell/TeamConversationBar.tsx`
+- `app/apps/electron/src/renderer/components/app-shell/team-chat-helpers.ts`
 
-当前已冻结类型、事件、命令和默认状态映射，并提供 rules 文件读取、严格校验、原子写入、最后有效版本回退及读取/预校验 RPC。写入只能由后续 SessionCommand 在 permission 与 timeline 通过后调用；渲染端没有直接写文件 RPC。
+当前已冻结类型、事件、命令和默认状态映射，并提供 rules 文件读取、严格校验、原子写入、最后有效版本回退及读取/预校验 RPC。团队命令已通过 `sessions:command → TeamCoordinator` 写入 permission/timeline；渲染端没有直接写 rules 文件 RPC。
 
 ## 1 · 唯一真相与存储
 
@@ -96,7 +103,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 - 每个普通 craft session 可成为一个项目 Agent；模型/Runtime 图标从 session connection/runtime 元数据派生。
 - 队长是 `leaderSessionId` 指向的现有 session，不复制成新 Agent。
 - 项目标识默认取文件夹首字母；也可按文件夹加入顺序分配 A/B/C。
-- 成员序号按 `createdAt` 固定生成，例如 `G-01`、`G-02`。生成后写入 session metadata，不能随最近消息排序变化。
+- 成员序号按 `createdAt` 固定派生，例如 `G-01`、`G-02`。不写入 session metadata，不能随最近消息排序变化。
 - 身份标签保存角色规则和可选系统提示词。应用标签时记录 preset id/version/hash；真正提示词在 session 构建时注入，修改必须进 timeline。
 - `modelIcon`、`runtime`、`displayName` 不进入 TeamRules，避免与 session/registry 双写。
 
@@ -168,15 +175,15 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 
 | 工作令 | 文件所有权 | 交付 |
 |---|---|---|
-| T-TEAM-RULES（基础完成） | server-core `team-rules-*`、RPC、测试 | 已有校验/原子写/最后有效版本/读取与预校验 RPC；命令写入由 T-TEAM-ROUTER 接入 permission/timeline |
+| T-TEAM-RULES（已完成） | server-core `team-rules-*`、RPC、测试 | 已有校验/原子写/最后有效版本/读取与预校验 RPC |
 | T-AT-SLASH | renderer input/mentions、shared mentions、resources/tool docs、测试 | `@` 仅身份，`/` 调 Skill/命令，文件走附件/全部文件 |
-| T-TEAM-UI | 会话列表、状态/i18n、团队群聊组件、设置标签页 | 图标、队长、身份、中文状态、群聊入口；不改协议/路由后端 |
+| T-TEAM-UI（最小入口已完成） | 会话列表、状态/i18n、团队群聊组件、设置标签页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；剩模型图标、身份标签设置页、状态中文重命名和完整队列视图 |
 
 ### C. B 合入后串行
 
 | 工作令 | 文件所有权 | 交付 |
 |---|---|---|
-| T-TEAM-ROUTER | SessionManager + TeamCoordinator + tests | group session、broadcast/private audience、task/report/review queue |
+| T-TEAM-ROUTER（已完成核心） | SessionManager + TeamCoordinator + tests | hidden team session、broadcast/private audience、task/report/review queue、收件箱注入 |
 | T-MANAGER-AGENT | Agent registry、管理 Agent 工具/提示词、permission 接线 | 跨文件夹管理入口的后端能力；不先做新治理面板 |
 
 并行 Agent 不得改 `docs/33` 协议；发现缺口必须回主线提出，不能自行加字段。每个任务按 `docs/32` 的汇报格式交付。

@@ -208,6 +208,23 @@ describe('attachSessionSelfManagementBindings', () => {
     expect(receivedSid).toBeUndefined();
   });
 
+  it('team bindings resolve lazily from the callback registry', async () => {
+    const ctx = createBaseContext(sessionId);
+    attachSessionSelfManagementBindings(ctx, sessionId);
+
+    registerSessionScopedToolCallbacks(sessionId, {
+      getTeamFn: async () => ({ teamId: 'team-main' }),
+      sendTeamMessageFn: async input => ({ messageId: input.content }),
+      assignTeamTaskFn: async input => ({ taskId: input.taskId }),
+      submitTeamReportFn: async input => ({ reportId: input.taskId, reviewId: input.runId }),
+    });
+
+    await expect(ctx.getTeam!()).resolves.toEqual({ teamId: 'team-main' });
+    await expect(ctx.sendTeamMessage!({ content: 'm1' })).resolves.toEqual({ messageId: 'm1' });
+    await expect(ctx.assignTeamTask!({ taskId: 'T-1', assigneeSessionId: 's2', title: 'Do it' })).resolves.toEqual({ taskId: 'T-1' });
+    await expect(ctx.submitTeamReport!({ taskId: 'T-1', runId: 'R-1', summary: 'Done' })).resolves.toEqual({ reportId: 'T-1', reviewId: 'R-1' });
+  });
+
   it('no identity fallback — resolveLabels returns undefined when no callback', () => {
     const ctx = createBaseContext(sessionId);
     attachSessionSelfManagementBindings(ctx, sessionId);

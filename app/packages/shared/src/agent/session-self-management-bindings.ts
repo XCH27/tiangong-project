@@ -85,6 +85,38 @@ export function attachSessionSelfManagementBindings(
     enumerable: true,
   });
 
+  Object.defineProperty(context, 'getTeam', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.getTeamFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'sendTeamMessage', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.sendTeamMessageFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'assignTeamTask', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.assignTeamTaskFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'submitTeamReport', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.submitTeamReportFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
   Object.defineProperty(context, 'activateSourceInSession', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.activateSourceInSessionFn;

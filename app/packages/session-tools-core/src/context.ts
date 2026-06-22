@@ -335,6 +335,15 @@ export interface SessionToolContext {
   /** Send a message to another session. Injected by backend (SessionManager). */
   sendAgentMessage?(sessionId: string, message: string, attachments?: Array<{ path: string; name?: string }>): Promise<void>;
 
+  /** Read the current workspace team projection. */
+  getTeam?(): Promise<unknown>;
+  /** Queue a broadcast/private message through the shared team coordinator. */
+  sendTeamMessage?(input: { content: string; audienceSessionIds?: string[]; taskId?: string; runId?: string }): Promise<{ messageId: string }>;
+  /** Assign a task; autoRun=true is permission-gated by the coordinator. */
+  assignTeamTask?(input: { taskId: string; assigneeSessionId: string; title: string; description?: string; autoRun?: boolean }): Promise<{ taskId: string; runId?: string }>;
+  /** Submit the current session's structured report into the review queue. */
+  submitTeamReport?(input: { taskId: string; runId: string; summary: string; artifactPaths?: string[] }): Promise<{ reportId: string; reviewId: string }>;
+
   /**
    * Activate a source in the running session: add to enabledSourceSlugs,
    * build its MCP/API servers, apply to the agent.

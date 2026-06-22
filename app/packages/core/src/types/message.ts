@@ -252,6 +252,8 @@ export interface Message {
   id: string;
   role: MessageRole;
   content: string;
+  /** Structured application event persisted with timeline messages. */
+  customData?: Record<string, unknown>;
   timestamp: number;
   // Tool-specific fields
   toolName?: string;
@@ -339,6 +341,8 @@ export interface StoredMessage {
   id: string;
   type: MessageRole;
   content: string;
+  /** Structured application event persisted with timeline messages. */
+  customData?: Record<string, unknown>;
   timestamp?: number;
   // Tool-specific fields
   toolName?: string;

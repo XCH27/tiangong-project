@@ -5,3 +5,8 @@ node_modules/
 **/node_modules/
 __pycache__/
 *.pyc
+
+# Local source-reference checkouts live here; only the index/docs around them
+# should be tracked by the Fleet repo.
+/源码参考/software/*/
+/源码参考/plugins/*/

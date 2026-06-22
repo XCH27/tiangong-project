@@ -23,6 +23,7 @@
 - `DeepSeek-Reasonix`
 - `Kun`
 - `OpenHands`
+- `OpenMontage`
 - `cc-switch`
 - `cherry-studio`
 - `cmux`
@@ -33,7 +34,12 @@
 - `kdenlive`
 - `lobehub`
 - `multica`
-- `opencode`
+- `open-pencil`
+- `opencut`
+- `opencut-classic`
+- `openpencil`
+- `palmier-pro`
+- `penpot`
 - `warp`
 - `zed`
 
@@ -49,9 +55,15 @@
 - `mem0`
 - `mempalace`
 - `open-design`
+- `openui`
 - `remotion`
 - `repomix`
 - `rtk`
 - `supermemory`
 
 `clone_repos.sh` 暂留在根目录；后续如果继续批量克隆，应让脚本按 `software/` 和 `plugins/` 自动落位。
+
+## 完整性警告
+
+- `software/opencode/` 当前为空且没有独立 `.git`，不算已克隆源码；从父仓库读到的 HEAD 不能作为它的版本。
+- 新增参考必须同时核对：独立 Git remote/HEAD、工作区状态、LICENSE、关键源码目录和 README 所描述功能是否真实存在。

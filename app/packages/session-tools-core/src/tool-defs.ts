@@ -40,6 +40,7 @@ import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
+import { handleAssignTeamTask, handleGetTeam, handleSendTeamMessage, handleSubmitTeamReport } from './handlers/team.ts';
 
 // ============================================================
 // Canonical Zod Schemas
@@ -210,6 +211,30 @@ export const SendAgentMessageSchema = z.object({
     path: z.string().describe('Absolute file path on disk'),
     name: z.string().optional().describe('Display name (defaults to file basename)'),
   })).optional().describe('Files to include with the message'),
+});
+
+export const GetTeamSchema = z.object({});
+
+export const SendTeamMessageSchema = z.object({
+  content: z.string().describe('Message for the team or selected members.'),
+  audienceSessionIds: z.array(z.string()).optional().describe('Private recipients. Omit to broadcast to the team.'),
+  taskId: z.string().optional().describe('Related team task ID.'),
+  runId: z.string().optional().describe('Related execution run ID.'),
+});
+
+export const AssignTeamTaskSchema = z.object({
+  taskId: z.string().describe('Stable task ID.'),
+  assigneeSessionId: z.string().describe('Target member session ID.'),
+  title: z.string().describe('Short task title.'),
+  description: z.string().optional().describe('Detailed acceptance criteria.'),
+  autoRun: z.boolean().optional().describe('Start the assignee immediately. Defaults to false and requires permission when true.'),
+});
+
+export const SubmitTeamReportSchema = z.object({
+  taskId: z.string().describe('Completed team task ID.'),
+  runId: z.string().describe('Execution run ID.'),
+  summary: z.string().describe('Structured completion summary for leader review.'),
+  artifactPaths: z.array(z.string()).optional().describe('Relevant local artifact paths.'),
 });
 
 export const ListMessagingChannelsSchema = z.object({
@@ -477,6 +502,14 @@ Use list_sessions to find session IDs, or use the sessionId returned by spawn_se
 
 The target session receives your message with a sender envelope containing your session ID, so it can use send_agent_message to reply.`,
 
+  get_team: `Read the current workspace team, including leader, members, stable sequence numbers, roles, statuses, and norms.`,
+
+  send_team_message: `Send through the shared team conversation. Omit audienceSessionIds to broadcast; provide session IDs for a private delivery. Delivery queues context but does not start another Agent.`,
+
+  assign_team_task: `Assign a structured task to a team member. By default this only queues the task. Set autoRun=true only when the member should start immediately; the coordinator will request permission.`,
+
+  submit_team_report: `Submit the current session's structured completion report. This moves the session to awaiting review and queues the report for the leader or management Agent.`,
+
   list_messaging_channels: `List messaging channels (Telegram, WhatsApp) bound to a session.
 Shows which external chat apps are connected and can send/receive messages.`,
 
@@ -554,6 +587,11 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
   // Inter-session messaging
   { name: 'send_agent_message', description: TOOL_DESCRIPTIONS.send_agent_message, inputSchema: SendAgentMessageSchema, executionMode: 'registry', safeMode: 'block', handler: handleSendAgentMessage },
+  // Team orchestration — all mutations pass through the shared TeamCoordinator.
+  { name: 'get_team', description: TOOL_DESCRIPTIONS.get_team, inputSchema: GetTeamSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetTeam },
+  { name: 'send_team_message', description: TOOL_DESCRIPTIONS.send_team_message, inputSchema: SendTeamMessageSchema, executionMode: 'registry', safeMode: 'block', handler: handleSendTeamMessage },
+  { name: 'assign_team_task', description: TOOL_DESCRIPTIONS.assign_team_task, inputSchema: AssignTeamTaskSchema, executionMode: 'registry', safeMode: 'block', handler: handleAssignTeamTask },
+  { name: 'submit_team_report', description: TOOL_DESCRIPTIONS.submit_team_report, inputSchema: SubmitTeamReportSchema, executionMode: 'registry', safeMode: 'block', handler: handleSubmitTeamReport },
   // Messaging gateway tools
   { name: 'list_messaging_channels', description: TOOL_DESCRIPTIONS.list_messaging_channels, inputSchema: ListMessagingChannelsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListMessagingChannels },
   { name: 'unbind_messaging_channel', description: TOOL_DESCRIPTIONS.unbind_messaging_channel, inputSchema: UnbindMessagingChannelSchema, executionMode: 'registry', safeMode: 'block', handler: handleUnbindMessagingChannel },

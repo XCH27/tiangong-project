@@ -65,6 +65,14 @@ export interface SessionScopedToolCallbacks {
   resolveStatusFn?: (status: string) => import('@craft-agent/session-tools-core').ResolvedStatusResult;
   /** Send a message to another session (inter-session messaging). */
   sendAgentMessageFn?: (sessionId: string, message: string, attachments?: Array<{ path: string; name?: string }>) => Promise<void>;
+  /** Read the current workspace team projection. */
+  getTeamFn?: () => Promise<unknown>;
+  /** Queue a broadcast/private message through the shared team coordinator. */
+  sendTeamMessageFn?: (input: { content: string; audienceSessionIds?: string[]; taskId?: string; runId?: string }) => Promise<{ messageId: string }>;
+  /** Assign a team task. autoRun=true is permission-gated by the coordinator. */
+  assignTeamTaskFn?: (input: { taskId: string; assigneeSessionId: string; title: string; description?: string; autoRun?: boolean }) => Promise<{ taskId: string; runId?: string }>;
+  /** Submit the current session's structured report into the review queue. */
+  submitTeamReportFn?: (input: { taskId: string; runId: string; summary: string; artifactPaths?: string[] }) => Promise<{ reportId: string; reviewId: string }>;
   /**
    * Activate a source in the running session (source_test auto-enable flow).
    * Wired by SessionManager to the per-session onSourceActivationRequest callback

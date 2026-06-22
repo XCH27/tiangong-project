@@ -6,23 +6,23 @@
 
 ## 1 · 当前代码事实
 
-当前 `app/` 是干净的 craft-agents-oss 二开基座。已经落在当前分支的 Fleet 主干能力只有：
+当前 `app/` 是干净的 craft-agents-oss 二开基座。已经落在当前分支的 Fleet 主干能力包括：
 
 - `DesignAction`、`DesignPatch`、`ActorRef` 等共享协议。
 - `DesignEngine` 的基础服务接口与实现。
+- 团队编排核心：team rules、TeamCoordinator、团队事件持久化、投递/运行分离、收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口。
 - craft 原有的 session、permission、timeline、BrowserPane/CDP、文件工具和标注能力。
 
-以下能力即使曾在其它工作树完成，也**尚未算当前分支完成**：CLI Runtime 产品化、团队编排、管理 Agent、分层记忆、全部文件/Library、无限画布、AIGC、网页/文档工作面、视频剪辑、上下文效率 UI、外部审查 UI。迁入前必须逐项核对 diff、许可证、测试和当前架构。
+以下能力即使曾在其它工作树完成，也**尚未算当前分支完成**：CLI Runtime 产品化、完整管理 Agent 自动代理、分层记忆、全部文件/Library、无限画布、AIGC、网页/文档工作面、视频剪辑、上下文效率 UI、外部审查 UI。迁入前必须逐项核对 diff、许可证、测试和当前架构。
 
 ## 2 · 当前最高优先级
 
-先完成团队编排脊柱，使后续多 Agent 能安全并行：
+先补齐团队编排剩余前端与管理 Agent 自动代理，使后续多 Agent 能安全并行：
 
-1. 按 `docs/33` 落团队协议、命令、事件和持久化。
-2. 把 `@` 改为人/Agent/会话/身份提及，把 Skill/命令/模板迁到 `/`，不保留旧 `@Skill` 双入口。
-3. 会话列表升级为 Agent 名册：稳定序号、模型/Runtime、身份、队长、团队状态。
-4. 团队群聊复用 craft session，不建第二套消息库。
-5. 接常驻管理 Agent，但所有写入、外发、删除和发布仍走 permission 与 L0-L3 决策。
+1. 把 `@` 改为人/Agent/会话/身份提及，把 Skill/命令/模板迁到 `/`，不保留旧 `@Skill` 双入口。
+2. 会话列表继续升级为 Agent 名册：模型/Runtime 图标、身份标签、团队状态、待审队列详情。
+3. 接常驻管理 Agent 的可运行代理能力，但所有写入、外发、删除和发布仍走 permission 与 L0-L3 决策。
+4. 保持团队群聊复用 craft session，不建第二套消息库。
 
 完成这条脊柱后，按 `docs/32` 分派“全部文件/Library、创作工作面、外部任务桥”等互不冲突的任务。
 

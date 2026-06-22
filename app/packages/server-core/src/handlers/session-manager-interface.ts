@@ -23,6 +23,8 @@ import type {
   UnreadSummary,
   ShareResult,
   SessionEvent,
+  TeamInboxItem,
+  TeamReport,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -250,6 +252,15 @@ export interface ISessionManager {
    * broadcast channel as model/tool events — no second timeline (docs/31 §1).
    */
   emitSessionEvent(event: SessionEvent): void
+  /** Persist a structured event in the owning session before broadcasting it. */
+  appendSessionEvent(event: SessionEvent): Promise<string>
+  /** Request approval for a non-agent workflow action through the existing permission UI. */
+  requestWorkflowPermission(
+    sessionId: string,
+    input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
+  ): Promise<boolean>
+  getLatestTeamReport(sessionId: string): Promise<TeamReport | null>
+  resolveTeamInbox(items: TeamInboxItem[]): Promise<string>
 }
 
 /**

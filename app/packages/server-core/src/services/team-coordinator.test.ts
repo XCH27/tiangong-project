@@ -28,20 +28,41 @@ function makeRuntime(initial: TeamSessionInfo[]) {
   const sessions = new Map(initial.map(s => [s.id, { ...s }]))
   const events: SessionEvent[] = []
   const turns: Array<{ sessionId: string; input: string }> = []
+  const permissionRequests: string[] = []
+  let permissionAllowed = true
   let counter = 0
   const runtime: TeamRuntime = {
-    emit: e => { events.push(e) },
+    recordEvent: async e => { events.push(e); return `event-${events.length}` },
     now: () => ++counter,
     newId: () => `id-${++counter}`,
     listSessions: () => [...sessions.values()].filter(s => !s.hidden),
     ensureTeamConversationSession: async existing => existing ?? 'team-conv',
+    ensureManagerProjectionSession: async existing => existing ?? 'manager-projection',
     startTurn: async (sessionId, input) => { turns.push({ sessionId, input }) },
     setSessionStatus: async (sessionId, statusId) => {
       const s = sessions.get(sessionId)
       if (s) s.sessionStatus = statusId
     },
+    requestPermission: async (_sessionId, input) => {
+      permissionRequests.push(input.toolName)
+      return permissionAllowed
+    },
+    getLatestReport: async sessionId => {
+      const event = [...events].reverse().find(candidate => candidate.type === 'team_report_submitted' && candidate.sessionId === sessionId)
+      if (!event || event.type !== 'team_report_submitted') return null
+      return {
+        reportId: event.reportId,
+        taskId: event.taskId,
+        runId: event.runId,
+        reporterSessionId: event.reporterSessionId,
+        summary: event.summary,
+        artifactPaths: event.artifactPaths,
+        createdAt: event.timestamp,
+      }
+    },
+    resolveInbox: async items => items.map(item => `${item.kind}:${item.sourceMessageId}`).join('\n'),
   }
-  return { runtime, events, turns, sessions }
+  return { runtime, events, turns, sessions, permissionRequests, setPermissionAllowed: (allowed: boolean) => { permissionAllowed = allowed } }
 }
 
 function make(initial: TeamSessionInfo[] = []) {
@@ -97,22 +118,25 @@ describe('TeamCoordinator — 承重墙', () => {
   })
 
   it('autoRun dispatch（人发起）：启动一轮、event 带 runId', async () => {
-    const { coordinator, turns, events } = make([member('m1', 100), member('m2', 200)])
+    const { coordinator, turns, events, permissionRequests } = make([member('m1', 100), member('m2', 200)])
     const result = await coordinator.handleCommand({ type: 'assignTeamTask', teamId: 'team-main', taskId: 't1', assigneeSessionId: 'm2', title: '跑测试', autoRun: true }, { issuerSessionId: 'm1', actor: USER_ACTOR }) as { runId?: string }
     expect(turns.length).toBe(1)
     expect(turns[0]?.sessionId).toBe('m2')
     expect(result.runId).toBeDefined()
     const assigned = events.find(e => e.type === 'team_task_assigned') as any
     expect(assigned.runId).toBeDefined()
+    expect(permissionRequests).toEqual(['team:assignTeamTask'])
   })
 
   it('权限分级：Agent autoRun 未授权抛错；授权后放行', async () => {
-    const { coordinator, turns } = make([member('m1', 100), member('m2', 200)])
+    const { coordinator, turns, setPermissionAllowed } = make([member('m1', 100), member('m2', 200)])
+    setPermissionAllowed(false)
     await expect(coordinator.handleCommand(
       { type: 'assignTeamTask', teamId: 'team-main', taskId: 't1', assigneeSessionId: 'm2', title: 'x', autoRun: true },
       { issuerSessionId: 'm1', actor: AGENT_ACTOR },
     )).rejects.toThrow(/L2/)
     expect(turns).toEqual([])
+    setPermissionAllowed(true)
     await coordinator.handleCommand(
       { type: 'assignTeamTask', teamId: 'team-main', taskId: 't2', assigneeSessionId: 'm2', title: 'x', autoRun: true },
       { issuerSessionId: 'm1', actor: AGENT_ACTOR, permissionGranted: true },
@@ -120,14 +144,23 @@ describe('TeamCoordinator — 承重墙', () => {
     expect(turns.length).toBe(1)
   })
 
-  it('submitTeamReport：存报告、置 awaitingReview、发 report_submitted + review_queued', async () => {
-    const { coordinator, store, sessions, events } = make([member('m1', 100), member('m2', 200)])
+  it('submitTeamReport：写持久事件、置 awaitingReview、无队长时排给管理 Agent', async () => {
+    const { coordinator, sessions, events } = make([member('m1', 100), member('m2', 200)])
     await coordinator.handleCommand({ type: 'assignTeamTask', teamId: 'team-main', taskId: 't1', assigneeSessionId: 'm2', title: 'x' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     await coordinator.handleCommand({ type: 'submitTeamReport', teamId: 'team-main', taskId: 't1', runId: 'r1', summary: '完成了' }, { issuerSessionId: 'm2', actor: USER_ACTOR })
-    expect((await store.getLatestReport('m2'))?.summary).toBe('完成了')
     expect(sessions.get('m2')?.sessionStatus).toBe('needs-review') // statusMap.awaitingReview
-    expect(events.some(e => e.type === 'team_report_submitted')).toBe(true)
-    expect(events.some(e => e.type === 'team_review_queued')).toBe(true)
+    const report = events.find(e => e.type === 'team_report_submitted')
+    expect(report?.type === 'team_report_submitted' ? report.summary : undefined).toBe('完成了')
+    const queued = events.find(e => e.type === 'team_review_queued')
+    expect(queued?.type === 'team_review_queued' ? queued.targetReviewerSessionId : undefined).toBe('manager-projection')
+  })
+
+  it('submitTeamReport：拒绝不存在的汇报会话', async () => {
+    const { coordinator } = make([member('m1', 100)])
+    await expect(coordinator.handleCommand(
+      { type: 'submitTeamReport', teamId: 'team-main', taskId: 't1', runId: 'r1', summary: '伪造汇报' },
+      { issuerSessionId: 'missing', actor: AGENT_ACTOR },
+    )).rejects.toThrow(/不存在的会话/)
   })
 
   it('getReviewQueue：派生自 awaitingReview 成员 + 最新报告，按时间排序', async () => {
@@ -153,6 +186,14 @@ describe('TeamCoordinator — 承重墙', () => {
       { issuerSessionId: 'm1', actor: USER_ACTOR },
     )
     expect(rules.rules?.identityAssignments['m1']).toContain('design')
+  })
+
+  it('changeTeamIdentityTag：拒绝给不存在的会话写身份', async () => {
+    const { coordinator } = make([member('m1', 100)])
+    await expect(coordinator.handleCommand(
+      { type: 'changeTeamIdentityTag', teamId: 'team-main', targetSessionId: 'missing', tagId: 'design', action: 'add' },
+      { issuerSessionId: 'm1', actor: USER_ACTOR },
+    )).rejects.toThrow(/不存在的会话/)
   })
 
   it('成员对账：会话消失则从规则剔除，队长失效则清空并发事件', async () => {
@@ -183,5 +224,6 @@ describe('TeamCoordinator — 承重墙', () => {
     await coordinator.handleCommand({ type: 'updateTeamRules', teamId: 'team-main', rules: { version: 1, teamId: 'team-main', norms: ['先说明再写文件'] } }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     expect(rules.rules?.norms).toEqual(['先说明再写文件'])
     expect(events.some(e => e.type === 'team_rules_changed')).toBe(true)
+    expect(rules.rules?.managerProjectionSessionId).toBe('manager-projection')
   })
 })

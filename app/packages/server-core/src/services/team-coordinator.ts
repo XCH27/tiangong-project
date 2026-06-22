@@ -58,17 +58,24 @@ export interface TeamSessionInfo {
 
 /** craft 耦合端口：协调器只通过它触达 SessionManager 能力。 */
 export interface TeamRuntime {
-  emit(event: SessionEvent): void
+  recordEvent(event: SessionEvent): Promise<string>
   now(): number
   newId(): string
   /** 当前 workspace 的可见（非 hidden）会话，用于成员/fanout/派生。 */
   listSessions(): TeamSessionInfo[]
   /** 确保团队群聊 hidden 会话存在；existingId 仍有效则复用。 */
   ensureTeamConversationSession(existingId: string | null): Promise<string>
+  ensureManagerProjectionSession(existingId: string | null): Promise<string>
   /** 在某会话启动一轮执行（autoRun dispatch）。 */
   startTurn(sessionId: string, input: string): Promise<void>
   /** 改会话状态（团队语义 → craft status id）。 */
   setSessionStatus(sessionId: string, statusId: string): Promise<void>
+  requestPermission(
+    sessionId: string,
+    input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
+  ): Promise<boolean>
+  getLatestReport(sessionId: string): Promise<TeamReport | null>
+  resolveInbox(items: TeamInboxItem[]): Promise<string>
 }
 
 /** 规则存储端口（TeamRulesService 结构上满足；测试可注入内存实现）。 */
@@ -112,7 +119,7 @@ export class TeamCoordinator {
   // ---- 命令入口（唯一写路径）---------------------------------------------
 
   async handleCommand(command: TeamSessionCommand, ctx: TeamCommandContext): Promise<unknown> {
-    this.enforcePermission(command, ctx)
+    await this.enforcePermission(command, ctx)
     switch (command.type) {
       case 'promoteTeamLeader':
         return this.promoteLeader(command, ctx)
@@ -133,14 +140,18 @@ export class TeamCoordinator {
     }
   }
 
-  private enforcePermission(command: TeamSessionCommand, ctx: TeamCommandContext): void {
+  private async enforcePermission(command: TeamSessionCommand, ctx: TeamCommandContext): Promise<void> {
     const level = requiredTeamPermissionLevel(command)
-    if (level === 'L3' && !ctx.confirmed) {
-      throw new Error(`团队动作 ${command.type} 属敏感操作（L3），必须明确确认`)
-    }
-    if (level === 'L2' && ctx.actor.kind === 'agent' && !ctx.permissionGranted) {
-      throw new Error(`团队动作 ${command.type} 需要授权（L2），Agent 未获授权不能执行`)
-    }
+    if (level === 'L1' || ctx.permissionGranted || (level === 'L3' && ctx.confirmed)) return
+    const allowed = await this.runtime.requestPermission(ctx.issuerSessionId, {
+      toolName: `team:${command.type}`,
+      description: level === 'L3'
+        ? `确认执行敏感团队动作：${command.type}`
+        : `确认执行团队写入动作：${command.type}`,
+      type: 'mcp_mutation',
+      reason: `团队权限等级 ${level}`,
+    })
+    if (!allowed) throw new Error(`团队动作 ${command.type} 未获授权（${level}）`)
   }
 
   // ---- 各命令 ------------------------------------------------------------
@@ -154,6 +165,9 @@ export class TeamCoordinator {
     const next = command.leaderSessionId
 
     if (next) {
+      if (!this.runtime.listSessions().some(session => session.id === next)) {
+        throw new Error(`无法提升不存在的会话为队长: ${next}`)
+      }
       if (!rules.memberSessionIds.includes(next)) rules.memberSessionIds.push(next)
       this.addTag(rules, next, 'leader')
     }
@@ -161,7 +175,7 @@ export class TeamCoordinator {
     rules.leaderSessionId = next
     this.rules.save(rules)
 
-    this.runtime.emit(this.teamEvent(rules, rules.teamConversationSessionId, ctx.actor, {
+    await this.runtime.recordEvent(this.teamEvent(rules, rules.teamConversationSessionId, ctx.actor, {
       type: 'team_leader_changed',
       leaderSessionId: next,
       previousLeaderSessionId: previous,
@@ -178,8 +192,22 @@ export class TeamCoordinator {
     const recipients = visibility === 'private'
       ? (command.audienceSessionIds ?? []).filter(id => rules.memberSessionIds.includes(id))
       : rules.memberSessionIds.filter(id => id !== ctx.issuerSessionId)
+    if (visibility === 'private' && recipients.length !== command.audienceSessionIds?.length) {
+      throw new Error('私聊目标包含不存在或不属于当前团队的会话')
+    }
     const messageId = this.runtime.newId()
     const createdAt = this.runtime.now()
+
+    const sourceMessageId = await this.runtime.recordEvent(this.teamEvent(rules, rules.teamConversationSessionId, ctx.actor, {
+      type: 'team_message',
+      messageId,
+      content: command.content,
+      visibility,
+      audienceSessionIds: visibility === 'private' ? recipients : undefined,
+      taskId: command.taskId,
+      runId: command.runId,
+      delivery: 'queued',
+    }))
 
     for (const recipient of recipients) {
       await this.store.enqueueInbox({
@@ -187,7 +215,8 @@ export class TeamCoordinator {
         sessionId: recipient,
         kind: 'message',
         fromActor: ctx.actor,
-        content: command.content,
+        sourceSessionId: rules.teamConversationSessionId,
+        sourceMessageId,
         taskId: command.taskId,
         runId: command.runId,
         visibility,
@@ -195,16 +224,6 @@ export class TeamCoordinator {
       })
     }
 
-    this.runtime.emit(this.teamEvent(rules, rules.teamConversationSessionId, ctx.actor, {
-      type: 'team_message',
-      messageId,
-      content: command.content,
-      visibility,
-      audienceSessionIds: visibility === 'private' ? command.audienceSessionIds : undefined,
-      taskId: command.taskId,
-      runId: command.runId,
-      delivery: 'queued',
-    }))
     return { messageId }
   }
 
@@ -214,6 +233,9 @@ export class TeamCoordinator {
   ): Promise<{ taskId: string; runId?: string }> {
     const ctx = _ctx
     const rules = await this.ensureRules(command.teamId)
+    if (!this.runtime.listSessions().some(session => session.id === command.assigneeSessionId)) {
+      throw new Error(`无法向不存在的会话派发任务: ${command.assigneeSessionId}`)
+    }
     if (!rules.memberSessionIds.includes(command.assigneeSessionId)) {
       rules.memberSessionIds.push(command.assigneeSessionId)
       this.rules.save(rules)
@@ -221,7 +243,7 @@ export class TeamCoordinator {
 
     const runId = command.autoRun ? this.runtime.newId() : undefined
 
-    this.runtime.emit(this.teamEvent(rules, command.assigneeSessionId, ctx.actor, {
+    const sourceMessageId = await this.runtime.recordEvent(this.teamEvent(rules, command.assigneeSessionId, ctx.actor, {
       type: 'team_task_assigned',
       taskId: command.taskId,
       assigneeSessionId: command.assigneeSessionId,
@@ -234,7 +256,8 @@ export class TeamCoordinator {
       sessionId: command.assigneeSessionId,
       kind: 'task',
       fromActor: ctx.actor,
-      content: command.description ? `${command.title}\n${command.description}` : command.title,
+      sourceSessionId: command.assigneeSessionId,
+      sourceMessageId,
       taskId: command.taskId,
       runId,
       createdAt: this.runtime.now(),
@@ -253,6 +276,9 @@ export class TeamCoordinator {
   ): Promise<{ reportId: string; reviewId: string }> {
     const rules = await this.ensureRules(command.teamId)
     const reporterSessionId = ctx.issuerSessionId
+    if (!this.runtime.listSessions().some(session => session.id === reporterSessionId)) {
+      throw new Error(`无法从不存在的会话提交汇报: ${reporterSessionId}`)
+    }
     const createdAt = this.runtime.now()
     const report: TeamReport = {
       reportId: this.runtime.newId(),
@@ -263,9 +289,7 @@ export class TeamCoordinator {
       artifactPaths: command.artifactPaths,
       createdAt,
     }
-    await this.store.saveReport(report)
-
-    this.runtime.emit(this.teamEvent(rules, reporterSessionId, ctx.actor, {
+    await this.runtime.recordEvent(this.teamEvent(rules, reporterSessionId, ctx.actor, {
       type: 'team_report_submitted',
       reportId: report.reportId,
       taskId: command.taskId,
@@ -279,12 +303,12 @@ export class TeamCoordinator {
     const reviewId = this.runtime.newId()
     const queue = await this.getReviewQueue()
     const queuePosition = Math.max(0, queue.findIndex(item => item.reporterSessionId === reporterSessionId))
-    this.runtime.emit(this.teamEvent(rules, reporterSessionId, ctx.actor, {
+    await this.runtime.recordEvent(this.teamEvent(rules, reporterSessionId, ctx.actor, {
       type: 'team_review_queued',
       reviewId,
       taskId: command.taskId,
       reportId: report.reportId,
-      targetReviewerSessionId: rules.leaderSessionId ?? undefined,
+      targetReviewerSessionId: rules.leaderSessionId ?? rules.managerProjectionSessionId,
       queuePosition,
     }))
     return { reportId: report.reportId, reviewId }
@@ -295,6 +319,9 @@ export class TeamCoordinator {
     ctx: TeamCommandContext,
   ): Promise<TeamProjection> {
     const rules = await this.ensureRules(command.teamId)
+    if (!this.runtime.listSessions().some(session => session.id === command.targetSessionId)) {
+      throw new Error(`无法给不存在的会话写身份: ${command.targetSessionId}`)
+    }
     if (command.action === 'add' && !rules.identityTags.some(tag => tag.id === command.tagId)) {
       throw new Error(`未知身份标签: ${command.tagId}`)
     }
@@ -305,7 +332,7 @@ export class TeamCoordinator {
     else this.removeTag(rules, command.targetSessionId, command.tagId)
     this.rules.save(rules)
 
-    this.runtime.emit(this.teamEvent(rules, command.targetSessionId, ctx.actor, {
+    await this.runtime.recordEvent(this.teamEvent(rules, command.targetSessionId, ctx.actor, {
       type: 'team_identity_changed',
       targetSessionId: command.targetSessionId,
       tagId: command.tagId,
@@ -325,7 +352,7 @@ export class TeamCoordinator {
     this.rules.save(merged)
 
     const changedKeys = Object.keys(command.rules).filter(k => k !== 'version' && k !== 'teamId')
-    this.runtime.emit(this.teamEvent(merged, merged.teamConversationSessionId, ctx.actor, {
+    await this.runtime.recordEvent(this.teamEvent(merged, merged.teamConversationSessionId, ctx.actor, {
       type: 'team_rules_changed',
       rulesVersion: merged.version,
       changedKeys,
@@ -350,7 +377,7 @@ export class TeamCoordinator {
       .filter(s => rules.memberSessionIds.includes(s.id) && s.sessionStatus === rules.statusMap.awaitingReview)
     const items: TeamReviewQueueItem[] = []
     for (const session of awaiting) {
-      const report = await this.store.getLatestReport(session.id)
+      const report = await this.runtime.getLatestReport(session.id)
       if (!report) continue
       items.push({
         reviewId: `review-${report.reportId}`,
@@ -371,6 +398,12 @@ export class TeamCoordinator {
     return this.store.listInbox(sessionId)
   }
 
+  async drainInboxContext(sessionId: string): Promise<string> {
+    const items = await this.store.drainInbox(sessionId)
+    if (items.length === 0) return ''
+    return this.runtime.resolveInbox(items)
+  }
+
   // ---- 内部 --------------------------------------------------------------
 
   private async ensureRules(teamId: string): Promise<TeamRulesV1> {
@@ -378,10 +411,12 @@ export class TeamCoordinator {
     if (loaded.rules) return this.reconcile(loaded.rules)
 
     const conversationId = await this.runtime.ensureTeamConversationSession(null)
+    const managerProjectionSessionId = await this.runtime.ensureManagerProjectionSession(null)
     const rules: TeamRulesV1 = {
       version: 1,
       teamId: teamId || DEFAULT_TEAM_ID,
       teamConversationSessionId: conversationId,
+      managerProjectionSessionId,
       leaderSessionId: null,
       memberSessionIds: [],
       identityTags: TEAM_DEFAULT_IDENTITY_TAGS.map(tag => ({ ...tag })),
@@ -400,7 +435,8 @@ export class TeamCoordinator {
     const live = new Set(this.runtime.listSessions().map(s => s.id))
     // 团队群聊会话本身是 hidden，不在 listSessions(可见) 里——单独确保其存在。
     const conversationId = await this.runtime.ensureTeamConversationSession(rules.teamConversationSessionId)
-    let changed = conversationId !== rules.teamConversationSessionId
+    const managerProjectionSessionId = await this.runtime.ensureManagerProjectionSession(rules.managerProjectionSessionId ?? null)
+    let changed = conversationId !== rules.teamConversationSessionId || managerProjectionSessionId !== rules.managerProjectionSessionId
 
     const members = rules.memberSessionIds.filter(id => live.has(id))
     if (members.length !== rules.memberSessionIds.length) changed = true
@@ -418,13 +454,14 @@ export class TeamCoordinator {
     const next: TeamRulesV1 = {
       ...rules,
       teamConversationSessionId: conversationId,
+      managerProjectionSessionId,
       memberSessionIds: members,
       identityAssignments: assignments,
       leaderSessionId: leader,
     }
     this.rules.save(next)
     if (leaderLost) {
-      this.runtime.emit(this.teamEvent(next, next.teamConversationSessionId, MANAGER_ACTOR, {
+      await this.runtime.recordEvent(this.teamEvent(next, next.teamConversationSessionId, MANAGER_ACTOR, {
         type: 'team_leader_changed',
         leaderSessionId: null,
         previousLeaderSessionId: rules.leaderSessionId,
@@ -447,6 +484,7 @@ export class TeamCoordinator {
     return {
       teamId: rules.teamId,
       teamConversationSessionId: rules.teamConversationSessionId,
+      managerProjectionSessionId: rules.managerProjectionSessionId,
       leaderSessionId: rules.leaderSessionId,
       members,
       identityTags: rules.identityTags,
@@ -462,6 +500,7 @@ export class TeamCoordinator {
       version: 1,
       teamId: current.teamId,
       teamConversationSessionId: current.teamConversationSessionId,
+      managerProjectionSessionId: current.managerProjectionSessionId,
       statusMap: patch.statusMap ? normalizeTeamStatusMap(patch.statusMap) : current.statusMap,
     }
   }
@@ -504,16 +543,22 @@ function buildTaskPrompt(title: string, description: string | undefined, taskId:
 
 /** SessionManager 的最小结构契约（避免直接 import 具体类，便于测试与解耦）。 */
 export interface TeamSessionManagerLike {
-  emitSessionEvent(event: SessionEvent): void
+  appendSessionEvent(event: SessionEvent): Promise<string>
   getSessions(workspaceId?: string): Array<{ id: string; createdAt?: number; sessionStatus?: string; hidden?: boolean; name?: string }>
-  createSession(workspaceId: string, options?: { hidden?: boolean; name?: string }): Promise<{ id: string }>
+  createSession(workspaceId: string, options?: { hidden?: boolean; name?: string; systemPromptPreset?: 'default' | 'mini' | string }): Promise<{ id: string }>
   sendMessage(sessionId: string, message: string): Promise<void>
   setSessionStatus(sessionId: string, status: string): Promise<void>
+  requestWorkflowPermission(
+    sessionId: string,
+    input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
+  ): Promise<boolean>
+  getLatestTeamReport(sessionId: string): Promise<TeamReport | null>
+  resolveTeamInbox(items: TeamInboxItem[]): Promise<string>
 }
 
 export function createSessionManagerTeamRuntime(sm: TeamSessionManagerLike, workspaceId: string): TeamRuntime {
   return {
-    emit: event => sm.emitSessionEvent(event),
+    recordEvent: event => sm.appendSessionEvent(event),
     now: () => Date.now(),
     newId: () => randomUUID(),
     listSessions: () =>
@@ -525,8 +570,20 @@ export function createSessionManagerTeamRuntime(sm: TeamSessionManagerLike, work
       const created = await sm.createSession(workspaceId, { hidden: true, name: '团队群聊' })
       return created.id
     },
+    ensureManagerProjectionSession: async existingId => {
+      if (existingId && sm.getSessions(workspaceId).some(s => s.id === existingId)) return existingId
+      const created = await sm.createSession(workspaceId, {
+        hidden: true,
+        name: '管理 Agent',
+        systemPromptPreset: 'mini',
+      })
+      return created.id
+    },
     startTurn: (sessionId, input) => sm.sendMessage(sessionId, input),
     setSessionStatus: (sessionId, statusId) => sm.setSessionStatus(sessionId, statusId),
+    requestPermission: (sessionId, input) => sm.requestWorkflowPermission(sessionId, input),
+    getLatestReport: sessionId => sm.getLatestTeamReport(sessionId),
+    resolveInbox: items => sm.resolveTeamInbox(items),
   }
 }
 

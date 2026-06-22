@@ -56,6 +56,8 @@ export interface TeamRulesV1 {
   version: 1
   teamId: string
   teamConversationSessionId: string
+  /** manager:global 在当前 workspace 的 hidden session 投影。 */
+  managerProjectionSessionId?: string
   leaderSessionId: string | null
   memberSessionIds: string[]
   identityTags: TeamIdentityTag[]
@@ -243,7 +245,9 @@ export interface TeamInboxItem {
   sessionId: string
   kind: 'message' | 'task'
   fromActor: ActorRef
-  content: string
+  /** 正文真相所在的 craft session 与持久化 timeline message。 */
+  sourceSessionId: string
+  sourceMessageId: string
   taskId?: string
   runId?: string
   visibility?: TeamMessageVisibility
@@ -277,6 +281,7 @@ export interface TeamMemberProjection {
 export interface TeamProjection {
   teamId: string
   teamConversationSessionId: string
+  managerProjectionSessionId?: string
   leaderSessionId: string | null
   members: TeamMemberProjection[]
   identityTags: TeamIdentityTag[]

@@ -38,6 +38,9 @@ export function validateTeamRules(
   if (value.version !== 1) errors.push('version 必须为 1')
   if (!isNonEmptyString(value.teamId)) errors.push('teamId 不能为空')
   if (!isNonEmptyString(value.teamConversationSessionId)) errors.push('teamConversationSessionId 不能为空')
+  if (value.managerProjectionSessionId !== undefined && !isNonEmptyString(value.managerProjectionSessionId)) {
+    errors.push('managerProjectionSessionId 必须是非空字符串')
+  }
   if (value.leaderSessionId !== null && !isNonEmptyString(value.leaderSessionId)) {
     errors.push('leaderSessionId 必须是非空字符串或 null')
   }

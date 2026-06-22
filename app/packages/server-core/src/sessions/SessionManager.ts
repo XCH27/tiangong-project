@@ -22,6 +22,7 @@ import {
 } from '@craft-agent/shared/agent/backend'
 import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
+import { createSessionManagerTeamRuntime, getTeamCoordinator } from '../services/team-coordinator'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
 import { i18n, LOCALE_REGISTRY, type LanguageCode } from '@craft-agent/shared/i18n'
@@ -81,7 +82,7 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
@@ -1099,6 +1100,20 @@ interface PendingDelta {
   turnId?: string
 }
 
+function formatWorkflowEvent(event: SessionEvent): string {
+  switch (event.type) {
+    case 'team_message': return event.content
+    case 'team_task_assigned': return `团队任务：${event.title}${event.description ? `\n${event.description}` : ''}`
+    case 'team_report_submitted': return `工作汇报：${event.summary}`
+    case 'team_review_queued': return `工作汇报已进入待审队列：${event.reportId}`
+    case 'team_leader_changed': return event.leaderSessionId ? `队长已更新：${event.leaderSessionId}` : '队长已清空'
+    case 'team_identity_changed': return `身份标签 ${event.tagId}：${event.action}`
+    case 'team_rules_changed': return `团队规则已更新：${event.changedKeys.join(', ')}`
+    case 'team_rules_validation_failed': return `团队规则校验失败：${event.error}`
+    default: return `工作流事件：${event.type}`
+  }
+}
+
 export class SessionManager implements ISessionManager {
   private sessions: Map<string, ManagedSession> = new Map()
   // Delta batching for performance - reduces IPC events from 50+/sec to ~20/sec
@@ -1116,6 +1131,11 @@ export class SessionManager implements ISessionManager {
     type?: 'bash' | 'file_write' | 'mcp_mutation' | 'api_mutation' | 'admin_approval'
     commandHash?: string
   }> = new Map()
+  private pendingWorkflowPermissionResolvers = new Map<string, {
+    sessionId: string
+    resolve: (allowed: boolean) => void
+    timer: ReturnType<typeof setTimeout>
+  }>()
   // Privileged approval binding + audit logger
   private privilegedExecutionBroker = new PrivilegedExecutionBroker(sessionLog)
   // Session-local admin remember windows (exact command hash binding)
@@ -1370,6 +1390,13 @@ export class SessionManager implements ISessionManager {
     for (const [requestId, metadata] of this.pendingPermissionRequests.entries()) {
       if (metadata.sessionId === sessionId) {
         this.pendingPermissionRequests.delete(requestId)
+      }
+    }
+    for (const [requestId, pending] of this.pendingWorkflowPermissionResolvers.entries()) {
+      if (pending.sessionId === sessionId) {
+        clearTimeout(pending.timer)
+        pending.resolve(false)
+        this.pendingWorkflowPermissionResolvers.delete(requestId)
       }
     }
   }
@@ -4057,6 +4084,18 @@ export class SessionManager implements ISessionManager {
         }
       }
 
+      const teamActorForManaged = (): ActorRef => ({
+        kind: 'agent',
+        agentId: managed.id,
+        role: 'member',
+        displayName: managed.name ?? managed.id,
+        runtime: managed.llmConnection ?? managed.model,
+      })
+      const teamCoordinatorForManaged = () => getTeamCoordinator({
+        workspaceRootPath: managed.workspace.rootPath,
+        runtime: createSessionManagerTeamRuntime(this, managed.workspace.id),
+      })
+
       // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
       mergeSessionScopedToolCallbacks(managed.id, {
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
@@ -4171,6 +4210,41 @@ export class SessionManager implements ISessionManager {
 
           await this.sendMessage(sessionId, message, fileAttachments)
         },
+        getTeamFn: async () => teamCoordinatorForManaged().getProjection(),
+        sendTeamMessageFn: async input => teamCoordinatorForManaged().handleCommand({
+          type: 'sendTeamMessage',
+          teamId: 'team-main',
+          content: input.content,
+          audienceSessionIds: input.audienceSessionIds,
+          taskId: input.taskId,
+          runId: input.runId,
+        }, {
+          issuerSessionId: managed.id,
+          actor: teamActorForManaged(),
+        }) as Promise<{ messageId: string }>,
+        assignTeamTaskFn: async input => teamCoordinatorForManaged().handleCommand({
+          type: 'assignTeamTask',
+          teamId: 'team-main',
+          taskId: input.taskId,
+          assigneeSessionId: input.assigneeSessionId,
+          title: input.title,
+          description: input.description,
+          autoRun: input.autoRun,
+        }, {
+          issuerSessionId: managed.id,
+          actor: teamActorForManaged(),
+        }) as Promise<{ taskId: string; runId?: string }>,
+        submitTeamReportFn: async input => teamCoordinatorForManaged().handleCommand({
+          type: 'submitTeamReport',
+          teamId: 'team-main',
+          taskId: input.taskId,
+          runId: input.runId,
+          summary: input.summary,
+          artifactPaths: input.artifactPaths,
+        }, {
+          issuerSessionId: managed.id,
+          actor: teamActorForManaged(),
+        }) as Promise<{ reportId: string; reviewId: string }>,
         activateSourceInSessionFn: async (sourceSlug: string) => {
           const cb = managed.agent?.onSourceActivationRequest
           if (!cb) {
@@ -5807,9 +5881,20 @@ export class SessionManager implements ISessionManager {
       // Uses <system-reminder> tags so the LLM treats it as transient system guidance
       // rather than part of the user's message content. The original message is stored
       // in session JSONL (line ~3952); this only affects the SDK's in-process context.
-      let effectiveMessage = message
+      let teamInboxContext = ''
+      try {
+        const coordinator = getTeamCoordinator({
+          workspaceRootPath: managed.workspace.rootPath,
+          runtime: createSessionManagerTeamRuntime(this, managed.workspace.id),
+        })
+        teamInboxContext = await coordinator.drainInboxContext(sessionId)
+      } catch (error) {
+        sessionLog.warn(`Failed to drain team inbox for ${sessionId}`, error)
+      }
+
+      let effectiveMessage = teamInboxContext ? `${teamInboxContext}\n\n${message}` : message
       if (managed.wasInterrupted) {
-        effectiveMessage = `${message}\n\n<system-reminder>The previous assistant response was interrupted by the user and may be incomplete. Do not repeat or continue the interrupted response unless asked. Focus on the new message above.</system-reminder>`
+        effectiveMessage = `${effectiveMessage}\n\n<system-reminder>The previous assistant response was interrupted by the user and may be incomplete. Do not repeat or continue the interrupted response unless asked. Focus on the new message above.</system-reminder>`
         managed.wasInterrupted = false
       }
 
@@ -6480,6 +6565,15 @@ export class SessionManager implements ISessionManager {
     alwaysAllow: boolean,
     options?: import('@craft-agent/shared/protocol').PermissionResponseOptions,
   ): boolean {
+    const workflowRequest = this.pendingWorkflowPermissionResolvers.get(requestId)
+    if (workflowRequest) {
+      if (workflowRequest.sessionId !== sessionId) return false
+      clearTimeout(workflowRequest.timer)
+      this.pendingWorkflowPermissionResolvers.delete(requestId)
+      workflowRequest.resolve(allowed)
+      return true
+    }
+
     const managed = this.sessions.get(sessionId)
     if (managed?.agent) {
       const requestMeta = this.pendingPermissionRequests.get(requestId)
@@ -6508,6 +6602,35 @@ export class SessionManager implements ISessionManager {
       sessionLog.warn(`Cannot respond to permission - no agent for session ${sessionId}`)
       return false
     }
+  }
+
+  requestWorkflowPermission(
+    sessionId: string,
+    input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
+  ): Promise<boolean> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return Promise.resolve(false)
+    const requestId = randomUUID()
+
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingWorkflowPermissionResolvers.delete(requestId)
+        resolve(false)
+      }, 120_000)
+      this.pendingWorkflowPermissionResolvers.set(requestId, { sessionId, resolve, timer })
+      this.sendEvent({
+        type: 'permission_request',
+        sessionId,
+        request: {
+          requestId,
+          sessionId,
+          toolName: input.toolName,
+          description: input.description,
+          type: input.type,
+          reason: input.reason,
+        },
+      }, managed.workspace.id)
+    })
   }
 
   /**
@@ -7489,8 +7612,66 @@ export class SessionManager implements ISessionManager {
    * same broadcast channel as model/tool events —— 没有第二条 timeline（docs/31 §1）。
    */
   emitSessionEvent(event: SessionEvent): void {
-    const workspaceId = this.sessions.get(event.sessionId)?.workspace.id
-    this.sendEvent(event, workspaceId)
+    void this.appendSessionEvent(event).catch(error => {
+      sessionLog.error(`Failed to persist ${event.type} for ${event.sessionId}`, error)
+    })
+  }
+
+  async appendSessionEvent(event: SessionEvent): Promise<string> {
+    const managed = this.sessions.get(event.sessionId)
+    if (!managed) throw new Error(`Session ${event.sessionId} not found`)
+    await this.ensureMessagesLoaded(managed)
+    const messageId = generateMessageId()
+    const message: Message = {
+      id: messageId,
+      role: 'info',
+      content: formatWorkflowEvent(event),
+      timestamp: this.monotonic(),
+      infoLevel: 'info',
+      customData: { sessionEvent: event },
+    }
+    managed.messages.push(message)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.sendEvent(event, managed.workspace.id)
+    return messageId
+  }
+
+  async getLatestTeamReport(sessionId: string): Promise<TeamReport | null> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return null
+    await this.ensureMessagesLoaded(managed)
+    for (let index = managed.messages.length - 1; index >= 0; index--) {
+      const event = managed.messages[index]?.customData?.sessionEvent as SessionEvent | undefined
+      if (event?.type === 'team_report_submitted') {
+        return {
+          reportId: event.reportId,
+          taskId: event.taskId,
+          runId: event.runId,
+          reporterSessionId: event.reporterSessionId,
+          summary: event.summary,
+          artifactPaths: event.artifactPaths,
+          createdAt: event.timestamp,
+        }
+      }
+    }
+    return null
+  }
+
+  async resolveTeamInbox(items: TeamInboxItem[]): Promise<string> {
+    const lines: string[] = []
+    for (const item of items) {
+      const source = this.sessions.get(item.sourceSessionId)
+      if (!source) continue
+      await this.ensureMessagesLoaded(source)
+      const message = source.messages.find(candidate => candidate.id === item.sourceMessageId)
+      if (!message) continue
+      const sender = item.fromActor.displayName ?? item.fromActor.agentId ?? item.fromActor.kind
+      lines.push(`- [${item.kind}] 来自 ${sender}: ${message.content}`)
+    }
+    return lines.length > 0
+      ? `<team-inbox>\n${lines.join('\n')}\n</team-inbox>`
+      : ''
   }
 
   private sendEvent(event: SessionEvent, workspaceId?: string): void {
@@ -8088,6 +8269,11 @@ export class SessionManager implements ISessionManager {
     // Clear pending credential resolvers (they won't be resolved, but prevents memory leak)
     this.pendingCredentialResolvers.clear()
     this.pendingPermissionRequests.clear()
+    for (const pending of this.pendingWorkflowPermissionResolvers.values()) {
+      clearTimeout(pending.timer)
+      pending.resolve(false)
+    }
+    this.pendingWorkflowPermissionResolvers.clear()
     this.adminRememberApprovals.clear()
 
     // Clean up session-scoped tool callbacks for all sessions
