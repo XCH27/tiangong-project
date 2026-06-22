@@ -1,8 +1,9 @@
 import { readFile, writeFile, stat } from 'fs/promises'
 import { join } from 'path'
-import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, USER_ACTOR, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
 import type { StoredAttachment } from '@craft-agent/core/types'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
+import { createSessionManagerTeamRuntime, getTeamCoordinator } from '../../services/team-coordinator'
 import { perf } from '@craft-agent/shared/utils'
 import { isValidThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
@@ -378,8 +379,17 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
       case 'assignTeamTask':
       case 'submitTeamReport':
       case 'changeTeamIdentityTag':
-      case 'updateTeamRules':
-        throw new Error(`团队命令 ${command.type} 尚未接入 TeamCoordinator，当前不会假执行`)
+      case 'updateTeamRules': {
+        // 团队命令统一经 TeamCoordinator：过权限分级 → 写 SessionEvent 进同一条 timeline
+        // → 规则落 .fleet/team.rules.json。RPC 由人发起，actor = 人（L1 直行，L2 人类点击即授权）。
+        const session = sessionManager.getSessions().find(s => s.id === sessionId)
+        if (!session) throw new Error(`Session ${sessionId} not found`)
+        const workspace = getWorkspaceByNameOrId(session.workspaceId)
+        if (!workspace) throw new Error(`Workspace not found: ${session.workspaceId}`)
+        const runtime = createSessionManagerTeamRuntime(sessionManager, session.workspaceId)
+        const coordinator = getTeamCoordinator({ workspaceRootPath: workspace.rootPath, runtime })
+        return coordinator.handleCommand(command, { issuerSessionId: sessionId, actor: USER_ACTOR })
+      }
       default: {
         const _exhaustive: never = command
         throw new Error(`Unknown session command: ${JSON.stringify(command)}`)

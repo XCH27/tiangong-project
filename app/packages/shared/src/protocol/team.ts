@@ -218,3 +218,79 @@ export type TeamSessionCommand =
       teamId: string
       rules: TeamRulesPatch
     }
+
+// ---------------------------------------------------------------------------
+// Team default identity tags（功能身份预设）
+// ---------------------------------------------------------------------------
+
+export const TEAM_DEFAULT_IDENTITY_TAGS: TeamIdentityTag[] = [
+  { id: 'leader', displayName: '队长', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
+  { id: 'code', displayName: '代码' },
+  { id: 'design', displayName: '设计' },
+  { id: 'review', displayName: '审查', systemPromptPreset: '负责检查风险、回归和验收证据。' },
+  { id: 'test', displayName: '测试' },
+  { id: 'context', displayName: '上下文' },
+]
+
+// ---------------------------------------------------------------------------
+// Team delivery + projection types（收件箱 / 报告 / 派生视图 · 查询返回）
+// ---------------------------------------------------------------------------
+
+/** 投递到某个成员会话的待消费项（真相是 transcript+事件，这里是 fanout 投递引用）。 */
+export interface TeamInboxItem {
+  id: string
+  /** 收件人会话。 */
+  sessionId: string
+  kind: 'message' | 'task'
+  fromActor: ActorRef
+  content: string
+  taskId?: string
+  runId?: string
+  visibility?: TeamMessageVisibility
+  createdAt: number
+  delivered?: boolean
+}
+
+/** 结构化工作汇报（持久化；待审队列从中派生）。 */
+export interface TeamReport {
+  reportId: string
+  taskId: string
+  runId: string
+  reporterSessionId: string
+  summary: string
+  artifactPaths?: string[]
+  createdAt: number
+}
+
+/** 成员投影（运行态从 session + rules 派生，不双写）。 */
+export interface TeamMemberProjection {
+  sessionId: string
+  /** 稳定序号（按 createdAt 排名派生，如 G-01）。 */
+  sequence: string
+  isLeader: boolean
+  identityTagIds: string[]
+  /** 当前会话状态 id（craft 动态 status）。 */
+  status?: string
+}
+
+/** 团队投影：rules + 派生成员，给 UI 读。 */
+export interface TeamProjection {
+  teamId: string
+  teamConversationSessionId: string
+  leaderSessionId: string | null
+  members: TeamMemberProjection[]
+  identityTags: TeamIdentityTag[]
+  statusMap: TeamStatusMap
+  norms: string[]
+}
+
+/** 待审队列项（派生：awaitingReview 成员 + 最新报告，按报告时间排序）。 */
+export interface TeamReviewQueueItem {
+  reviewId: string
+  taskId: string
+  reportId: string
+  reporterSessionId: string
+  summary: string
+  queuePosition: number
+  createdAt: number
+}

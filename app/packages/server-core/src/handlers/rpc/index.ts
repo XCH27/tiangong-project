@@ -23,6 +23,7 @@ import { registerStatusesHandlers } from './statuses'
 import { registerSystemCoreHandlers } from './system'
 import { registerTransferHandlers } from './transfer'
 import { registerTeamRulesHandlers } from './team-rules'
+import { registerTeamHandlers } from './team'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
 
@@ -49,6 +50,7 @@ export function registerCoreRpcHandlers(
   registerSystemCoreHandlers(server, deps)
   registerTransferHandlers(server)
   registerTeamRulesHandlers(server, deps)
+  registerTeamHandlers(server, deps)
   registerWorkspaceCoreHandlers(server, deps)
   registerMessagingHandlers(server, deps)
 }

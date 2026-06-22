@@ -42,6 +42,11 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.teamRules.GET,
   RPC_CHANNELS.teamRules.VALIDATE,
 
+  // team orchestration read API — derived from local session/rules; writes go via sessions:command
+  RPC_CHANNELS.team.GET,
+  RPC_CHANNELS.team.GET_REVIEW_QUEUE,
+  RPC_CHANNELS.team.GET_INBOX,
+
   // file — native file dialog
   RPC_CHANNELS.file.OPEN_DIALOG,
   // file — draft hydration for user-attached paths. Paths in drafts.json were captured

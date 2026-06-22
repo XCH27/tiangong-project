@@ -214,6 +214,9 @@ import type {
   TeamRulesV1,
   TeamRulesLoadResult,
   TeamRulesValidationResult,
+  TeamProjection,
+  TeamReviewQueueItem,
+  TeamInboxItem,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -266,6 +269,9 @@ export interface ElectronAPI {
   getWorkspaces(): Promise<Workspace[]>
   getTeamRules(workspaceId: string): Promise<TeamRulesLoadResult>
   validateTeamRules(workspaceId: string, rules: TeamRulesV1): Promise<TeamRulesValidationResult>
+  getTeam(workspaceId: string): Promise<TeamProjection | null>
+  getTeamReviewQueue(workspaceId: string): Promise<TeamReviewQueueItem[]>
+  getTeamInbox(workspaceId: string, sessionId: string): Promise<TeamInboxItem[]>
   createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
   updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }): Promise<{ success: boolean }>

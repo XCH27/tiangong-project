@@ -445,6 +445,14 @@ export const RPC_CHANNELS = {
     GET: 'teamRules:get',
     VALIDATE: 'teamRules:validate',
   },
+
+  // Team orchestration read API（写动作走 sessions:command → TeamCoordinator）。
+  // 全部 LOCAL_ONLY：派生自本地 session/rules，不外发。
+  team: {
+    GET: 'team:get',
+    GET_REVIEW_QUEUE: 'team:getReviewQueue',
+    GET_INBOX: 'team:getInbox',
+  },
 } as const
 
 // IPC_CHANNELS compat alias removed — all consumers now use RPC_CHANNELS
