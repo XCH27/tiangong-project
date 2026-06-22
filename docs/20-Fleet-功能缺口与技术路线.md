@@ -103,7 +103,7 @@ CLI Runtime 重做目标：
 - `typecheck:all` 通过。
 - 应用启动自动探测；独立 `CLI` 设置页显示 runtime 健康；聊天输入区显示紧凑选择入口，已安装且支持 mapping/custom 的 CLI 可进入发送链路；未选 CLI 时继续走 API 模型。
 - 聊天区 active options 显示当前 CLI Runtime、运行中状态、停止入口、附件受限恢复入口、model/effort 和错误后的“清除 CLI”恢复动作；onboarding 首页不展示 CLI。
-- 文档记录当前已经不是单纯探测底座：Grok/Hermes/OpenCode/custom ACP runtime 可执行，其它 detected runtime 未适配时必须返回中文可操作错误，不假执行。
+- 旧工作树曾验证 Grok/Hermes/OpenCode/custom ACP 路线；当前分支尚未重新合入 CLI Runtime，不能把该能力标为当前可执行。重做与验收以 `docs/23`、`docs/24` 为准。
 
 参考来源：
 
@@ -262,7 +262,7 @@ UI 层：
 
 阶段顺序说明：
 
-- 当前 CLI Runtime 主线回到干净基座重做：按 `docs/23-CLI-Runtime-重做规格.md` 实现，按 `docs/24-CLI-Runtime-验收清单.md` 验收，再进入 P1 附件或下一条产品主线。
+- 当前 CLI Runtime 主线回到干净基座重做：按 `docs/23-P0-D-CLI-Runtime-重做规格.md` 实现，按 `docs/24-CLI-Runtime-验收清单.md` 验收，再进入 P1 附件或下一条产品主线。
 - 去 Craft 化和第一屏重排仍是产品目标，但放到用户确认后的 P2，不和当前“不改 UI”的约束冲突。
 - P0 的结果必须能被 P2 复用；不能做成隐藏在 Settings 里的配置工具。
 

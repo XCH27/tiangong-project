@@ -128,3 +128,14 @@
 - 如果未来接 browser-harness，也应是“可关闭的 optional sidecar”，并把所有 helper、外发、文件写入、浏览器控制写回 Fleet timeline；不能让外部 harness 在 Craft 之外静默执行。
 - 如果未来接 OpenClaw，也应只接 managed profile/gateway 概念，不迁入其 agent/session 平台。
 - CloakBrowser 类 stealth 能力和 D4 合法账号/profile 策略冲突，只能留在风险说明里。
+
+## 8 · 2026-06-22 创作引擎候选补充
+
+- **openpencil**：MIT、Electron/React 同栈，重点研究结构化设计文档、选择、历史、MCP/ACP 与 Agent 工具；是无限画布/设计面重点候选，但未绿灯前不复制。
+- **open-pencil**：MIT、Vue/Yjs 路线，生成速度和协作体验有参考价值；技术栈不同，更适合行为与格式兼容研究。
+- **OpenCut**：rewrite 仓库不是当前成熟剪辑器，不能只看它判断功能；视频时间线应同时审计 **opencut-classic**。
+- **opencut-classic**：MIT，现有 timeline/store/组件更完整，是视频剪辑页重点候选；仍需用户绿灯。
+- **Penpot**：MPL-2.0、Clojure 异栈，只学成熟设计模型、变更、组件和协作；MPL 不是“可随意整套照搬”。
+- **OpenMontage / Palmier Pro**：AGPL/GPL，只黑盒学习 Agent 视频生产管线、manifest、成本、轨道与任务交互。
+
+最新 commit、许可证和克隆完整性以 `docs/14` 为准。

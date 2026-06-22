@@ -2,7 +2,7 @@
 
 > 目的：判断直接使用 craft-agents-oss 作为基座后，还缺哪些你想要的 Fleet 能力。结论：craft 是很好的底座，但不是最终产品形态；它缺的主要是 Agent 编排、低摩擦桌面工作台、Git/终端一等面板、全局 Skill 管理和中文新手体验。
 
-> **2026-06-20 状态更新**：`app/` 已重置为干净 craft-agents-oss 基座。CLI Runtime 方向保留，但需要按 `docs/23-CLI-Runtime-重做规格.md` 重新落地，不再把旧二开代码视为当前实现。
+> **2026-06-20 状态更新**：`app/` 已重置为干净 craft-agents-oss 基座。CLI Runtime 方向保留，但需要按 `docs/23-P0-D-CLI-Runtime-重做规格.md` 重新落地，不再把旧二开代码视为当前实现。
 
 ## 1 · 当前 craft 已有能力
 
@@ -123,7 +123,7 @@
 
 当前 `app/` 已经回到干净 craft 基座。下一步不是补旧实现，而是按顺序重做可复用能力：
 
-1. **CLI Runtime Host**：按 `docs/23-CLI-Runtime-重做规格.md` 做 Runtime Catalog、ACP adapter、health、settings 和聊天入口，按 `docs/24-CLI-Runtime-验收清单.md` 验收。
+1. **CLI Runtime Host**：按 `docs/23-P0-D-CLI-Runtime-重做规格.md` 做 Runtime Catalog、ACP adapter、health、settings 和聊天入口，按 `docs/24-CLI-Runtime-验收清单.md` 验收。
 2. **附件边界**：第一版继续硬拒绝；若打开，只做 capability-gated `inline_text`，不传本地路径，不传图片/PDF/Office 原文件。
 3. **下一候选 runtime mapping**：基于 `docs/12-最新开源Agent与CLI参考更新.md`，优先验证 Gemini CLI `gemini --acp`，其次确认 Qwen Code 是否有 Fleet 可消费的 stdio ACP 入口。
 4. **浏览器人类层**：右侧浏览器预览、点选元素、标注、截图，继续复用 craft browser_tool 和 session timeline。

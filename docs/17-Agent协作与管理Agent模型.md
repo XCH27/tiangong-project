@@ -1,10 +1,10 @@
 # 17 · Agent 协作与管理 Agent 模型
 
-> 状态日期：2026-06-19
+> 状态日期：2026-06-22
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前实现状态：`app/packages/server-core/src/services/agent-lifecycle.ts` 已有 Agent 生命周期服务，`memory-service.ts` 已有七分区本地记忆服务，`decision-service.ts` 已有 L0-L3 自动决策规则和 audit；三者已接 LOCAL_ONLY RPC 和本地持久化。DesignAction 提案已走 DecisionService，并把 level/outcome/ruleRef/auditId 写成 `decision_evaluated` SessionEvent 供 timeline / ActionTicker 使用。UI 和 permission 自动代答尚未开启；后续接入时不得绕过 craft permission，自动代答必须继续保留依据。
+> 当前分支状态：双层 Agent、记忆和决策方案已定，但 lifecycle/memory/decision RPC、团队 UI 和 permission 自动代答尚未落入当前分支。团队协议以 `docs/33` 为准；旧工作树实现只算候选资产。
 
 ---
 
@@ -129,7 +129,7 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 多 Agent **不抢在主干前面**。顺序：
 
-1. **M0 · 身份分层 registry 已起步**：`work/integration-prep` 已有只读 `agents:list/get`、内存 registry、session 查询、稳定 `manager:<workspaceId>` actor 和稳定 `project:<sessionId>` actor；普通 API 与 CLI Runtime 事件开始带 `agentId/role/displayName/runtime`，manager agent 支持稳定 upsert、空 workspace 归一化和 `lastActiveAt`，RPC 已补 malformed input guard；Agent lifecycle、七分区 memory 和 L0-L3 decision 已接 LOCAL_ONLY RPC 与本地持久化；DesignAction 决策依据已接入 SessionEvent / ActionTicker。下一步再迁 AionUi 的进程生命周期 / Team / Skill 注入，并把 decision 接入 permission 自动代答，不能引入第二套 session。
+1. **M0 · 身份与团队协议**：先按 `docs/33` 建 team rules、actor、队长、成员、任务、消息和待审队列，再迁 AionUi 的进程生命周期 / Team / Skill 注入；不能引入第二套 session。
 2. **M1–M2 · 队长 → 队员分派**：team/@提及映射成 craft session（AionUi D 批次），权限按 Agent 分组，输出带身份不混流。
 3. **M2 · 管理 Agent 软件管家能力**：软件状态目录 + 记忆生命周期（接 `docs/05`）+ 驱动审查中心（接 `docs/16`）。
 4. **M2 · 分级自动决策**：先做 L0/L1，依据来自记忆/偏好；L2 接规则授权；L3 永远明确确认。每步都要可回放。
