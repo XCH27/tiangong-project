@@ -1,6 +1,6 @@
 # 33 · T-TEAM-SPINE 团队编排脊柱协议
 
-> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；常驻管理 Agent 已有 `manager:global` 身份和 hidden 投影会话，团队设置页已可配置长期偏好/跨项目记录注入策略，但尚未接自动代理；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
+> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；常驻管理 Agent 已有 `manager:global` 身份和 workspace 内部投影锚点，团队设置页已可配置长期偏好/跨项目记录注入策略，但尚未接“所有会话”全局专栏和自动代理；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
 > 目的：固定“会话即 Agent、队长、团队群聊、身份标签、状态、`@`/`/`、管理 Agent”的共同契约，让后端和 UI 可以并行开发而不产生第二套 session/team/permission。
 > 参考：AionUi 可按绿灯范围迁 Team/进程生命周期；Warp 只黑盒学习 task/run、Agent 间消息、长任务 block 和失败信息。
 
@@ -12,7 +12,7 @@
    - **投递**：`sendTeamMessage` / 不带 `autoRun` 的 `assignTeamTask` = 把消息/任务**入队**到目标会话的「团队收件箱」（一次性 hidden 上下文，复用 craft 远程 handoff 的 “首轮注入” 机制）+ 写入团队会话 transcript。**不自动启动 agent**。权限 **L1**。idle 会话以未读角标呈现，等下一轮消费。
    - **运行（dispatch）**：带 `autoRun:true` 的 `assignTeamTask` = **立刻在 assignee 会话启动一轮执行**。启动 agent 运行是 **L2**，过 permission。
    - 契约落点：`assignTeamTask.autoRun?`、`team_message.delivery: 'queued'|'delivered'`（已改 `team.ts`）。
-2. **管理 Agent 是软件级单一身份，不是每 workspace 一个不同 Agent。** 使用稳定 `agentId: manager:global`、共享用户/软件记忆和决策规则；为了复用 craft 的 workspace-scoped SessionManager，每个 workspace 可有一个 `hidden` 投影会话作为消息与 timeline 锚点。投影会话不是新身份，切换文件夹后仍是同一个管理 Agent。
+2. **管理 Agent 是软件级单一身份，不是每 workspace 一个不同 Agent。** 使用稳定 `agentId: manager:global`、共享用户/软件记忆和决策规则。它的用户对话入口不属于某个 workspace，而是在“所有会话”层有全局专栏；为了复用 craft 的 workspace-scoped SessionManager，每个 workspace 可有一个 `hidden` 投影锚点只挂 timeline、待审路由和权限证据。投影锚点不是新身份，也不是管理 Agent 的聊天位置。
 3. **待审队列 = 派生态，不持久化。** `getReviewQueue(teamId)` 扫描状态= `statusMap.awaitingReview` 的成员会话，关联其最新 `team_report_submitted`，按报告时间排序；`team_review_queued` 仅作通知/回放事件，队列与 position 都是算出来的，不落第二份真相。
 4. **v1 一个 workspace 一个团队。** `.fleet/team.rules.json` 单团队。删除 “其它 team 私聊” 多团队语义（移到地平线）。workspace = 项目 = 团队，简化协调与一致性维护。
 5. **成员序号派生自 `createdAt`，不写 metadata。** craft `Session` 无自由 metadata 字段；`G-01/G-02` 按成员 `createdAt` 排名实时算（createdAt 不变所以稳定），前缀取文件夹首字母（可配）。不写 label、不双写。
@@ -39,7 +39,7 @@
 - `app/apps/electron/src/renderer/pages/settings/TeamSettingsPage.tsx`
 - `app/apps/electron/src/renderer/pages/settings/team-settings-helpers.ts`
 
-新增上下文隔离字段已落到 `TeamRulesV1.managerContextPolicy`。默认值：长期偏好只注入队长、跨项目记录不注入、管理 Agent 深读成员上下文必须经过权限。
+新增上下文隔离字段已落到 `TeamRulesV1.managerContextPolicy`。默认值：长期偏好只注入队长、跨项目记录不注入、管理 Agent 深读成员上下文必须经过权限。管理 Agent 的消息入口仍需后续落到“所有会话”全局专栏，不能继续做成单个 workspace 的普通会话。
 
 当前已冻结类型、事件、命令和默认状态映射，并提供 rules 文件读取、严格校验、原子写入、最后有效版本回退及读取/预校验 RPC。团队命令已通过 `sessions:command → TeamCoordinator` 写入 permission/timeline；渲染端没有直接写 rules 文件 RPC。
 
@@ -49,6 +49,7 @@
 - **权限真相**：craft permission；队长和管理 Agent 都不能绕过。
 - **团队策略文件**：`<workspace>/.fleet/team.rules.json`。它只保存团队规则和稳定引用，不保存模型图标、运行状态、消息队列或完整成员副本。
 - **团队群聊**：使用一个 `hidden: true` 的 craft session（`teamConversationSessionId`）。它仍在原 session store 中，不是第二套聊天系统；UI 只把它渲染成“所有会话”顶部的团队群聊框。
+- **管理 Agent 全局专栏**：常驻管理 Agent 的用户对话位于“所有会话”层的专门栏，跨 Workspace 存在；workspace hidden 投影只做内部锚点，不展示为普通会话，不承载用户对话。
 - **成员运行态**：由成员 session metadata + Agent registry 派生。模型、Runtime、displayName、在线状态不能复制进规则文件形成双写。
 
 ## 2 · TeamRulesV1
@@ -202,6 +203,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 - 文案短、可操作、中文优先；不要写大段解释。必须说明“修改走会话命令、权限和 timeline”，但不重复讲架构。
 - 设置页只负责规则配置：队长、成员身份、身份标签、状态映射、团队规范。团队群聊继续放在“所有会话”顶部，不在设置页复制聊天框。
 - 设置页必须展示常驻管理 Agent 状态，并提供“长期偏好注入 / 跨项目记录注入 / 深读是否需要授权”的配置；写入同样走 `sessions:command updateTeamRules`。
+- 管理 Agent 的用户消息入口不在设置页，也不在单个 workspace 会话里；设置页只展示内部投影锚点和注入策略。
 - 写动作只走 `sessions:command` 的团队命令；设置页不得直接写 `.fleet/team.rules.json`，不得使用 localStorage 或 renderer 私有 store 作为团队真相。
 - 新增/删除页面、按钮、输入语法后，同步本文件、`AGENTS.md`、相关 docs、session tool schema/handler 和 MCP/Agent 说明。
 
@@ -217,7 +219,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 |---|---|---|
 | T-TEAM-RULES（已完成） | server-core `team-rules-*`、RPC、测试 | 已有校验/原子写/最后有效版本/读取与预校验 RPC |
 | T-AT-SLASH | renderer input/mentions、shared mentions、resources/tool docs、测试 | `@` 仅身份，`/` 调 Skill/命令，文件走附件/全部文件 |
-| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射、团队规范、管理 Agent 投影状态和上下文注入策略。剩模型图标、状态中文重命名和完整队列视图 |
+| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射、团队规范、管理 Agent 投影状态和上下文注入策略。剩模型图标、状态中文重命名、完整队列视图和“所有会话”管理 Agent 全局专栏 |
 
 ### C. B 合入后串行
 

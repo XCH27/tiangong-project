@@ -83,7 +83,10 @@ export interface TeamRulesV1 {
   version: 1
   teamId: string
   teamConversationSessionId: string
-  /** manager:global 在当前 workspace 的 hidden session 投影。 */
+  /**
+   * manager:global 在当前 workspace 的内部投影锚点。
+   * 只用于 timeline/待审路由，不是常驻管理 Agent 的用户对话位置。
+   */
   managerProjectionSessionId?: string
   leaderSessionId: string | null
   memberSessionIds: string[]

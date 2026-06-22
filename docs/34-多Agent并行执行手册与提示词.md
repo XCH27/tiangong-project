@@ -2,13 +2,13 @@
 
 > 状态日期：2026-06-22
 > 作用：把 `docs/32` 的波次与文件所有权落成**可直接复制给每个 Agent 的提示词**。每个提示词自包含：角色、必读、范围、文件所有权、消费的契约、验收、验证、汇报格式、防跑偏铁律。
-> 用法：① 先由 **Lead** 提交当前团队协议/rules 基线；② 主线更新后，同时运行 Lead Coordinator、A1、A2（三路）；③ 全部文件/Library 与 External Job 各自完成源码勘探和契约冻结后再开新波次；④ 最后做管理 Agent UI 与端到端集成。
+> 用法：① 先由 **Lead** 提交当前团队协议/rules 基线；② 主线更新后，同时运行 Lead Coordinator、A1、A2（三路）；③ 全部文件/Library 与 External Job 各自完成源码勘探和契约冻结后再开新波次；④ 最后做管理 Agent 全局专栏与端到端集成。
 
 ## 能分几个 Agent？
 
 - **Wave 0：1 个（Lead，串行阻塞）** —— 冻结契约，必须先合入。
 - **Wave 1：最多 3 路并行** —— Lead（TeamCoordinator+管理 Agent 投影）、A1（输入迁移）、A2（会话团队 UI）。这是当前协议已足够支撑的范围。
-- **Wave 2：1–2 个** —— A5（管理 Agent UI，依赖 Lead 后端）+ 集成测试。S2（openpencil 设计面）**被许可证绿灯阻塞**，解锁前不派。
+- **Wave 2：1–2 个** —— A5（管理 Agent 全局专栏，依赖 Lead 后端）+ 集成测试。S2（openpencil 设计面）**被许可证绿灯阻塞**，解锁前不派。
 
 每个 Agent 都在**自己的 git worktree + 分支**里干活；只改自己名下文件；用 `docs/32 §6` 格式汇报。
 
@@ -64,7 +64,7 @@
 - app/packages/server-core/src/services/team-rules-service.ts（加写入路径，仅 Coordinator 过 permission/timeline 后调用）
 - app/packages/server-core/src/handlers/rpc/sessions.ts（把 6 个团队命令 case 从“抛错拒绝”改为调用 Coordinator）
 - app/packages/server-core/src/handlers/rpc/team.ts（填实现：查询团队/待审队列）
-- app/packages/server-core/src/sessions/SessionManager.ts（软件级 `manager:global` 身份在每个 workspace 的 hidden 投影会话；团队收件箱引用注入；session_deleted 成员对账）
+- app/packages/server-core/src/sessions/SessionManager.ts（软件级 `manager:global` 身份在每个 workspace 的 hidden 投影锚点；团队收件箱引用注入；session_deleted 成员对账）
 - app/packages/server-core/src/handlers/session-manager-interface.ts（新方法签名）
 必须实现（按 docs/33 §0）：
 1) 投递≠运行：sendTeamMessage / 不带 autoRun 的 assignTeamTask = 入队到目标会话团队收件箱 + 写团队会话 transcript（L1，不启动 agent）；assignTeamTask autoRun=true = 在 assignee 会话启动一轮（L2，过 permission）。
@@ -156,12 +156,13 @@
 
 ---
 
-## A5 — 管理 Agent UI 入口（Wave 2）
+## A5 — 管理 Agent 全局专栏（Wave 2）
 
 ```
-角色：A5。前置：Lead 的管理 Agent 后端（常驻 hidden 会话 + manager actor）已合入。目标：右下角跨文件夹常驻管理 Agent 入口 + 应用退出行为设置。读 docs/17 §2/§7.2、docs/04 D17。
+角色：A5。前置：Lead 的管理 Agent 后端（`manager:global` + workspace hidden 投影锚点）已合入。目标：在“所有会话”层做跨文件夹常驻管理 Agent 专栏 + 可选右下角唤起按钮 + 应用退出行为设置。读 docs/17 §2/§7、docs/04 D17。
 改这些文件（仅你）：
-- 新建右下角常驻入口组件（跨文件夹存在；显示软件级身份，不混进项目队员列表）
+- 新建“所有会话”层的管理 Agent 专栏（跨文件夹存在；显示软件级身份，不混进项目队员列表；不把消息写进某个 workspace 普通会话）
+- 右下角按钮只作为唤起/最小化入口，不能作为主要消息位置
 - 新建退出行为设置组件（直接退出 / 收成小窗或常驻入口，保留管理 Agent+长任务+通知状态）
 禁改：protocol/*、SessionManager*、其它 Agent 文件。
 要求：切换文件夹入口仍在；可发起设置修改/素材整理/代理回复，但所有写操作走 permission（L0/L1 自动，L2 规则，L3 必确认）；不绕 permission、不自动同意 L3。

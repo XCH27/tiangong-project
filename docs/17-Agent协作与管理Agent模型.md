@@ -4,7 +4,7 @@
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前分支状态：团队协议、TeamCoordinator、团队事件持久化、收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落入当前分支。管理 Agent 已有固定身份 `manager:global` 与每个 Workspace 的 hidden 投影会话，并在团队设置页可见；lifecycle/memory/decision RPC、管理 Agent 自动代答和完整团队 UI 尚未落入当前分支。团队协议以 `docs/33` 为准；旧工作树实现只算候选资产。
+> 当前分支状态：团队协议、TeamCoordinator、团队事件持久化、收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落入当前分支。管理 Agent 已有固定身份 `manager:global` 与每个 Workspace 的 hidden 投影锚点，并在团队设置页可见；它的用户对话入口尚未迁到“所有会话”全局专栏。lifecycle/memory/decision RPC、管理 Agent 自动代答和完整团队 UI 尚未落入当前分支。团队协议以 `docs/33` 为准；旧工作树实现只算候选资产。
 
 ---
 
@@ -20,6 +20,8 @@ craft-agents-oss 目前有 subagent，但没有成熟的"多 Agent 同场协作"
 | **项目 Agent**（按职责） | 队长 / 代码 / 设计 / 审查 / 测试 / 上下文 Agent | 具体项目的执行 | 按任务深入对应项目上下文 |
 
 **关键纪律：管理 Agent 不和项目 Agent 混成一个身份。** 管理 Agent 可以调度、提供背景/记忆/偏好/权限判断，但它不是"每个任务都深度参与的 coding agent"。它平时不应无缘无故消耗大量上下文；只有用户明确要求，或某个项目 Agent 需要它提供背景时，它才进入更深的项目上下文。
+
+管理 Agent 的用户对话也不属于单个工作区。它应该在“所有会话”层拥有自己的常驻专栏；每个 Workspace 的 hidden 投影只用于挂 timeline、权限证据和待审路由，不作为人类与管理 Agent 聊天的位置。
 
 ## 1.1 · LobeHub 给这一层的启发
 
@@ -133,7 +135,8 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 目标态布局见 `docs/18`。多 Agent 的可见性要求：
 
-- **NAV Rail "在工作的智能体"**：管理 Agent（常驻，置顶）+ 当前项目 Agent 名册。
+- **所有会话全局专栏**：管理 Agent（常驻，跨 Workspace）在所有会话层有自己的专栏；项目切换时仍是同一个软件管家。
+- **NAV Rail "在工作的智能体"**：当前项目 Agent 名册；管理 Agent 可置顶显示状态，但不混成项目成员。
 - **Actor 徽章**：每条动作/选区/消息标 `管理Agent` / `队长` / `代码Agent(runtime)`，多 Agent 用不同配色。
 - **Action Ticker**：实时动作流按 actor 分流，点动作可跳转/回放；并发输出不混成单流。
 - **权限卡**：高风险动作进 Conversation 审批，按 Agent 分组；自动决策代答的也要在 Ticker 显示"管理 Agent 已按规则 X 自动同意"。
