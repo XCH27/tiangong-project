@@ -211,6 +211,9 @@ import type {
   DirectoryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
+  TeamRulesV1,
+  TeamRulesLoadResult,
+  TeamRulesValidationResult,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -261,6 +264,8 @@ export interface ElectronAPI {
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
+  getTeamRules(workspaceId: string): Promise<TeamRulesLoadResult>
+  validateTeamRules(workspaceId: string, rules: TeamRulesV1): Promise<TeamRulesValidationResult>
   createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
   updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }): Promise<{ success: boolean }>

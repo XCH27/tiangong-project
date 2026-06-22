@@ -24,6 +24,7 @@ import type {
 } from '../agent/index'
 import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
 import type { DesignActionPermission } from './design-service'
+import type { TeamSessionCommand, TeamSessionEvent } from './team'
 
 // Re-export generateMessageId for handler convenience
 export { generateMessageId } from '@craft-agent/core/types'
@@ -216,6 +217,8 @@ export type SessionEvent =
   | { type: 'design_action_proposed'; sessionId: string; action: DesignAction; patchPreview: DesignPatch; permissionRequestId?: string; permission?: DesignActionPermission }
   | { type: 'design_patch_committed'; sessionId: string; patch: DesignPatch; actor: ActorRef }
   | { type: 'design_patch_rolled_back'; sessionId: string; patchId: string; actor: ActorRef }
+  // Fleet 团队编排事件（docs/33）：会话即 Agent，不引入第二套 team/session store。
+  | TeamSessionEvent
 
 export interface SendMessageOptions {
   skillSlugs?: string[]
@@ -256,6 +259,7 @@ export type SessionCommand =
   | { type: 'addAnnotation'; messageId: string; annotation: AnnotationV1 }
   | { type: 'removeAnnotation'; messageId: string; annotationId: string }
   | { type: 'updateAnnotation'; messageId: string; annotationId: string; patch: Partial<AnnotationV1> }
+  | TeamSessionCommand
 
 export interface NewChatActionParams {
   input?: string

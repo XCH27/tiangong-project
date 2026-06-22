@@ -12,7 +12,7 @@
    - **投递**：`sendTeamMessage` / 不带 `autoRun` 的 `assignTeamTask` = 把消息/任务**入队**到目标会话的「团队收件箱」（一次性 hidden 上下文，复用 craft 远程 handoff 的 “首轮注入” 机制）+ 写入团队会话 transcript。**不自动启动 agent**。权限 **L1**。idle 会话以未读角标呈现，等下一轮消费。
    - **运行（dispatch）**：带 `autoRun:true` 的 `assignTeamTask` = **立刻在 assignee 会话启动一轮执行**。启动 agent 运行是 **L2**，过 permission。
    - 契约落点：`assignTeamTask.autoRun?`、`team_message.delivery: 'queued'|'delivered'`（已改 `team.ts`）。
-2. **管理 Agent = 每 workspace 一个常驻 `hidden` 会话**（稳定 id，actor `manager:<workspaceId>`），能运行/持记忆/作为真实 actor 发事件。不是凭空的非会话 actor，也不另起实体类型。首次组队或首次被调用时惰性创建。
+2. **管理 Agent 是软件级单一身份，不是每 workspace 一个不同 Agent。** 使用稳定 `agentId: manager:global`、共享用户/软件记忆和决策规则；为了复用 craft 的 workspace-scoped SessionManager，每个 workspace 可有一个 `hidden` 投影会话作为消息与 timeline 锚点。投影会话不是新身份，切换文件夹后仍是同一个管理 Agent。
 3. **待审队列 = 派生态，不持久化。** `getReviewQueue(teamId)` 扫描状态= `statusMap.awaitingReview` 的成员会话，关联其最新 `team_report_submitted`，按报告时间排序；`team_review_queued` 仅作通知/回放事件，队列与 position 都是算出来的，不落第二份真相。
 4. **v1 一个 workspace 一个团队。** `.fleet/team.rules.json` 单团队。删除 “其它 team 私聊” 多团队语义（移到地平线）。workspace = 项目 = 团队，简化协调与一致性维护。
 5. **成员序号派生自 `createdAt`，不写 metadata。** craft `Session` 无自由 metadata 字段；`G-01/G-02` 按成员 `createdAt` 排名实时算（createdAt 不变所以稳定），前缀取文件夹首字母（可配）。不写 label、不双写。
@@ -115,7 +115,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 | `team_review_queued` | 报告进入队长或管理 Agent 的待审队列 |
 | `team_rules_validation_failed` | 规则文件非法并回退到最后有效版本 |
 
-`ActorRef` 当前只有 `user | agent`，因此自动排队使用稳定的管理 Agent actor（如 `manager:<workspaceId>`），不要凭空写 `kind: 'system'`。
+`ActorRef` 当前只有 `user | agent`，因此自动排队使用稳定的管理 Agent actor（`agentId: manager:global`，并附当前 workspace 投影 session），不要凭空写 `kind: 'system'`。
 
 ## 5 · 团队消息与隐私
 

@@ -373,6 +373,13 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.removeMessageAnnotation(sessionId, command.messageId, command.annotationId)
       case 'updateAnnotation':
         return sessionManager.updateMessageAnnotation(sessionId, command.messageId, command.annotationId, command.patch)
+      case 'promoteTeamLeader':
+      case 'sendTeamMessage':
+      case 'assignTeamTask':
+      case 'submitTeamReport':
+      case 'changeTeamIdentityTag':
+      case 'updateTeamRules':
+        throw new Error(`团队命令 ${command.type} 尚未接入 TeamCoordinator，当前不会假执行`)
       default: {
         const _exhaustive: never = command
         throw new Error(`Unknown session command: ${JSON.stringify(command)}`)

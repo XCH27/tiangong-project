@@ -2,12 +2,12 @@
 
 > 状态日期：2026-06-22
 > 作用：把 `docs/32` 的波次与文件所有权落成**可直接复制给每个 Agent 的提示词**。每个提示词自包含：角色、必读、范围、文件所有权、消费的契约、验收、验证、汇报格式、防跑偏铁律。
-> 用法：① 先只派 **Lead** 跑 Wave 0（契约冻结）并合入主线；② 主线更新后，**同时派 A1–A4 + 让 Lead 继续 Coordinator**（5 路并行，各自独立 worktree/分支）；③ 全部按格式汇报，由你/Lead 串行合入；④ Wave 2 再派 A5 与集成。
+> 用法：① 先由 **Lead** 提交当前团队协议/rules 基线；② 主线更新后，同时运行 Lead Coordinator、A1、A2（三路）；③ 全部文件/Library 与 External Job 各自完成源码勘探和契约冻结后再开新波次；④ 最后做管理 Agent UI 与端到端集成。
 
 ## 能分几个 Agent？
 
 - **Wave 0：1 个（Lead，串行阻塞）** —— 冻结契约，必须先合入。
-- **Wave 1：最多 5 个并行** —— Lead（TeamCoordinator+管理Agent）、A1（输入迁移）、A2（会话团队 UI）、A3（全部文件+Library）、A4（External Job）。四个并行 Agent 文件级不相交，不会互相干扰。
+- **Wave 1：最多 3 路并行** —— Lead（TeamCoordinator+管理 Agent 投影）、A1（输入迁移）、A2（会话团队 UI）。这是当前协议已足够支撑的范围。
 - **Wave 2：1–2 个** —— A5（管理 Agent UI，依赖 Lead 后端）+ 集成测试。S2（openpencil 设计面）**被许可证绿灯阻塞**，解锁前不派。
 
 每个 Agent 都在**自己的 git worktree + 分支**里干活；只改自己名下文件；用 `docs/32 §6` 格式汇报。
@@ -44,18 +44,16 @@
 角色：Lead / 主线。你负责两件最难、最易返工的事：① Wave 0 冻结全部跨 Agent 契约；② Wave 1 实现 TeamCoordinator + 管理 Agent 后端 + permission/timeline 接线 + 队长边界。
 
 == Wave 0（先做，做完提交并通知其他 Agent 可以开工）==
-目标：一次性把 A1–A5 需要的所有契约加齐并冻结，之后这些文件对并行 Agent 只读。
+目标：提交并冻结本波团队功能需要的契约。其它域在自己的波次勘探后再冻结，不提前猜字段。
 改这些文件（仅你可改）：
-- app/packages/shared/src/protocol/channels.ts：加 RPC_CHANNELS.team.*（命令/查询：promoteLeader/sendMessage/assignTask/submitReport/changeIdentity/updateRules/getTeam/getReviewQueue）、files.*、externalJob.* 通道
-- app/packages/shared/src/protocol/routing.ts：把上面通道分类（团队/文件/job 均 LOCAL_ONLY；如有远端语义单独定义）
-- app/packages/shared/src/protocol/dto.ts：SessionEvent 已含 team 事件；如 A3/A4 需新事件在此加
-- app/packages/shared/src/protocol/external-job.ts（新建）：Job 模型（id/type/inputRefs/target/permissionLevel/status/result/cost/provenance），type 含 external_ai_review/image_gen/image_to_3d/video_gen/video_render/live_web_gen/deploy_publish（docs/31 §5）
-- app/packages/shared/src/protocol/files.ts（新建）：FileEntry/FileFilter/LibraryItem 契约（来源/hash/许可/使用位置/回滚）
+- app/packages/shared/src/protocol/channels.ts：只补本波真实需要的 team 查询通道；团队写动作继续走 SessionCommand
+- app/packages/shared/src/protocol/routing.ts：只分类本波新增团队通道
+- app/packages/shared/src/protocol/dto.ts：确认 SessionEvent/SessionCommand 引用 team 契约
 - app/packages/shared/src/protocol/index.ts：导出新模块
 - app/apps/electron/src/transport/channel-map.ts + app/apps/electron/src/shared/types.ts：对应 IPC 映射
-- app/packages/shared/src/i18n/locales/{en,zh-Hans,es}.json：一次加齐所有 Agent 要用的 key（团队状态词 待安排/进行中/待审查/完成/取消、队长/身份标签、团队群聊、全部文件过滤类型等），字母序、三语齐全
-- app/packages/server-core/src/handlers/rpc/index.ts：注册 team/files-library/external-job handler
-- app/packages/server-core/src/handlers/rpc/{team,files-library,external-job}.ts：建**空壳** register 函数（空实现或抛 NotImplemented），Wave 1 移交给 Lead(team)/A3/A4 填实现
+- app/packages/shared/src/i18n/locales/*.json：加齐本波团队 key，覆盖 registry 中全部语言并通过 parity
+- app/packages/server-core/src/handlers/rpc/index.ts：只注册已经有真实实现的 team handler
+- app/packages/server-core/src/handlers/rpc/team.ts：真实 Coordinator 查询接口明确后再新增；不建 files-library/external-job 空壳
 - app/packages/server-core/src/handlers/handler-deps.ts：如需新依赖
 验收：typecheck:all 绿；routing 穷尽测试通过（新通道已分类）；i18n parity/sorted/coverage 通过；不实现业务逻辑，只冻结契约。提交后在汇报里列出所有新通道/事件/类型名，供 A1–A4 对齐。
 
@@ -66,13 +64,13 @@
 - app/packages/server-core/src/services/team-rules-service.ts（加写入路径，仅 Coordinator 过 permission/timeline 后调用）
 - app/packages/server-core/src/handlers/rpc/sessions.ts（把 6 个团队命令 case 从“抛错拒绝”改为调用 Coordinator）
 - app/packages/server-core/src/handlers/rpc/team.ts（填实现：查询团队/待审队列）
-- app/packages/server-core/src/sessions/SessionManager.ts（管理 Agent 常驻 hidden 会话；团队收件箱一次性 hidden 上下文注入，复用远程 handoff 首轮注入机制；session_deleted 成员对账）
+- app/packages/server-core/src/sessions/SessionManager.ts（软件级 `manager:global` 身份在每个 workspace 的 hidden 投影会话；团队收件箱引用注入；session_deleted 成员对账）
 - app/packages/server-core/src/handlers/session-manager-interface.ts（新方法签名）
 必须实现（按 docs/33 §0）：
 1) 投递≠运行：sendTeamMessage / 不带 autoRun 的 assignTeamTask = 入队到目标会话团队收件箱 + 写团队会话 transcript（L1，不启动 agent）；assignTeamTask autoRun=true = 在 assignee 会话启动一轮（L2，过 permission）。
 2) 团队群聊 = 一个 hidden craft 会话（teamConversationSessionId）；broadcast fanout 到全部成员收件箱；@private 只投 audienceSessionIds，其余成员收不到。
 3) 任务/汇报/待审：submitTeamReport（结构化，不猜“最后一条 assistant 消息”）→ 同事务把会话状态置 awaitingReview + 发 team_review_queued；getReviewQueue 派生（扫 awaitingReview 成员 + 最新 report，不持久化队列）。
-4) 管理 Agent = 每 workspace 一个常驻 hidden 会话，actor manager:<workspaceId>；惰性创建；只能 L0/L1 自动代答，永不自动 L2/L3，不绕 permission。
+4) 管理 Agent = 软件级单一身份 `manager:global`；每 workspace 的 hidden 会话只是 timeline/消息投影，不得产生不同记忆或不同身份。只能 L0/L1 自动代答，永不自动 L2/L3，不绕 permission。
 5) 队长边界：分派/规范/请求审查/汇总/调整成员；不能改全局规则、不读其它私聊、不绕 permission、不批 L3。
 6) 权限矩阵（docs/33 §0）：promoteLeader/send/assign(no run)/changeIdentity/submitReport=L1；autoRun dispatch / updateRules=L2；删除团队/清空队长成员=L3。每个写动作发带 actor 的 SessionEvent 进同一条 timeline，可回放可回滚。
 验收：为 Coordinator 写目标测试（投递 vs 运行、broadcast vs private 可见性、report→awaitingReview→review queue、权限分级、成员对账、管理 Agent 自动代答只限 L0/L1）；typecheck:all 绿；团队命令不再抛“未接入”。
@@ -122,7 +120,7 @@
 
 ---
 
-## A3 — 全部文件 + Library 🧩
+## A3 — 全部文件 + Library（后续独立契约波次，当前不要派）
 
 ```
 角色：A3。目标：建「全部文件」raw file view（My Workspace + 用户选的本地素材目录，按类型过滤）和 Library 资产层（来源/hash/许可/使用位置/回滚），别做成本地知识库。读 docs/04 D15/D18、docs/32 §3。
@@ -141,7 +139,7 @@
 
 ---
 
-## A4 — External Job 模型 🧩
+## A4 — External Job 模型（后续独立契约波次，当前不要派）
 
 ```
 角色：A4。目标：把“外发执行”（代码审查/生图/生视频/图转3D/网页生成/发布/外部AI审查）统一成一个 Job 模型 + 服务，External Review 降为其一个 type。读 docs/31 §5、docs/30 §6。

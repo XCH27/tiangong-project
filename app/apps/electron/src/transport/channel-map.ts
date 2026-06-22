@@ -47,6 +47,8 @@ export const CHANNEL_MAP = {
 
   // Workspace management
   getWorkspaces: invoke(RPC_CHANNELS.workspaces.GET),
+  getTeamRules: invoke(RPC_CHANNELS.teamRules.GET),
+  validateTeamRules: invoke(RPC_CHANNELS.teamRules.VALIDATE),
   createWorkspace: invoke(RPC_CHANNELS.workspaces.CREATE),
   checkWorkspaceSlug: invoke(RPC_CHANNELS.workspaces.CHECK_SLUG),
   updateWorkspaceRemoteServer: invoke(RPC_CHANNELS.workspaces.UPDATE_REMOTE),

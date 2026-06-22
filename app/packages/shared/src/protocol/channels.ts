@@ -439,6 +439,12 @@ export const RPC_CHANNELS = {
     COMMIT_PATCH: 'design:commitPatch',
     ROLLBACK_PATCH: 'design:rollbackPatch',
   },
+
+  // Fleet 团队规则。读取和预校验可直接调用；写入必须走 SessionCommand + permission + timeline。
+  teamRules: {
+    GET: 'teamRules:get',
+    VALIDATE: 'teamRules:validate',
+  },
 } as const
 
 // IPC_CHANNELS compat alias removed — all consumers now use RPC_CHANNELS

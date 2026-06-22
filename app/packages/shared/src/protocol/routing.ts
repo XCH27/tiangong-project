@@ -38,6 +38,10 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.window.FOCUS_STATE,
   RPC_CHANNELS.window.GET_FOCUS_STATE,
 
+  // team rules — workspace-local policy file; writes are gated by session command/permission
+  RPC_CHANNELS.teamRules.GET,
+  RPC_CHANNELS.teamRules.VALIDATE,
+
   // file — native file dialog
   RPC_CHANNELS.file.OPEN_DIALOG,
   // file — draft hydration for user-attached paths. Paths in drafts.json were captured

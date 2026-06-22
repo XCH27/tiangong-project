@@ -87,7 +87,7 @@ export interface TeamRulesValidationResult {
 
 export interface TeamRulesLoadResult {
   rules: TeamRulesV1 | null
-  source: 'disk' | 'missing' | 'last-valid'
+  source: 'disk' | 'missing' | 'last-valid' | 'invalid'
   path: string
   error?: string
 }
