@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { DEFAULT_TEAM_STATUS_MAP, type TeamRulesV1 } from '@craft-agent/shared/protocol'
+import { DEFAULT_TEAM_MANAGER_CONTEXT_POLICY, DEFAULT_TEAM_STATUS_MAP, type TeamRulesV1 } from '@craft-agent/shared/protocol'
 import { TeamRulesService, validateTeamRules } from './team-rules-service'
 
 function validRules(): TeamRulesV1 {
@@ -31,6 +31,7 @@ function validRules(): TeamRulesV1 {
       requireRunIdForReport: true,
       queueLatestStructuredReport: true,
     },
+    managerContextPolicy: { ...DEFAULT_TEAM_MANAGER_CONTEXT_POLICY },
     norms: ['先报告阻塞，再扩范围'],
   }
 }
@@ -108,5 +109,20 @@ describe('TeamRulesService', () => {
     expect(result.errors.some(error => error.includes('不存在的状态'))).toBeTrue()
     expect(result.errors.some(error => error.includes('mentionPrefix'))).toBeTrue()
     expect(result.errors.some(error => error.includes('未知标签'))).toBeTrue()
+  })
+
+  it('validates manager context injection policy', () => {
+    expect(validateTeamRules(validRules()).valid).toBeTrue()
+
+    const rules = validRules()
+    rules.managerContextPolicy = {
+      userPreferenceInjection: 'allMembers',
+      crossProjectRecordInjection: 'allMembers' as 'leaderOnly',
+      deepMemberContextRequiresPermission: true,
+    }
+
+    const result = validateTeamRules(rules)
+    expect(result.valid).toBeFalse()
+    expect(result.errors).toContain("managerContextPolicy.crossProjectRecordInjection 必须为 'off' 或 'leaderOnly'")
   })
 })

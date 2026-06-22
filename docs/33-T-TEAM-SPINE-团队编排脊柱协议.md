@@ -1,6 +1,6 @@
 # 33 · T-TEAM-SPINE 团队编排脊柱协议
 
-> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；常驻管理 Agent 已有 `manager:global` 身份和 hidden 投影会话但尚未接自动代理；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
+> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；常驻管理 Agent 已有 `manager:global` 身份和 hidden 投影会话，团队设置页已可配置长期偏好/跨项目记录注入策略，但尚未接自动代理；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
 > 目的：固定“会话即 Agent、队长、团队群聊、身份标签、状态、`@`/`/`、管理 Agent”的共同契约，让后端和 UI 可以并行开发而不产生第二套 session/team/permission。
 > 参考：AionUi 可按绿灯范围迁 Team/进程生命周期；Warp 只黑盒学习 task/run、Agent 间消息、长任务 block 和失败信息。
 
@@ -38,6 +38,8 @@
 - `app/apps/electron/src/renderer/components/app-shell/team-chat-helpers.ts`
 - `app/apps/electron/src/renderer/pages/settings/TeamSettingsPage.tsx`
 - `app/apps/electron/src/renderer/pages/settings/team-settings-helpers.ts`
+
+新增上下文隔离字段已落到 `TeamRulesV1.managerContextPolicy`。默认值：长期偏好只注入队长、跨项目记录不注入、管理 Agent 深读成员上下文必须经过权限。
 
 当前已冻结类型、事件、命令和默认状态映射，并提供 rules 文件读取、严格校验、原子写入、最后有效版本回退及读取/预校验 RPC。团队命令已通过 `sessions:command → TeamCoordinator` 写入 permission/timeline；渲染端没有直接写 rules 文件 RPC。
 
@@ -82,6 +84,11 @@ interface TeamRulesV1 {
     requireRunIdForReport: boolean
     queueLatestStructuredReport: boolean
   }
+  managerContextPolicy: {
+    userPreferenceInjection: 'off' | 'leaderOnly' | 'allMembers'
+    crossProjectRecordInjection: 'off' | 'leaderOnly'
+    deepMemberContextRequiresPermission: boolean
+  }
   norms: string[]
 }
 ```
@@ -99,6 +106,16 @@ interface TeamRulesV1 {
 status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` 和现有状态校验解析，不能再创造 `unassigned`/`active` 这一套持久化值。`app/packages/core` 中的下划线类型属于旧/不同层表示，不能据此改写 renderer 的动态 status ID。
 
 规则文件的写入必须走 LOCAL_ONLY RPC、permission 和 timeline。直接手改文件允许，但加载时必须校验；失败时保留最后一次有效配置并发 `team_rules_validation_failed`，不能静默覆盖。
+
+`managerContextPolicy` 控制管理 Agent 如何把软件级记忆注入项目：
+
+| 字段 | 默认 | 含义 |
+|---|---|---|
+| `userPreferenceInjection` | `leaderOnly` | 用户长期偏好注入范围：关闭 / 只给队长 / 给全体成员 |
+| `crossProjectRecordInjection` | `off` | 跨项目经验、风险和参考只能关闭或只给队长，不允许直接给全体成员 |
+| `deepMemberContextRequiresPermission` | `true` | 管理 Agent 要看队员完整会话、文件细节或执行过程时必须先过 permission |
+
+设置页必须提供这些开关；后端自动代理实现必须先读这个策略，不得默认把全局记忆塞给所有项目 Agent。
 
 ## 3 · 成员身份与稳定序号
 
@@ -133,6 +150,16 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 - `@某Agent/会话/身份`：服务端解析为 `audienceSessionIds`，只把内容加入目标 Agent 上下文；其他项目 Agent 不得收到。
 - 人类与常驻管理 Agent可按权限审计团队消息；“私聊”表示对其他项目 Agent 不可见，不承诺操作系统级加密。
 - fanout 只保存消息引用/投递状态，不在每个成员 session 复制完整消息形成多份真相。
+
+### 5.1 · 管理 Agent 信息隔离
+
+管理 Agent 的项目观察遵守“附庸的附庸不是我的附庸”：
+
+- 有队长：管理 Agent 默认只看队长摘要、队长请求、队长转交的报告；队员完整会话不进管理 Agent 上下文。
+- 无队长：管理 Agent 才读取普通 Agent 摘要和待审报告，作为临时项目入口。
+- 队员：不能看到队长和管理 Agent 的内部协调记录。
+- 队长：不能看到管理 Agent 的长期记忆、跨项目记录、用户全局偏好原文；只能收到管理 Agent 按 `managerContextPolicy` 注入的摘要。
+- 深读：任何越过摘要层的读取都必须有 permission、理由和 timeline 记录。
 
 ## 6 · 状态与审查队列
 
@@ -174,6 +201,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 - 页面结构沿用 `PanelHeader + ScrollArea + max-w-3xl + SettingsSection + SettingsCard/SettingsRow`。
 - 文案短、可操作、中文优先；不要写大段解释。必须说明“修改走会话命令、权限和 timeline”，但不重复讲架构。
 - 设置页只负责规则配置：队长、成员身份、身份标签、状态映射、团队规范。团队群聊继续放在“所有会话”顶部，不在设置页复制聊天框。
+- 设置页必须展示常驻管理 Agent 状态，并提供“长期偏好注入 / 跨项目记录注入 / 深读是否需要授权”的配置；写入同样走 `sessions:command updateTeamRules`。
 - 写动作只走 `sessions:command` 的团队命令；设置页不得直接写 `.fleet/team.rules.json`，不得使用 localStorage 或 renderer 私有 store 作为团队真相。
 - 新增/删除页面、按钮、输入语法后，同步本文件、`AGENTS.md`、相关 docs、session tool schema/handler 和 MCP/Agent 说明。
 
@@ -189,7 +217,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 |---|---|---|
 | T-TEAM-RULES（已完成） | server-core `team-rules-*`、RPC、测试 | 已有校验/原子写/最后有效版本/读取与预校验 RPC |
 | T-AT-SLASH | renderer input/mentions、shared mentions、resources/tool docs、测试 | `@` 仅身份，`/` 调 Skill/命令，文件走附件/全部文件 |
-| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射、团队规范和管理 Agent 投影状态。剩模型图标、状态中文重命名和完整队列视图 |
+| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射、团队规范、管理 Agent 投影状态和上下文注入策略。剩模型图标、状态中文重命名和完整队列视图 |
 
 ### C. B 合入后串行
 

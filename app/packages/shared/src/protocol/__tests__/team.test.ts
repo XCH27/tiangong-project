@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import {
   DEFAULT_TEAM_STATUS_MAP,
+  DEFAULT_TEAM_MANAGER_CONTEXT_POLICY,
   TEAM_STATUS_SEMANTICS,
   isReservedTeamStatusId,
+  normalizeTeamManagerContextPolicy,
   normalizeTeamStatusMap,
   type TeamSessionCommand,
   type TeamSessionEvent,
@@ -39,6 +41,18 @@ describe('team protocol defaults', () => {
     expect(normalizeTeamStatusMap({ active: 'custom-active' })).toEqual({
       ...DEFAULT_TEAM_STATUS_MAP,
       active: 'custom-active',
+    })
+  })
+
+  test('keeps manager context injection conservative by default', () => {
+    expect(DEFAULT_TEAM_MANAGER_CONTEXT_POLICY).toEqual({
+      userPreferenceInjection: 'leaderOnly',
+      crossProjectRecordInjection: 'off',
+      deepMemberContextRequiresPermission: true,
+    })
+    expect(normalizeTeamManagerContextPolicy({ crossProjectRecordInjection: 'leaderOnly' })).toEqual({
+      ...DEFAULT_TEAM_MANAGER_CONTEXT_POLICY,
+      crossProjectRecordInjection: 'leaderOnly',
     })
   })
 })

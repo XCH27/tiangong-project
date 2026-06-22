@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { dirname, join } from 'node:path'
 import { listStatuses } from '@craft-agent/shared/statuses'
 import {
+  DEFAULT_TEAM_MANAGER_CONTEXT_POLICY,
   TEAM_STATUS_SEMANTICS,
+  type ManagerContextInjectionTarget,
   type TeamRulesLoadResult,
   type TeamRulesV1,
   type TeamRulesValidationResult,
@@ -27,6 +29,9 @@ function collectDuplicates(values: string[]): string[] {
   }
   return [...duplicates]
 }
+
+const MANAGER_CONTEXT_INJECTION_TARGETS = new Set<ManagerContextInjectionTarget>(['off', 'leaderOnly', 'allMembers'])
+const CROSS_PROJECT_INJECTION_TARGETS = new Set<ManagerContextInjectionTarget>(['off', 'leaderOnly'])
 
 export function validateTeamRules(
   value: unknown,
@@ -126,11 +131,33 @@ export function validateTeamRules(
     }
   }
 
+  if (!isPlainObject(value.managerContextPolicy)) {
+    errors.push('managerContextPolicy 必须是对象')
+  } else {
+    if (!MANAGER_CONTEXT_INJECTION_TARGETS.has(value.managerContextPolicy.userPreferenceInjection as ManagerContextInjectionTarget)) {
+      errors.push("managerContextPolicy.userPreferenceInjection 必须为 'off'、'leaderOnly' 或 'allMembers'")
+    }
+    if (!CROSS_PROJECT_INJECTION_TARGETS.has(value.managerContextPolicy.crossProjectRecordInjection as ManagerContextInjectionTarget)) {
+      errors.push("managerContextPolicy.crossProjectRecordInjection 必须为 'off' 或 'leaderOnly'")
+    }
+    if (typeof value.managerContextPolicy.deepMemberContextRequiresPermission !== 'boolean') {
+      errors.push('managerContextPolicy.deepMemberContextRequiresPermission 必须是布尔值')
+    }
+  }
+
   if (!Array.isArray(value.norms) || value.norms.some(item => typeof item !== 'string')) {
     errors.push('norms 必须是字符串数组')
   }
 
   return { valid: errors.length === 0, errors }
+}
+
+function withTeamRulesDefaults(candidate: unknown): unknown {
+  if (!isPlainObject(candidate)) return candidate
+  return {
+    managerContextPolicy: { ...DEFAULT_TEAM_MANAGER_CONTEXT_POLICY },
+    ...candidate,
+  }
 }
 
 export class TeamRulesService {
@@ -152,7 +179,7 @@ export class TeamRulesService {
     if (!existsSync(this.path)) return { rules: null, source: 'missing', path: this.path }
 
     try {
-      const candidate: unknown = JSON.parse(readFileSync(this.path, 'utf8'))
+      const candidate: unknown = withTeamRulesDefaults(JSON.parse(readFileSync(this.path, 'utf8')))
       const result = this.validate(candidate)
       if (!result.valid) throw new Error(result.errors.join('; '))
       this.lastValid = candidate as TeamRulesV1
@@ -184,7 +211,7 @@ export class TeamRulesService {
   private loadPersistedFallback(): TeamRulesV1 | null {
     if (!existsSync(this.lastValidPath)) return null
     try {
-      const candidate: unknown = JSON.parse(readFileSync(this.lastValidPath, 'utf8'))
+      const candidate: unknown = withTeamRulesDefaults(JSON.parse(readFileSync(this.lastValidPath, 'utf8')))
       const result = this.validate(candidate)
       if (!result.valid) return null
       this.lastValid = candidate as TeamRulesV1

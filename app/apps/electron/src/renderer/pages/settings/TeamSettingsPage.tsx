@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2, RefreshCw, Save, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { TeamIdentityTag, TeamProjection, TeamRulesLoadResult, TeamRulesPatch, TeamRulesV1, TeamStatusMap } from '@craft-agent/shared/protocol'
+import type { TeamIdentityTag, TeamManagerContextPolicy, TeamProjection, TeamRulesLoadResult, TeamRulesPatch, TeamRulesV1, TeamStatusMap } from '@craft-agent/shared/protocol'
 
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { SettingsCard, SettingsCardContent, SettingsCardFooter, SettingsInput, SettingsRow, SettingsSection, SettingsTextarea } from '@/components/settings'
+import { SettingsCard, SettingsCardContent, SettingsCardFooter, SettingsInput, SettingsRow, SettingsSection, SettingsTextarea, SettingsToggle } from '@/components/settings'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { routes } from '@/lib/navigate'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
@@ -17,6 +17,7 @@ import {
   DEFAULT_TEAM_ID,
   TEAM_STATUS_FIELDS,
   getEditableIdentityTags,
+  getEditableManagerContextPolicy,
   getEditableNorms,
   getEditableStatusMap,
   getEditableTeamId,
@@ -67,6 +68,7 @@ export default function TeamSettingsPage() {
 
   const [identityTags, setIdentityTags] = useState<TeamIdentityTag[]>([])
   const [statusMap, setStatusMap] = useState<TeamStatusMap>(getEditableStatusMap(null, null))
+  const [managerContextPolicy, setManagerContextPolicy] = useState<TeamManagerContextPolicy>(getEditableManagerContextPolicy(null, null))
   const [normsText, setNormsText] = useState('')
   const [draftTag, setDraftTag] = useState<TeamIdentityTag>({ id: '', displayName: '', systemPromptPreset: '' })
 
@@ -96,6 +98,7 @@ export default function TeamSettingsPage() {
       setTeam(nextTeam)
       setIdentityTags(getEditableIdentityTags(nextRules.rules, nextTeam))
       setStatusMap(getEditableStatusMap(nextRules.rules, nextTeam))
+      setManagerContextPolicy(getEditableManagerContextPolicy(nextRules.rules, nextTeam))
       setNormsText(normsToText(getEditableNorms(nextRules.rules, nextTeam)))
       setError(nextRules.error ?? null)
     } catch (err) {
@@ -151,6 +154,10 @@ export default function TeamSettingsPage() {
   const saveStatusMap = useCallback(async () => {
     await savePatch({ statusMap }, '状态映射已保存')
   }, [savePatch, statusMap])
+
+  const saveManagerContextPolicy = useCallback(async () => {
+    await savePatch({ managerContextPolicy }, '管理 Agent 上下文策略已保存')
+  }, [managerContextPolicy, savePatch])
 
   const saveNorms = useCallback(async () => {
     await savePatch({ norms: textToNorms(normsText) }, '团队规范已保存')
@@ -305,6 +312,52 @@ export default function TeamSettingsPage() {
                         <span className="text-sm text-muted-foreground">未接入</span>
                       </SettingsRow>
                     </SettingsCard>
+                  </SettingsSection>
+
+                  <SettingsSection
+                    title="上下文注入"
+                    description="跨项目记录和用户长期偏好只由管理 Agent 注入；项目 Agent 不直接读取全局记忆。"
+                  >
+                    <SettingsCard>
+                      <SettingsRow label="观察边界" description="有队长时只看队长摘要；无队长时才看普通成员摘要。">
+                        <span className="text-sm text-muted-foreground">固定隔离</span>
+                      </SettingsRow>
+                      <SettingsRow label="长期偏好" description="用户风格、常用判断和软件偏好注入到谁的上下文。">
+                        <select
+                          value={managerContextPolicy.userPreferenceInjection}
+                          onChange={event => setManagerContextPolicy(prev => ({ ...prev, userPreferenceInjection: event.target.value as TeamManagerContextPolicy['userPreferenceInjection'] }))}
+                          disabled={isSaving}
+                          className="h-8 min-w-[160px] rounded-md bg-muted/50 px-2 text-sm text-foreground outline-none shadow-minimal"
+                        >
+                          <option value="off">不注入</option>
+                          <option value="leaderOnly">只给队长</option>
+                          <option value="allMembers">给全体成员</option>
+                        </select>
+                      </SettingsRow>
+                      <SettingsRow label="跨项目记录" description="其它项目沉淀的经验、风险和参考，只能给队长或关闭。">
+                        <select
+                          value={managerContextPolicy.crossProjectRecordInjection}
+                          onChange={event => setManagerContextPolicy(prev => ({ ...prev, crossProjectRecordInjection: event.target.value as TeamManagerContextPolicy['crossProjectRecordInjection'] }))}
+                          disabled={isSaving}
+                          className="h-8 min-w-[160px] rounded-md bg-muted/50 px-2 text-sm text-foreground outline-none shadow-minimal"
+                        >
+                          <option value="off">不注入</option>
+                          <option value="leaderOnly">只给队长</option>
+                        </select>
+                      </SettingsRow>
+                      <SettingsToggle
+                        label="深读成员上下文需要单独授权"
+                        description="管理 Agent 要查看队员完整会话、文件或执行细节时，必须先走权限卡。"
+                        checked={managerContextPolicy.deepMemberContextRequiresPermission}
+                        onCheckedChange={deepMemberContextRequiresPermission => setManagerContextPolicy(prev => ({ ...prev, deepMemberContextRequiresPermission }))}
+                        disabled={isSaving}
+                      />
+                    </SettingsCard>
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm" onClick={() => void saveManagerContextPolicy()} disabled={isSaving || !canWrite}>
+                        保存上下文策略
+                      </Button>
+                    </div>
                   </SettingsSection>
 
                   <SettingsSection

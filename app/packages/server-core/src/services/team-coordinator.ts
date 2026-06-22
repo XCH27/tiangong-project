@@ -32,6 +32,7 @@ import {
   type TeamMemberProjection,
   type TeamReviewQueueItem,
   type TeamReport,
+  normalizeTeamManagerContextPolicy,
   normalizeTeamStatusMap,
   TEAM_DEFAULT_IDENTITY_TAGS,
 } from '@craft-agent/shared/protocol'
@@ -424,6 +425,7 @@ export class TeamCoordinator {
       statusMap: normalizeTeamStatusMap(),
       routing: { mentionPrefix: '@', commandPrefix: '/', defaultVisibility: 'broadcast' },
       taskPolicy: { requireTaskIdForAssignment: true, requireRunIdForReport: true, queueLatestStructuredReport: true },
+      managerContextPolicy: normalizeTeamManagerContextPolicy(),
       norms: [],
     }
     this.rules.save(rules)
@@ -489,6 +491,7 @@ export class TeamCoordinator {
       members,
       identityTags: rules.identityTags,
       statusMap: rules.statusMap,
+      managerContextPolicy: normalizeTeamManagerContextPolicy(rules.managerContextPolicy),
       norms: rules.norms,
     }
   }
@@ -502,6 +505,9 @@ export class TeamCoordinator {
       teamConversationSessionId: current.teamConversationSessionId,
       managerProjectionSessionId: current.managerProjectionSessionId,
       statusMap: patch.statusMap ? normalizeTeamStatusMap(patch.statusMap) : current.statusMap,
+      managerContextPolicy: patch.managerContextPolicy
+        ? normalizeTeamManagerContextPolicy(patch.managerContextPolicy)
+        : normalizeTeamManagerContextPolicy(current.managerContextPolicy),
     }
   }
 

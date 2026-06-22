@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   DEFAULT_TEAM_ID,
   getEditableIdentityTags,
+  getEditableManagerContextPolicy,
   getEditableStatusMap,
   getEditableTeamId,
   getIssuerSessionId,
@@ -17,6 +18,11 @@ describe('team-settings-helpers', () => {
     expect(getEditableTeamId(null, null)).toBe(DEFAULT_TEAM_ID)
     expect(getEditableIdentityTags(null, null).some(tag => tag.id === 'leader')).toBe(true)
     expect(getEditableStatusMap(null, null).awaitingReview).toBe('needs-review')
+    expect(getEditableManagerContextPolicy(null, null)).toEqual({
+      userPreferenceInjection: 'leaderOnly',
+      crossProjectRecordInjection: 'off',
+      deepMemberContextRequiresPermission: true,
+    })
   })
 
   it('chooses the safest issuer session for command-backed writes', () => {

@@ -52,6 +52,33 @@ export interface TeamIdentityTag {
   color?: string
 }
 
+export type ManagerContextInjectionTarget = 'off' | 'leaderOnly' | 'allMembers'
+
+export interface TeamManagerContextPolicy {
+  /**
+   * 管理 Agent 的项目观察边界固定为“有队长只看队长摘要；无队长才看普通成员摘要”。
+   * 这里配置的是它把跨项目记录/长期偏好反向注入项目时的范围。
+   */
+  userPreferenceInjection: ManagerContextInjectionTarget
+  crossProjectRecordInjection: Exclude<ManagerContextInjectionTarget, 'allMembers'>
+  deepMemberContextRequiresPermission: boolean
+}
+
+export const DEFAULT_TEAM_MANAGER_CONTEXT_POLICY: TeamManagerContextPolicy = Object.freeze({
+  userPreferenceInjection: 'leaderOnly',
+  crossProjectRecordInjection: 'off',
+  deepMemberContextRequiresPermission: true,
+})
+
+export function normalizeTeamManagerContextPolicy(
+  overrides?: Partial<TeamManagerContextPolicy>,
+): TeamManagerContextPolicy {
+  return {
+    ...DEFAULT_TEAM_MANAGER_CONTEXT_POLICY,
+    ...(overrides ?? {}),
+  }
+}
+
 export interface TeamRulesV1 {
   version: 1
   teamId: string
@@ -74,6 +101,7 @@ export interface TeamRulesV1 {
     requireRunIdForReport: boolean
     queueLatestStructuredReport: boolean
   }
+  managerContextPolicy: TeamManagerContextPolicy
   norms: string[]
 }
 
@@ -286,6 +314,7 @@ export interface TeamProjection {
   members: TeamMemberProjection[]
   identityTags: TeamIdentityTag[]
   statusMap: TeamStatusMap
+  managerContextPolicy?: TeamManagerContextPolicy
   norms: string[]
 }
 

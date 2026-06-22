@@ -1,6 +1,8 @@
 import {
   DEFAULT_TEAM_STATUS_MAP,
+  normalizeTeamManagerContextPolicy,
   TEAM_DEFAULT_IDENTITY_TAGS,
+  type TeamManagerContextPolicy,
   type TeamIdentityTag,
   type TeamProjection,
   type TeamRulesV1,
@@ -41,6 +43,13 @@ export function getEditableStatusMap(rules: TeamRulesV1 | null, team: TeamProjec
 
 export function getEditableNorms(rules: TeamRulesV1 | null, team: TeamProjection | null): string[] {
   return rules?.norms ?? team?.norms ?? []
+}
+
+export function getEditableManagerContextPolicy(
+  rules: TeamRulesV1 | null,
+  team: TeamProjection | null,
+): TeamManagerContextPolicy {
+  return normalizeTeamManagerContextPolicy(rules?.managerContextPolicy ?? team?.managerContextPolicy)
 }
 
 export function normsToText(norms: string[]): string {
