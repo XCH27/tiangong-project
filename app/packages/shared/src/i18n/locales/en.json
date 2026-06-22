@@ -847,6 +847,8 @@
   "settings.labels.noLabels": "No labels configured.",
   "settings.labels.noLabelsDesc": "Labels can be created by the agent or by editing labels/config.json in your workspace.",
   "settings.labels.title": "Labels",
+  "settings.team.description": "Leader, identities, statuses, norms",
+  "settings.team.title": "Team",
   "settings.messaging.bindings.empty": "No active bindings",
   "settings.messaging.bindings.openSession": "Open",
   "settings.messaging.bindings.title": "Active Bindings",

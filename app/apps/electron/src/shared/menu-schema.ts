@@ -386,6 +386,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   workspace: 'Building2',
   permissions: 'ShieldCheck',
   labels: 'Tag',
+  team: 'Users',
   messaging: 'MessageSquare',
   server: 'Server',
   shortcuts: 'Keyboard',

@@ -847,6 +847,8 @@
   "settings.labels.noLabels": "未配置标签。",
   "settings.labels.noLabelsDesc": "标签可由智能体创建或通过编辑 Workspace 中的 labels/config.json 创建。",
   "settings.labels.title": "标签",
+  "settings.team.description": "队长、身份、状态、团队规范",
+  "settings.team.title": "团队",
   "settings.messaging.bindings.empty": "暂无活跃绑定",
   "settings.messaging.bindings.openSession": "打开",
   "settings.messaging.bindings.title": "活跃绑定",

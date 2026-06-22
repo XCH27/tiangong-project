@@ -4,7 +4,7 @@
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前分支状态：团队协议、TeamCoordinator、团队事件持久化、收件箱注入、Agent session 工具和会话列表顶部最小团队群聊入口已落入当前分支。lifecycle/memory/decision RPC、完整身份标签设置页、管理 Agent 自动代答和完整团队 UI 尚未落入当前分支。团队协议以 `docs/33` 为准；旧工作树实现只算候选资产。
+> 当前分支状态：团队协议、TeamCoordinator、团队事件持久化、收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落入当前分支。lifecycle/memory/decision RPC、管理 Agent 自动代答和完整团队 UI 尚未落入当前分支。团队协议以 `docs/33` 为准；旧工作树实现只算候选资产。
 
 ---
 
