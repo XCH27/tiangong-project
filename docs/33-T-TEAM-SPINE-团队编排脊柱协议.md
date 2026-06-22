@@ -1,6 +1,6 @@
 # 33 · T-TEAM-SPINE 团队编排脊柱协议
 
-> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
+> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；常驻管理 Agent 已有 `manager:global` 身份和 hidden 投影会话但尚未接自动代理；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
 > 目的：固定“会话即 Agent、队长、团队群聊、身份标签、状态、`@`/`/`、管理 Agent”的共同契约，让后端和 UI 可以并行开发而不产生第二套 session/team/permission。
 > 参考：AionUi 可按绿灯范围迁 Team/进程生命周期；Warp 只黑盒学习 task/run、Agent 间消息、长任务 block 和失败信息。
 
@@ -189,7 +189,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 |---|---|---|
 | T-TEAM-RULES（已完成） | server-core `team-rules-*`、RPC、测试 | 已有校验/原子写/最后有效版本/读取与预校验 RPC |
 | T-AT-SLASH | renderer input/mentions、shared mentions、resources/tool docs、测试 | `@` 仅身份，`/` 调 Skill/命令，文件走附件/全部文件 |
-| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射和团队规范。剩模型图标、状态中文重命名和完整队列视图 |
+| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射、团队规范和管理 Agent 投影状态。剩模型图标、状态中文重命名和完整队列视图 |
 
 ### C. B 合入后串行
 

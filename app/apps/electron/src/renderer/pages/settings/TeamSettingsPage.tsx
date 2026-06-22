@@ -288,6 +288,26 @@ export default function TeamSettingsPage() {
                   </SettingsSection>
 
                   <SettingsSection
+                    title="常驻管理 Agent"
+                    description="软件级单一身份，跨 Workspace 协调设置、记忆、知识和团队待审；不能绕过权限。"
+                  >
+                    <SettingsCard>
+                      <SettingsRow label="身份" description="固定 agentId；切换文件夹后仍是同一个软件管家。">
+                        <span className="text-sm text-muted-foreground">manager:global</span>
+                      </SettingsRow>
+                      <SettingsRow label="当前投影会话" description="每个 Workspace 一个 hidden 会话，用来挂 timeline 和待审路由。">
+                        <span className="text-sm text-muted-foreground">{shortId(team?.managerProjectionSessionId)}</span>
+                      </SettingsRow>
+                      <SettingsRow label="权限边界" description="只允许低风险 L0/L1 自动；写文件、外发、删除、发布仍走确认。">
+                        <span className="text-sm text-muted-foreground">不绕过 permission</span>
+                      </SettingsRow>
+                      <SettingsRow label="自动代理" description="后续接记忆和决策服务后，可代替人类回复队长或普通智能体。">
+                        <span className="text-sm text-muted-foreground">未接入</span>
+                      </SettingsRow>
+                    </SettingsCard>
+                  </SettingsSection>
+
+                  <SettingsSection
                     title="成员与身份"
                     description="会话就是团队成员。身份标签用于系统提示词、分工和 @ 提及。"
                   >
