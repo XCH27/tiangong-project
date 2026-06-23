@@ -39,6 +39,8 @@ import {
   handleWorkingDirectoryChanged,
   handlePermissionModeChanged,
   handleSessionModelChanged,
+  handleCliRuntimeModelsChanged,
+  handleCliRuntimeChanged,
   handleConnectionChanged,
   handleUserMessage,
   handleMessageAnnotationsUpdated,
@@ -146,6 +148,12 @@ export function processEvent(
 
     case 'session_model_changed':
       return handleSessionModelChanged(state, event)
+
+    case 'cli_runtime_models_changed':
+      return handleCliRuntimeModelsChanged(state, event)
+
+    case 'cli_runtime_changed':
+      return handleCliRuntimeChanged(state, event)
 
     case 'connection_changed':
       return handleConnectionChanged(state, event)

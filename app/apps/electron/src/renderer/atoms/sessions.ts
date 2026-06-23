@@ -12,6 +12,7 @@ import { atom } from 'jotai'
 import type { Getter, Setter } from 'jotai/vanilla'
 import { atomFamily } from 'jotai-family'
 import type { Session, Message } from '../../shared/types'
+import type { CliRuntimeModelState } from '@craft-agent/shared/protocol'
 
 /**
  * Session metadata for list display (lightweight, no messages)
@@ -55,6 +56,10 @@ export interface SessionMeta {
   isRegeneratingTitle?: boolean
   /** Model override for this session */
   model?: string
+  /** Selected local CLI Runtime id; null/undefined means normal API path. */
+  cliRuntimeId?: string | null
+  /** Live model state reported by the active CLI runtime. */
+  cliRuntimeModelState?: CliRuntimeModelState
   /** LLM connection slug for this session */
   llmConnection?: string
   /** Token usage stats (from JSONL header, available without loading messages) */

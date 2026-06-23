@@ -57,6 +57,9 @@ export function WorkspaceSwitcher({
   const [reconnectTarget, setReconnectTarget] = useState<Workspace | null>(null)
   const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
   const selectedWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const selectedWorkspaceName = selectedWorkspace?.name === 'My Workspace'
+    ? t('workspace.myWorkspace')
+    : selectedWorkspace?.name
   const workspaceIconMap = useWorkspaceIcons(workspaces)
   const connectionState = useTransportConnectionState()
   const isRemote = connectionState?.mode === 'remote'
@@ -195,12 +198,12 @@ export function WorkspaceSwitcher({
             >
               <CrossfadeAvatar
                 src={selectedWorkspace ? workspaceIconMap.get(selectedWorkspace.id) : undefined}
-                alt={selectedWorkspace?.name}
+                alt={selectedWorkspaceName}
                 className="h-4 w-4 mr-1.5 rounded-full ring-1 ring-border/50"
                 fallbackClassName="bg-muted text-[10px] rounded-full"
-                fallback={selectedWorkspace?.name?.charAt(0) || 'W'}
+                fallback={selectedWorkspaceName?.charAt(0) || t('workspace.fallbackInitial')}
               />
-              <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspace?.name || 'Workspace'}</span>
+              <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspaceName || t('workspace.selectWorkspace')}</span>
               {selectedWorkspace?.remoteServer && (
                 isRemoteDisconnected(selectedWorkspace.id)
                   ? <CloudOff className="h-3 w-3 text-destructive shrink-0" />
@@ -221,15 +224,15 @@ export function WorkspaceSwitcher({
             >
               <CrossfadeAvatar
                 src={selectedWorkspace ? workspaceIconMap.get(selectedWorkspace.id) : undefined}
-                alt={selectedWorkspace?.name}
+                alt={selectedWorkspaceName}
                 className="h-4 w-4 rounded-full ring-1 ring-border/50"
                 fallbackClassName="bg-foreground text-background text-[10px] rounded-full"
-                fallback={selectedWorkspace?.name?.charAt(0) || 'W'}
+                fallback={selectedWorkspaceName?.charAt(0) || t('workspace.fallbackInitial')}
               />
               {!isCollapsed && (
                 <>
                   <FadingText className="ml-1 font-sans min-w-0 text-sm" fadeWidth={36}>
-                    {selectedWorkspace?.name || 'Select workspace'}
+                    {selectedWorkspaceName || t('workspace.selectWorkspace')}
                   </FadingText>
                   {selectedWorkspace?.remoteServer && (
                     isRemoteDisconnected(selectedWorkspace.id)

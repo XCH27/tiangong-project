@@ -12,6 +12,7 @@ import {
   ChevronUp,
   AlertCircle,
   Image as ImageIcon,
+  Terminal,
   X,
 } from 'lucide-react'
 import { Icon_Home, Icon_Folder, Spinner } from '@craft-agent/ui'
@@ -75,6 +76,7 @@ import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
+import type { CliRuntimeDefinition, CliRuntimeModelState } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
@@ -95,6 +97,10 @@ import {
   groupConnectionsByProvider,
   stripPiPrefixForDisplay,
 } from './model-picker-helpers'
+import {
+  getCliRuntimeModelDisplay,
+  getCliRuntimeSelectableModels,
+} from './cli-runtime-model-picker'
 import { useModelVisionToggle } from './useModelVisionToggle'
 
 function formatFollowUpChipText(text: string, fallback: string, maxLength = 50): string {
@@ -104,6 +110,67 @@ function formatFollowUpChipText(text: string, fallback: string, maxLength = 50):
   return normalized.length > maxLength
     ? `${normalized.slice(0, maxLength - 1).trimEnd()}…`
     : normalized
+}
+
+type ContextUsageStatus = {
+  isCompacting?: boolean
+  inputTokens?: number
+  contextWindow?: number
+}
+
+function getContextUsageRing(status: ContextUsageStatus | undefined, modelId: string) {
+  const limit = status?.contextWindow || getModelContextWindow(modelId)
+  const used = status?.inputTokens ?? 0
+  if (!limit || used <= 0) {
+    return {
+      percent: null,
+      label: '暂无上下文用量',
+      title: '暂无上下文用量',
+      usedLabel: '0',
+      limitLabel: limit ? formatTokenCount(limit) : '未知',
+    }
+  }
+
+  const percent = Math.min(99, Math.max(0, Math.round((used / limit) * 100)))
+  const usedLabel = formatTokenCount(used)
+  const limitLabel = formatTokenCount(limit)
+  return {
+    percent,
+    label: `${percent}%`,
+    title: `上下文用量 ${percent}% · ${usedLabel} / ${limitLabel}`,
+    usedLabel,
+    limitLabel,
+  }
+}
+
+function ContextUsageRing({
+  percent,
+  title,
+}: {
+  percent: number | null
+  title: string
+}) {
+  const clamped = percent ?? 0
+  const color = percent == null
+    ? 'color-mix(in oklab, var(--foreground) 18%, transparent)'
+    : percent >= 90
+      ? 'var(--destructive)'
+    : percent >= 70
+        ? 'var(--info)'
+        : 'var(--info)'
+
+  return (
+    <span
+      title={title}
+      aria-label={title}
+      className="relative h-3.5 w-3.5 shrink-0 rounded-full"
+      style={{
+        background: `conic-gradient(${color} ${clamped * 3.6}deg, color-mix(in oklab, var(--foreground) 14%, transparent) 0deg)`,
+      }}
+    >
+      <span className="absolute inset-[3px] rounded-full bg-background" />
+    </span>
+  )
 }
 
 
@@ -149,6 +216,12 @@ export interface FreeFormInputProps {
   currentModel: string
   /** Callback when model changes (includes connection slug for proper persistence) */
   onModelChange: (model: string, connection?: string) => void
+  /** Local CLI runtimes shown inside the existing model selector. */
+  cliRuntimes?: CliRuntimeDefinition[]
+  activeCliRuntimeId?: string | null
+  cliRuntimeModelState?: CliRuntimeModelState
+  onCliRuntimeChange?: (runtimeId: string | null) => void
+  onCliRuntimeModelChange?: (modelId: string | null) => void
   // Thinking level (session-level setting)
   /** Current thinking level ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel
@@ -272,6 +345,11 @@ export function FreeFormInput({
   inputRef: externalInputRef,
   currentModel,
   onModelChange,
+  cliRuntimes = [],
+  activeCliRuntimeId,
+  cliRuntimeModelState,
+  onCliRuntimeChange,
+  onCliRuntimeModelChange,
   thinkingLevel = 'medium',
   onThinkingLevelChange,
   permissionMode = 'ask',
@@ -396,6 +474,30 @@ export function FreeFormInput({
     // never goes blank.
     return model.name ?? stripPiPrefixForDisplay(model.id)
   }, [availableModels, currentModel, connectionDefaultModel])
+
+  const enabledCliRuntimes = React.useMemo(
+    () => cliRuntimes.filter(runtime => runtime.enabled),
+    [cliRuntimes],
+  )
+
+  const activeCliRuntime = React.useMemo(
+    () => enabledCliRuntimes.find(runtime => runtime.id === activeCliRuntimeId) ?? null,
+    [activeCliRuntimeId, enabledCliRuntimes],
+  )
+
+  const cliRuntimeModels = React.useMemo(
+    () => getCliRuntimeSelectableModels(cliRuntimeModelState),
+    [cliRuntimeModelState],
+  )
+
+  const modelButtonDisplayName = activeCliRuntime
+    ? getCliRuntimeModelDisplay(activeCliRuntime.displayName, cliRuntimeModelState)
+    : currentModelDisplayName
+
+  const contextUsageRing = React.useMemo(
+    () => getContextUsageRing(contextStatus, currentModel),
+    [contextStatus, currentModel],
+  )
 
   // Group connections by provider type for hierarchical dropdown.
   // Each provider (Anthropic, Pi) can have multiple connections (API Key, OAuth, etc.)
@@ -2048,19 +2150,91 @@ export function FreeFormInput({
                       </>
                     ) : (
                       <>
-                        {effectiveConnectionDetails && llmConnections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && <ConnectionIcon connection={effectiveConnectionDetails} size={14} showTooltip />}
-                        {currentModelDisplayName}
-                        {pickerMode !== 'locked-single' && <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />}
+                        {activeCliRuntime ? (
+                          <Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        ) : (
+                          effectiveConnectionDetails && llmConnections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && <ConnectionIcon connection={effectiveConnectionDetails} size={14} showTooltip />
+                        )}
+                        <ContextUsageRing percent={contextUsageRing.percent} title={contextUsageRing.title} />
+                        <span className="truncate max-w-[220px]">{modelButtonDisplayName}</span>
+                        {(activeCliRuntime || pickerMode !== 'locked-single') && <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />}
                       </>
                     )}
                   </button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent side="top">
-                {t('common.model')}
+                {contextUsageRing.title}
               </TooltipContent>
             </Tooltip>
             <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[260px]">
+              {enabledCliRuntimes.length > 0 && (
+                <>
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide select-none">
+                    本机 CLI
+                  </div>
+                  <StyledDropdownMenuItem
+                    onSelect={() => onCliRuntimeChange?.(null)}
+                    className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
+                  >
+                    <div className="text-left">
+                      <div className="font-medium text-sm">API 模型</div>
+                      <div className="text-xs text-muted-foreground">使用当前连接的模型列表</div>
+                    </div>
+                    {!activeCliRuntime && <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />}
+                  </StyledDropdownMenuItem>
+                  {enabledCliRuntimes.map((runtime) => {
+                    const isSelectedRuntime = activeCliRuntime?.id === runtime.id
+                    return (
+                      <StyledDropdownMenuItem
+                        key={runtime.id}
+                        onSelect={() => onCliRuntimeChange?.(runtime.id)}
+                        className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
+                      >
+                        <div className="text-left min-w-0">
+                          <div className="font-medium text-sm flex items-center gap-1.5">
+                            <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="truncate">{runtime.displayName}</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {runtime.command} {runtime.args.join(' ')}
+                          </div>
+                        </div>
+                        {isSelectedRuntime && <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />}
+                      </StyledDropdownMenuItem>
+                    )
+                  })}
+                  {activeCliRuntime && (
+                    <div className="px-2 py-1">
+                      <div className="text-xs text-muted-foreground mb-1">CLI 模型</div>
+                      {cliRuntimeModels.length > 0 ? (
+                        cliRuntimeModels.map((model) => (
+                          <StyledDropdownMenuItem
+                            key={model.id}
+                            onSelect={() => onCliRuntimeModelChange?.(model.id)}
+                            className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
+                          >
+                            <div className="text-left">
+                              <div className="font-medium text-sm">{model.name}</div>
+                              {model.description && (
+                                <div className="text-xs text-muted-foreground">{model.description}</div>
+                              )}
+                            </div>
+                            {cliRuntimeModelState?.currentModelId === model.id && (
+                              <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />
+                            )}
+                          </StyledDropdownMenuItem>
+                        ))
+                      ) : (
+                        <div className="px-2 py-2 text-xs text-muted-foreground">
+                          模型由 CLI 管理
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <StyledDropdownMenuSeparator className="my-1" />
+                </>
+              )}
               {/* Connection unavailable message */}
               {pickerMode === 'unavailable' ? (
                 <div className="flex flex-col items-center justify-center py-6 px-4 text-center">

@@ -5,7 +5,7 @@
  * All agent events flow through a single pure function for consistent state transitions.
  */
 
-import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
+import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta, CliRuntimeModelState } from '../../shared/types'
 
 /**
  * Streaming state for a session - replaces streamingTextRef
@@ -312,6 +312,18 @@ export interface SessionModelChangedEvent {
   model: string | null
 }
 
+export interface CliRuntimeModelsChangedEvent {
+  type: 'cli_runtime_models_changed'
+  sessionId: string
+  state: CliRuntimeModelState
+}
+
+export interface CliRuntimeChangedEvent {
+  type: 'cli_runtime_changed'
+  sessionId: string
+  cliRuntimeId: string | null
+}
+
 /**
  * LLM connection changed event - syncs session.llmConnection to renderer
  */
@@ -501,6 +513,8 @@ export type AgentEvent =
   | WorkingDirectoryErrorEvent
   | PermissionModeChangedEvent
   | SessionModelChangedEvent
+  | CliRuntimeModelsChangedEvent
+  | CliRuntimeChangedEvent
   | LLMConnectionChangedEvent
   | TaskBackgroundedEvent
   | ShellBackgroundedEvent

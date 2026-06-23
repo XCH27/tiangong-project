@@ -18,7 +18,6 @@ import { EntityList, type EntityListGroup } from "@/components/ui/entity-list"
 import { RenameDialog } from "@/components/ui/rename-dialog"
 import { SessionSearchHeader } from "./SessionSearchHeader"
 import { SessionItem } from "./SessionItem"
-import { TeamConversationBar } from "./TeamConversationBar"
 import { SessionListProvider, type SessionListContextValue } from "@/context/SessionListContext"
 import { useSessionSelection, useSessionSelectionStore } from "@/hooks/useSession"
 import { useSessionSearch, type FilterMode } from "@/hooks/useSessionSearch"
@@ -649,7 +648,6 @@ export function SessionList({
     focusedSessionId, selectionStore.state.selected, isMultiSelectActive,
     sessionOptions, contentSearchResults, activeChatMatchInfo, hasPendingPrompt,
   ])
-  const activeSessionId = listContext.selectedSessionId ?? selectionStore.state.selected ?? null
 
   // --- Empty state (non-search) — render before EntityList ---
   // Don't show empty state when there are collapsed groups with content
@@ -691,12 +689,6 @@ export function SessionList({
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <SessionListProvider value={listContext}>
-      {!searchActive && workspaceId && (
-        <TeamConversationBar
-          workspaceId={workspaceId}
-          issuerSessionId={activeSessionId}
-        />
-      )}
       <EntityList<SessionListRow>
         groups={rowData.groups}
         getKey={(row) => row.item.id}

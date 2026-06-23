@@ -217,6 +217,8 @@ import type {
   TeamProjection,
   TeamReviewQueueItem,
   TeamInboxItem,
+  CliRuntimeDefinition,
+  CliRuntimeHealthResult,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -236,6 +238,14 @@ export interface ElectronAPI {
 
   // Consolidated session command handler
   sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
+  /** Enabled/configured local CLI runtimes shown in the existing model selector. */
+  listCliRuntimes(): Promise<CliRuntimeDefinition[]>
+  getCliRuntime(runtimeId: string): Promise<CliRuntimeDefinition | null>
+  addCustomCliRuntime(input: { displayName: string; command: string; args?: string[]; env?: Record<string, string> }): Promise<CliRuntimeDefinition>
+  updateCustomCliRuntime(runtimeId: string, patch: { displayName?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean }): Promise<CliRuntimeDefinition>
+  setCliRuntimeEnabled(runtimeId: string, enabled: boolean): Promise<void>
+  deleteCliRuntime(runtimeId: string): Promise<void>
+  testCliRuntime(runtimeId: string): Promise<CliRuntimeHealthResult>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>

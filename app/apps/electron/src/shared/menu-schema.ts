@@ -381,12 +381,12 @@ export interface SettingsMenuItem {
 const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   app: 'ToggleRight',
   ai: 'Sparkles',
+  cliRuntime: 'Terminal',
   appearance: 'Palette',
   input: 'Keyboard',
   workspace: 'Building2',
   permissions: 'ShieldCheck',
   labels: 'Tag',
-  team: 'Users',
   messaging: 'MessageSquare',
   server: 'Server',
   shortcuts: 'Keyboard',

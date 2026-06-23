@@ -43,6 +43,7 @@ import {
 import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
 import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill } from "../../../shared/types"
+import type { CliRuntimeDefinition, CliRuntimeModelState } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from "@craft-agent/shared/agent/modes"
 import type { ThinkingLevel } from "@craft-agent/shared/agent/thinking-levels"
 import {
@@ -137,6 +138,12 @@ interface ChatDisplayProps {
   // Model selection
   currentModel: string
   onModelChange: (model: string, connection?: string) => void
+  /** Local CLI runtimes shown inside the existing model picker. */
+  cliRuntimes?: CliRuntimeDefinition[]
+  activeCliRuntimeId?: string | null
+  cliRuntimeModelState?: CliRuntimeModelState
+  onCliRuntimeChange?: (runtimeId: string | null) => void
+  onCliRuntimeModelChange?: (modelId: string | null) => void
   // Connection selection (locked after first message)
   /** Callback when LLM connection changes (only works when session is empty) */
   onConnectionChange?: (connectionSlug: string) => void
@@ -442,6 +449,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   onOpenUrl,
   currentModel,
   onModelChange,
+  cliRuntimes,
+  activeCliRuntimeId,
+  cliRuntimeModelState,
+  onCliRuntimeChange,
+  onCliRuntimeModelChange,
   onConnectionChange,
   textareaRef: externalTextareaRef,
   disabled = false,
@@ -1938,6 +1950,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               textareaRef,
               currentModel,
               onModelChange,
+              cliRuntimes,
+              activeCliRuntimeId,
+              cliRuntimeModelState,
+              onCliRuntimeChange,
+              onCliRuntimeModelChange,
               thinkingLevel,
               onThinkingLevelChange,
               enabledModes,

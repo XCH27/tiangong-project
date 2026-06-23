@@ -28,6 +28,7 @@ import { ensureSessionMessagesLoadedAtom, forceSessionMessagesReloadAtom, loaded
 import { getSessionTitle } from '@/utils/session'
 // Model resolution: connection.defaultModel (no hardcoded defaults)
 import { resolveEffectiveConnectionSlug, isSessionConnectionUnavailable } from '@config/llm-connections'
+import type { CliRuntimeDefinition } from '@craft-agent/shared/protocol'
 
 export interface ChatPageProps {
   sessionId: string
@@ -90,6 +91,22 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
 
   // Use per-session atom for isolated updates
   const session = useSessionData(sessionId)
+  const [cliRuntimes, setCliRuntimes] = React.useState<CliRuntimeDefinition[]>([])
+
+  React.useEffect(() => {
+    let cancelled = false
+    window.electronAPI.listCliRuntimes()
+      .then((runtimes) => {
+        if (!cancelled) setCliRuntimes(runtimes)
+      })
+      .catch((error: unknown) => {
+        console.warn('Failed to load CLI runtimes:', error)
+        if (!cancelled) setCliRuntimes([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Track if messages are loaded for this session (for lazy loading)
   const loadedSessions = useAtomValue(loadedSessionsAtom)
@@ -281,11 +298,32 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   }, [sessionId, onAttachmentsChange])
 
   // Session model change handler - persists per-session model and connection
-  const handleModelChange = React.useCallback((model: string, connection?: string) => {
+  const handleModelChange = React.useCallback(async (model: string, connection?: string) => {
     if (activeWorkspaceId) {
-      window.electronAPI.setSessionModel(sessionId, activeWorkspaceId, model, connection)
+      if (session?.cliRuntimeId) {
+        await window.electronAPI.sessionCommand(sessionId, { type: 'setCliRuntime', cliRuntimeId: null })
+      }
+      await window.electronAPI.setSessionModel(sessionId, activeWorkspaceId, model, connection)
     }
-  }, [sessionId, activeWorkspaceId])
+  }, [sessionId, activeWorkspaceId, session?.cliRuntimeId])
+
+  const handleCliRuntimeChange = React.useCallback(async (cliRuntimeId: string | null) => {
+    try {
+      await window.electronAPI.sessionCommand(sessionId, { type: 'setCliRuntime', cliRuntimeId })
+    } catch (error) {
+      console.error('Failed to change CLI runtime:', error)
+      toast.error(error instanceof Error ? error.message : '切换 CLI Runtime 失败')
+    }
+  }, [sessionId])
+
+  const handleCliRuntimeModelChange = React.useCallback(async (modelId: string | null) => {
+    try {
+      await window.electronAPI.sessionCommand(sessionId, { type: 'setCliRuntimeModel', modelId })
+    } catch (error) {
+      console.error('Failed to change CLI runtime model:', error)
+      toast.error(error instanceof Error ? error.message : '切换 CLI 模型失败')
+    }
+  }, [sessionId])
 
   // Session connection change handler - can only change before first message
   const handleConnectionChange = React.useCallback(async (connectionSlug: string) => {
@@ -708,6 +746,11 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
                 currentModel={effectiveModel}
                 onModelChange={handleModelChange}
                 onConnectionChange={handleConnectionChange}
+                cliRuntimes={cliRuntimes}
+                activeCliRuntimeId={sessionMeta.cliRuntimeId ?? null}
+                cliRuntimeModelState={sessionMeta.cliRuntimeModelState}
+                onCliRuntimeChange={handleCliRuntimeChange}
+                onCliRuntimeModelChange={handleCliRuntimeModelChange}
                 pendingPermission={undefined}
                 onRespondToPermission={onRespondToPermission}
                 pendingCredential={undefined}
@@ -785,6 +828,11 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
             currentModel={effectiveModel}
             onModelChange={handleModelChange}
             onConnectionChange={handleConnectionChange}
+            cliRuntimes={cliRuntimes}
+            activeCliRuntimeId={session.cliRuntimeId ?? null}
+            cliRuntimeModelState={session.cliRuntimeModelState}
+            onCliRuntimeChange={handleCliRuntimeChange}
+            onCliRuntimeModelChange={handleCliRuntimeModelChange}
             pendingPermission={pendingPermission}
             onRespondToPermission={onRespondToPermission}
             pendingCredential={pendingCredential}

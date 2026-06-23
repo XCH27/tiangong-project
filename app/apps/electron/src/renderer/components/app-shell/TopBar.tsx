@@ -24,13 +24,15 @@ import {
 } from "@/components/ui/styled-dropdown"
 import type { SettingsMenuItem } from "../../../shared/menu-schema"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
 import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
 import { AppMenu } from "../AppMenu"
+import type { CliRuntimeDefinition, CliRuntimeModelState } from "@craft-agent/shared/protocol"
+import { getCliRuntimeModelDisplay } from "./input/cli-runtime-model-picker"
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
 const RIGHT_SLOT_TWO_BADGES_THRESHOLD = 300
@@ -43,6 +45,8 @@ interface TopBarProps {
   onWorkspaceCreated?: (workspace: Workspace) => void
   onWorkspaceRemoved?: () => void
   activeSessionId?: string | null
+  activeCliRuntimeId?: string | null
+  cliRuntimeModelState?: CliRuntimeModelState
   onNewChat: () => void
   onNewWindow?: () => void
   onOpenSettings: () => void
@@ -69,6 +73,8 @@ export function TopBar({
   onWorkspaceCreated,
   onWorkspaceRemoved,
   activeSessionId,
+  activeCliRuntimeId,
+  cliRuntimeModelState,
   onNewChat,
   onNewWindow,
   onOpenSettings,
@@ -218,6 +224,14 @@ export function TopBar({
               />
             )}
           </div>
+          {!isCompact && (
+            <TopBarCliRuntimeSelector
+              activeSessionId={activeSessionId}
+              activeCliRuntimeId={activeCliRuntimeId}
+              cliRuntimeModelState={cliRuntimeModelState}
+              onOpenSettings={() => onOpenSettingsSubpage('cliRuntime')}
+            />
+          )}
         </div>
       </div>
 
@@ -294,5 +308,112 @@ export function TopBar({
       )}
       </div>
     </div>
+  )
+}
+
+function TopBarCliRuntimeSelector({
+  activeSessionId,
+  activeCliRuntimeId,
+  cliRuntimeModelState,
+  onOpenSettings,
+}: {
+  activeSessionId?: string | null
+  activeCliRuntimeId?: string | null
+  cliRuntimeModelState?: CliRuntimeModelState
+  onOpenSettings: () => void
+}) {
+  const [runtimes, setRuntimes] = useState<CliRuntimeDefinition[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    window.electronAPI.listCliRuntimes()
+      .then((items) => {
+        if (!cancelled) setRuntimes(items)
+      })
+      .catch(() => {
+        if (!cancelled) setRuntimes([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const enabledRuntimes = useMemo(
+    () => runtimes.filter(runtime => runtime.enabled),
+    [runtimes],
+  )
+
+  const activeRuntime = useMemo(
+    () => enabledRuntimes.find(runtime => runtime.id === activeCliRuntimeId) ?? null,
+    [enabledRuntimes, activeCliRuntimeId],
+  )
+
+  const label = activeRuntime
+    ? getCliRuntimeModelDisplay(activeRuntime.displayName, cliRuntimeModelState)
+    : 'API 模型'
+
+  const selectRuntime = async (runtimeId: string | null) => {
+    if (!activeSessionId) return
+    await window.electronAPI.sessionCommand(activeSessionId, { type: 'setCliRuntime', cliRuntimeId: runtimeId })
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={!activeSessionId}
+          className={cn(
+            "header-icon-btn titlebar-no-drag shrink-0 min-w-0 max-w-[180px] flex items-center justify-start gap-1 h-[30px] px-3 rounded-[8px] border border-foreground/6 text-[13px] text-foreground/50 hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer data-[state=open]:bg-foreground/5 data-[state=open]:text-foreground disabled:opacity-40 disabled:cursor-not-allowed",
+            activeRuntime && "text-foreground/70",
+          )}
+          aria-label="选择 CLI"
+        >
+          <Icons.Terminal className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} />
+          <span className="truncate min-w-0 text-left">{label}</span>
+          <Icons.ChevronDown className="h-3 w-3 opacity-60 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <StyledDropdownMenuContent align="start" sideOffset={8} minWidth="min-w-64">
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground select-none">
+          发送运行时
+        </div>
+        <StyledDropdownMenuItem onSelect={() => selectRuntime(null)} className="flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">API 模型</div>
+            <div className="text-xs text-muted-foreground">使用当前模型连接</div>
+          </div>
+          {!activeRuntime && <Icons.Check className="h-3.5 w-3.5 shrink-0" />}
+        </StyledDropdownMenuItem>
+        {enabledRuntimes.map(runtime => (
+          <StyledDropdownMenuItem
+            key={runtime.id}
+            onSelect={() => selectRuntime(runtime.id)}
+            className="flex items-center justify-between"
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 text-sm font-medium">
+                <Icons.Terminal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">{runtime.displayName}</span>
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {runtime.command} {runtime.args.join(' ')}
+              </div>
+            </div>
+            {activeRuntime?.id === runtime.id && <Icons.Check className="h-3.5 w-3.5 shrink-0" />}
+          </StyledDropdownMenuItem>
+        ))}
+        {enabledRuntimes.length === 0 && (
+          <div className="px-2 py-2 text-xs text-muted-foreground">
+            没有可用的本机 CLI
+          </div>
+        )}
+        <StyledDropdownMenuSeparator className="my-1" />
+        <StyledDropdownMenuItem onSelect={onOpenSettings}>
+          <Icons.Settings2 className="h-3.5 w-3.5" />
+          CLI 设置
+        </StyledDropdownMenuItem>
+      </StyledDropdownMenuContent>
+    </DropdownMenu>
   )
 }
