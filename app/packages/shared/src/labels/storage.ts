@@ -33,59 +33,74 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
   return {
     version: 1,
     labels: [
+      // 身份标签（团队编排，docs/33 §1.2）：kind='identity' 的标签即团队身份；
+      // 队长 id 必须为 'leader'，由 SessionManager.setSessionLabels 保证队长唯一性。
+      {
+        id: 'identity',
+        name: '身份',
+        color: { light: '#F59E0B', dark: '#FBBF24' },
+        children: [
+          { id: 'leader', name: '队长', color: { light: '#F59E0B', dark: '#FBBF24' }, kind: 'identity', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
+          { id: 'role-code', name: '代码', color: { light: '#4F46E5', dark: '#818CF8' }, kind: 'identity' },
+          { id: 'role-design', name: '设计', color: { light: '#D946EF', dark: '#E879F9' }, kind: 'identity' },
+          { id: 'role-review', name: '审查', color: { light: '#0EA5E9', dark: '#38BDF8' }, kind: 'identity', systemPromptPreset: '负责检查风险、回归和验收证据。' },
+          { id: 'role-test', name: '测试', color: { light: '#06B6D4', dark: '#22D3EE' }, kind: 'identity' },
+          { id: 'role-context', name: '上下文', color: { light: '#A855F7', dark: '#C084FC' }, kind: 'identity' },
+        ],
+      },
       {
         id: 'development',
-        name: 'Development',
+        name: '开发',
         color: { light: '#3B82F6', dark: '#60A5FA' },
         children: [
           {
             id: 'code',
-            name: 'Code',
+            name: '代码',
             color: { light: '#4F46E5', dark: '#818CF8' }, // indigo shift
           },
           {
             id: 'bug',
-            name: 'Bug',
+            name: '缺陷',
             color: { light: '#0EA5E9', dark: '#38BDF8' }, // sky shift
           },
           {
             id: 'automation',
-            name: 'Automation',
+            name: '自动化',
             color: { light: '#06B6D4', dark: '#22D3EE' }, // cyan shift
           },
         ],
       },
       {
         id: 'content',
-        name: 'Content',
+        name: '内容',
         color: { light: '#8B5CF6', dark: '#A78BFA' },
         children: [
           {
             id: 'writing',
-            name: 'Writing',
+            name: '写作',
             color: { light: '#7C3AED', dark: '#C4B5FD' }, // deeper violet
           },
           {
             id: 'research',
-            name: 'Research',
+            name: '研究',
             color: { light: '#A855F7', dark: '#C084FC' }, // lighter purple
           },
           {
             id: 'design',
-            name: 'Design',
+            name: '设计',
             color: { light: '#D946EF', dark: '#E879F9' }, // fuchsia shift
           },
         ],
       },
       {
         id: 'priority',
-        name: 'Priority',
+        name: '优先级',
         color: { light: '#F59E0B', dark: '#FBBF24' },
         valueType: 'number',
       },
       {
         id: 'project',
-        name: 'Project',
+        name: '项目',
         color: 'foreground/50',
         valueType: 'string',
       },
