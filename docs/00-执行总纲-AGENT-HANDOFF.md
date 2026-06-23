@@ -10,11 +10,15 @@
 
 - `DesignAction`、`DesignPatch`、`ActorRef` 等共享协议。
 - `DesignEngine` 的基础服务接口与实现。
-- 团队编排后端：team rules、TeamCoordinator、团队事件持久化、投递/运行分离、收件箱注入和 Agent session 工具。**身份双写已收敛到 craft 原标签系统**（`LabelConfig` 扩展 + session labels 派生 + `setSessionLabels` 队长唯一性，typecheck 通过，见 `docs/33` §0 更新）。剩余：团队前端显示、CLI Runtime、管理 Agent 前端。
-- 前端已恢复为干净 Craft 原界面；团队 UI 尚未开始。
+> **2026-06-23：本轮已提交主线**（`work/fresh-base-spine`）4 个 commit：`94f26416` 后端（团队收敛/Progress/CLI ACP/管理决策/记忆）、`2756b7dc` CLI 最小 UI、`28254ff6` 文档、`144bbefe` 管理 Agent 设置页。以下本轮项已由 🟡 候选升 **✅ 已落主线**；验收口径不变：typecheck 全过（shared/server-core/session-tools-core/electron），bun 单测在本机跑，Electron 视觉/重启手工验收仍待本机。
+
+- 团队编排后端 ✅ 已落主线：team rules、TeamCoordinator、事件持久化、投递/运行分离、收件箱、Agent session 工具；**身份双写已收敛到 craft 原标签系统**（`LabelConfig` 扩展 + session labels 派生 + `setSessionLabels` 队长唯一性，见 `docs/33` §0）。
+- 任务进度 Progress ✅ 已落主线（后端）：`protocol/progress.ts` + `set_session_progress` 工具 + `SessionManager.setSessionProgress` + RPC + JSONL 持久化字段 + round-trip 回归，见 `docs/35`。剩余：进度卡 UI、团队 rollup UI。
+- CLI Runtime + ACP 发送 ✅ 已落主线：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 模型选择器 CLI 分组 + 顶部 CLI 快捷入口 + 设置页（含 Custom runtime 表单）。见 `docs/23`/`docs/24`。剩余：usage/额度采样、真实 CLI smoke、reasoning effort 实机确认。
+- 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + **设置页（自动决策开关/L2 规则增删 + 记忆查看/增删，真接 RPC）**。见 `docs/17 §4`。剩余：记忆作决策依据注入、全局专栏/悬浮入口 UI。
+- 分层记忆 ✅ 已落主线（后端 + 设置页）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 管理 Agent 设置页内查看/增删。见 `docs/05`。剩余：全局共享分区、语义检索、衰减/归档。
+- 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：① 管理 Agent 悬浮入口（右下角唤起，跨页常驻；参考 Multica）② 团队群聊置顶特殊会话项 ③ Token 环点击的中文额度/上下文详情弹层（需先补 usage 后端）④ Progress 进度卡。
 - craft 原有的 session、permission、timeline、BrowserPane/CDP、文件工具和标注能力。
-- 任务进度 Progress 后端 🟡 候选/待合入（**未提交主线**）：`protocol/progress.ts` + `set_session_progress` agent 工具 + `SessionManager.setSessionProgress` + RPC `setProgress` + `session.jsonl` 持久化字段与 round-trip 回归已补齐，typecheck 通过（含 electron），见 `docs/35`。剩余：进度卡、团队 rollup UI 和 Electron 重启手工验收。
-- CLI Runtime 后端 + ACP 发送 + 最小 UI 🟡 候选/待合入（**未提交主线**）：基座（catalog/health/RPC/协议，Gemini 仅候选）+ ACP 链路（`services/acp/` JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ 会话级 runtime/model 选择与 JSONL 持久化（`cliRuntimeId`/`cliRuntimeModelId`）+ `sendMessage` 路由（复用 craft text_delta/text_complete/complete）+ 附件硬拒绝 + 进程清理 + 原模型选择器 CLI 分组 + 顶部工作区后方 CLI 快捷入口 + 设置页“本机 CLI”列表/启停/测试/Custom runtime 表单。typecheck 通过（含 electron），见 `docs/23`/`docs/24`。剩余：Custom runtime 高级校验、usage/额度采样、真实 CLI smoke、reasoning effort 端到端实机确认。
 
 - 管理 Agent 分级自动决策 L0-L3 🟡 候选/待合入（**未提交主线**）：`shared/protocol/manager-decision.ts` 纯引擎 `decideAuto` + `manager-decision-service`（设置落盘 + decide + `manager_auto_decision` 事件）+ 单测，typecheck 通过（含 electron），见 `docs/17 §4`。剩余：接 craft permission 的 escalate 调用点、记忆/偏好作依据、设置页与全局专栏 UI。
 
