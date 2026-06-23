@@ -76,7 +76,7 @@ export interface CliRuntimeHealthResult {
 }
 
 // ---------------------------------------------------------------------------
-// Detected 映射预设（跟随 AionUi ACP smoke 覆盖的真实入口；docs/23 §第一版）
+// Detected 映射预设（只放已按 ACP stdio 方式接入的真实入口；docs/23 §第一版）
 // ---------------------------------------------------------------------------
 
 export interface DetectedRuntimeMapping {
@@ -89,8 +89,6 @@ export interface DetectedRuntimeMapping {
 }
 
 export const DETECTED_RUNTIME_MAPPINGS: readonly DetectedRuntimeMapping[] = Object.freeze([
-  { mappingId: 'claude', displayName: 'Claude Code', command: 'claude', args: ['--acp'] },
-  { mappingId: 'codex', displayName: 'Codex', command: 'codex', args: ['--acp'] },
   { mappingId: 'goose', displayName: 'Goose', command: 'goose', args: ['acp'] },
 ])
 
@@ -99,6 +97,8 @@ export const DETECTED_RUNTIME_MAPPINGS: readonly DetectedRuntimeMapping[] = Obje
  * 这些不进 catalog 的可选 runtime。
  */
 export const UNSUPPORTED_DETECTED_TOOLS: readonly { id: string; displayName: string }[] = Object.freeze([
+  { id: 'claude', displayName: 'Claude Code' },
+  { id: 'codex', displayName: 'Codex' },
   { id: 'grok', displayName: 'Grok Build' },
   { id: 'hermes', displayName: 'Hermes' },
   { id: 'opencode', displayName: 'OpenCode' },
@@ -107,7 +107,7 @@ export const UNSUPPORTED_DETECTED_TOOLS: readonly { id: string; displayName: str
 ])
 
 export function unsupportedDetectedMessage(displayName: string): string {
-  return `${displayName} 暂未在 AionUi ACP smoke 覆盖中确认稳定本机入口，已不作为自动检测项接入以避免假识别。如需本机 CLI，请改用已支持的 runtime（Claude Code / Codex / Goose），或新增一个 Custom ACP runtime 自配 command/args/env。`
+  return `${displayName} 暂未确认可作为 Fleet 的 stdio ACP runtime 自动接入，已不作为自动检测项接入以避免假识别。如需本机 CLI，请改用已支持的 ACP runtime（Goose），或新增一个 Custom ACP runtime 自配 command/args/env。Claude Code / Codex 需要单独 native adapter，不能伪装成 ACP。`
 }
 
 /** CLI Runtime 选了之后，附件第一版硬拒绝文案（docs/25）。 */

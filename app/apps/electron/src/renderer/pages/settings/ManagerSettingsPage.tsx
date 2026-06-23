@@ -1,12 +1,13 @@
 import * as React from 'react'
-import { useCallback, useEffect, useState } from 'react'
-import { Brain, ShieldCheck, Plus, Trash2, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Brain, Cpu, ShieldCheck, Plus, Trash2, RefreshCw } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
 import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { SettingsSection, SettingsCard, SettingsToggle, SettingsInput } from '@/components/settings'
+import { SettingsSection, SettingsCard, SettingsToggle, SettingsInput, SettingsMenuSelectRow } from '@/components/settings'
 import { useAppShellContext } from '@/context/AppShellContext'
 import {
   MEMORY_PARTITIONS,
@@ -16,6 +17,10 @@ import {
   type MemoryEntry,
   type MemoryPartition,
 } from '@craft-agent/shared/protocol'
+import { DEFAULT_THINKING_LEVEL, THINKING_LEVELS } from '@craft-agent/shared/agent/thinking-levels'
+import { getModelShortName, type ModelDefinition } from '@config/models'
+import { getModelsForProviderType } from '@config/llm-connections'
+import type { LlmConnectionWithStatus } from '../../../shared/types'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
 export const meta: DetailsPageMeta = {
@@ -33,10 +38,11 @@ const PARTITION_LABEL: Record<MemoryPartition, string> = {
   external_review: '外部审查',
 }
 
-const DEFAULT_SETTINGS: AutoDecisionSettings = { enabled: false, autoL1: true, rules: [] }
+const DEFAULT_SETTINGS: AutoDecisionSettings = { enabled: false, autoL1: true, rules: [], model: { mode: 'workspace_default' } }
 
 export default function ManagerSettingsPage(): React.ReactElement {
-  const { activeWorkspaceId } = useAppShellContext()
+  const { t } = useTranslation()
+  const { activeWorkspaceId, llmConnections, workspaceDefaultLlmConnection } = useAppShellContext()
   const [settings, setSettings] = useState<AutoDecisionSettings>(DEFAULT_SETTINGS)
   const [memory, setMemory] = useState<MemoryEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -73,6 +79,54 @@ export default function ManagerSettingsPage(): React.ReactElement {
       toast.error(`保存失败：${error instanceof Error ? error.message : String(error)}`)
     }
   }, [activeWorkspaceId])
+
+  const managerModel = settings.model ?? { mode: 'workspace_default' as const }
+  const effectiveConnection = useMemo(() => {
+    if (managerModel.mode === 'api_connection' && managerModel.connectionSlug) {
+      return llmConnections.find(connection => connection.slug === managerModel.connectionSlug)
+    }
+    if (workspaceDefaultLlmConnection) {
+      return llmConnections.find(connection => connection.slug === workspaceDefaultLlmConnection)
+    }
+    return llmConnections.find(connection => connection.isDefault) ?? llmConnections[0]
+  }, [llmConnections, managerModel.connectionSlug, managerModel.mode, workspaceDefaultLlmConnection])
+
+  const modelOptions = useMemo(() => getModelOptionsForConnection(effectiveConnection), [effectiveConnection])
+
+  const setManagerConnection = useCallback(async (value: string) => {
+    if (value === 'workspace_default') {
+      await persist({ model: { mode: 'workspace_default' } })
+      return
+    }
+    const connection = llmConnections.find(candidate => candidate.slug === value)
+    await persist({
+      model: {
+        mode: 'api_connection',
+        connectionSlug: value,
+        ...(connection?.defaultModel ? { model: connection.defaultModel } : {}),
+        thinkingLevel: managerModel.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+      },
+    })
+  }, [llmConnections, managerModel.thinkingLevel, persist])
+
+  const setManagerModel = useCallback(async (value: string) => {
+    if (managerModel.mode !== 'api_connection' || !managerModel.connectionSlug) return
+    await persist({
+      model: {
+        ...managerModel,
+        model: value === 'connection_default' ? undefined : value,
+      },
+    })
+  }, [managerModel, persist])
+
+  const setManagerThinking = useCallback(async (value: string) => {
+    await persist({
+      model: {
+        ...managerModel,
+        thinkingLevel: value === 'workspace_default' ? undefined : value as typeof THINKING_LEVELS[number]['id'],
+      },
+    })
+  }, [managerModel, persist])
 
   const addRule = useCallback(async (grants: 'allow' | 'deny') => {
     const prefix = rulePrefix.trim()
@@ -127,6 +181,65 @@ export default function ManagerSettingsPage(): React.ReactElement {
       <PanelHeader title="管理 Agent" />
       <ScrollArea className="flex-1">
         <div className="max-w-3xl mx-auto px-8 py-8 space-y-8">
+          {/* 管理 Agent 模型 */}
+          <SettingsSection title="模型配置" description="管理 Agent 使用自己的服务模型配置。这里先接 API 连接；CLI Runtime 需要 native adapter 后再开放，避免选了不能运行。">
+            <SettingsCard>
+              <SettingsMenuSelectRow
+                label="连接"
+                description="默认跟随当前工作区；也可以固定到某个 API 连接。"
+                value={managerModel.mode === 'api_connection' ? managerModel.connectionSlug ?? 'workspace_default' : 'workspace_default'}
+                onValueChange={(value) => void setManagerConnection(value)}
+                options={[
+                  { value: 'workspace_default', label: '跟随工作区默认', description: effectiveConnection ? `${effectiveConnection.name} · ${effectiveConnection.defaultModel ?? '连接默认模型'}` : '未配置默认连接' },
+                  ...llmConnections.map(connection => ({
+                    value: connection.slug,
+                    label: connection.name,
+                    description: `${providerDescription(connection)}${connection.isAuthenticated ? '' : ' · 未认证'}${connection.defaultModel ? ` · ${getModelShortName(connection.defaultModel)}` : ''}`,
+                  })),
+                ]}
+                disabled={loading}
+                menuWidth={340}
+                searchable
+              />
+              <SettingsMenuSelectRow
+                label="模型"
+                description="固定连接时可指定模型；不指定则使用该连接的默认模型。"
+                value={managerModel.mode === 'api_connection' ? managerModel.model ?? 'connection_default' : 'connection_default'}
+                onValueChange={(value) => void setManagerModel(value)}
+                options={[
+                  { value: 'connection_default', label: '连接默认模型', description: effectiveConnection?.defaultModel ? getModelShortName(effectiveConnection.defaultModel) : '由连接配置决定' },
+                  ...modelOptions.map(option => ({
+                    ...option,
+                    description: option.descriptionKey ? t(option.descriptionKey) : option.description,
+                  })),
+                ]}
+                disabled={loading || managerModel.mode !== 'api_connection' || !effectiveConnection}
+                menuWidth={360}
+                searchable
+              />
+              <SettingsMenuSelectRow
+                label="推理强度"
+                description="控制管理 Agent 做规划、审查和自动决策解释时的推理开销。"
+                value={managerModel.thinkingLevel ?? 'workspace_default'}
+                onValueChange={(value) => void setManagerThinking(value)}
+                options={[
+                  { value: 'workspace_default', label: '跟随工作区默认', description: '使用当前工作区的默认推理强度' },
+                  ...THINKING_LEVELS.map(level => ({
+                    value: level.id,
+                    label: t(level.nameKey),
+                    description: t(level.descriptionKey),
+                  })),
+                ]}
+                disabled={loading}
+                menuWidth={320}
+              />
+              <div className="px-4 py-3 border-t border-border/50 flex items-start gap-2 text-xs text-muted-foreground">
+                <Cpu className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>这是管理 Agent 的软件级模型，不改变当前聊天会话的模型选择。后续接真实管理对话和任务调度时，从这里读取。</div>
+              </div>
+            </SettingsCard>
+          </SettingsSection>
+
           {/* 分级自动决策 */}
           <SettingsSection title="分级自动决策（D12）" description="开启后，管理 Agent 可按规则代答低风险（L2）权限请求；L3 不可逆动作永远问你，绝不绕过 permission。每次自动判断都写 timeline。">
             <SettingsCard>
@@ -230,4 +343,37 @@ export default function ManagerSettingsPage(): React.ReactElement {
       </ScrollArea>
     </div>
   )
+}
+
+function getModelOptionsForConnection(
+  connection: LlmConnectionWithStatus | undefined,
+): Array<{ value: string; label: string; description: string; descriptionKey?: string }> {
+  if (!connection) return []
+  if (connection.models && connection.models.length > 0) {
+    return connection.models.map(model => {
+      if (typeof model === 'string') {
+        return { value: model, label: getModelShortName(model), description: '' }
+      }
+      const definition = model as ModelDefinition
+      return {
+        value: definition.id,
+        label: definition.name,
+        description: definition.description,
+        descriptionKey: definition.descriptionKey,
+      }
+    })
+  }
+  return getModelsForProviderType(connection.providerType, connection.piAuthProvider).map(model => ({
+    value: model.id,
+    label: model.name,
+    description: model.description,
+    descriptionKey: model.descriptionKey,
+  }))
+}
+
+function providerDescription(connection: LlmConnectionWithStatus): string {
+  if (connection.providerType === 'anthropic') return 'Anthropic'
+  if (connection.providerType === 'pi') return 'Craft Agents Backend'
+  if (connection.providerType === 'pi_compat') return connection.piAuthProvider ?? 'OpenAI-compatible'
+  return connection.providerType || connection.type || 'Unknown'
 }

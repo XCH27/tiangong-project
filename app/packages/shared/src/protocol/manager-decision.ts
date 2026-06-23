@@ -14,6 +14,7 @@
  */
 
 import type { ActorRef } from './design'
+import type { ThinkingLevel } from '../agent/thinking-levels'
 
 export const AUTO_DECISION_LEVELS = ['L0', 'L1', 'L2', 'L3'] as const
 export type AutoDecisionLevel = typeof AUTO_DECISION_LEVELS[number]
@@ -51,6 +52,22 @@ export interface AutoDecisionRule {
   reason: string
 }
 
+export type ManagerAgentModelMode = 'workspace_default' | 'api_connection'
+
+export interface ManagerAgentModelSettings {
+  /**
+   * workspace_default: follow current workspace default model.
+   * api_connection: pin the software-level Manager Agent to a specific API connection/model.
+   *
+   * CLI runtimes are intentionally excluded here until a native manager runtime
+   * adapter exists; otherwise the UI would advertise a model that cannot run.
+   */
+  mode: ManagerAgentModelMode
+  connectionSlug?: string
+  model?: string
+  thinkingLevel?: ThinkingLevel
+}
+
 export interface AutoDecisionSettings {
   /** 用户是否开启自动决策。默认 false（全部关键动作问用户）。 */
   enabled: boolean
@@ -58,12 +75,15 @@ export interface AutoDecisionSettings {
   autoL1: boolean
   /** L2 预授权规则。 */
   rules: AutoDecisionRule[]
+  /** 管理 Agent 自己使用的模型配置。 */
+  model: ManagerAgentModelSettings
 }
 
 export const DEFAULT_AUTO_DECISION_SETTINGS: AutoDecisionSettings = Object.freeze({
   enabled: false,
   autoL1: true,
   rules: [],
+  model: { mode: 'workspace_default' as const },
 })
 
 export interface AutoDecisionResult {

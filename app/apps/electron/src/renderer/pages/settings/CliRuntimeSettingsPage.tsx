@@ -192,7 +192,7 @@ export default function CliRuntimeSettingsPage() {
         <div className="max-w-3xl mx-auto px-8 py-8">
           <SettingsSection
             title="本机 CLI Runtime"
-            description="把本机支持 ACP 的 CLI 接入同一个会话。内置检测跟随 AionUi 已验证入口（Claude Code、Codex、Goose）；发送、权限、停止和输出仍走 Craft 原有 timeline。"
+            description="把本机支持 stdio ACP 的 CLI 接入同一个会话。内置检测只放已确认 ACP 入口；Claude Code / Codex 需要单独 native adapter，不能伪装成 ACP。发送、权限、停止和输出仍走 Craft 原有 timeline。"
           >
             <SettingsCard>
               <SettingsRow
@@ -212,7 +212,7 @@ export default function CliRuntimeSettingsPage() {
                 </div>
               ) : runtimes.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
-                  未检测到本机 ACP CLI。可以先安装 Claude Code、Codex 或 Goose，或添加自定义 ACP runtime。
+                  未检测到本机 ACP CLI。可以先安装支持 stdio ACP 的 Goose，或添加自定义 ACP runtime。
                 </div>
               ) : runtimes.map(runtime => {
                 const result = health[runtime.id]

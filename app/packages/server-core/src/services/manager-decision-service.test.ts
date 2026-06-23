@@ -56,7 +56,7 @@ describe('ManagerDecisionService', () => {
 })
 
 describe('permissionAutoOutcome（权限请求拦截，docs/17 §4）', () => {
-  const base: AutoDecisionSettings = { enabled: false, autoL1: true, rules: [] }
+  const base: AutoDecisionSettings = { enabled: false, autoL1: true, rules: [], model: { mode: 'workspace_default' } }
   const withRule = (over: Partial<AutoDecisionSettings>): AutoDecisionSettings => ({ ...base, ...over })
 
   it('team: 动作 → prompt（交回 TeamCoordinator 分级）', () => {

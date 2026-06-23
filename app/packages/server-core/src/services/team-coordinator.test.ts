@@ -330,6 +330,7 @@ describe('TeamCoordinator — 分级自动决策（D12）', () => {
   it('开启 + L2 allow 规则：agent autoRun 自动放行（不弹权限）+ 写 manager_auto_decision', async () => {
     const settings: AutoDecisionSettings = {
       enabled: true, autoL1: true,
+      model: { mode: 'workspace_default' },
       rules: [{ id: 'team-tasks', matchKind: 'write_execute_external', actionPrefix: 'team:assignTeamTask', grants: 'allow', maxLevel: 'L2', reason: '项目规则允许派任务' }],
     }
     const { coordinator, turns, events, permissionRequests } = make([member('m1', 100), member('m2', 200)], decisionPort(settings))
@@ -343,7 +344,7 @@ describe('TeamCoordinator — 分级自动决策（D12）', () => {
   })
 
   it('开启但无规则：L2 升级 → 仍走人工权限（不绕过 permission）', async () => {
-    const settings: AutoDecisionSettings = { enabled: true, autoL1: true, rules: [] }
+    const settings: AutoDecisionSettings = { enabled: true, autoL1: true, rules: [], model: { mode: 'workspace_default' } }
     const { coordinator, turns, permissionRequests } = make([member('m1', 100), member('m2', 200)], decisionPort(settings))
     await coordinator.handleCommand(
       { type: 'assignTeamTask', teamId: 'team-main', taskId: 't1', assigneeSessionId: 'm2', title: 'x', autoRun: true },
@@ -354,7 +355,7 @@ describe('TeamCoordinator — 分级自动决策（D12）', () => {
   })
 
   it('未开启自动决策：行为不变（L2 仍需权限）', async () => {
-    const settings: AutoDecisionSettings = { enabled: false, autoL1: true, rules: [] }
+    const settings: AutoDecisionSettings = { enabled: false, autoL1: true, rules: [], model: { mode: 'workspace_default' } }
     const { coordinator, turns, permissionRequests, setPermissionAllowed } = make([member('m1', 100), member('m2', 200)], decisionPort(settings))
     setPermissionAllowed(false)
     await expect(coordinator.handleCommand(

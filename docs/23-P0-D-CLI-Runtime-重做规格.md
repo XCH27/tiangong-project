@@ -3,7 +3,7 @@
 > 状态日期：2026-06-20
 > 当前 `app/` 已重置为干净 craft-agents-oss 基座。本文只保留上一轮验证出的产品规格和实现边界，不再把旧代码视为当前实现。
 > **2026-06-23 进度：后端基座 + 输入框三按钮选择器 ✅ 已落主线**。
-> **已完成**：catalog/health/RPC/协议（同上批）+ **ACP 发送链路**：`services/acp/`（`AcpConnection` JSON-RPC ndjson、`AcpRuntimeSession` initialize/new/prompt/stream/permission/cancel、stdio transport、`CliRuntimeHost` 进程复用与清理，均有 mock-transport 单测）+ 会话级 runtime/model 选择（`cliRuntimeId`、`cliRuntimeModelId`、`setCliRuntime`、`setCliRuntimeModel`、`cli_runtime_changed`、`cli_runtime_models_changed`）+ `sendMessage` 路由（`runCliRuntimeTurn` 复用 craft text_delta/text_complete/complete）+ 附件硬拒绝 + 进程清理（cancel/delete/cleanup）+ 输入框三按钮（CLI / 模型 / Token 环）+ 设置页本机 CLI 列表/启停/测试 + **Custom runtime 新增/编辑/删除表单**。Detected 内置清单跟随 AionUi 已验证 ACP smoke：Claude Code / Codex / Goose，且只有本机 PATH 上检测到命令才进入聊天选择器。
+> **已完成**：catalog/health/RPC/协议（同上批）+ **ACP 发送链路**：`services/acp/`（`AcpConnection` JSON-RPC ndjson、`AcpRuntimeSession` initialize/new/prompt/stream/permission/cancel、stdio transport、`CliRuntimeHost` 进程复用与清理，均有 mock-transport 单测）+ 会话级 runtime/model 选择（`cliRuntimeId`、`cliRuntimeModelId`、`setCliRuntime`、`setCliRuntimeModel`、`cli_runtime_changed`、`cli_runtime_models_changed`）+ `sendMessage` 路由（`runCliRuntimeTurn` 复用 craft text_delta/text_complete/complete）+ 附件硬拒绝 + 进程清理（cancel/delete/cleanup）+ 输入框三按钮（CLI / 模型 / Token 环）+ 设置页本机 CLI 列表/启停/测试 + **Custom runtime 新增/编辑/删除表单**。Detected 内置清单只保留已确认 stdio ACP 入口（当前默认 Goose），且只有本机 PATH 上检测到命令才进入聊天选择器；Claude Code / Codex 需要 native adapter，不再伪装成 ACP。
 > **未完成（下一步）**：Custom runtime 高级校验（重复 command/args 提醒、敏感 env 脱敏提示）、真实 CLI 的 opt-in smoke、usage/额度采样适配器。验收以 `docs/24 §0` 为准。
 
 ## 目标
@@ -15,11 +15,9 @@ CLI Runtime Host 是新基座的第一批重做能力：让用户在同一个 cr
 ## 第一版必须支持
 
 - **Custom ACP runtime**：用户可配置 `command/args/env`，用于接入任意本机 ACP stdio runtime。
-- **Detected mapping**：跟随 AionUi 已验证 ACP smoke 的入口，且只在本机 PATH 上检测到命令后出现在聊天选择器。
-  - Claude Code：`claude --acp`
-  - Codex：`codex --acp`
+- **Detected mapping**：只放已确认 stdio ACP 的入口，且只在本机 PATH 上检测到命令后出现在聊天选择器。
   - Goose：`goose acp`
-- **Unsupported detected**：Grok/Hermes/OpenCode/Gemini/Qwen 等未在 AionUi ACP smoke 覆盖中确认稳定入口时不能假识别为 detected；如用户明确需要，走 Custom ACP runtime 自配 `command/args/env`。
+- **Unsupported detected**：Claude Code / Codex / Grok / Hermes / OpenCode / Gemini / Qwen 等未确认 Fleet stdio ACP 入口时不能假识别为 detected；如用户明确需要 ACP，走 Custom ACP runtime 自配 `command/args/env`。Claude Code / Codex 需单独 native adapter。
 - **健康测试分级**：`available`、`fail_cli`、`fail_acp`、`disabled`，并保留阶段、原因、stdout/stderr tail。
 - **设置页边界**：
   - managed runtime 不可删除、禁用或改启动参数。
@@ -47,7 +45,7 @@ CLI Runtime Host 是新基座的第一批重做能力：让用户在同一个 cr
 - craft-agents-oss：session、permission、RPC、renderer event flow。
 - AionUi（绿灯）：ACP/custom agent、进程生命周期、team/skill 注入模式。
 - open-design（绿灯）：runtime definitions、prompt transport、stream parser 思路。
-- Claude/Codex/Goose：跟随 AionUi ACP smoke 入口做 opt-in 实机验证。
+- Goose / Custom ACP：按 stdio ACP 做 opt-in 实机验证；Claude/Codex 改走 native adapter 设计。
 - Grok/Hermes/OpenCode/Gemini/Qwen：当前未进入内置 detected 清单，只能黑盒参考；如用户本机可用，先走 Custom ACP runtime。
 
 ## 对标结论（2026-06-23）
@@ -87,4 +85,4 @@ git diff --check
 - 附件硬拒绝。
 - 进程 dispose。
 
-真实 Claude/Codex/Goose 只能做 opt-in smoke，不进入默认 CI。Grok/Hermes/OpenCode/Gemini/Qwen 未确认前不进内置 detected 清单。
+真实 Goose / Custom ACP 只能做 opt-in smoke，不进入默认 CI。Claude/Codex/Grok/Hermes/OpenCode/Gemini/Qwen 未确认 Fleet stdio ACP 入口前不进内置 detected 清单。

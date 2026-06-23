@@ -1,7 +1,7 @@
 /**
  * CliRuntimeCatalog（docs/23）——本机 CLI/ACP runtime 目录。
  *
- * detected 映射跟随 AionUi 已验证 ACP 入口（Claude/Codex/Goose），但只有本机 PATH 上
+ * detected 映射只保留已确认的 stdio ACP 入口；只有本机 PATH 上
  * 能解析到命令时才进入可选目录；custom 由用户自配并落盘。
  * 设置页可编辑边界由 `@craft-agent/shared/protocol` 的 can* helper 决定，不在这里另设一套。
  * 不建第二套 session store：catalog 只管 runtime 定义，发送/进程走 adapter（见 cli-runtime-host）。

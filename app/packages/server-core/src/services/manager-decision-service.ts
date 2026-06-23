@@ -16,8 +16,10 @@ import {
   type AutoDecisionRequest,
   type AutoDecisionResult,
   type AutoDecisionSettings,
+  type ManagerAgentModelSettings,
   type ManagerAutoDecisionRecord,
 } from '@craft-agent/shared/protocol'
+import { THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
 const STORE_RELATIVE_PATH = '.fleet/manager-decision.json'
 
@@ -63,6 +65,7 @@ export class ManagerDecisionService {
         enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : false,
         autoL1: typeof parsed.autoL1 === 'boolean' ? parsed.autoL1 : true,
         rules: Array.isArray(parsed.rules) ? parsed.rules.filter(isRule) : [],
+        model: normalizeManagerModel((parsed as { model?: unknown }).model),
       }
     } catch {
       return { ...DEFAULT_AUTO_DECISION_SETTINGS }
@@ -117,4 +120,24 @@ function isRule(value: unknown): boolean {
   return typeof value === 'object' && value !== null
     && typeof (value as { id?: unknown }).id === 'string'
     && ((value as { grants?: unknown }).grants === 'allow' || (value as { grants?: unknown }).grants === 'deny')
+}
+
+function normalizeManagerModel(value: unknown): ManagerAgentModelSettings {
+  if (typeof value !== 'object' || value === null) return { mode: 'workspace_default' }
+  const raw = value as Partial<ManagerAgentModelSettings>
+  if (raw.mode !== 'api_connection') return { mode: 'workspace_default' }
+  const connectionSlug = typeof raw.connectionSlug === 'string' && raw.connectionSlug.trim()
+    ? raw.connectionSlug.trim()
+    : undefined
+  if (!connectionSlug) return { mode: 'workspace_default' }
+  const model = typeof raw.model === 'string' && raw.model.trim() ? raw.model.trim() : undefined
+  const thinkingLevel = raw.thinkingLevel && THINKING_LEVEL_IDS.includes(raw.thinkingLevel)
+    ? raw.thinkingLevel
+    : undefined
+  return {
+    mode: 'api_connection',
+    connectionSlug,
+    ...(model ? { model } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
+  }
 }

@@ -1,6 +1,6 @@
 /**
  * CLI Runtime catalog + 健康分类（docs/23/24）。
- * 覆盖：AionUi detected 映射、PATH 过滤、custom CRUD、设置页编辑边界、unsupported 中文错误、健康分级。
+ * 覆盖：stdio ACP detected 映射、PATH 过滤、custom CRUD、设置页编辑边界、unsupported 中文错误、健康分级。
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -29,11 +29,11 @@ describe('CliRuntimeCatalog', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('默认列出 AionUi 已验证 ACP detected 映射（Claude/Codex/Goose）', () => {
+  it('默认只列出已确认 stdio ACP 的 detected 映射', () => {
     const ids = catalog.list().map(r => r.mappingId)
-    expect(ids).toContain('claude')
-    expect(ids).toContain('codex')
     expect(ids).toContain('goose')
+    expect(ids).not.toContain('claude')
+    expect(ids).not.toContain('codex')
     expect(catalog.list().every(r => r.attachments === 'none')).toBe(true) // 第一版硬拒绝附件
   })
 
@@ -42,9 +42,9 @@ describe('CliRuntimeCatalog', () => {
   })
 
   it('detected 只列出本机 PATH 上存在的命令，避免把候选误报为已识别', () => {
-    const pathAware = new CliRuntimeCatalog(root, { commandExists: command => command === 'codex' })
+    const pathAware = new CliRuntimeCatalog(root, { commandExists: command => command === 'goose' })
     const ids = pathAware.list().map(r => r.mappingId)
-    expect(ids).toEqual(['codex'])
+    expect(ids).toEqual(['goose'])
   })
 
   it('custom CRUD：增/改/启停/删，落盘后可重新加载', () => {
@@ -67,24 +67,24 @@ describe('CliRuntimeCatalog', () => {
   })
 
   it('编辑边界：detected 不可改 command（updateCustom 拒绝非 custom）', () => {
-    const codex = catalog.list().find(r => r.mappingId === 'codex')!
-    expect(canEditRuntimeCommand(codex.kind)).toBe(false)
-    expect(() => catalog.updateCustom(codex.id, { command: 'evil' })).toThrow()
+    const goose = catalog.list().find(r => r.mappingId === 'goose')!
+    expect(canEditRuntimeCommand(goose.kind)).toBe(false)
+    expect(() => catalog.updateCustom(goose.id, { command: 'evil' })).toThrow()
   })
 
   it('detected 可禁用、可删除（隐藏内置映射）；managed 边界由 helper 表达', () => {
-    const codex = catalog.list().find(r => r.mappingId === 'codex')!
-    expect(canDeleteRuntime(codex.kind)).toBe(true)
-    catalog.setEnabled(codex.id, false)
-    expect(catalog.get(codex.id)?.enabled).toBe(false)
-    catalog.delete(codex.id)
-    expect(catalog.list().find(r => r.mappingId === 'codex')).toBeUndefined()
+    const goose = catalog.list().find(r => r.mappingId === 'goose')!
+    expect(canDeleteRuntime(goose.kind)).toBe(true)
+    catalog.setEnabled(goose.id, false)
+    expect(catalog.get(goose.id)?.enabled).toBe(false)
+    catalog.delete(goose.id)
+    expect(catalog.list().find(r => r.mappingId === 'goose')).toBeUndefined()
     expect(canDeleteRuntime('managed')).toBe(false)
   })
 
   it('unsupported detected：返回中文可操作错误，不进 catalog', () => {
     const unsupportedIds = UNSUPPORTED_DETECTED_TOOLS.map(t => t.id)
-    expect(unsupportedIds).toEqual(['grok', 'hermes', 'opencode', 'gemini', 'qwen'])
+    expect(unsupportedIds).toEqual(['claude', 'codex', 'grok', 'hermes', 'opencode', 'gemini', 'qwen'])
     const msg = unsupportedDetectedMessage('Grok Build')
     expect(msg).toContain('Grok Build')
     expect(msg).toContain('Custom ACP')

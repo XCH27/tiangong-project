@@ -26,7 +26,7 @@
 
 | 按钮 | 管什么 | 点开 |
 |---|---|---|
-| **CLI** | 运行方式（API / 已检测到的 Claude Code、Codex、Goose / Custom ACP runtime） | 运行方式列表 + "管理本机 CLI…"跳设置页。选 API → `cliRuntimeId=null`；选 CLI → 写 `cliRuntimeId` |
+| **CLI** | 运行方式（API / 已检测到的 Goose / Custom ACP runtime；Claude Code、Codex 需 native adapter） | 运行方式列表 + "管理本机 CLI…"跳设置页。选 API → `cliRuntimeId=null`；选 CLI → 写 `cliRuntimeId` |
 | **模型** | 当前运行方式下的模型（如 `API · Opus 4.8`） | API 模型列表 + 推理强度；CLI 则是其动态模型或"模型由 CLI 管理"（禁用） |
 | **Token 环** | 只读：上下文占用 % | 上下文/额度详情弹层（`electronAPI.getSessionUsage`），context 与 plan 分开 |
 
