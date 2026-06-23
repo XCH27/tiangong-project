@@ -45,7 +45,7 @@
 | 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
 | `@` 人/Agent/身份、`/` Skill/命令/模板 | `renderer/components/app-shell/input/FreeFormInput.tsx`、`components/ui/mention-menu.tsx`、`rich-text-input.tsx` + 那一个 mentions parser | 别新建输入框/第二套 mention store |
 | 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；群聊是「所有会话」顶部一条**原样式**特殊会话项 | 别建群聊页/群聊库，别在会话列表里加输入框 |
-| 管理 Agent 入口 | 「所有会话」层新增**全局专栏**（§5 允许）+ 右下角唤起/最小化入口 | 别塞进某个 workspace 的普通会话，别做特权后门绕 permission |
+| 管理 Agent 入口 | ✅ 已落（commit `f36b9340`）：`SessionList` header 常驻一条原样式入口（Brain 图标 +「管理 Agent」），点开进 `routes.view.settings('managerAgent')` 设置面板（已接 `managerDecision`/`memory` RPC）。非搜索态常显。⏳ 可选：指向「管理 Agent 投影会话」做常驻对话（需 `ensureManagerSession` 独立 RPC） | 别塞进某个 workspace 的普通会话，别做特权后门绕 permission |
 | 团队状态（待安排/进行中/待审查/完成/取消） | 映射到 craft 现有 session status / `SessionStatusIcon`；身份扩展原 `labels/config.json` + session `labels` | 别在团队规则或 renderer 建第二套身份/状态定义 |
 | 设置项 / 手动编辑逃生舱 | `renderer/pages/settings/*`、`components/settings/*`，写进 craft `config`/`preferences` | 别另起第二套设置真相 |
 | 浏览器 / 网页标注 / 设计选择 | `renderer/components/browser/*` + BrowserPane/CDP + session timeline | 别建孤岛 Figma 克隆页 |
@@ -53,8 +53,8 @@
 | 上下文圆环 / Token 全览 | 原 `FreeFormInput.tsx` 已有 context usage footer/预警挂点；圆环放模型名之前，点击详情用原 Popover/Dropdown 显示 `docs/16 §2.2` 全览卡。**数据走 `electronAPI.getSessionUsage(sessionId)` → `SessionUsageView`**（context 真实占用 + plan 额度，已落后端 commit `355f4737`）；CLI 时 window=unknown 显示"由 CLI 管理"，额度默认显示"不可用"不编造 | 别要求用户输入 `/status`/`/usage`，别另建常驻 Usage 控制台，**别把上下文占用与会员额度画成同一个圆环**（`SessionUsageView.context` 与 `.plan` 分开渲染） |
 | 全部文件 / Library | 新建 `renderer/components/files/*`（§5 允许的 raw view 新能力）；后端 `file-index.ts` | 别和「本地知识库」数据源混成一个概念 |
 | 管理 Agent 设置（决策/记忆） | ✅ 已落：`pages/settings/ManagerSettingsPage.tsx`（craft 设置骨架），真接 `managerDecision`/`memory` RPC（自动决策开关+L2 规则增删；记忆按分区查看/增删，scoped 分区按 scopeId 隔离） | 别另做治理控制台；常驻悬浮入口走上面「管理 Agent 入口」行 |
-| Progress 进度卡 | ✅ 已落（commit `f1565dc6`）：会话 `progress` 非空时在原 `ChatDisplay` 内容列顶部渲染 `SessionProgressCard`（✓/spinner/○/删除线 + N/M + 进度条 + 活动态）；数据走 `progress_updated` 事件 → `session.progress`（dto.ts + event-processor，重载经 `managedToSession` 仍在）。⏳ 待办：会话行 `SessionItem` 的 "3/5" 小药丸（需把 progress 串进会话列表元数据 DTO） | 别新建 Progress 页/store；未真正驱动的步骤别显示为 in_progress/completed |
-| 团队群聊置顶项 | 有队长后「所有会话」顶部插一条**原样式**特殊会话项（群聊图标+「团队群聊」），点开复用原 `ChatDisplay`；正文来自 `teamConversationSessionId` 的 hidden session | 别建群聊页/群聊库，别在会话列表里加输入框 |
+| Progress 进度卡 | ✅ 已落（commit `f1565dc6`）：会话 `progress` 非空时在原 `ChatDisplay` 内容列顶部渲染 `SessionProgressCard`（✓/spinner/○/删除线 + N/M + 进度条 + 活动态）；数据走 `progress_updated` 事件 → `session.progress`（dto.ts + event-processor，重载经 `managedToSession` 仍在）。✅ 会话行 `SessionItem` 的 N/M 小药丸也已落（commit `f36b9340`，`SessionMeta.progress` + `summarizeProgress`） | 别新建 Progress 页/store；未真正驱动的步骤别显示为 in_progress/completed |
+| 团队群聊置顶项 | ✅ 已落：有队长后「所有会话」顶部插一条**原样式**特殊会话项（群聊图标+「团队群聊」，commit `ca1b0d21`），点开复用原 `ChatDisplay`；正文来自 `teamConversationSessionId` 的 hidden session。进入群聊会话时顶部显示 `TeamRosterHeader` 花名册（序号+队长冠+身份，commit `f36b9340`） | 别建群聊页/群聊库，别在会话列表里加输入框 |
 
 ---
 
