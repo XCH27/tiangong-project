@@ -62,44 +62,8 @@ export function validateTeamRules(
     errors.push('leaderSessionId 必须同时存在于 memberSessionIds')
   }
 
-  const tags = Array.isArray(value.identityTags) ? value.identityTags : []
-  const tagIds: string[] = []
-  if (!Array.isArray(value.identityTags)) {
-    errors.push('identityTags 必须是数组')
-  } else {
-    tags.forEach((tag, index) => {
-      if (!isPlainObject(tag)) {
-        errors.push(`identityTags[${index}] 必须是对象`)
-        return
-      }
-      if (!isNonEmptyString(tag.id)) errors.push(`identityTags[${index}].id 不能为空`)
-      else tagIds.push(tag.id)
-      if (!isNonEmptyString(tag.displayName)) errors.push(`identityTags[${index}].displayName 不能为空`)
-      if (tag.systemPromptPreset !== undefined && typeof tag.systemPromptPreset !== 'string') {
-        errors.push(`identityTags[${index}].systemPromptPreset 必须是字符串`)
-      }
-      if (tag.color !== undefined && typeof tag.color !== 'string') {
-        errors.push(`identityTags[${index}].color 必须是字符串`)
-      }
-    })
-  }
-  const duplicateTags = collectDuplicates(tagIds)
-  if (duplicateTags.length > 0) errors.push(`identityTags 存在重复 id: ${duplicateTags.join(', ')}`)
-
-  if (!isPlainObject(value.identityAssignments)) {
-    errors.push('identityAssignments 必须是对象')
-  } else {
-    for (const [sessionId, assignments] of Object.entries(value.identityAssignments)) {
-      if (!members.includes(sessionId)) errors.push(`identityAssignments 引用了非成员会话: ${sessionId}`)
-      if (!Array.isArray(assignments) || assignments.some(item => !isNonEmptyString(item))) {
-        errors.push(`identityAssignments.${sessionId} 必须是标签 id 数组`)
-        continue
-      }
-      for (const tagId of assignments) {
-        if (!tagIds.includes(tagId)) errors.push(`identityAssignments.${sessionId} 引用了未知标签: ${tagId}`)
-      }
-    }
-  }
+  // 身份定义与分配已收敛到 craft 原标签系统（labels/config.json + session labels）；
+  // team rules 不再校验 identityTags / identityAssignments（docs/33 §1.2）。
 
   if (!isPlainObject(value.statusMap)) {
     errors.push('statusMap 必须是对象')

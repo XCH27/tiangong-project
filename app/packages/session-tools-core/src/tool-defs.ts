@@ -35,6 +35,7 @@ import { handleScriptSandbox } from './handlers/script-sandbox.ts';
 import { handleRenderTemplate } from './handlers/render-template.ts';
 import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.ts';
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
+import { handleSetSessionProgress } from './handlers/set-session-progress.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
@@ -188,6 +189,16 @@ export const SetSessionLabelsSchema = z.object({
 export const SetSessionStatusSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
   status: z.string().describe('Status to set (e.g., "todo", "in_progress", "done")'),
+});
+
+export const SetSessionProgressSchema = z.object({
+  sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
+  tasks: z.array(z.object({
+    id: z.string().describe('Stable task id.'),
+    title: z.string().describe('Short step title.'),
+    status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).describe('Task status.'),
+    note: z.string().optional().describe('Optional one-line note / active-form text.'),
+  })).describe('The full progress checklist (replaces the existing list).'),
 });
 
 export const GetSessionInfoSchema = z.object({
@@ -480,6 +491,10 @@ Use this to share anything that would help improve the product — issues you hi
 Use this to tag sessions for filtering or to trigger label-based automations (LabelAdd/LabelRemove events).
 Pass an empty array to clear all labels. Omit sessionId to target the current session.`,
 
+  set_session_progress: `Set the task progress checklist for the current session (or a specific session by ID).
+
+Break the current work into ordered steps and keep their status live as you go (pending → in_progress → completed; use cancelled to drop a step). Pass the FULL list each call (replace-all). This renders as a progress widget in the session and feeds team progress rollups. Pass an empty array to clear. Omit sessionId to target the current session.`,
+
   set_session_status: `Set the status of the current session or a specific session by ID (e.g., "todo", "in_progress", "done").
 
 Use this to signal completion or trigger status-based automations (SessionStatusChange events).
@@ -582,6 +597,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'browser_tool', description: TOOL_DESCRIPTIONS.browser_tool, inputSchema: BrowserToolSchema, executionMode: 'backend', safeMode: 'allow', handler: null },
   // Session self-management tools (registry — use context callbacks to reach SessionManager)
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
+  { name: 'set_session_progress', description: TOOL_DESCRIPTIONS.set_session_progress, inputSchema: SetSessionProgressSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSetSessionProgress },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },

@@ -1,20 +1,25 @@
 /**
- * Fleet 工作台统一对象 / 动作契约（承重墙 · 单一真相）
+ * Fleet 工作台对象 / 动作信封契约（承重墙 · 单一真相）
  * =====================================================================
  *
- * 这是整个项目最重要的契约。它定义了一条规则：**人点鼠标和 AI 调工具，
- * 产出同一种 `DesignAction`，走同一条 permission → `DesignPatch` → `SessionEvent`
- * → timeline → rollback。** 没有"人类 UI 一套 state、AI 工具另一套"。
+ * 这是工作台脊柱上的动作信封，不是所有工作面的内部文档模型。它定义的规则是：
+ * **人点鼠标和 AI 调工具都要产出可审计的同类动作记录**，走同一条 permission →
+ * surface-native patch/ref → `SessionEvent` → timeline → rollback/handoff。
+ * 没有"人类 UI 一套暗状态、AI 工具另一套暗状态"。
  *
  * 为什么放在 `@craft-agent/shared/protocol`：服务端引擎（server-core）和渲染端
- * UI（electron renderer）都从这里 import 同一套类型——这就是"人机共用一个工作台"
- * 在工程上的落点。任何可写编辑都必须能表达成这里的 `DesignAction`，否则不允许进主线。
+ * UI（electron renderer）都从这里 import 同一套 envelope 类型——这就是"人机共用一个
+ * 工作台"在工程上的落点。具体内容怎么变更，由各工作面的原生引擎负责：
+ * design=openpencil/open-design 文档模型，browser=CDP/DOM，timeline=视频时间线，
+ * document/code=文件/块模型。spine 只管身份、权限、账本、事件和回放索引。
  *
- * 多场景一套底座：对象类型并集一次定义齐（覆盖软件开发 / 内容创作 / AIGC / 文档 /
- * 知识 等），并且是**可扩展注册表**（末尾的 `(string & {})` 逃生位）——新场景=注册
- * 一种对象类型 + 一种 op，不另起第二套动作模型。详见 docs/01 §2、docs/31 §1。
+ * 多场景一条脊柱：对象类型并集一次定义齐（覆盖软件开发 / 内容创作 / AIGC /
+ * 文档 / 知识等），并且是**可扩展注册表**（末尾的 `(string & {})` 逃生位）——
+ * 新场景=注册对象/动作信封 + 原生 surface adapter，不另起第二套 session/permission/timeline。
+ * 详见 docs/01、docs/30、docs/31。
  *
- * 落地分期：类型 M0 全定义；编辑器按 docs/31 S2→S7 分期接。本文件只是契约，不含实现。
+ * 落地分期：类型 M0 全定义；编辑器按各工作面原生引擎分期接。本文件只是信封契约，
+ * 不含任何内容编辑实现。
  */
 
 // ---------------------------------------------------------------------------
@@ -111,13 +116,13 @@ export interface DesignSelection {
 }
 
 // ---------------------------------------------------------------------------
-// DesignAction —— 一套动作模型。一种总线，多种 op；人和 AI 产出同一种。
+// DesignAction —— 动作信封。一种审计总线，多种 op；人和 AI 产出同类记录。
 // ---------------------------------------------------------------------------
 
 /**
  * 动作 op 联合 —— 改样式 / 调速 / 重排分镜 / 合成 / 改函数 / 编辑文档 / 注释
- * 都是这同一种 action 的不同 op，不是每个场景一套动作总线。末尾 `kind: string`
- * 是注册表扩展位：新场景注册新 op，不改既有。
+ * 都可以进入同一种 action envelope。末尾 `kind: string` 是注册表扩展位：
+ * 新场景注册新 op，不改既有。
  *
  * 注（docs/30/31 修正）：带 `payload: unknown` 的 op（timeline_op / board_op /
  * doc_edit / code_patch / set_mask）对 spine **不透明**——spine 只登记/过权限/发事件/
@@ -152,7 +157,7 @@ export interface DesignAction {
 }
 
 // ---------------------------------------------------------------------------
-// DesignPatch —— 动作落到对象图上的可回滚结果。不是临时 DOM mutation。
+// DesignPatch —— 原生工作面返回给脊柱的可审计结果/引用。不是万能内容格式。
 // ---------------------------------------------------------------------------
 
 export type DesignPatchStatus = 'preview' | 'pending' | 'committed' | 'rolled_back'
@@ -161,9 +166,9 @@ export interface DesignPatch {
   patchId: string
   actionId: string
   sessionId: string
-  /** 正向变更（surface 专属，对主干不透明）。 */
+  /** 正向变更或原生 patch/ref（surface 专属，对主干不透明）。 */
   forward: unknown
-  /** 反向变更（回滚点）—— **必须有**，保证每个 committed patch 可逆。 */
+  /** 反向变更或回滚 ref（surface 专属）。可逆性由原生引擎保证并被 spine 记录。 */
   inverse: unknown
   status: DesignPatchStatus
   committedAt?: number

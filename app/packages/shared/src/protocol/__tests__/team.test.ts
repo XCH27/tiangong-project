@@ -76,13 +76,13 @@ describe('team session event and command shapes', () => {
     expect(event.visibility).toBe('private')
   })
 
-  test('exposes commands for leader, team messaging, tasks, reports, and identity tags', () => {
+  test('exposes commands for leader, team messaging, tasks, reports, and rules', () => {
+    // 身份/队长标签变更不再是团队命令：统一走 craft 原 setLabels（set_session_labels）。
     const commands: TeamSessionCommand[] = [
       { type: 'promoteTeamLeader', teamId: 'team-1', leaderSessionId: 'leader-session' },
       { type: 'sendTeamMessage', teamId: 'team-1', content: 'all' },
       { type: 'assignTeamTask', teamId: 'team-1', taskId: 'task-1', assigneeSessionId: 'member-session', title: '实现协议' },
       { type: 'submitTeamReport', teamId: 'team-1', taskId: 'task-1', runId: 'run-1', summary: '完成' },
-      { type: 'changeTeamIdentityTag', teamId: 'team-1', targetSessionId: 'member-session', tagId: 'reviewer', action: 'add' },
       { type: 'updateTeamRules', teamId: 'team-1', rules: { version: 1, teamId: 'team-1' } },
     ]
 
@@ -91,7 +91,6 @@ describe('team session event and command shapes', () => {
       'sendTeamMessage',
       'assignTeamTask',
       'submitTeamReport',
-      'changeTeamIdentityTag',
       'updateTeamRules',
     ])
   })

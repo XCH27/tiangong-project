@@ -71,6 +71,25 @@ export interface LabelConfig {
    * Multiple rules = multiple ways to trigger (evaluated in order, all matches collected).
    */
   autoRules?: AutoLabelRule[];
+
+  /**
+   * 身份能力（团队编排）。省略 = 普通功能标签（仍可用于整理/筛选/自动化）。
+   * `'identity'` = 这个标签是一个团队身份（队长/代码/设计/审查/…）。
+   * 这是身份的唯一真相，team rules 不再保存 identityTags/identityAssignments（docs/33 §1.2）。
+   */
+  kind?: 'functional' | 'identity';
+
+  /**
+   * identity 标签：会话启动 / 下一轮构建时注入的系统提示词预设。
+   * 应用时记录标签 id 与配置 hash；提示词在 session 构建时注入，不在 renderer 临时拼接。
+   */
+  systemPromptPreset?: string;
+
+  /**
+   * identity 标签：引用 craft 现有 permission 配置名，不内嵌第二套 ACL。
+   * 标签不能直接授予绕过 permission 的能力。
+   */
+  permissionProfile?: string;
 }
 
 /**

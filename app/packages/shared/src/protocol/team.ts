@@ -45,7 +45,12 @@ export function normalizeTeamStatusMap(overrides?: Partial<TeamStatusMap>): Team
 // Team rules
 // ---------------------------------------------------------------------------
 
-export interface TeamIdentityTag {
+/**
+ * 身份标签的派生读模型（仅 UI 投影用）。
+ * 身份真相在 craft 原 `LabelConfig`（`kind==='identity'`）+ session `labels`，
+ * 不再存进 team rules。这里只是 `TeamProjection` 给前端的派生视图，不是存储真相。
+ */
+export interface TeamIdentityLabel {
   id: string
   displayName: string
   systemPromptPreset?: string
@@ -88,11 +93,14 @@ export interface TeamRulesV1 {
    * 只用于 timeline/待审路由，不是常驻管理 Agent 的用户对话位置。
    */
   managerProjectionSessionId?: string
+  /**
+   * 队长会话的派生缓存：真相是该会话原 `labels` 是否含 `leader` 身份标签。
+   * 加载/对账时必须与 session labels 核对，冲突以标签为准（docs/33 §2）。
+   */
   leaderSessionId: string | null
   memberSessionIds: string[]
-  identityTags: TeamIdentityTag[]
-  /** sessionId -> identity tag ids */
-  identityAssignments: Record<string, string[]>
+  // 身份定义与分配已收敛到 craft 原标签系统（labels/config.json + session labels），
+  // team rules 不再保存 identityTags / identityAssignments（docs/33 §1.2 / §0-8）。
   statusMap: TeamStatusMap
   routing: {
     mentionPrefix: '@'
@@ -150,12 +158,6 @@ export type TeamSessionEvent =
       type: 'team_leader_changed'
       leaderSessionId: string | null
       previousLeaderSessionId?: string | null
-    })
-  | (TeamEventBase & {
-      type: 'team_identity_changed'
-      targetSessionId: string
-      tagId: string
-      action: 'add' | 'remove'
     })
   | (TeamEventBase & {
       type: 'team_message'
@@ -239,31 +241,16 @@ export type TeamSessionCommand =
       summary: string
       artifactPaths?: string[]
     }
-  | {
-      type: 'changeTeamIdentityTag'
-      teamId: string
-      targetSessionId: string
-      tagId: string
-      action: 'add' | 'remove'
-    }
+  // 身份/队长标签变更不再走团队命令，统一走 craft 原 `setLabels`
+  // session 命令（set_session_labels），由 SessionManager 保证队长唯一性（docs/33 §1.2）。
   | {
       type: 'updateTeamRules'
       teamId: string
       rules: TeamRulesPatch
     }
 
-// ---------------------------------------------------------------------------
-// Team default identity tags（功能身份预设）
-// ---------------------------------------------------------------------------
-
-export const TEAM_DEFAULT_IDENTITY_TAGS: TeamIdentityTag[] = [
-  { id: 'leader', displayName: '队长', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
-  { id: 'code', displayName: '代码' },
-  { id: 'design', displayName: '设计' },
-  { id: 'review', displayName: '审查', systemPromptPreset: '负责检查风险、回归和验收证据。' },
-  { id: 'test', displayName: '测试' },
-  { id: 'context', displayName: '上下文' },
-]
+// 默认身份标签预设已迁到 craft 原标签系统：见
+// `@craft-agent/shared/labels` 的 `DEFAULT_IDENTITY_LABEL_PRESETS` 与 `LEADER_LABEL_ID`。
 
 // ---------------------------------------------------------------------------
 // Team delivery + projection types（收件箱 / 报告 / 派生视图 · 查询返回）
@@ -303,7 +290,8 @@ export interface TeamMemberProjection {
   /** 稳定序号（按 createdAt 排名派生，如 G-01）。 */
   sequence: string
   isLeader: boolean
-  identityTagIds: string[]
+  /** 派生自 session `labels` 里命中的 identity 标签 id（不含 leader 也可能为空）。 */
+  identityLabelIds: string[]
   /** 当前会话状态 id（craft 动态 status）。 */
   status?: string
 }
@@ -315,7 +303,8 @@ export interface TeamProjection {
   managerProjectionSessionId?: string
   leaderSessionId: string | null
   members: TeamMemberProjection[]
-  identityTags: TeamIdentityTag[]
+  /** 身份标签目录，派生自 workspace `LabelConfig`（kind==='identity'），不是 rules 真相。 */
+  identityLabels: TeamIdentityLabel[]
   statusMap: TeamStatusMap
   managerContextPolicy?: TeamManagerContextPolicy
   norms: string[]

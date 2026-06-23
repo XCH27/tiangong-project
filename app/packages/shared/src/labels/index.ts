@@ -21,5 +21,8 @@ export * from './values.ts';
 // Session label resolution (validate user input against configured labels)
 export * from './resolve.ts';
 
+// Identity labels (team orchestration identity = a use of the original label system)
+export * from './identity.ts';
+
 // Auto-labels: import directly from '@craft-agent/shared/labels/auto' to keep
 // regex evaluation code out of the renderer bundle (backend-only concern).

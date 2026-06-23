@@ -25,6 +25,8 @@ import type {
 import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
 import type { DesignActionPermission } from './design-service'
 import type { TeamSessionCommand, TeamSessionEvent } from './team'
+import type { ProgressTask } from './progress'
+import type { CliRuntimeModelState } from './cli-runtime'
 
 // Re-export generateMessageId for handler convenience
 export { generateMessageId } from '@craft-agent/core/types'
@@ -75,6 +77,12 @@ export interface Session {
   sharedUrl?: string
   sharedId?: string
   model?: string
+  /** Selected local CLI Runtime id; null/undefined means normal API path. */
+  cliRuntimeId?: string | null
+  /** Requested model inside the selected CLI Runtime. */
+  cliRuntimeModelId?: string | null
+  /** Live model state reported by the active CLI process; not persisted as catalog truth. */
+  cliRuntimeModelState?: CliRuntimeModelState
   llmConnection?: string
   thinkingLevel?: ThinkingLevel
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
@@ -188,6 +196,10 @@ export type SessionEvent =
   | { type: 'plan_submitted'; sessionId: string; message: Message }
   | { type: 'sources_changed'; sessionId: string; enabledSourceSlugs: string[] }
   | { type: 'labels_changed'; sessionId: string; labels: string[] }
+  | { type: 'progress_updated'; sessionId: string; tasks: ProgressTask[] }
+  | { type: 'cli_runtime_changed'; sessionId: string; cliRuntimeId: string | null }
+  | { type: 'cli_runtime_models_changed'; sessionId: string; state: CliRuntimeModelState }
+  | { type: 'manager_auto_decision'; sessionId: string; decisionId: string; level: string; outcome: string; basis: string; ruleId?: string; revocable: boolean; action: string; timestamp: number }
   | { type: 'connection_changed'; sessionId: string; connectionSlug: string; supportsBranching?: boolean }
   | { type: 'task_backgrounded'; sessionId: string; toolUseId: string; taskId: string; intent?: string; turnId?: string }
   | { type: 'shell_backgrounded'; sessionId: string; toolUseId: string; shellId: string; intent?: string; command?: string; turnId?: string }
@@ -245,6 +257,9 @@ export type SessionCommand =
   | { type: 'updateWorkingDirectory'; dir: string }
   | { type: 'setSources'; sourceSlugs: string[] }
   | { type: 'setLabels'; labels: string[] }
+  | { type: 'setProgress'; tasks: ProgressTask[] }
+  | { type: 'setCliRuntime'; cliRuntimeId: string | null }
+  | { type: 'setCliRuntimeModel'; modelId: string | null }
   | { type: 'showInFinder' }
   | { type: 'copyPath' }
   | { type: 'shareToViewer' }

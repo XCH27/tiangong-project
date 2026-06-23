@@ -17,7 +17,7 @@ export function registerTeamHandlers(server: RpcServer, deps: HandlerDeps): void
   const resolveCoordinator = (workspaceId: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
-    const runtime = createSessionManagerTeamRuntime(sessionManager, workspaceId)
+    const runtime = createSessionManagerTeamRuntime(sessionManager, workspaceId, workspace.rootPath)
     return getTeamCoordinator({ workspaceRootPath: workspace.rootPath, runtime })
   }
 

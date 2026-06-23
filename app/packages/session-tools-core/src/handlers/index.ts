@@ -66,6 +66,8 @@ export type { SendDeveloperFeedbackArgs } from './send-developer-feedback.ts';
 // Session Self-Management
 export { handleSetSessionLabels } from './set-session-labels.ts';
 export type { SetSessionLabelsArgs } from './set-session-labels.ts';
+export { handleSetSessionProgress } from './set-session-progress.ts';
+export type { SetSessionProgressArgs } from './set-session-progress.ts';
 export { handleSetSessionStatus } from './set-session-status.ts';
 export type { SetSessionStatusArgs } from './set-session-status.ts';
 export { handleGetSessionInfo } from './get-session-info.ts';

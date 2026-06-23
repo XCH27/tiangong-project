@@ -11,6 +11,7 @@
 
 import type { PermissionMode } from '../agent/mode-manager.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
+import type { ProgressTask } from '../protocol/progress.ts';
 import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage } from '@craft-agent/core/types';
 
 /**
@@ -34,6 +35,8 @@ export const SESSION_PERSISTENT_FIELDS = [
   'lastReadMessageId', 'hasUnread',
   // Config
   'enabledSourceSlugs', 'permissionMode', 'previousPermissionMode', 'workingDirectory',
+  // Session-level orchestration metadata
+  'progress', 'cliRuntimeId', 'cliRuntimeModelId',
   // Model/Connection
   'model', 'llmConnection', 'connectionLocked', 'thinkingLevel',
   // Sharing
@@ -129,6 +132,12 @@ export interface SessionConfig {
   hasUnread?: boolean;
   /** Per-session source selection (source slugs) */
   enabledSourceSlugs?: string[];
+  /** Session progress checklist (docs/35). Stored at session metadata level, same persistence path as labels/status. */
+  progress?: ProgressTask[];
+  /** Selected local CLI Runtime id for this session. null/undefined = use normal model/API path. */
+  cliRuntimeId?: string | null;
+  /** Requested model inside the selected CLI Runtime. Separate from API `model`. */
+  cliRuntimeModelId?: string | null;
   /** Working directory for this session (used by agent for bash commands and context) */
   workingDirectory?: string;
   /** SDK cwd for session storage - set once at creation, never changes. Ensures SDK can find session transcripts regardless of workingDirectory changes. */
@@ -245,6 +254,12 @@ export interface SessionHeader {
   hasUnread?: boolean;
   /** Per-session source selection (source slugs) */
   enabledSourceSlugs?: string[];
+  /** Session progress checklist (docs/35). */
+  progress?: ProgressTask[];
+  /** Selected local CLI Runtime id for this session. null/undefined = use normal model/API path. */
+  cliRuntimeId?: string | null;
+  /** Requested model inside the selected CLI Runtime. */
+  cliRuntimeModelId?: string | null;
   /** Working directory for this session (used by agent for bash commands and context) */
   workingDirectory?: string;
   /** SDK cwd for session storage - set once at creation, never changes */
@@ -340,6 +355,10 @@ export interface SessionMetadata {
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error';
   /** Model to use for this session (overrides global config if set) */
   model?: string;
+  /** Selected local CLI Runtime id; null/undefined means normal API path. */
+  cliRuntimeId?: string | null;
+  /** Requested model inside the selected CLI Runtime. */
+  cliRuntimeModelId?: string | null;
   /** LLM connection slug for this session (locked after first message) */
   llmConnection?: string;
   /** Whether the connection is locked (cannot be changed after first agent creation) */

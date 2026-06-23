@@ -16,6 +16,7 @@ import type {
   MicrosoftService,
   McpSourceConfig,
 } from './types.ts';
+import type { ProgressTask } from '@craft-agent/shared/protocol';
 
 // ============================================================
 // Source Credential Types
@@ -312,6 +313,9 @@ export interface SessionToolContext {
 
   /** Set labels on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionLabels?(sessionId: string | undefined, labels: string[]): void | Promise<void>;
+
+  /** Set the task progress checklist on a session (docs/35). Replace-all. Injected by backend. */
+  setSessionProgress?(sessionId: string | undefined, tasks: ProgressTask[]): void | Promise<void>;
 
   /** Set status on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionStatus?(sessionId: string | undefined, status: string): void | Promise<void>;

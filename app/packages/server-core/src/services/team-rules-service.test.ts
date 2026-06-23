@@ -12,14 +12,7 @@ function validRules(): TeamRulesV1 {
     teamConversationSessionId: 'session-team',
     leaderSessionId: 'session-leader',
     memberSessionIds: ['session-leader', 'session-worker'],
-    identityTags: [
-      { id: 'leader', displayName: '队长' },
-      { id: 'code', displayName: '代码' },
-    ],
-    identityAssignments: {
-      'session-leader': ['leader'],
-      'session-worker': ['code'],
-    },
+    // 身份定义/分配已收敛到 craft 原标签系统，不再进 team rules（docs/33 §1.2）。
     statusMap: { ...DEFAULT_TEAM_STATUS_MAP },
     routing: {
       mentionPrefix: '@',
@@ -96,19 +89,18 @@ describe('TeamRulesService', () => {
     expect(result.error).toContain('version 必须为 1')
   })
 
-  it('rejects unknown statuses, invalid prefixes, duplicate members, and dangling tags', () => {
+  it('rejects unknown statuses, invalid prefixes, and duplicate members', () => {
+    // 身份标签校验已移出 team rules（收敛到原标签系统），这里只校验团队规则自身字段。
     const rules = validRules()
     rules.memberSessionIds.push('session-worker')
     rules.statusMap.active = 'not-a-status'
     rules.routing.mentionPrefix = '#' as '@'
-    rules.identityAssignments['session-worker'] = ['missing-tag']
 
     const result = validateTeamRules(rules, new Set(['backlog', 'todo', 'needs-review', 'done', 'cancelled']))
     expect(result.valid).toBeFalse()
     expect(result.errors.some(error => error.includes('重复项'))).toBeTrue()
     expect(result.errors.some(error => error.includes('不存在的状态'))).toBeTrue()
     expect(result.errors.some(error => error.includes('mentionPrefix'))).toBeTrue()
-    expect(result.errors.some(error => error.includes('未知标签'))).toBeTrue()
   })
 
   it('validates manager context injection policy', () => {

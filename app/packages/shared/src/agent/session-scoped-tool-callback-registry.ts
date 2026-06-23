@@ -53,6 +53,8 @@ export interface SessionScopedToolCallbacks {
 
   /** Set labels on a session (defaults to current). */
   setSessionLabelsFn?: (sessionId: string | undefined, labels: string[]) => void | Promise<void>;
+  /** Set the task progress checklist on a session (defaults to current; docs/35). */
+  setSessionProgressFn?: (sessionId: string | undefined, tasks: import('@craft-agent/shared/protocol').ProgressTask[]) => void | Promise<void>;
   /** Set status on a session (defaults to current). */
   setSessionStatusFn?: (sessionId: string | undefined, status: string) => void | Promise<void>;
   /** Get detailed info about a session (defaults to current). */

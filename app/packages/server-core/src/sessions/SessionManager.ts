@@ -82,7 +82,11 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type ManagerAutoDecisionRecord, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { CliRuntimeHost } from '../services/acp/cli-runtime-host'
+import { getDefaultCliRuntimeCatalog } from '../services/cli-runtime-catalog'
+import { ManagerDecisionService, permissionAutoOutcome } from '../services/manager-decision-service'
+import { MANAGER_ACTOR } from '../services/team-coordinator'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
@@ -93,7 +97,7 @@ import type { SummarizeCallback } from '@craft-agent/shared/sources'
 import { type ThinkingLevel, DEFAULT_THINKING_LEVEL, normalizeThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import { evaluateAutoLabels } from '@craft-agent/shared/labels/auto'
 import { listLabels, loadLabelConfig } from '@craft-agent/shared/labels/storage'
-import { extractLabelId, resolveSessionLabels } from '@craft-agent/shared/labels'
+import { extractLabelId, resolveSessionLabels, LEADER_LABEL_ID } from '@craft-agent/shared/labels'
 import { ensureLabelsExist } from '@craft-agent/shared/labels/crud'
 import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
@@ -820,6 +824,14 @@ interface ManagedSession {
   enabledSourceSlugs?: string[]
   // Labels applied to this session (additive tags, many-per-session)
   labels?: string[]
+  // 任务进度清单（docs/35）：会话内有序、有状态的步骤；会话级元数据，和 labels 同层。
+  progress?: ProgressTask[]
+  // 选中的本机 CLI Runtime id（docs/23）。null/未设 = 走 API 模型路径；设了 = 走 ACP adapter。
+  cliRuntimeId?: string | null
+  // CLI 内部请求/实际模型；与 API 路径的 model 分开。
+  cliRuntimeModelId?: string | null
+  // 活跃 ACP 进程报告的模型清单（runtime-only，不作为 catalog 真相落盘）。
+  cliRuntimeModelState?: CliRuntimeModelState
   // Working directory for this session (used by agent for bash commands)
   workingDirectory?: string
   // SDK cwd for session storage - set once at creation, never changes.
@@ -1088,6 +1100,7 @@ function managedToSession(m: ManagedSession, overrides?: Partial<Session>): Sess
     isProcessing: m.isProcessing,
     sessionFolderPath: getSessionStoragePath(m.workspace.rootPath, m.id),
     supportsBranching: resolveSupportsBranching(m),
+    cliRuntimeModelState: m.cliRuntimeModelState,
     ...overrides,
   } as Session
 }
@@ -1107,7 +1120,6 @@ function formatWorkflowEvent(event: SessionEvent): string {
     case 'team_report_submitted': return `工作汇报：${event.summary}`
     case 'team_review_queued': return `工作汇报已进入待审队列：${event.reportId}`
     case 'team_leader_changed': return event.leaderSessionId ? `队长已更新：${event.leaderSessionId}` : '队长已清空'
-    case 'team_identity_changed': return `身份标签 ${event.tagId}：${event.action}`
     case 'team_rules_changed': return `团队规则已更新：${event.changedKeys.join(', ')}`
     case 'team_rules_validation_failed': return `团队规则校验失败：${event.error}`
     default: return `工作流事件：${event.type}`
@@ -4093,13 +4105,16 @@ export class SessionManager implements ISessionManager {
       })
       const teamCoordinatorForManaged = () => getTeamCoordinator({
         workspaceRootPath: managed.workspace.rootPath,
-        runtime: createSessionManagerTeamRuntime(this, managed.workspace.id),
+        runtime: createSessionManagerTeamRuntime(this, managed.workspace.id, managed.workspace.rootPath),
       })
 
       // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
       mergeSessionScopedToolCallbacks(managed.id, {
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
           await this.setSessionLabels(sessionId ?? managed.id, labels)
+        },
+        setSessionProgressFn: async (sessionId: string | undefined, tasks: ProgressTask[]) => {
+          await this.setSessionProgress(sessionId ?? managed.id, tasks)
         },
         setSessionStatusFn: async (sessionId: string | undefined, status: string) => {
           await this.setSessionStatus(sessionId ?? managed.id, status as SessionStatus)
@@ -5400,6 +5415,9 @@ export class SessionManager implements ISessionManager {
       return
     }
 
+    // CLI Runtime（ACP）子进程随会话删除清理（docs/23）
+    this.cliRuntimeHost?.dispose(sessionId)
+
     // Get workspace slug before deleting
     const workspaceRootPath = managed.workspace.rootPath
 
@@ -5539,6 +5557,20 @@ export class SessionManager implements ISessionManager {
 
     // Ensure messages are loaded before we try to add new ones
     await this.ensureMessagesLoaded(managed)
+
+    // CLI Runtime 路由（docs/23）：选了本机 CLI runtime 时走 ACP adapter，不走 API 模型路径。
+    // 附件第一版硬拒绝（docs/25）：选了 runtime 且带附件 → 抛可操作错误，不启动进程。
+    if (managed.cliRuntimeId) {
+      if ((attachments?.length ?? 0) > 0 || (storedAttachments?.length ?? 0) > 0) {
+        throw new Error(CLI_RUNTIME_ATTACHMENT_REJECTION)
+      }
+      if (managed.isProcessing) {
+        // v1：CLI runtime 不支持 mid-stream steering；正在跑时直接拒绝新一轮。
+        throw new Error('CLI Runtime 正在执行上一轮，请等当前轮结束或停止后再发。')
+      }
+      await this.runCliRuntimeTurn(managed, message, onAck)
+      return
+    }
 
     // If currently processing, behavior depends on the connection's
     // `midStreamBehavior` (resolved via {@link resolveMidStreamBehavior},
@@ -5885,7 +5917,7 @@ export class SessionManager implements ISessionManager {
       try {
         const coordinator = getTeamCoordinator({
           workspaceRootPath: managed.workspace.rootPath,
-          runtime: createSessionManagerTeamRuntime(this, managed.workspace.id),
+          runtime: createSessionManagerTeamRuntime(this, managed.workspace.id, managed.workspace.rootPath),
         })
         teamInboxContext = await coordinator.drainInboxContext(sessionId)
       } catch (error) {
@@ -6115,6 +6147,9 @@ export class SessionManager implements ISessionManager {
     }
 
     sessionLog.info('Cancelling processing for session:', sessionId, silent ? '(silent)' : '')
+
+    // CLI Runtime（ACP）：发 session/cancel 取消当前轮（不关进程，留作下一轮复用，docs/23）
+    if (managed.cliRuntimeId) this.cliRuntimeHost?.cancel(sessionId)
 
     // Collect queued message text for input restoration before clearing
     const queuedTexts = managed.messageQueue.map(q => q.message)
@@ -6604,12 +6639,51 @@ export class SessionManager implements ISessionManager {
     }
   }
 
+  private readonly managerDecisionServices = new Map<string, ManagerDecisionService>()
+
+  private getManagerDecisionService(workspaceRootPath: string): ManagerDecisionService {
+    let service = this.managerDecisionServices.get(workspaceRootPath)
+    if (!service) {
+      service = new ManagerDecisionService(workspaceRootPath)
+      this.managerDecisionServices.set(workspaceRootPath, service)
+    }
+    return service
+  }
+
+  /**
+   * 分级自动决策（D12 / docs/17 §4）：开启自动决策后，按规则代答低风险权限请求。
+   * 安全边界：只在有显式 L2 规则匹配时 auto_allow；L3/无规则/未开启 → 返回 null（照常弹给用户）。
+   * `team:` 动作由 TeamCoordinator 自己分级，这里跳过避免双判。每次自动判断写 timeline。
+   */
+  private tryAutoDecidePermission(
+    managed: ManagedSession,
+    input: { toolName: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation' },
+  ): boolean | null {
+    const service = this.getManagerDecisionService(managed.workspace.rootPath)
+    const outcome = permissionAutoOutcome(input.toolName, service.getSettings())
+    if (outcome === 'prompt') return null
+    const { record } = service.decide(
+      { kind: 'write_execute_external', action: input.toolName, sessionId: managed.id },
+      MANAGER_ACTOR,
+    )
+    void this.appendSessionEvent(this.managerDecisionEvent(record)).catch(() => { /* timeline best-effort */ })
+    return outcome === 'allow'
+  }
+
+  private managerDecisionEvent(record: ManagerAutoDecisionRecord): SessionEvent {
+    return ManagerDecisionService.toEventPayload(record) as unknown as SessionEvent
+  }
+
   requestWorkflowPermission(
     sessionId: string,
     input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
   ): Promise<boolean> {
     const managed = this.sessions.get(sessionId)
     if (!managed) return Promise.resolve(false)
+
+    const auto = this.tryAutoDecidePermission(managed, input)
+    if (auto !== null) return Promise.resolve(auto)
+
     const requestId = randomUUID()
 
     return new Promise<boolean>((resolve) => {
@@ -6788,6 +6862,28 @@ export class SessionManager implements ISessionManager {
   async setSessionLabels(sessionId: string, labels: string[]): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      // 队长唯一性（docs/33 §1.2）：给一个会话加 `leader` 身份标签时，
+      // 原子移除同 workspace 其它会话的 leader 标签，走同一条 labels_changed → timeline。
+      const becomesLeader = labels.some(label => extractLabelId(label) === LEADER_LABEL_ID)
+      if (becomesLeader) {
+        for (const other of this.sessions.values()) {
+          if (other.id === sessionId) continue
+          if (other.workspace.id !== managed.workspace.id) continue
+          const otherLabels = other.labels ?? []
+          if (!otherLabels.some(label => extractLabelId(label) === LEADER_LABEL_ID)) continue
+          other.labels = otherLabels.filter(label => extractLabelId(label) !== LEADER_LABEL_ID)
+          this.setMetadataWriteGuard(other)
+          this.sendEvent({
+            type: 'labels_changed',
+            sessionId: other.id,
+            labels: other.labels,
+          }, other.workspace.id)
+          this.persistSession(other)
+          await this.flushSession(other.id)
+          this.configWatchers.get(other.workspace.rootPath)?.notifyFileChange(`sessions/${other.id}/session.jsonl`)
+        }
+      }
+
       managed.labels = labels
       this.setMetadataWriteGuard(managed)
 
@@ -6804,6 +6900,179 @@ export class SessionManager implements ISessionManager {
       // https://github.com/oven-sh/bun/issues/15939
       const watcher = this.configWatchers.get(managed.workspace.rootPath)
       watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
+    }
+  }
+
+  /**
+   * 设置会话任务进度清单（docs/35）。replace-all 语义，和 setSessionLabels 同机制：
+   * 写内存 → 发 `progress_updated` 事件进 timeline → 持久化。人和 Agent 共用此路径。
+   */
+  async setSessionProgress(sessionId: string, tasks: ProgressTask[]): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.progress = tasks
+    this.setMetadataWriteGuard(managed)
+    this.sendEvent({
+      type: 'progress_updated',
+      sessionId: managed.id,
+      tasks: managed.progress,
+    }, managed.workspace.id)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.configWatchers.get(managed.workspace.rootPath)?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
+  }
+
+  /**
+   * 选择/清除会话的本机 CLI Runtime（docs/23）。null = 回到 API 模型路径。
+   * 只改选择；真正发送路由在 sendMessage 里按 `cliRuntimeId` 分支。
+   */
+  async setSessionCliRuntime(sessionId: string, cliRuntimeId: string | null): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    const changedRuntime = managed.cliRuntimeId !== cliRuntimeId
+    if (changedRuntime) this.cliRuntimeHost?.dispose(sessionId)
+    managed.cliRuntimeId = cliRuntimeId
+    managed.cliRuntimeModelId = null
+    managed.cliRuntimeModelState = undefined
+    this.setMetadataWriteGuard(managed)
+    this.sendEvent({ type: 'cli_runtime_changed', sessionId: managed.id, cliRuntimeId }, managed.workspace.id)
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.configWatchers.get(managed.workspace.rootPath)?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
+    if (!cliRuntimeId) return
+    const runtime = getDefaultCliRuntimeCatalog().get(cliRuntimeId)
+    if (!runtime || !runtime.enabled) throw new Error(`CLI Runtime 不可用：${cliRuntimeId}`)
+    await this.getCliRuntimeHost().prepare(sessionId, runtime)
+  }
+
+  /** 切换当前 CLI session 的模型；模型清单与切换能力来自 ACP session/new。 */
+  async setSessionCliRuntimeModel(sessionId: string, modelId: string | null): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed?.cliRuntimeId) throw new Error('请先选择 CLI Runtime')
+    const runtime = getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId)
+    if (!runtime || !runtime.enabled) throw new Error(`CLI Runtime 不可用：${managed.cliRuntimeId}`)
+    if (!modelId) {
+      managed.cliRuntimeModelId = null
+      this.persistSession(managed)
+      await this.flushSession(sessionId)
+      return
+    }
+    await this.getCliRuntimeHost().setModel(sessionId, runtime, modelId)
+  }
+
+  // ---- CLI Runtime（ACP）发送路由（docs/23）-------------------------------
+
+  private cliRuntimeHost?: CliRuntimeHost
+
+  private getCliRuntimeHost(): CliRuntimeHost {
+    if (!this.cliRuntimeHost) {
+      this.cliRuntimeHost = new CliRuntimeHost({
+        emitEvent: (sessionId, event) => this.translateCliRuntimeEvent(sessionId, event),
+        requestPermission: (sessionId, request) => this.requestCliRuntimePermission(sessionId, request),
+        resolveCwd: sessionId => {
+          const managed = this.sessions.get(sessionId)
+          return managed?.workingDirectory ?? managed?.workspace.rootPath ?? process.cwd()
+        },
+      })
+    }
+    return this.cliRuntimeHost
+  }
+
+  /** 把 ACP 归一化流事件翻成 craft 的流式事件（复用 text_delta/text_complete 管线，不重造）。 */
+  private translateCliRuntimeEvent(sessionId: string, event: CliRuntimeStreamEvent): void {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    const workspaceId = managed.workspace.id
+    switch (event.type) {
+      case 'text':
+        managed.streamingText += event.text
+        this.sendEvent({ type: 'text_delta', sessionId, delta: event.text }, workspaceId)
+        break
+      case 'thought':
+        // 思考过程不投影为正式消息（保持与 API 路径一致的简洁）
+        break
+      case 'tool_call':
+        // v1 不把 ACP 工具调用投影成 craft 工具卡（避免造第二套工具事件）；留到接 UI 时统一设计
+        break
+      case 'models_changed': {
+        const managed = this.sessions.get(sessionId)
+        if (!managed) break
+        managed.cliRuntimeModelState = event.state
+        managed.cliRuntimeModelId = event.state.currentModelId
+        this.sendEvent({ type: 'cli_runtime_models_changed', sessionId, state: event.state }, managed.workspace.id)
+        this.persistSession(managed)
+        break
+      }
+      case 'done': {
+        const text = managed.streamingText
+        managed.streamingText = ''
+        if (text.length > 0) {
+          const assistantMessage: Message = {
+            id: generateMessageId(),
+            role: 'assistant',
+            content: text,
+            timestamp: this.monotonic(),
+          }
+          managed.messages.push(assistantMessage)
+          managed.lastMessageRole = 'assistant'
+          managed.lastFinalMessageId = assistantMessage.id
+          this.sendEvent({ type: 'text_complete', sessionId, text, messageId: assistantMessage.id }, workspaceId)
+        }
+        break
+      }
+      case 'error':
+        managed.streamingText = ''
+        this.sendEvent({ type: 'text_complete', sessionId, text: `⚠️ CLI Runtime 出错：${event.message}` }, workspaceId)
+        break
+    }
+  }
+
+  private async requestCliRuntimePermission(sessionId: string, request: CliRuntimePermissionRequest): Promise<boolean> {
+    return this.requestWorkflowPermission(sessionId, {
+      toolName: request.title || 'cli-runtime-tool',
+      description: `CLI Runtime 请求执行工具：${request.title}`,
+      type: 'mcp_mutation',
+      reason: 'CLI Runtime ACP tool call',
+    })
+  }
+
+  /**
+   * 选了 CLI Runtime 时的一轮发送（docs/23/24）。记录用户消息 → 跑一轮 ACP → 助手消息进 timeline。
+   * 复用 craft 的 setProcessing / user_message / text_* / complete 事件，不建第二套 session。
+   */
+  private async runCliRuntimeTurn(managed: ManagedSession, message: string, onAck?: (messageId: string) => void): Promise<void> {
+    const sessionId = managed.id
+    const workspaceId = managed.workspace.id
+
+    const userMessage: Message = { id: generateMessageId(), role: 'user', content: message, timestamp: this.monotonic() }
+    managed.messages.push(userMessage)
+    managed.lastMessageRole = 'user'
+    this.sendEvent({ type: 'user_message', sessionId, message: userMessage, status: 'accepted' }, workspaceId)
+    this.persistSession(managed)
+    await this.flushSession(sessionId)
+    onAck?.(userMessage.id)
+
+    const runtime = getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId ?? '')
+    if (!runtime || !runtime.enabled) {
+      this.sendEvent({
+        type: 'text_complete',
+        sessionId,
+        text: `⚠️ 选中的 CLI Runtime 不可用（${managed.cliRuntimeId ?? 'none'}）。请在设置里检查/启用，或切回 API 模型。`,
+      }, workspaceId)
+      return
+    }
+
+    this.setProcessing(managed, true)
+    managed.streamingText = ''
+    try {
+      await this.getCliRuntimeHost().runTurn(sessionId, runtime, message, managed.cliRuntimeModelId)
+    } catch (error) {
+      this.translateCliRuntimeEvent(sessionId, { type: 'error', message: error instanceof Error ? error.message : String(error) })
+    } finally {
+      this.setProcessing(managed, false)
+      this.sendEvent({ type: 'complete', sessionId, tokenUsage: managed.tokenUsage }, workspaceId)
+      this.persistSession(managed)
+      await this.flushSession(sessionId)
     }
   }
 
@@ -8240,6 +8509,9 @@ export class SessionManager implements ISessionManager {
    */
   cleanup(): void {
     sessionLog.info('Cleaning up resources...')
+
+    // CLI Runtime（ACP）子进程全部清理（docs/23：窗口关闭/退出必须清理）
+    this.cliRuntimeHost?.disposeAll()
 
     // Stop all ConfigWatchers (file system watchers)
     for (const [path, watcher] of this.configWatchers) {

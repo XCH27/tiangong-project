@@ -186,6 +186,27 @@ export const RPC_CHANNELS = {
     REFRESH_MODELS: 'LLM_Connection:refreshModels',
     CHANGED: 'LLM_Connection:changed',
   },
+  managerDecision: {
+    GET_SETTINGS: 'managerDecision:getSettings',
+    UPDATE_SETTINGS: 'managerDecision:updateSettings',
+  },
+  memory: {
+    LIST: 'memory:list',
+    ADD: 'memory:add',
+    GET: 'memory:get',
+    UPDATE: 'memory:update',
+    DELETE: 'memory:delete',
+  },
+  cliRuntimes: {
+    LIST: 'cliRuntimes:list',
+    GET: 'cliRuntimes:get',
+    ADD_CUSTOM: 'cliRuntimes:addCustom',
+    UPDATE_CUSTOM: 'cliRuntimes:updateCustom',
+    SET_ENABLED: 'cliRuntimes:setEnabled',
+    DELETE: 'cliRuntimes:delete',
+    TEST: 'cliRuntimes:test',
+    CHANGED: 'cliRuntimes:changed',
+  },
   chatgpt: {
     START_OAUTH: 'chatgpt:startOAuth',
     COMPLETE_OAUTH: 'chatgpt:completeOAuth',

@@ -30,14 +30,27 @@ import {
   type TeamInboxItem,
   type TeamProjection,
   type TeamMemberProjection,
+  type TeamIdentityLabel,
   type TeamReviewQueueItem,
   type TeamReport,
+  type AutoDecisionRequest,
+  type AutoDecisionResult,
+  type AutoDecisionSettings,
+  type ManagerAutoDecisionRecord,
   normalizeTeamManagerContextPolicy,
   normalizeTeamStatusMap,
-  TEAM_DEFAULT_IDENTITY_TAGS,
 } from '@craft-agent/shared/protocol'
+import {
+  LEADER_LABEL_ID,
+  identityLabelIdsOf,
+  hasLeaderLabel,
+  withoutLeaderLabel,
+  collectIdentityLabels,
+} from '@craft-agent/shared/labels'
+import { loadLabelConfig } from '@craft-agent/shared/labels/storage'
 import { TeamRulesService } from './team-rules-service'
 import { FileTeamStore, MemoryTeamStore, type TeamStore } from './team-store'
+import { ManagerDecisionService } from './manager-decision-service'
 
 /** 软件级管理 Agent 身份（单一，跨 workspace 投影）。 */
 export const MANAGER_ACTOR: ActorRef = {
@@ -55,6 +68,8 @@ export interface TeamSessionInfo {
   sessionStatus?: string
   hidden?: boolean
   name?: string
+  /** 会话原 labels（身份/队长真相在这里，不在 team rules）。 */
+  labels?: string[]
 }
 
 /** craft 耦合端口：协调器只通过它触达 SessionManager 能力。 */
@@ -71,6 +86,15 @@ export interface TeamRuntime {
   startTurn(sessionId: string, input: string): Promise<void>
   /** 改会话状态（团队语义 → craft status id）。 */
   setSessionStatus(sessionId: string, statusId: string): Promise<void>
+  /** 读某会话当前 labels（身份真相）。 */
+  getSessionLabels(sessionId: string): string[]
+  /**
+   * 写某会话 labels（走 craft 原 setLabels → permission → timeline）。
+   * 加 leader 标签时由 SessionManager 原子保证队长唯一性（docs/33 §1.2）。
+   */
+  setSessionLabels(sessionId: string, labels: string[]): Promise<void>
+  /** workspace `LabelConfig` 里 kind==='identity' 的标签目录（派生投影用）。 */
+  listIdentityLabels(): TeamIdentityLabel[]
   requestPermission(
     sessionId: string,
     input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
@@ -110,11 +134,19 @@ export function requiredTeamPermissionLevel(command: TeamSessionCommand): TeamPe
   }
 }
 
+/** 分级自动决策端口（docs/17 §4）。ManagerDecisionService 结构上满足；测试可注入。 */
+export interface TeamDecisionPort {
+  getSettings(): AutoDecisionSettings
+  decide(request: AutoDecisionRequest, actor: ActorRef): { result: AutoDecisionResult; record: ManagerAutoDecisionRecord }
+}
+
 export class TeamCoordinator {
   constructor(
     private readonly rules: TeamRulesStore,
     private readonly runtime: TeamRuntime,
     private readonly store: TeamStore,
+    /** 可选：开启后 L2 团队动作按规则自动代答（D12）。不传 = 行为不变（全走人工确认）。 */
+    private readonly decisionService?: TeamDecisionPort,
   ) {}
 
   // ---- 命令入口（唯一写路径）---------------------------------------------
@@ -130,8 +162,6 @@ export class TeamCoordinator {
         return this.assignTask(command, ctx)
       case 'submitTeamReport':
         return this.submitReport(command, ctx)
-      case 'changeTeamIdentityTag':
-        return this.changeIdentity(command, ctx)
       case 'updateTeamRules':
         return this.updateRules(command, ctx)
       default: {
@@ -144,6 +174,20 @@ export class TeamCoordinator {
   private async enforcePermission(command: TeamSessionCommand, ctx: TeamCommandContext): Promise<void> {
     const level = requiredTeamPermissionLevel(command)
     if (level === 'L1' || ctx.permissionGranted || (level === 'L3' && ctx.confirmed)) return
+
+    // 分级自动决策（D12 / docs/17 §4）：开启自动决策后，L2 团队动作按规则代答，L3 永不自动。
+    // 每个判断都写 manager_auto_decision 事件进 timeline（可回放、有依据）。
+    if (level === 'L2' && this.decisionService?.getSettings().enabled) {
+      const { result, record } = this.decisionService.decide(
+        { kind: 'write_execute_external', action: `team:${command.type}`, sessionId: ctx.issuerSessionId },
+        MANAGER_ACTOR,
+      )
+      await this.runtime.recordEvent(this.managerDecisionEvent(record))
+      if (result.outcome === 'auto_allow') return
+      if (result.outcome === 'auto_deny') throw new Error(`自动决策拒绝团队动作 ${command.type}：${result.basis}`)
+      // escalate → 继续走下面的人工确认
+    }
+
     const allowed = await this.runtime.requestPermission(ctx.issuerSessionId, {
       toolName: `team:${command.type}`,
       description: level === 'L3'
@@ -165,14 +209,22 @@ export class TeamCoordinator {
     const previous = rules.leaderSessionId
     const next = command.leaderSessionId
 
+    // 身份真相是 session labels。提升/更换队长 = 通过 craft 原 setLabels 增删 `leader` 标签；
+    // SessionManager.setSessionLabels 原子保证同 workspace 唯一队长（docs/33 §1.2）。
     if (next) {
       if (!this.runtime.listSessions().some(session => session.id === next)) {
         throw new Error(`无法提升不存在的会话为队长: ${next}`)
       }
       if (!rules.memberSessionIds.includes(next)) rules.memberSessionIds.push(next)
-      this.addTag(rules, next, 'leader')
+      const nextLabels = this.runtime.getSessionLabels(next)
+      if (!hasLeaderLabel(nextLabels)) {
+        await this.runtime.setSessionLabels(next, [...nextLabels, LEADER_LABEL_ID])
+      }
+    } else if (previous) {
+      // 清空队长：移除旧队长的 leader 标签。
+      await this.runtime.setSessionLabels(previous, withoutLeaderLabel(this.runtime.getSessionLabels(previous)))
     }
-    if (previous && previous !== next) this.removeTag(rules, previous, 'leader')
+    // leaderSessionId 只是派生缓存（docs/33 §2）：写入后与 labels 对账。
     rules.leaderSessionId = next
     this.rules.save(rules)
 
@@ -315,32 +367,8 @@ export class TeamCoordinator {
     return { reportId: report.reportId, reviewId }
   }
 
-  private async changeIdentity(
-    command: Extract<TeamSessionCommand, { type: 'changeTeamIdentityTag' }>,
-    ctx: TeamCommandContext,
-  ): Promise<TeamProjection> {
-    const rules = await this.ensureRules(command.teamId)
-    if (!this.runtime.listSessions().some(session => session.id === command.targetSessionId)) {
-      throw new Error(`无法给不存在的会话写身份: ${command.targetSessionId}`)
-    }
-    if (command.action === 'add' && !rules.identityTags.some(tag => tag.id === command.tagId)) {
-      throw new Error(`未知身份标签: ${command.tagId}`)
-    }
-    if (!rules.memberSessionIds.includes(command.targetSessionId)) {
-      rules.memberSessionIds.push(command.targetSessionId)
-    }
-    if (command.action === 'add') this.addTag(rules, command.targetSessionId, command.tagId)
-    else this.removeTag(rules, command.targetSessionId, command.tagId)
-    this.rules.save(rules)
-
-    await this.runtime.recordEvent(this.teamEvent(rules, command.targetSessionId, ctx.actor, {
-      type: 'team_identity_changed',
-      targetSessionId: command.targetSessionId,
-      tagId: command.tagId,
-      action: command.action,
-    }))
-    return this.projectionFrom(rules)
-  }
+  // changeIdentity 已删除：设置/取消普通身份标签走 craft 原 set_session_labels 工具
+  // 与 setLabels session 命令；队长身份走 promoteTeamLeader → setSessionLabels（docs/33 §1.2）。
 
   private async updateRules(
     command: Extract<TeamSessionCommand, { type: 'updateTeamRules' }>,
@@ -420,8 +448,6 @@ export class TeamCoordinator {
       managerProjectionSessionId,
       leaderSessionId: null,
       memberSessionIds: [],
-      identityTags: TEAM_DEFAULT_IDENTITY_TAGS.map(tag => ({ ...tag })),
-      identityAssignments: {},
       statusMap: normalizeTeamStatusMap(),
       routing: { mentionPrefix: '@', commandPrefix: '/', defaultVisibility: 'broadcast' },
       taskPolicy: { requireTaskIdForAssignment: true, requireRunIdForReport: true, queueLatestStructuredReport: true },
@@ -432,9 +458,10 @@ export class TeamCoordinator {
     return rules
   }
 
-  /** lazy 成员对账：剔除已不存在的会话；队长失效则清空并发事件。 */
+  /** lazy 成员对账：剔除已不存在的会话；队长身份从 session labels 派生（标签为真相）。 */
   private async reconcile(rules: TeamRulesV1): Promise<TeamRulesV1> {
-    const live = new Set(this.runtime.listSessions().map(s => s.id))
+    const liveSessions = this.runtime.listSessions()
+    const live = new Set(liveSessions.map(s => s.id))
     // 团队群聊会话本身是 hidden，不在 listSessions(可见) 里——单独确保其存在。
     const conversationId = await this.runtime.ensureTeamConversationSession(rules.teamConversationSessionId)
     const managerProjectionSessionId = await this.runtime.ensureManagerProjectionSession(rules.managerProjectionSessionId ?? null)
@@ -443,30 +470,27 @@ export class TeamCoordinator {
     const members = rules.memberSessionIds.filter(id => live.has(id))
     if (members.length !== rules.memberSessionIds.length) changed = true
 
-    const assignments: Record<string, string[]> = {}
-    for (const id of members) if (rules.identityAssignments[id]) assignments[id] = rules.identityAssignments[id]
-    if (Object.keys(assignments).length !== Object.keys(rules.identityAssignments).length) changed = true
+    // 队长缓存与 session `leader` 标签对账，冲突以标签为准（docs/33 §2）。
+    const previousLeader = rules.leaderSessionId
+    const leader = liveSessions.find(s => members.includes(s.id) && hasLeaderLabel(s.labels ?? []))?.id ?? null
+    const leaderChanged = leader !== previousLeader
+    if (leaderChanged) changed = true
 
-    let leader = rules.leaderSessionId
-    const leaderLost = leader !== null && !live.has(leader)
-    if (leaderLost) leader = null
-
-    if (!changed && !leaderLost) return rules
+    if (!changed) return rules
 
     const next: TeamRulesV1 = {
       ...rules,
       teamConversationSessionId: conversationId,
       managerProjectionSessionId,
       memberSessionIds: members,
-      identityAssignments: assignments,
       leaderSessionId: leader,
     }
     this.rules.save(next)
-    if (leaderLost) {
+    if (leaderChanged && leader === null && previousLeader) {
       await this.runtime.recordEvent(this.teamEvent(next, next.teamConversationSessionId, MANAGER_ACTOR, {
         type: 'team_leader_changed',
         leaderSessionId: null,
-        previousLeaderSessionId: rules.leaderSessionId,
+        previousLeaderSessionId: previousLeader,
       }))
     }
     return next
@@ -474,22 +498,27 @@ export class TeamCoordinator {
 
   private projectionFrom(rules: TeamRulesV1): TeamProjection {
     const sessions = new Map(this.runtime.listSessions().map(s => [s.id, s]))
+    const identityLabels = this.runtime.listIdentityLabels()
+    const identityIds = new Set(identityLabels.map(label => label.id))
     const ordered = [...rules.memberSessionIds].sort((a, b) => (sessions.get(a)?.createdAt ?? 0) - (sessions.get(b)?.createdAt ?? 0))
     const seqOf = new Map(ordered.map((id, index) => [id, `G-${String(index + 1).padStart(2, '0')}`]))
-    const members: TeamMemberProjection[] = rules.memberSessionIds.map(id => ({
-      sessionId: id,
-      sequence: seqOf.get(id) ?? 'G-00',
-      isLeader: rules.leaderSessionId === id,
-      identityTagIds: rules.identityAssignments[id] ?? [],
-      status: sessions.get(id)?.sessionStatus,
-    }))
+    const members: TeamMemberProjection[] = rules.memberSessionIds.map(id => {
+      const labels = sessions.get(id)?.labels ?? []
+      return {
+        sessionId: id,
+        sequence: seqOf.get(id) ?? 'G-00',
+        isLeader: hasLeaderLabel(labels),
+        identityLabelIds: identityLabelIdsOf(labels, identityIds),
+        status: sessions.get(id)?.sessionStatus,
+      }
+    })
     return {
       teamId: rules.teamId,
       teamConversationSessionId: rules.teamConversationSessionId,
       managerProjectionSessionId: rules.managerProjectionSessionId,
       leaderSessionId: rules.leaderSessionId,
       members,
-      identityTags: rules.identityTags,
+      identityLabels,
       statusMap: rules.statusMap,
       managerContextPolicy: normalizeTeamManagerContextPolicy(rules.managerContextPolicy),
       norms: rules.norms,
@@ -511,16 +540,19 @@ export class TeamCoordinator {
     }
   }
 
-  private addTag(rules: TeamRulesV1, sessionId: string, tagId: string): void {
-    const tags = new Set(rules.identityAssignments[sessionId] ?? [])
-    tags.add(tagId)
-    rules.identityAssignments[sessionId] = [...tags]
-  }
-
-  private removeTag(rules: TeamRulesV1, sessionId: string, tagId: string): void {
-    const tags = (rules.identityAssignments[sessionId] ?? []).filter(id => id !== tagId)
-    if (tags.length > 0) rules.identityAssignments[sessionId] = tags
-    else delete rules.identityAssignments[sessionId]
+  private managerDecisionEvent(record: ManagerAutoDecisionRecord): SessionEvent {
+    return {
+      type: 'manager_auto_decision',
+      sessionId: record.request.sessionId,
+      decisionId: record.decisionId,
+      level: record.result.level,
+      outcome: record.result.outcome,
+      basis: record.result.basis,
+      ruleId: record.result.ruleId,
+      revocable: record.result.revocable,
+      action: record.request.action,
+      timestamp: record.timestamp,
+    } as unknown as SessionEvent
   }
 
   private teamEvent<T extends { type: string }>(
@@ -550,10 +582,12 @@ function buildTaskPrompt(title: string, description: string | undefined, taskId:
 /** SessionManager 的最小结构契约（避免直接 import 具体类，便于测试与解耦）。 */
 export interface TeamSessionManagerLike {
   appendSessionEvent(event: SessionEvent): Promise<string>
-  getSessions(workspaceId?: string): Array<{ id: string; createdAt?: number; sessionStatus?: string; hidden?: boolean; name?: string }>
+  getSessions(workspaceId?: string): Array<{ id: string; createdAt?: number; sessionStatus?: string; hidden?: boolean; name?: string; labels?: string[] }>
   createSession(workspaceId: string, options?: { hidden?: boolean; name?: string; systemPromptPreset?: 'default' | 'mini' | string }): Promise<{ id: string }>
   sendMessage(sessionId: string, message: string): Promise<void>
   setSessionStatus(sessionId: string, status: string): Promise<void>
+  /** 走 craft 原 setLabels → permission → timeline；加 leader 标签时保证队长唯一性。 */
+  setSessionLabels(sessionId: string, labels: string[]): void | Promise<void>
   requestWorkflowPermission(
     sessionId: string,
     input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
@@ -562,7 +596,11 @@ export interface TeamSessionManagerLike {
   resolveTeamInbox(items: TeamInboxItem[]): Promise<string>
 }
 
-export function createSessionManagerTeamRuntime(sm: TeamSessionManagerLike, workspaceId: string): TeamRuntime {
+export function createSessionManagerTeamRuntime(
+  sm: TeamSessionManagerLike,
+  workspaceId: string,
+  workspaceRootPath: string,
+): TeamRuntime {
   return {
     recordEvent: event => sm.appendSessionEvent(event),
     now: () => Date.now(),
@@ -570,7 +608,7 @@ export function createSessionManagerTeamRuntime(sm: TeamSessionManagerLike, work
     listSessions: () =>
       sm.getSessions(workspaceId)
         .filter(s => !s.hidden)
-        .map(s => ({ id: s.id, createdAt: s.createdAt ?? 0, sessionStatus: s.sessionStatus, hidden: s.hidden, name: s.name })),
+        .map(s => ({ id: s.id, createdAt: s.createdAt ?? 0, sessionStatus: s.sessionStatus, hidden: s.hidden, name: s.name, labels: s.labels ?? [] })),
     ensureTeamConversationSession: async existingId => {
       if (existingId && sm.getSessions(workspaceId).some(s => s.id === existingId)) return existingId
       const created = await sm.createSession(workspaceId, { hidden: true, name: '团队群聊' })
@@ -587,6 +625,15 @@ export function createSessionManagerTeamRuntime(sm: TeamSessionManagerLike, work
     },
     startTurn: (sessionId, input) => sm.sendMessage(sessionId, input),
     setSessionStatus: (sessionId, statusId) => sm.setSessionStatus(sessionId, statusId),
+    getSessionLabels: sessionId => sm.getSessions(workspaceId).find(s => s.id === sessionId)?.labels ?? [],
+    setSessionLabels: async (sessionId, labels) => { await sm.setSessionLabels(sessionId, labels) },
+    listIdentityLabels: () =>
+      collectIdentityLabels(loadLabelConfig(workspaceRootPath).labels).map(label => ({
+        id: label.id,
+        displayName: label.name,
+        systemPromptPreset: label.systemPromptPreset,
+        color: typeof label.color === 'string' ? label.color : undefined,
+      })),
     requestPermission: (sessionId, input) => sm.requestWorkflowPermission(sessionId, input),
     getLatestReport: sessionId => sm.getLatestTeamReport(sessionId),
     resolveInbox: items => sm.resolveTeamInbox(items),
@@ -605,7 +652,9 @@ export function getTeamCoordinator(opts: {
   if (!coordinator) {
     const rulesService = new TeamRulesService(opts.workspaceRootPath)
     const store = opts.store ?? new FileTeamStore(join(opts.workspaceRootPath, '.fleet', 'team-store'))
-    coordinator = new TeamCoordinator(rulesService, opts.runtime, store)
+    // 分级自动决策（D12）：默认 enabled=false → 行为不变；用户开启后 L2 才按规则代答。
+    const decisionService = new ManagerDecisionService(opts.workspaceRootPath)
+    coordinator = new TeamCoordinator(rulesService, opts.runtime, store, decisionService)
     coordinatorRegistry.set(opts.workspaceRootPath, coordinator)
   }
   return coordinator

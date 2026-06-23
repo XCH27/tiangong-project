@@ -24,6 +24,9 @@ import { registerSystemCoreHandlers } from './system'
 import { registerTransferHandlers } from './transfer'
 import { registerTeamRulesHandlers } from './team-rules'
 import { registerTeamHandlers } from './team'
+import { registerCliRuntimeHandlers } from './cli-runtime'
+import { registerManagerDecisionHandlers } from './manager-decision'
+import { registerMemoryHandlers } from './memory'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
 
@@ -38,6 +41,9 @@ export function registerCoreRpcHandlers(
   registerFilesHandlers(server, deps)
   registerLabelsHandlers(server, deps)
   registerLlmConnectionsHandlers(server, deps)
+  registerCliRuntimeHandlers(server, deps)
+  registerManagerDecisionHandlers(server, deps)
+  registerMemoryHandlers(server, deps)
   registerOAuthHandlers(server, deps)
   registerOnboardingHandlers(server, deps)
   registerResourcesHandlers(server, deps)
