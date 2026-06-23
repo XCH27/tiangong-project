@@ -172,6 +172,10 @@ export function SessionList({
     return () => { cancelled = true }
   }, [activeWorkspaceId])
   const teamChatSessionId = teamProjection?.leaderSessionId ? teamProjection.teamConversationSessionId : null
+  const teamSequenceById = useMemo(
+    () => Object.fromEntries((teamProjection?.members ?? []).map((m) => [m.sessionId, m.sequence])),
+    [teamProjection],
+  )
   const navState = useNavigationState()
   const { showEscapeOverlay } = useEscapeInterrupt()
 
@@ -630,6 +634,7 @@ export function SessionList({
   const resolvedSearchQuery = isSearchMode ? highlightQuery : searchQuery
 
   const listContext = useMemo((): SessionListContextValue => ({
+    teamSequenceById,
     onRenameClick: handleRenameClick,
     onSessionStatusChange,
     onFlag: onFlag ? handleFlagWithToast : undefined,
@@ -663,6 +668,7 @@ export function SessionList({
     sessionStatuses, flatLabels, labels, resolvedSearchQuery,
     focusedSessionId, selectionStore.state.selected, isMultiSelectActive,
     sessionOptions, contentSearchResults, activeChatMatchInfo, hasPendingPrompt,
+    teamSequenceById,
   ])
 
   // --- Empty state (non-search) — render before EntityList ---

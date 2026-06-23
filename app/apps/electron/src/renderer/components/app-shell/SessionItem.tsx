@@ -69,6 +69,8 @@ export function SessionItem({
   ) : sessionConnection ? (
     <ConnectionIcon connection={sessionConnection} size={14} showTooltip />
   ) : null
+  // 团队稳定序号（docs/33 §3，仅团队模式有值；占原 Project 字段的产品位置）。
+  const teamSequence = ctx.teamSequenceById?.[item.id]
   const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
@@ -207,8 +209,13 @@ export function SessionItem({
       titleClassName={cn("text-[13px]", item.isAsyncOperationOngoing && "animate-shimmer-text")}
       subtitle={previewText}
       titleSuffix={
-        (modelAvatar || hasMessagingBinding) ? (
+        (teamSequence || modelAvatar || hasMessagingBinding) ? (
           <div className="flex items-center gap-1">
+            {teamSequence && (
+              <span className="text-[10px] font-medium tabular-nums text-foreground/45 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0" title="团队序号">
+                {teamSequence}
+              </span>
+            )}
             {modelAvatar}
             {hasMessagingBinding && sessionBindings.map((binding) => {
               const pill = PLATFORM_PILL[binding.platform as 'telegram' | 'whatsapp']

@@ -25,6 +25,8 @@ export interface SessionListContextValue {
   // Shared config
   sessionStatuses: SessionStatus[]
   flatLabels: LabelConfig[]
+  /** 团队成员稳定序号（docs/33 §3，sessionId -> 'G-01'）。仅团队模式有值。 */
+  teamSequenceById?: Record<string, string>
   labels: LabelConfig[]
   searchQuery?: string
   selectedSessionId?: string | null
