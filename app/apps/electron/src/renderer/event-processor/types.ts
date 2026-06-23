@@ -5,7 +5,7 @@
  * All agent events flow through a single pure function for consistent state transitions.
  */
 
-import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta, CliRuntimeModelState } from '../../shared/types'
+import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta, CliRuntimeModelState, ProgressTask } from '../../shared/types'
 
 /**
  * Streaming state for a session - replaces streamingTextRef
@@ -482,9 +482,20 @@ export interface UsageUpdateEvent {
 }
 
 /**
+ * Session progress updated event (docs/35) — replace-all task checklist for this session.
+ * Mirrors the backend `progress_updated` SessionEvent emitted by setSessionProgress.
+ */
+export interface ProgressUpdatedEvent {
+  type: 'progress_updated'
+  sessionId: string
+  tasks: ProgressTask[]
+}
+
+/**
  * Union of all agent events
  */
 export type AgentEvent =
+  | ProgressUpdatedEvent
   | TextDeltaEvent
   | TextCompleteEvent
   | ToolStartEvent

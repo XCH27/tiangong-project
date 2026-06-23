@@ -690,6 +690,7 @@
   "session.noArchivedSessionsDesc": "Archivierte Sitzungen werden hier angezeigt. Archivieren Sie Sitzungen, um Ihre Liste übersichtlich zu halten und Unterhaltungen aufzubewahren.",
   "session.noResultsInFilter": "Keine Ergebnisse im aktuellen Filter",
   "session.teamChat": "Team chat",
+  "session.taskProgress": "Task progress",
   "session.noSessionSelected": "Keine Sitzung ausgewählt",
   "session.noSessionsFound": "Keine Sitzungen gefunden",
   "session.noSessionsFoundDesc": "Titel und Nachrichteninhalte wurden durchsucht",

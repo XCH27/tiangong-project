@@ -217,6 +217,13 @@ export function processEvent(
     case 'usage_update':
       return handleUsageUpdate(state, event)
 
+    case 'progress_updated':
+      // Session task checklist (docs/35). Replace-all, like labels — store on session.
+      return {
+        state: { ...state, session: { ...state.session, progress: event.tasks } },
+        effects: [],
+      }
+
     default: {
       // Unknown event type - return state unchanged but as new reference
       // to ensure atom sync detects the "change"

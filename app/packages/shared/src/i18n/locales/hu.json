@@ -690,6 +690,7 @@
   "session.noArchivedSessionsDesc": "Az archivált munkamenetek itt jelennek meg. Archiváld a munkameneteket, hogy listád rendezett maradjon, miközben a beszélgetések megőrződnek.",
   "session.noResultsInFilter": "Nincs találat az aktuális szűrőben",
   "session.teamChat": "Team chat",
+  "session.taskProgress": "Task progress",
   "session.noSessionSelected": "Nincs kiválasztott munkamenet",
   "session.noSessionsFound": "Nem található munkamenet",
   "session.noSessionsFoundDesc": "A keresés a címekben és az üzenet tartalmában történt",

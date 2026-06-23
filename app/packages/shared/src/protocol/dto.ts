@@ -64,6 +64,8 @@ export interface Session {
   sessionStatus?: SessionStatus
   /** Labels (additive tags, many-per-session — bare IDs or "id::value" entries) */
   labels?: string[]
+  /** Session task progress (docs/35): ordered checklist; replace-all semantics, like labels. */
+  progress?: ProgressTask[]
   lastReadMessageId?: string
   /**
    * Explicit unread flag - single source of truth for NEW badge.
