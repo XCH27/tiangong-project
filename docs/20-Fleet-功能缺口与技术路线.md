@@ -73,6 +73,7 @@ Fleet 不是 Cherry Studio 式“配置中心”，也不是只包一层 CLI 的
 - 在 `app/packages/server-core` 新增 local-only Runtime Catalog。探测只是填充 catalog，不是最终产品形态。
 - Runtime 记录 `runtimeId`、displayName、command、args、env、resolvedPath、version、capabilities、configDirs、health、source、native skill dirs。
 - 固定探测 `claude`、`codex`、`qwen`、`opencode`、`cursor agent`、Antigravity 的 `agy`、`hermes`、`openclaw`、Grok Build 的 `grok`；并按 AionUi catalog 补齐 Aion CLI、Goose、CodeBuddy、Kimi、Factory Droid、Augment Code、GitHub Copilot、Qoder、Mistral Vibe、Nanobot、Snow；Gemini CLI 已从内置探测删除；每个 runtime 支持多个候选命令和专属 `versionArgs`，不能假设都是 `command --version`。
+- API/模型/Runtime 厂商图标缺口用统一来源补齐：优先 `@lobehub/icons-static-svg`（MIT，适配现有 `<img src>` 管线；React 包 `@lobehub/icons` 需先做适配层），UIED SVG 作为补充来源；所有图标接 `ConnectionIcon`/`provider-icons.ts`，不在页面里散落内联 SVG。
 - Grok Build 按 xAI 官方规则接入：安装 `curl -fsSL https://x.ai/cli/install.sh | bash`，验证 `grok --version`，交互入口 `grok`，headless 入口 `grok -p ...`，ACP 入口 `grok agent stdio`，用户安装目录优先补扫 `~/.local/bin` 与 `~/.grok/bin`。
 - Hermes 按黑盒 CLI 入口接入：detected mapping 使用 ACP 入口 `hermes acp`；仅调用本机二进制，不复制 `hermes-agent` 源码。
 - OpenCode 按黑盒 CLI 入口接入：detected mapping 使用 ACP 入口 `opencode acp`；仅调用本机二进制，不复制 OpenCode 源码。

@@ -7,7 +7,7 @@
 
 **已完成（后端基座 + ACP 发送 + 输入框三按钮 + 设置页全量扫描）**
 
-- `CliRuntimeCatalog`：刷新扫描常见本机 Agent CLI（Goose/Claude Code/Codex/Grok/Hermes/OpenCode/Gemini/Qwen/Pi/Cursor Agent/OpenClaw），并先做本机 PATH 过滤，避免把静态候选误报为“已安装”；`protocol='acp'` 才可直接发送，`native/subscription` 标记为待 adapter；custom CRUD（增/改/启停/删）+ 落盘 `~/.craft-agent/.fleet/cli-runtimes.json` + 编辑边界（managed 不可改删、detected 不可改 command 可禁删、custom 全可编辑）。
+- `CliRuntimeCatalog`：刷新扫描常见本机 Agent CLI（Goose/Claude Code/Codex/Grok/Hermes/OpenCode/Antigravity/Qwen/Pi/Cursor Agent/OpenClaw），并先做本机 PATH 过滤，避免把静态候选误报为“已安装”；Antigravity 命令为 `agy`；Gemini CLI 不再作为内置探测项；`protocol='acp'` 才可直接发送，`native/subscription` 标记为待 adapter；custom CRUD（增/改/启停/删）+ 落盘 `~/.craft-agent/.fleet/cli-runtimes.json` + 编辑边界（managed 不可改删、detected 不可改 command 可禁删、custom 全可编辑）。
 - health test：`cli-runtime-health` spawn 探测 + 纯函数 `classifyHealthFromProbe`（available/fail_cli/fail_acp/needs_adapter）。
 - RPC：`cliRuntimes` list/get/addCustom/updateCustom/setEnabled/delete/test。
 - 协议：`protocol/cli-runtime.ts`（含 runtime protocol、needs_adapter、附件 none、effort 白名单、归一化流事件 `CliRuntimeStreamEvent`）。
@@ -26,7 +26,7 @@
 
 - Custom runtime 高级校验（重复 command/args 提醒、敏感 env 脱敏提示）。
 - usage/额度采样适配器：把 CLI/API 的上下文占用、套餐额度、真实/估算/未知写入统一账本。
-- Claude Code / Codex / Grok / Hermes / OpenCode / Gemini / Qwen / Pi 等 native/subscription adapter。
+- Claude Code / Codex / Grok / Hermes / OpenCode / Antigravity / Qwen / Pi 等 native/subscription adapter。
 - 真实 Goose / Custom ACP 的 opt-in smoke（需本机安装 + 登录）。
 
 **验证记录（2026-06-23，本环境）**
@@ -68,7 +68,9 @@ git diff --check
 | Claude Code | PATH 存在时出现在设置页，health=`needs_adapter`；不出现在聊天 CLI picker；后续 native adapter 应走 `claude --print --output-format stream-json ...` |
 | Codex | PATH 存在时出现在设置页，health=`needs_adapter`；不出现在聊天 CLI picker；显示已知 Codex 模型提示；后续 native adapter 应走 `codex exec ...` |
 | Grok Build | PATH 存在时出现在设置页，protocol=`subscription`，health=`needs_adapter`；显示 Grok 订阅模型提示；未接 adapter 前不能发送 |
-| Hermes / OpenCode / Gemini / Qwen / Pi / Cursor Agent / OpenClaw | PATH 存在时出现在设置页，health=`needs_adapter`；未接 adapter 前不能发送 |
+| Antigravity | PATH 存在 `agy` 时出现在设置页，health=`needs_adapter`；未接 adapter 前不能发送 |
+| Hermes / OpenCode / Qwen / Pi / Cursor Agent / OpenClaw | PATH 存在时出现在设置页，health=`needs_adapter`；未接 adapter 前不能发送 |
+| Gemini CLI | 不再作为内置 runtime 探测项；Google CLI 路线按 Antigravity `agy` 处理 |
 | Goose | 本机 PATH 上存在 `goose` 时才出现在 CLI 选择器；选择后发送纯文本，使用 `goose acp` |
 | Custom ACP | 新增 custom runtime，测试通过后发送纯文本，command/args/env 由 catalog 透传 |
 | CLI 动态模型 | runtime 暴露 `configOptions/models` 时，输入框模型菜单显示 CLI 模型，选择后发送前调用 `session/set_config_option` 或 `session/set_model` |

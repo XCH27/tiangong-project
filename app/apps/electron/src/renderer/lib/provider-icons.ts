@@ -50,7 +50,9 @@ const providerDisplayNames: Record<string, string> = {
   openai: 'OpenAI',
   openai_compat: 'OpenAI',
   copilot: 'GitHub Copilot',
+  antigravity: 'Antigravity',
   deepseek: 'DeepSeek',
+  groq: 'Groq',
   kimi: 'Kimi',
   minimax: 'Minimax',
   ollama: 'Ollama',
@@ -58,6 +60,8 @@ const providerDisplayNames: Record<string, string> = {
   pi: 'Craft Agents Backend',
   pi_compat: 'Craft Agents Backend',
   vercel: 'Vercel',
+  xai: 'xAI',
+  zai: 'Z.ai',
 }
 
 /** Get a human-readable provider name from provider type and optional base URL */
@@ -71,6 +75,11 @@ export function getProviderDisplayName(providerType: string, baseUrl?: string | 
     if (url.includes('minimax.io') || url.includes('minimaxi.com')) return 'Minimax'
     if (url.includes('v0.dev') || url.includes('vercel')) return 'Vercel'
     if (url.includes('manifest.build')) return 'Manifest'
+    if (url.includes('x.ai')) return 'xAI'
+    if (url.includes('groq.com')) return 'Groq'
+    if (url.includes('deepseek.com')) return 'DeepSeek'
+    if (url.includes('z.ai')) return 'Z.ai'
+    if (url.includes('antigravity')) return 'Antigravity'
   }
   return providerDisplayNames[providerType] || providerType
 }
@@ -93,6 +102,21 @@ function detectProviderFromUrl(baseUrl: string): ProviderIconKey | null {
   if (url.includes('bedrock')) return 'aws'
   if (url.includes('huggingface.co')) return 'huggingface'
 
+  return null
+}
+
+function faviconUrl(domain: string): string {
+  return `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://${domain}`
+}
+
+function detectProviderDomainFromUrl(baseUrl: string): string | null {
+  const url = baseUrl.toLowerCase()
+  if (url.includes('x.ai')) return 'x.ai'
+  if (url.includes('groq.com')) return 'groq.com'
+  if (url.includes('deepseek.com')) return 'deepseek.com'
+  if (url.includes('z.ai')) return 'z.ai'
+  if (url.includes('antigravity')) return 'antigravity.google'
+  if (url.includes('cerebras.ai')) return 'cerebras.ai'
   return null
 }
 
@@ -140,10 +164,20 @@ function piAuthProviderToIcon(piAuthProvider: string): ProviderIconKey | null {
  * Used to generate Google Favicon V2 URLs as fallback.
  */
 const PI_AUTH_PROVIDER_DOMAINS: Record<string, string> = {
+  antigravity: 'antigravity.google',
   groq: 'groq.com',
   xai: 'x.ai',
   cerebras: 'cerebras.ai',
   deepseek: 'deepseek.com',
+  zai: 'z.ai',
+}
+
+const PROVIDER_TYPE_DOMAINS: Record<string, string> = {
+  antigravity: 'antigravity.google',
+  cerebras: 'cerebras.ai',
+  deepseek: 'deepseek.com',
+  groq: 'groq.com',
+  xai: 'x.ai',
   zai: 'z.ai',
 }
 
@@ -170,8 +204,10 @@ export function getProviderIcon(
     }
     // Manifest has no bundled SVG — fall back to Google Favicon V2 (same trick used for groq/xai elsewhere).
     if (baseUrl.toLowerCase().includes('manifest.build')) {
-      return 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://app.manifest.build'
+      return faviconUrl('app.manifest.build')
     }
+    const detectedDomain = detectProviderDomainFromUrl(baseUrl)
+    if (detectedDomain) return faviconUrl(detectedDomain)
   }
 
   // Map provider type to icon
@@ -192,7 +228,7 @@ export function getProviderIcon(
         // Favicon fallback for providers without static SVGs
         const domain = PI_AUTH_PROVIDER_DOMAINS[piAuthProvider]
         if (domain) {
-          return `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://${domain}`
+          return faviconUrl(domain)
         }
       }
       return null  // Unknown/custom Pi provider — caller shows brain icon
@@ -204,7 +240,11 @@ export function getProviderIcon(
         if (detectedProvider) {
           return providerIcons[detectedProvider]
         }
+        const detectedDomain = detectProviderDomainFromUrl(baseUrl)
+        if (detectedDomain) return faviconUrl(detectedDomain)
       }
+      const domain = PROVIDER_TYPE_DOMAINS[providerType]
+      if (domain) return faviconUrl(domain)
       return null
   }
 }

@@ -138,7 +138,7 @@ export const DETECTED_RUNTIME_MAPPINGS: readonly DetectedRuntimeMapping[] = Obje
   },
   { mappingId: 'hermes', displayName: 'Hermes', command: 'hermes', args: ['--version'], protocol: 'native', adapterHint: '需要 Hermes gateway/native adapter。' },
   { mappingId: 'opencode', displayName: 'OpenCode', command: 'opencode', args: ['--version'], protocol: 'native', adapterHint: '需要 OpenCode native adapter。' },
-  { mappingId: 'gemini', displayName: 'Gemini CLI', command: 'gemini', args: ['--version'], protocol: 'native', adapterHint: '需要 Gemini CLI native adapter。' },
+  { mappingId: 'antigravity', displayName: 'Antigravity', command: 'agy', args: ['--version'], protocol: 'native', adapterHint: '需要 Antigravity native adapter（agy CLI）。' },
   { mappingId: 'qwen', displayName: 'Qwen Code', command: 'qwen', args: ['--version'], protocol: 'native', adapterHint: '需要 Qwen native adapter。' },
   { mappingId: 'pi', displayName: 'Pi CLI', command: 'pi', args: ['--version'], protocol: 'native', adapterHint: '需要 Pi native adapter。' },
   { mappingId: 'cursor-agent', displayName: 'Cursor Agent', command: 'cursor-agent', args: ['--version'], protocol: 'native', adapterHint: '需要 Cursor Agent native adapter。' },

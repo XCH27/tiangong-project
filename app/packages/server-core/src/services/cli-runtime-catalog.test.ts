@@ -33,6 +33,7 @@ describe('CliRuntimeCatalog', () => {
     expect(ids).toContain('claude')
     expect(ids).toContain('codex')
     expect(ids).toContain('grok')
+    expect(ids).toContain('antigravity')
     expect(catalog.list().filter(r => r.protocol === 'acp').map(r => r.mappingId)).toEqual(['goose'])
     expect(catalog.list().every(r => r.attachments === 'none')).toBe(true) // 第一版硬拒绝附件
   })
@@ -87,6 +88,8 @@ describe('CliRuntimeCatalog', () => {
     expect(grok.protocol).toBe('subscription')
     expect(grok.adapterHint).toContain('Grok')
     expect(grok.discoveredModels?.map(model => model.id)).toContain('grok-code-fast-1')
+    const antigravity = catalog.list().find(r => r.mappingId === 'antigravity')!
+    expect(antigravity.command).toBe('agy')
   })
 })
 

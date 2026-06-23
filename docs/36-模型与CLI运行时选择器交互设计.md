@@ -48,7 +48,7 @@
 └─────────────────────┘
 ```
 
-Claude Code / Codex / Grok / Hermes / OpenCode / Gemini / Qwen / Pi 等 native/subscription CLI 由设置页负责扫描和诊断；未接对应 adapter 前不进入这个快速切换菜单。
+Claude Code / Codex / Grok / Hermes / OpenCode / Antigravity(`agy`) / Qwen / Pi 等 native/subscription CLI 由设置页负责扫描和诊断；未接对应 adapter 前不进入这个快速切换菜单。Gemini CLI 不再作为内置 runtime 探测项。
 
 **模型按钮**（chip 文案：`Opus 4.8` 或 `模型由 CLI 管理`）：随当前运行方式变。
 ```

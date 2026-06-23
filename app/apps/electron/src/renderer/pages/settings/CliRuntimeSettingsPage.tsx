@@ -210,7 +210,7 @@ export default function CliRuntimeSettingsPage() {
         <div className="max-w-3xl mx-auto px-8 py-8">
           <SettingsSection
             title="本机 CLI Runtime"
-            description="刷新会扫描本机常见 Agent CLI 并自动健康检测。stdio ACP 可直接发送；Claude/Codex/Grok/Hermes/OpenCode/Gemini 等 native/subscription CLI 会显示为已检测但待 adapter，不再伪装成 ACP。发送、权限、停止和输出仍走 Craft 原有 timeline。"
+            description="刷新会扫描本机常见 Agent CLI 并自动健康检测。stdio ACP 可直接发送；Claude/Codex/Grok/Hermes/OpenCode/Antigravity 等 native/subscription CLI 会显示为已检测但待 adapter，不再伪装成 ACP。发送、权限、停止和输出仍走 Craft 原有 timeline。"
           >
             <SettingsCard>
               <SettingsRow
@@ -230,7 +230,7 @@ export default function CliRuntimeSettingsPage() {
                 </div>
               ) : runtimes.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
-                  未检测到本机 Agent CLI。可以先安装 Goose/Claude Code/Codex/Grok/Hermes/Gemini/OpenCode 等，或添加自定义 ACP runtime。
+                  未检测到本机 Agent CLI。可以先安装 Goose/Claude Code/Codex/Grok/Hermes/Antigravity/OpenCode 等，或添加自定义 ACP runtime。
                 </div>
               ) : runtimes.map(runtime => {
                 const result = health[runtime.id]
