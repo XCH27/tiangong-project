@@ -1,6 +1,7 @@
 import { formatDistanceToNowStrict } from "date-fns"
 import type { Locale } from "date-fns"
-import { Flag, ShieldAlert } from "lucide-react"
+import { Flag, ShieldAlert, Terminal } from "lucide-react"
+import { ConnectionIcon } from "@/components/icons/ConnectionIcon"
 import { useActionLabel } from "@/actions"
 import { cn } from "@/lib/utils"
 import { rendererPerf } from "@/lib/perf"
@@ -55,7 +56,19 @@ export function SessionItem({
   onRangeSelect,
 }: SessionItemProps) {
   const ctx = useSessionListContext()
-  const { workspaces, isCompactMode } = useAppShellContext()
+  const { workspaces, isCompactMode, llmConnections } = useAppShellContext()
+  // 会话使用的模型/Runtime 头像（docs/18 §3.1：每条会话增量显示模型/Runtime 图标）。
+  // CLI runtime 会话显示终端图标；否则显示该会话连接的 provider 图标。仅识别用，不可点击。
+  const sessionConnection = item.llmConnection
+    ? llmConnections.find((c) => c.slug === item.llmConnection)
+    : undefined
+  const modelAvatar = item.cliRuntimeId ? (
+    <span className="inline-flex items-center justify-center h-[14px] w-[14px] rounded-[3px] bg-foreground/10 flex-shrink-0" title="本机 CLI Runtime">
+      <Terminal className="h-[10px] w-[10px] text-foreground/60" />
+    </span>
+  ) : sessionConnection ? (
+    <ConnectionIcon connection={sessionConnection} size={14} showTooltip />
+  ) : null
   const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
@@ -194,9 +207,10 @@ export function SessionItem({
       titleClassName={cn("text-[13px]", item.isAsyncOperationOngoing && "animate-shimmer-text")}
       subtitle={previewText}
       titleSuffix={
-        hasMessagingBinding ? (
+        (modelAvatar || hasMessagingBinding) ? (
           <div className="flex items-center gap-1">
-            {sessionBindings.map((binding) => {
+            {modelAvatar}
+            {hasMessagingBinding && sessionBindings.map((binding) => {
               const pill = PLATFORM_PILL[binding.platform as 'telegram' | 'whatsapp']
               if (!pill) return null
               return (
