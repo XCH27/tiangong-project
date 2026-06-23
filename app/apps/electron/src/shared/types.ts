@@ -219,6 +219,10 @@ import type {
   TeamInboxItem,
   CliRuntimeDefinition,
   CliRuntimeHealthResult,
+  AutoDecisionSettings,
+  MemoryEntry,
+  MemoryQuery,
+  AddMemoryInput,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -246,6 +250,13 @@ export interface ElectronAPI {
   setCliRuntimeEnabled(runtimeId: string, enabled: boolean): Promise<void>
   deleteCliRuntime(runtimeId: string): Promise<void>
   testCliRuntime(runtimeId: string): Promise<CliRuntimeHealthResult>
+
+  // 管理 Agent 分级自动决策（D12 / docs/17 §4）+ 分层记忆（D2 / docs/05），按 workspace 隔离。
+  getManagerDecisionSettings(workspaceId: string): Promise<AutoDecisionSettings>
+  updateManagerDecisionSettings(workspaceId: string, patch: Partial<AutoDecisionSettings>): Promise<AutoDecisionSettings>
+  listMemory(workspaceId: string, query?: MemoryQuery): Promise<MemoryEntry[]>
+  addMemory(workspaceId: string, input: AddMemoryInput): Promise<MemoryEntry>
+  deleteMemory(workspaceId: string, id: string): Promise<boolean>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>

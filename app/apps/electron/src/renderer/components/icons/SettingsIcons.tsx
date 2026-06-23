@@ -7,6 +7,7 @@
  */
 
 import {
+  Brain,
   Building2,
   Keyboard,
   MessageSquare,
@@ -26,6 +27,7 @@ type IconProps = { className?: string }
 export const AppSettingsIcon = ({ className }: IconProps) => <ToggleRight className={className} />
 export const AiSettingsIcon = ({ className }: IconProps) => <Sparkles className={className} />
 export const CliRuntimeSettingsIcon = ({ className }: IconProps) => <Terminal className={className} />
+export const ManagerAgentIcon = ({ className }: IconProps) => <Brain className={className} />
 export const AppearanceIcon = ({ className }: IconProps) => <Palette className={className} />
 export const InputIcon = ({ className }: IconProps) => <Keyboard className={className} />
 export const WorkspaceIcon = ({ className }: IconProps) => <Building2 className={className} />
@@ -44,6 +46,7 @@ export const SETTINGS_ICONS: Record<SettingsSubpage, React.ComponentType<IconPro
   app: AppSettingsIcon,
   ai: AiSettingsIcon,
   cliRuntime: CliRuntimeSettingsIcon,
+  managerAgent: ManagerAgentIcon,
   appearance: AppearanceIcon,
   input: InputIcon,
   workspace: WorkspaceIcon,

@@ -774,6 +774,8 @@
   "settings.ai.thinkingDesc": "Głębokość rozumowania dla nowych czatów",
   "settings.ai.title": "AI",
   "settings.cliRuntime.description": "Lokalne środowiska uruchomieniowe CLI",
+  "settings.managerAgent.title": "Manager Agent",
+  "settings.managerAgent.description": "Auto-decision rules and layered memory",
   "settings.cliRuntime.title": "Lokalne CLI",
   "settings.ai.useDefault": "Użyj domyślnego",
   "settings.ai.usingDefaults": "Wartości domyślne",

@@ -774,6 +774,8 @@
   "settings.ai.thinkingDesc": "Denktiefe für neue Chats",
   "settings.ai.title": "KI",
   "settings.cliRuntime.description": "Lokale CLI-Laufzeiten",
+  "settings.managerAgent.title": "Manager Agent",
+  "settings.managerAgent.description": "Auto-decision rules and layered memory",
   "settings.cliRuntime.title": "Lokale CLI",
   "settings.ai.useDefault": "Standard verwenden",
   "settings.ai.usingDefaults": "Standardwerte werden verwendet",

@@ -774,6 +774,8 @@
   "settings.ai.thinkingDesc": "Profundidad de razonamiento para nuevos chats",
   "settings.ai.title": "IA",
   "settings.cliRuntime.description": "Runtimes CLI locales",
+  "settings.managerAgent.title": "Manager Agent",
+  "settings.managerAgent.description": "Auto-decision rules and layered memory",
   "settings.cliRuntime.title": "CLI local",
   "settings.ai.useDefault": "Usar predeterminado",
   "settings.ai.usingDefaults": "Usando predeterminados",

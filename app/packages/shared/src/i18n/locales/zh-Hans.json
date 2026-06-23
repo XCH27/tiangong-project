@@ -774,6 +774,8 @@
   "settings.ai.thinkingDesc": "新聊天的推理深度",
   "settings.ai.title": "AI",
   "settings.cliRuntime.description": "本机 CLI 运行时",
+  "settings.managerAgent.title": "管理 Agent",
+  "settings.managerAgent.description": "分级自动决策规则与分层记忆",
   "settings.cliRuntime.title": "本机 CLI",
   "settings.ai.useDefault": "使用默认",
   "settings.ai.usingDefaults": "使用默认值",

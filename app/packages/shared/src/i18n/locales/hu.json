@@ -774,6 +774,8 @@
   "settings.ai.thinkingDesc": "Gondolkodási mélység az új csevegésekhez",
   "settings.ai.title": "AI",
   "settings.cliRuntime.description": "Helyi CLI futtatókörnyezetek",
+  "settings.managerAgent.title": "Manager Agent",
+  "settings.managerAgent.description": "Auto-decision rules and layered memory",
   "settings.cliRuntime.title": "Helyi CLI",
   "settings.ai.useDefault": "Alapértelmezett használata",
   "settings.ai.usingDefaults": "Alapértelmezések használata",

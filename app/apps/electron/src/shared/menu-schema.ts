@@ -382,6 +382,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   app: 'ToggleRight',
   ai: 'Sparkles',
   cliRuntime: 'Terminal',
+  managerAgent: 'Brain',
   appearance: 'Palette',
   input: 'Keyboard',
   workspace: 'Building2',

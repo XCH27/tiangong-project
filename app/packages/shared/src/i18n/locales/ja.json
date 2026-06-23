@@ -774,6 +774,8 @@
   "settings.ai.thinkingDesc": "新規チャットの推論の深さ",
   "settings.ai.title": "AI",
   "settings.cliRuntime.description": "ローカル CLI ランタイム",
+  "settings.managerAgent.title": "Manager Agent",
+  "settings.managerAgent.description": "Auto-decision rules and layered memory",
   "settings.cliRuntime.title": "ローカル CLI",
   "settings.ai.useDefault": "デフォルトを使用",
   "settings.ai.usingDefaults": "デフォルトを使用中",
