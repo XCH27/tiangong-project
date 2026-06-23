@@ -1,6 +1,8 @@
 import { formatDistanceToNowStrict } from "date-fns"
 import type { Locale } from "date-fns"
-import { Flag, ShieldAlert, Terminal } from "lucide-react"
+import { Flag, ShieldAlert, Terminal, ListChecks } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { summarizeProgress } from "@craft-agent/shared/protocol"
 import { ConnectionIcon } from "@/components/icons/ConnectionIcon"
 import { useActionLabel } from "@/actions"
 import { cn } from "@/lib/utils"
@@ -55,6 +57,7 @@ export function SessionItem({
   onToggleSelect,
   onRangeSelect,
 }: SessionItemProps) {
+  const { t } = useTranslation()
   const ctx = useSessionListContext()
   const { workspaces, isCompactMode, llmConnections } = useAppShellContext()
   // 会话使用的模型/Runtime 头像（docs/18 §3.1：每条会话增量显示模型/Runtime 图标）。
@@ -71,6 +74,8 @@ export function SessionItem({
   ) : null
   // 团队稳定序号（docs/33 §3，仅团队模式有值；占原 Project 字段的产品位置）。
   const teamSequence = ctx.teamSequenceById?.[item.id]
+  // 任务进度小药丸（docs/35 / docs/00A §4）：会话有进度清单时显示 done/total；无则不显示。
+  const progressSummary = item.progress && item.progress.length > 0 ? summarizeProgress(item.progress) : null
   const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
@@ -209,11 +214,20 @@ export function SessionItem({
       titleClassName={cn("text-[13px]", item.isAsyncOperationOngoing && "animate-shimmer-text")}
       subtitle={previewText}
       titleSuffix={
-        (teamSequence || modelAvatar || hasMessagingBinding) ? (
+        (teamSequence || progressSummary || modelAvatar || hasMessagingBinding) ? (
           <div className="flex items-center gap-1">
             {teamSequence && (
-              <span className="text-[10px] font-medium tabular-nums text-foreground/45 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0" title="团队序号">
+              <span className="text-[10px] font-medium tabular-nums text-foreground/45 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0" title={t('session.teamSequence')}>
                 {teamSequence}
+              </span>
+            )}
+            {progressSummary && (
+              <span
+                className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-foreground/55 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0"
+                title={t('session.taskProgress')}
+              >
+                <ListChecks className="h-2.5 w-2.5" />
+                {progressSummary.done}/{progressSummary.total}
               </span>
             )}
             {modelAvatar}

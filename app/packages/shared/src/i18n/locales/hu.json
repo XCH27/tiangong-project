@@ -691,6 +691,8 @@
   "session.noResultsInFilter": "Nincs találat az aktuális szűrőben",
   "session.teamChat": "Team chat",
   "session.taskProgress": "Task progress",
+  "session.teamMembers": "Team members",
+  "session.teamSequence": "Team number",
   "session.noSessionSelected": "Nincs kiválasztott munkamenet",
   "session.noSessionsFound": "Nem található munkamenet",
   "session.noSessionsFoundDesc": "A keresés a címekben és az üzenet tartalmában történt",

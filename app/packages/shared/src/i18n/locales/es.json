@@ -691,6 +691,8 @@
   "session.noResultsInFilter": "Sin resultados en el filtro actual",
   "session.teamChat": "Team chat",
   "session.taskProgress": "Task progress",
+  "session.teamMembers": "Team members",
+  "session.teamSequence": "Team number",
   "session.noSessionSelected": "Ninguna sesión seleccionada",
   "session.noSessionsFound": "No se encontraron sesiones",
   "session.noSessionsFoundDesc": "Se buscó en títulos y contenido de mensajes",

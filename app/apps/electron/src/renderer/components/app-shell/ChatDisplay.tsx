@@ -76,6 +76,7 @@ import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
 import { SessionProgressCard } from "./SessionProgressCard"
+import { TeamRosterHeader } from "./TeamRosterHeader"
 import { handleErrorMessageAction } from "./error-message-actions"
 
 // ============================================================================
@@ -1506,6 +1507,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         <div className="flex flex-1 flex-col min-h-0 min-w-0 relative">
           {/* Content layer */}
           <div className="flex flex-1 flex-col min-h-0 min-w-0 relative z-10">
+          {/* Team roster (docs/00A §4): only renders on the team group-chat session; self-guarded. */}
+          <TeamRosterHeader workspaceId={session.workspaceId} sessionId={session.id} />
           {/* Progress card (docs/35 / docs/00A §4): pinned above messages when this session
               has a task checklist. Guarded — empty progress renders nothing, view unchanged. */}
           {session.progress && session.progress.length > 0 && (

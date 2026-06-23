@@ -12,7 +12,7 @@ import { atom } from 'jotai'
 import type { Getter, Setter } from 'jotai/vanilla'
 import { atomFamily } from 'jotai-family'
 import type { Session, Message } from '../../shared/types'
-import type { CliRuntimeModelState } from '@craft-agent/shared/protocol'
+import type { CliRuntimeModelState, ProgressTask } from '@craft-agent/shared/protocol'
 
 /**
  * Session metadata for list display (lightweight, no messages)
@@ -48,6 +48,8 @@ export interface SessionMeta {
   permissionMode?: string
   /** Session status for filtering */
   sessionStatus?: string
+  /** Session task progress checklist (docs/35) — for the list-row N/M pill. */
+  progress?: ProgressTask[]
   /** Role/type of the last message (for badge display without loading messages) */
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
   /** Whether an async operation is ongoing (sharing, updating share, revoking, title regeneration) */
