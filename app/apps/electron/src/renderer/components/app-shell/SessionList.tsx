@@ -4,7 +4,9 @@ import { useSetAtom } from "jotai"
 import { isToday, isYesterday, format, startOfDay } from "date-fns"
 import { getDateLocale } from "@craft-agent/shared/i18n"
 import { useAction } from "@/actions"
-import { Inbox, Archive } from "lucide-react"
+import { Inbox, Archive, Users } from "lucide-react"
+import { useAppShellContext } from "@/context/AppShellContext"
+import type { TeamProjection } from "@craft-agent/shared/protocol"
 
 import { getSessionStatus } from "@/utils/session"
 import * as storage from "@/lib/local-storage"
@@ -156,6 +158,20 @@ export function SessionList({
 
   const { navigate, navigateToSession: navigateToSessionPrimary } = useNavigation()
   const navigateToSession = onNavigateToSession ?? navigateToSessionPrimary
+
+  // 团队群聊置顶项（docs/33 §1.1）：有队长时，在"所有会话"顶端插一条原样式特殊会话项，
+  // 点开进入 teamConversationSessionId。无队长时不显示（当前默认无团队，列表不变）。
+  const { activeWorkspaceId } = useAppShellContext()
+  const [teamProjection, setTeamProjection] = useState<TeamProjection | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (!activeWorkspaceId || !window.electronAPI?.getTeam) { setTeamProjection(null); return }
+    void window.electronAPI.getTeam(activeWorkspaceId)
+      .then((projection) => { if (!cancelled) setTeamProjection(projection) })
+      .catch(() => { if (!cancelled) setTeamProjection(null) })
+    return () => { cancelled = true }
+  }, [activeWorkspaceId])
+  const teamChatSessionId = teamProjection?.leaderSessionId ? teamProjection.teamConversationSessionId : null
   const navState = useNavigationState()
   const { showEscapeOverlay } = useEscapeInterrupt()
 
@@ -711,6 +727,18 @@ export function SessionList({
         }}
         header={
           <>
+            {teamChatSessionId && !searchActive && (
+              <button
+                type="button"
+                onClick={() => navigateToSession(teamChatSessionId)}
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-foreground/[0.04] border-b border-border/40"
+              >
+                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-accent/15 text-accent flex-shrink-0">
+                  <Users className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-[13px] font-medium truncate">团队群聊</span>
+              </button>
+            )}
             {searchActive && (
               <SessionSearchHeader
                 searchQuery={searchQuery}
