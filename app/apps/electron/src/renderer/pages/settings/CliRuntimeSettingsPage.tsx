@@ -192,7 +192,7 @@ export default function CliRuntimeSettingsPage() {
         <div className="max-w-3xl mx-auto px-8 py-8">
           <SettingsSection
             title="本机 CLI Runtime"
-            description="把 Grok、Hermes、OpenCode 等本机 ACP/stdio CLI 接入同一个会话。发送、权限、停止和输出仍走 Craft 原有 timeline。"
+            description="把本机支持 ACP 的 CLI 接入同一个会话。内置检测跟随 AionUi 已验证入口（Claude Code、Codex、Goose）；发送、权限、停止和输出仍走 Craft 原有 timeline。"
           >
             <SettingsCard>
               <SettingsRow
@@ -212,7 +212,7 @@ export default function CliRuntimeSettingsPage() {
                 </div>
               ) : runtimes.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
-                  没有检测到可用 CLI。可以先安装支持 ACP/stdio 的 CLI，或后续添加自定义 runtime。
+                  未检测到本机 ACP CLI。可以先安装 Claude Code、Codex 或 Goose，或添加自定义 ACP runtime。
                 </div>
               ) : runtimes.map(runtime => {
                 const result = health[runtime.id]
@@ -276,7 +276,7 @@ export default function CliRuntimeSettingsPage() {
 
           <SettingsSection
             title={form.id ? '编辑自定义 Runtime' : '添加自定义 Runtime'}
-            description="用于接入本机已有的 ACP/stdio CLI。这里只保存启动方式，不保存登录凭据；真实发送仍走会话权限和 timeline。"
+            description="用于接入本机已有但未进入内置检测清单的 ACP CLI。这里只保存启动方式，不保存登录凭据；真实发送仍走会话权限和 timeline。"
           >
             <SettingsCard>
               <SettingsInput
@@ -284,7 +284,7 @@ export default function CliRuntimeSettingsPage() {
                 label="显示名称"
                 value={form.displayName}
                 onChange={(displayName) => setForm(prev => ({ ...prev, displayName }))}
-                placeholder="例如：我的 Grok Build"
+                placeholder="例如：我的 ACP Agent"
               />
               <SettingsInput
                 inCard
@@ -300,7 +300,7 @@ export default function CliRuntimeSettingsPage() {
                 description="用空格分隔。第一版不做 shell 级转义解析，复杂参数建议写 wrapper script。"
                 value={form.argsText}
                 onChange={(argsText) => setForm(prev => ({ ...prev, argsText }))}
-                placeholder="例如：agent stdio"
+                placeholder="例如：--acp"
               />
               <SettingsTextarea
                 inCard

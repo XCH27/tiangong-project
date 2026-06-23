@@ -1,13 +1,14 @@
 /**
  * CliRuntimeCatalog（docs/23）——本机 CLI/ACP runtime 目录。
  *
- * detected 映射是内置的（Grok/Hermes/OpenCode + Gemini 候选）；custom 由用户自配并落盘。
+ * detected 映射跟随 AionUi 已验证 ACP 入口（Claude/Codex/Goose），但只有本机 PATH 上
+ * 能解析到命令时才进入可选目录；custom 由用户自配并落盘。
  * 设置页可编辑边界由 `@craft-agent/shared/protocol` 的 can* helper 决定，不在这里另设一套。
  * 不建第二套 session store：catalog 只管 runtime 定义，发送/进程走 adapter（见 cli-runtime-host）。
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { constants, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, accessSync } from 'node:fs'
+import { delimiter, dirname, isAbsolute, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
   DETECTED_RUNTIME_MAPPINGS,
@@ -45,15 +46,22 @@ export interface CustomRuntimePatch {
   enabled?: boolean
 }
 
+export interface CliRuntimeCatalogOptions {
+  /** 测试注入点；生产默认解析本机 PATH。 */
+  commandExists?: (command: string) => boolean
+}
+
 function emptyStore(): CliRuntimeStoreData {
   return { version: 1, custom: [], disabledIds: [], hiddenMappingIds: [] }
 }
 
 export class CliRuntimeCatalog {
   readonly path: string
+  private readonly commandExists: (command: string) => boolean
 
-  constructor(configRoot: string) {
+  constructor(configRoot: string, options: CliRuntimeCatalogOptions = {}) {
     this.path = join(configRoot, STORE_RELATIVE_PATH)
+    this.commandExists = options.commandExists ?? commandExistsOnPath
   }
 
   /** 列出可见 runtime：detected（未隐藏）+ custom；enabled 反映禁用集合。 */
@@ -63,6 +71,7 @@ export class CliRuntimeCatalog {
     const hidden = new Set(data.hiddenMappingIds)
     const detected = DETECTED_RUNTIME_MAPPINGS
       .filter(mapping => !hidden.has(mapping.mappingId))
+      .filter(mapping => this.commandExists(mapping.command))
       .map(mapping => {
         const def = detectedRuntimeFromMapping(mapping)
         def.enabled = !disabled.has(def.id)
@@ -190,4 +199,36 @@ function isCustomDef(value: unknown): value is CliRuntimeDefinition {
     && typeof (value as CliRuntimeDefinition).id === 'string'
     && (value as CliRuntimeDefinition).kind === 'custom'
     && typeof (value as CliRuntimeDefinition).command === 'string'
+}
+
+export function commandExistsOnPath(command: string): boolean {
+  const trimmed = command.trim()
+  if (!trimmed) return false
+  if (trimmed.includes('/') || trimmed.includes('\\') || isAbsolute(trimmed)) {
+    return isExecutableFile(trimmed)
+  }
+
+  const pathValue = process.env.PATH ?? ''
+  const dirs = pathValue.split(delimiter).filter(Boolean)
+  const extensions = process.platform === 'win32'
+    ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM')
+      .split(';')
+      .filter(Boolean)
+    : ['']
+
+  for (const dir of dirs) {
+    for (const ext of extensions) {
+      if (isExecutableFile(join(dir, `${trimmed}${ext}`))) return true
+    }
+  }
+  return false
+}
+
+function isExecutableFile(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
 }

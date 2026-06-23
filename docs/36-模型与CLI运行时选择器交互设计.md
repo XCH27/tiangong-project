@@ -12,11 +12,11 @@
 
 | 轴 | 含义 | 取值 |
 |---|---|---|
-| **运行方式 Runtime** | 谁来执行 | `API（当前连接）` 或某个本机 CLI（Grok Build / Hermes / OpenCode / Gemini 候选） |
+| **运行方式 Runtime** | 谁来执行 | `API（当前连接）` 或本机已检测到的 AionUi ACP 候选（Claude Code / Codex / Goose）/ Custom ACP runtime |
 | **模型 Model** | 在该运行方式下用哪个模型 | API：Opus 4.8 / Sonnet 4.6 / Haiku 4.5 / Fable 5…；CLI：该 CLI 动态暴露的模型，或"模型由 CLI 管理" |
 | **推理强度 Effort** | 推理深度 | 仅对支持的运行方式显示（如 API 的"最大/扩展推理深度"） |
 
-**错误现状**：`[API 模型, Grok, Hermes, OpenCode, Gemini]` 和 `[Opus, Sonnet, Haiku…]` 和 `[最大]` 被放进同一个扁平菜单 → `API 模型`(运行方式) 和 `Opus 4.8`(模型) 同时打勾，用户分不清在选什么。
+**错误现状**：`[API 模型, CLI runtime]` 和 `[Opus, Sonnet, Haiku…]` 和 `[最大]` 被放进同一个扁平菜单 → `API 模型`(运行方式) 和 `Opus 4.8`(模型) 同时打勾，用户分不清在选什么。
 
 ---
 
@@ -26,7 +26,7 @@
 
 | 按钮 | 管什么 | 点开 |
 |---|---|---|
-| **CLI** | 运行方式（API / Grok / Hermes / OpenCode / Gemini 候选） | 运行方式列表 + "管理本机 CLI…"跳设置页。选 API → `cliRuntimeId=null`；选 CLI → 写 `cliRuntimeId` |
+| **CLI** | 运行方式（API / 已检测到的 Claude Code、Codex、Goose / Custom ACP runtime） | 运行方式列表 + "管理本机 CLI…"跳设置页。选 API → `cliRuntimeId=null`；选 CLI → 写 `cliRuntimeId` |
 | **模型** | 当前运行方式下的模型（如 `API · Opus 4.8`） | API 模型列表 + 推理强度；CLI 则是其动态模型或"模型由 CLI 管理"（禁用） |
 | **Token 环** | 只读：上下文占用 % | 上下文/额度详情弹层（`electronAPI.getSessionUsage`），context 与 plan 分开 |
 
@@ -38,13 +38,13 @@
 
 ## 3 · 三个按钮各自的下拉
 
-**CLI 按钮**（chip 文案：`API` 或 CLI 名如 `Grok Build`）：
+**CLI 按钮**（chip 文案：`API` 或 CLI 名如 `Codex`）：
 ```
 ┌─ 运行方式 ──────────┐
 │ ● API（当前连接） ✓ │   ← 选它 → cliRuntimeId=null
-│ ○ Grok Build        │
-│ ○ Hermes / OpenCode │
-│ ○ Gemini CLI · 候选 │
+│ ○ Claude Code       │   ← 仅本机 PATH 检测到 claude 时显示
+│ ○ Codex             │   ← 仅本机 PATH 检测到 codex 时显示
+│ ○ Goose             │   ← 仅本机 PATH 检测到 goose 时显示
 │ ⚙ 管理本机 CLI…     │   ← 跳设置页
 └─────────────────────┘
 ```

@@ -7,7 +7,8 @@
  *
  * 三类 runtime（设置页可编辑边界不同，docs/23）：
  * - managed：内置托管，不可删/禁用/改启动参数。
- * - detected：对已确认稳定 ACP/stdio 入口的工具做一键映射；不可改 command/args/env，可测试/禁用/删除。
+ * - detected：对 AionUi 已验证的 ACP 入口做一键映射；仅在本机 PATH 上检测到命令后出现。
+ *   不可改 command/args/env，可测试/禁用/删除。
  * - custom：用户自配 command/args/env，可完整编辑。
  *
  * browser-safe：只有类型 + 常量 + 纯函数，无 Node 依赖。
@@ -32,11 +33,11 @@ export interface CliRuntimeDefinition {
   env?: Record<string, string>
   /** 是否在聊天选择器中可选。detected/custom 可禁用；managed 不可。 */
   enabled: boolean
-  /** detected 来源的映射 id（如 'grok'/'hermes'/'opencode'/'gemini'）。 */
+  /** detected 来源的映射 id（如 'claude'/'codex'/'goose'）。 */
   mappingId?: string
   /** 附件能力，第一版固定 'none'。 */
   attachments: CliRuntimeAttachmentCapability
-  /** detected 候选但官方入口未最终确认（如 gemini），接入前需用户确认。 */
+  /** detected 候选但官方入口未最终确认，接入前需用户确认。 */
   needsConfirmation?: boolean
 }
 
@@ -75,7 +76,7 @@ export interface CliRuntimeHealthResult {
 }
 
 // ---------------------------------------------------------------------------
-// Detected 映射预设（只给已确认稳定 ACP/stdio 入口的工具，docs/23 §第一版）
+// Detected 映射预设（跟随 AionUi ACP smoke 覆盖的真实入口；docs/23 §第一版）
 // ---------------------------------------------------------------------------
 
 export interface DetectedRuntimeMapping {
@@ -88,11 +89,9 @@ export interface DetectedRuntimeMapping {
 }
 
 export const DETECTED_RUNTIME_MAPPINGS: readonly DetectedRuntimeMapping[] = Object.freeze([
-  { mappingId: 'grok', displayName: 'Grok Build', command: 'grok', args: ['agent', 'stdio'] },
-  { mappingId: 'hermes', displayName: 'Hermes', command: 'hermes', args: ['acp'] },
-  { mappingId: 'opencode', displayName: 'OpenCode', command: 'opencode', args: ['acp'] },
-  // 候选：官方入口未最终确认，接入前必须重新确认（docs/23）。
-  { mappingId: 'gemini', displayName: 'Gemini CLI', command: 'gemini', args: ['--acp'], needsConfirmation: true },
+  { mappingId: 'claude', displayName: 'Claude Code', command: 'claude', args: ['--acp'] },
+  { mappingId: 'codex', displayName: 'Codex', command: 'codex', args: ['--acp'] },
+  { mappingId: 'goose', displayName: 'Goose', command: 'goose', args: ['acp'] },
 ])
 
 /**
@@ -100,13 +99,15 @@ export const DETECTED_RUNTIME_MAPPINGS: readonly DetectedRuntimeMapping[] = Obje
  * 这些不进 catalog 的可选 runtime。
  */
 export const UNSUPPORTED_DETECTED_TOOLS: readonly { id: string; displayName: string }[] = Object.freeze([
-  { id: 'codex', displayName: 'Codex' },
-  { id: 'claude', displayName: 'Claude Code' },
+  { id: 'grok', displayName: 'Grok Build' },
+  { id: 'hermes', displayName: 'Hermes' },
+  { id: 'opencode', displayName: 'OpenCode' },
+  { id: 'gemini', displayName: 'Gemini CLI' },
   { id: 'qwen', displayName: 'Qwen Code' },
 ])
 
 export function unsupportedDetectedMessage(displayName: string): string {
-  return `${displayName} 暂未确认稳定的本机 ACP 入口，已不接入以避免假执行。如需本机 CLI，请改用已支持的 runtime（Grok Build / Hermes / OpenCode），或新增一个 Custom ACP runtime 自配 command/args/env。`
+  return `${displayName} 暂未在 AionUi ACP smoke 覆盖中确认稳定本机入口，已不作为自动检测项接入以避免假识别。如需本机 CLI，请改用已支持的 runtime（Claude Code / Codex / Goose），或新增一个 Custom ACP runtime 自配 command/args/env。`
 }
 
 /** CLI Runtime 选了之后，附件第一版硬拒绝文案（docs/25）。 */

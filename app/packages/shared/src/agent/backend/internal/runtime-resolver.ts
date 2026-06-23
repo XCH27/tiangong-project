@@ -171,14 +171,21 @@ function resolveInterceptorBundlePath(hostRuntime: BackendHostRuntimeContext): s
 function resolveServerPath(hostRuntime: BackendHostRuntimeContext, serverName: string): string | undefined {
   if (hostRuntime.isPackaged) {
     return firstExistingPath([
+      ...(hostRuntime.resourcesPath ? [
+        join(hostRuntime.resourcesPath, serverName, 'index.js'),
+        join(hostRuntime.resourcesPath, 'resources', serverName, 'index.js'),
+        join(hostRuntime.resourcesPath, 'app', 'resources', serverName, 'index.js'),
+      ] : []),
       join(hostRuntime.appRootPath, 'resources', serverName, 'index.js'),
       join(hostRuntime.appRootPath, 'dist', 'resources', serverName, 'index.js'),
     ]);
   }
-  return resolveUpwards(
-    hostRuntime.appRootPath,
-    join('packages', serverName, 'dist', 'index.js'),
-  );
+  return firstExistingPath([
+    resolveUpwards(hostRuntime.appRootPath, join('packages', serverName, 'dist', 'index.js'), 10),
+    resolveUpwards(hostRuntime.appRootPath, join('app', 'packages', serverName, 'dist', 'index.js'), 10),
+    resolveUpwards(hostRuntime.appRootPath, join('apps', 'electron', 'dist', 'resources', serverName, 'index.js'), 10),
+    resolveUpwards(hostRuntime.appRootPath, join('app', 'apps', 'electron', 'dist', 'resources', serverName, 'index.js'), 10),
+  ].filter((value): value is string => Boolean(value)));
 }
 
 /**
