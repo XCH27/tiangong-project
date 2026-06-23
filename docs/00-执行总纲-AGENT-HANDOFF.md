@@ -16,9 +16,9 @@
 - 任务进度 Progress ✅ 已落主线（后端）：`protocol/progress.ts` + `set_session_progress` 工具 + `SessionManager.setSessionProgress` + RPC + JSONL 持久化字段 + round-trip 回归，见 `docs/35`。剩余：进度卡 UI、团队 rollup UI。
 - CLI Runtime + ACP 发送 ✅ 已落主线（后端）：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 设置页（CLI 列表/Custom 表单可用）。见 `docs/23`/`docs/24`。
 - ⚠️ **CLI / 模型选择器 UI 错乱，需按 `docs/36` 重做（不算已落地）**：commit `2756b7dc` 顶部栏+输入框各放一个运行方式选择器（重复），下拉把"运行方式/模型"两轴拍平成双勾。`docs/36` 给了正确交互。**只能本机起 Electron 视觉验收**。
-- 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + **设置页（模型配置：跟随工作区或固定 API 连接/模型/推理强度；自动决策开关/L2 规则增删；记忆查看/增删，真接 RPC）**。见 `docs/17 §4`。剩余：模型配置接入真实管理对话/调度运行链路、记忆作决策依据注入、全局专栏完整对话 UI。
+- 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + **设置页（模型配置：跟随工作区或固定 API 连接/模型/推理强度；自动决策开关/L2 规则增删；记忆查看/增删，真接 RPC）**。右下角入口可发消息：首次发送创建 hidden craft session，按管理 Agent 模型配置填入 `llmConnection/model/thinkingLevel`，仍走原 `onSendMessage`/permission/timeline。见 `docs/17 §4`。剩余：专用 manager system prompt/tool 注入、记忆作决策依据注入、全局专栏完整对话 UI。
 - 分层记忆 ✅ 已落主线（后端 + 设置页）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 管理 Agent 设置页内查看/增删。见 `docs/05`。剩余：全局共享分区、语义检索、衰减/归档。
-- 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：① 团队群聊置顶特殊会话项 ② Token 环点击的中文额度/上下文详情弹层（需先补 usage 后端）③ Progress 进度卡。管理 Agent 右下角悬浮入口已落 `ManagerAgentLauncher.tsx`，当前只打开已接后端的设置/记忆/决策页；真实管理对话后端未接前，输入保持禁用。
+- 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：① 团队群聊置顶特殊会话项 ② Token 环点击的中文额度/上下文详情弹层（需先补 usage 后端）③ Progress 进度卡。管理 Agent 右下角悬浮入口已落 `ManagerAgentLauncher.tsx`，可用 hidden session 发消息；完整全局专栏/退出行为仍待做。
 - craft 原有的 session、permission、timeline、BrowserPane/CDP、文件工具和标注能力。
 
 - 管理 Agent 分级自动决策 L0-L3 🟡 候选/待合入（**未提交主线**）：`shared/protocol/manager-decision.ts` 纯引擎 `decideAuto` + `manager-decision-service`（设置落盘 + decide + `manager_auto_decision` 事件）+ 单测，typecheck 通过（含 electron），见 `docs/17 §4`。剩余：接 craft permission 的 escalate 调用点、记忆/偏好作依据、设置页与全局专栏 UI。

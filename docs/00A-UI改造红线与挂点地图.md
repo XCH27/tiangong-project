@@ -45,7 +45,7 @@
 | 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
 | `@` 人/Agent/身份、`/` Skill/命令/模板 | `renderer/components/app-shell/input/FreeFormInput.tsx`、`components/ui/mention-menu.tsx`、`rich-text-input.tsx` + 那一个 mentions parser | 别新建输入框/第二套 mention store |
 | 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；群聊是「所有会话」顶部一条**原样式**特殊会话项 | 别建群聊页/群聊库，别在会话列表里加输入框 |
-| 管理 Agent 入口 | ✅ 已改成 Multica 式右下角常驻/可最小化入口：`renderer/components/app-shell/ManagerAgentLauncher.tsx`，挂在 `AppShell`。当前动作只打开已接后端的 `ManagerSettingsPage`（`managerDecision`/`memory` RPC）；管理对话输入在真实 manager session/RPC 接入前保持 disabled。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别做特权后门绕 permission，别做未接后端的假发送 |
+| 管理 Agent 入口 | ✅ 已改成 Multica 式右下角常驻/可最小化入口：`renderer/components/app-shell/ManagerAgentLauncher.tsx`，挂在 `AppShell`。可直接发消息：首次发送创建 hidden craft session，按 `ManagerSettingsPage` 的模型配置填 `llmConnection/model/thinkingLevel`，发送走原 `onSendMessage`/permission/timeline；快捷动作打开已接后端的 `ManagerSettingsPage`（`managerDecision`/`memory` RPC）。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别做特权后门绕 permission，别做未接后端的假发送 |
 | 团队状态（待安排/进行中/待审查/完成/取消） | 映射到 craft 现有 session status / `SessionStatusIcon`；身份扩展原 `labels/config.json` + session `labels` | 别在团队规则或 renderer 建第二套身份/状态定义 |
 | 设置项 / 手动编辑逃生舱 | `renderer/pages/settings/*`、`components/settings/*`，写进 craft `config`/`preferences` | 别另起第二套设置真相 |
 | 浏览器 / 网页标注 / 设计选择 | `renderer/components/browser/*` + BrowserPane/CDP + session timeline | 别建孤岛 Figma 克隆页 |
