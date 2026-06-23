@@ -18,6 +18,7 @@ import AppSettingsPage from './AppSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
 import CliRuntimeSettingsPage from './CliRuntimeSettingsPage'
 import ManagerSettingsPage from './ManagerSettingsPage'
+import MemorySettingsPage from './MemorySettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
 import InputSettingsPage from './InputSettingsPage'
 import WorkspaceSettingsPage from './WorkspaceSettingsPage'
@@ -37,6 +38,7 @@ export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = 
   ai: AiSettingsPage,
   cliRuntime: CliRuntimeSettingsPage,
   managerAgent: ManagerSettingsPage,
+  memory: MemorySettingsPage,
   appearance: AppearanceSettingsPage,
   input: InputSettingsPage,
   workspace: WorkspaceSettingsPage,

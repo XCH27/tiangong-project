@@ -82,7 +82,6 @@ export default function CliRuntimeSettingsPage() {
   const [runtimes, setRuntimes] = useState<CliRuntimeDefinition[]>([])
   const [health, setHealth] = useState<Record<string, CliRuntimeHealthResult>>({})
   const [loading, setLoading] = useState(true)
-  const [testingId, setTestingId] = useState<string | null>(null)
   const [autoTesting, setAutoTesting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<RuntimeFormState>(emptyForm)
@@ -118,19 +117,6 @@ export default function CliRuntimeSettingsPage() {
   useEffect(() => {
     void load()
   }, [load])
-
-  const testRuntime = async (runtimeId: string) => {
-    setTestingId(runtimeId)
-    try {
-      const result = await window.electronAPI.testCliRuntime(runtimeId)
-      setHealth(prev => ({ ...prev, [runtimeId]: result }))
-    } catch (error) {
-      console.error('[CliRuntimeSettings] test failed', error)
-      toast.error('测试失败')
-    } finally {
-      setTestingId(null)
-    }
-  }
 
   const setEnabled = async (runtime: CliRuntimeDefinition, enabled: boolean) => {
     try {
@@ -207,15 +193,14 @@ export default function CliRuntimeSettingsPage() {
     <div className="h-full flex flex-col">
       <PanelHeader title="本机 CLI" />
       <ScrollArea className="flex-1">
-        <div className="max-w-3xl mx-auto px-8 py-8">
+        <div className="px-5 py-7 max-w-3xl mx-auto space-y-8">
           <SettingsSection
-            title="本机 CLI Runtime"
-            description="刷新会扫描本机常见 Agent CLI 并自动健康检测。stdio ACP 可直接发送；Claude/Codex/Grok/Hermes/OpenCode/Antigravity 等 native/subscription CLI 会显示为已检测但待 adapter，不再伪装成 ACP。发送、权限、停止和输出仍走 Craft 原有 timeline。"
+            title="运行时"
           >
             <SettingsCard>
               <SettingsRow
-                label="运行时列表"
-                description="刷新=重新扫描全部 CLI + 自动测试。只有 protocol=acp 的 runtime 当前可直接用于聊天。"
+                label="本机 CLI"
+                description="刷新会扫描并自动检测"
                 action={
                   <Button size="sm" variant="ghost" onClick={() => void load()} disabled={loading}>
                     {(loading || autoTesting) ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
@@ -230,12 +215,11 @@ export default function CliRuntimeSettingsPage() {
                 </div>
               ) : runtimes.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
-                  未检测到本机 Agent CLI。可以先安装 Goose/Claude Code/Codex/Grok/Hermes/Antigravity/OpenCode 等，或添加自定义 ACP runtime。
+                  未检测到本机 Agent CLI。
                 </div>
               ) : runtimes.map(runtime => {
                 const result = health[runtime.id]
                 const isOk = result?.health === 'available'
-                const isTesting = testingId === runtime.id
                 return (
                   <div key={runtime.id} className="border-t border-border/50 first:border-t-0">
                     <SettingsToggle
@@ -266,7 +250,7 @@ export default function CliRuntimeSettingsPage() {
                           {healthLabel(result)}
                         </span>
                       }
-                      description={result?.reason ?? runtime.adapterHint ?? (runtime.needsConfirmation ? '候选入口，使用前需要确认本机 CLI 行为。' : '刷新会自动测试；也可手动重新测试。')}
+                      description={result?.reason ?? runtime.adapterHint ?? (runtime.needsConfirmation ? '需要 adapter 后启用' : '刷新时自动检测')}
                       action={
                         <div className="flex items-center gap-1">
                           {canEditRuntimeCommand(runtime.kind) && (
@@ -279,15 +263,6 @@ export default function CliRuntimeSettingsPage() {
                               <Trash2 className="h-4 w-4 text-muted-foreground" />
                             </Button>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void testRuntime(runtime.id)}
-                            disabled={isTesting || !runtime.enabled}
-                          >
-                            {isTesting && <Spinner className="h-4 w-4" />}
-                            测试
-                          </Button>
                         </div>
                       }
                     />
@@ -299,7 +274,6 @@ export default function CliRuntimeSettingsPage() {
 
           <SettingsSection
             title={form.id ? '编辑自定义 Runtime' : '添加自定义 Runtime'}
-            description="用于接入本机已有但未进入内置检测清单的 ACP CLI。这里只保存启动方式，不保存登录凭据；真实发送仍走会话权限和 timeline。"
           >
             <SettingsCard>
               <SettingsInput

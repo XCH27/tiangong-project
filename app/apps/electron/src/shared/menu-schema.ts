@@ -383,6 +383,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   ai: 'Sparkles',
   cliRuntime: 'Terminal',
   managerAgent: 'Brain',
+  memory: 'Database',
   appearance: 'Palette',
   input: 'Keyboard',
   workspace: 'Building2',
