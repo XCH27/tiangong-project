@@ -53,7 +53,7 @@
 | 上下文圆环 / Token 全览 | 原 `FreeFormInput.tsx` 已有 context usage footer/预警挂点；圆环放模型名之前，点击详情用原 Popover/Dropdown 显示 `docs/16 §2.2` 全览卡。**数据走 `electronAPI.getSessionUsage(sessionId)` → `SessionUsageView`**（context 真实占用 + plan 额度，已落后端 commit `355f4737`）；CLI 时 window=unknown 显示"由 CLI 管理"，额度默认显示"不可用"不编造 | 别要求用户输入 `/status`/`/usage`，别另建常驻 Usage 控制台，**别把上下文占用与会员额度画成同一个圆环**（`SessionUsageView.context` 与 `.plan` 分开渲染） |
 | 全部文件 / Library | 新建 `renderer/components/files/*`（§5 允许的 raw view 新能力）；后端 `file-index.ts` | 别和「本地知识库」数据源混成一个概念 |
 | 管理 Agent 设置（决策/记忆） | ✅ 已落：`pages/settings/ManagerSettingsPage.tsx`（craft 设置骨架），真接 `managerDecision`/`memory` RPC（自动决策开关+L2 规则增删；记忆按分区查看/增删，scoped 分区按 scopeId 隔离） | 别另做治理控制台；常驻悬浮入口走上面「管理 Agent 入口」行 |
-| Progress 进度卡 | 会话 `progress` 非空时在原 `ChatDisplay` 消息流渲染进度卡（✓/spinner/○ + N/M + 进度条）；会话行用 `SessionItem` 的 `titleTrailing` 放 "3/5" 小药丸 | 别新建 Progress 页/store；未真正驱动的步骤别显示为 in_progress/completed |
+| Progress 进度卡 | ✅ 已落（commit `f1565dc6`）：会话 `progress` 非空时在原 `ChatDisplay` 内容列顶部渲染 `SessionProgressCard`（✓/spinner/○/删除线 + N/M + 进度条 + 活动态）；数据走 `progress_updated` 事件 → `session.progress`（dto.ts + event-processor，重载经 `managedToSession` 仍在）。⏳ 待办：会话行 `SessionItem` 的 "3/5" 小药丸（需把 progress 串进会话列表元数据 DTO） | 别新建 Progress 页/store；未真正驱动的步骤别显示为 in_progress/completed |
 | 团队群聊置顶项 | 有队长后「所有会话」顶部插一条**原样式**特殊会话项（群聊图标+「团队群聊」），点开复用原 `ChatDisplay`；正文来自 `teamConversationSessionId` 的 hidden session | 别建群聊页/群聊库，别在会话列表里加输入框 |
 
 ---
