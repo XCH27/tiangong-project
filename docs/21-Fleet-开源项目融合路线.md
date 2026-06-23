@@ -52,7 +52,7 @@ Fleet = craft 的 agent-native 工作区底座 + AionUi 的 CLI/ACP/Team/Skill �
 | Kdenlive | 时间线、轨道、剪辑、转场、音视频效果等 NLE 产品概念 | GPL-3.0；只能黑盒学习，不复制源码、测试、QML/C++ 结构或资源 |
 | cc-switch | Claude/Codex/OpenCode/OpenClaw/Hermes 等跨应用 Skill/Provider/MCP 管理路径、SSOT + symlink/copy 产品模型 | 未核准前不复制源码、测试、类型、配置和样式；不能替代 AionUi 的 Runtime Host 主路线 |
 | OpenCode | 低摩擦工作台、简洁任务入口 | 不复制源码 |
-| LobeHub | Chief Agent Operator、Agent Builder/Groups、Project/Workspace/Schedule、白盒记忆、Skill/MCP 市场、上下文管线、服务模型分配、系统工具健康面板、文件/网页转 Markdown、IM 网关、工作报告 | LobeHub Community License 高风险；不复制源码、类型、测试、配置、组件、UI 结构、文案或资源；只把产品能力落回 craft session/permission/timeline + AionUi/open-design/rtk/codegraph 等绿灯来源 |
+| LobeHub | Chief Agent Operator、Agent Builder/Groups、Project/工作区/Schedule、白盒记忆、Skill/MCP 市场、上下文管线、服务模型分配、系统工具健康面板、文件/网页转 Markdown、IM 网关、工作报告 | LobeHub Community License 高风险；不复制源码、类型、测试、配置、组件、UI 结构、文案或资源；只把产品能力落回 craft session/permission/timeline + AionUi/open-design/rtk/codegraph 等绿灯来源 |
 | Claude/Codex Desktop | 左侧会话、中心输入、右侧上下文/进度/文件面板 | 不照抄品牌资产 |
 | Warp | Agentic terminal、命令块、长任务观察 | 不复制闭源 UI |
 | Cherry Studio | Provider/知识库/迁移/E2E 的成熟度 | 不复制 AGPL 源码 |
@@ -93,7 +93,7 @@ Fleet = craft 的 agent-native 工作区底座 + AionUi 的 CLI/ACP/Team/Skill �
 4. **服务模型路由 + 系统工具面板**：先把内部后台任务的模型分配和本机运行环境可用性做成明确设置页；它们是后续记忆、压缩、审查、设计导出能否稳定运行的前置。
 5. **评测骨架 + 缓存命中统计**：读取 craft `TokenUsage.cacheReadTokens/cacheCreationTokens`、输入/输出 token、费用、runtime/model/effort；优先迁移 open-design eval/diagnostics 边界，rtk/codegraph/Reasonix 作为上下文效率实现来源。
 6. **P1 Agent 编排**：从 AionUi 迁 Agent/team/@mention/ACP 能力，但适配进 craft session/timeline；所有效果都要能被评测骨架记录。
-7. **P1 管理 Agent 产品面**：参考 LobeHub 的 Chief Agent Operator / Agent Groups / Project / Workspace / Schedule 形态，把 Fleet 的常驻管理 Agent 做成软件管家和调度入口；实现仍基于 craft session/timeline + AionUi team/process，不复制 LobeHub。
+7. **P1 管理 Agent 产品面**：参考 LobeHub 的 Chief Agent Operator / Agent Groups / Project / 工作区 / Schedule 形态，把 Fleet 的常驻管理 Agent 做成软件管家和调度入口；实现仍基于 craft session/timeline + AionUi team/process，不复制 LobeHub。
 8. **P1 Skill 管理**：在 craft skills 基础上补全局 SSOT、安装、更新、启用、运行注入；AionUi 为主，cc-switch 和 LobeHub 只补产品目录/市场/维护体验。
 9. **P1 设计工作流 DWF-1/DWF-3**：先在原浏览器标注页接设计选择模式、单选、框选、多选、批量注释、Comment AI 证据包，不另建孤岛页面。
 10. **P1 DesignAction 契约**：先定义人类 UI 与 AI 工具共用的结构化动作，覆盖选择、注释、插入、裁切、调参、建库、导出，写入 craft permission、timeline、diff、rollback。

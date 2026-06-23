@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> ⛔ **改 UI / 加功能前，先读一页 `docs/00A-UI改造红线与挂点地图.md`。** 它把本文分散的反跑偏规则（9/13/16/18/23/24/35/36）收口成一页速查：三道闸 + 七条硬「不要」+ 挂点地图。Agent 在 UI 上「胡乱加东西」就是没过这一页。
+
 本项目当前进入“干净基座二开”阶段：`app/` 已重置为干净 craft-agents-oss 基座。旧二开代码不再作为实现来源；后续只按 `docs/19-重启二开与可复用资产清单.md` 保留少量可重做的能力边界。
 
 > **路线主干（先读）**：`docs/01-产品主干与落地序列.md` 是路线单一真相。它把下面 D1–D12 收敛成一条主干（CLI 接入 → 动作引擎 → 浏览器/Artifact 画布 → 管理 Agent + 项目 Agent + 分层记忆 + 审查中心）并排序成 M0–M3。**决策"做什么"看本文与 `docs/04`，"按什么顺序做、什么不做"看 `docs/01`。** 加任何功能前先回答 `docs/01` 第 3 节的"挂槽三问"，避免堆按钮。
@@ -8,7 +10,7 @@
 
 - **D1 手动修改**：agent-native 为主 + 关键项加"手动编辑"逃生舱；手动编辑写进 craft 现有 `config`/`preferences`/settings，**不另起第二套真相**。
 - **D2 记忆**：全本地**分级记忆**，可查可删（见 `docs/05-记忆系统方案.md`）。
-- **D3 首攻**：第一个落地功能 = **终端 / 本机 CLI Runtime Host**。当前 `app/` 是干净 craft-agents-oss 基座，CLI Runtime 需按 `docs/23-CLI-Runtime-重做规格.md` 重新落地；旧二开代码不再作为当前实现。浏览器人类层升级为 D6 设计工作流入口，见 `docs/06-浏览器与网页标注方案.md` 与 `docs/15-设计工作流一体化方案.md`。
+- **D3 首攻**：第一个落地功能 = **终端 / 本机 CLI Runtime Host**。当前 `app/` 是干净 craft-agents-oss 基座，CLI Runtime 需按 `docs/23-P0-D-CLI-Runtime-重做规格.md` 重新落地；旧二开代码不再作为当前实现。浏览器人类层升级为 D6 设计工作流入口，见 `docs/06-浏览器与网页标注方案.md` 与 `docs/15-设计工作流一体化方案.md`。
 - **D4 账号**：仅做**合法多账号 Profile 干净切换、不丢记录**；**不做**绕用量限制/规避检测的自动轮换。
 - **D5 融合**：多模型融合做成**设置项**，**默认关**（见 `docs/03-Fusion多模型融合方案.md`）。
 - **D6 设计工作流一体化**：把 Open Design、Claude Artifacts 类体验、Figma 和 Google Stitch 式 prompt/image-to-UI/code/Figma handoff 融进 Fleet 一个软件。第一落点是原 **内置浏览器 + 网页标注** 页面：单选、框选、多选、批量注释、Comment AI；对 AI 生成网页/APP/PPT/商品页进入 Artifact Studio，支持插入图片/视频/形状、剪切蒙版、内部裁切、位置/尺寸/旋转/圆角/模糊/清晰感参数、自建媒体/组件/UI 效果/骨架模板库，再接 Figma/Stitch bridge（见 `docs/15-设计工作流一体化方案.md`、`docs/06-浏览器与网页标注方案.md`）。
@@ -18,11 +20,11 @@
 - **D10 浏览器自动化增强**：保留 craft 内置 BrowserPane/CDP/`browser_tool` 作为主浏览器栈，不用外部浏览器替换核心。browser-harness 只吸收“薄 CDP、自修复 helper、失败诊断”思路；OpenClaw 只吸收“隔离 managed profile + loopback gateway + profile 路由”思路；CloakBrowser/反检测/stealth 浏览器只能高风险黑盒参考，不进默认产品，不用于绕过 bot detection、验证码、平台风控或用量限制（见 `docs/06-浏览器与网页标注方案.md`、`docs/12-最新开源Agent与CLI参考更新.md`）。
 - **D11 双层 Agent 架构**：一个常驻**管理 Agent**管软件本身（状态/记忆/设置/权限/上下文/任务入口/跨项目自动化），一套**项目 Agent**（队长/代码/设计/审查/测试/上下文）管具体执行；两者身份分离，管理 Agent 可调度但不混成一个身份。多 Agent 不是多个聊天气泡：所有动作进同一条 timeline，带 `agentId/runtime/role`，权限按 Agent 分组，输出不混流。源码优先迁 AionUi（绿灯），不另起第二套 session/记忆/权限（见 `docs/17-Agent协作与管理Agent模型.md`）。
 - **D12 分级自动决策**：默认关键动作问用户；用户主动开启"自动决策"后，管理 Agent 可在低风险场景按记忆/偏好/规则代答，但必须分级——L0 只读自动 / L1 低风险本地按偏好 / L2 写文件·运行命令·外部审查需规则或预授权 / L3 删除·发布·付款·登录·敏感必须明确确认。每个自动判断要有依据、有记录、可回放、可撤销，不得自动同意 L3、不得绕过 permission（见 `docs/17` 第 4 节）。
-- **D13 AI 工作创作台统一定位**：Fleet 是"AI 工作创作台"——人类主导、AI 辅助，在一个软件里完成真实生产流程（软件开发/内容创作/AIGC）。把生产场景收进软件做成结构化工作台，不接管外部桌面/浏览器/一堆软件（外部网页只在标注/审查时受控进入）。多场景 = 同一工作台（项目/画布/时间线/属性面板/素材库/版本/导出/统一输入/Agent/记忆/权限/token 账本）的不同配置，用一套统一输入按选区/Stage 模式/项目类型/上下文路由，不为每个场景做一套 UI（见 `docs/02`、`docs/18`）。
+- **D13 AI 工作创作台统一定位**：Fleet 是"AI 工作创作台"——人类主导、AI 辅助，在一个软件里完成真实生产流程。默认工作台保留 Craft 原结构；无限画布、AIGC、网页/文档、视频剪辑可用不同专业布局和原生引擎。它们共用工作区、全部文件/Library、Agent、记忆、permission、session timeline、成本账本和导出；输入语义按当前选区/工作面/项目类型/上下文路由，但不强制共用同一页面壳或 React 组件（见 `docs/02`、`docs/18`）。
 - **D14 原生引擎 + 统一脊柱**：不同工作面使用适合自己的原生文档模型/引擎；统一的是 craft session、permission、timeline、actor、结构化工具动词、资产交接和成本账本。`DesignAction/Patch` 是动作信封，不是所有内容格式的内部模型（见 `docs/30`、`docs/31`）。
-- **D15 全部文件 / 本地素材仓库**：在所有对话同级增加全部文件，直接对应 My Workspace 和用户选择的本地目录；Library 是项目选用、授权、索引后的资产层。AI 整理文件必须走 permission + timeline。
-- **D16 会话即 Agent + 团队群聊**：会话显示模型/Runtime、稳定序号和身份，可提升为队长；团队群聊复用 craft session。`@` 只找人/Agent/会话/身份，Skill/命令/模板统一走 `/`，不保留旧 `@Skill` 双入口（见 `docs/33`）。
-- **D17 常驻管理 Agent**：跨文件夹的软件级 Agent 负责设置、记忆、知识、Skill、素材和跨项目协调，但不能绕过 permission 或自动同意 L3。它的消息入口在“所有会话”层的专门栏，不塞进单个 Workspace 普通会话；右下角可作为唤起/最小化入口。退出支持直接退出或常驻小窗。
+- **D15 全部文件 / 本地素材仓库**：在所有对话同级增加全部文件，直接对应“我的工作区” 和用户选择的本地目录；Library 是项目选用、授权、索引后的资产层。AI 整理文件必须走 permission + timeline。
+- **D16 会话即 Agent + 团队群聊**：会话显示模型/Runtime、稳定序号和身份；模型图标只作识别，原“标签”菜单里的“队长”身份标签负责提升队长。团队群聊复用 craft session。`@` 只找人/Agent/会话/身份，Skill/命令/模板统一走 `/`，不保留旧 `@Skill` 双入口（见 `docs/33`）。
+- **D17 常驻管理 Agent**：跨文件夹的软件级 Agent 负责设置、记忆、知识、Skill、素材和跨项目协调，但不能绕过 permission 或自动同意 L3。它的消息入口在“所有会话”层的专门栏，不塞进单个工作区 普通会话；右下角可作为唤起/最小化入口。退出支持直接退出或常驻小窗。
 - **D18 默认工作台 + 四个专业工作面**：保留默认工作台，增加无限画布、AIGC、网页/文档、视频剪辑；所有工作面共享本地素材、Library、Agent、记忆、权限和 timeline。
 - **待用户拍板**：① 分叉策略（建议软分叉）。
 
@@ -43,9 +45,9 @@
 4. **红灯/黄灯/候选项目只能黑盒参考。** Kun、Cherry Studio、Zed、LobeHub、Warp、OpenCode、Gemini CLI、Qwen Code、Cline、Roo Code、OpenHands、OpenClaw、ACP SDK/schema、browser-harness、CloakBrowser、cmux、golutra、multica、hermes-agent、cc-switch、AstrBot、cockpit-tools、context-mode、headroom、repomix、markitdown、OpenUI、HyperFrames、Kdenlive、Remotion、SVGator、Adobe Firefly/Express 等在未逐项核准许可证并写入绿灯表前，不允许复制源码进 `app/`。最新候选状态见 `docs/12-最新开源Agent与CLI参考更新.md`，`源码参考/` 全量矩阵见 `docs/14-源码参考目录专项审计.md`。
 5. **源码参考目录按使用方式分层。** `源码参考/software/` 放完整软件、客户端、Agent 平台和编辑器；`源码参考/plugins/` 放可作为能力模块、sidecar、CLI、库、引擎或协议适配参考的项目。这个分层只解决查找路径，不改变红绿灯；复制源码仍必须按规则 3/4 和 `docs/26`。
 6. **保留许可证和 NOTICE。** 迁移绿灯源码时必须保留原文件版权、SPDX/许可证标识；craft 的 `NOTICE` 必须随产品保留；复制带子目录独立 LICENSE 的文件前必须单独核对并记录。
-7. **先保基座可跑，再迁能力。** 先保持干净 craft 原项目能跑，再按 `docs/19` 小步迁 CLI Runtime、WorkbenchShell、DesignAction 契约、BrowserPane Stage 等能力。
+7. **先保基座可跑，再迁能力。** 先保持干净 craft 原项目能跑，再按 `docs/19` 小步迁 CLI Runtime、动作契约、BrowserPane 和专业工作面能力。
 8. **每次动手前先看 craft 对应模块。** 例如桌面窗口看 `app/apps/electron/src/main/*`，renderer 看 `app/apps/electron/src/renderer/*`，工具/session 看 `app/packages/*`。
-9. **UI 改造必须从新基座做。** 用户明确要求重新设计工作台界面。新 UI 从 `WorkbenchShell` 落地，先接真实 craft session/permission/timeline，再加 Stage/Inspector/Context。
+9. **UI 改造必须从新基座的原有界面做。** 优先修改 craft 现有工作区、会话列表、聊天、设置和 BrowserPane 的结构；不能为了功能另套 `WorkbenchShell`、控制台或线框式壳层。只有原有结构没有合理挂点时，才新增专业工作面；新界面仍必须接真实 craft session/permission/timeline。
 10. **单人主线快速推进优先。** 默认由当前 Codex 直接选方向、实现、验证、同步文档。不要反复向用户确认，不要把时间耗在审查交接上；在边界清楚、风险可控时直接做一个用户可见产品闭环，再跑必要验证并记录结果。只有用户明确要求并行或任务天然独立时，才再拆给其他智能体。
 11. **动手前先看参考项目做法。** 每次推进主线能力前，先快速查看绿灯项目或黑盒参考的相关交互/错误处理/协议模式，判断是否有更好的实现方式；绿灯可按许可证迁移并归因，黑盒项目只能借鉴行为和命令输出，不能复制源码/测试/类型/结构。
 12. **不要再保留过程性快照和流水记录。** 当前目标是干净开发环境；除非用户明确要求，不再创建过程快照目录或过程性任务记录。需要保护大改动时，优先用 Git 分支/提交表达可恢复点。
@@ -68,12 +70,13 @@
 29. **治理面封顶，创作面优先。** 上下文效率、外部审查、记忆和决策 UI 只收口；工时优先给团队脊柱、全部文件/Library 和四个创作工作面。
 30. **只认当前分支完成状态。** 旧 worktree 和 Agent 汇报不是当前代码事实；状态以 `docs/00`、`docs/32` 和本机 diff/测试为准。
 31. **团队编排复用会话。** 不新建孤岛多 Agent 页或第二套 team/session store；协议以 `docs/33` 为准。
-32. **状态与身份是调度协议。** 待安排/进行中/待审查/完成/取消映射到现有 session status；身份标签、稳定序号和系统提示词必须可配置并进入团队规则。
+32. **状态与身份是调度协议。** 待安排/进行中/待审查/完成/取消映射到现有 session status。身份能力必须扩展原 `labels/config.json` 与 session `labels`，增加提示词和 permission profile 引用；不得在团队规则或 renderer 建第二套身份定义/分配。稳定序号只派生显示。
 33. **管理 Agent 不是特权后门。** 它可跨项目协调，但写文件、改设置、外发、删除和发布仍走 permission 与 L0-L3。
 34. **专业工作面共享本地素材。** 网页动画也是一等资产，可继续编辑或渲染后进入视频剪辑；不得为工作面另建素材仓库。
 35. **前端与 Agent 说明同步。** 页面、按钮、输入语法、设置或工具变化必须同步 `AGENTS.md`、相关 docs、bundled docs、session tool schema/handlers 和 MCP Agent 说明。
 36. **并行开发：共享契约只由 Lead 改。** 多 Agent 并行时，跨 Agent 的共享契约文件（`shared/protocol/*` 尤其 `channels.ts`/`routing.ts`/`dto.ts`/`index.ts`、`electron transport/channel-map.ts`、`electron shared/types.ts`、`server-core handlers/rpc/index.ts`、`handler-deps.ts`、`i18n/locales/*.json`）由 **Lead 在 Wave 0 一次性冻结**，冻结后对并行 Agent **只读**。并行 Agent 需要新 channel/event/command/type/i18n key 时**必须回 Lead 加**，不得自行修改这些文件（否则必然冲突 + 漂移）。新 handler 文件用“Lead 建空壳并注册 → 对应 Agent 填实现”的顺序移交，Wave 0 后 Lead 不再碰。文件所有权矩阵、波次与每个 Agent 提示词见 `docs/32`/`docs/34`。
 37. **并行开发：单文件单所有者 + 独立 worktree。** 每个文件恰好一个 Agent 所有者；每个 Agent 在独立 git worktree+分支开发，只改自己名下文件，禁改清单是硬约束；完成后按 `docs/32 §6` 格式汇报（worktree/branch/commit/改了哪些文件/没碰哪些禁改/验证结果），缺项不合入。合入前由 Lead 核对实际 diff 是否越界改了契约（铁律 23）。
+38. **功能页面必须前后端同文档。** 新增或修改一个功能页面时，同一份功能文档必须同时写清：用户界面放哪里、沿用哪些原组件、显示哪些字段、后端服务/RPC/事件怎么接、Agent 用什么工具调用、permission/timeline/回滚怎么走、设置页和 i18n 怎么同步、验收怎么证明。禁止只写 UI 稿或只写后端服务；并行开发时可以拆人做，但不能拆成两份互相猜的文档。
 
 ## 常用入口
 

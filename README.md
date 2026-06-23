@@ -13,18 +13,18 @@
 - 当前资产来源：`app/`
 - 新主工程：干净 craft-agents-oss 基座
 
-> 产品定位：**AI 工作创作台**——人类主导、AI 辅助，在一个软件里完成软件开发 / 内容创作 / AIGC 的真实生产流程。三场景不是三个 app，是同一工作台（项目/画布/时间线/属性面板/素材库/版本/导出/统一输入/Agent/记忆/权限/token 账本）的不同配置；把生产收进软件结构化操作，不接管外部桌面。
-> 主线一句话：CLI 接入（已就绪）→ 动作引擎（在建）→ 浏览器/Artifact 两块画布 → 管理 Agent + 项目 Agent + 分层记忆 + 上下文效率/审查中心，全部跑在 craft 的同一条 session / permission / timeline 上。
+> 产品定位：**AI 工作创作台**——人类主导、AI 辅助，在一个软件里完成真实生产流程。默认工作台保留 Craft 原结构，无限画布、AIGC、网页/文档、视频剪辑使用适合各自的专业布局和原生引擎；它们共用工作区、本地素材/Library、Agent、记忆、permission、session timeline、成本账本和导出。
+> 主线一句话：先收敛团队脊柱 → 全部文件/Library → 四个专业工作面逐个跑通；全部复用 Craft 的 session / permission / timeline，不重建默认界面壳。
 
 ## 当前重启路线
 
 当前路线：
 
-1. 重新克隆干净 craft-agents-oss，并确认原版能 install、typecheck、启动。
-2. 从现有 `app/` 只迁移 `docs/19-重启二开与可复用资产清单.md` 列出的少量资产。
-3. 第一批迁移 CLI Runtime / ACP，因为它有单测、typecheck 和 opt-in smoke 记录。
-4. 设计工作流重做为 BrowserPane docked Stage + `DesignAction -> DesignPatch -> SessionEvent`。
-5. 新界面从 `WorkbenchShell` 开始做 Conversation / Stage / Inspector / Context。
+1. 保持当前 Craft 基座可安装、可 typecheck、可启动，不恢复旧二开 UI。
+2. 先完成原标签身份扩展、团队状态/路由和管理 Agent 边界。
+3. 再完成“全部文件 / Library”，建立四个专业工作面共享的本地素材底座。
+4. 无限画布、AIGC、网页/文档、视频剪辑分别使用原生引擎跑通，人和 Agent 共用结构化工具。
+5. 新界面只从 Craft 原挂点增量修改；只有专业工作面可以新建独立页面。
 
 ## Markdown 范围
 

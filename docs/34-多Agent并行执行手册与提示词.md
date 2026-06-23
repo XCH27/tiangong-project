@@ -2,12 +2,12 @@
 
 > 状态日期：2026-06-22
 > 作用：把 `docs/32` 的波次与文件所有权落成**可直接复制给每个 Agent 的提示词**。每个提示词自包含：角色、必读、范围、文件所有权、消费的契约、验收、验证、汇报格式、防跑偏铁律。
-> 用法：① 先由 **Lead** 提交当前团队协议/rules 基线；② 主线更新后，同时运行 Lead Coordinator、A1、A2（三路）；③ 全部文件/Library 与 External Job 各自完成源码勘探和契约冻结后再开新波次；④ 最后做管理 Agent 全局专栏与端到端集成。
+> 当前门禁：团队线暂不允许并行。先由 Lead 完成原 LabelConfig 身份扩展、删除 team rules 身份双写、接通提示词/权限/队长唯一性；验收后才能派 A1/A2。
 
 ## 能分几个 Agent？
 
 - **Wave 0：1 个（Lead，串行阻塞）** —— 冻结契约，必须先合入。
-- **Wave 1：最多 3 路并行** —— Lead（TeamCoordinator+管理 Agent 投影）、A1（输入迁移）、A2（会话团队 UI）。这是当前协议已足够支撑的范围。
+- **Wave 1：契约验收后最多 2 路并行** —— A1（输入迁移）与 A2（只改原界面显示字段）。
 - **Wave 2：1–2 个** —— A5（管理 Agent 全局专栏，依赖 Lead 后端）+ 集成测试。S2（openpencil 设计面）**被许可证绿灯阻塞**，解锁前不派。
 
 每个 Agent 都在**自己的 git worktree + 分支**里干活；只改自己名下文件；用 `docs/32 §6` 格式汇报。
@@ -28,6 +28,7 @@
 铁律（违反即返工）：
 - 只改你“文件所有权”里列出的文件；禁改清单是硬约束。需要新 channel/event/type/i18n key → 停下，回报主线由 Lead 加，绝不自己改 protocol/channels/routing/dto/index/channel-map/types/i18n JSON。
 - 不建第二套 session/team/store；只用 craft SessionManager/SessionEvent/permission。
+- 功能页面必须消费同一份功能文档：UI 放哪里、后端怎么接、Agent 工具怎么调、permission/timeline 怎么走、设置/i18n 怎么同步、验收怎么证明，都应在同一节里。你可以只实现自己拥有的文件，但不能另写一套 UI 或后端假设。
 - 不假执行：没接后端的写操作必须 disabled 或明确报错，不谎称完成。
 - 在独立 worktree+分支开发。完成后按 docs/32 §6 格式汇报：worktree/branch/commit/改了哪些文件/没碰哪些禁改文件/实现了什么/没实现什么/验证命令与结果/未提交文件/是否需主线处理冲突。
 - 验证：./scripts/craft.sh run typecheck:all 必须绿；为你的新增逻辑写并跑目标测试；git diff --check 通过。
@@ -36,44 +37,32 @@
 
 ---
 
-## Lead（Wave 0 契约冻结 + Wave 1 硬核）🔒
+## Lead（当前唯一可执行任务）🔒
 
-> Lead 是主线负责人（你自己或一个强模型 Agent）。Wave 0 串行、阻塞所有人；Wave 1 与 A1–A4 并行，但只碰 Lead 名下文件。
+> Lead 先修正身份数据模型。此任务完成前不派 A1/A2，也不改前端。
 
 ```
-角色：Lead / 主线。你负责两件最难、最易返工的事：① Wave 0 冻结全部跨 Agent 契约；② Wave 1 实现 TeamCoordinator + 管理 Agent 后端 + permission/timeline 接线 + 队长边界。
+角色：Lead / 主线。目标：把身份能力扩展到 Craft 原标签系统，彻底删除团队规则中的第二套身份定义和分配。前端保持干净 Craft 原版，不在本任务修改。
 
-== Wave 0（先做，做完提交并通知其他 Agent 可以开工）==
-目标：提交并冻结本波团队功能需要的契约。其它域在自己的波次勘探后再冻结，不提前猜字段。
-改这些文件（仅你可改）：
-- app/packages/shared/src/protocol/channels.ts：只补本波真实需要的 team 查询通道；团队写动作继续走 SessionCommand
-- app/packages/shared/src/protocol/routing.ts：只分类本波新增团队通道
-- app/packages/shared/src/protocol/dto.ts：确认 SessionEvent/SessionCommand 引用 team 契约
-- app/packages/shared/src/protocol/index.ts：导出新模块
-- app/apps/electron/src/transport/channel-map.ts + app/apps/electron/src/shared/types.ts：对应 IPC 映射
-- app/packages/shared/src/i18n/locales/*.json：加齐本波团队 key，覆盖 registry 中全部语言并通过 parity
-- app/packages/server-core/src/handlers/rpc/index.ts：只注册已经有真实实现的 team handler
-- app/packages/server-core/src/handlers/rpc/team.ts：真实 Coordinator 查询接口明确后再新增；不建 files-library/external-job 空壳
-- app/packages/server-core/src/handlers/handler-deps.ts：如需新依赖
-验收：typecheck:all 绿；routing 穷尽测试通过（新通道已分类）；i18n parity/sorted/coverage 通过；不实现业务逻辑，只冻结契约。提交后在汇报里列出所有新通道/事件/类型名，供 A1–A4 对齐。
+先读：`packages/shared/src/labels/{types,storage,resolve,values}.ts`、`SessionManager.setSessionLabels`、系统提示词构建、permission profile 配置、当前 `team.ts`/`team-coordinator.ts`。
 
-== Wave 1（与 A1–A4 并行；只改下列你名下文件）==
-目标：实现团队脊柱业务。读 docs/33 §0 复审修正（权威）。
-改这些文件：
-- app/packages/server-core/src/services/team-coordinator.ts（新建，核心）
-- app/packages/server-core/src/services/team-rules-service.ts（加写入路径，仅 Coordinator 过 permission/timeline 后调用）
-- app/packages/server-core/src/handlers/rpc/sessions.ts（把 6 个团队命令 case 从“抛错拒绝”改为调用 Coordinator）
-- app/packages/server-core/src/handlers/rpc/team.ts（填实现：查询团队/待审队列）
-- app/packages/server-core/src/sessions/SessionManager.ts（软件级 `manager:global` 身份在每个 workspace 的 hidden 投影锚点；团队收件箱引用注入；session_deleted 成员对账）
-- app/packages/server-core/src/handlers/session-manager-interface.ts（新方法签名）
-必须实现（按 docs/33 §0）：
-1) 投递≠运行：sendTeamMessage / 不带 autoRun 的 assignTeamTask = 入队到目标会话团队收件箱 + 写团队会话 transcript（L1，不启动 agent）；assignTeamTask autoRun=true = 在 assignee 会话启动一轮（L2，过 permission）。
-2) 团队群聊 = 一个 hidden craft 会话（teamConversationSessionId）；broadcast fanout 到全部成员收件箱；@private 只投 audienceSessionIds，其余成员收不到。
-3) 任务/汇报/待审：submitTeamReport（结构化，不猜“最后一条 assistant 消息”）→ 同事务把会话状态置 awaitingReview + 发 team_review_queued；getReviewQueue 派生（扫 awaitingReview 成员 + 最新 report，不持久化队列）。
-4) 管理 Agent = 软件级单一身份 `manager:global`；每 workspace 的 hidden 会话只是 timeline/消息投影，不得产生不同记忆或不同身份。只能 L0/L1 自动代答，永不自动 L2/L3，不绕 permission。
-5) 队长边界：分派/规范/请求审查/汇总/调整成员；不能改全局规则、不读其它私聊、不绕 permission、不批 L3。
-6) 权限矩阵（docs/33 §0）：promoteLeader/send/assign(no run)/changeIdentity/submitReport=L1；autoRun dispatch / updateRules=L2；删除团队/清空队长成员=L3。每个写动作发带 actor 的 SessionEvent 进同一条 timeline，可回放可回滚。
-验收：为 Coordinator 写目标测试（投递 vs 运行、broadcast vs private 可见性、report→awaitingReview→review queue、权限分级、成员对账、管理 Agent 自动代答只限 L0/L1）；typecheck:all 绿；团队命令不再抛“未接入”。
+改动范围：
+- `app/packages/shared/src/labels/types.ts`：给 `LabelConfig` 增加 `kind?: 'functional'|'identity'`、`systemPromptPreset?`、`permissionProfile?`。
+- labels storage/resolve/tests：保存并校验新字段；默认旧标签不自动获得权限。
+- `app/packages/shared/src/protocol/team.ts`：删除 `TeamIdentityTag`、`identityTags`、`identityAssignments` 与 `changeTeamIdentityTag`；TeamProjection 的身份从 session labels 派生。
+- `app/packages/server-core/src/services/team-rules-service.ts`：删除重复身份校验/存储。
+- `app/packages/server-core/src/services/team-coordinator.ts`：从 session labels 和 LabelConfig 读取身份；消息/任务/汇报逻辑保持不变。
+- `app/packages/server-core/src/sessions/SessionManager.ts`：在既有 setLabels 路径中实现身份提示词注入、permission profile 引用、leader 唯一性与 timeline；不得另建 API。
+- 对应协议、session self-management 和目标测试。
+
+硬规则：
+1. 身份定义只在 `labels/config.json`；身份分配只在 session `labels`。
+2. `leader` 是普通标签中的特殊身份。给一个会话添加时原子移除旧队长的 leader 标签；不能靠模型图标或独立按钮。
+3. `systemPromptPreset` 在后端构建 Agent 上下文时注入，记录标签 id/config hash；renderer 不拼提示词。
+4. `permissionProfile` 只引用现有 permission 配置；身份标签绝不能绕过 permission 或自动批准 L3。
+5. 稳定序号只派生，不写标签。
+
+验收：LabelConfig 往返测试；setLabels 身份提示词测试；leader 唯一性与团队群聊创建测试；permission profile 不越权测试；旧功能标签仍可筛选/自动化；typecheck:all、目标测试、git diff --check 全绿。完成后更新 docs/32 状态，才允许派 A1/A2。
 ```
 
 ---
@@ -102,20 +91,20 @@
 ## A2 — 会话列表团队化 UI 🧩
 
 ```
-角色：A2。目标：在「所有会话」列表里加模型/Runtime 图标、队长提升、身份标签、团队状态词、顶部团队群聊框；不新建多 Agent 顶层页。读 docs/33（§3 身份/序号、§6 状态）、docs/18（目标态 UI）。
+角色：A2。目标：在完全保留原 Craft 界面结构的前提下，只调整会话列表和原标签的显示字段。身份能力来自扩展后的原 LabelConfig，不得新增第二套身份菜单、身份 store、团队条、悬浮控制台或独立团队页面。
 改这些文件（仅你）：
 - app/apps/electron/src/renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover}.tsx
-- 新建 app/apps/electron/src/renderer/components/app-shell/TeamChatBox.tsx
-- 新建 app/apps/electron/src/renderer/components/settings/TeamIdentitySettings.tsx（身份标签与规则页：状态词/身份标签/序号规则/自动应用规则）
+- 新建 app/apps/electron/src/renderer/components/app-shell/TeamChatSessionItem.tsx
 - 新建 app/apps/electron/src/renderer/atoms/team.ts（订阅 teamRules.GET + 团队事件，派生成员序号 G-01/G-02：按 createdAt 排名，不写回）
 禁改：protocol/*（只消费 Lead 冻结的 team 通道/事件 + i18n key）、i18n JSON、A1 输入文件、SessionManager*、后端 handler。
 要求：
-- 每条会话前显示模型/Runtime 图标（从 session connection/runtime 元数据派生，不双写）。
-- 点图标可把会话提升为队长（调 promoteTeamLeader 命令；Lead 的 Coordinator 没合入前按 disabled/loading 呈现，不假执行）。
-- 选出队长后列表顶部出现团队群聊框：不 @ = 广播，@某Agent = 私发（UI 层只负责构造 sendTeamMessage 命令 + audienceSessionIds）。
+- 每条会话显示模型/Runtime 图标（只作识别，不可点击）和稳定序号；不改变原会话行布局。
+- 原“标签”菜单原位保留；标签字段增加身份、提示词和 permission profile 能力。添加/取消“队长”标签就是队长切换，不新增快捷按钮。
+- 选出队长后，列表顶部出现团队群聊这一条普通样式的特殊会话项；它只有群聊图标和标题。点开后沿用 craft 聊天面板与统一输入框，不 @ = 广播，@某 Agent = 私发。不要把输入框、发送按钮塞进会话列表本身。
+- 团队群聊的每条消息、任务简报和待审简报必须显示发送者头像、模型/Runtime、稳定序号和身份标签；数据只从 `SessionEvent.actor`、TeamProjection 和团队规则派生，不能在 renderer 另存。
 - 状态显示用 Lead 加的 i18n key：待安排/进行中/待审查/完成/取消。
 - 序号按 createdAt 固定，不随最新消息排序变化。
-验收：每条会话看得出模型/Runtime；可提升队长；有队长后显示群聊框；状态词正确；为新组件写渲染测试；typecheck:all 绿。能力门禁诚实（未接后端的写操作 disabled）。
+验收：与原 Craft 截图对比，布局、间距、菜单层级不变；模型、序号、身份、状态只作为原字段增量显示；原标签可设置队长并触发后端唯一性规则；有队长后只增加一条普通样式的团队群聊会话项；typecheck:all 绿。
 ```
 
 ---
@@ -123,7 +112,7 @@
 ## A3 — 全部文件 + Library（后续独立契约波次，当前不要派）
 
 ```
-角色：A3。目标：建「全部文件」raw file view（My Workspace + 用户选的本地素材目录，按类型过滤）和 Library 资产层（来源/hash/许可/使用位置/回滚），别做成本地知识库。读 docs/04 D15/D18、docs/32 §3。
+角色：A3。目标：建「全部文件」raw file view（“我的工作区” + 用户选的本地素材目录，按类型过滤）和 Library 资产层（来源/hash/许可/使用位置/回滚），别做成本地知识库。读 docs/04 D15/D18、docs/32 §3。
 改这些文件（仅你）：
 - 新建 app/packages/server-core/src/services/file-index.ts（+ test）：扫描目录、类型过滤（图片/md/网页/视频/音频/PPT/代码/字体/模板）、缩略图/索引；只读浏览自动，写操作（移动/重命名/删除/批量分类）必须经 permission + timeline。
 - app/packages/server-core/src/handlers/rpc/files-library.ts（Lead 在 Wave 0 已建壳并注册，你填实现，消费 Lead 冻结的 files.* 通道与 files.ts 契约）
@@ -131,7 +120,7 @@
 - 新建设置页目录/过滤规则组件
 禁改：protocol/*、团队相关文件、SessionManager* 核心、其它 Agent handler。需要新通道/类型 → 回 Lead。
 要求：
-- 全部文件 = raw 本地文件视图（默认根 My Workspace，可加素材目录）。
+- 全部文件 = raw 本地文件视图（默认根“我的工作区”，可加素材目录）。
 - Library = 项目选用/授权/索引后的资产层，记录来源/hash/许可/使用位置/回滚；不另起存储目录。
 - AI 分类/移动/重命名/删除走 permission + timeline，可回放可撤销，不静默外发。
 验收：可选本地文件夹并按类型过滤；写操作触发 permission；Library 只收授权资产；file-index 有目标测试；typecheck:all 绿。

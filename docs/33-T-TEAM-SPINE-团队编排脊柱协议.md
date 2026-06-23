@@ -1,6 +1,7 @@
 # 33 · T-TEAM-SPINE 团队编排脊柱协议
 
-> 状态：共享协议、团队规则服务、TeamCoordinator、SessionManager 收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落地；常驻管理 Agent 已有 `manager:global` 身份和 workspace 内部投影锚点，团队设置页已可配置长期偏好/跨项目记录注入策略，但尚未接“所有会话”全局专栏和自动代理；`@`/`/` 输入迁移、模型图标、完整队列视图仍未完成。
+> 状态：团队消息、任务、汇报、待审与权限脊柱已有后端实现；前端团队改造全部撤回到 Craft 原界面后重新实施。
+> **2026-06-23 更新：身份双写收敛已实现，🟡 候选/待合入（未提交主线）** —— `TeamRulesV1` 删除 `identityTags`/`identityAssignments`；`LabelConfig` 增 `kind/systemPromptPreset/permissionProfile`（身份唯一真相）；队长唯一性落在 `SessionManager.setSessionLabels`（加 `leader` 标签原子移除旧队长）；`TeamCoordinator.promoteTeamLeader` 改走 `setSessionLabels`，成员身份/队长从 session labels 派生；删除 `changeTeamIdentityTag` 命令与 `team_identity_changed` 事件。验证：shared/server-core/session-tools-core/electron **typecheck 通过**；`team-coordinator.test.ts`/`team-rules-service.test.ts` 已同步但**本环境无 bun，未运行单测**。**尚未提交 `work/fresh-base-spine`**，合入并复核前不能当“已落主线”。前端团队显示在合入后再开始。
 > 目的：固定“会话即 Agent、队长、团队群聊、身份标签、状态、`@`/`/`、管理 Agent”的共同契约，让后端和 UI 可以并行开发而不产生第二套 session/team/permission。
 > 参考：AionUi 可按绿灯范围迁 Team/进程生命周期；Warp 只黑盒学习 task/run、Agent 间消息、长任务 block 和失败信息。
 
@@ -18,9 +19,9 @@
 5. **成员序号派生自 `createdAt`，不写 metadata。** craft `Session` 无自由 metadata 字段；`G-01/G-02` 按成员 `createdAt` 排名实时算（createdAt 不变所以稳定），前缀取文件夹首字母（可配）。不写 label、不双写。
 6. **Agent 参与走 session 工具**（`get_team` / `send_team_message` / `assign_team_task` / `submit_team_report`），经同一条 `SessionCommand → permission → timeline`。v1 由 Coordinator 处理命令，工具只是调用它。
 7. **事件锚点（为回放）：** 团队级事件（rules/leader/broadcast/validation_failed）落**团队会话** timeline（`conversationId===sessionId`）；成员级事件（task_assigned/report_submitted/identity_changed/review_queued）`sessionId`=成员会话、`conversationId`=团队会话——单条 SessionEvent 同时带两 id，UI 按 `sessionId` 看成员视图、按 `conversationId` 看群聊视图，**不重复发**。
-8. **成员对账：** 收到 `session_deleted`/归档时，Coordinator 从 `memberSessionIds`/`identityAssignments` 移除该会话；若是队长则清空 `leaderSessionId` 并发 `team_leader_changed`。
+8. **成员对账：** 收到 `session_deleted`/归档时，Coordinator 从成员引用中移除该会话；队长身份由会话原 `labels` 派生，不能在团队规则里再保存一份身份分配。
 
-权限分级矩阵（Coordinator 必须按此判，详见 §8）：promoteTeamLeader=L1；sendTeamMessage/不 run 的 assignTeamTask/changeTeamIdentityTag/submitTeamReport=L1；autoRun dispatch / updateTeamRules(结构/规范)=L2；删除团队/清空队长成员=L3。管理 Agent 自动代答只限 L0/L1，永不自动 L2（无规则）/L3。
+权限分级矩阵（Coordinator 必须按此判，详见 §8）：设置普通身份=L1；设置/取消队长身份、自动运行任务、修改身份权限配置或团队规范=L2；删除、发布、外发敏感数据=L3。管理 Agent 自动代答只限 L0/L1，永不自动 L2（无规则）/L3。
 
 当前已落代码：
 
@@ -34,23 +35,60 @@
 - `app/packages/server-core/src/handlers/rpc/team.ts`
 - `app/packages/server-core/src/sessions/SessionManager.ts` 中团队事件持久化、收件箱注入、权限请求接线
 - `app/packages/session-tools-core/src/handlers/team.ts`
-- `app/apps/electron/src/renderer/components/app-shell/TeamConversationBar.tsx`
-- `app/apps/electron/src/renderer/components/app-shell/team-chat-helpers.ts`
-- `app/apps/electron/src/renderer/pages/settings/TeamSettingsPage.tsx`
-- `app/apps/electron/src/renderer/pages/settings/team-settings-helpers.ts`
 
 新增上下文隔离字段已落到 `TeamRulesV1.managerContextPolicy`。默认值：长期偏好只注入队长、跨项目记录不注入、管理 Agent 深读成员上下文必须经过权限。管理 Agent 的消息入口仍需后续落到“所有会话”全局专栏，不能继续做成单个 workspace 的普通会话。
 
-当前已冻结类型、事件、命令和默认状态映射，并提供 rules 文件读取、严格校验、原子写入、最后有效版本回退及读取/预校验 RPC。团队命令已通过 `sessions:command → TeamCoordinator` 写入 permission/timeline；渲染端没有直接写 rules 文件 RPC。
+消息、任务、汇报、待审事件和默认状态映射已有实现；身份相关类型尚未冻结。团队命令已通过 `sessions:command → TeamCoordinator` 写入 permission/timeline，但身份和队长路径必须改为复用 `setLabels` 后才算完成。渲染端当前保持干净 Craft 原版。
 
 ## 1 · 唯一真相与存储
 
 - **会话与消息真相**：craft `SessionManager`、session persistence、`SessionEvent`。
 - **权限真相**：craft permission；队长和管理 Agent 都不能绕过。
 - **团队策略文件**：`<workspace>/.fleet/team.rules.json`。它只保存团队规则和稳定引用，不保存模型图标、运行状态、消息队列或完整成员副本。
-- **团队群聊**：使用一个 `hidden: true` 的 craft session（`teamConversationSessionId`）。它仍在原 session store 中，不是第二套聊天系统；UI 只把它渲染成“所有会话”顶部的团队群聊框。
-- **管理 Agent 全局专栏**：常驻管理 Agent 的用户对话位于“所有会话”层的专门栏，跨 Workspace 存在；workspace hidden 投影只做内部锚点，不展示为普通会话，不承载用户对话。
+- **团队群聊**：使用一个 `hidden: true` 的 craft session（`teamConversationSessionId`）。它仍在原 session store 中，不是第二套聊天系统；有队长后，UI 才在“所有会话”顶部把它渲染成一条特殊会话项，点开后沿用原聊天面板。
+- **管理 Agent 全局专栏**：常驻管理 Agent 的用户对话位于“所有会话”层的专门栏，跨工作区存在；workspace hidden 投影只做内部锚点，不展示为普通会话，不承载用户对话。
 - **成员运行态**：由成员 session metadata + Agent registry 派生。模型、Runtime、displayName、在线状态不能复制进规则文件形成双写。
+
+### 1.1 · 团队 UI 的固定形态
+
+团队能力只能改原 craft 会话界面，不能另加聊天条、悬浮控制台或第二个工作台。
+
+**标签系统本身升级为身份标签，不新增第二套身份标签。** 原 `labels/config.json` 的每个标签增加可选的身份、提示词和权限字段；原 session `labels` 数组就是身份分配。没有“身份标签 + 功能标签”两套菜单，也没有 `team.rules.json.identityTags/identityAssignments`。没有身份能力的标签仍可用于整理、筛选和自动化。
+
+1. **队长出现前**：列表仍是原来的会话列表。模型或 Runtime 图标只负责识别；原“标签”菜单仍是唯一标签入口。`队长`是原标签中的特殊身份，不能新增按钮、子菜单、团队条或控制台。
+2. **队长出现后**：在“所有会话”列表最顶端插入一条普通样式的特殊会话项，使用群聊图标与“团队群聊”标题。它只是 `teamConversationSessionId` 的可见入口，不在列表里再放输入框或发送按钮。
+3. **打开团队群聊后**：继续使用 craft 原聊天面板和统一输入框。它像真实团队群，只承载队长安排、成员汇报、成员提出的问题/意见、待审提醒和少量方向性摘要；它不是“所有成员会话全文合集”。
+4. **摘要粒度**：群聊消息要短，目标是让人类快速判断“谁在做什么、完成了什么、哪里阻塞、项目方向是否正确”。完整思考过程、工具输出、长代码、长审查报告和成员原始对话都留在成员 session 或报告文件里，群聊只放可跳转引用。
+5. **消息投影**：群聊里的每条团队消息、任务卡、汇报卡和待审卡，在正文前显示发送者头像、模型或 Runtime、小序号和身份标签；这些信息来自事件 `actor`、成员 projection 与规则，不在 renderer 复制一份真相。
+6. **可见性**：不带 `@` 的消息是广播，显示给团队有效成员；不提供 `@所有人` 这种额外语法。`@会话/Agent/身份` 是定向消息，只出现在发送者和目标成员可见的群聊 transcript 投影里，不能只靠前端隐藏。
+7. **待审呈现**：成员进入 `awaitingReview` 时，群聊只插入一条待审简报卡，包含 `taskId/runId`、成员身份、报告摘要、风险/阻塞和源会话入口；不得复制成员完整聊天记录。
+8. **状态**：原有会话状态词在团队模式下映射为“待安排 / 进行中 / 待审查 / 完成 / 取消”；列表排序仍以用户选定的原规则为准，稳定序号只按创建时间生成，不随最近消息变动。
+9. **设置页**：复用原标签设置页，只为现有标签增加“用途 / 系统提示词 / 权限配置”字段。团队设置只保留状态映射、规范和管理 Agent 边界，不再维护身份定义或身份分配。
+
+前端改动边界：只改现有字段的名称、值和徽章显示。原菜单层级、会话行结构、设置页骨架、聊天布局不变。`Priority` 的产品位置改为“队长”，`Project` 的产品位置改为派生的稳定“序号”；序号不可由用户手填，也不写入标签。
+
+### 1.2 · 原标签扩展契约（新的单一真相）
+
+```ts
+interface LabelConfig {
+  id: string
+  name: string
+  color?: EntityColor
+  children?: LabelConfig[]
+  valueType?: 'string' | 'number' | 'date' | 'link'
+  autoRules?: AutoLabelRule[]
+  kind?: 'functional' | 'identity'       // 省略时仍是普通功能标签
+  systemPromptPreset?: string            // 会话启动/下一轮构建时注入
+  permissionProfile?: string             // 引用 craft permission 配置，不内嵌第二套 ACL
+}
+```
+
+- 身份定义：`labels/config.json`。
+- 身份分配：session 原 `labels`。
+- 身份提示词：按当前会话已应用的 identity 标签构建，记录标签 id 与配置 hash；不得在 renderer 临时拼接。
+- 身份权限：只引用现有 permission profile；标签不能直接授予绕过 permission 的能力。
+- 队长唯一性：给一个会话添加 `leader` 标签时，后端通过同一条 `setLabels → permission → timeline` 原子移除旧队长的 `leader` 标签，并创建或显示团队群聊。
+- 稳定序号：由工作区前缀 + session `createdAt` 排名派生，仅显示，不存入标签。
 
 ## 2 · TeamRulesV1
 
@@ -61,13 +99,6 @@ interface TeamRulesV1 {
   teamConversationSessionId: string
   leaderSessionId: string | null
   memberSessionIds: string[]
-  identityTags: Array<{
-    id: string
-    displayName: string
-    systemPromptPreset?: string
-    color?: string
-  }>
-  identityAssignments: Record<string, string[]> // sessionId -> tag ids
   statusMap: {
     unassigned: string
     active: string
@@ -93,6 +124,8 @@ interface TeamRulesV1 {
   norms: string[]
 }
 ```
+
+`leaderSessionId` 在下一次协议收口时也应改为派生字段；在完成迁移前只能作为加速缓存，必须与 session `leader` 标签核对，冲突时以标签为准。
 
 默认 `statusMap` 映射到 craft 已有状态 ID：
 
@@ -124,7 +157,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 - 队长是 `leaderSessionId` 指向的现有 session，不复制成新 Agent。
 - 项目标识默认取文件夹首字母；也可按文件夹加入顺序分配 A/B/C。
 - 成员序号按 `createdAt` 固定派生，例如 `G-01`、`G-02`。不写入 session metadata，不能随最近消息排序变化。
-- 身份标签保存角色规则和可选系统提示词。应用标签时记录 preset id/version/hash；真正提示词在 session 构建时注入，修改必须进 timeline。
+- 身份能力保存在原 `LabelConfig`；应用标签时记录标签 id 与配置 hash，真正提示词在 session 构建时注入，修改必须进 timeline。
 - `modelIcon`、`runtime`、`displayName` 不进入 TeamRules，避免与 session/registry 双写。
 
 ## 4 · 团队事件
@@ -135,7 +168,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 |---|---|
 | `team_rules_changed` | 规则、成员引用、身份分配或项目规范改变 |
 | `team_leader_changed` | 提升/更换/清除队长 |
-| `team_identity_changed` | 会话身份标签变化 |
+| `labels_changed` | 原会话标签变化；identity 标签变化也走这一事件 |
 | `team_message` | 广播或私聊；用 `visibility` + `audienceSessionIds` 表达，不再另建 `team_private_message` |
 | `team_task_assigned` | 队长/管理 Agent/人类创建或重新分派任务 |
 | `team_report_submitted` | 队员提交结构化工作汇报 |
@@ -151,6 +184,10 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 - `@某Agent/会话/身份`：服务端解析为 `audienceSessionIds`，只把内容加入目标 Agent 上下文；其他项目 Agent 不得收到。
 - 人类与常驻管理 Agent可按权限审计团队消息；“私聊”表示对其他项目 Agent 不可见，不承诺操作系统级加密。
 - fanout 只保存消息引用/投递状态，不在每个成员 session 复制完整消息形成多份真相。
+- 团队群聊 transcript 只存团队层消息和卡片引用；成员执行日志、完整对话和工具输出仍留在成员 session。群聊卡片必须通过 `sourceSessionId`、`taskId`、`runId`、`reportId` 找回来源。
+- 后端写入群聊 transcript 前必须做摘要边界检查：任务安排、汇报、问题、意见、阻塞、待审卡可以进入；成员完整原话、长工具输出、长代码 diff、长文件内容默认不得进入，只能作为引用。
+- `@` 定向命中多个成员时，服务端必须把解析结果写入事件，不能让 renderer 重新推断；解析为空时返回可操作错误，不降级成广播。
+- 队长发布规范使用普通广播消息 + `team_norms_changed`/`team_rules_changed` 事件；不要再发一份隐藏系统消息给每个成员造成双写。
 
 ### 5.1 · 管理 Agent 信息隔离
 
@@ -167,7 +204,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 1. 新建且开始工作的 Agent session 映射为 `active`；没有任务的成员映射为 `unassigned`。
 2. 队员提交 `team_report_submitted` 时，后端在同一事务中把会话状态改成 `awaitingReview`，并生成 `team_review_queued`。
 3. 待审内容必须来自结构化 report；不能默认把“最后一条 assistant 消息”猜成正式工作汇报。
-4. 有队长时排给队长；无队长时排给管理 Agent/人类入口。
+4. 有队长时排给队长，并在团队群聊插入待审简报卡；无队长时排给管理 Agent/人类入口。
 5. 只有人类、管理 Agent 或队长能把 `awaitingReview` 改为 `done`。队员不能绕过审查直接完成。
 6. 取消、删除团队或覆盖规则仍按 permission 分级；L3 永远明确确认。
 
@@ -201,13 +238,13 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 
 - 页面结构沿用 `PanelHeader + ScrollArea + max-w-3xl + SettingsSection + SettingsCard/SettingsRow`。
 - 文案短、可操作、中文优先；不要写大段解释。必须说明“修改走会话命令、权限和 timeline”，但不重复讲架构。
-- 设置页只负责规则配置：队长、成员身份、身份标签、状态映射、团队规范。团队群聊继续放在“所有会话”顶部，不在设置页复制聊天框。
+- 原标签设置页负责标签用途、提示词和 permission profile；团队设置只负责状态映射、团队规范和管理 Agent 边界。团队群聊继续放在“所有会话”顶部，不复制聊天框。
 - 设置页必须展示常驻管理 Agent 状态，并提供“长期偏好注入 / 跨项目记录注入 / 深读是否需要授权”的配置；写入同样走 `sessions:command updateTeamRules`。
 - 管理 Agent 的用户消息入口不在设置页，也不在单个 workspace 会话里；设置页只展示内部投影锚点和注入策略。
 - 写动作只走 `sessions:command` 的团队命令；设置页不得直接写 `.fleet/team.rules.json`，不得使用 localStorage 或 renderer 私有 store 作为团队真相。
 - 新增/删除页面、按钮、输入语法后，同步本文件、`AGENTS.md`、相关 docs、session tool schema/handler 和 MCP/Agent 说明。
 
-### A. T-TEAM-PROTOCOL（已完成，主线独占）
+### A. T-TEAM-PROTOCOL（候选已落，身份收敛后再验收）
 
 - 改：`shared/protocol/team.ts`、`dto.ts`、`index.ts` 和纯类型测试。
 - 不改：renderer、SessionManager 行为。
@@ -217,15 +254,15 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 
 | 工作令 | 文件所有权 | 交付 |
 |---|---|---|
-| T-TEAM-RULES（已完成） | server-core `team-rules-*`、RPC、测试 | 已有校验/原子写/最后有效版本/读取与预校验 RPC |
+| T-TEAM-RULES（候选已落） | server-core `team-rules-*`、RPC、测试 | 校验/原子写/最后有效版本可复用；删除身份双写后再验收 |
 | T-AT-SLASH | renderer input/mentions、shared mentions、resources/tool docs、测试 | `@` 仅身份，`/` 调 Skill/命令，文件走附件/全部文件 |
-| T-TEAM-UI（设置页已完成） | 会话列表、状态/i18n、团队群聊组件、设置页 | 已有顶部团队群聊、@序号/@队长解析、设为队长；设置页已支持队长、成员身份、身份标签、状态映射、团队规范、管理 Agent 投影状态和上下文注入策略。剩模型图标、状态中文重命名、完整队列视图和“所有会话”管理 Agent 全局专栏 |
+| T-TEAM-UI（未开始） | 原会话列表、原标签徽章、状态显示、团队群聊特殊会话项 | 先恢复 Craft 原界面；只在原字段上显示模型、序号、身份和状态。禁止新建身份菜单、团队条或独立身份设置组件。 |
 
 ### C. B 合入后串行
 
 | 工作令 | 文件所有权 | 交付 |
 |---|---|---|
-| T-TEAM-ROUTER（已完成核心） | SessionManager + TeamCoordinator + tests | hidden team session、broadcast/private audience、task/report/review queue、收件箱注入 |
+| T-TEAM-ROUTER（候选已落） | SessionManager + TeamCoordinator + tests | 消息/任务/报告/待审逻辑可复用；必须改为从 session labels 派生身份并重验 permission/timeline |
 | T-MANAGER-AGENT | Agent registry、管理 Agent 工具/提示词、permission 接线 | 跨文件夹管理入口的后端能力；不先做新治理面板 |
 
 并行 Agent 不得改 `docs/33` 协议；发现缺口必须回主线提出，不能自行加字段。每个任务按 `docs/32` 的汇报格式交付。

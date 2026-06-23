@@ -13,7 +13,7 @@
 - **OpenHands / Agent Canvas**：适合作为“多 backend、本地/远程/cloud agent 控制台”的参考；它强调 backend 边界和 sandbox 风险，适合 Fleet 未来 managed runtime / remote host 设计。
 - **Headroom / Repomix / MarkItDown**：上下文效率路线已经不能只靠对话摘要。Headroom 代表本地压缩/可逆检索/MCP proxy，Repomix 代表仓库 AI-friendly 打包和 token counting，MarkItDown 代表多格式文档转 Markdown；三者适合 Fleet D9 的 ProjectPack、Context Optimizer 和外部审查输入管线。
 - **browser-harness / OpenClaw / CloakBrowser**：浏览器自动化路线不能简单接插件。browser-harness 值得吸收薄 CDP、自修复 helper 和 replay 诊断；OpenClaw 值得吸收 managed profile、loopback gateway 和 profile routing；CloakBrowser 是 stealth/anti-detect 高风险来源，只能黑盒研究，不能作为默认能力或规避平台检测。
-- **LobeHub**：本地复查后确认它已经实现了很多 Fleet 想要的产品形态：Chief Agent Operator、Agent Builder/Groups、Project/Workspace/Schedule、白盒记忆、Skill/MCP 市场、context pipeline、file-loaders、web-crawler、IM 网关和工作报告。用户补充截图显示，最直接可落地的是两个设置面板：**服务模型**（按内部任务分配模型：新建助理、话题命名、翻译、历史压缩、档案生成、记忆分析/写入等）和**系统工具**（展示 CLI/node/python/npm/bun/pnpm/uv 等运行环境的版本、路径、可用性）。但根许可证是 LobeHub Community License，当前只能黑盒学习产品边界，不能复制源码或 UI。
+- **LobeHub**：本地复查后确认它已经实现了很多 Fleet 想要的产品形态：Chief Agent Operator、Agent Builder/Groups、Project/工作区/Schedule、白盒记忆、Skill/MCP 市场、context pipeline、file-loaders、web-crawler、IM 网关和工作报告。用户补充截图显示，最直接可落地的是两个设置面板：**服务模型**（按内部任务分配模型：新建助理、话题命名、翻译、历史压缩、档案生成、记忆分析/写入等）和**系统工具**（展示 CLI/node/python/npm/bun/pnpm/uv 等运行环境的版本、路径、可用性）。但根许可证是 LobeHub Community License，当前只能黑盒学习产品边界，不能复制源码或 UI。
 - **OpenUI**：MIT 的生成式界面框架。它把“可允许生成的组件”定义成模型 prompt，再把紧凑、可流式解析的界面描述渐进渲染出来；适合研究 Artifact、报告、表单等受限生成界面的协议与 token 效率。它不是 Fleet 的工作台壳，也不能替代现有 session、permission、timeline 和 DesignAction 主链；未核准前只作黑盒参考。
 - **ACP 本身**：官方协议仓库 Apache-2.0，当前稳定 wire protocol 仍看 `protocolVersion`，schema release 不等于 wire breaking；Fleet 后续 ACP client 应按 negotiated protocol + capabilities 判断能力，不要硬编码 schema 版本。
 - **Continue**：Apache-2.0，但官方 GitHub README 已标记不再 actively maintained/read-only；只能作为历史参考，不应作为新实现主线来源。
@@ -34,7 +34,7 @@
 | OpenClaw | 官方 docs 描述 OpenClaw-managed browser 使用独立 Chrome/Brave/Edge/Chromium profile，通过 loopback Gateway 控制；CLI docs 还区分 managed/user/custom CDP profile | 候选/黑盒；未写入绿灯表前不能复制源码 | 学 managed profile、local gateway、profile routing、安全审计提示；不引入第二套 agent platform |
 | CloakBrowser | GitHub/官网定位为 stealth Chromium，强调 source-level stealth、AI agent / Selenium / Playwright drop-in、bot detection bypass / fingerprint patching | 高风险黑盒；即使许可后续可用，也不能默认接入规避检测能力 | 只作风险/兼容性研究；不得作为默认插件、依赖或卖点，不用于绕过验证码、bot detection、风控、登录限制或配额 |
 | OpenCode | 官方 GitHub 当前仍 MIT；Fleet 已有 `opencode acp` mapping | 已是黑盒行为参考，未写入绿灯表不复制源码 | 保持 production mapping；只调用本机二进制，不复制源码 |
-| LobeHub | 本地 README、package 矩阵和用户补充截图显示其产品覆盖 Chief Agent Operator、Agent Groups、Project/Workspace/Schedule、Personal Memory、Skill/MCP、context-engine、file-loaders、web-crawler、IM gateway、服务模型分配、系统工具健康面板等 | 根 LICENSE 为 LobeHub Community License；高风险黑盒 | 只学产品边界：管理 Agent、项目工作区、白盒记忆、Skill 市场、上下文管线、服务模型路由、系统工具可用性面板和报告形态；实现必须回到 craft/AionUi/绿灯来源 |
+| LobeHub | 本地 README、package 矩阵和用户补充截图显示其产品覆盖 Chief Agent Operator、Agent Groups、Project/工作区/Schedule、Personal Memory、Skill/MCP、context-engine、file-loaders、web-crawler、IM gateway、服务模型分配、系统工具健康面板等 | 根 LICENSE 为 LobeHub Community License；高风险黑盒 | 只学产品边界：管理 Agent、项目工作区、白盒记忆、Skill 市场、上下文管线、服务模型路由、系统工具可用性面板和报告形态；实现必须回到 craft/AionUi/绿灯来源 |
 | ACP | 官方协议仓库 Apache-2.0；README 明确 ACP 标准化 editor 与 coding agent 通信，wire compatibility 看 `protocolVersion` | 可作为协议参考；如复制 schema/SDK 必须先写入绿灯范围和归因 | Fleet ACP client 后续应加 capabilities 判断，特别是 prompt、cancel、file proxy、MCP forwarding |
 | Continue | GitHub README 标记 repo 不再 actively maintained 且 read-only；Apache-2.0 | 历史参考 | 不作为新主线；只学最终 release 的 CLI/IDE 分发形态 |
 

@@ -2,7 +2,7 @@
 
 > 当前决策：`app/` 继续作为 craft-agents-oss 的完整二次开发基座。近期修改先加底层能力和文档，不改 craft 现有 UI；界面重排等用户确认后再做。
 
-> **2026-06-20 状态更新**：`app/` 已重置为干净 craft-agents-oss 基座。旧二开实现不再作为当前代码状态；CLI Runtime、DesignAction、WorkbenchShell 等能力按 `docs/19` 从干净基座重新落地。
+> **2026-06-22 状态更新**：`app/` 以干净 craft-agents-oss 界面为基座。旧二开 UI 不再作为实现来源；不重建 `WorkbenchShell`。当前先收敛团队脊柱、全部文件/Library，再分别落地四个专业工作面。
 
 > **2026-06-19 设计工作流更新**：用户明确希望把 Open Design、Claude Artifacts 类体验、Figma 和 Google Stitch 能力融合进一个软件。新的下一条产品主线是“设计工作流一体化”，第一落点放在原内置浏览器标注页：单选、框选、多选、批量注释、Comment AI；对 AI 生成网页/APP/PPT/商品页进入 Artifact Studio，支持插入图片/视频/形状、字体/文字编辑、颜色/品牌色板、AI 文字特效、动画生成/编辑、动画库、剪切蒙版、内部裁切、位置/尺寸/旋转/圆角/模糊/清晰感参数、自建媒体/组件/UI 效果/骨架模板库，再接 Open Design artifact、Figma native canvas 和 Stitch prompt/code/Figma handoff。此主线必须继承 craft agent-native 哲学：人类 UI 和 AI 工具共用 `DesignAction -> DesignPatch -> SessionEvent`，软件本身可被 AI 编辑。详见 `docs/15-设计工作流一体化方案.md`。
 

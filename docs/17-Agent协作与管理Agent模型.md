@@ -4,7 +4,7 @@
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前分支状态：团队协议、TeamCoordinator、团队事件持久化、收件箱注入、Agent session 工具、会话列表顶部最小团队群聊入口和团队设置页已落入当前分支。管理 Agent 已有固定身份 `manager:global` 与每个 Workspace 的 hidden 投影锚点，并在团队设置页可见；它的用户对话入口尚未迁到“所有会话”全局专栏。lifecycle/memory/decision RPC、管理 Agent 自动代答和完整团队 UI 尚未落入当前分支。团队协议以 `docs/33` 为准；旧工作树实现只算候选资产。
+> 当前分支状态：团队后端只是候选实现，其中身份存储仍与 Craft 原标签系统重复，未通过验收。前端已恢复为干净 Craft 原界面，团队群聊入口、管理 Agent 全局专栏和团队设置均未实现。完成状态只看 `docs/00` 与 `docs/32`，团队契约只看 `docs/33`。
 
 ---
 
@@ -21,11 +21,11 @@ craft-agents-oss 目前有 subagent，但没有成熟的"多 Agent 同场协作"
 
 **关键纪律：管理 Agent 不和项目 Agent 混成一个身份。** 管理 Agent 可以调度、提供背景/记忆/偏好/权限判断，但它不是"每个任务都深度参与的 coding agent"。它平时不应无缘无故消耗大量上下文；只有用户明确要求，或某个项目 Agent 需要它提供背景时，它才进入更深的项目上下文。
 
-管理 Agent 的用户对话也不属于单个工作区。它应该在“所有会话”层拥有自己的常驻专栏；每个 Workspace 的 hidden 投影只用于挂 timeline、权限证据和待审路由，不作为人类与管理 Agent 聊天的位置。
+管理 Agent 的用户对话也不属于单个工作区。它应该在“所有会话”层拥有自己的常驻专栏；每个工作区 的 hidden 投影只用于挂 timeline、权限证据和待审路由，不作为人类与管理 Agent 聊天的位置。
 
 ## 1.1 · LobeHub 给这一层的启发
 
-LobeHub 不能作为源码来源，但它证明了一个产品判断：Agent 不应该只表现为"聊天里的模型"，而应该表现为**可管理的工作单元**。它的 Chief Agent Operator、Agent Builder、Agent Groups、Project、Workspace、Schedule、Pages、Personal Memory 和工作报告形态，和 Fleet 的双层 Agent 模型高度一致。
+LobeHub 不能作为源码来源，但它证明了一个产品判断：Agent 不应该只表现为"聊天里的模型"，而应该表现为**可管理的工作单元**。它的 Chief Agent Operator、Agent Builder、Agent Groups、Project、工作区、Schedule、Pages、Personal Memory 和工作报告形态，和 Fleet 的双层 Agent 模型高度一致。
 
 Fleet 吸收的是这些产品边界：
 
@@ -59,7 +59,7 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 - **有队长时**：管理 Agent 只读取队长摘要、队长请求、队长交付给管理 Agent 的报告；不默认读取队员完整消息。
 - **无队长时**：管理 Agent 才读取普通 Agent 的摘要和待审报告，用来临时代理队长入口。
 - **从下往上隔离**：队员看不到队长和管理 Agent 的内部协调记录；队长也看不到管理 Agent 的长期记忆、跨项目记录和用户全局偏好原文。
-- **长期偏好 / 跨项目记录**：只能由管理 Agent 选择性注入项目上下文。人类可在团队设置页配置注入范围：关闭、只给队长、长期偏好给全体成员。
+- **长期偏好 / 跨项目记录**：只能由管理 Agent 选择性注入项目上下文。人类将在原设置体系中配置注入范围：关闭、只给队长、长期偏好给全体成员。设置挂点实现前不预设新页面或新布局。
 - **深读权限**：管理 Agent 要查看队员完整会话、文件细节或执行过程时，必须先走 permission，并把理由写入 timeline。
 
 这样可以把“用户长期偏好”和“跨项目经验”变成可控的背景注入，而不是让每个项目 Agent 都直接读取全局记忆，避免上下文膨胀和信息越权。
@@ -80,6 +80,13 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 队长可以调度队员，但队长仍是"项目级"身份，与"软件级"的管理 Agent 分开。管理 Agent → 队长 → 队员，是三段不同身份，不是一个长链。
 
 ## 4 · 分级自动决策（D12）
+
+> **2026-06-23 进度 🟡 候选/待合入（未提交主线）**：L0–L3 判定**引擎 + 首个落地接入点已完成**。
+> - 引擎：`shared/protocol/manager-decision.ts`（`decideAuto`：L0 自动 / 未开启时 L1+ 升级 / L3 永不自动（规则也不行）/ L2 需规则授权 / 每个结果带 basis）+ `manager-decision-service.ts`（设置落盘 + decide + `manager_auto_decision` 事件）+ 单测（已跑 15 pass）。
+> - **接入点 1：团队动作**——`TeamCoordinator.enforcePermission` 接 `decideAuto`：开启后 L2 团队动作（如 `assignTeamTask.autoRun`）按规则 auto_allow/deny，否则 escalate 回 craft permission；`team-coordinator.test.ts` +3 用例。
+> - **接入点 2：中央权限路径（本轮新增）**——`SessionManager.requestWorkflowPermission` 接 `permissionAutoOutcome`：**所有**项目 Agent 的权限请求（file_write/mcp_mutation/api_mutation）开启后都按规则代答；`team:` 动作跳过（由接入点 1 处理），未开启/无规则/L3 → 照常弹用户。纯函数 `permissionAutoOutcome` 有 5 个单测。每次自动判断写 `manager_auto_decision` 进 timeline。
+> - **配置：`managerDecision` RPC**（getSettings/updateSettings）——设置落 `<workspace>/.fleet/manager-decision.json`，给设置页消费；默认 `enabled=false` → 全程行为不变、不绕过 permission。
+> - typecheck 全过（shared/server-core/electron）。**未做**：记忆/偏好作为依据来源（当前依据只引用规则）、设置页 UI、管理 Agent 全局专栏 UI。
 
 默认情况下，涉及**权限、文件写入、运行命令、提交外部平台、删除记忆、修改项目方向**等关键动作，仍然问用户确认。当用户**主动开启自动决策**后，管理 Agent 可在低风险场景按记忆/偏好/规则/权限策略代替用户回复项目 Agent。
 
@@ -131,16 +138,15 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 本机能力（管理 Agent 的软件状态/记忆/跨项目自动化 RPC）默认 `LOCAL_ONLY`（AGENTS 规则 14）。
 
-## 7 · 界面怎么展示多 Agent（不混流）
+## 7 · 界面怎么展示多 Agent（不改原壳）
 
-目标态布局见 `docs/18`。多 Agent 的可见性要求：
-
-- **所有会话全局专栏**：管理 Agent（常驻，跨 Workspace）在所有会话层有自己的专栏；项目切换时仍是同一个软件管家。
-- **NAV Rail "在工作的智能体"**：当前项目 Agent 名册；管理 Agent 可置顶显示状态，但不混成项目成员。
-- **Actor 徽章**：每条动作/选区/消息标 `管理Agent` / `队长` / `代码Agent(runtime)`，多 Agent 用不同配色。
-- **Action Ticker**：实时动作流按 actor 分流，点动作可跳转/回放；并发输出不混成单流。
-- **权限卡**：高风险动作进 Conversation 审批，按 Agent 分组；自动决策代答的也要在 Ticker 显示"管理 Agent 已按规则 X 自动同意"。
-- **视角切换**：Take control / Follow / Hand off —— 人可暂停某 Agent、让镜头跟随某 Agent、把当前 Stage 交给某 Agent 继续。
+- 项目 Agent 仍是原 Craft 会话列表中的会话，不新建名册栏、团队控制台或第二套导航。
+- 每条会话只在原字段上增量显示模型/Runtime 图标、稳定序号、原标签中的身份与团队状态。图标仅用于识别，不承载升队长等操作。
+- `队长` 是 Craft 原标签的特殊身份能力；标签配置可附带系统提示词和 permission profile 引用，但不绕过 permission。
+- 有队长后，在“所有会话”顶部只增加一条原会话样式的“团队群聊”特殊会话项；打开后继续使用原聊天面板。它像真实团队群，只显示队长安排、成员汇报、问题/意见、待审提醒和方向摘要，不聚合成员完整会话。
+- 团队消息和简报在消息内显示发送者头像、模型/Runtime、序号和身份。广播与私发由后端可见性保证，不靠前端隐藏。长工具输出、完整思考过程、代码 diff 和成员原始对话只保留在源成员会话或报告文件，群聊只放可跳转引用。
+- 管理 Agent 在“所有会话”层有独立的全局专栏，不塞进某个工作区的普通会话。右下角只可作为唤起入口。
+- 权限卡、执行记录和回放继续复用 Craft 现有会话与 timeline 表达；未经单独产品决策，不新增全局 Action Ticker。
 
 ## 8 · 落地序列（挂在 `docs/01` 主干上）
 
