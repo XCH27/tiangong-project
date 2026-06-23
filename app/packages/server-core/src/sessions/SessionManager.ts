@@ -100,7 +100,7 @@ import type { SummarizeCallback } from '@craft-agent/shared/sources'
 import { type ThinkingLevel, DEFAULT_THINKING_LEVEL, normalizeThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import { evaluateAutoLabels } from '@craft-agent/shared/labels/auto'
 import { listLabels, loadLabelConfig } from '@craft-agent/shared/labels/storage'
-import { resolveSessionLabels, LEADER_LABEL_ID, hasLeaderLabel, withoutLeaderLabel } from '@craft-agent/shared/labels'
+import { resolveSessionLabels, LEADER_LABEL_ID, hasLeaderLabel, withoutLeaderLabel, resolveIdentityLabelEffects } from '@craft-agent/shared/labels'
 import { ensureLabelsExist } from '@craft-agent/shared/labels/crud'
 import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
@@ -2513,7 +2513,7 @@ export class SessionManager implements ISessionManager {
     const globalDefaults = loadConfigDefaults()
 
     // Read permission mode from workspace config, fallback to global defaults
-    const defaultPermissionMode = options?.permissionMode
+    let defaultPermissionMode = options?.permissionMode
       ?? wsConfig?.defaults?.permissionMode
       ?? globalDefaults.workspaceDefaults.permissionMode
 
@@ -2529,6 +2529,14 @@ export class SessionManager implements ISessionManager {
     const defaultModel = wsConfig?.defaults?.model
     // Get default enabled sources from workspace config
     const defaultEnabledSourceSlugs = options?.enabledSourceSlugs ?? wsConfig?.defaults?.enabledSourceSlugs
+
+    const identityEffects = options?.labels?.length
+      ? resolveIdentityLabelEffects(options.labels, loadLabelConfig(workspaceRootPath).labels)
+      : undefined
+    if (!options?.permissionMode && identityEffects?.permissionMode) {
+      defaultPermissionMode = identityEffects.permissionMode
+    }
+    const defaultSystemPromptPreset = options?.systemPromptPreset ?? identityEffects?.systemPromptPreset
 
     // Resolve model tier hints ('fast' / 'default') to actual model IDs.
     // EditPopover uses tier hints instead of hardcoded Anthropic model names
@@ -2840,8 +2848,8 @@ export class SessionManager implements ISessionManager {
     const resolvedModel = resolvedContext.resolvedModel
 
     // Log mini agent session creation
-    if (options?.systemPromptPreset === 'mini' || options?.model) {
-      sessionLog.info(`🤖 Creating mini agent session: model=${resolvedModel}, systemPromptPreset=${options?.systemPromptPreset}`)
+    if (defaultSystemPromptPreset === 'mini' || options?.model) {
+      sessionLog.info(`🤖 Creating mini agent session: model=${resolvedModel}, systemPromptPreset=${defaultSystemPromptPreset}`)
     }
 
     const isBranch = !!validatedBranch
@@ -2852,7 +2860,7 @@ export class SessionManager implements ISessionManager {
       model: resolvedModel,
       llmConnection: options?.llmConnection,
       thinkingLevel: defaultThinkingLevel,
-      systemPromptPreset: options?.systemPromptPreset,
+      systemPromptPreset: defaultSystemPromptPreset,
       enabledSourceSlugs: defaultEnabledSourceSlugs,
       branchFromMessageId: validatedBranch?.sourceMessageId,
       branchContextStrategy: validatedBranch?.branchContextStrategy,
@@ -6888,6 +6896,17 @@ export class SessionManager implements ISessionManager {
       }
 
       managed.labels = labels
+      const identityEffects = resolveIdentityLabelEffects(labels, loadLabelConfig(managed.workspace.rootPath).labels)
+      const nextSystemPromptPreset = managed.systemPromptPreset === 'mini'
+        ? managed.systemPromptPreset
+        : identityEffects.systemPromptPreset
+      if (managed.systemPromptPreset !== nextSystemPromptPreset) {
+        managed.systemPromptPreset = nextSystemPromptPreset
+        managed.agent?.setSystemPromptPreset?.(nextSystemPromptPreset)
+      }
+      if (identityEffects.permissionMode && managed.permissionMode !== identityEffects.permissionMode) {
+        this.setSessionPermissionMode(sessionId, identityEffects.permissionMode)
+      }
       this.setMetadataWriteGuard(managed)
 
       this.sendEvent({

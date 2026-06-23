@@ -428,16 +428,18 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
       label: 'Label Configuration',
       filePath: `${location}/labels/config.json`,
       context:
-        'The user wants to customize session labels (tagging/categorization). ' +
-        'Labels are stored in labels/config.json as a hierarchical tree. ' +
+        'The user wants to customize identity labels for team/session routing. ' +
+        'Labels are stored in labels/config.json as a hierarchical tree and remain the single source of truth for identities. ' +
         'Each label has: id (slug, globally unique), name (display), color (optional EntityColor), children (sub-labels array). ' +
+        'Identity labels set kind: "identity" and may include systemPromptPreset and permissionProfile ("safe", "ask", or "allow-all"). ' +
+        'Do not create a separate identity store. Reuse existing labels such as priority->队长, development/code/design/research/bug/writing. ' +
         'Colors use EntityColor format: string shorthand (e.g. "blue") or { light, dark } object for theme-aware colors. ' +
         'Labels are color-only (no icons) — rendered as colored circles in the UI. ' +
         'Children form a recursive tree structure — array position determines display order. ' +
         'Read ~/.craft-agent/docs/labels.md for full format reference. ' +
         'Confirm clearly when done.',
     },
-    example: 'Add a "Bug" label with red color',
+    example: 'Set the 设计 identity prompt and permissionProfile',
     displayLabelKey: 'editPopover.label.labelConfiguration',
     exampleKey: 'editPopover.example.editLabels',
     model: 'fast',               // Use fast model for quick config edits
@@ -473,16 +475,17 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
       label: 'Add Label',
       filePath: `${location}/labels/config.json`,
       context:
-        'The user wants to create a new label from the # inline menu. ' +
+        'The user wants to create a new identity label from the # inline menu. ' +
         'Labels are stored in labels/config.json as a hierarchical tree. ' +
         'Each label has: id (slug, globally unique), name (display), color (optional EntityColor), children (sub-labels array). ' +
+        'For an Agent role, set kind: "identity" and optionally systemPromptPreset and permissionProfile ("safe", "ask", or "allow-all"). ' +
         'Colors use EntityColor format: string shorthand (e.g. "blue") or { light, dark } object for theme-aware colors. ' +
         'Labels are color-only (no icons) — rendered as colored circles in the UI. ' +
         'Read ~/.craft-agent/docs/labels.md for full format reference. ' +
         'Confirm clearly when done.',
     },
-    example: 'A red "Bug" label',
-    overridePlaceholder: 'What label would you like to create?',
+    example: 'A 审查 identity label with safe permission',
+    overridePlaceholder: 'What identity label would you like to create?',
     displayLabelKey: 'editPopover.label.addLabel',
     exampleKey: 'editPopover.example.addLabel',
     overridePlaceholderKey: 'editPopover.placeholder.addLabel',

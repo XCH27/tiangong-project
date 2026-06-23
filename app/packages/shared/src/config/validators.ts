@@ -1143,6 +1143,12 @@ const BaseLabelConfigSchema = z.object({
   icon: z.string().optional(),
   /** Optional hint: what type of value this label carries (omit for boolean labels) */
   valueType: z.enum(['string', 'number', 'date', 'link']).optional(),
+  /** Identity labels drive team/session role behavior. */
+  kind: z.enum(['functional', 'identity']).optional(),
+  /** Optional identity prompt injected into sessions with this label. */
+  systemPromptPreset: z.string().optional(),
+  /** Existing permission mode to apply when this identity label is set. */
+  permissionProfile: z.enum(['safe', 'ask', 'allow-all']).optional(),
   /** Auto-label rules: regex patterns that scan messages and apply labels automatically */
   autoRules: z.array(AutoLabelRuleSchema).optional(),
 });
@@ -1155,6 +1161,9 @@ type LabelConfigSchemaType = z.ZodType<{
   color?: unknown;
   icon?: string;
   valueType?: 'string' | 'number' | 'date' | 'link';
+  kind?: 'functional' | 'identity';
+  systemPromptPreset?: string;
+  permissionProfile?: 'safe' | 'ask' | 'allow-all';
   autoRules?: Array<{ pattern: string; flags?: string; valueTemplate?: string; description?: string }>;
   children?: LabelConfigSchemaType[];
 }>;

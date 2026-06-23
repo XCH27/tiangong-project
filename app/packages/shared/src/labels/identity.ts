@@ -8,6 +8,7 @@
  */
 
 import type { LabelConfig } from './types.ts'
+import { parsePermissionMode, type PermissionMode } from '../agent/mode-types.ts'
 
 /**
  * 队长身份标签 id。这是原标签系统里的特殊身份：
@@ -22,15 +23,19 @@ export interface IdentityLabelPreset {
   id: string
   name: string
   systemPromptPreset?: string
+  permissionProfile?: PermissionMode
 }
 
 export const DEFAULT_IDENTITY_LABEL_PRESETS: readonly IdentityLabelPreset[] = Object.freeze([
-  { id: LEADER_LABEL_ID, name: '队长', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
-  { id: 'code', name: '代码' },
-  { id: 'design', name: '设计' },
-  { id: 'research', name: '审查', systemPromptPreset: '负责检查风险、回归和验收证据。' },
-  { id: 'bug', name: '测试' },
-  { id: 'writing', name: '上下文' },
+  { id: LEADER_LABEL_ID, name: '队长', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。', permissionProfile: 'ask' },
+  { id: 'development', name: '开发', systemPromptPreset: '负责代码、工程实现和技术执行。', permissionProfile: 'ask' },
+  { id: 'code', name: '代码', systemPromptPreset: '负责代码修改、重构和工程实现。', permissionProfile: 'ask' },
+  { id: 'automation', name: '自动化', systemPromptPreset: '负责自动化流程、脚本和重复任务编排。', permissionProfile: 'safe' },
+  { id: 'content', name: '内容', systemPromptPreset: '负责内容、素材、上下文整理和表达质量。', permissionProfile: 'safe' },
+  { id: 'design', name: '设计', systemPromptPreset: '负责界面、交互、视觉一致性和设计验收。', permissionProfile: 'safe' },
+  { id: 'research', name: '审查', systemPromptPreset: '负责检查风险、回归和验收证据。', permissionProfile: 'safe' },
+  { id: 'bug', name: '测试', systemPromptPreset: '负责测试、复现、回归验证和质量风险。', permissionProfile: 'safe' },
+  { id: 'writing', name: '上下文', systemPromptPreset: '负责上下文压缩、信息整理和交接摘要。', permissionProfile: 'safe' },
 ])
 
 /** 取一个 session label 原始串的标签 id（去掉 `::value` 部分）。 */
@@ -76,4 +81,51 @@ export function hasLeaderLabel(sessionLabels: readonly string[]): boolean {
 /** 返回去掉 leader 标签后的 labels（保留其它标签与 `::value`）。 */
 export function withoutLeaderLabel(sessionLabels: readonly string[]): string[] {
   return sessionLabels.filter(raw => raw !== LEADER_LABEL_ID)
+}
+
+export interface IdentityLabelEffects {
+  identities: LabelConfig[]
+  systemPromptPreset?: string
+  permissionMode?: PermissionMode
+}
+
+/**
+ * Resolve the runtime effects of identity labels attached to a session.
+ * The label config remains the single source of truth; this only derives the
+ * prompt and permission mode the session should use.
+ */
+export function resolveIdentityLabelEffects(
+  sessionLabels: readonly string[],
+  labels: readonly LabelConfig[],
+): IdentityLabelEffects {
+  const identityLabels = collectIdentityLabels(labels)
+  const byId = new Map(identityLabels.map(label => [label.id, label]))
+  const seen = new Set<string>()
+  const identities: LabelConfig[] = []
+
+  for (const raw of sessionLabels) {
+    const id = labelIdOf(raw)
+    if (id === LEADER_LABEL_ID && raw !== LEADER_LABEL_ID) continue
+    if (seen.has(id)) continue
+    const label = byId.get(id)
+    if (!label) continue
+    seen.add(id)
+    identities.push(label)
+  }
+
+  const promptParts = identities
+    .map(label => label.systemPromptPreset?.trim())
+    .filter((value): value is string => Boolean(value))
+
+  const permissionMode = identities
+    .map(label => label.permissionProfile ? parsePermissionMode(label.permissionProfile) : null)
+    .find((mode): mode is PermissionMode => Boolean(mode))
+
+  return {
+    identities,
+    systemPromptPreset: promptParts.length
+      ? `<identity_labels>\n${promptParts.map((part, index) => `${index + 1}. ${part}`).join('\n')}\n</identity_labels>`
+      : undefined,
+    permissionMode,
+  }
 }

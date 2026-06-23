@@ -710,6 +710,21 @@ export abstract class BaseAgent implements AgentBackend {
   }
 
   /**
+   * Update the prompt preset/injected identity prompt for the next turn.
+   * SessionManager calls this when identity labels change.
+   */
+  setSystemPromptPreset(preset: 'default' | 'mini' | string | undefined): void {
+    this.config.systemPromptPreset = preset;
+    this.promptBuilder = new PromptBuilder({
+      workspace: this.config.workspace,
+      session: this.config.session,
+      debugMode: this.config.debugMode,
+      systemPromptPreset: preset,
+      isHeadless: this.config.isHeadless,
+    });
+  }
+
+  /**
    * Get mini agent configuration for provider-specific application.
    * Returns centralized config that each backend interprets appropriately:
    * - ClaudeAgent: Uses tools array, mcpServers filter, maxThinkingTokens: 0

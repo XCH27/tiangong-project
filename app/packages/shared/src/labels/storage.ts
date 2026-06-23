@@ -25,15 +25,15 @@ const DEFAULT_LABEL_ROOT_IDS = new Set(['development', 'content', 'priority', 'p
 type LabelPatch = Omit<Partial<LabelConfig>, 'children'>;
 
 const DEFAULT_LABEL_PATCHES: Record<string, LabelPatch> = {
-  development: { name: '开发', color: { light: '#3B82F6', dark: '#60A5FA' } },
-  code: { name: '代码', color: { light: '#4F46E5', dark: '#818CF8' }, kind: 'identity' },
-  bug: { name: '测试', color: { light: '#0EA5E9', dark: '#38BDF8' }, kind: 'identity' },
-  automation: { name: '自动化', color: { light: '#06B6D4', dark: '#22D3EE' } },
-  content: { name: '内容', color: { light: '#8B5CF6', dark: '#A78BFA' } },
-  writing: { name: '上下文', color: { light: '#7C3AED', dark: '#C4B5FD' }, kind: 'identity' },
-  research: { name: '审查', color: { light: '#A855F7', dark: '#C084FC' }, kind: 'identity', systemPromptPreset: '负责检查风险、回归和验收证据。' },
-  design: { name: '设计', color: { light: '#D946EF', dark: '#E879F9' }, kind: 'identity' },
-  priority: { name: '队长', color: { light: '#F59E0B', dark: '#FBBF24' }, kind: 'identity', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
+  development: { name: '开发', color: { light: '#3B82F6', dark: '#60A5FA' }, kind: 'identity', systemPromptPreset: '负责代码、工程实现和技术执行。', permissionProfile: 'ask' },
+  code: { name: '代码', color: { light: '#4F46E5', dark: '#818CF8' }, kind: 'identity', systemPromptPreset: '负责代码修改、重构和工程实现。', permissionProfile: 'ask' },
+  bug: { name: '测试', color: { light: '#0EA5E9', dark: '#38BDF8' }, kind: 'identity', systemPromptPreset: '负责测试、复现、回归验证和质量风险。', permissionProfile: 'safe' },
+  automation: { name: '自动化', color: { light: '#06B6D4', dark: '#22D3EE' }, kind: 'identity', systemPromptPreset: '负责自动化流程、脚本和重复任务编排。', permissionProfile: 'safe' },
+  content: { name: '内容', color: { light: '#8B5CF6', dark: '#A78BFA' }, kind: 'identity', systemPromptPreset: '负责内容、素材、上下文整理和表达质量。', permissionProfile: 'safe' },
+  writing: { name: '上下文', color: { light: '#7C3AED', dark: '#C4B5FD' }, kind: 'identity', systemPromptPreset: '负责上下文压缩、信息整理和交接摘要。', permissionProfile: 'safe' },
+  research: { name: '审查', color: { light: '#A855F7', dark: '#C084FC' }, kind: 'identity', systemPromptPreset: '负责检查风险、回归和验收证据。', permissionProfile: 'safe' },
+  design: { name: '设计', color: { light: '#D946EF', dark: '#E879F9' }, kind: 'identity', systemPromptPreset: '负责界面、交互、视觉一致性和设计验收。', permissionProfile: 'safe' },
+  priority: { name: '队长', color: { light: '#F59E0B', dark: '#FBBF24' }, kind: 'identity', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。', permissionProfile: 'ask' },
   project: { name: '项目', color: 'foreground/50', valueType: 'string' },
 };
 
@@ -55,23 +55,33 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
         id: 'development',
         name: '开发',
         color: { light: '#3B82F6', dark: '#60A5FA' },
+        kind: 'identity',
+        systemPromptPreset: '负责代码、工程实现和技术执行。',
+        permissionProfile: 'ask',
         children: [
           {
             id: 'code',
             name: '代码',
             color: { light: '#4F46E5', dark: '#818CF8' }, // indigo shift
             kind: 'identity',
+            systemPromptPreset: '负责代码修改、重构和工程实现。',
+            permissionProfile: 'ask',
           },
           {
             id: 'bug',
             name: '测试',
             color: { light: '#0EA5E9', dark: '#38BDF8' }, // sky shift
             kind: 'identity',
+            systemPromptPreset: '负责测试、复现、回归验证和质量风险。',
+            permissionProfile: 'safe',
           },
           {
             id: 'automation',
             name: '自动化',
             color: { light: '#06B6D4', dark: '#22D3EE' }, // cyan shift
+            kind: 'identity',
+            systemPromptPreset: '负责自动化流程、脚本和重复任务编排。',
+            permissionProfile: 'safe',
           },
         ],
       },
@@ -79,12 +89,17 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
         id: 'content',
         name: '内容',
         color: { light: '#8B5CF6', dark: '#A78BFA' },
+        kind: 'identity',
+        systemPromptPreset: '负责内容、素材、上下文整理和表达质量。',
+        permissionProfile: 'safe',
         children: [
           {
             id: 'writing',
             name: '上下文',
             color: { light: '#7C3AED', dark: '#C4B5FD' }, // deeper violet
             kind: 'identity',
+            systemPromptPreset: '负责上下文压缩、信息整理和交接摘要。',
+            permissionProfile: 'safe',
           },
           {
             id: 'research',
@@ -92,12 +107,15 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
             color: { light: '#A855F7', dark: '#C084FC' }, // lighter purple
             kind: 'identity',
             systemPromptPreset: '负责检查风险、回归和验收证据。',
+            permissionProfile: 'safe',
           },
           {
             id: 'design',
             name: '设计',
             color: { light: '#D946EF', dark: '#E879F9' }, // fuchsia shift
             kind: 'identity',
+            systemPromptPreset: '负责界面、交互、视觉一致性和设计验收。',
+            permissionProfile: 'safe',
           },
         ],
       },
@@ -107,6 +125,7 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
         color: { light: '#F59E0B', dark: '#FBBF24' },
         kind: 'identity',
         systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。',
+        permissionProfile: 'ask',
       },
       {
         id: 'project',

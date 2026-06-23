@@ -34,8 +34,10 @@ describe('loadLabelConfig migrations', () => {
     expect(flat.find(label => label.id === 'development')?.name).toBe('开发');
     expect(flat.find(label => label.id === 'priority')?.name).toBe('队长');
     expect(flat.find(label => label.id === 'priority')?.kind).toBe('identity');
+    expect(flat.find(label => label.id === 'priority')?.permissionProfile).toBe('ask');
     expect(flat.find(label => label.id === 'priority')?.valueType).toBeUndefined();
     expect(flat.find(label => label.id === 'code')?.kind).toBe('identity');
+    expect(flat.find(label => label.id === 'code')?.systemPromptPreset).toContain('代码');
     expect(flat.find(label => label.id === 'design')?.kind).toBe('identity');
     expect(flat.find(label => label.id === 'research')?.name).toBe('审查');
     expect(flat.find(label => label.id === 'bug')?.name).toBe('测试');

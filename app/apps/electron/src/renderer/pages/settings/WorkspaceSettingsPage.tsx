@@ -508,7 +508,9 @@ export default function WorkspaceSettingsPage() {
                   ))}
                 </SettingsCard>
               ) : (
-                <p className="text-sm text-muted-foreground">{t("settings.workspace.noSourcesConfigured")}</p>
+                <SettingsCard className="px-4 py-5">
+                  <p className="text-sm text-muted-foreground">{t("settings.workspace.noSourcesConfigured")}</p>
+                </SettingsCard>
               )}
             </SettingsSection>
 
