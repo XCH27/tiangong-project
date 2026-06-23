@@ -26,6 +26,7 @@ import type {
   TeamInboxItem,
   TeamReport,
   ProgressTask,
+  SessionUsageView,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -77,6 +78,7 @@ export interface ISessionManager {
   setSessionLabels(sessionId: string, labels: string[]): void
   setSessionProgress(sessionId: string, tasks: ProgressTask[]): void
   setSessionCliRuntime(sessionId: string, cliRuntimeId: string | null): void
+  getSessionUsageView(sessionId: string): SessionUsageView | null
   setSessionCliRuntimeModel(sessionId: string, modelId: string | null): void
   setSessionConnection(sessionId: string, connectionSlug: string): Promise<void>
   updateSessionModel(sessionId: string, workspaceId: string, model: string | null, connection?: string): Promise<void>

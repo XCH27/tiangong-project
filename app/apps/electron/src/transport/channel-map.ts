@@ -40,6 +40,7 @@ export const CHANNEL_MAP = {
   testCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.TEST),
   getManagerDecisionSettings: invoke(RPC_CHANNELS.managerDecision.GET_SETTINGS),
   updateManagerDecisionSettings: invoke(RPC_CHANNELS.managerDecision.UPDATE_SETTINGS),
+  getSessionUsage: invoke(RPC_CHANNELS.usage.GET_SESSION),
   listMemory: invoke(RPC_CHANNELS.memory.LIST),
   addMemory: invoke(RPC_CHANNELS.memory.ADD),
   deleteMemory: invoke(RPC_CHANNELS.memory.DELETE),

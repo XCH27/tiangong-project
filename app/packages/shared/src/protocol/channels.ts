@@ -190,6 +190,9 @@ export const RPC_CHANNELS = {
     GET_SETTINGS: 'managerDecision:getSettings',
     UPDATE_SETTINGS: 'managerDecision:updateSettings',
   },
+  usage: {
+    GET_SESSION: 'usage:getSession',
+  },
   memory: {
     LIST: 'memory:list',
     ADD: 'memory:add',

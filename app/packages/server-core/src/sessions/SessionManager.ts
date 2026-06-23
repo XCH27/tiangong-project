@@ -82,11 +82,13 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type ManagerAutoDecisionRecord, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type ManagerAutoDecisionRecord, type SessionUsageView, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { CliRuntimeHost } from '../services/acp/cli-runtime-host'
 import { getDefaultCliRuntimeCatalog } from '../services/cli-runtime-catalog'
 import { ManagerDecisionService, permissionAutoOutcome } from '../services/manager-decision-service'
 import { MANAGER_ACTOR } from '../services/team-coordinator'
+import { buildSessionUsageView } from '../services/usage-service'
+import { getModelById, getModelDisplayName } from '@craft-agent/shared/config'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
@@ -7074,6 +7076,30 @@ export class SessionManager implements ISessionManager {
       this.persistSession(managed)
       await this.flushSession(sessionId)
     }
+  }
+
+  /**
+   * Token 环点击弹层的数据（docs/16 §2.2）：本会话上下文占用 + 套餐额度，诚实分级。
+   * CLI 运行时上下文窗口未知（由 CLI 管理）；额度默认不可用，不编造数字。
+   */
+  getSessionUsageView(sessionId: string): SessionUsageView | null {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return null
+    const isCli = Boolean(managed.cliRuntimeId)
+    const usage = managed.tokenUsage
+    const window = isCli
+      ? null
+      : (usage?.contextWindow ?? (managed.model ? getModelById(managed.model)?.contextWindow ?? null : null))
+    const modelLabel = isCli
+      ? (getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId ?? '')?.displayName ?? '本机 CLI')
+      : (managed.model ? getModelDisplayName(managed.model) : 'API 模型')
+    return buildSessionUsageView({
+      sessionId,
+      runtime: isCli ? 'cli' : 'api',
+      modelLabel,
+      usedTokens: usage?.contextTokens ?? 0,
+      contextWindow: window,
+    })
   }
 
   /**

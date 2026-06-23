@@ -223,6 +223,7 @@ import type {
   MemoryEntry,
   MemoryQuery,
   AddMemoryInput,
+  SessionUsageView,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -252,6 +253,8 @@ export interface ElectronAPI {
   testCliRuntime(runtimeId: string): Promise<CliRuntimeHealthResult>
 
   // 管理 Agent 分级自动决策（D12 / docs/17 §4）+ 分层记忆（D2 / docs/05），按 workspace 隔离。
+  /** Token 环弹层数据：会话上下文占用 + 套餐额度（docs/16 §2.2 / docs/36 同源数据）。 */
+  getSessionUsage(sessionId: string): Promise<SessionUsageView | null>
   getManagerDecisionSettings(workspaceId: string): Promise<AutoDecisionSettings>
   updateManagerDecisionSettings(workspaceId: string, patch: Partial<AutoDecisionSettings>): Promise<AutoDecisionSettings>
   listMemory(workspaceId: string, query?: MemoryQuery): Promise<MemoryEntry[]>
