@@ -250,6 +250,27 @@ describe('TeamCoordinator — 承重墙', () => {
     expect(rules.rules?.memberSessionIds).toEqual(['m1', 'm2'])
   })
 
+  it('全新 workspace（无规则文件）+ 队长标签：getProjection 懒初始化规则并派生群聊+队长', async () => {
+    const { coordinator, rules, sessions } = make([member('m1', 100), member('m2', 200)])
+    // 不调用 seedRules：rules.rules 为 null，模拟全新 workspace —— 用户仅用 craft 原标签菜单打了队长。
+    expect(rules.rules).toBeNull()
+    sessions.get('m1')!.labels = [LEADER_LABEL_ID]
+    sessions.get('m2')!.labels = ['design']
+
+    const projection = await coordinator.getProjection()
+
+    expect(projection?.leaderSessionId).toBe('m1')
+    expect(projection?.teamConversationSessionId).toBe('team-conv') // 群聊入口可派生
+    expect(rules.rules).not.toBeNull() // 规则文件已落地（懒初始化）
+    expect(projection?.members.map(m => m.sessionId).sort()).toEqual(['m1', 'm2'])
+  })
+
+  it('全新 workspace（无规则文件）+ 无队长：getProjection 返回 null，不无端建团队', async () => {
+    const { coordinator, rules } = make([member('m1', 100)])
+    expect(await coordinator.getProjection()).toBeNull()
+    expect(rules.rules).toBeNull() // 默认无团队 → 列表完全不变
+  })
+
   it('成员对账：会话消失则从规则剔除，队长失效则清空并发事件', async () => {
     const { coordinator, sessions, events } = make([member('m1', 100), member('m2', 200)])
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm1' }, { issuerSessionId: 'm1', actor: USER_ACTOR })

@@ -689,6 +689,7 @@
   "session.noArchivedSessions": "Brak zarchiwizowanych sesji",
   "session.noArchivedSessionsDesc": "Zarchiwizowane sesje pojawią się tutaj. Archiwizuj sesje, aby zachować porządek na liście i nie tracić rozmów.",
   "session.noResultsInFilter": "Brak wyników dla bieżącego filtra",
+  "session.teamChat": "Team chat",
   "session.noSessionSelected": "Nie wybrano sesji",
   "session.noSessionsFound": "Nie znaleziono sesji",
   "session.noSessionsFoundDesc": "Przeszukano tytuły i treść wiadomości",

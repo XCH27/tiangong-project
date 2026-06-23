@@ -689,6 +689,7 @@
   "session.noArchivedSessions": "アーカイブ済みセッションなし",
   "session.noArchivedSessionsDesc": "アーカイブしたセッションがここに表示されます。会話を保持しながらリストを整理するためにセッションをアーカイブしてください。",
   "session.noResultsInFilter": "現在のフィルターに一致する結果がありません",
+  "session.teamChat": "チームチャット",
   "session.noSessionSelected": "セッションが選択されていません",
   "session.noSessionsFound": "セッションが見つかりません",
   "session.noSessionsFoundDesc": "タイトルとメッセージ内容を検索しました",

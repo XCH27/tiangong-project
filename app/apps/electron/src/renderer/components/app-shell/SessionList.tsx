@@ -741,12 +741,13 @@ export function SessionList({
               <button
                 type="button"
                 onClick={() => navigateToSession(teamChatSessionId)}
+                title={t('session.teamChat')}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-foreground/[0.04] border-b border-border/40"
               >
                 <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-accent/15 text-accent flex-shrink-0">
                   <Users className="h-3.5 w-3.5" />
                 </span>
-                <span className="text-[13px] font-medium truncate">团队群聊</span>
+                <span className="text-[13px] font-medium truncate">{t('session.teamChat')}</span>
               </button>
             )}
             {searchActive && (

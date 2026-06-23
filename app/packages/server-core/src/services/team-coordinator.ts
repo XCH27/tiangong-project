@@ -392,8 +392,18 @@ export class TeamCoordinator {
   // ---- 查询（派生，不写）-------------------------------------------------
 
   async getProjection(): Promise<TeamProjection | null> {
-    const loaded = this.rules.load()
-    if (!loaded.rules) return null
+    let loaded = this.rules.load()
+    if (!loaded.rules) {
+      // 无规则文件时：若已有可见会话被打了「队长」标签，说明用户用 craft 原标签菜单组了队
+      // （走 setSessionLabels，不经 handleCommand，故规则尚未建）。这里懒初始化规则（建群聊/
+      // 管理投影会话），再 reconcile 把队长会话纳入并派生 leaderSessionId —— 让团队群聊入口出现，
+      // 无需额外 promote 命令。没有队长 → 维持 null（当前默认无团队，会话列表完全不变）。
+      const hasLeader = this.runtime.listSessions().some(session => hasLeaderLabel(session.labels ?? []))
+      if (!hasLeader) return null
+      await this.ensureRules(DEFAULT_TEAM_ID)
+      loaded = this.rules.load()
+      if (!loaded.rules) return null
+    }
     const rules = await this.reconcile(loaded.rules)
     return this.projectionFrom(rules)
   }
