@@ -7,7 +7,7 @@
  *
  * 三类 runtime（设置页可编辑边界不同，docs/23）：
  * - managed：内置托管，不可删/禁用/改启动参数。
- * - detected：对 AionUi 已验证的 ACP 入口做一键映射；仅在本机 PATH 上检测到命令后出现。
+ * - detected：扫描本机常见 Agent CLI；只有 protocol='acp' 的 runtime 可直接发送。
  *   不可改 command/args/env，可测试/禁用/删除。
  * - custom：用户自配 command/args/env，可完整编辑。
  *
@@ -17,10 +17,11 @@
 export type CliRuntimeKind = 'managed' | 'detected' | 'custom'
 
 /** 健康分级（docs/23）。untested = 还没测过。 */
-export type CliRuntimeHealth = 'available' | 'fail_cli' | 'fail_acp' | 'disabled' | 'untested'
+export type CliRuntimeHealth = 'available' | 'fail_cli' | 'fail_acp' | 'disabled' | 'untested' | 'needs_adapter'
 
 /** 附件能力（docs/25）：第一版硬拒绝；P1 才可能 inline_text。 */
 export type CliRuntimeAttachmentCapability = 'none' | 'inline_text'
+export type CliRuntimeProtocol = 'acp' | 'native' | 'subscription'
 
 export interface CliRuntimeDefinition {
   id: string
@@ -33,12 +34,18 @@ export interface CliRuntimeDefinition {
   env?: Record<string, string>
   /** 是否在聊天选择器中可选。detected/custom 可禁用；managed 不可。 */
   enabled: boolean
+  /** 接入协议。只有 acp 当前可直接走 CliRuntimeHost；native/subscription 需专用 adapter。 */
+  protocol: CliRuntimeProtocol
   /** detected 来源的映射 id（如 'claude'/'codex'/'goose'）。 */
   mappingId?: string
   /** 附件能力，第一版固定 'none'。 */
   attachments: CliRuntimeAttachmentCapability
   /** detected 候选但官方入口未最终确认，接入前需用户确认。 */
   needsConfirmation?: boolean
+  /** 已知/静态模型清单；ACP runtime 的动态模型仍以 CliRuntimeModelState 为准。 */
+  discoveredModels?: CliRuntimeModel[]
+  /** native/subscription 的后续 adapter 提示。 */
+  adapterHint?: string
 }
 
 /** ACP runtime 暴露的可选模型。模型属于运行中的 session，不属于 runtime 定义本身。 */
@@ -67,8 +74,8 @@ export interface CliRuntimeModelState {
 export interface CliRuntimeHealthResult {
   runtimeId: string
   health: CliRuntimeHealth
-  /** 失败发生的阶段：spawn=启动 CLI；handshake=ACP 握手。 */
-  stage?: 'spawn' | 'handshake' | 'ok'
+  /** 失败发生的阶段：spawn=启动 CLI；handshake=ACP 握手；adapter=需要 native adapter。 */
+  stage?: 'spawn' | 'handshake' | 'adapter' | 'ok'
   reason?: string
   stdoutTail?: string
   stderrTail?: string
@@ -76,7 +83,7 @@ export interface CliRuntimeHealthResult {
 }
 
 // ---------------------------------------------------------------------------
-// Detected 映射预设（只放已按 ACP stdio 方式接入的真实入口；docs/23 §第一版）
+// Detected 映射预设（扫描本机常见 Agent CLI；只有 protocol='acp' 可直接发送）
 // ---------------------------------------------------------------------------
 
 export interface DetectedRuntimeMapping {
@@ -84,30 +91,67 @@ export interface DetectedRuntimeMapping {
   displayName: string
   command: string
   args: string[]
+  protocol: CliRuntimeProtocol
   /** 官方入口未最终确认（接入前需用户确认本机行为）。 */
   needsConfirmation?: boolean
+  discoveredModels?: readonly CliRuntimeModel[]
+  adapterHint?: string
 }
 
 export const DETECTED_RUNTIME_MAPPINGS: readonly DetectedRuntimeMapping[] = Object.freeze([
-  { mappingId: 'goose', displayName: 'Goose', command: 'goose', args: ['acp'] },
+  { mappingId: 'goose', displayName: 'Goose', command: 'goose', args: ['acp'], protocol: 'acp' },
+  {
+    mappingId: 'codex',
+    displayName: 'Codex',
+    command: 'codex',
+    args: ['--version'],
+    protocol: 'native',
+    adapterHint: '需要 Codex native adapter（参考 Hermes codex_app_server / Codex exec），不能按 ACP 启动。',
+    discoveredModels: [
+      { id: 'gpt-5.3-codex', name: 'gpt-5.3-codex', description: 'Codex-optimized coding model' },
+      { id: 'gpt-5.4', name: 'gpt-5.4', description: 'General model available to Codex CLI' },
+      { id: 'gpt-5.2-codex', name: 'gpt-5.2-codex', description: 'Agentic coding model' },
+      { id: 'gpt-5.1-codex-max', name: 'gpt-5.1-codex-max', description: 'Codex-optimized flagship' },
+      { id: 'gpt-5.2', name: 'gpt-5.2', description: 'General model available to Codex CLI' },
+      { id: 'gpt-5.1-codex-mini', name: 'gpt-5.1-codex-mini', description: 'Codex-optimized fast model' },
+    ],
+  },
+  {
+    mappingId: 'claude',
+    displayName: 'Claude Code',
+    command: 'claude',
+    args: ['--version'],
+    protocol: 'native',
+    adapterHint: '需要 Claude Code native adapter（--print/stream-json），不能按 ACP 启动。',
+  },
+  {
+    mappingId: 'grok',
+    displayName: 'Grok Build',
+    command: 'grok',
+    args: ['--version'],
+    protocol: 'subscription',
+    adapterHint: '检测 Grok 订阅 CLI；需要 Grok native/subscription adapter 后才能发送。',
+    discoveredModels: [
+      { id: 'grok-code-fast-1', name: 'grok-code-fast-1', description: 'Grok coding fast model' },
+      { id: 'grok-4', name: 'grok-4', description: 'Grok flagship model' },
+    ],
+  },
+  { mappingId: 'hermes', displayName: 'Hermes', command: 'hermes', args: ['--version'], protocol: 'native', adapterHint: '需要 Hermes gateway/native adapter。' },
+  { mappingId: 'opencode', displayName: 'OpenCode', command: 'opencode', args: ['--version'], protocol: 'native', adapterHint: '需要 OpenCode native adapter。' },
+  { mappingId: 'gemini', displayName: 'Gemini CLI', command: 'gemini', args: ['--version'], protocol: 'native', adapterHint: '需要 Gemini CLI native adapter。' },
+  { mappingId: 'qwen', displayName: 'Qwen Code', command: 'qwen', args: ['--version'], protocol: 'native', adapterHint: '需要 Qwen native adapter。' },
+  { mappingId: 'pi', displayName: 'Pi CLI', command: 'pi', args: ['--version'], protocol: 'native', adapterHint: '需要 Pi native adapter。' },
+  { mappingId: 'cursor-agent', displayName: 'Cursor Agent', command: 'cursor-agent', args: ['--version'], protocol: 'native', adapterHint: '需要 Cursor Agent native adapter。' },
+  { mappingId: 'openclaw', displayName: 'OpenClaw', command: 'openclaw', args: ['--version'], protocol: 'native', adapterHint: '需要 OpenClaw gateway/native adapter。' },
 ])
 
-/**
- * 未确认 ACP 入口的工具：不能假执行，只能返回中文可操作错误（docs/23）。
- * 这些不进 catalog 的可选 runtime。
- */
+/** @deprecated 旧 UI 兼容占位。现在 native/subscription CLI 会进入 catalog，并标记 needs_adapter。 */
 export const UNSUPPORTED_DETECTED_TOOLS: readonly { id: string; displayName: string }[] = Object.freeze([
-  { id: 'claude', displayName: 'Claude Code' },
-  { id: 'codex', displayName: 'Codex' },
-  { id: 'grok', displayName: 'Grok Build' },
-  { id: 'hermes', displayName: 'Hermes' },
-  { id: 'opencode', displayName: 'OpenCode' },
-  { id: 'gemini', displayName: 'Gemini CLI' },
-  { id: 'qwen', displayName: 'Qwen Code' },
 ])
 
+/** @deprecated 旧 UI 兼容占位。新路径使用 CliRuntimeHealthResult.health='needs_adapter'。 */
 export function unsupportedDetectedMessage(displayName: string): string {
-  return `${displayName} 暂未确认可作为 Fleet 的 stdio ACP runtime 自动接入，已不作为自动检测项接入以避免假识别。如需本机 CLI，请改用已支持的 ACP runtime（Goose），或新增一个 Custom ACP runtime 自配 command/args/env。Claude Code / Codex 需要单独 native adapter，不能伪装成 ACP。`
+  return `${displayName} 已检测到，但暂未接入 Fleet native/subscription adapter，不能按 ACP 发送。请先使用已支持的 ACP runtime（Goose/Custom ACP），或等待对应 adapter 接入。`
 }
 
 /** CLI Runtime 选了之后，附件第一版硬拒绝文案（docs/25）。 */
@@ -131,9 +175,12 @@ export function detectedRuntimeFromMapping(mapping: DetectedRuntimeMapping): Cli
     command: mapping.command,
     args: [...mapping.args],
     enabled: true,
+    protocol: mapping.protocol,
     mappingId: mapping.mappingId,
     attachments: 'none',
     needsConfirmation: mapping.needsConfirmation,
+    discoveredModels: mapping.discoveredModels ? [...mapping.discoveredModels] : undefined,
+    adapterHint: mapping.adapterHint,
   }
 }
 

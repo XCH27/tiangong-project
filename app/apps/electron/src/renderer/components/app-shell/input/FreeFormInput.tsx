@@ -524,7 +524,7 @@ export function FreeFormInput({
   }, [availableModels, currentModel, connectionDefaultModel])
 
   const enabledCliRuntimes = React.useMemo(
-    () => cliRuntimes.filter(runtime => runtime.enabled),
+    () => cliRuntimes.filter(runtime => runtime.enabled && runtime.protocol === 'acp'),
     [cliRuntimes],
   )
 

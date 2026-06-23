@@ -27,6 +27,7 @@ function healthLabel(result?: CliRuntimeHealthResult): string {
   if (result.health === 'available') return '可用'
   if (result.health === 'fail_cli') return 'CLI 启动失败'
   if (result.health === 'fail_acp') return 'ACP 握手失败'
+  if (result.health === 'needs_adapter') return '已检测，待 adapter'
   if (result.health === 'disabled') return '已禁用'
   return '未测试'
 }
@@ -82,18 +83,35 @@ export default function CliRuntimeSettingsPage() {
   const [health, setHealth] = useState<Record<string, CliRuntimeHealthResult>>({})
   const [loading, setLoading] = useState(true)
   const [testingId, setTestingId] = useState<string | null>(null)
+  const [autoTesting, setAutoTesting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<RuntimeFormState>(emptyForm)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setRuntimes(await window.electronAPI.listCliRuntimes())
+      const next = await window.electronAPI.listCliRuntimes()
+      setRuntimes(next)
+      setAutoTesting(true)
+      const settled = await Promise.allSettled(next.map(runtime => window.electronAPI.testCliRuntime(runtime.id)))
+      const results = settled.map((result, index) => {
+        const runtime = next[index]
+        if (result.status === 'fulfilled') return result.value
+        return {
+          runtimeId: runtime.id,
+          health: 'fail_cli' as const,
+          stage: 'spawn' as const,
+          reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          checkedAt: Date.now(),
+        }
+      })
+      setHealth(Object.fromEntries(results.map(result => [result.runtimeId, result])))
     } catch (error) {
       console.error('[CliRuntimeSettings] failed to load runtimes', error)
       toast.error('加载本机 CLI 失败')
     } finally {
       setLoading(false)
+      setAutoTesting(false)
     }
   }, [])
 
@@ -192,15 +210,15 @@ export default function CliRuntimeSettingsPage() {
         <div className="max-w-3xl mx-auto px-8 py-8">
           <SettingsSection
             title="本机 CLI Runtime"
-            description="把本机支持 stdio ACP 的 CLI 接入同一个会话。内置检测只放已确认 ACP 入口；Claude Code / Codex 需要单独 native adapter，不能伪装成 ACP。发送、权限、停止和输出仍走 Craft 原有 timeline。"
+            description="刷新会扫描本机常见 Agent CLI 并自动健康检测。stdio ACP 可直接发送；Claude/Codex/Grok/Hermes/OpenCode/Gemini 等 native/subscription CLI 会显示为已检测但待 adapter，不再伪装成 ACP。发送、权限、停止和输出仍走 Craft 原有 timeline。"
           >
             <SettingsCard>
               <SettingsRow
                 label="运行时列表"
-                description="检测到的 runtime 可停用和测试；自定义 runtime 后续在这里编辑。"
+                description="刷新=重新扫描全部 CLI + 自动测试。只有 protocol=acp 的 runtime 当前可直接用于聊天。"
                 action={
                   <Button size="sm" variant="ghost" onClick={() => void load()} disabled={loading}>
-                    {loading ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+                    {(loading || autoTesting) ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
                     刷新
                   </Button>
                 }
@@ -212,7 +230,7 @@ export default function CliRuntimeSettingsPage() {
                 </div>
               ) : runtimes.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
-                  未检测到本机 ACP CLI。可以先安装支持 stdio ACP 的 Goose，或添加自定义 ACP runtime。
+                  未检测到本机 Agent CLI。可以先安装 Goose/Claude Code/Codex/Grok/Hermes/Gemini/OpenCode 等，或添加自定义 ACP runtime。
                 </div>
               ) : runtimes.map(runtime => {
                 const result = health[runtime.id]
@@ -227,11 +245,16 @@ export default function CliRuntimeSettingsPage() {
                           {runtime.displayName}
                         </span>
                       }
-                      description={`${runtime.kind} · ${runtime.command} ${runtime.args.join(' ')}`}
+                      description={`${runtime.kind} · ${runtime.protocol} · ${runtime.command} ${runtime.args.join(' ')}`}
                       checked={runtime.enabled}
-                      disabled={runtime.kind === 'managed'}
+                      disabled={runtime.kind === 'managed' || runtime.protocol !== 'acp'}
                       onCheckedChange={(checked) => void setEnabled(runtime, checked)}
                     />
+                    {runtime.discoveredModels && runtime.discoveredModels.length > 0 && (
+                      <div className="px-4 pb-2 -mt-1 text-xs text-muted-foreground">
+                        模型：{runtime.discoveredModels.map(model => model.name).join('、')}
+                      </div>
+                    )}
                     <SettingsRow
                       label={
                         <span className="inline-flex items-center gap-2">
@@ -243,7 +266,7 @@ export default function CliRuntimeSettingsPage() {
                           {healthLabel(result)}
                         </span>
                       }
-                      description={result?.reason ?? (runtime.needsConfirmation ? '候选入口，使用前需要确认本机 CLI 行为。' : '点击测试会启动 CLI 并尝试握手。')}
+                      description={result?.reason ?? runtime.adapterHint ?? (runtime.needsConfirmation ? '候选入口，使用前需要确认本机 CLI 行为。' : '刷新会自动测试；也可手动重新测试。')}
                       action={
                         <div className="flex items-center gap-1">
                           {canEditRuntimeCommand(runtime.kind) && (

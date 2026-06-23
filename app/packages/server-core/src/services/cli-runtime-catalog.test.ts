@@ -1,6 +1,6 @@
 /**
  * CLI Runtime catalog + 健康分类（docs/23/24）。
- * 覆盖：stdio ACP detected 映射、PATH 过滤、custom CRUD、设置页编辑边界、unsupported 中文错误、健康分级。
+ * 覆盖：known CLI detected 映射、PATH 过滤、custom CRUD、设置页编辑边界、健康分级。
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -9,8 +9,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   DETECTED_RUNTIME_MAPPINGS,
-  UNSUPPORTED_DETECTED_TOOLS,
-  unsupportedDetectedMessage,
   canEditRuntimeCommand,
   canDeleteRuntime,
 } from '@craft-agent/shared/protocol'
@@ -29,11 +27,13 @@ describe('CliRuntimeCatalog', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('默认只列出已确认 stdio ACP 的 detected 映射', () => {
+  it('默认扫描常见本机 Agent CLI，且只有 ACP runtime 可直接发送', () => {
     const ids = catalog.list().map(r => r.mappingId)
     expect(ids).toContain('goose')
-    expect(ids).not.toContain('claude')
-    expect(ids).not.toContain('codex')
+    expect(ids).toContain('claude')
+    expect(ids).toContain('codex')
+    expect(ids).toContain('grok')
+    expect(catalog.list().filter(r => r.protocol === 'acp').map(r => r.mappingId)).toEqual(['goose'])
     expect(catalog.list().every(r => r.attachments === 'none')).toBe(true) // 第一版硬拒绝附件
   })
 
@@ -82,14 +82,11 @@ describe('CliRuntimeCatalog', () => {
     expect(canDeleteRuntime('managed')).toBe(false)
   })
 
-  it('unsupported detected：返回中文可操作错误，不进 catalog', () => {
-    const unsupportedIds = UNSUPPORTED_DETECTED_TOOLS.map(t => t.id)
-    expect(unsupportedIds).toEqual(['claude', 'codex', 'grok', 'hermes', 'opencode', 'gemini', 'qwen'])
-    const msg = unsupportedDetectedMessage('Grok Build')
-    expect(msg).toContain('Grok Build')
-    expect(msg).toContain('Custom ACP')
-    // catalog 里不应出现这些
-    expect(catalog.list().some(r => r.mappingId && unsupportedIds.includes(r.mappingId))).toBe(false)
+  it('native/subscription detected 进入 catalog，但标记为待 adapter', () => {
+    const grok = catalog.list().find(r => r.mappingId === 'grok')!
+    expect(grok.protocol).toBe('subscription')
+    expect(grok.adapterHint).toContain('Grok')
+    expect(grok.discoveredModels?.map(model => model.id)).toContain('grok-code-fast-1')
   })
 })
 

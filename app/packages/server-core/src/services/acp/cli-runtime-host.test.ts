@@ -52,8 +52,8 @@ function makeHost() {
   return { host, transports, events, getDisposeCount: () => disposeCount }
 }
 
-const runtimeA: CliRuntimeDefinition = { id: 'detected:grok', kind: 'detected', displayName: 'Grok', command: 'grok', args: ['agent', 'stdio'], enabled: true, attachments: 'none' }
-const runtimeB: CliRuntimeDefinition = { id: 'custom:x', kind: 'custom', displayName: 'X', command: 'x', args: [], enabled: true, attachments: 'none' }
+const runtimeA: CliRuntimeDefinition = { id: 'detected:grok', kind: 'detected', displayName: 'Grok', command: 'grok', args: ['agent', 'stdio'], enabled: true, protocol: 'acp', attachments: 'none' }
+const runtimeB: CliRuntimeDefinition = { id: 'custom:x', kind: 'custom', displayName: 'X', command: 'x', args: [], enabled: true, protocol: 'acp', attachments: 'none' }
 
 describe('CliRuntimeHost', () => {
   it('runTurn：initialize→newSession→prompt，归一化事件落到对应 session', async () => {

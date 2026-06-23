@@ -1,8 +1,9 @@
 /**
  * CliRuntimeCatalog（docs/23）——本机 CLI/ACP runtime 目录。
  *
- * detected 映射只保留已确认的 stdio ACP 入口；只有本机 PATH 上
- * 能解析到命令时才进入可选目录；custom 由用户自配并落盘。
+ * detected 映射扫描常见本机 Agent CLI；只有本机 PATH 上能解析到命令时才进入目录。
+ * protocol='acp' 可直接发送，native/subscription 只作为“已检测，待 adapter”展示。
+ * custom 由用户自配 ACP runtime 并落盘。
  * 设置页可编辑边界由 `@craft-agent/shared/protocol` 的 can* helper 决定，不在这里另设一套。
  * 不建第二套 session store：catalog 只管 runtime 定义，发送/进程走 adapter（见 cli-runtime-host）。
  */
@@ -77,7 +78,7 @@ export class CliRuntimeCatalog {
         def.enabled = !disabled.has(def.id)
         return def
       })
-    const custom = data.custom.map(def => ({ ...def, enabled: !disabled.has(def.id) }))
+    const custom = data.custom.map(def => ({ ...def, protocol: def.protocol ?? 'acp', enabled: !disabled.has(def.id) }))
     return [...detected, ...custom]
   }
 
@@ -98,6 +99,7 @@ export class CliRuntimeCatalog {
       args: [...(input.args ?? [])],
       env: input.env ? { ...input.env } : undefined,
       enabled: true,
+      protocol: 'acp',
       attachments: 'none',
     }
     const data = this.load()
@@ -110,6 +112,7 @@ export class CliRuntimeCatalog {
     const data = this.load()
     const def = data.custom.find(runtime => runtime.id === id)
     if (!def) throw new Error(`只能编辑 custom runtime；未找到: ${id}`)
+    def.protocol ??= 'acp'
     if (patch.displayName !== undefined) def.displayName = patch.displayName.trim()
     if (patch.command !== undefined) def.command = patch.command.trim()
     if (patch.args !== undefined) def.args = [...patch.args]

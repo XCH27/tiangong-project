@@ -7064,6 +7064,14 @@ export class SessionManager implements ISessionManager {
       }, workspaceId)
       return
     }
+    if (runtime.protocol !== 'acp') {
+      this.sendEvent({
+        type: 'text_complete',
+        sessionId,
+        text: `⚠️ ${runtime.displayName} 已检测到，但当前还没有 ${runtime.protocol} adapter，不能按 ACP 发送。请先选择 Goose/Custom ACP，或等待该 CLI 的 native adapter 接入。`,
+      }, workspaceId)
+      return
+    }
 
     this.setProcessing(managed, true)
     managed.streamingText = ''

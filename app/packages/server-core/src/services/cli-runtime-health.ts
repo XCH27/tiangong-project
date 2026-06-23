@@ -1,7 +1,8 @@
 /**
  * CLI Runtime 健康测试（docs/23 健康分级）。
  *
- * 分级：available / fail_cli（启动失败）/ fail_acp（能启动但非 ACP 协议）/ disabled。
+ * 分级：available / fail_cli（启动失败）/ fail_acp（ACP 握手失败）/ needs_adapter / disabled。
+ * ACP runtime 做 JSON-RPC 握手；native/subscription runtime 只探测 binary 并标记待 adapter。
  * 保留阶段、原因、stdout/stderr tail。真实 CLI 依赖本机安装/登录，spawn 探测只做 opt-in；
  * 分类逻辑 `classifyHealthFromProbe` 是纯函数，单测覆盖。
  */
@@ -68,9 +69,23 @@ function tail(text: string): string {
  * 任何路径都保证子进程被清理（dispose）。
  */
 export async function probeCliRuntimeHealth(
-  runtime: Pick<CliRuntimeDefinition, 'id' | 'command' | 'args' | 'env'>,
+  runtime: Pick<CliRuntimeDefinition, 'id' | 'command' | 'args' | 'env' | 'protocol'>,
   timeoutMs: number = HANDSHAKE_TIMEOUT_MS,
 ): Promise<CliRuntimeHealthResult> {
+  if (runtime.protocol !== 'acp') {
+    const binary = await probeBinary(runtime)
+    if (binary.health === 'fail_cli') return binary
+    return {
+      runtimeId: runtime.id,
+      health: 'needs_adapter',
+      stage: 'adapter',
+      reason: '已检测到本机 CLI，但它不是 stdio ACP；需要 native/subscription adapter 后才能在会话里发送。',
+      stdoutTail: binary.stdoutTail,
+      stderrTail: binary.stderrTail,
+      checkedAt: Date.now(),
+    }
+  }
+
   const outcome = await new Promise<ProbeOutcome>(resolve => {
     let stdoutBuf = ''
     let stderrBuf = ''
@@ -123,6 +138,65 @@ export async function probeCliRuntimeHealth(
   return {
     runtimeId: runtime.id,
     ...classifyHealthFromProbe(outcome),
+    stdoutTail: outcome.stdoutTail,
+    stderrTail: outcome.stderrTail,
+    checkedAt: Date.now(),
+  }
+}
+
+async function probeBinary(
+  runtime: Pick<CliRuntimeDefinition, 'id' | 'command' | 'args' | 'env'>,
+  timeoutMs: number = 2000,
+): Promise<CliRuntimeHealthResult> {
+  const outcome = await new Promise<ProbeOutcome>(resolve => {
+    let stdoutBuf = ''
+    let stderrBuf = ''
+    let settled = false
+    let child: ReturnType<typeof spawn> | null = null
+    const finish = (partial: Partial<Omit<ProbeOutcome, 'stdoutTail' | 'stderrTail'>>) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try { child?.kill('SIGKILL') } catch { /* already gone */ }
+      resolve({
+        spawnError: partial.spawnError,
+        gotJsonRpcResponse: false,
+        exitedBeforeResponse: partial.exitedBeforeResponse ?? false,
+        stdoutTail: tail(stdoutBuf),
+        stderrTail: tail(stderrBuf),
+      })
+    }
+    const timer = setTimeout(() => finish({ exitedBeforeResponse: false }), timeoutMs)
+    try {
+      child = spawn(runtime.command, runtime.args, {
+        env: { ...process.env, ...(runtime.env ?? {}) },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (error) {
+      finish({ spawnError: { message: error instanceof Error ? error.message : String(error) } })
+      return
+    }
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      finish({ spawnError: { code: error.code, message: error.message } })
+    })
+    child.stdout?.on('data', (chunk: Buffer) => { stdoutBuf += chunk.toString() })
+    child.stderr?.on('data', (chunk: Buffer) => { stderrBuf += chunk.toString() })
+    child.on('exit', () => finish({ exitedBeforeResponse: true }))
+  })
+  const classified = classifyHealthFromProbe(outcome)
+  if (classified.health === 'fail_cli') {
+    return {
+      runtimeId: runtime.id,
+      ...classified,
+      stdoutTail: outcome.stdoutTail,
+      stderrTail: outcome.stderrTail,
+      checkedAt: Date.now(),
+    }
+  }
+  return {
+    runtimeId: runtime.id,
+    health: 'available',
+    stage: 'ok',
     stdoutTail: outcome.stdoutTail,
     stderrTail: outcome.stderrTail,
     checkedAt: Date.now(),

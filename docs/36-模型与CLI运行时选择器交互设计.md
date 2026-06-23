@@ -12,7 +12,7 @@
 
 | 轴 | 含义 | 取值 |
 |---|---|---|
-| **运行方式 Runtime** | 谁来执行 | `API（当前连接）` 或本机已检测到的 AionUi ACP 候选（Claude Code / Codex / Goose）/ Custom ACP runtime |
+| **运行方式 Runtime** | 谁来执行 | `API（当前连接）` 或本机已检测且可发送的 ACP runtime（Goose / Custom ACP） |
 | **模型 Model** | 在该运行方式下用哪个模型 | API：Opus 4.8 / Sonnet 4.6 / Haiku 4.5 / Fable 5…；CLI：该 CLI 动态暴露的模型，或"模型由 CLI 管理" |
 | **推理强度 Effort** | 推理深度 | 仅对支持的运行方式显示（如 API 的"最大/扩展推理深度"） |
 
@@ -26,7 +26,7 @@
 
 | 按钮 | 管什么 | 点开 |
 |---|---|---|
-| **CLI** | 运行方式（API / 已检测到的 Goose / Custom ACP runtime；Claude Code、Codex 需 native adapter） | 运行方式列表 + "管理本机 CLI…"跳设置页。选 API → `cliRuntimeId=null`；选 CLI → 写 `cliRuntimeId` |
+| **CLI** | 运行方式（API / 已检测到且可发送的 Goose / Custom ACP runtime；Claude/Codex/Grok/Hermes 等在设置页显示为待 adapter） | 运行方式列表 + "管理本机 CLI…"跳设置页。选 API → `cliRuntimeId=null`；选 CLI → 写 `cliRuntimeId` |
 | **模型** | 当前运行方式下的模型（如 `API · Opus 4.8`） | API 模型列表 + 推理强度；CLI 则是其动态模型或"模型由 CLI 管理"（禁用） |
 | **Token 环** | 只读：上下文占用 % | 上下文/额度详情弹层（`electronAPI.getSessionUsage`），context 与 plan 分开 |
 
@@ -42,12 +42,13 @@
 ```
 ┌─ 运行方式 ──────────┐
 │ ● API（当前连接） ✓ │   ← 选它 → cliRuntimeId=null
-│ ○ Claude Code       │   ← 仅本机 PATH 检测到 claude 时显示
-│ ○ Codex             │   ← 仅本机 PATH 检测到 codex 时显示
 │ ○ Goose             │   ← 仅本机 PATH 检测到 goose 时显示
+│ ○ Custom ACP        │   ← 用户添加并启用的 ACP runtime
 │ ⚙ 管理本机 CLI…     │   ← 跳设置页
 └─────────────────────┘
 ```
+
+Claude Code / Codex / Grok / Hermes / OpenCode / Gemini / Qwen / Pi 等 native/subscription CLI 由设置页负责扫描和诊断；未接对应 adapter 前不进入这个快速切换菜单。
 
 **模型按钮**（chip 文案：`Opus 4.8` 或 `模型由 CLI 管理`）：随当前运行方式变。
 ```
@@ -67,11 +68,12 @@
 | 操作 | 效果 |
 |---|---|
 | 选「API（当前连接）」 | `cliRuntimeId=null`，回 API 模型路径；模型段显示 API 模型 + 推理强度 |
-| 选某个本机 CLI | 写会话 `cliRuntimeId`；后台 `prepare` 读该 CLI 的 `CliRuntimeModelState`；模型段显示其 `availableModels` 或"模型由 CLI 管理" |
+| 选某个本机 ACP runtime | 写会话 `cliRuntimeId`；后台 `prepare` 读该 CLI 的 `CliRuntimeModelState`；模型段显示其 `availableModels` 或"模型由 CLI 管理" |
 | 在 CLI 下选模型 | 写 `cliRuntimeModelId`；仅当 `canSwitch=true` 才可选，否则该段禁用 |
 | 选 API 模型 / 推理强度 | 走原 craft 模型/effort 逻辑，不动 `cliRuntimeId` |
 | 有附件时选了 CLI | 发送按钮禁用 + 中文提示（`CLI_RUNTIME_ATTACHMENT_REJECTION`，后端已硬拒绝） |
-| 选了 CLI 但本机没装 | 发送时 ACP 启动失败 → 错误进 timeline（不是假装在跑） |
+| 选了 ACP CLI 但本机没装 | 发送时 ACP 启动失败 → 错误进 timeline（不是假装在跑） |
+| native/subscription runtime | 只在设置页显示“已检测，待 adapter”；残留选择发送时后端返回中文错误，不按 ACP 启动 |
 
 不变量：任何时刻"运行方式"恰好一个、"模型"恰好一个；UI 不出现两个语义冲突的勾。
 
