@@ -1,10 +1,10 @@
 # 17 · Agent 协作与管理 Agent 模型
 
-> 状态日期：2026-06-22
+> 状态日期：2026-06-24
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前分支状态：团队后端只是候选实现，其中身份存储仍与 Craft 原标签系统重复，未通过验收。前端已恢复为干净 Craft 原界面，团队群聊入口、管理 Agent 全局专栏和团队设置均未实现。完成状态只看 `docs/00` 与 `docs/32`，团队契约只看 `docs/33`。
+> 当前分支状态：团队身份已收敛到 Craft 原标签系统；`队长/开发/代码/测试/自动化/内容/上下文/审查/设计` 等身份通过 `labels/config.json` + session `labels` 注入系统提示词和 permission profile，不再新增第二套身份菜单。管理 Agent 已有右下角常驻入口，可创建 hidden craft session，按管理设置选择模型，并注入管理 Agent 专用系统提示词；记忆是独立设置页。仍未完成：管理 Agent 对记忆生命周期的结构化工具、真实全局专栏/退出行为、四个专业工作面。
 
 ---
 
@@ -21,7 +21,7 @@ craft-agents-oss 目前有 subagent，但没有成熟的"多 Agent 同场协作"
 
 **关键纪律：管理 Agent 不和项目 Agent 混成一个身份。** 管理 Agent 可以调度、提供背景/记忆/偏好/权限判断，但它不是"每个任务都深度参与的 coding agent"。它平时不应无缘无故消耗大量上下文；只有用户明确要求，或某个项目 Agent 需要它提供背景时，它才进入更深的项目上下文。
 
-管理 Agent 的用户对话也不属于单个工作区。它应该在“所有会话”层拥有自己的常驻专栏；每个工作区 的 hidden 投影只用于挂 timeline、权限证据和待审路由，不作为人类与管理 Agent 聊天的位置。
+管理 Agent 的用户对话不应该混进普通项目会话。当前实现先用右下角入口创建 hidden craft session 来复用原模型、permission、tool 和 timeline 路径；长期形态仍是“所有会话”层的软件级入口。每个工作区的 hidden 投影只用于挂 timeline、权限证据和待审路由，不是第二套身份。
 
 ## 1.1 · LobeHub 给这一层的启发
 
@@ -81,12 +81,13 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 ## 4 · 分级自动决策（D12）
 
-> **2026-06-23 进度 🟡 候选/待合入（未提交主线）**：L0–L3 判定**引擎 + 首个落地接入点已完成**。
+> **2026-06-24 进度 ✅ 已落主线**：L0–L3 判定引擎、设置落盘、RPC、首批接入点和设置页已提交。默认关闭，不改变原 permission 行为。
 > - 引擎：`shared/protocol/manager-decision.ts`（`decideAuto`：L0 自动 / 未开启时 L1+ 升级 / L3 永不自动（规则也不行）/ L2 需规则授权 / 每个结果带 basis）+ `manager-decision-service.ts`（设置落盘 + decide + `manager_auto_decision` 事件）+ 单测（已跑 15 pass）。
 > - **接入点 1：团队动作**——`TeamCoordinator.enforcePermission` 接 `decideAuto`：开启后 L2 团队动作（如 `assignTeamTask.autoRun`）按规则 auto_allow/deny，否则 escalate 回 craft permission；`team-coordinator.test.ts` +3 用例。
 > - **接入点 2：中央权限路径（本轮新增）**——`SessionManager.requestWorkflowPermission` 接 `permissionAutoOutcome`：**所有**项目 Agent 的权限请求（file_write/mcp_mutation/api_mutation）开启后都按规则代答；`team:` 动作跳过（由接入点 1 处理），未开启/无规则/L3 → 照常弹用户。纯函数 `permissionAutoOutcome` 有 5 个单测。每次自动判断写 `manager_auto_decision` 进 timeline。
 > - **配置：`managerDecision` RPC**（getSettings/updateSettings）——设置落 `<workspace>/.fleet/manager-decision.json`，给设置页消费；默认 `enabled=false` → 全程行为不变、不绕过 permission。
-> - typecheck 全过（shared/server-core/electron）。**未做**：记忆/偏好作为依据来源（当前依据只引用规则）、设置页 UI、管理 Agent 全局专栏 UI。
+> - 已有 UI：`ManagerSettingsPage` 配置管理 Agent 模型、自动决策开关和 L2 规则；右下角 `ManagerAgentLauncher` 使用这些模型配置创建 hidden 管理会话。
+> - **未做**：记忆/偏好作为自动决策依据、管理 Agent 操作记忆生命周期的结构化工具、真实全局专栏和退出行为设置。
 
 默认情况下，涉及**权限、文件写入、运行命令、提交外部平台、删除记忆、修改项目方向**等关键动作，仍然问用户确认。当用户**主动开启自动决策**后，管理 Agent 可在低风险场景按记忆/偏好/规则/权限策略代替用户回复项目 Agent。
 

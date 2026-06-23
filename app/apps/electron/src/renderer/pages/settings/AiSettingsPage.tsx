@@ -49,7 +49,7 @@ import {
 } from '@/components/settings'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { useWorkspaceIcon } from '@/hooks/useWorkspaceIcon'
-import { OnboardingWizard, type ApiSetupMethod } from '@/components/onboarding'
+import { OnboardingWizard, ProviderSelectStep, type ApiSetupMethod, type ProviderChoice } from '@/components/onboarding'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
@@ -745,6 +745,14 @@ export default function AiSettingsPage() {
     openApiSetup()
   }, [apiSetupOnboarding, openApiSetup])
 
+  const handleSelectProviderFromSettings = useCallback((choice: ProviderChoice) => {
+    setIsDirectEdit(false)
+    setEditInitialValues(undefined)
+    apiSetupOnboarding.reset()
+    apiSetupOnboarding.handleSelectProvider(choice)
+    openApiSetup()
+  }, [apiSetupOnboarding, openApiSetup])
+
   const handleApiSetupFinish = useCallback(() => {
     closeApiSetup()
     refreshLlmConnections?.()
@@ -1118,8 +1126,10 @@ export default function AiSettingsPage() {
               <SettingsSection title={t("settings.ai.connections")} description={t("settings.ai.connectionsDesc")}>
                 <SettingsCard>
                   {llmConnections.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      {t("settings.ai.noConnections")}
+                    <div className="px-4 py-5 flex justify-center">
+                      <ProviderSelectStep
+                        onSelect={handleSelectProviderFromSettings}
+                      />
                     </div>
                   ) : (
                     [...llmConnections]

@@ -1,6 +1,6 @@
 # 00A · UI 改造红线与挂点地图（动手前必读 · 单页）
 
-> 状态日期：2026-06-22
+> 状态日期：2026-06-24
 > 效力：这是「改 UI / 加功能前」的唯一速查闸。它把分散在 `AGENTS.md`(规则 9/13/16/18/23/24/35/36)、`docs/18 §7`、`docs/32 §0/§5`、`docs/01 §3` 的反跑偏规则**收口成一页**。冲突时仍以 `AGENTS.md` 和 `docs/18` 原文为准，但**动手前先过这一页**。
 > 为什么存在：Agent 反复在 UI 上「胡乱加东西」——新建壳层、造第二套真相、堆散按钮、做假按钮、改共享契约。下面是硬约束，不是建议。
 
@@ -45,9 +45,10 @@
 | 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
 | `@` 人/Agent/身份、`/` Skill/命令/模板 | `renderer/components/app-shell/input/FreeFormInput.tsx`、`components/ui/mention-menu.tsx`、`rich-text-input.tsx` + 那一个 mentions parser | 别新建输入框/第二套 mention store |
 | 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；群聊是「所有会话」顶部一条**原样式**特殊会话项 | 别建群聊页/群聊库，别在会话列表里加输入框 |
-| 管理 Agent 入口 | ✅ 已改成 Multica 式右下角常驻/可最小化入口：`renderer/components/app-shell/ManagerAgentLauncher.tsx`，挂在 `AppShell`。可直接发消息：首次发送创建 hidden craft session，按 `ManagerSettingsPage` 的模型配置填 `llmConnection/model/thinkingLevel`，发送走原 `onSendMessage`/permission/timeline；快捷动作打开已接后端的 `ManagerSettingsPage`（`managerDecision`/`memory` RPC）。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别做特权后门绕 permission，别做未接后端的假发送 |
+| 管理 Agent 入口 | ✅ 已改成 Multica 式右下角常驻/可最小化入口：`renderer/components/app-shell/ManagerAgentLauncher.tsx`，挂在 `AppShell`。可直接发消息：首次发送创建 hidden craft session，按 `ManagerSettingsPage` 的模型配置填 `llmConnection/model/thinkingLevel`，注入管理 Agent 专用系统提示词，发送走原 `onSendMessage`/permission/timeline；空态快捷项是直接发送管理任务，不是重复跳设置。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别做特权后门绕 permission，别做未接后端的假发送 |
 | 团队状态（待安排/进行中/待审查/完成/取消） | 映射到 craft 现有 session status / `SessionStatusIcon`；身份扩展原 `labels/config.json` + session `labels` | 别在团队规则或 renderer 建第二套身份/状态定义 |
 | 设置项 / 手动编辑逃生舱 | `renderer/pages/settings/*`、`components/settings/*`，写进 craft `config`/`preferences` | 别另起第二套设置真相 |
+| AI/API 连接配置 | `pages/settings/AiSettingsPage.tsx` 复用原 `OnboardingWizard` / `ProviderSelectStep` / `CredentialsStep` / `ApiKeyInput`。无连接空态直接露出 provider 卡片，点击进入同一套 API/OAuth/local model 流程；已有连接仍用原 `ConnectionRow` 管理、验证、编辑、删除 | 别新建第二套 API 配置页；别把 provider 选择藏成只有一行空态文字；别让按钮绕过原凭据保存/验证流程 |
 | 浏览器 / 网页标注 / 设计选择 | `renderer/components/browser/*` + BrowserPane/CDP + session timeline | 别建孤岛 Figma 克隆页 |
 | CLI Runtime 的会话显示 | Runtime 标识走 `SessionBadges`/`SessionInfoPopover`；运行方式只在输入框 CLI 按钮切换；设置页“本机 CLI”负责刷新扫描全部本机 Agent CLI 并自动测试。只有 `protocol=acp`（Goose/Custom ACP）可直接发送；Claude/Codex/Grok/Hermes/Antigravity(`agy`) 等 native/subscription 只显示“已检测，待 adapter”。进程控制走后端 service + permission + timeline | 别在 renderer 存 CLI 进程暗状态、别另起第二套 session，别把顶部按钮做成第二套模型中心，别把 native/subscription CLI 伪装成 ACP 发送，别恢复 Gemini CLI 内置探测 |
 | API/模型/Runtime 厂商图标 | 现有 provider icon 映射缺口较大。后续补图标优先用 MIT 的 LobeHub Icons 静态 SVG（`@lobehub/icons-static-svg`；React 包 `@lobehub/icons` 需适配层，别直接引入破坏 React/peer deps），UIED SVG 可作为补充下载源；图标统一接 `ConnectionIcon`/`provider-icons.ts`，不要散落内联 SVG | 别复制 LobeHub 软件源码或 UI 结构；别把图标资产无来源塞进仓库；别为每个页面单独做 provider 图标逻辑 |

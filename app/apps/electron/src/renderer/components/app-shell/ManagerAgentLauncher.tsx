@@ -1,19 +1,34 @@
 import { createPortal } from "react-dom"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Bot, ChevronDown, Expand, Minus, Plus, RefreshCw, Send, Settings } from "lucide-react"
+import { Bot, ChevronDown, Expand, Minus, Plus, RefreshCw, Send, Settings, Wand2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { navigate, routes } from "@/lib/navigate"
 import { useAppShellContext, useSession } from "@/context/AppShellContext"
 import type { AutoDecisionSettings } from "@craft-agent/shared/protocol"
 import type { CreateSessionOptions } from "../../../shared/types"
 
+const MANAGER_AGENT_SYSTEM_PROMPT = [
+  '你是 Fleet/Craft Agents 的管理 Agent，是软件级管家，不是某个项目的执行 Agent。',
+  '你的职责是帮助用户管理软件内部状态：会话、身份标签、权限、团队协调、自动决策、设置、Skill、数据源、上下文和记忆入口。',
+  '优先使用已暴露的结构化工具操作内部状态，例如 list_sessions、get_session_info、set_session_labels、set_session_status、set_session_progress、get_team、send_team_message、assign_team_task、submit_team_report、config_validate、update_preferences、source_test、skill_validate。',
+  '不要绕过 permission；写文件、运行命令、改设置、外发、删除、发布、登录或敏感操作必须按权限等级请求确认。L3 永远不能自动同意。',
+  '不要替项目 Agent 深度写代码；需要项目执行时先整理目标、风险和交付标准，再通过团队/会话工具调度。',
+  '回答要短，先说你准备执行的内部动作；没有可用工具时明确说明只能给建议，不能假装已经操作。',
+].join('\n')
+
+const QUICK_PROMPTS = [
+  { label: '整理当前团队状态', prompt: '请读取当前会话和团队状态，按待安排、进行中、待审查、完成、取消整理一份简短行动清单。' },
+  { label: '检查权限与自动决策', prompt: '请检查当前权限、身份标签和自动决策规则，指出会导致误操作或需要我确认的风险。' },
+  { label: '列出需要我处理的事项', prompt: '请列出当前需要用户确认、审查或下一步决策的事项，只保留可执行项。' },
+]
+
 /**
  * Global Manager Agent entry.
  *
  * This intentionally lives outside SessionList: the list header slot is reserved
- * for team chat. Until a real manager conversation session exists, the input is
- * disabled and actions route to the wired Manager settings surface.
+ * for team chat. Messages create a hidden Craft session so the manager still
+ * uses the normal model, permission, tool, and timeline path.
  */
 export function ManagerAgentLauncher() {
   const { t } = useTranslation()
@@ -59,15 +74,15 @@ export function ManagerAgentLauncher() {
       name: title,
       hidden: true,
       permissionMode: 'ask',
-      systemPromptPreset: 'default',
+      systemPromptPreset: MANAGER_AGENT_SYSTEM_PROMPT,
       ...(model?.mode === 'api_connection' && model.connectionSlug ? { llmConnection: model.connectionSlug } : {}),
       ...(model?.mode === 'api_connection' && model.model ? { model: model.model } : {}),
       ...(model?.thinkingLevel ? { thinkingLevel: model.thinkingLevel } : {}),
     }
   }, [settings?.model, title])
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim()
+  const sendManagerText = useCallback(async (rawText: string) => {
+    const text = rawText.trim()
     if (!text) return
     if (!activeWorkspaceId) {
       setError('没有可用工作区')
@@ -81,12 +96,18 @@ export function ManagerAgentLauncher() {
         setManagerSessionId(session.id)
       }
       onSendMessage(sessionId, text)
-      setInput('')
       setError(null)
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : String(sendError))
     }
-  }, [activeWorkspaceId, createOptions, input, managerSessionId, onCreateSession, onSendMessage])
+  }, [activeWorkspaceId, createOptions, managerSessionId, onCreateSession, onSendMessage])
+
+  const sendInputMessage = useCallback(async () => {
+    const text = input.trim()
+    if (!text) return
+    await sendManagerText(text)
+    setInput('')
+  }, [input, sendManagerText])
 
   return createPortal(
     <>
@@ -162,19 +183,16 @@ export function ManagerAgentLauncher() {
                   <div className="mt-1 text-xs text-muted-foreground">{t('settings.managerAgent.description')}</div>
                 </div>
                 <div className="w-full mt-3 flex flex-col gap-2">
-                  {[
-                    '打开管理设置',
-                    '查看自动决策规则',
-                    '查看分层记忆',
-                  ].map(label => (
+                  {QUICK_PROMPTS.map(action => (
                     <button
-                      key={label}
+                      key={action.label}
                       type="button"
-                      onClick={openSettings}
+                      onClick={() => void sendManagerText(action.prompt)}
+                      disabled={managerSession?.isProcessing}
                       className="w-full h-9 px-3 rounded-[6px] border border-border bg-background text-left text-sm hover:bg-foreground/[0.03] inline-flex items-center gap-2"
                     >
-                      <Settings className="size-3.5 text-muted-foreground" />
-                      <span className="truncate">{label}</span>
+                      <Wand2 className="size-3.5 text-muted-foreground" />
+                      <span className="truncate">{action.label}</span>
                     </button>
                   ))}
                 </div>
@@ -224,7 +242,7 @@ export function ManagerAgentLauncher() {
                 onKeyDown={event => {
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault()
-                    void sendMessage()
+                    void sendInputMessage()
                   }
                 }}
                 disabled={managerSession?.isProcessing}
@@ -246,7 +264,7 @@ export function ManagerAgentLauncher() {
                     (!input.trim() || managerSession?.isProcessing) && "opacity-45 cursor-not-allowed",
                   )}
                   disabled={!input.trim() || managerSession?.isProcessing}
-                  onClick={() => void sendMessage()}
+                  onClick={() => void sendInputMessage()}
                   aria-label="Send"
                 >
                   <Send className="size-4" />
