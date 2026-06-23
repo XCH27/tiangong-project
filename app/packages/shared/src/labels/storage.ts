@@ -20,6 +20,8 @@ import { debug } from '../utils/debug.ts';
 const LABEL_CONFIG_DIR = 'labels';
 const LABEL_CONFIG_FILE = 'labels/config.json';
 
+const LEGACY_DEFAULT_ROOT_LABEL_IDS = new Set(['development', 'content']);
+
 /**
  * Get default label configuration.
  * Provides a starter set of labels organized into two complementary color families:
@@ -108,6 +110,33 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
   };
 }
 
+function shouldBackfillIdentityLabels(config: WorkspaceLabelConfig): boolean {
+  const flat = flattenLabels(config.labels);
+  if (flat.some(label => label.kind === 'identity' || label.id === 'identity' || label.id === 'leader')) {
+    return false;
+  }
+  return config.labels.some(label => LEGACY_DEFAULT_ROOT_LABEL_IDS.has(label.id));
+}
+
+function withIdentityLabelDefaults(config: WorkspaceLabelConfig): { config: WorkspaceLabelConfig; migrated: boolean } {
+  if (!shouldBackfillIdentityLabels(config)) {
+    return { config, migrated: false };
+  }
+
+  const identityGroup = getDefaultLabelConfig().labels.find(label => label.id === 'identity');
+  if (!identityGroup) {
+    return { config, migrated: false };
+  }
+
+  return {
+    config: {
+      ...config,
+      labels: [identityGroup, ...config.labels],
+    },
+    migrated: true,
+  };
+}
+
 /**
  * Load workspace label configuration.
  * Returns empty config if no file exists or parsing fails.
@@ -126,11 +155,16 @@ export function loadLabelConfig(workspaceRootPath: string): WorkspaceLabelConfig
   }
 
   try {
-    const config = readJsonFileSync<WorkspaceLabelConfig>(configPath);
+    let config = readJsonFileSync<WorkspaceLabelConfig>(configPath);
 
     // Auto-migrate old Tailwind class colors (e.g., "text-accent") to new EntityColor format.
     // If migration occurs, write the updated config back to disk.
-    const migrated = migrateLabelColors(config);
+    let migrated = migrateLabelColors(config);
+    const identityBackfill = withIdentityLabelDefaults(config);
+    if (identityBackfill.migrated) {
+      config = identityBackfill.config;
+      migrated = true;
+    }
     if (migrated) {
       debug('[loadLabelConfig] Migrated old color format, writing back');
       saveLabelConfig(workspaceRootPath, config);
@@ -217,5 +251,3 @@ export function isValidLabelIdFormat(labelId: string): boolean {
   const SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
   return SLUG_PATTERN.test(labelId);
 }
-
-

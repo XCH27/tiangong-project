@@ -467,8 +467,13 @@ export class TeamCoordinator {
     const managerProjectionSessionId = await this.runtime.ensureManagerProjectionSession(rules.managerProjectionSessionId ?? null)
     let changed = conversationId !== rules.teamConversationSessionId || managerProjectionSessionId !== rules.managerProjectionSessionId
 
-    const members = rules.memberSessionIds.filter(id => live.has(id))
-    if (members.length !== rules.memberSessionIds.length) changed = true
+    const identityIds = new Set(this.runtime.listIdentityLabels().map(label => label.id))
+    const identityAssignedSessionIds = liveSessions
+      .filter(session => identityLabelIdsOf(session.labels ?? [], identityIds).length > 0)
+      .map(session => session.id)
+    const members = [...new Set([...rules.memberSessionIds, ...identityAssignedSessionIds])]
+      .filter(id => live.has(id))
+    if (members.length !== rules.memberSessionIds.length || members.some((id, index) => id !== rules.memberSessionIds[index])) changed = true
 
     // 队长缓存与 session `leader` 标签对账，冲突以标签为准（docs/33 §2）。
     const previousLeader = rules.leaderSessionId

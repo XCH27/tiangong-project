@@ -163,6 +163,10 @@ export function SessionList({
   // 点开进入 teamConversationSessionId。无队长时不显示（当前默认无团队，列表不变）。
   const { activeWorkspaceId } = useAppShellContext()
   const [teamProjection, setTeamProjection] = useState<TeamProjection | null>(null)
+  const teamProjectionRefreshKey = useMemo(
+    () => items.map(item => `${item.id}:${(item.labels ?? []).join(',')}`).join('|'),
+    [items],
+  )
   useEffect(() => {
     let cancelled = false
     if (!activeWorkspaceId || !window.electronAPI?.getTeam) { setTeamProjection(null); return }
@@ -170,7 +174,7 @@ export function SessionList({
       .then((projection) => { if (!cancelled) setTeamProjection(projection) })
       .catch(() => { if (!cancelled) setTeamProjection(null) })
     return () => { cancelled = true }
-  }, [activeWorkspaceId])
+  }, [activeWorkspaceId, teamProjectionRefreshKey])
   const teamChatSessionId = teamProjection?.leaderSessionId ? teamProjection.teamConversationSessionId : null
   const teamSequenceById = useMemo(
     () => Object.fromEntries((teamProjection?.members ?? []).map((m) => [m.sessionId, m.sequence])),

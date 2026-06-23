@@ -236,6 +236,20 @@ describe('TeamCoordinator — 承重墙', () => {
     expect(projection?.identityLabels.map(l => l.id)).toContain('design')
   })
 
+  it('身份标签会把旧规则外的会话纳入团队，并从 leader 标签派生队长', async () => {
+    const { coordinator, rules, sessions } = make([member('m1', 100), member('m2', 200)])
+    seedRules(rules, [])
+    sessions.get('m1')!.labels = [LEADER_LABEL_ID]
+    sessions.get('m2')!.labels = ['design']
+
+    const projection = await coordinator.getProjection()
+
+    expect(projection?.leaderSessionId).toBe('m1')
+    expect(projection?.teamConversationSessionId).toBe('team-conv')
+    expect(projection?.members.map(m => m.sessionId)).toEqual(['m1', 'm2'])
+    expect(rules.rules?.memberSessionIds).toEqual(['m1', 'm2'])
+  })
+
   it('成员对账：会话消失则从规则剔除，队长失效则清空并发事件', async () => {
     const { coordinator, sessions, events } = make([member('m1', 100), member('m2', 200)])
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm1' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
