@@ -4,7 +4,7 @@ import { useSetAtom } from "jotai"
 import { isToday, isYesterday, format, startOfDay } from "date-fns"
 import { getDateLocale } from "@craft-agent/shared/i18n"
 import { useAction } from "@/actions"
-import { Inbox, Archive, Users, Brain } from "lucide-react"
+import { Inbox, Archive, Users } from "lucide-react"
 import { useAppShellContext } from "@/context/AppShellContext"
 import type { TeamProjection } from "@craft-agent/shared/protocol"
 
@@ -737,21 +737,6 @@ export function SessionList({
         }}
         header={
           <>
-            {/* 管理 Agent 全局入口（docs/00A §4「管理 Agent 入口」）：常驻「所有会话」顶端，
-                点开进入已接 managerDecision/memory RPC 的管理 Agent 设置面板。非搜索态常显。 */}
-            {!searchActive && (
-              <button
-                type="button"
-                onClick={() => navigate(routes.view.settings('managerAgent'))}
-                title={t('settings.managerAgent.title')}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-foreground/[0.04] border-b border-border/40"
-              >
-                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-foreground/[0.08] text-foreground/70 flex-shrink-0">
-                  <Brain className="h-3.5 w-3.5" />
-                </span>
-                <span className="text-[13px] font-medium truncate">{t('settings.managerAgent.title')}</span>
-              </button>
-            )}
             {teamChatSessionId && !searchActive && (
               <button
                 type="button"

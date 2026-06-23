@@ -45,7 +45,7 @@
 | 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
 | `@` 人/Agent/身份、`/` Skill/命令/模板 | `renderer/components/app-shell/input/FreeFormInput.tsx`、`components/ui/mention-menu.tsx`、`rich-text-input.tsx` + 那一个 mentions parser | 别新建输入框/第二套 mention store |
 | 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；群聊是「所有会话」顶部一条**原样式**特殊会话项 | 别建群聊页/群聊库，别在会话列表里加输入框 |
-| 管理 Agent 入口 | ✅ 已落（commit `f36b9340`）：`SessionList` header 常驻一条原样式入口（Brain 图标 +「管理 Agent」），点开进 `routes.view.settings('managerAgent')` 设置面板（已接 `managerDecision`/`memory` RPC）。非搜索态常显。⏳ 可选：指向「管理 Agent 投影会话」做常驻对话（需 `ensureManagerSession` 独立 RPC） | 别塞进某个 workspace 的普通会话，别做特权后门绕 permission |
+| 管理 Agent 入口 | ⏳ 待修成 Multica 式右下角常驻/可最小化入口；设置页 `pages/settings/ManagerSettingsPage.tsx` 已接 `managerDecision`/`memory` RPC。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别做特权后门绕 permission |
 | 团队状态（待安排/进行中/待审查/完成/取消） | 映射到 craft 现有 session status / `SessionStatusIcon`；身份扩展原 `labels/config.json` + session `labels` | 别在团队规则或 renderer 建第二套身份/状态定义 |
 | 设置项 / 手动编辑逃生舱 | `renderer/pages/settings/*`、`components/settings/*`，写进 craft `config`/`preferences` | 别另起第二套设置真相 |
 | 浏览器 / 网页标注 / 设计选择 | `renderer/components/browser/*` + BrowserPane/CDP + session timeline | 别建孤岛 Figma 克隆页 |

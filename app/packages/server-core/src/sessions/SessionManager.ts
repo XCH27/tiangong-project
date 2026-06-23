@@ -100,7 +100,7 @@ import type { SummarizeCallback } from '@craft-agent/shared/sources'
 import { type ThinkingLevel, DEFAULT_THINKING_LEVEL, normalizeThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import { evaluateAutoLabels } from '@craft-agent/shared/labels/auto'
 import { listLabels, loadLabelConfig } from '@craft-agent/shared/labels/storage'
-import { extractLabelId, resolveSessionLabels, LEADER_LABEL_ID } from '@craft-agent/shared/labels'
+import { resolveSessionLabels, LEADER_LABEL_ID, hasLeaderLabel, withoutLeaderLabel } from '@craft-agent/shared/labels'
 import { ensureLabelsExist } from '@craft-agent/shared/labels/crud'
 import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
@@ -6865,16 +6865,16 @@ export class SessionManager implements ISessionManager {
   async setSessionLabels(sessionId: string, labels: string[]): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
-      // 队长唯一性（docs/33 §1.2）：给一个会话加 `leader` 身份标签时，
-      // 原子移除同 workspace 其它会话的 leader 标签，走同一条 labels_changed → timeline。
-      const becomesLeader = labels.some(label => extractLabelId(label) === LEADER_LABEL_ID)
+      // 队长唯一性（docs/33 §1.2）：给一个会话加裸 `priority`（显示为「队长」）身份标签时，
+      // 原子移除同 workspace 其它会话的队长标签，走同一条 labels_changed → timeline。
+      const becomesLeader = hasLeaderLabel(labels)
       if (becomesLeader) {
         for (const other of this.sessions.values()) {
           if (other.id === sessionId) continue
           if (other.workspace.id !== managed.workspace.id) continue
           const otherLabels = other.labels ?? []
-          if (!otherLabels.some(label => extractLabelId(label) === LEADER_LABEL_ID)) continue
-          other.labels = otherLabels.filter(label => extractLabelId(label) !== LEADER_LABEL_ID)
+          if (!hasLeaderLabel(otherLabels)) continue
+          other.labels = withoutLeaderLabel(otherLabels)
           this.setMetadataWriteGuard(other)
           this.sendEvent({
             type: 'labels_changed',

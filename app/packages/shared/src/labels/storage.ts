@@ -20,14 +20,30 @@ import { debug } from '../utils/debug.ts';
 const LABEL_CONFIG_DIR = 'labels';
 const LABEL_CONFIG_FILE = 'labels/config.json';
 
-const LEGACY_DEFAULT_ROOT_LABEL_IDS = new Set(['development', 'content']);
+const DEFAULT_LABEL_ROOT_IDS = new Set(['development', 'content', 'priority', 'project', 'identity']);
+
+type LabelPatch = Omit<Partial<LabelConfig>, 'children'>;
+
+const DEFAULT_LABEL_PATCHES: Record<string, LabelPatch> = {
+  development: { name: '开发', color: { light: '#3B82F6', dark: '#60A5FA' } },
+  code: { name: '代码', color: { light: '#4F46E5', dark: '#818CF8' }, kind: 'identity' },
+  bug: { name: '测试', color: { light: '#0EA5E9', dark: '#38BDF8' }, kind: 'identity' },
+  automation: { name: '自动化', color: { light: '#06B6D4', dark: '#22D3EE' } },
+  content: { name: '内容', color: { light: '#8B5CF6', dark: '#A78BFA' } },
+  writing: { name: '上下文', color: { light: '#7C3AED', dark: '#C4B5FD' }, kind: 'identity' },
+  research: { name: '审查', color: { light: '#A855F7', dark: '#C084FC' }, kind: 'identity', systemPromptPreset: '负责检查风险、回归和验收证据。' },
+  design: { name: '设计', color: { light: '#D946EF', dark: '#E879F9' }, kind: 'identity' },
+  priority: { name: '队长', color: { light: '#F59E0B', dark: '#FBBF24' }, kind: 'identity', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
+  project: { name: '项目', color: 'foreground/50', valueType: 'string' },
+};
 
 /**
  * Get default label configuration.
- * Provides a starter set of labels organized into two complementary color families:
- * - Development (blue family): Code, Bug, Automation
- * - Content (purple family): Writing, Research, Design
- * Plus flat valued labels: Priority (number), Project (string)
+ * Provides a starter set of labels organized into Craft's original two families.
+ * Team identities reuse these existing labels instead of adding a second identity tree:
+ * - Priority slot becomes 队长
+ * - Code / Design / Research / Bug / Writing become role identities
+ * - Project remains a regular value label; stable team sequence is derived, not written here
  *
  * Children use hue-shifted shades of their parent color to show visual hierarchy.
  */
@@ -35,21 +51,6 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
   return {
     version: 1,
     labels: [
-      // 身份标签（团队编排，docs/33 §1.2）：kind='identity' 的标签即团队身份；
-      // 队长 id 必须为 'leader'，由 SessionManager.setSessionLabels 保证队长唯一性。
-      {
-        id: 'identity',
-        name: '身份',
-        color: { light: '#F59E0B', dark: '#FBBF24' },
-        children: [
-          { id: 'leader', name: '队长', color: { light: '#F59E0B', dark: '#FBBF24' }, kind: 'identity', systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。' },
-          { id: 'role-code', name: '代码', color: { light: '#4F46E5', dark: '#818CF8' }, kind: 'identity' },
-          { id: 'role-design', name: '设计', color: { light: '#D946EF', dark: '#E879F9' }, kind: 'identity' },
-          { id: 'role-review', name: '审查', color: { light: '#0EA5E9', dark: '#38BDF8' }, kind: 'identity', systemPromptPreset: '负责检查风险、回归和验收证据。' },
-          { id: 'role-test', name: '测试', color: { light: '#06B6D4', dark: '#22D3EE' }, kind: 'identity' },
-          { id: 'role-context', name: '上下文', color: { light: '#A855F7', dark: '#C084FC' }, kind: 'identity' },
-        ],
-      },
       {
         id: 'development',
         name: '开发',
@@ -59,11 +60,13 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
             id: 'code',
             name: '代码',
             color: { light: '#4F46E5', dark: '#818CF8' }, // indigo shift
+            kind: 'identity',
           },
           {
             id: 'bug',
-            name: '缺陷',
+            name: '测试',
             color: { light: '#0EA5E9', dark: '#38BDF8' }, // sky shift
+            kind: 'identity',
           },
           {
             id: 'automation',
@@ -79,26 +82,31 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
         children: [
           {
             id: 'writing',
-            name: '写作',
+            name: '上下文',
             color: { light: '#7C3AED', dark: '#C4B5FD' }, // deeper violet
+            kind: 'identity',
           },
           {
             id: 'research',
-            name: '研究',
+            name: '审查',
             color: { light: '#A855F7', dark: '#C084FC' }, // lighter purple
+            kind: 'identity',
+            systemPromptPreset: '负责检查风险、回归和验收证据。',
           },
           {
             id: 'design',
             name: '设计',
             color: { light: '#D946EF', dark: '#E879F9' }, // fuchsia shift
+            kind: 'identity',
           },
         ],
       },
       {
         id: 'priority',
-        name: '优先级',
+        name: '队长',
         color: { light: '#F59E0B', dark: '#FBBF24' },
-        valueType: 'number',
+        kind: 'identity',
+        systemPromptPreset: '负责拆分任务、分派、汇总和验收，不绕过权限。',
       },
       {
         id: 'project',
@@ -110,30 +118,37 @@ export function getDefaultLabelConfig(): WorkspaceLabelConfig {
   };
 }
 
-function shouldBackfillIdentityLabels(config: WorkspaceLabelConfig): boolean {
-  const flat = flattenLabels(config.labels);
-  if (flat.some(label => label.kind === 'identity' || label.id === 'identity' || label.id === 'leader')) {
-    return false;
+function normalizeDefaultLabel(label: LabelConfig): LabelConfig {
+  const children = label.children?.map(normalizeDefaultLabel);
+  const patch = DEFAULT_LABEL_PATCHES[label.id];
+  if (!patch) {
+    return children ? { ...label, children } : label;
   }
-  return config.labels.some(label => LEGACY_DEFAULT_ROOT_LABEL_IDS.has(label.id));
+
+  const next: LabelConfig = { ...label, ...patch };
+  if (children) {
+    next.children = children;
+  }
+  if (label.id === 'priority') {
+    delete next.valueType;
+  }
+  return next;
 }
 
-function withIdentityLabelDefaults(config: WorkspaceLabelConfig): { config: WorkspaceLabelConfig; migrated: boolean } {
-  if (!shouldBackfillIdentityLabels(config)) {
+function normalizeDefaultLabelConfig(config: WorkspaceLabelConfig): { config: WorkspaceLabelConfig; migrated: boolean } {
+  const looksLikeDefaultSeed = config.labels.some(label => DEFAULT_LABEL_ROOT_IDS.has(label.id));
+  if (!looksLikeDefaultSeed) {
     return { config, migrated: false };
   }
 
-  const identityGroup = getDefaultLabelConfig().labels.find(label => label.id === 'identity');
-  if (!identityGroup) {
-    return { config, migrated: false };
-  }
-
+  // Previous migration added a separate "身份" root group. Fold identities back into Craft's original labels.
+  const labels = config.labels
+    .filter(label => label.id !== 'identity')
+    .map(normalizeDefaultLabel);
+  const normalized = { ...config, labels };
   return {
-    config: {
-      ...config,
-      labels: [identityGroup, ...config.labels],
-    },
-    migrated: true,
+    config: normalized,
+    migrated: JSON.stringify(normalized.labels) !== JSON.stringify(config.labels),
   };
 }
 
@@ -160,9 +175,9 @@ export function loadLabelConfig(workspaceRootPath: string): WorkspaceLabelConfig
     // Auto-migrate old Tailwind class colors (e.g., "text-accent") to new EntityColor format.
     // If migration occurs, write the updated config back to disk.
     let migrated = migrateLabelColors(config);
-    const identityBackfill = withIdentityLabelDefaults(config);
-    if (identityBackfill.migrated) {
-      config = identityBackfill.config;
+    const normalizedDefaults = normalizeDefaultLabelConfig(config);
+    if (normalizedDefaults.migrated) {
+      config = normalizedDefaults.config;
       migrated = true;
     }
     if (migrated) {

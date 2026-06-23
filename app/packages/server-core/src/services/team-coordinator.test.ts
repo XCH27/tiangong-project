@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import { USER_ACTOR, decideAuto, type ActorRef, type SessionEvent, type TeamRulesV1, type TeamRulesLoadResult, type TeamIdentityLabel, type AutoDecisionRequest, type AutoDecisionResult, type AutoDecisionSettings, type ManagerAutoDecisionRecord } from '@craft-agent/shared/protocol'
-import { LEADER_LABEL_ID, extractLabelId } from '@craft-agent/shared/labels'
+import { LEADER_LABEL_ID, hasLeaderLabel, withoutLeaderLabel } from '@craft-agent/shared/labels'
 import { TeamCoordinator, MemoryTeamStore, type TeamRuntime, type TeamRulesStore, type TeamSessionInfo, type TeamDecisionPort } from './team-coordinator'
 
 const AGENT_ACTOR: ActorRef = { kind: 'agent', agentId: 'agent-x', role: 'code', runtime: 'api' }
@@ -17,9 +17,9 @@ const IDENTITY_CATALOG: TeamIdentityLabel[] = [
   { id: LEADER_LABEL_ID, displayName: '队长' },
   { id: 'code', displayName: '代码' },
   { id: 'design', displayName: '设计' },
-  { id: 'review', displayName: '审查' },
-  { id: 'test', displayName: '测试' },
-  { id: 'context', displayName: '上下文' },
+  { id: 'research', displayName: '审查' },
+  { id: 'bug', displayName: '测试' },
+  { id: 'writing', displayName: '上下文' },
 ]
 
 class MemoryRulesStore implements TeamRulesStore {
@@ -56,14 +56,14 @@ function makeRuntime(initial: TeamSessionInfo[]) {
       if (s) s.sessionStatus = statusId
     },
     getSessionLabels: sessionId => sessions.get(sessionId)?.labels ?? [],
-    // 镜像 SessionManager.setSessionLabels 的队长唯一性：加 leader 标签时剔除其它会话的 leader。
+    // 镜像 SessionManager.setSessionLabels 的队长唯一性：加裸 priority（显示为「队长」）时剔除其它会话的队长。
     setSessionLabels: async (sessionId, labels) => {
       const target = sessions.get(sessionId)
       if (!target) return
-      if (labels.some(label => extractLabelId(label) === LEADER_LABEL_ID)) {
+      if (hasLeaderLabel(labels)) {
         for (const other of sessions.values()) {
           if (other.id === sessionId) continue
-          other.labels = (other.labels ?? []).filter(label => extractLabelId(label) !== LEADER_LABEL_ID)
+          other.labels = withoutLeaderLabel(other.labels ?? [])
         }
       }
       target.labels = labels
@@ -119,22 +119,22 @@ function seedRules(rules: MemoryRulesStore, memberSessionIds: string[], leaderSe
 const member = (id: string, createdAt: number, status = 'todo'): TeamSessionInfo => ({ id, createdAt, sessionStatus: status })
 
 describe('TeamCoordinator — 承重墙', () => {
-  it('promoteTeamLeader：建团队、加成员、设队长、打 leader 标签、发 team_leader_changed', async () => {
+  it('promoteTeamLeader：建团队、加成员、设队长、打队长标签、发 team_leader_changed', async () => {
     const { coordinator, rules, sessions, events } = make([member('m1', 100)])
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm1' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     expect(rules.rules?.leaderSessionId).toBe('m1')
     expect(rules.rules?.memberSessionIds).toContain('m1')
     // 身份真相在 session labels，不在 team rules。
-    expect(sessions.get('m1')?.labels).toContain('leader')
+    expect(sessions.get('m1')?.labels).toContain(LEADER_LABEL_ID)
     expect(events.some(e => e.type === 'team_leader_changed')).toBe(true)
   })
 
-  it('promoteTeamLeader 换队长：原子移除旧队长 leader 标签（队长唯一性）', async () => {
+  it('promoteTeamLeader 换队长：原子移除旧队长标签（队长唯一性）', async () => {
     const { coordinator, rules, sessions } = make([member('m1', 100), member('m2', 200)])
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm1' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm2' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
-    expect(sessions.get('m1')?.labels).not.toContain('leader')
-    expect(sessions.get('m2')?.labels).toContain('leader')
+    expect(sessions.get('m1')?.labels).not.toContain(LEADER_LABEL_ID)
+    expect(sessions.get('m2')?.labels).toContain(LEADER_LABEL_ID)
     expect(rules.rules?.leaderSessionId).toBe('m2')
   })
 
@@ -263,6 +263,18 @@ describe('TeamCoordinator — 承重墙', () => {
     expect(projection?.teamConversationSessionId).toBe('team-conv') // 群聊入口可派生
     expect(rules.rules).not.toBeNull() // 规则文件已落地（懒初始化）
     expect(projection?.members.map(m => m.sessionId).sort()).toEqual(['m1', 'm2'])
+  })
+
+  it('旧 Priority 数值标签不会误判为队长', async () => {
+    const { coordinator, rules, sessions } = make([member('m1', 100), member('m2', 200)])
+    expect(rules.rules).toBeNull()
+    sessions.get('m1')!.labels = ['priority::3']
+    sessions.get('m2')!.labels = ['design']
+
+    const projection = await coordinator.getProjection()
+
+    expect(projection).toBeNull()
+    expect(rules.rules).toBeNull()
   })
 
   it('全新 workspace（无规则文件）+ 无队长：getProjection 返回 null，不无端建团队', async () => {
