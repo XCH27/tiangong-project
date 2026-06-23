@@ -17,8 +17,7 @@
   - ⚠️ **复审备注（best-effort，非标准 ACP）**：核心 ACP 规范并未标准化模型切换；`session/set_model` 与 `configOptions/session/set_config_option` 是对不同 runtime 的**推测性扩展**。当前实现对不支持的 runtime **安全降级**为“模型由 CLI 管理”（`canSwitch=false`），不会误发命令——这是正确的兜底。真实 Grok/Hermes/OpenCode 是否真支持这些入口，必须 opt-in smoke 实机确认；确认前不要把“可切换模型”当作已支持能力对用户承诺。
 - **会话级选择持久化**：`StoredSession` / `SessionHeader` / `SESSION_PERSISTENT_FIELDS` 已显式加入 `cliRuntimeId` / `cliRuntimeModelId`，重启后应保留所选 runtime/model；`progress-cli-runtime-persistence.test.ts` 覆盖 JSONL round-trip。
 - **发送路由**：`SessionManager.sendMessage` 在 `cliRuntimeId` 时走 `runCliRuntimeTurn` → ACP，归一化事件复用 craft `text_delta`/`text_complete`/`complete` 管线（不重造）。
-- **聊天选择器**：复用原输入框模型选择器，增加 `本机 CLI` 分组；选择 API 模型会清空 `cliRuntimeId`；选择 CLI Runtime 后显示其动态模型或“模型由 CLI 管理”。
-- **顶部快捷入口**：工作区选择器后方新增同风格 `CLI` pill，下拉只做本会话 API/CLI runtime 快速切换和进入设置，不承载复杂模型状态。
+- **聊天选择器 + 顶部入口** ⚠️ **当前实现错乱，需按 `docs/36` 重做（不算已落地）**：commit `2756b7dc` 把运行方式和模型两条轴拍平进一个下拉（出现 `API 模型`✓ 与 `Opus 4.8`✓ 双勾），并在顶部栏和输入框各放了一个运行方式选择器（重复）。正确交互见 `docs/36`：删顶部重复入口、下拉分"运行方式/模型"两段各一个勾、底部 chip 显示完整路径。这一块**只能在本机起 Electron 视觉验收**，typecheck 通过不代表对。
 - **设置页入口**：Settings 增加 `本机 CLI` 页面，显示 runtime 列表、启停、测试、命令摘要，并支持 Custom runtime 新增/编辑/删除（displayName/command/args/env）。
 - **附件硬拒绝**（docs/25）：选了 runtime + 带附件 → 抛中文可操作错误，不启动进程。
 - **进程清理**：cancel（session/cancel 取消当前轮）、deleteSession、cleanup(disposeAll) 都清理子进程。

@@ -14,7 +14,8 @@
 
 - 团队编排后端 ✅ 已落主线：team rules、TeamCoordinator、事件持久化、投递/运行分离、收件箱、Agent session 工具；**身份双写已收敛到 craft 原标签系统**（`LabelConfig` 扩展 + session labels 派生 + `setSessionLabels` 队长唯一性，见 `docs/33` §0）。
 - 任务进度 Progress ✅ 已落主线（后端）：`protocol/progress.ts` + `set_session_progress` 工具 + `SessionManager.setSessionProgress` + RPC + JSONL 持久化字段 + round-trip 回归，见 `docs/35`。剩余：进度卡 UI、团队 rollup UI。
-- CLI Runtime + ACP 发送 ✅ 已落主线：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 模型选择器 CLI 分组 + 顶部 CLI 快捷入口 + 设置页（含 Custom runtime 表单）。见 `docs/23`/`docs/24`。剩余：usage/额度采样、真实 CLI smoke、reasoning effort 实机确认。
+- CLI Runtime + ACP 发送 ✅ 已落主线（后端）：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 设置页（CLI 列表/Custom 表单可用）。见 `docs/23`/`docs/24`。
+- ⚠️ **CLI / 模型选择器 UI 错乱，需按 `docs/36` 重做（不算已落地）**：commit `2756b7dc` 顶部栏+输入框各放一个运行方式选择器（重复），下拉把"运行方式/模型"两轴拍平成双勾。`docs/36` 给了正确交互。**只能本机起 Electron 视觉验收**。
 - 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + **设置页（自动决策开关/L2 规则增删 + 记忆查看/增删，真接 RPC）**。见 `docs/17 §4`。剩余：记忆作决策依据注入、全局专栏/悬浮入口 UI。
 - 分层记忆 ✅ 已落主线（后端 + 设置页）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 管理 Agent 设置页内查看/增删。见 `docs/05`。剩余：全局共享分区、语义检索、衰减/归档。
 - 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：① 管理 Agent 悬浮入口（右下角唤起，跨页常驻；参考 Multica）② 团队群聊置顶特殊会话项 ③ Token 环点击的中文额度/上下文详情弹层（需先补 usage 后端）④ Progress 进度卡。
