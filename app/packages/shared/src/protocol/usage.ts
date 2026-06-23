@@ -101,17 +101,25 @@ export function unavailablePlanUsage(reason: string): PlanUsage {
 export interface ContextSegmentEstimateInput {
   /** 真实总上下文占用（来自 SDK，real）。分段按它归一，保证和=总数。 */
   total: number
-  /** 系统提示 + 规则的估算 tokens。 */
+  /** 系统提示估算 tokens。 */
   systemTokens: number
   /** 工具定义（含 MCP/技能/子代理工具）估算 tokens；拿不到传 0。 */
   toolTokens?: number
+  /** 规则/权限/项目约束估算 tokens；拿不到传 0。 */
+  rulesTokens?: number
+  /** Skill 指令/说明估算 tokens；拿不到传 0。 */
+  skillTokens?: number
+  /** MCP/API source 工具和指南估算 tokens；拿不到传 0。 */
+  mcpTokens?: number
+  /** 子代理定义/Task 工具上下文估算 tokens；拿不到传 0。 */
+  subagentTokens?: number
   /** 对话消息估算 tokens。 */
   conversationTokens: number
 }
 
 /**
  * 估算上下文分段（Cursor 式按类目拆分）。craft 不像 Cursor 那样给每段打 token 标签，
- * 所以这里用 estimateTokens 对可拿到的几块（系统提示+规则 / 工具 / 对话）做**估算**，
+ * 所以这里用 estimateTokens 对可拿到的几块（系统提示 / 规则 / 工具 / skill / MCP / 子代理 / 对话）做**估算**，
  * 余下归入 `other`，并整体归一到真实总数 `total`，保证分段之和=真实总占用。
  * 每段标 `estimated`（诚实分级，docs/16）——不谎称是精确 tokenizer 计数。
  */
@@ -120,26 +128,42 @@ export function estimateContextSegments(input: ContextSegmentEstimateInput): Con
   if (total === 0) return []
   let system = Math.max(0, Math.round(input.systemTokens))
   let tools = Math.max(0, Math.round(input.toolTokens ?? 0))
+  let rules = Math.max(0, Math.round(input.rulesTokens ?? 0))
+  let skills = Math.max(0, Math.round(input.skillTokens ?? 0))
+  let mcp = Math.max(0, Math.round(input.mcpTokens ?? 0))
+  let subagents = Math.max(0, Math.round(input.subagentTokens ?? 0))
   let conversation = Math.max(0, Math.round(input.conversationTokens))
-  const accounted = system + tools + conversation
+  const accounted = system + tools + rules + skills + mcp + subagents + conversation
 
   // 估算可能超过真实总数（估算偏高）→ 按比例缩回，余量给 other=0。
   if (accounted > total && accounted > 0) {
     const scale = total / accounted
     system = Math.round(system * scale)
     tools = Math.round(tools * scale)
-    conversation = Math.max(0, total - system - tools)
+    rules = Math.round(rules * scale)
+    skills = Math.round(skills * scale)
+    mcp = Math.round(mcp * scale)
+    subagents = Math.round(subagents * scale)
+    conversation = Math.max(0, total - system - tools - rules - skills - mcp - subagents)
     return ([
-      { id: 'system' as const, label: '系统提示与规则', tokens: system, source: 'estimated' as const },
+      { id: 'system' as const, label: '系统提示', tokens: system, source: 'estimated' as const },
       { id: 'tools' as const, label: '工具定义', tokens: tools, source: 'estimated' as const },
+      { id: 'rules' as const, label: '规则与权限', tokens: rules, source: 'estimated' as const },
+      { id: 'skills' as const, label: 'Skills', tokens: skills, source: 'estimated' as const },
+      { id: 'mcp' as const, label: 'MCP / API', tokens: mcp, source: 'estimated' as const },
+      { id: 'subagents' as const, label: '子代理', tokens: subagents, source: 'estimated' as const },
       { id: 'conversation' as const, label: '对话', tokens: conversation, source: 'estimated' as const },
     ]).filter(seg => seg.tokens > 0)
   }
 
   const other = Math.max(0, total - accounted)
   return ([
-    { id: 'system' as const, label: '系统提示与规则', tokens: system, source: 'estimated' as const },
+    { id: 'system' as const, label: '系统提示', tokens: system, source: 'estimated' as const },
     { id: 'tools' as const, label: '工具定义', tokens: tools, source: 'estimated' as const },
+    { id: 'rules' as const, label: '规则与权限', tokens: rules, source: 'estimated' as const },
+    { id: 'skills' as const, label: 'Skills', tokens: skills, source: 'estimated' as const },
+    { id: 'mcp' as const, label: 'MCP / API', tokens: mcp, source: 'estimated' as const },
+    { id: 'subagents' as const, label: '子代理', tokens: subagents, source: 'estimated' as const },
     { id: 'conversation' as const, label: '对话', tokens: conversation, source: 'estimated' as const },
     { id: 'other' as const, label: '工具/技能/其它', tokens: other, source: 'estimated' as const },
   ]).filter(seg => seg.tokens > 0)

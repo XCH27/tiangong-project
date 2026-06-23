@@ -968,6 +968,108 @@ interface ManagedSession {
   }
 }
 
+interface PromptSectionTokenEstimate {
+  systemTokens: number
+  toolTokens: number
+  rulesTokens: number
+  skillTokens: number
+  mcpTokens: number
+  subagentTokens: number
+}
+
+function estimatePromptSections(prompt: string): PromptSectionTokenEstimate {
+  const result: PromptSectionTokenEstimate = {
+    systemTokens: 0,
+    toolTokens: 0,
+    rulesTokens: 0,
+    skillTokens: 0,
+    mcpTokens: 0,
+    subagentTokens: 0,
+  }
+
+  const sections = prompt.split(/\n(?=##\s+)/g)
+  for (const section of sections) {
+    const heading = section.match(/^##\s+(.+)$/m)?.[1]?.toLowerCase() ?? ''
+    const tokens = estimateTokens(section)
+    if (/\bskill/.test(heading)) {
+      result.skillTokens += tokens
+    } else if (/mcp|external sources|source management/.test(heading)) {
+      result.mcpTokens += tokens
+    } else if (/available tools|browser tools|llm tool|document tools|tool metadata|craft agent cli/.test(heading)) {
+      result.toolTokens += tokens
+    } else if (/guidelines|permission|rules|git conventions|debug mode/.test(heading)) {
+      result.rulesTokens += tokens
+    } else if (/subagent|task/.test(heading)) {
+      result.subagentTokens += tokens
+    } else {
+      result.systemTokens += tokens
+    }
+  }
+
+  return result
+}
+
+function estimateSourceContextTokens(sources: readonly LoadedSource[]): number {
+  return sources.reduce((sum, source) => {
+    const config = source.config
+    const summary = [
+      config.name,
+      config.type,
+      config.provider,
+      config.tagline,
+      config.mcp?.transport,
+      config.mcp?.url,
+      config.mcp?.command,
+      config.api?.baseUrl,
+      config.api?.authType,
+      source.guide?.scope,
+      source.guide?.guidelines,
+      source.guide?.apiNotes,
+    ].filter(Boolean).join('\n')
+    return sum + estimateTokens(summary)
+  }, 0)
+}
+
+function estimateMentionedSkillTokens(messages: readonly Message[], workspaceRootPath: string, workingDirectory?: string): number {
+  const slugs = new Set<string>()
+  for (const message of messages) {
+    for (const badge of message.badges ?? []) {
+      if (badge.type !== 'skill') continue
+      const slug = badge.rawText.replace(/^@+/, '').trim()
+      if (slug) slugs.add(slug)
+    }
+  }
+
+  let total = 0
+  for (const slug of slugs) {
+    try {
+      const skill = loadSkillBySlug(workspaceRootPath, slug, workingDirectory)
+      if (skill) {
+        total += estimateTokens(`${skill.metadata.name}\n${skill.metadata.description}\n${skill.content}`)
+      }
+    } catch {
+      // Usage estimates must never block the usage popup.
+    }
+  }
+  return total
+}
+
+function estimateSubagentContextTokens(messages: readonly Message[]): number {
+  const subagentMessages = messages.filter(message =>
+    message.toolName === 'Task' ||
+    message.toolName === 'spawn_session' ||
+    message.toolName === 'mcp__session__spawn_session' ||
+    Boolean(message.parentToolUseId)
+  )
+  if (subagentMessages.length === 0) return 0
+  return estimateTokens(subagentMessages.map(message => [
+    message.toolName,
+    message.toolIntent,
+    message.toolInput ? JSON.stringify(message.toolInput) : '',
+    message.toolResult ?? '',
+  ].filter(Boolean).join('\n')).join('\n\n'))
+}
+
 const PI_SDK_MESSAGE_ID_CACHE_LIMIT = 256
 
 export interface AutoRetryPendingHost {
@@ -7137,10 +7239,22 @@ export class SessionManager implements ISessionManager {
           managed.systemPromptPreset,
           undefined,
         )
+        const promptSections = estimatePromptSections(systemPromptText)
+        const enabledSources = getSourcesBySlugs(managed.workspace.rootPath, managed.enabledSourceSlugs ?? [])
+          .filter(isSourceUsable)
         const conversationText = managed.messages.map(message => message.content ?? '').join('\n')
         segments = estimateContextSegments({
           total: usedTokens,
-          systemTokens: estimateTokens(systemPromptText),
+          systemTokens: promptSections.systemTokens,
+          toolTokens: promptSections.toolTokens,
+          rulesTokens: promptSections.rulesTokens,
+          skillTokens: promptSections.skillTokens + estimateMentionedSkillTokens(
+            managed.messages,
+            managed.workspace.rootPath,
+            managed.workingDirectory,
+          ),
+          mcpTokens: promptSections.mcpTokens + estimateSourceContextTokens(enabledSources),
+          subagentTokens: promptSections.subagentTokens + estimateSubagentContextTokens(managed.messages),
           conversationTokens: estimateTokens(conversationText),
         })
       } catch {

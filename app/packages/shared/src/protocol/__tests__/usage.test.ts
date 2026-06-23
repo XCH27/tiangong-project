@@ -36,6 +36,25 @@ describe('usage 计算（docs/16 诚实分级）', () => {
     expect(segs.find(s => s.id === 'other')?.tokens).toBe(500) // 余量进 other
   })
 
+  test('分段估算：拆出规则、Skills、MCP、子代理，不再折进 other', () => {
+    const segs = estimateContextSegments({
+      total: 1000,
+      systemTokens: 100,
+      rulesTokens: 50,
+      toolTokens: 80,
+      skillTokens: 70,
+      mcpTokens: 60,
+      subagentTokens: 40,
+      conversationTokens: 200,
+    })
+    expect(segs.map(s => s.id)).toEqual(['system', 'tools', 'rules', 'skills', 'mcp', 'subagents', 'conversation', 'other'])
+    expect(segs.find(s => s.id === 'rules')?.tokens).toBe(50)
+    expect(segs.find(s => s.id === 'skills')?.tokens).toBe(70)
+    expect(segs.find(s => s.id === 'mcp')?.tokens).toBe(60)
+    expect(segs.find(s => s.id === 'subagents')?.tokens).toBe(40)
+    expect(segs.find(s => s.id === 'other')?.tokens).toBe(400)
+  })
+
   test('分段估算：估算偏高时按比例缩回，不超过真实总数', () => {
     const segs = estimateContextSegments({ total: 100, systemTokens: 300, conversationTokens: 300 })
     const sum = segs.reduce((acc, s) => acc + s.tokens, 0)
