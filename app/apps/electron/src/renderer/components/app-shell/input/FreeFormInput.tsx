@@ -196,6 +196,31 @@ function formatUsageTokenPair(context: SessionUsageView['context']): string {
   return `${used} / ${formatTokenCount(context.contextWindow)}`
 }
 
+/** 上下文分段配色（Cursor 式多色条），按 ContextSegmentId。 */
+const USAGE_SEGMENT_COLOR: Record<string, string> = {
+  system: 'bg-foreground/40',
+  tools: 'bg-violet-500',
+  rules: 'bg-emerald-500',
+  skills: 'bg-amber-500',
+  mcp: 'bg-pink-400',
+  subagents: 'bg-sky-500',
+  conversation: 'bg-slate-400',
+  other: 'bg-foreground/20',
+}
+function usageSegmentColor(id: string): string {
+  return USAGE_SEGMENT_COLOR[id] ?? 'bg-foreground/25'
+}
+
+/** 额度窗口重置时间（epoch ms → 本地短格式）。拿不到则空串。 */
+function formatPlanReset(resetsAt?: number): string {
+  if (!resetsAt) return ''
+  try {
+    return new Date(resetsAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
 
 /** Platform-specific modifier key for keyboard shortcuts */
 const cmdKey = isMac ? '⌘' : 'Ctrl'
@@ -2635,50 +2660,88 @@ export function FreeFormInput({
                     </span>
                   </button>
                 </PopoverTrigger>
-                <PopoverContent side="top" align="end" sideOffset={8} className="w-[300px] rounded-[8px] p-3">
+                <PopoverContent side="top" align="end" sideOffset={8} className="w-[340px] rounded-[8px] p-3">
                   <div className="space-y-3 text-sm">
-                    <div>
-                      <div className="font-medium">Token 用量</div>
-                      <div className="text-xs text-muted-foreground">上下文占用和套餐额度分开显示</div>
-                    </div>
                     {sessionUsageLoading ? (
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <Spinner className="h-3.5 w-3.5" />
                         正在读取用量…
                       </div>
                     ) : sessionUsageError ? (
-                      <div className="text-xs text-destructive">
-                        读取失败：{sessionUsageError}
-                      </div>
+                      <div className="text-xs text-destructive">读取失败：{sessionUsageError}</div>
                     ) : sessionUsage ? (
                       <>
-                        <div className="rounded-[6px] border border-border/60 p-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs font-medium text-muted-foreground">上下文占用</span>
-                            <span className="text-xs">{formatUsagePercent(sessionUsage.context.percentFull)}</span>
+                        {/* 上下文用量（Cursor 式）：百分比 + used/window + 多色分段条 + 每段明细。 */}
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{t('usage.contextTitle')}</span>
+                            {sessionUsage.context.segments.some(s => s.source === 'estimated') && (
+                              <span className="text-[10px] rounded px-1 py-0.5 bg-foreground/[0.06] text-muted-foreground">{t('usage.estimated')}</span>
+                            )}
                           </div>
-                          <div className="mt-1 text-sm">{formatUsageTokenPair(sessionUsage.context)}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {sessionUsage.modelLabel} · {formatUsageSource(sessionUsage.context.usedSource)}
+                          <div className="mt-1 flex items-center justify-between gap-3">
+                            <span className="text-xs text-muted-foreground">
+                              {sessionUsage.context.percentFull == null
+                                ? '由 CLI 管理'
+                                : `${formatUsagePercent(sessionUsage.context.percentFull)} ${t('usage.full')}`}
+                            </span>
+                            <span className="text-xs tabular-nums text-muted-foreground">
+                              {sessionUsage.context.contextWindow == null
+                                ? formatUsageTokenPair(sessionUsage.context)
+                                : `~${formatUsageTokenPair(sessionUsage.context)} Tokens`}
+                            </span>
                           </div>
-                        </div>
-                        <div className="rounded-[6px] border border-border/60 p-2">
-                          <div className="text-xs font-medium text-muted-foreground">套餐额度</div>
-                          {sessionUsage.plan.available && sessionUsage.plan.windows.length > 0 ? (
-                            <div className="mt-1 space-y-1">
-                              {sessionUsage.plan.windows.map(window => (
-                                <div key={window.id} className="flex items-center justify-between gap-3 text-xs">
-                                  <span>{window.label}</span>
-                                  <span>{formatUsagePercent(window.percentUsed)}</span>
+                          {sessionUsage.context.segments.length > 0 && (() => {
+                            const segTotal = sessionUsage.context.segments.reduce((sum, s) => sum + s.tokens, 0) || 1
+                            return (
+                              <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.08]">
+                                {sessionUsage.context.segments.map(seg => (
+                                  <div key={seg.id} className={cn('h-full', usageSegmentColor(seg.id))} style={{ width: `${(seg.tokens / segTotal) * 100}%` }} />
+                                ))}
+                              </div>
+                            )
+                          })()}
+                          {sessionUsage.context.segments.length > 0 ? (
+                            <div className="mt-2 space-y-1">
+                              {sessionUsage.context.segments.map(seg => (
+                                <div key={seg.id} className="flex items-center justify-between gap-3 text-xs">
+                                  <span className="flex items-center gap-1.5 min-w-0">
+                                    <span className={cn('h-2 w-2 rounded-[2px] shrink-0', usageSegmentColor(seg.id))} />
+                                    <span className="truncate text-foreground/70">{seg.label}</span>
+                                  </span>
+                                  <span className="tabular-nums text-muted-foreground">{formatTokenCount(seg.tokens)}</span>
                                 </div>
                               ))}
                             </div>
                           ) : (
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {sessionUsage.plan.unavailableReason ?? '当前 provider 未暴露订阅额度'}
+                              {sessionUsage.modelLabel} · {formatUsageSource(sessionUsage.context.usedSource)}
                             </div>
                           )}
                         </div>
+
+                        {/* 套餐额度（Claude 式）：仅连接订阅会员、有额度窗口时显示。无数据则整段不出现，不编造。 */}
+                        {sessionUsage.plan.available && sessionUsage.plan.windows.length > 0 && (
+                          <div className="border-t border-border/50 pt-2.5">
+                            <div className="font-medium mb-1.5">{t('usage.planTitle')}</div>
+                            <div className="space-y-2">
+                              {sessionUsage.plan.windows.map(window => (
+                                <div key={window.id}>
+                                  <div className="flex items-center justify-between gap-3 text-xs">
+                                    <span className="min-w-0 truncate">{window.label}</span>
+                                    <span className="flex items-center gap-2 shrink-0 text-muted-foreground">
+                                      {window.resetsAt ? <span>{t('usage.resets')} {formatPlanReset(window.resetsAt)}</span> : null}
+                                      <span className="tabular-nums text-foreground/80">{formatUsagePercent(window.percentUsed)}</span>
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.08]">
+                                    <div className="h-full rounded-full bg-info" style={{ width: `${Math.round((window.percentUsed ?? 0) * 100)}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="text-xs text-muted-foreground">暂无用量数据</div>

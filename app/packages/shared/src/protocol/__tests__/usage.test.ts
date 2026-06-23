@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { computeContextUsage, unavailablePlanUsage, describeContextPercent } from '../usage'
+import { computeContextUsage, unavailablePlanUsage, describeContextPercent, estimateContextSegments } from '../usage'
 
 describe('usage 计算（docs/16 诚实分级）', () => {
   test('有窗口：percent 真实计算、window source=real', () => {
@@ -27,6 +27,24 @@ describe('usage 计算（docs/16 诚实分级）', () => {
     const c = computeContextUsage({ usedTokens: 100, contextWindow: 1000, segments: [{ id: 'conversation', label: '对话', tokens: 80, source: 'real' }, { id: 'tools', label: '工具定义', tokens: 20, source: 'estimated' }] })
     expect(c.segments.length).toBe(2)
     expect(c.segments.find(s => s.id === 'tools')?.source).toBe('estimated')
+  })
+
+  test('分段估算：归一到真实总数、各段标 estimated、含 other 余量', () => {
+    const segs = estimateContextSegments({ total: 1000, systemTokens: 300, conversationTokens: 200 })
+    expect(segs.reduce((sum, s) => sum + s.tokens, 0)).toBe(1000) // 和 = 真实总数
+    expect(segs.every(s => s.source === 'estimated')).toBe(true)
+    expect(segs.find(s => s.id === 'other')?.tokens).toBe(500) // 余量进 other
+  })
+
+  test('分段估算：估算偏高时按比例缩回，不超过真实总数', () => {
+    const segs = estimateContextSegments({ total: 100, systemTokens: 300, conversationTokens: 300 })
+    const sum = segs.reduce((acc, s) => acc + s.tokens, 0)
+    expect(sum).toBeLessThanOrEqual(100)
+    expect(segs.some(s => s.id === 'other')).toBe(false) // 没余量
+  })
+
+  test('分段估算：total=0 返回空（不画分段）', () => {
+    expect(estimateContextSegments({ total: 0, systemTokens: 10, conversationTokens: 10 })).toEqual([])
   })
 
   test('额度默认不可用：不编造数字', () => {

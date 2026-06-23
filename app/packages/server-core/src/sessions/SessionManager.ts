@@ -82,7 +82,7 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type ManagerAutoDecisionRecord, type SessionUsageView, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type ManagerAutoDecisionRecord, type SessionUsageView, type ContextSegment, estimateContextSegments, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { CliRuntimeHost } from '../services/acp/cli-runtime-host'
 import { getDefaultCliRuntimeCatalog } from '../services/cli-runtime-catalog'
 import { ManagerDecisionService, permissionAutoOutcome } from '../services/manager-decision-service'
@@ -92,7 +92,8 @@ import { getModelById, getModelDisplayName } from '@craft-agent/shared/config'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
-import { invalidateContextFileCache } from '@craft-agent/shared/prompts/system'
+import { invalidateContextFileCache, getSystemPrompt } from '@craft-agent/shared/prompts/system'
+import { estimateTokens } from '@craft-agent/shared/utils/large-response'
 import { getToolIconsDir, getMiniModel } from '@craft-agent/shared/config'
 import { getDefaultSummarizationModel } from '@craft-agent/shared/config/models'
 import type { SummarizeCallback } from '@craft-agent/shared/sources'
@@ -7093,12 +7094,40 @@ export class SessionManager implements ISessionManager {
     const modelLabel = isCli
       ? (getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId ?? '')?.displayName ?? '本机 CLI')
       : (managed.model ? getModelDisplayName(managed.model) : 'API 模型')
+
+    // 上下文分段（Cursor 式）：仅 API 运行方式且占用已知时估算。系统提示+规则用 getSystemPrompt
+    // 估算，对话用消息文本估算，余量归 other，整体归一到真实 contextTokens（标 estimated）。
+    // CLI 运行时上下文由 CLI 管理 → 不拆分。
+    let segments: ContextSegment[] | undefined
+    const usedTokens = usage?.contextTokens ?? 0
+    if (!isCli && usedTokens > 0) {
+      try {
+        const systemPromptText = getSystemPrompt(
+          undefined,
+          undefined,
+          managed.workspace.rootPath,
+          managed.workingDirectory ?? managed.workspace.rootPath,
+          managed.systemPromptPreset,
+          undefined,
+        )
+        const conversationText = managed.messages.map(message => message.content ?? '').join('\n')
+        segments = estimateContextSegments({
+          total: usedTokens,
+          systemTokens: estimateTokens(systemPromptText),
+          conversationTokens: estimateTokens(conversationText),
+        })
+      } catch {
+        segments = undefined
+      }
+    }
+
     return buildSessionUsageView({
       sessionId,
       runtime: isCli ? 'cli' : 'api',
       modelLabel,
-      usedTokens: usage?.contextTokens ?? 0,
+      usedTokens,
       contextWindow: window,
+      segments,
     })
   }
 

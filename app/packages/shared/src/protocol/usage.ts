@@ -98,6 +98,53 @@ export function unavailablePlanUsage(reason: string): PlanUsage {
   return { available: false, unavailableReason: reason, windows: [], source: 'unknown' }
 }
 
+export interface ContextSegmentEstimateInput {
+  /** 真实总上下文占用（来自 SDK，real）。分段按它归一，保证和=总数。 */
+  total: number
+  /** 系统提示 + 规则的估算 tokens。 */
+  systemTokens: number
+  /** 工具定义（含 MCP/技能/子代理工具）估算 tokens；拿不到传 0。 */
+  toolTokens?: number
+  /** 对话消息估算 tokens。 */
+  conversationTokens: number
+}
+
+/**
+ * 估算上下文分段（Cursor 式按类目拆分）。craft 不像 Cursor 那样给每段打 token 标签，
+ * 所以这里用 estimateTokens 对可拿到的几块（系统提示+规则 / 工具 / 对话）做**估算**，
+ * 余下归入 `other`，并整体归一到真实总数 `total`，保证分段之和=真实总占用。
+ * 每段标 `estimated`（诚实分级，docs/16）——不谎称是精确 tokenizer 计数。
+ */
+export function estimateContextSegments(input: ContextSegmentEstimateInput): ContextSegment[] {
+  const total = Math.max(0, Math.round(input.total))
+  if (total === 0) return []
+  let system = Math.max(0, Math.round(input.systemTokens))
+  let tools = Math.max(0, Math.round(input.toolTokens ?? 0))
+  let conversation = Math.max(0, Math.round(input.conversationTokens))
+  const accounted = system + tools + conversation
+
+  // 估算可能超过真实总数（估算偏高）→ 按比例缩回，余量给 other=0。
+  if (accounted > total && accounted > 0) {
+    const scale = total / accounted
+    system = Math.round(system * scale)
+    tools = Math.round(tools * scale)
+    conversation = Math.max(0, total - system - tools)
+    return ([
+      { id: 'system' as const, label: '系统提示与规则', tokens: system, source: 'estimated' as const },
+      { id: 'tools' as const, label: '工具定义', tokens: tools, source: 'estimated' as const },
+      { id: 'conversation' as const, label: '对话', tokens: conversation, source: 'estimated' as const },
+    ]).filter(seg => seg.tokens > 0)
+  }
+
+  const other = Math.max(0, total - accounted)
+  return ([
+    { id: 'system' as const, label: '系统提示与规则', tokens: system, source: 'estimated' as const },
+    { id: 'tools' as const, label: '工具定义', tokens: tools, source: 'estimated' as const },
+    { id: 'conversation' as const, label: '对话', tokens: conversation, source: 'estimated' as const },
+    { id: 'other' as const, label: '工具/技能/其它', tokens: other, source: 'estimated' as const },
+  ]).filter(seg => seg.tokens > 0)
+}
+
 /** 百分比 → 显示文案（如 "90% 满"）。窗口未知时给出诚实文案。 */
 export function describeContextPercent(context: ContextUsage): string {
   if (context.percentFull == null) return '上下文窗口由 CLI 管理（未知）'
