@@ -2184,8 +2184,6 @@ function AppShellContent({
           onWorkspaceCreated={() => onRefreshWorkspaces?.()}
           onWorkspaceRemoved={() => onRefreshWorkspaces?.()}
           activeSessionId={effectiveSessionId}
-          activeCliRuntimeId={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.cliRuntimeId ?? null : null}
-          cliRuntimeModelState={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.cliRuntimeModelState : undefined}
           onNewChat={() => handleNewChat()}
           onNewWindow={() => window.electronAPI.menuNewWindow()}
           onOpenSettings={onOpenSettings}

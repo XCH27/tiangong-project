@@ -1941,6 +1941,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             currentSessionStatus={session.sessionStatus || 'todo'}
             onSessionStatusChange={onSessionStatusChange}
             inputProps={{
+              sessionId: session.id,
               placeholder,
               disabled: isInputDisabled,
               isProcessing: session.isProcessing,
