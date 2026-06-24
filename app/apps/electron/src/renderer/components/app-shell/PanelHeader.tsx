@@ -82,6 +82,8 @@ export interface PanelHeaderProps {
   compactTitleMenu?: React.ReactNode
   /** Optional leading action rendered before the title (e.g., back button in compact mode) */
   leadingAction?: React.ReactNode
+  /** Optional action buttons rendered on the left, after the leading action and before the title */
+  leftActions?: React.ReactNode
   /** Optional center button rendered between title and right actions */
   centerButton?: React.ReactNode
   /** Optional action buttons rendered on the right */
@@ -107,6 +109,7 @@ export function PanelHeader({
   titleMenu,
   compactTitleMenu,
   leadingAction: explicitLeadingAction,
+  leftActions,
   centerButton,
   actions,
   rightSidebarButton,
@@ -191,7 +194,7 @@ export function PanelHeader({
   // Compact (mobile) layout puts the title in an absolute-positioned overlay.
   // The side insets are based on the actual number of control slots so a long
   // title truncates before the right-side action cluster instead of overlapping it.
-  const compactLeadingControlCount = leadingAction ? 1 : 0
+  const compactLeadingControlCount = [leadingAction, leftActions].filter(Boolean).length
   const compactTrailingControlCount = [centerButton, actions, rightSidebarButton].filter(Boolean).length
   const compactTitleInsetStyle = isCompactMode
     ? {
@@ -205,6 +208,11 @@ export function PanelHeader({
       {leadingAction && (
         <div className="titlebar-no-drag shrink-0 z-[1]">
           {leadingAction}
+        </div>
+      )}
+      {leftActions && (
+        <div className="titlebar-no-drag shrink-0 z-[1]">
+          {leftActions}
         </div>
       )}
       <div className="flex-1" />
@@ -237,6 +245,11 @@ export function PanelHeader({
       {leadingAction && (
         <div className="titlebar-no-drag shrink-0">
           {leadingAction}
+        </div>
+      )}
+      {leftActions && (
+        <div className="titlebar-no-drag shrink-0">
+          {leftActions}
         </div>
       )}
       <div className="flex-1 min-w-0 flex items-center select-none">

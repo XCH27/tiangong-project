@@ -80,7 +80,7 @@ import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
-import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type SessionUsageView, type TeamProjection } from '@craft-agent/shared/protocol'
+import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type TeamProjection } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
@@ -97,7 +97,6 @@ import { useWorkingDirectoryState } from './use-working-directory-state'
 import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
 import { CompactModelSelector } from './CompactModelSelector'
 import {
-  formatTokenCount,
   groupConnectionsByProvider,
   stripPiPrefixForDisplay,
 } from './model-picker-helpers'
@@ -114,115 +113,6 @@ function formatFollowUpChipText(text: string, fallback: string, maxLength = 50):
     ? `${normalized.slice(0, maxLength - 1).trimEnd()}…`
     : normalized
 }
-
-type ContextUsageStatus = {
-  isCompacting?: boolean
-  inputTokens?: number
-  contextWindow?: number
-}
-
-function getContextUsageRing(status: ContextUsageStatus | undefined, modelId: string) {
-  const limit = status?.contextWindow || getModelContextWindow(modelId)
-  const used = status?.inputTokens ?? 0
-  if (!limit || used <= 0) {
-    return {
-      percent: null,
-      label: '暂无上下文用量',
-      title: '暂无上下文用量',
-      usedLabel: '0',
-      limitLabel: limit ? formatTokenCount(limit) : '未知',
-    }
-  }
-
-  const percent = Math.min(99, Math.max(0, Math.round((used / limit) * 100)))
-  const usedLabel = formatTokenCount(used)
-  const limitLabel = formatTokenCount(limit)
-  return {
-    percent,
-    label: `${percent}%`,
-    title: `上下文用量 ${percent}% · ${usedLabel} / ${limitLabel}`,
-    usedLabel,
-    limitLabel,
-  }
-}
-
-function ContextUsageRing({
-  percent,
-  title,
-}: {
-  percent: number | null
-  title: string
-}) {
-  const clamped = percent ?? 0
-  const color = percent == null
-    ? 'color-mix(in oklab, var(--foreground) 18%, transparent)'
-    : percent >= 90
-      ? 'var(--destructive)'
-    : percent >= 70
-        ? 'var(--info)'
-        : 'var(--info)'
-
-  return (
-    <span
-      title={title}
-      aria-label={title}
-      className="relative h-3.5 w-3.5 shrink-0 rounded-full"
-      style={{
-        background: `conic-gradient(${color} ${clamped * 3.6}deg, color-mix(in oklab, var(--foreground) 14%, transparent) 0deg)`,
-      }}
-    >
-      <span className="absolute inset-[3px] rounded-full bg-background" />
-    </span>
-  )
-}
-
-function formatUsageSource(source: SessionUsageView['context']['usedSource']): string {
-  switch (source) {
-    case 'real':
-      return '真实'
-    case 'estimated':
-      return '估算'
-    default:
-      return '未知'
-  }
-}
-
-function formatUsagePercent(value: number | null | undefined): string {
-  if (value == null) return '未知'
-  return `${Math.round(value * 100)}%`
-}
-
-function formatUsageTokenPair(context: SessionUsageView['context']): string {
-  const used = formatTokenCount(context.usedTokens)
-  if (context.contextWindow == null) return `${used} / 由 CLI 管理`
-  return `${used} / ${formatTokenCount(context.contextWindow)}`
-}
-
-/** 上下文分段配色（Cursor 式多色条），按 ContextSegmentId。 */
-const USAGE_SEGMENT_COLOR: Record<string, string> = {
-  system: 'bg-foreground/40',
-  tools: 'bg-violet-500',
-  rules: 'bg-emerald-500',
-  skills: 'bg-amber-500',
-  mcp: 'bg-pink-400',
-  subagents: 'bg-sky-500',
-  conversation: 'bg-slate-400',
-  other: 'bg-foreground/20',
-}
-function usageSegmentColor(id: string): string {
-  return USAGE_SEGMENT_COLOR[id] ?? 'bg-foreground/25'
-}
-
-/** 额度窗口重置时间（epoch ms → 本地短格式）。拿不到则空串。 */
-function formatPlanReset(resetsAt?: number): string {
-  if (!resetsAt) return ''
-  try {
-    return new Date(resetsAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  } catch {
-    return ''
-  }
-}
-
 
 /** Platform-specific modifier key for keyboard shortcuts */
 const cmdKey = isMac ? '⌘' : 'Ctrl'
@@ -535,10 +425,6 @@ export function FreeFormInput({
     [activeCliRuntimeId, enabledCliRuntimes],
   )
   const apiConnectionUnavailable = connectionUnavailable && !activeCliRuntime
-  const [usagePopoverOpen, setUsagePopoverOpen] = React.useState(false)
-  const [sessionUsage, setSessionUsage] = React.useState<SessionUsageView | null>(null)
-  const [sessionUsageLoading, setSessionUsageLoading] = React.useState(false)
-  const [sessionUsageError, setSessionUsageError] = React.useState<string | null>(null)
 
   const cliRuntimeModels = React.useMemo(
     () => getCliRuntimeSelectableModels(cliRuntimeModelState),
@@ -554,37 +440,6 @@ export function FreeFormInput({
       ?? cliRuntimeModelState?.currentModelId
       ?? 'CLI 默认'
     : apiModelButtonDisplayName
-
-  const contextUsageRing = React.useMemo(
-    () => getContextUsageRing(contextStatus, currentModel),
-    [contextStatus, currentModel],
-  )
-
-  React.useEffect(() => {
-    if (!usagePopoverOpen || !sessionId) return
-
-    let cancelled = false
-    setSessionUsageLoading(true)
-    setSessionUsageError(null)
-    window.electronAPI.getSessionUsage(sessionId)
-      .then((usage) => {
-        if (!cancelled) setSessionUsage(usage)
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          console.error('[FreeFormInput] Failed to load session usage:', error)
-          setSessionUsageError(error instanceof Error ? error.message : String(error))
-          setSessionUsage(null)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSessionUsageLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [sessionId, usagePopoverOpen])
 
   // Group connections by provider type for hierarchical dropdown.
   // Each provider (Anthropic, Pi) can have multiple connections (API Key, OAuth, etc.)
@@ -2260,8 +2115,8 @@ export function FreeFormInput({
             <div className="flex-1" />
           )}
 
-          {/* Right side: Model + Send - never shrink so they're always visible */}
-          <div className="flex items-center shrink-0">
+          {/* Right side: runtime/model controls may shrink; send/stop remains fixed and visible. */}
+          <div className="flex min-w-0 shrink items-center overflow-hidden">
           {/* 5. Runtime / Model / Usage - Hidden in compact mode (EditPopover embedding) */}
           {!compactMode && (
             <>
@@ -2270,12 +2125,12 @@ export function FreeFormInput({
                   <button
                     type="button"
                     className={cn(
-                      "input-toolbar-btn inline-flex items-center h-7 px-1.5 gap-1 text-[13px] shrink-0 rounded-[6px] hover:bg-foreground/5 transition-colors select-none",
+                      "input-toolbar-btn inline-flex h-7 min-w-0 max-w-[128px] shrink items-center gap-1 rounded-[6px] px-1.5 text-[13px] transition-colors hover:bg-foreground/5 select-none",
                       cliDropdownOpen && "bg-foreground/5",
                     )}
                   >
                     <Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate max-w-[130px]">{runtimeButtonDisplayName}</span>
+                    <span className="truncate">{runtimeButtonDisplayName}</span>
                     <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
                   </button>
                 </DropdownMenuTrigger>
@@ -2334,7 +2189,7 @@ export function FreeFormInput({
                         disabled={!!activeCliRuntime && cliRuntimeModels.length === 0}
                         aria-label={apiConnectionUnavailable ? '模型不可用' : '模型'}
                         className={cn(
-                          "input-toolbar-btn inline-flex items-center h-7 px-1.5 gap-0.5 text-[13px] shrink-0 rounded-[6px] hover:bg-foreground/5 transition-colors select-none disabled:cursor-not-allowed disabled:opacity-60",
+                          "input-toolbar-btn inline-flex h-7 min-w-0 max-w-[170px] shrink items-center gap-0.5 rounded-[6px] px-1.5 text-[13px] transition-colors hover:bg-foreground/5 select-none disabled:cursor-not-allowed disabled:opacity-60",
                           modelDropdownOpen && "bg-foreground/5",
                           apiConnectionUnavailable && "text-destructive",
                         )}
@@ -2349,7 +2204,7 @@ export function FreeFormInput({
                             {!activeCliRuntime && effectiveConnectionDetails && llmConnections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && (
                               <ConnectionIcon connection={effectiveConnectionDetails} size={14} showTooltip />
                             )}
-                            <span className="truncate max-w-[180px]">{modelButtonDisplayName}</span>
+                            <span className="truncate">{modelButtonDisplayName}</span>
                             {(!activeCliRuntime && pickerMode !== 'locked-single') || cliRuntimeModels.length > 0 ? (
                               <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
                             ) : null}
@@ -2690,112 +2545,6 @@ export function FreeFormInput({
                 </StyledDropdownMenuContent>
               </DropdownMenu>
 
-              <Popover open={usagePopoverOpen} onOpenChange={setUsagePopoverOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      "input-toolbar-btn inline-flex items-center h-7 px-1.5 gap-1 text-[13px] shrink-0 rounded-[6px] hover:bg-foreground/5 transition-colors select-none",
-                      usagePopoverOpen && "bg-foreground/5",
-                    )}
-                    aria-label="Token 用量"
-                    title={activeCliRuntime ? '上下文由 CLI 管理' : contextUsageRing.title}
-                  >
-                    <ContextUsageRing percent={activeCliRuntime ? null : contextUsageRing.percent} title={activeCliRuntime ? '上下文由 CLI 管理' : contextUsageRing.title} />
-                    <span className="text-muted-foreground">
-                      {activeCliRuntime || contextUsageRing.percent == null ? 'Token' : contextUsageRing.label}
-                    </span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent side="top" align="end" sideOffset={8} className="w-[340px] rounded-[8px] p-3">
-                  <div className="space-y-3 text-sm">
-                    {sessionUsageLoading ? (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Spinner className="h-3.5 w-3.5" />
-                        正在读取用量…
-                      </div>
-                    ) : sessionUsageError ? (
-                      <div className="text-xs text-destructive">读取失败：{sessionUsageError}</div>
-                    ) : sessionUsage ? (
-                      <>
-                        {/* 上下文用量（Cursor 式）：百分比 + used/window + 多色分段条 + 每段明细。 */}
-                        <div>
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">{t('usage.contextTitle')}</span>
-                            {sessionUsage.context.segments.some(s => s.source === 'estimated') && (
-                              <span className="text-[10px] rounded px-1 py-0.5 bg-foreground/[0.06] text-muted-foreground">{t('usage.estimated')}</span>
-                            )}
-                          </div>
-                          <div className="mt-1 flex items-center justify-between gap-3">
-                            <span className="text-xs text-muted-foreground">
-                              {sessionUsage.context.percentFull == null
-                                ? '由 CLI 管理'
-                                : `${formatUsagePercent(sessionUsage.context.percentFull)} ${t('usage.full')}`}
-                            </span>
-                            <span className="text-xs tabular-nums text-muted-foreground">
-                              {sessionUsage.context.contextWindow == null
-                                ? formatUsageTokenPair(sessionUsage.context)
-                                : `~${formatUsageTokenPair(sessionUsage.context)} Tokens`}
-                            </span>
-                          </div>
-                          {sessionUsage.context.segments.length > 0 && (() => {
-                            const segTotal = sessionUsage.context.segments.reduce((sum, s) => sum + s.tokens, 0) || 1
-                            return (
-                              <div className="mt-2 flex h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.08]">
-                                {sessionUsage.context.segments.map(seg => (
-                                  <div key={seg.id} className={cn('h-full', usageSegmentColor(seg.id))} style={{ width: `${(seg.tokens / segTotal) * 100}%` }} />
-                                ))}
-                              </div>
-                            )
-                          })()}
-                          {sessionUsage.context.segments.length > 0 ? (
-                            <div className="mt-2 space-y-1">
-                              {sessionUsage.context.segments.map(seg => (
-                                <div key={seg.id} className="flex items-center justify-between gap-3 text-xs">
-                                  <span className="flex items-center gap-1.5 min-w-0">
-                                    <span className={cn('h-2 w-2 rounded-[2px] shrink-0', usageSegmentColor(seg.id))} />
-                                    <span className="truncate text-foreground/70">{seg.label}</span>
-                                  </span>
-                                  <span className="tabular-nums text-muted-foreground">{formatTokenCount(seg.tokens)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="mt-1 text-xs text-muted-foreground">
-                              {sessionUsage.modelLabel} · {formatUsageSource(sessionUsage.context.usedSource)}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 套餐额度（Claude 式）：仅连接订阅会员、有额度窗口时显示。无数据则整段不出现，不编造。 */}
-                        {sessionUsage.plan.available && sessionUsage.plan.windows.length > 0 && (
-                          <div className="border-t border-border/50 pt-2.5">
-                            <div className="font-medium mb-1.5">{t('usage.planTitle')}</div>
-                            <div className="space-y-2">
-                              {sessionUsage.plan.windows.map(window => (
-                                <div key={window.id}>
-                                  <div className="flex items-center justify-between gap-3 text-xs">
-                                    <span className="min-w-0 truncate">{window.label}</span>
-                                    <span className="flex items-center gap-2 shrink-0 text-muted-foreground">
-                                      {window.resetsAt ? <span>{t('usage.resets')} {formatPlanReset(window.resetsAt)}</span> : null}
-                                      <span className="tabular-nums text-foreground/80">{formatUsagePercent(window.percentUsed)}</span>
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.08]">
-                                    <div className="h-full rounded-full bg-info" style={{ width: `${Math.round((window.percentUsed ?? 0) * 100)}%` }} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-xs text-muted-foreground">暂无用量数据</div>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
             </>
           )}
 

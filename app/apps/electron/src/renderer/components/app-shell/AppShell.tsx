@@ -642,6 +642,17 @@ function AppShellContent({
     isWorkspaceContextSidebarVisible &&
     !isAutoCompact &&
     !isFocusedMode
+  const contentPanelCountForLayout = Math.max(panelCount, 1)
+  const requiredDockedContentWidth =
+    (contentPanelCountForLayout * PANEL_MIN_WIDTH) +
+    (Math.max(0, contentPanelCountForLayout - 1) * PANEL_GAP)
+  const canDockWorkspaceContextSidebar = shellWidth === 0 || (
+    shellWidth - fixedShellColumnsWidth - renderedWorkspaceContextSidebarWidth - PANEL_GAP - PANEL_EDGE_INSET >= requiredDockedContentWidth
+  )
+  const isWorkspaceContextSidebarDocked =
+    isWorkspaceContextSidebarRendered && canDockWorkspaceContextSidebar
+  const isWorkspaceContextSidebarOverlay =
+    isWorkspaceContextSidebarRendered && !isWorkspaceContextSidebarDocked
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -3345,11 +3356,11 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={isWorkspaceContextSidebarRendered}
+          isRightSidebarVisible={isWorkspaceContextSidebarDocked}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
-        {isWorkspaceContextSidebarRendered && (
+        {isWorkspaceContextSidebarDocked && (
           <WorkspaceContextSidebar
             visible={isWorkspaceContextSidebarVisible}
             width={renderedWorkspaceContextSidebarWidth}
@@ -3364,10 +3375,30 @@ function AppShellContent({
             onToggle={() => setIsWorkspaceContextSidebarVisible((value) => !value)}
           />
         )}
+        {isWorkspaceContextSidebarOverlay && (
+          <div
+            className="absolute bottom-0 right-1 top-0 z-[40]"
+            style={{ width: renderedWorkspaceContextSidebarWidth }}
+          >
+            <WorkspaceContextSidebar
+              visible={isWorkspaceContextSidebarVisible}
+              width={renderedWorkspaceContextSidebarWidth}
+              rootPath={activeWorkspace?.rootPath}
+              progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
+              selectedFilePath={selectedWorkspaceContextFile}
+              compact={isWorkspaceContextSidebarCompact}
+              onFileClick={(path) => {
+                setSelectedWorkspaceContextFile(path)
+                onOpenFile(path)
+              }}
+              onToggle={() => setIsWorkspaceContextSidebarVisible((value) => !value)}
+            />
+          </div>
+        )}
 
         {/* Workspace context rail resize handle. It shares the shell's existing
             sash geometry so Progress and Files resize as one persistent rail. */}
-        {isWorkspaceContextSidebarRendered && (
+        {isWorkspaceContextSidebarDocked && (
         <div
           ref={workspaceContextResizeHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('workspace-context') }}
