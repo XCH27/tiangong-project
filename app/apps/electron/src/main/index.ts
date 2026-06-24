@@ -1251,9 +1251,27 @@ app.on('before-quit', async (event) => {
   }
 })
 
+function isBrokenPipeError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    (error as { code?: unknown }).code === 'EPIPE' &&
+    (error as { syscall?: unknown }).syscall === 'write',
+  )
+}
+
 // Handle uncaught exceptions — forward to Sentry explicitly since registering
 // a custom handler can interfere with @sentry/electron's automatic capture.
 process.on('uncaughtException', (error) => {
+  if (isBrokenPipeError(error)) {
+    // Dev tools can detach stdout/stderr while Electron is still alive. Logging
+    // that EPIPE through the console transport recursively throws and floods the
+    // app. Keep file logging alive and silence only the broken console pipe.
+    log.transports.console.level = false
+    mainLog.warn('Disabled console transport after stdout/stderr EPIPE')
+    return
+  }
+
   mainLog.error('Uncaught exception:', error)
   Sentry.captureException(error)
 })
