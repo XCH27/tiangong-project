@@ -49,7 +49,7 @@ import {
 } from '@/components/settings'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { useWorkspaceIcon } from '@/hooks/useWorkspaceIcon'
-import { OnboardingWizard, ProviderSelectStep, type ApiSetupMethod, type ProviderChoice } from '@/components/onboarding'
+import { OnboardingWizard, type ApiSetupMethod } from '@/components/onboarding'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
@@ -745,14 +745,6 @@ export default function AiSettingsPage() {
     openApiSetup()
   }, [apiSetupOnboarding, openApiSetup])
 
-  const handleSelectProviderFromSettings = useCallback((choice: ProviderChoice) => {
-    setIsDirectEdit(false)
-    setEditInitialValues(undefined)
-    apiSetupOnboarding.reset()
-    apiSetupOnboarding.handleSelectProvider(choice)
-    openApiSetup()
-  }, [apiSetupOnboarding, openApiSetup])
-
   const handleApiSetupFinish = useCallback(() => {
     closeApiSetup()
     refreshLlmConnections?.()
@@ -1124,58 +1116,45 @@ export default function AiSettingsPage() {
 
               {/* Connections Management */}
               <SettingsSection title={t("settings.ai.connections")} description={t("settings.ai.connectionsDesc")}>
-                {llmConnections.length === 0 ? (
-                  <SettingsCard>
-                    <div className="px-4 py-5">
-                      <ProviderSelectStep
-                        onSelect={handleSelectProviderFromSettings}
-                        compact
+                <SettingsCard>
+                  {llmConnections.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                      {t("settings.ai.noConnections")}
+                    </div>
+                  ) : (
+                    [...llmConnections]
+                      .sort((a, b) => {
+                        if (a.isDefault && !b.isDefault) return -1
+                        if (!a.isDefault && b.isDefault) return 1
+                        return a.name.localeCompare(b.name)
+                      })
+                      .map((conn) => (
+                      <ConnectionRow
+                        key={conn.slug}
+                        connection={conn}
+                        isLastConnection={false}
+                        onRenameClick={() => handleRenameClick(conn)}
+                        onDelete={() => handleDeleteConnection(conn.slug)}
+                        onSetDefault={() => handleSetDefaultConnection(conn.slug)}
+                        onValidate={() => handleValidateConnection(conn.slug)}
+                        onReauthenticate={() => handleReauthenticateConnection(conn)}
+                        onEdit={() => handleEditConnection(conn)}
+                        onSetMidStreamBehavior={(behavior) => handleSetMidStreamBehavior(conn, behavior)}
+                        validationState={validationStates[conn.slug]?.state || 'idle'}
+                        validationError={validationStates[conn.slug]?.error}
+                        isDuplicateAccount={!!conn.oauthAccountUuid && duplicateAccountUuids.has(conn.oauthAccountUuid)}
                       />
-                    </div>
-                  </SettingsCard>
-                ) : (
-                  <>
-                    <SettingsCard>
-                      <div className="px-4 py-4 border-b border-border/50">
-                        <ProviderSelectStep
-                          onSelect={handleSelectProviderFromSettings}
-                          compact
-                        />
-                      </div>
-                      {[...llmConnections]
-                        .sort((a, b) => {
-                          if (a.isDefault && !b.isDefault) return -1
-                          if (!a.isDefault && b.isDefault) return 1
-                          return a.name.localeCompare(b.name)
-                        })
-                        .map((conn) => (
-                          <ConnectionRow
-                            key={conn.slug}
-                            connection={conn}
-                            isLastConnection={false}
-                            onRenameClick={() => handleRenameClick(conn)}
-                            onDelete={() => handleDeleteConnection(conn.slug)}
-                            onSetDefault={() => handleSetDefaultConnection(conn.slug)}
-                            onValidate={() => handleValidateConnection(conn.slug)}
-                            onReauthenticate={() => handleReauthenticateConnection(conn)}
-                            onEdit={() => handleEditConnection(conn)}
-                            onSetMidStreamBehavior={(behavior) => handleSetMidStreamBehavior(conn, behavior)}
-                            validationState={validationStates[conn.slug]?.state || 'idle'}
-                            validationError={validationStates[conn.slug]?.error}
-                            isDuplicateAccount={!!conn.oauthAccountUuid && duplicateAccountUuids.has(conn.oauthAccountUuid)}
-                          />
-                        ))}
-                    </SettingsCard>
-                    <div className="pt-0">
-                      <button
-                        onClick={handleAddConnection}
-                        className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors"
-                      >
-                        {t("settings.ai.addConnection")}
-                      </button>
-                    </div>
-                  </>
-                )}
+                    ))
+                  )}
+                </SettingsCard>
+                <div className="pt-0">
+                  <button
+                    onClick={handleAddConnection}
+                    className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors"
+                  >
+                    {t("settings.ai.addConnection")}
+                  </button>
+                </div>
               </SettingsSection>
 
               {/* Performance */}
