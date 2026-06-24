@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { summarizeProgress, type ProgressTask } from '@craft-agent/shared/protocol'
 import { cn } from '@/lib/utils'
 
-export function SessionProgressCard({ tasks, variant = 'card' }: { tasks: ProgressTask[]; variant?: 'card' | 'plain' }) {
+export function SessionProgressCard({ tasks, variant = 'card', compact = false }: { tasks: ProgressTask[]; variant?: 'card' | 'plain'; compact?: boolean }) {
   const { t } = useTranslation()
   if (!tasks || tasks.length === 0) return null
 
@@ -62,13 +62,13 @@ export function SessionProgressCard({ tasks, variant = 'card' }: { tasks: Progre
               )}
             >
               {task.title}
-              {task.note && <span className="text-foreground/40"> · {task.note}</span>}
+              {!compact && task.note && <span className="text-foreground/40"> · {task.note}</span>}
             </span>
           </li>
         ))}
       </ul>
 
-      {activeTitle && (
+      {!compact && activeTitle && (
         <p className="mt-2 truncate text-[11px] text-foreground/40" title={activeTitle}>
           {activeTitle}
         </p>

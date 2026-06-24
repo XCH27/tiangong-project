@@ -570,29 +570,6 @@ function AppShellContent({
 
   const effectiveSidebarAndNavigatorHidden = isSidebarAndNavigatorHidden || isAutoCompact
 
-  // Keep the right context rail independently resizable without allowing it
-  // to consume the last usable chat-panel width. Its saved width is preserved;
-  // the rendered width is clamped to the current shell and returns when room
-  // becomes available again.
-  const fixedShellColumnsWidth = effectiveSidebarAndNavigatorHidden
-    ? 0
-    : (isSidebarVisible ? sidebarWidth + PANEL_GAP : 0) + sessionListWidth + PANEL_GAP
-  const workspaceContextSidebarMaxWidth = Math.min(
-    480,
-    shellWidth > 0
-      ? shellWidth - fixedShellColumnsWidth - PANEL_MIN_WIDTH - PANEL_GAP - PANEL_EDGE_INSET
-      : 480,
-  )
-  const canRenderWorkspaceContextSidebar = shellWidth === 0 || workspaceContextSidebarMaxWidth >= 260
-  const renderedWorkspaceContextSidebarWidth = shellWidth === 0
-    ? workspaceContextSidebarWidth
-    : Math.min(workspaceContextSidebarWidth, workspaceContextSidebarMaxWidth)
-  const isWorkspaceContextSidebarRendered =
-    isWorkspaceContextSidebarVisible &&
-    !isAutoCompact &&
-    !isFocusedMode &&
-    canRenderWorkspaceContextSidebar
-
   // What's New overlay
   const [showWhatsNew, setShowWhatsNew] = React.useState(false)
   const [releaseNotesContent, setReleaseNotesContent] = React.useState('')
@@ -629,6 +606,38 @@ function AppShellContent({
   const panelStack = useAtomValue(panelStackAtom)
   const panelCount = useAtomValue(panelCountAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+
+  const workspaceContextSidebarMinWidth = 260
+  const workspaceContextSidebarDefaultWidth = 320
+  const workspaceContextSidebarMaxAllowedWidth = 480
+  const contentPanelCountForLayout = Math.max(panelCount, 1)
+  const requiredContentPanelsWidth =
+    (contentPanelCountForLayout * PANEL_MIN_WIDTH) +
+    (Math.max(0, contentPanelCountForLayout - 1) * PANEL_GAP)
+
+  // Keep the right context rail independently resizable without allowing it
+  // to consume the usable width of any currently-open content panel. The saved
+  // width is preserved; the rendered width is clamped to the current shell and
+  // returns when room becomes available again.
+  const fixedShellColumnsWidth = effectiveSidebarAndNavigatorHidden
+    ? 0
+    : (isSidebarVisible ? sidebarWidth + PANEL_GAP : 0) + sessionListWidth + PANEL_GAP
+  const workspaceContextSidebarMaxWidth = Math.min(
+    workspaceContextSidebarMaxAllowedWidth,
+    shellWidth > 0
+      ? shellWidth - fixedShellColumnsWidth - requiredContentPanelsWidth - PANEL_GAP - PANEL_EDGE_INSET
+      : workspaceContextSidebarMaxAllowedWidth,
+  )
+  const canRenderWorkspaceContextSidebar = shellWidth === 0 || workspaceContextSidebarMaxWidth >= workspaceContextSidebarMinWidth
+  const renderedWorkspaceContextSidebarWidth = shellWidth === 0
+    ? workspaceContextSidebarWidth
+    : Math.min(Math.max(workspaceContextSidebarWidth, workspaceContextSidebarMinWidth), workspaceContextSidebarMaxWidth)
+  const isWorkspaceContextSidebarCompact = renderedWorkspaceContextSidebarWidth < 300
+  const isWorkspaceContextSidebarRendered =
+    isWorkspaceContextSidebarVisible &&
+    !isAutoCompact &&
+    !isFocusedMode &&
+    canRenderWorkspaceContextSidebar
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -1288,8 +1297,8 @@ function AppShellContent({
       } else if (isResizing === 'workspace-context') {
         const shellRight = shellRef.current?.getBoundingClientRect().right ?? window.innerWidth
         const newWidth = Math.min(
-          Math.max(shellRight - e.clientX - PANEL_EDGE_INSET, 260),
-          Math.max(260, workspaceContextSidebarMaxWidth),
+          Math.max(shellRight - e.clientX - PANEL_EDGE_INSET, workspaceContextSidebarMinWidth),
+          Math.max(workspaceContextSidebarMinWidth, workspaceContextSidebarMaxWidth),
         )
         setWorkspaceContextSidebarWidth(newWidth)
         if (workspaceContextResizeHandleRef.current) {
@@ -1327,6 +1336,8 @@ function AppShellContent({
     isSidebarVisible,
     workspaceContextSidebarWidth,
     workspaceContextSidebarMaxWidth,
+    workspaceContextSidebarMinWidth,
+    workspaceContextSidebarDefaultWidth,
   ])
 
   // Spring transition config - shared between sidebar and header
@@ -3341,6 +3352,7 @@ function AppShellContent({
             rootPath={activeWorkspace?.rootPath}
             progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
             selectedFilePath={selectedWorkspaceContextFile}
+            compact={isWorkspaceContextSidebarCompact}
             onFileClick={(path) => {
               setSelectedWorkspaceContextFile(path)
               onOpenFile(path)
@@ -3363,8 +3375,8 @@ function AppShellContent({
           }}
           onMouseLeave={() => { if (isResizing !== 'workspace-context') setWorkspaceContextHandleY(null) }}
           onDoubleClick={() => {
-            setWorkspaceContextSidebarWidth(320)
-            storage.set(storage.KEYS.workspaceContextSidebarWidth, 320)
+            setWorkspaceContextSidebarWidth(workspaceContextSidebarDefaultWidth)
+            storage.set(storage.KEYS.workspaceContextSidebarWidth, workspaceContextSidebarDefaultWidth)
           }}
           className="absolute cursor-col-resize z-panel flex justify-center"
           style={{

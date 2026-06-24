@@ -13,6 +13,7 @@ interface WorkspaceContextSidebarProps {
   rootPath?: string | null
   progressTasks?: ProgressTask[]
   selectedFilePath?: string | null
+  compact?: boolean
   onFileClick: (path: string) => void
   onToggle: () => void
 }
@@ -23,6 +24,7 @@ export function WorkspaceContextSidebar({
   rootPath,
   progressTasks,
   selectedFilePath,
+  compact = false,
   onFileClick,
   onToggle,
 }: WorkspaceContextSidebarProps) {
@@ -57,7 +59,7 @@ export function WorkspaceContextSidebar({
 
       <div className="shrink-0 border-b border-border px-4 py-3">
         {progressTasks && progressTasks.length > 0 ? (
-          <SessionProgressCard tasks={progressTasks} variant="plain" />
+          <SessionProgressCard tasks={progressTasks} variant="plain" compact={compact} />
         ) : (
           <div className="py-3 text-center text-[12px] leading-relaxed text-muted-foreground">
             {t('workspaceContext.noProgress')}
@@ -71,7 +73,7 @@ export function WorkspaceContextSidebar({
           selectedFilePath={selectedFilePath}
           onFileClick={onFileClick}
           title={rootPath ? undefined : t('workspaceContext.files')}
-          hideSearch={false}
+          hideSearch={compact}
         />
       </div>
     </aside>
