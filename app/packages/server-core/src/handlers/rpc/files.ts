@@ -3,7 +3,7 @@ import { isAbsolute, join, resolve, dirname, parse as parsePath } from 'path'
 import { homedir } from 'os'
 import { validatePathFormat } from '../../utils/path-validation'
 import { randomUUID } from 'crypto'
-import { RPC_CHANNELS, type FileAttachment, type DirectoryListingResult } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, type FileAttachment, type DirectoryListingResult, type FilesystemEntryListingResult } from '@craft-agent/shared/protocol'
 import type { StoredAttachment } from '@craft-agent/core/types'
 import { readFileAttachment, validateImageForClaudeAPI, IMAGE_LIMITS } from '@craft-agent/shared/utils'
 import { getSessionAttachmentsPath, validateSessionId } from '@craft-agent/shared/sessions'
@@ -593,5 +593,74 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
       totalEntries,
       entries,
     } satisfies DirectoryListingResult
+  })
+
+  // Read-only directory listing for the All Files surface.
+  // Unlike LIST_DIRECTORY, this returns both files and directories for the current directory only.
+  server.handle(RPC_CHANNELS.fs.LIST_ENTRIES, async (_ctx, dirPath: string) => {
+    if (dirPath === '~' || dirPath.startsWith('~/')) {
+      dirPath = dirPath === '~' ? homedir() : join(homedir(), dirPath.slice(2))
+    }
+
+    const pathCheck = validatePathFormat(dirPath)
+    if (!pathCheck.valid) {
+      throw new Error(pathCheck.reason!)
+    }
+
+    const resolved = resolve(dirPath)
+    const raw = await readdir(resolved, { withFileTypes: true })
+
+    const entries: FilesystemEntryListingResult['entries'] = []
+    for (const entry of raw) {
+      if (entry.name === '.DS_Store') continue
+
+      const fullPath = join(resolved, entry.name)
+      const isSymlink = entry.isSymbolicLink()
+
+      try {
+        const entryStat = await stat(fullPath)
+        const type = entryStat.isDirectory() ? 'directory' : 'file'
+        entries.push({
+          name: entry.name,
+          path: fullPath,
+          type,
+          isSymlink,
+          size: type === 'file' ? entryStat.size : undefined,
+          modifiedTime: entryStat.mtimeMs,
+        })
+      } catch {
+        // Broken symlink or unreadable entry. Keep browsing resilient.
+      }
+    }
+
+    entries.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    })
+
+    const totalEntries = entries.length
+    const truncated = totalEntries > 1000
+    if (truncated) entries.length = 1000
+
+    const parentPath = resolved === parsePath(resolved).root ? null : dirname(resolved)
+    const breadcrumbs: Array<{ name: string; path: string }> = []
+    let current = resolved
+    while (true) {
+      const parsed = parsePath(current)
+      const name = parsed.base || parsed.root
+      breadcrumbs.unshift({ name, path: current })
+      if (current === parsed.root) break
+      current = dirname(current)
+    }
+
+    return {
+      currentPath: resolved,
+      parentPath,
+      breadcrumbs,
+      platform: process.platform as FilesystemEntryListingResult['platform'],
+      truncated,
+      totalEntries,
+      entries,
+    } satisfies FilesystemEntryListingResult
   })
 }

@@ -200,6 +200,7 @@ export const CHANNEL_MAP = {
 
   // Server filesystem browsing (remote mode)
   listServerDirectory: invoke(RPC_CHANNELS.fs.LIST_DIRECTORY),
+  listFilesystemEntries: invoke(RPC_CHANNELS.fs.LIST_ENTRIES),
 
   // Debug logging
   debugLog: invoke(RPC_CHANNELS.debug.LOG),

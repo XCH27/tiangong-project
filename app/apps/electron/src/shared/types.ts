@@ -209,6 +209,7 @@ import type {
   TestAutomationResult,
   WindowCloseRequest,
   DirectoryListingResult,
+  FilesystemEntryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
   TeamRulesV1,
@@ -356,6 +357,8 @@ export interface ElectronAPI {
 
   // Server filesystem browsing (remote mode)
   listServerDirectory(dirPath: string): Promise<DirectoryListingResult>
+  /** Read-only file+directory listing for the All Files surface. */
+  listFilesystemEntries(dirPath: string): Promise<FilesystemEntryListingResult>
   // Debug: send renderer logs to main process log file
   debugLog(...args: unknown[]): void
 
@@ -887,6 +890,15 @@ export interface AutomationsNavigationState {
 }
 
 /**
+ * Files navigation state
+ */
+export interface FilesNavigationState {
+  navigator: 'files'
+  details: { type: 'file'; filePath: string } | null
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -895,6 +907,7 @@ export type NavigationState =
   | SettingsNavigationState
   | SkillsNavigationState
   | AutomationsNavigationState
+  | FilesNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -915,6 +928,10 @@ export const isSkillsNavigation = (
 export const isAutomationsNavigation = (
   state: NavigationState
 ): state is AutomationsNavigationState => state.navigator === 'automations'
+
+export const isFilesNavigation = (
+  state: NavigationState
+): state is FilesNavigationState => state.navigator === 'files'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -940,6 +957,12 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `automations/automation/${state.details.automationId}`
     }
     return 'automations'
+  }
+  if (state.navigator === 'files') {
+    if (state.details?.type === 'file') {
+      return `files/file/${encodeURIComponent(state.details.filePath)}`
+    }
+    return 'files'
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -987,6 +1010,16 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return { navigator: 'automations', details: { type: 'automation', automationId } }
     }
     return { navigator: 'automations', details: null }
+  }
+
+  // Handle files
+  if (key === 'files') return { navigator: 'files', details: null }
+  if (key.startsWith('files/file/')) {
+    const filePath = decodeURIComponent(key.slice(11))
+    if (filePath) {
+      return { navigator: 'files', details: { type: 'file', filePath } }
+    }
+    return { navigator: 'files', details: null }
   }
 
   // Handle settings

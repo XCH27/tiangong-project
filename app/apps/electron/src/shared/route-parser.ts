@@ -35,7 +35,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'settings'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'files' | 'settings'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -61,7 +61,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'sources', 'skills', 'automations', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'sources', 'skills', 'automations', 'files', 'settings'
 ]
 
 /**
@@ -197,6 +197,22 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
     return null
   }
 
+  // Files navigator
+  if (first === 'files') {
+    if (segments.length === 1) {
+      return { navigator: 'files', details: null }
+    }
+
+    if (segments[1] === 'file' && segments[2]) {
+      return {
+        navigator: 'files',
+        details: { type: 'file', id: decodeURIComponent(segments[2]) },
+      }
+    }
+
+    return null
+  }
+
   // Sessions navigator (allSessions, flagged, state)
   let sessionFilter: SessionFilter
   let detailsStartIndex: number
@@ -287,6 +303,11 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     }
     if (!parsed.details) return base
     return `${base}/automation/${parsed.details.id}`
+  }
+
+  if (parsed.navigator === 'files') {
+    if (!parsed.details) return 'files'
+    return `files/file/${encodeURIComponent(parsed.details.id)}`
   }
 
   // Sessions navigator
@@ -410,6 +431,13 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
       return { type: 'view', name: 'automations', params: {} }
     }
     return { type: 'view', name: 'automation-info', id: compound.details.id, params: {} }
+  }
+
+  if (compound.navigator === 'files') {
+    if (!compound.details) {
+      return { type: 'view', name: 'files', params: {} }
+    }
+    return { type: 'view', name: 'file-info', id: compound.details.id, params: {} }
   }
 
   // Sessions
@@ -547,6 +575,16 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     }
   }
 
+  if (compound.navigator === 'files') {
+    if (!compound.details) {
+      return { navigator: 'files', details: null }
+    }
+    return {
+      navigator: 'files',
+      details: { type: 'file', filePath: compound.details.id },
+    }
+  }
+
   // Sessions
   const filter = compound.sessionFilter || { kind: 'allSessions' as const }
   if (compound.details) {
@@ -624,6 +662,19 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
         }
       }
       return { navigator: 'automations', details: null }
+    case 'files':
+      return { navigator: 'files', details: null }
+    case 'file-info':
+      if (parsed.id) {
+        return {
+          navigator: 'files',
+          details: {
+            type: 'file',
+            filePath: parsed.id,
+          },
+        }
+      }
+      return { navigator: 'files', details: null }
     case 'session':
       if (parsed.id) {
         // Reconstruct filter from params
@@ -729,6 +780,13 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
       navigator: 'automations',
       automationFilter: state.filter ?? undefined,
       details: state.details ? { type: 'automation', id: state.details.automationId } : null,
+    }
+  }
+
+  if (state.navigator === 'files') {
+    return {
+      navigator: 'files',
+      details: state.details?.type === 'file' ? { type: 'file', id: state.details.filePath } : null,
     }
   }
 

@@ -31,6 +31,7 @@ import {
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
+  isFilesNavigation,
 } from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
@@ -40,6 +41,7 @@ import { SourceInfoPage, ChatPage } from '@/pages'
 import SkillInfoPage from '@/pages/SkillInfoPage'
 import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
+import { FileViewer } from '../files/FileViewer'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -351,6 +353,20 @@ export function MainContentPanel({
         <div className="flex items-center justify-center h-full text-muted-foreground">
           <p className="text-sm">{t("automations.noAutomationsConfigured")}</p>
         </div>
+      </Panel>
+    )
+  }
+
+  if (isFilesNavigation(navState)) {
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        {navState.details?.type === 'file' ? (
+          <FileViewer path={navState.details.filePath} />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground">
+            <p className="text-sm">{t('files.noFileSelected')}</p>
+          </div>
+        )}
       </Panel>
     )
   }

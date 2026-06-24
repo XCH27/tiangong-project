@@ -109,10 +109,10 @@
 
 ---
 
-## A3 — 全部文件 + Library（后续独立契约波次，当前不要派）
+## A3 — 全部文件 + Library（后续独立契约波次，当前只派剩余项）
 
 ```
-角色：A3。目标：建「全部文件」raw file view（“我的工作区” + 用户选的本地素材目录，按类型过滤）和 Library 资产层（来源/hash/许可/使用位置/回滚），别做成本地知识库。读 docs/04 D15/D18、docs/32 §3。
+角色：A3。目标：在已落的 raw「全部文件」只读入口上继续做用户选的本地素材目录、类型过滤/缩略图、拖入专业工作面和 Library 资产层（来源/hash/许可/使用位置/回滚），别做成本地知识库。读 docs/04 D15/D18、docs/32 §3。
 改这些文件（仅你）：
 - 新建 app/packages/server-core/src/services/file-index.ts（+ test）：扫描目录、类型过滤（图片/md/网页/视频/音频/PPT/代码/字体/模板）、缩略图/索引；只读浏览自动，写操作（移动/重命名/删除/批量分类）必须经 permission + timeline。
 - app/packages/server-core/src/handlers/rpc/files-library.ts（Lead 在 Wave 0 已建壳并注册，你填实现，消费 Lead 冻结的 files.* 通道与 files.ts 契约）
@@ -120,7 +120,7 @@
 - 新建设置页目录/过滤规则组件
 禁改：protocol/*、团队相关文件、SessionManager* 核心、其它 Agent handler。需要新通道/类型 → 回 Lead。
 要求：
-- 全部文件 = raw 本地文件视图（默认根“我的工作区”，可加素材目录）。
+- 全部文件 = raw 本地文件视图（默认根“我的工作区”已落，可继续加素材目录/过滤/缩略图）。
 - Library = 项目选用/授权/索引后的资产层，记录来源/hash/许可/使用位置/回滚；不另起存储目录。
 - AI 分类/移动/重命名/删除走 permission + timeline，可回放可撤销，不静默外发。
 验收：可选本地文件夹并按类型过滤；写操作触发 permission；Library 只收授权资产；file-index 有目标测试；typecheck:all 绿。

@@ -177,6 +177,12 @@ export const routes = {
     automationsAgentic: (automationId?: string) =>
       automationId ? `automations/agentic/automation/${automationId}` as const : 'automations/agentic' as const,
 
+    /** All Files view (files navigator). Pass an absolute file path for preview. */
+    files: (filePath?: string) => {
+      if (!filePath) return 'files' as const
+      return `files/file/${encodeURIComponent(filePath)}` as const
+    },
+
     /** Settings view (settings navigator) - uses SettingsSubpage from registry */
     settings: (subpage?: SettingsSubpage) =>
       subpage

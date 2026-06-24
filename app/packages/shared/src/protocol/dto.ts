@@ -336,6 +336,31 @@ export interface DirectoryListingResult {
   entries: Array<{ name: string; path: string; isSymlink: boolean }>
 }
 
+/** Server-side file+directory listing result for the read-only All Files surface. */
+export interface FilesystemEntryListingResult {
+  /** Normalized absolute path of the listed directory. */
+  currentPath: string
+  /** Parent directory path, or null if at root. */
+  parentPath: string | null
+  /** Pre-split breadcrumb segments for display. */
+  breadcrumbs: Array<{ name: string; path: string }>
+  /** Server platform info. */
+  platform: 'win32' | 'darwin' | 'linux'
+  /** Whether the server truncated the entry list for safety/performance. */
+  truncated: boolean
+  /** Total child entries before truncation. */
+  totalEntries: number
+  /** Child files and directories in the current directory only. */
+  entries: Array<{
+    name: string
+    path: string
+    type: 'file' | 'directory'
+    isSymlink: boolean
+    size?: number
+    modifiedTime?: number
+  }>
+}
+
 // ---------------------------------------------------------------------------
 // File types
 // ---------------------------------------------------------------------------
