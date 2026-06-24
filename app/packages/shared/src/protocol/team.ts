@@ -215,6 +215,11 @@ export type TeamSessionCommand =
       type: 'sendTeamMessage'
       teamId: string
       content: string
+      /**
+       * 人类输入中的 @G-01 / @G-02 目标。编号只是一层显示语义，必须由后端
+       * 根据当前 TeamProjection 解析成会话 ID，不能把成员映射真相放进 renderer。
+       */
+      audienceSequences?: string[]
       audienceSessionIds?: string[]
       taskId?: string
       runId?: string

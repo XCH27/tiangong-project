@@ -34,6 +34,12 @@ import {
   InlineLabelMenu,
   useInlineLabelMenu,
 } from '@/components/ui/label-menu'
+import {
+  InlineMentionMenu,
+  isValidMentionTrigger,
+  type MentionItem,
+  type MentionSection,
+} from '@/components/ui/mention-menu'
 import type { LabelConfig } from '@craft-agent/shared/labels'
 import { parseMentions } from '@/lib/mentions'
 import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-text-input'
@@ -74,7 +80,7 @@ import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
-import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type SessionUsageView } from '@craft-agent/shared/protocol'
+import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type SessionUsageView, type TeamProjection } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
@@ -803,6 +809,43 @@ export function FreeFormInput({
   // Merge refs for RichTextInput
   const internalInputRef = React.useRef<RichTextInputHandle>(null)
   const richInputRef = externalInputRef || internalInputRef
+
+  // @ in a team conversation is deliberately limited to stable member numbers.
+  // The selected number is resolved by TeamCoordinator, so this UI never owns a
+  // second member/session mapping.
+  const [teamProjection, setTeamProjection] = React.useState<TeamProjection | null>(null)
+  const [teamMentionOpen, setTeamMentionOpen] = React.useState(false)
+  const [teamMentionFilter, setTeamMentionFilter] = React.useState('')
+  const [teamMentionPosition, setTeamMentionPosition] = React.useState({ x: 0, y: 0 })
+  const teamMentionInputRef = React.useRef({ value: '', cursorPosition: 0, atStart: -1 })
+
+  React.useEffect(() => {
+    let cancelled = false
+    if (!workspaceId || !sessionId || !window.electronAPI?.getTeam) {
+      setTeamProjection(null)
+      return
+    }
+    void window.electronAPI.getTeam(workspaceId)
+      .then((projection) => { if (!cancelled) setTeamProjection(projection) })
+      .catch(() => { if (!cancelled) setTeamProjection(null) })
+    return () => { cancelled = true }
+  }, [workspaceId, sessionId])
+
+  const isTeamConversation = teamProjection?.teamConversationSessionId === sessionId
+  const teamMentionSections = React.useMemo((): MentionSection[] => {
+    if (!isTeamConversation || !teamProjection?.members.length) return []
+    const identityById = new Map(teamProjection.identityLabels.map(label => [label.id, label.displayName]))
+    const items: MentionItem[] = teamProjection.members.map(member => ({
+      id: member.sequence,
+      type: 'agent',
+      label: member.sequence,
+      description: member.identityLabelIds
+        .map(labelId => identityById.get(labelId) ?? labelId)
+        .join(' · '),
+      agent: { sequence: member.sequence },
+    }))
+    return [{ id: 'team-members', label: 'team-members', items }]
+  }, [isTeamConversation, teamProjection])
 
   // Track last caret position for focus restoration (e.g., after permission mode popover closes)
   const lastCaretPositionRef = React.useRef<number | null>(null)
@@ -1572,6 +1615,20 @@ export function FreeFormInput({
   const handleRichInput = React.useCallback((value: string, cursorPosition: number) => {
     const nextValue = coerceInputText(value)
 
+    const textBeforeCursor = nextValue.slice(0, cursorPosition)
+    const teamMentionMatch = isTeamConversation ? textBeforeCursor.match(/@(G-[\d-]*)?$/i) : null
+    const teamMentionStart = teamMentionMatch ? textBeforeCursor.lastIndexOf('@') : -1
+    if (teamMentionMatch && isValidMentionTrigger(textBeforeCursor, teamMentionStart)) {
+      teamMentionInputRef.current = { value: nextValue, cursorPosition, atStart: teamMentionStart }
+      setTeamMentionFilter(teamMentionMatch[1] ?? '')
+      const fallbackRect = richInputRef.current?.getBoundingClientRect()
+      const caretRect = richInputRef.current?.getCaretRect?.() ?? fallbackRect
+      if (caretRect) setTeamMentionPosition({ x: caretRect.left, y: caretRect.top })
+      setTeamMentionOpen(true)
+    } else {
+      setTeamMentionOpen(false)
+    }
+
     // Update inline slash command state
     inlineSlash.handleInputChange(nextValue, cursorPosition)
 
@@ -1602,7 +1659,22 @@ export function FreeFormInput({
       setInput(newValue)
       syncToParent(newValue)
     }
-  }, [inlineSlash, inlineLabel, syncToParent, autoCapitalisation])
+  }, [inlineSlash, inlineLabel, isTeamConversation, syncToParent, autoCapitalisation])
+
+  const handleTeamMentionSelect = React.useCallback((item: MentionItem) => {
+    const sequence = item.agent?.sequence
+    const { value, cursorPosition, atStart } = teamMentionInputRef.current
+    if (!sequence || atStart < 0) return
+    const nextValue = `${value.slice(0, atStart)}@${sequence} ${value.slice(cursorPosition)}`
+    const nextCursor = atStart + sequence.length + 2
+    setInput(nextValue)
+    syncToParent(nextValue)
+    setTeamMentionOpen(false)
+    setTimeout(() => {
+      richInputRef.current?.focus()
+      richInputRef.current?.setSelectionRange(nextCursor, nextCursor)
+    }, 0)
+  }, [syncToParent])
 
   // Handle inline slash command selection (removes the /command text)
   const handleInlineSlashCommandSelect = React.useCallback((commandId: SlashCommandId) => {
@@ -1907,6 +1979,16 @@ export function FreeFormInput({
           spellCheck={spellCheck}
         />
         )}
+
+        <InlineMentionMenu
+          open={teamMentionOpen}
+          onOpenChange={setTeamMentionOpen}
+          sections={teamMentionSections}
+          onSelect={handleTeamMentionSelect}
+          filter={teamMentionFilter}
+          position={teamMentionPosition}
+          headerLabel={t('session.teamMembers')}
+        />
 
         {/* Bottom Row: Controls - wrapped in relative container for status slot overlay */}
         <div className="relative">

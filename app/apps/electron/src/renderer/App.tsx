@@ -105,6 +105,12 @@ function workspaceDistribution(sessions: Iterable<{ workspaceId?: string }>): Re
   return distribution
 }
 
+/** Team mentions are stable display identifiers. The server resolves them against the current projection. */
+function extractTeamAudienceSequences(message: string): string[] {
+  return [...message.matchAll(/(?:^|\s)@(G-\d{2,})(?=$|\s|[，。！？、,.!?])/gi)]
+    .map(match => match[1].toUpperCase())
+}
+
 /**
  * Helper to handle background task events from the agent.
  * Updates the backgroundTasksAtomFamily based on event type.
@@ -909,6 +915,20 @@ export default function App() {
         return
       }
 
+      // TeamCoordinator persists team events as normal craft messages. They are not
+      // AgentEvent stream deltas, so hydrate the authoritative transcript instead
+      // of letting the generic event processor discard them as an unknown event.
+      if (typeof event.type === 'string' && event.type.startsWith('team_')) {
+        window.electronAPI.getSessionMessages(sessionId)
+          .then((updatedSession: Session | null) => {
+            if (!updatedSession) return
+            replaceLoadedSession(updatedSession)
+            syncSessionOptionsFromSession(updatedSession)
+          })
+          .catch((error: unknown) => console.error('Failed to refresh team transcript:', error))
+        return
+      }
+
       const agentEvent = event as unknown as AgentEvent
 
       // Track activity for stale session watchdog
@@ -1196,6 +1216,30 @@ export default function App() {
 
   const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
     try {
+      // A leader session is the group conversation anchor. Route its text through
+      // TeamCoordinator so it fans out to member inboxes and records one shared
+      // transcript event instead of starting an unrelated one-to-one model turn.
+      const team = windowWorkspaceId
+        ? await window.electronAPI.getTeam(windowWorkspaceId)
+        : null
+      if (team?.leaderSessionId && team.teamConversationSessionId === sessionId) {
+        if (attachments?.length) {
+          throw new Error('团队群聊暂不支持附件；请在成员会话中发送带附件的任务。')
+        }
+        await window.electronAPI.sessionCommand(sessionId, {
+          type: 'sendTeamMessage',
+          teamId: team.teamId,
+          content: message,
+          audienceSequences: extractTeamAudienceSequences(message),
+        })
+        const refreshedSession = await window.electronAPI.getSessionMessages(sessionId)
+        if (refreshedSession) {
+          replaceLoadedSession(refreshedSession)
+          syncSessionOptionsFromSession(refreshedSession)
+        }
+        return
+      }
+
       // Capture pre-send processing state so we can flag mid-stream sends
       // for the queued badge (#616 follow-up — covers Pi steer path which
       // returns status 'accepted', not 'queued').
@@ -1358,7 +1402,7 @@ export default function App() {
         ]
       }))
     }
-  }, [sessionOptions, updateSessionById, skills, sources, windowWorkspaceId])
+  }, [replaceLoadedSession, sessionOptions, syncSessionOptionsFromSession, updateSessionById, skills, sources, windowWorkspaceId])
 
   /**
    * Unified handler for all session option changes.

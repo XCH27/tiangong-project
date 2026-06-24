@@ -224,16 +224,23 @@ export class TeamCoordinator {
       // 清空队长：移除旧队长的 leader 标签。
       await this.runtime.setSessionLabels(previous, withoutLeaderLabel(this.runtime.getSessionLabels(previous)))
     }
-    // leaderSessionId 只是派生缓存（docs/33 §2）：写入后与 labels 对账。
-    rules.leaderSessionId = next
-    this.rules.save(rules)
+    // 队长会话就是团队对话锚点：不再让用户在队长聊天和隐藏群聊之间切换。
+    // 取消队长时重新落回 hidden 会话，直到下一个队长出现。
+    const nextConversationSessionId = next
+      ?? await this.runtime.ensureTeamConversationSession(null)
+    const nextRules: TeamRulesV1 = {
+      ...rules,
+      leaderSessionId: next,
+      teamConversationSessionId: nextConversationSessionId,
+    }
+    this.rules.save(nextRules)
 
-    await this.runtime.recordEvent(this.teamEvent(rules, rules.teamConversationSessionId, ctx.actor, {
+    await this.runtime.recordEvent(this.teamEvent(nextRules, nextRules.teamConversationSessionId, ctx.actor, {
       type: 'team_leader_changed',
       leaderSessionId: next,
       previousLeaderSessionId: previous,
     }))
-    return this.projectionFrom(rules)
+    return this.projectionFrom(nextRules)
   }
 
   private async sendMessage(
@@ -241,11 +248,14 @@ export class TeamCoordinator {
     ctx: TeamCommandContext,
   ): Promise<{ messageId: string }> {
     const rules = await this.ensureRules(command.teamId)
-    const visibility = command.audienceSessionIds && command.audienceSessionIds.length > 0 ? 'private' : 'broadcast'
+    const requestedRecipients = this.resolveAudienceSessionIds(rules, command)
+    const visibility = requestedRecipients.length > 0 ? 'private' : 'broadcast'
+    // 人类在队长会话发言时，该会话只是群聊锚点而不是一个 agent 发件人：
+    // 必须投递给全体成员，包括队长。只有成员 agent 发言才排除自己。
     const recipients = visibility === 'private'
-      ? (command.audienceSessionIds ?? []).filter(id => rules.memberSessionIds.includes(id))
-      : rules.memberSessionIds.filter(id => id !== ctx.issuerSessionId)
-    if (visibility === 'private' && recipients.length !== command.audienceSessionIds?.length) {
+      ? requestedRecipients
+      : rules.memberSessionIds.filter(id => ctx.actor.kind !== 'agent' || id !== ctx.issuerSessionId)
+    if (visibility === 'private' && recipients.length !== requestedRecipients.length) {
       throw new Error('私聊目标包含不存在或不属于当前团队的会话')
     }
     const messageId = this.runtime.newId()
@@ -405,7 +415,8 @@ export class TeamCoordinator {
       if (!loaded.rules) return null
     }
     const rules = await this.reconcile(loaded.rules)
-    return this.projectionFrom(rules)
+    // 团队群聊以队长会话为锚点。没有队长时不暴露一个孤立群聊入口。
+    return rules.leaderSessionId ? this.projectionFrom(rules) : null
   }
 
   async getReviewQueue(): Promise<TeamReviewQueueItem[]> {
@@ -472,23 +483,26 @@ export class TeamCoordinator {
   private async reconcile(rules: TeamRulesV1): Promise<TeamRulesV1> {
     const liveSessions = this.runtime.listSessions()
     const live = new Set(liveSessions.map(s => s.id))
-    // 团队群聊会话本身是 hidden，不在 listSessions(可见) 里——单独确保其存在。
-    const conversationId = await this.runtime.ensureTeamConversationSession(rules.teamConversationSessionId)
-    const managerProjectionSessionId = await this.runtime.ensureManagerProjectionSession(rules.managerProjectionSessionId ?? null)
-    let changed = conversationId !== rules.teamConversationSessionId || managerProjectionSessionId !== rules.managerProjectionSessionId
-
     const identityIds = new Set(this.runtime.listIdentityLabels().map(label => label.id))
     const identityAssignedSessionIds = liveSessions
       .filter(session => identityLabelIdsOf(session.labels ?? [], identityIds).length > 0)
       .map(session => session.id)
     const members = [...new Set([...rules.memberSessionIds, ...identityAssignedSessionIds])]
       .filter(id => live.has(id))
-    if (members.length !== rules.memberSessionIds.length || members.some((id, index) => id !== rules.memberSessionIds[index])) changed = true
+    const membersChanged = members.length !== rules.memberSessionIds.length
+      || members.some((id, index) => id !== rules.memberSessionIds[index])
 
     // 队长缓存与 session `leader` 标签对账，冲突以标签为准（docs/33 §2）。
     const previousLeader = rules.leaderSessionId
     const leader = liveSessions.find(s => members.includes(s.id) && hasLeaderLabel(s.labels ?? []))?.id ?? null
     const leaderChanged = leader !== previousLeader
+    // 有队长时直接复用其 craft 会话作群聊 transcript；无队长才保留 hidden fallback，
+    // 这样既没有第二套消息库，也不会在会话列表出现重复的“团队群聊”。
+    const conversationId = leader ?? await this.runtime.ensureTeamConversationSession(rules.teamConversationSessionId)
+    const managerProjectionSessionId = await this.runtime.ensureManagerProjectionSession(rules.managerProjectionSessionId ?? null)
+    let changed = membersChanged
+      || conversationId !== rules.teamConversationSessionId
+      || managerProjectionSessionId !== rules.managerProjectionSessionId
     if (leaderChanged) changed = true
 
     if (!changed) return rules
@@ -538,6 +552,29 @@ export class TeamCoordinator {
       managerContextPolicy: normalizeTeamManagerContextPolicy(rules.managerContextPolicy),
       norms: rules.norms,
     }
+  }
+
+  private resolveAudienceSessionIds(
+    rules: TeamRulesV1,
+    command: Extract<TeamSessionCommand, { type: 'sendTeamMessage' }>,
+  ): string[] {
+    if (command.audienceSessionIds?.length) {
+      const recipients = command.audienceSessionIds.filter(id => rules.memberSessionIds.includes(id))
+      if (recipients.length !== command.audienceSessionIds.length) {
+        throw new Error('私聊目标包含不存在或不属于当前团队的会话')
+      }
+      return recipients
+    }
+
+    if (!command.audienceSequences?.length) return []
+
+    const projection = this.projectionFrom(rules)
+    const bySequence = new Map(projection.members.map(member => [member.sequence.toLowerCase(), member.sessionId]))
+    const recipients = command.audienceSequences.map(sequence => bySequence.get(sequence.toLowerCase()))
+    if (recipients.some(id => !id)) {
+      throw new Error('提及的成员编号不存在或已不在当前团队')
+    }
+    return [...new Set(recipients as string[])]
   }
 
   private mergeRules(current: TeamRulesV1, patch: TeamRulesPatch): TeamRulesV1 {
@@ -625,7 +662,7 @@ export function createSessionManagerTeamRuntime(
         .filter(s => !s.hidden)
         .map(s => ({ id: s.id, createdAt: s.createdAt ?? 0, sessionStatus: s.sessionStatus, hidden: s.hidden, name: s.name, labels: s.labels ?? [] })),
     ensureTeamConversationSession: async existingId => {
-      if (existingId && sm.getSessions(workspaceId).some(s => s.id === existingId)) return existingId
+      if (existingId && sm.getSessions(workspaceId).some(s => s.id === existingId && s.hidden)) return existingId
       const created = await sm.createSession(workspaceId, { hidden: true, name: '团队群聊' })
       return created.id
     },

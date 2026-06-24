@@ -11,7 +11,7 @@ import { AGENTS_PLUGIN_NAME } from '@craft-agent/shared/skills/types'
 // Types
 // ============================================================================
 
-export type MentionItemType = 'skill' | 'source' | 'file' | 'folder'
+export type MentionItemType = 'skill' | 'source' | 'file' | 'folder' | 'agent'
 
 export interface MentionItem {
   id: string
@@ -22,6 +22,7 @@ export interface MentionItem {
   skill?: LoadedSkill
   source?: LoadedSource
   file?: { path: string; type: 'file' | 'directory'; relativePath: string }
+  agent?: { sequence: string }
 }
 
 export interface MentionSection {
@@ -42,6 +43,8 @@ export interface InlineMentionMenuProps {
   className?: string
   /** Whether file search is in progress */
   isSearching?: boolean
+  /** Optional title for focused menus such as team-member mentions. */
+  headerLabel?: string
 }
 
 // ============================================================================
@@ -209,6 +212,7 @@ export function InlineMentionMenu({
   workspaceId,
   maxWidth = 280,
   className,
+  headerLabel,
 }: InlineMentionMenuProps) {
   const { t } = useTranslation()
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -300,7 +304,7 @@ export function InlineMentionMenu({
     >
       {/* Menu header — sticky above scroll area */}
       <div className="px-3 py-1.5 text-[12px] font-medium text-muted-foreground border-b border-foreground/5">
-        {t('chat.mentionFilesSkillsSources')}
+        {headerLabel ?? t('chat.mentionFilesSkillsSources')}
       </div>
 
       <div ref={listRef} className={MENU_LIST_STYLE}>
@@ -340,6 +344,11 @@ export function InlineMentionMenu({
                 {item.type === 'file' && (
                   <FileMenuIcon name={item.label} />
                 )}
+                {item.type === 'agent' && (
+                  <div className="flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-accent/12 px-1 text-[10px] font-medium tabular-nums text-accent">
+                    {item.agent?.sequence}
+                  </div>
+                )}
               </div>
 
               {/* Label and optional path/badge */}
@@ -352,6 +361,14 @@ export function InlineMentionMenu({
                       {getParentDir(item.file.relativePath)}
                     </FadingText>
                   )}
+                </>
+              ) : item.type === 'agent' ? (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate">{item.label}</span>
+                    {item.description && <span className="block truncate text-[11px] text-muted-foreground/65">{item.description}</span>}
+                  </div>
+                  <span className={MENU_TYPE_BADGE}>@{item.agent?.sequence}</span>
                 </>
               ) : (
                 <>

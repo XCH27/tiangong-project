@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { Users, Crown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TeamProjection } from '@craft-agent/shared/protocol'
+import { LEADER_LABEL_ID } from '@craft-agent/shared/labels'
 import { CHAT_LAYOUT } from '@/config/layout'
 import { navigate, routes } from '@/lib/navigate'
 import { cn } from '@/lib/utils'
@@ -49,7 +50,7 @@ export function TeamRosterHeader({ workspaceId, sessionId }: { workspaceId: stri
         <div className="flex flex-wrap gap-1.5">
           {projection.members.map((m) => {
             const roles = m.identityLabelIds
-              .filter((id) => id !== 'leader')
+              .filter((id) => id !== LEADER_LABEL_ID)
               .map((id) => identityById.get(id) ?? id)
             return (
               <button

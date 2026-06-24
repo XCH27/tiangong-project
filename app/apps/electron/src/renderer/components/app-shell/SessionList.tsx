@@ -159,8 +159,8 @@ export function SessionList({
   const { navigate, navigateToSession: navigateToSessionPrimary } = useNavigation()
   const navigateToSession = onNavigateToSession ?? navigateToSessionPrimary
 
-  // 团队群聊置顶项（docs/33 §1.1）：在"所有会话"顶端插一条原样式特殊会话项，
-  // 点开进入 teamConversationSessionId。队长只影响花名册/调度，不影响群聊入口存在。
+  // 队长会话本身就是团队群聊锚点。只有旧数据仍指向 hidden fallback 时才显示
+  // 置顶入口，避免把同一会话重复显示成“队长”和“团队群聊”。
   const { activeWorkspaceId } = useAppShellContext()
   const [teamProjection, setTeamProjection] = useState<TeamProjection | null>(null)
   const teamProjectionRefreshKey = useMemo(
@@ -737,7 +737,7 @@ export function SessionList({
         }}
         header={
           <>
-            {teamChatSessionId && !searchActive && (
+            {teamChatSessionId && teamChatSessionId !== teamProjection?.leaderSessionId && !searchActive && (
               <button
                 type="button"
                 onClick={() => navigateToSession(teamChatSessionId)}

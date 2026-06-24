@@ -138,13 +138,13 @@ describe('TeamCoordinator — 承重墙', () => {
     expect(rules.rules?.leaderSessionId).toBe('m2')
   })
 
-  it('sendTeamMessage 广播：投递给除发送者外的全体成员，事件 visibility=broadcast', async () => {
+  it('队长群聊的人类广播：投递给包括队长在内的全体成员，事件 visibility=broadcast', async () => {
     const { coordinator, store, events } = make([member('m1', 100), member('m2', 200)])
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm1' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     await coordinator.handleCommand({ type: 'assignTeamTask', teamId: 'team-main', taskId: 't1', assigneeSessionId: 'm2', title: 'x' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     await coordinator.handleCommand({ type: 'sendTeamMessage', teamId: 'team-main', content: '全员注意' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     expect((await store.listInbox('m2')).some(i => i.kind === 'message')).toBe(true)
-    expect(await store.listInbox('m1')).toEqual([]) // 发送者不收自己的广播
+    expect((await store.listInbox('m1')).some(i => i.kind === 'message')).toBe(true)
     const msg = events.find(e => e.type === 'team_message') as any
     expect(msg.visibility).toBe('broadcast')
   })
@@ -154,6 +154,19 @@ describe('TeamCoordinator — 承重墙', () => {
     seedRules(rules, ['m1', 'm2', 'm3']) // 直接种成员，避免 assignTask 收件箱副作用
     await coordinator.handleCommand({ type: 'sendTeamMessage', teamId: 'team-main', content: '只给 m2', audienceSessionIds: ['m2'] }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     expect((await store.listInbox('m2')).length).toBe(1)
+    expect(await store.listInbox('m3')).toEqual([])
+    const msg = events.find(e => e.type === 'team_message') as any
+    expect(msg.visibility).toBe('private')
+    expect(msg.audienceSessionIds).toEqual(['m2'])
+  })
+
+  it('sendTeamMessage @G-编号：服务端按当前投影解析成员，不让 renderer 保存成员 ID 映射', async () => {
+    const { coordinator, rules, store, events, sessions } = make([member('m2', 200), member('m1', 100), member('m3', 300)])
+    seedRules(rules, ['m1', 'm2', 'm3'], 'm1')
+    sessions.get('m1')!.labels = [LEADER_LABEL_ID]
+    await coordinator.handleCommand({ type: 'sendTeamMessage', teamId: 'team-main', content: '@G-02 请跟进', audienceSequences: ['G-02'] }, { issuerSessionId: 'm1', actor: USER_ACTOR })
+    expect((await store.listInbox('m2')).length).toBe(1)
+    expect(await store.listInbox('m1')).toEqual([])
     expect(await store.listInbox('m3')).toEqual([])
     const msg = events.find(e => e.type === 'team_message') as any
     expect(msg.visibility).toBe('private')
@@ -228,7 +241,8 @@ describe('TeamCoordinator — 承重墙', () => {
 
   it('身份从 session labels 派生：projection.identityLabelIds 反映已应用标签', async () => {
     const { coordinator, rules, sessions } = make([member('m1', 100), member('m2', 200)])
-    seedRules(rules, ['m1', 'm2'])
+    seedRules(rules, ['m1', 'm2'], 'm1')
+    sessions.get('m1')!.labels = [LEADER_LABEL_ID]
     sessions.get('m2')!.labels = ['design', 'priority::2'] // design 是 identity 标签，priority 不是
     const projection = await coordinator.getProjection()
     const m2 = projection?.members.find(m => m.sessionId === 'm2')
@@ -245,7 +259,7 @@ describe('TeamCoordinator — 承重墙', () => {
     const projection = await coordinator.getProjection()
 
     expect(projection?.leaderSessionId).toBe('m1')
-    expect(projection?.teamConversationSessionId).toBe('team-conv')
+    expect(projection?.teamConversationSessionId).toBe('m1')
     expect(projection?.members.map(m => m.sessionId)).toEqual(['m1', 'm2'])
     expect(rules.rules?.memberSessionIds).toEqual(['m1', 'm2'])
   })
@@ -260,7 +274,7 @@ describe('TeamCoordinator — 承重墙', () => {
     const projection = await coordinator.getProjection()
 
     expect(projection?.leaderSessionId).toBe('m1')
-    expect(projection?.teamConversationSessionId).toBe('team-conv') // 群聊入口可派生
+    expect(projection?.teamConversationSessionId).toBe('m1') // 队长会话就是群聊入口
     expect(rules.rules).not.toBeNull() // 规则文件已落地（懒初始化）
     expect(projection?.members.map(m => m.sessionId).sort()).toEqual(['m1', 'm2'])
   })
@@ -290,14 +304,14 @@ describe('TeamCoordinator — 承重墙', () => {
     sessions.delete('m1') // 队长会话被删
     const before = events.length
     const projection = await coordinator.getProjection()
-    expect(projection?.leaderSessionId).toBeNull()
-    expect(projection?.members.map(m => m.sessionId)).toEqual(['m2'])
+    expect(projection).toBeNull()
     expect(events.slice(before).some(e => e.type === 'team_leader_changed')).toBe(true)
   })
 
   it('getProjection：成员序号按 createdAt 派生 G-01/G-02', async () => {
-    const { coordinator, rules } = make([member('mB', 200), member('mA', 100)])
-    seedRules(rules, ['mB', 'mA'])
+    const { coordinator, rules, sessions } = make([member('mB', 200), member('mA', 100)])
+    seedRules(rules, ['mB', 'mA'], 'mA')
+    sessions.get('mA')!.labels = [LEADER_LABEL_ID]
     const projection = await coordinator.getProjection()
     const seqBySession = Object.fromEntries((projection?.members ?? []).map(m => [m.sessionId, m.sequence]))
     expect(seqBySession['mA']).toBe('G-01') // createdAt 100 → 第一
