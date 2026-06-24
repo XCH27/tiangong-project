@@ -19,7 +19,6 @@ import {
   Plus,
   Trash2,
   DatabaseZap,
-  Files,
   Zap,
   Inbox,
   Globe,
@@ -114,14 +113,13 @@ import {
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
-  isFilesNavigation,
   type NavigationState,
 } from "@/contexts/NavigationContext"
 import type { SettingsSubpage } from "../../../shared/types"
 import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
 import { AutomationsListPanel } from "../automations/AutomationsListPanel"
-import { FilesListPanel } from "../files/FilesListPanel"
+import { WorkspaceContextSidebar } from "./WorkspaceContextSidebar"
 import { APP_EVENTS, AGENT_EVENTS, type AutomationFilterKind, AUTOMATION_TYPE_TO_FILTER_KIND } from "../automations/types"
 import { useAutomations } from "@/hooks/useAutomations"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -527,6 +525,7 @@ function AppShellContent({
     onOpenStoredUserPreferences,
     onReset,
     onSendMessage,
+    onOpenFile,
     openNewChat,
     pendingPermissions,
   } = contextValue
@@ -546,6 +545,10 @@ function AppShellContent({
   const [sessionListWidth, setSessionListWidth] = React.useState(() => {
     return storage.get(storage.KEYS.sessionListWidth, 300)
   })
+  const [isWorkspaceContextSidebarVisible, setIsWorkspaceContextSidebarVisible] = React.useState(() => {
+    return storage.get(storage.KEYS.workspaceContextSidebarVisible, true)
+  })
+  const [selectedWorkspaceContextFile, setSelectedWorkspaceContextFile] = React.useState<string | null>(null)
 
   // Hides both sidebar and navigator (CMD+. toggle)
   // Seed from either focused window param or persisted preference, then keep it toggleable.
@@ -786,6 +789,12 @@ function AppShellContent({
     setSearchActive(false)
     setSearchQuery('')
   }, [navFilterKey])
+
+  React.useEffect(() => {
+    if (navState.navigator === 'files') {
+      navigate(routes.view.allSessions())
+    }
+  }, [navState.navigator])
 
   // Cmd+F to activate search
   useAction('app.search', () => setSearchActive(true))
@@ -1613,6 +1622,11 @@ function AppShellContent({
     storage.set(storage.KEYS.sidebarVisible, isSidebarVisible)
   }, [isSidebarVisible])
 
+  // Persist the right workspace context rail (Progress + files) visibility.
+  React.useEffect(() => {
+    storage.set(storage.KEYS.workspaceContextSidebarVisible, isWorkspaceContextSidebarVisible)
+  }, [isWorkspaceContextSidebarVisible])
+
   // Persist focus mode state to localStorage
   React.useEffect(() => {
     storage.set(storage.KEYS.focusModeEnabled, isSidebarAndNavigatorHidden)
@@ -1683,10 +1697,6 @@ function AppShellContent({
   // Handler for sources view (all sources)
   const handleSourcesClick = useCallback(() => {
     navigate(routes.view.sources())
-  }, [])
-
-  const handleFilesClick = useCallback(() => {
-    navigate(routes.view.files())
   }, [])
 
   // Handlers for source type filter views (subcategories in Sources dropdown)
@@ -1965,8 +1975,7 @@ function AppShellContent({
     }
     flattenTree(labelTree)
 
-    // 3. Files, Sources, Skills, Settings
-    result.push({ id: 'nav:files', type: 'nav', action: handleFilesClick })
+    // 3. Sources, Skills, Settings
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
@@ -1974,7 +1983,7 @@ function AppShellContent({
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleFilesClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2083,10 +2092,6 @@ function AppShellContent({
 
   // Get title based on navigation state
   const listTitle = React.useMemo(() => {
-    if (isFilesNavigation(navState)) {
-      return t("sidebar.allFiles")
-    }
-
     // Sources navigator
     if (isSourcesNavigation(navState)) {
       return t("sidebar.sources")
@@ -2367,13 +2372,6 @@ function AppShellContent({
                     },
                     // --- Separator ---
                     { id: "separator:chats-sources", type: "separator" },
-                    {
-                      id: "nav:files",
-                      title: t("sidebar.allFiles"),
-                      icon: Files,
-                      variant: isFilesNavigation(navState) ? "default" : "ghost",
-                      onClick: handleFilesClick,
-                    },
                     // --- Sources & Skills Section ---
                     {
                       id: "nav:sources",
@@ -3210,13 +3208,6 @@ function AppShellContent({
                 workspaceRootPath={activeWorkspace?.rootPath}
               />
             )}
-            {isFilesNavigation(navState) && (
-              <FilesListPanel
-                rootPath={activeWorkspace?.rootPath}
-                selectedFilePath={navState.details?.type === 'file' ? navState.details.filePath : null}
-                onFileClick={(path) => navigate(routes.view.files(path))}
-              />
-            )}
             {isSettingsNavigation(navState) && (
               /* Settings Navigator */
               <SettingsNavigator
@@ -3291,10 +3282,23 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={false}
+          isRightSidebarVisible={!isAutoCompact && !isFocusedMode && isWorkspaceContextSidebarVisible}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
+        {!isAutoCompact && !isFocusedMode && (
+          <WorkspaceContextSidebar
+            visible={isWorkspaceContextSidebarVisible}
+            rootPath={activeWorkspace?.rootPath}
+            progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
+            selectedFilePath={selectedWorkspaceContextFile}
+            onFileClick={(path) => {
+              setSelectedWorkspaceContextFile(path)
+              onOpenFile(path)
+            }}
+            onToggle={() => setIsWorkspaceContextSidebarVisible((value) => !value)}
+          />
+        )}
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
         {!effectiveSidebarAndNavigatorHidden && (

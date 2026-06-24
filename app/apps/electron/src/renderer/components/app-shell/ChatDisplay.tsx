@@ -75,7 +75,6 @@ import { navigate, routes } from "@/lib/navigate"
 import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
-import { SessionProgressCard } from "./SessionProgressCard"
 import { TeamRosterHeader } from "./TeamRosterHeader"
 import { handleErrorMessageAction } from "./error-message-actions"
 
@@ -1509,13 +1508,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
           <div className="flex flex-1 flex-col min-h-0 min-w-0 relative z-10">
           {/* Team roster (docs/00A §4): only renders on the team group-chat session; self-guarded. */}
           <TeamRosterHeader workspaceId={session.workspaceId} sessionId={session.id} />
-          {/* Progress card (docs/35 / docs/00A §4): pinned above messages when this session
-              has a task checklist. Guarded — empty progress renders nothing, view unchanged. */}
-          {session.progress && session.progress.length > 0 && (
-            <div className={cn(CHAT_LAYOUT.maxWidth, "mx-auto w-full min-w-0 px-4 pt-3")}>
-              <SessionProgressCard tasks={session.progress} />
-            </div>
-          )}
           {/* === MESSAGES AREA: Scrollable list of message bubbles === */}
           <div className="relative flex-1 min-h-0">
             {/* Mask wrapper - fades content at top and bottom over transparent/image backgrounds */}

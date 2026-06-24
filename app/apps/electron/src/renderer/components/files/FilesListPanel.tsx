@@ -12,6 +12,8 @@ interface FilesListPanelProps {
   rootPath?: string | null
   selectedFilePath?: string | null
   onFileClick: (path: string) => void
+  title?: string
+  hideSearch?: boolean
 }
 
 function basename(path: string): string {
@@ -50,6 +52,8 @@ export function FilesListPanel({
   rootPath,
   selectedFilePath,
   onFileClick,
+  title,
+  hideSearch = false,
 }: FilesListPanelProps) {
   const { t } = useTranslation()
   const [currentPath, setCurrentPath] = React.useState(rootPath ?? '')
@@ -109,19 +113,31 @@ export function FilesListPanel({
       <div className="shrink-0 px-3 py-2 border-b border-border/60 space-y-2">
         <div className="flex items-center gap-1.5 min-w-0 text-xs text-muted-foreground">
           <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate" title={listing?.currentPath ?? currentPath}>
-            {basename(listing?.currentPath ?? currentPath)}
-          </span>
+          {title ? (
+            <>
+              <span className="shrink-0 font-semibold text-foreground">{title}</span>
+              <span className="text-muted-foreground/45">·</span>
+              <span className="truncate" title={listing?.currentPath ?? currentPath}>
+                {basename(listing?.currentPath ?? currentPath)}
+              </span>
+            </>
+          ) : (
+            <span className="truncate" title={listing?.currentPath ?? currentPath}>
+              {basename(listing?.currentPath ?? currentPath)}
+            </span>
+          )}
         </div>
-        <div className="h-8 rounded-[7px] bg-muted/50 border border-border/60 flex items-center gap-2 px-2">
-          <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('files.searchPlaceholder')}
-            className="w-full bg-transparent outline-none text-[13px] placeholder:text-muted-foreground"
-          />
-        </div>
+        {!hideSearch && (
+          <div className="h-8 rounded-[7px] bg-muted/50 border border-border/60 flex items-center gap-2 px-2">
+            <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('files.searchPlaceholder')}
+              className="w-full bg-transparent outline-none text-[13px] placeholder:text-muted-foreground"
+            />
+          </div>
+        )}
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
