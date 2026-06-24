@@ -113,7 +113,7 @@ Send a prompt to Craft Agent (creates a new session for scheduled prompts).
 | `model` | string | Workspace default | Model ID for the created session |
 
 **Features:**
-- Use `@mentions` to reference sources or skills
+- Use bracket references such as `[source:linear]` or `[skill:commit]` for sources and skills
 - Environment variables are expanded (e.g., `$CRAFT_LABEL`)
 
 **LLM Connection & Model:** Optionally specify which AI provider and model to use for the created session. If omitted, the workspace default connection and model are used.
@@ -865,7 +865,7 @@ When a limit is hit, further events of that type are **silently dropped** for th
 ### Prompt not creating session
 
 1. Check that the prompt is not empty
-2. Verify @mentions reference valid sources/skills
+2. Verify bracket references point to valid sources/skills
 
 ### Webhook not working
 

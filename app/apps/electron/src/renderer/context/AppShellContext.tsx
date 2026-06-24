@@ -55,7 +55,7 @@ export interface AppShellContextType {
   hydrateDraftAttachments: (sessionId: string) => Promise<FileAttachment[]>
   /** All enabled sources for this workspace - provided by AppShell component */
   enabledSources?: LoadedSource[]
-  /** All skills for this workspace - provided by AppShell component (for @mentions) */
+  /** All skills for this workspace - provided by AppShell component (for slash menu insertion) */
   skills?: LoadedSkill[]
   /** Working directory of the active session — needed for project-level skill resolution */
   activeSessionWorkingDirectory?: string

@@ -26,14 +26,10 @@ import { Button } from '@/components/ui/button'
 import {
   InlineSlashCommand,
   useInlineSlashCommand,
+  type SlashSkillItem,
+  type SlashSourceItem,
   type SlashCommandId,
 } from '@/components/ui/slash-command-menu'
-import {
-  InlineMentionMenu,
-  useInlineMention,
-  type MentionItem,
-  type MentionItemType,
-} from '@/components/ui/mention-menu'
 import {
   InlineLabelMenu,
   useInlineLabelMenu,
@@ -254,7 +250,7 @@ export interface FreeFormInputProps {
   disabled?: boolean
   /** Whether the session is currently processing */
   isProcessing?: boolean
-  /** Callback when message is submitted (skillSlugs from @mentions) */
+  /** Callback when message is submitted (skillSlugs from slash-inserted skill mentions) */
   onSubmit: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
   /** Callback to stop processing. Pass silent=true to skip "Response interrupted" message */
   onStop?: (silent?: boolean) => void
@@ -302,8 +298,8 @@ export interface FreeFormInputProps {
   enabledSourceSlugs?: string[]
   /** Callback when source selection changes */
   onSourcesChange?: (slugs: string[]) => void
-  // Skill selection (for @mentions)
-  /** Available skills for @mention autocomplete */
+  // Skill selection (for slash menu)
+  /** Available skills for slash menu insertion */
   skills?: LoadedSkill[]
   // Label selection (for #labels)
   /** Available labels for #label autocomplete */
@@ -1136,7 +1132,7 @@ export function FreeFormInput({
     }
   }, [onWorkingDirectoryChange, workspaceId])
 
-  // Get recent folders and home directory for slash menu and mention menu
+  // Get recent folders and home directory for slash menu
   const [recentFolders, setRecentFolders] = React.useState<string[]>([])
   const [homeDir, setHomeDir] = React.useState<string>('')
 
@@ -1155,32 +1151,8 @@ export function FreeFormInput({
     activeCommands,
     recentFolders,
     homeDir,
-  })
-
-  // Handle mention selection (sources, skills, files)
-  const handleMentionSelect = React.useCallback((item: MentionItem) => {
-    // For sources: enable the source immediately
-    if (item.type === 'source' && item.source && onSourcesChange) {
-      const slug = item.source.config.slug
-      if (!optimisticSourceSlugs.includes(slug)) {
-        const newSlugs = [...optimisticSourceSlugs, slug]
-        setOptimisticSourceSlugs(newSlugs)
-        onSourcesChange(newSlugs)
-      }
-    }
-
-    // Files via @ mention in text are sufficient context for the agent.
-    // Skills also don't need special handling beyond text insertion.
-  }, [optimisticSourceSlugs, onSourcesChange])
-
-  // Inline mention hook (for skills, sources, and files)
-  const inlineMention = useInlineMention({
-    inputRef: richInputRef,
     skills,
     sources,
-    basePath: workingDirectory,
-    onSelect: handleMentionSelect,
-    // Use workspace slug (not UUID) for SDK skill qualification
     workspaceId: workspaceSlug,
   })
 
@@ -1446,7 +1418,7 @@ export function FreeFormInput({
     // Tutorial may disable sending to guide user through specific steps
     if (disableSend) return false
 
-    // Parse all @mentions (skills, sources, folders)
+    // Parse slash-inserted bracket mentions (skills, sources, files, folders)
     const skillSlugs = skills.map(s => s.slug)
     const sourceSlugs = sources.map(s => s.config.slug)
     const mentions = parseMentions(input, skillSlugs, sourceSlugs)
@@ -1508,21 +1480,6 @@ export function FreeFormInput({
     // During IME composition, ESC should cancel composition, not trigger app/menu ESC behavior.
     if (e.key === 'Escape' && e.nativeEvent.isComposing) {
       return
-    }
-
-    // Don't submit when mention menu is open AND has visible content
-    if (inlineMention.isOpen) {
-      // Only intercept navigation/selection keys if menu actually shows items or is loading
-      const hasVisibleContent = inlineMention.sections.some(s => s.items.length > 0) || inlineMention.isSearching
-      if (hasVisibleContent && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-        // These keys are handled by the InlineMentionMenu component
-        return
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        inlineMention.close()
-        return
-      }
     }
 
     // Don't submit when slash command menu is open - let it handle the Enter key
@@ -1618,13 +1575,10 @@ export function FreeFormInput({
     // Update inline slash command state
     inlineSlash.handleInputChange(nextValue, cursorPosition)
 
-    // Update inline mention state (for @mentions - skills, sources, folders)
-    inlineMention.handleInputChange(nextValue, cursorPosition)
-
     // Update inline label state (for #labels)
     inlineLabel.handleInputChange(nextValue, cursorPosition)
 
-    // Auto-capitalize first letter (but not for slash commands, @mentions, or #labels)
+    // Auto-capitalize first letter (but not for slash commands, @people mentions, or #labels)
     // Only if autoCapitalisation setting is enabled
     let newValue = nextValue
     if (autoCapitalisation && nextValue.length > 0 && nextValue.charAt(0) !== '/' && nextValue.charAt(0) !== '@' && nextValue.charAt(0) !== '#') {
@@ -1648,7 +1602,7 @@ export function FreeFormInput({
       setInput(newValue)
       syncToParent(newValue)
     }
-  }, [inlineSlash, inlineMention, inlineLabel, syncToParent, autoCapitalisation])
+  }, [inlineSlash, inlineLabel, syncToParent, autoCapitalisation])
 
   // Handle inline slash command selection (removes the /command text)
   const handleInlineSlashCommandSelect = React.useCallback((commandId: SlashCommandId) => {
@@ -1666,17 +1620,33 @@ export function FreeFormInput({
     richInputRef.current?.focus()
   }, [inlineSlash, syncToParent])
 
-  // Handle inline mention selection (inserts appropriate mention text)
-  const handleInlineMentionSelect = React.useCallback((item: MentionItem) => {
-    const { value: newValue, cursorPosition } = inlineMention.handleSelect(item)
+  // Handle inline slash skill selection (inserts [skill:...] execution marker)
+  const handleInlineSlashSkillSelect = React.useCallback((item: SlashSkillItem) => {
+    const { value: newValue, cursorPosition } = inlineSlash.handleSelectSkill(item)
     setInput(newValue)
     syncToParent(newValue)
-    // Focus input and restore cursor position after badge renders
     setTimeout(() => {
       richInputRef.current?.focus()
       richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
     }, 0)
-  }, [inlineMention, syncToParent])
+  }, [inlineSlash, syncToParent])
+
+  // Handle inline slash source selection (inserts [source:...] and enables it)
+  const handleInlineSlashSourceSelect = React.useCallback((item: SlashSourceItem) => {
+    const { value: newValue, cursorPosition } = inlineSlash.handleSelectSource(item)
+    const slug = item.source.config.slug
+    if (slug && onSourcesChange && !optimisticSourceSlugs.includes(slug)) {
+      const newSlugs = [...optimisticSourceSlugs, slug]
+      setOptimisticSourceSlugs(newSlugs)
+      onSourcesChange(newSlugs)
+    }
+    setInput(newValue)
+    syncToParent(newValue)
+    setTimeout(() => {
+      richInputRef.current?.focus()
+      richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
+    }, 0)
+  }, [inlineSlash, optimisticSourceSlugs, onSourcesChange, syncToParent])
 
   // Handle inline label selection (removes the #label text from input)
   const handleInlineLabelSelect = React.useCallback((labelId: string) => {
@@ -1761,21 +1731,10 @@ export function FreeFormInput({
           activeCommands={activeCommands}
           onSelectCommand={handleInlineSlashCommandSelect}
           onSelectFolder={handleInlineSlashFolderSelect}
+          onSelectSkill={handleInlineSlashSkillSelect}
+          onSelectSource={handleInlineSlashSourceSelect}
           filter={inlineSlash.filter}
           position={inlineSlash.position}
-        />
-
-        {/* Inline Mention Autocomplete (skills, sources, files) */}
-        <InlineMentionMenu
-          open={inlineMention.isOpen}
-          onOpenChange={(open) => !open && inlineMention.close()}
-          sections={inlineMention.sections}
-          onSelect={handleInlineMentionSelect}
-          filter={inlineMention.filter}
-          position={inlineMention.position}
-          workspaceId={workspaceId}
-          maxWidth={280}
-          isSearching={inlineMention.isSearching}
         />
 
         {/* Inline Label & State Autocomplete (#labels / #states) */}

@@ -192,8 +192,8 @@ interface ChatDisplayProps {
   sources?: LoadedSource[]
   /** Callback when source selection changes */
   onSourcesChange?: (slugs: string[]) => void
-  // Skill selection (for @mentions)
-  /** Available skills for @mention autocomplete */
+  // Skill selection (for slash menu)
+  /** Available skills for slash menu insertion */
   skills?: LoadedSkill[]
   // Label selection (for #labels)
   /** Available label configs (tree) for label menu and badge display */
@@ -478,7 +478,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Sources
   sources,
   onSourcesChange,
-  // Skills (for @mentions)
+  // Skills (for slash menu)
   skills,
   // Labels (for #labels)
   labels,

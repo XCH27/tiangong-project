@@ -5,6 +5,10 @@ import { Check, Minimize2 } from 'lucide-react'
 import { Icon_Folder } from '@craft-agent/ui'
 import { cn } from '@/lib/utils'
 import { PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER, type PermissionMode } from '@craft-agent/shared/agent/modes'
+import type { LoadedSkill, LoadedSource } from '../../../shared/types'
+import { AGENTS_PLUGIN_NAME } from '@craft-agent/shared/skills/types'
+import { SkillAvatar } from './skill-avatar'
+import { SourceAvatar } from './source-avatar'
 
 // ============================================================================
 // Types
@@ -13,7 +17,7 @@ import { PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER, type PermissionMode } fr
 export type SlashCommandId = PermissionMode | 'compact'
 
 /** Union type for all item types in the slash menu */
-export type SlashItemType = 'command' | 'folder'
+export type SlashItemType = 'command' | 'folder' | 'skill' | 'source'
 
 export interface SlashCommand {
   id: SlashCommandId
@@ -34,12 +38,34 @@ export interface SlashFolderItem {
   path: string
 }
 
+/** Skill item for the slash menu */
+export interface SlashSkillItem {
+  id: string
+  type: 'skill'
+  label: string
+  description?: string
+  mentionText: string
+  skill: LoadedSkill
+}
+
+/** Source item for the slash menu */
+export interface SlashSourceItem {
+  id: string
+  type: 'source'
+  label: string
+  description?: string
+  mentionText: string
+  source: LoadedSource
+}
+
 /** Section with header for the inline slash menu */
 export interface SlashSection {
   id: string
   label: string
-  items: (SlashCommand | SlashFolderItem)[]
+  items: SlashMenuItem[]
 }
+
+export type SlashMenuItem = SlashCommand | SlashFolderItem | SlashSkillItem | SlashSourceItem
 
 export interface CommandGroup {
   id: string
@@ -131,8 +157,16 @@ function filterCommands(commands: SlashCommand[], filter: string): SlashCommand[
 }
 
 /** Check if an item is a folder */
-function isFolder(item: SlashCommand | SlashFolderItem): item is SlashFolderItem {
+function isFolder(item: SlashMenuItem): item is SlashFolderItem {
   return 'type' in item && item.type === 'folder'
+}
+
+function isSkill(item: SlashMenuItem): item is SlashSkillItem {
+  return 'type' in item && item.type === 'skill'
+}
+
+function isSource(item: SlashMenuItem): item is SlashSourceItem {
+  return 'type' in item && item.type === 'source'
 }
 
 /** Filter sections by label/id, keeping sections grouped */
@@ -154,7 +188,7 @@ function filterSections(sections: SlashSection[], filter: string): SlashSection[
 }
 
 /** Flatten sections into a single array of items */
-function flattenSections(sections: SlashSection[]): (SlashCommand | SlashFolderItem)[] {
+function flattenSections(sections: SlashSection[]): SlashMenuItem[] {
   return sections.flatMap(section => section.items)
 }
 
@@ -319,6 +353,8 @@ export interface InlineSlashCommandProps {
   activeCommands?: SlashCommandId[]
   onSelectCommand: (commandId: SlashCommandId) => void
   onSelectFolder: (path: string) => void
+  onSelectSkill: (item: SlashSkillItem) => void
+  onSelectSource: (item: SlashSourceItem) => void
   filter?: string
   position: { x: number; y: number }
   className?: string
@@ -331,6 +367,8 @@ export function InlineSlashCommand({
   activeCommands = [],
   onSelectCommand,
   onSelectFolder,
+  onSelectSkill,
+  onSelectSource,
   filter = '',
   position,
   className,
@@ -356,14 +394,18 @@ export function InlineSlashCommand({
   }, [selectedIndex])
 
   // Handle item selection
-  const handleSelect = React.useCallback((item: SlashCommand | SlashFolderItem) => {
+  const handleSelect = React.useCallback((item: SlashMenuItem) => {
     if (isFolder(item)) {
       onSelectFolder(item.path)
+    } else if (isSkill(item)) {
+      onSelectSkill(item)
+    } else if (isSource(item)) {
+      onSelectSource(item)
     } else {
       onSelectCommand(item.id)
     }
     onOpenChange(false)
-  }, [onSelectCommand, onSelectFolder, onOpenChange])
+  }, [onSelectCommand, onSelectFolder, onSelectSkill, onSelectSource, onOpenChange])
 
   // Keyboard navigation
   // Don't attach listener when no items - allows Enter to propagate to input handler
@@ -465,6 +507,48 @@ export function InlineSlashCommand({
                     </div>
                   </div>
                 )
+              } else if (isSkill(item)) {
+                return (
+                  <div
+                    key={`${section.id}-${item.id}`}
+                    data-selected={isSelected}
+                    onClick={() => handleSelect(item)}
+                    onMouseEnter={() => setSelectedIndex(itemIndex)}
+                    className={cn(
+                      MENU_ITEM_STYLE,
+                      isSelected && MENU_ITEM_SELECTED
+                    )}
+                  >
+                    <div className="shrink-0">
+                      <SkillAvatar skill={item.skill} size="sm" />
+                    </div>
+                    <div className="flex-1 min-w-0 truncate">
+                      <span>{item.label}</span>
+                      {item.description && <span className="text-muted-foreground ml-1.5">{item.description}</span>}
+                    </div>
+                  </div>
+                )
+              } else if (isSource(item)) {
+                return (
+                  <div
+                    key={`${section.id}-${item.id}`}
+                    data-selected={isSelected}
+                    onClick={() => handleSelect(item)}
+                    onMouseEnter={() => setSelectedIndex(itemIndex)}
+                    className={cn(
+                      MENU_ITEM_STYLE,
+                      isSelected && MENU_ITEM_SELECTED
+                    )}
+                  >
+                    <div className="shrink-0">
+                      <SourceAvatar source={item.source} size="sm" />
+                    </div>
+                    <div className="flex-1 min-w-0 truncate">
+                      <span>{item.label}</span>
+                      {item.description && <span className="text-muted-foreground ml-1.5">{item.description}</span>}
+                    </div>
+                  </div>
+                )
               } else {
                 // Command item
                 const isActive = activeCommands.includes(item.id)
@@ -488,10 +572,10 @@ export function InlineSlashCommand({
           </React.Fragment>
         ))}
       </div>
-      {/* Always-visible footer hint for @ mentions */}
+      {/* Keep the input grammar explicit: slash is for commands, skills, and templates. */}
       <div className="h-px bg-border/50 mx-2" />
       <div className="px-3 py-2.5 select-none text-xs text-muted-foreground">
-        Use @ for skills and files
+        / for commands and skills · @ for people
       </div>
     </div>
   )
@@ -534,6 +618,9 @@ export interface UseInlineSlashCommandOptions {
   activeCommands?: SlashCommandId[]
   recentFolders?: string[]
   homeDir?: string
+  skills?: LoadedSkill[]
+  sources?: LoadedSource[]
+  workspaceId?: string
 }
 
 export interface UseInlineSlashCommandReturn {
@@ -546,6 +633,8 @@ export interface UseInlineSlashCommandReturn {
   activeCommands: SlashCommandId[]
   handleSelectCommand: (commandId: SlashCommandId) => string
   handleSelectFolder: (path: string) => string
+  handleSelectSkill: (item: SlashSkillItem) => { value: string; cursorPosition: number }
+  handleSelectSource: (item: SlashSourceItem) => { value: string; cursorPosition: number }
 }
 
 export function useInlineSlashCommand({
@@ -555,6 +644,9 @@ export function useInlineSlashCommand({
   activeCommands = [],
   recentFolders = [],
   homeDir,
+  skills = [],
+  sources = [],
+  workspaceId,
 }: UseInlineSlashCommandOptions): UseInlineSlashCommandReturn {
   const [isOpen, setIsOpen] = React.useState(false)
   const [filter, setFilter] = React.useState('')
@@ -581,6 +673,42 @@ export function useInlineSlashCommand({
       items: [compactCommand],
     })
 
+    if (skills.length > 0) {
+      result.push({
+        id: 'skills',
+        label: 'Skills',
+        items: skills.map(skill => {
+          const pluginName = skill.source === 'workspace' ? workspaceId : AGENTS_PLUGIN_NAME
+          const qualifiedName = pluginName ? `${pluginName}:${skill.slug}` : skill.slug
+          return {
+            id: skill.slug,
+            type: 'skill' as const,
+            label: skill.metadata.name,
+            description: skill.metadata.description,
+            mentionText: `[skill:${qualifiedName}] `,
+            skill,
+          }
+        }),
+      })
+    }
+
+    if (sources.length > 0) {
+      result.push({
+        id: 'sources',
+        label: 'Sources',
+        items: sources
+          .filter(source => source.config.slug && source.config.name)
+          .map(source => ({
+            id: source.config.slug,
+            type: 'source' as const,
+            label: source.config.name,
+            description: source.config.tagline,
+            mentionText: `[source:${source.config.slug}] `,
+            source,
+          })),
+      })
+    }
+
     // Recent folders section - sorted alphabetically by folder name, show all
     if (recentFolders.length > 0) {
       const sortedFolders = [...recentFolders]
@@ -604,7 +732,7 @@ export function useInlineSlashCommand({
     }
 
     return result
-  }, [recentFolders, homeDir])
+  }, [recentFolders, homeDir, skills, sources, workspaceId])
 
   const handleInputChange = React.useCallback((value: string, cursorPosition: number) => {
     // Store current state for handleSelect
@@ -701,6 +829,33 @@ export function useInlineSlashCommand({
     return result
   }, [onSelectFolder, slashStart])
 
+  const replaceSlashToken = React.useCallback((replacement: string): { value: string; cursorPosition: number } => {
+    if (slashStart < 0) {
+      return { value: currentInputRef.current.value, cursorPosition: currentInputRef.current.cursorPosition }
+    }
+
+    const { value: currentValue, cursorPosition } = currentInputRef.current
+    const before = currentValue.slice(0, slashStart)
+    const after = currentValue.slice(cursorPosition)
+    const value = before + replacement + after
+    return {
+      value,
+      cursorPosition: before.length + replacement.length,
+    }
+  }, [slashStart])
+
+  const handleSelectSkill = React.useCallback((item: SlashSkillItem): { value: string; cursorPosition: number } => {
+    const result = replaceSlashToken(item.mentionText)
+    setIsOpen(false)
+    return result
+  }, [replaceSlashToken])
+
+  const handleSelectSource = React.useCallback((item: SlashSourceItem): { value: string; cursorPosition: number } => {
+    const result = replaceSlashToken(item.mentionText)
+    setIsOpen(false)
+    return result
+  }, [replaceSlashToken])
+
   const close = React.useCallback(() => {
     setIsOpen(false)
     setFilter('')
@@ -717,5 +872,7 @@ export function useInlineSlashCommand({
     activeCommands,
     handleSelectCommand,
     handleSelectFolder,
+    handleSelectSkill,
+    handleSelectSource,
   }
 }

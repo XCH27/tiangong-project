@@ -81,7 +81,7 @@
 禁改：所有 protocol/*、SessionManager*、会话列表组件、i18n JSON、session-tools-core/tool-defs.ts。需要新 channel/type → 回 Lead。
 要求：
 - 删除用户可见的 @Skill / @Source / @File 分支，不留兼容开关；@ 菜单只出 人/会话/身份。
-- / 菜单承担 Skill/命令/模板/Source 动作；内部存储标记如 [skill:slug] 仍可作执行格式，但只能由 / 生成。
+- / 菜单承担 Skill/命令/模板/Source 动作；内部存储标记如 [skill:slug] 仍可作执行格式，聊天输入已改为只能由 / 生成。
 - 文件走附件/全部文件入口，不进 @。
 验收：输入 @ 不再出现 Skill；输入 / 能找到 Skill/命令/模板；旧 bundled docs 不再出现 @weather skill 示例；改 mention-menu.test.ts 等测试并跑通；typecheck:all 绿。
 ```

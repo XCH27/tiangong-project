@@ -216,8 +216,8 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 | `/` | Skill、命令、模板、工具动作、Source 动作 |
 | 附件/全部文件 | 文件、文件夹、素材 |
 
-- 删除用户可见的 `@Skill`、`@Source`、`@File` 分支，不保留兼容开关。
-- 内部存储标记如 `[skill:slug]` 可以继续作为执行格式，但只能由 `/` 菜单生成，不能被 `@` 菜单触发。
+- 删除用户可见的 `@Skill`、`@Source`、`@File` 分支，不保留兼容开关。聊天输入已完成这一收口；`@Agent/@身份` 名册搜索仍待接。
+- 内部存储标记如 `[skill:slug]` 可以继续作为执行格式；聊天输入已改为只能由 `/` 菜单生成，不能被 `@` 菜单触发。
 - 真实改动范围包括 `FreeFormInput.tsx`、实际的 `mention-menu.tsx`/inline mention hook、`rich-text-input.tsx`、shared mentions parser、相关测试、resources docs、tool-defs、handlers 和 session MCP 说明。
 - `skill-mention-menu.tsx` 已是 deprecated 转发文件，不应当作为主实现入口。
 

@@ -59,7 +59,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
     path: '/skills/overview',
     title: 'Skills',
     summary:
-      'Reusable instruction sets that teach your agent specialized behaviors. Create a SKILL.md file and invoke it with @mention in your messages.',
+      'Reusable instruction sets that teach your agent specialized behaviors. Create a SKILL.md file and invoke it from the slash menu in chat.',
   },
   statuses: {
     path: '/statuses/overview',
