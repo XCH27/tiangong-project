@@ -133,6 +133,7 @@ import SettingsNavigator from "@/pages/settings/SettingsNavigator"
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
+  PANEL_MIN_WIDTH,
   PANEL_SASH_HALF_HIT_WIDTH,
   PANEL_SASH_HIT_WIDTH,
   PANEL_SASH_LINE_WIDTH,
@@ -548,6 +549,9 @@ function AppShellContent({
   const [isWorkspaceContextSidebarVisible, setIsWorkspaceContextSidebarVisible] = React.useState(() => {
     return storage.get(storage.KEYS.workspaceContextSidebarVisible, true)
   })
+  const [workspaceContextSidebarWidth, setWorkspaceContextSidebarWidth] = React.useState(() => {
+    return storage.get(storage.KEYS.workspaceContextSidebarWidth, 320)
+  })
   const [selectedWorkspaceContextFile, setSelectedWorkspaceContextFile] = React.useState<string | null>(null)
 
   // Hides both sidebar and navigator (CMD+. toggle)
@@ -566,6 +570,29 @@ function AppShellContent({
 
   const effectiveSidebarAndNavigatorHidden = isSidebarAndNavigatorHidden || isAutoCompact
 
+  // Keep the right context rail independently resizable without allowing it
+  // to consume the last usable chat-panel width. Its saved width is preserved;
+  // the rendered width is clamped to the current shell and returns when room
+  // becomes available again.
+  const fixedShellColumnsWidth = effectiveSidebarAndNavigatorHidden
+    ? 0
+    : (isSidebarVisible ? sidebarWidth + PANEL_GAP : 0) + sessionListWidth + PANEL_GAP
+  const workspaceContextSidebarMaxWidth = Math.min(
+    480,
+    shellWidth > 0
+      ? shellWidth - fixedShellColumnsWidth - PANEL_MIN_WIDTH - PANEL_GAP - PANEL_EDGE_INSET
+      : 480,
+  )
+  const canRenderWorkspaceContextSidebar = shellWidth === 0 || workspaceContextSidebarMaxWidth >= 260
+  const renderedWorkspaceContextSidebarWidth = shellWidth === 0
+    ? workspaceContextSidebarWidth
+    : Math.min(workspaceContextSidebarWidth, workspaceContextSidebarMaxWidth)
+  const isWorkspaceContextSidebarRendered =
+    isWorkspaceContextSidebarVisible &&
+    !isAutoCompact &&
+    !isFocusedMode &&
+    canRenderWorkspaceContextSidebar
+
   // What's New overlay
   const [showWhatsNew, setShowWhatsNew] = React.useState(false)
   const [releaseNotesContent, setReleaseNotesContent] = React.useState('')
@@ -580,11 +607,13 @@ function AppShellContent({
     })
   }, [])
 
-  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | null>(null)
+  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | 'workspace-context' | null>(null)
   const [sidebarHandleY, setSidebarHandleY] = React.useState<number | null>(null)
   const [sessionListHandleY, setSessionListHandleY] = React.useState<number | null>(null)
+  const [workspaceContextHandleY, setWorkspaceContextHandleY] = React.useState<number | null>(null)
   const resizeHandleRef = React.useRef<HTMLDivElement>(null)
   const sessionListHandleRef = React.useRef<HTMLDivElement>(null)
+  const workspaceContextResizeHandleRef = React.useRef<HTMLDivElement>(null)
   const [session, setSession] = useSession()
   const { resolvedMode, isDark, setMode } = useTheme()
   const { canGoBack, canGoForward, goBack, goForward, navigateToSource, navigateToSession } = useNavigation()
@@ -1256,6 +1285,17 @@ function AppShellContent({
           const rect = sessionListHandleRef.current.getBoundingClientRect()
           setSessionListHandleY(e.clientY - rect.top)
         }
+      } else if (isResizing === 'workspace-context') {
+        const shellRight = shellRef.current?.getBoundingClientRect().right ?? window.innerWidth
+        const newWidth = Math.min(
+          Math.max(shellRight - e.clientX - PANEL_EDGE_INSET, 260),
+          Math.max(260, workspaceContextSidebarMaxWidth),
+        )
+        setWorkspaceContextSidebarWidth(newWidth)
+        if (workspaceContextResizeHandleRef.current) {
+          const rect = workspaceContextResizeHandleRef.current.getBoundingClientRect()
+          setWorkspaceContextHandleY(e.clientY - rect.top)
+        }
       }
     }
 
@@ -1266,6 +1306,9 @@ function AppShellContent({
       } else if (isResizing === 'session-list') {
         storage.set(storage.KEYS.sessionListWidth, sessionListWidth)
         setSessionListHandleY(null)
+      } else if (isResizing === 'workspace-context') {
+        storage.set(storage.KEYS.workspaceContextSidebarWidth, workspaceContextSidebarWidth)
+        setWorkspaceContextHandleY(null)
       }
       setIsResizing(null)
     }
@@ -1282,6 +1325,8 @@ function AppShellContent({
     sidebarWidth,
     sessionListWidth,
     isSidebarVisible,
+    workspaceContextSidebarWidth,
+    workspaceContextSidebarMaxWidth,
   ])
 
   // Spring transition config - shared between sidebar and header
@@ -2215,8 +2260,8 @@ function AppShellContent({
           canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-          onToggleWorkspaceContextSidebar={!isFocusedMode ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
-          isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarVisible}
+          onToggleWorkspaceContextSidebar={!isFocusedMode && !isAutoCompact && canRenderWorkspaceContextSidebar ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
+          isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarRendered}
           onAddSessionPanel={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
@@ -3285,13 +3330,14 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={!isAutoCompact && !isFocusedMode && isWorkspaceContextSidebarVisible}
+          isRightSidebarVisible={isWorkspaceContextSidebarRendered}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
-        {!isAutoCompact && !isFocusedMode && (
+        {isWorkspaceContextSidebarRendered && (
           <WorkspaceContextSidebar
             visible={isWorkspaceContextSidebarVisible}
+            width={renderedWorkspaceContextSidebarWidth}
             rootPath={activeWorkspace?.rootPath}
             progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
             selectedFilePath={selectedWorkspaceContextFile}
@@ -3301,6 +3347,42 @@ function AppShellContent({
             }}
             onToggle={() => setIsWorkspaceContextSidebarVisible((value) => !value)}
           />
+        )}
+
+        {/* Workspace context rail resize handle. It shares the shell's existing
+            sash geometry so Progress and Files resize as one persistent rail. */}
+        {isWorkspaceContextSidebarRendered && (
+        <div
+          ref={workspaceContextResizeHandleRef}
+          onMouseDown={(e) => { e.preventDefault(); setIsResizing('workspace-context') }}
+          onMouseMove={(e) => {
+            if (workspaceContextResizeHandleRef.current) {
+              const rect = workspaceContextResizeHandleRef.current.getBoundingClientRect()
+              setWorkspaceContextHandleY(e.clientY - rect.top)
+            }
+          }}
+          onMouseLeave={() => { if (isResizing !== 'workspace-context') setWorkspaceContextHandleY(null) }}
+          onDoubleClick={() => {
+            setWorkspaceContextSidebarWidth(320)
+            storage.set(storage.KEYS.workspaceContextSidebarWidth, 320)
+          }}
+          className="absolute cursor-col-resize z-panel flex justify-center"
+          style={{
+            width: PANEL_SASH_HIT_WIDTH,
+            top: PANEL_STACK_VERTICAL_OVERFLOW,
+            bottom: PANEL_STACK_VERTICAL_OVERFLOW,
+            right: renderedWorkspaceContextSidebarWidth + (PANEL_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH,
+            transition: isResizing === 'workspace-context' ? undefined : 'right 0.15s ease-out',
+          }}
+        >
+          <div
+            className="h-full"
+            style={{
+              ...getResizeGradientStyle(workspaceContextHandleY, workspaceContextResizeHandleRef.current?.clientHeight ?? null),
+              width: PANEL_SASH_LINE_WIDTH,
+            }}
+          />
+        </div>
         )}
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}

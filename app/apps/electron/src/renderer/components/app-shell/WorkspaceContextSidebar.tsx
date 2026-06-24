@@ -9,6 +9,7 @@ import type { ProgressTask } from '@craft-agent/shared/protocol'
 
 interface WorkspaceContextSidebarProps {
   visible: boolean
+  width: number
   rootPath?: string | null
   progressTasks?: ProgressTask[]
   selectedFilePath?: string | null
@@ -18,6 +19,7 @@ interface WorkspaceContextSidebarProps {
 
 export function WorkspaceContextSidebar({
   visible,
+  width,
   rootPath,
   progressTasks,
   selectedFilePath,
@@ -33,9 +35,10 @@ export function WorkspaceContextSidebar({
   return (
     <aside
       className={cn(
-        'z-panel mr-3 flex h-full w-[320px] shrink-0 flex-col overflow-hidden',
+        'z-panel flex h-full min-w-0 shrink-0 flex-col overflow-hidden',
         'rounded-[10px] border border-border bg-background shadow-middle',
       )}
+      style={{ width }}
     >
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
         <h2 className="text-[13px] font-semibold text-foreground">{t('workspaceContext.progress')}</h2>
