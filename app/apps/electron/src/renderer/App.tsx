@@ -1701,12 +1701,12 @@ export default function App() {
   // - Default: switch workspace in same window (in-window switching)
   // - With openInNewWindow=true: open in new window (or focus existing)
   const handleSelectWorkspace = useCallback(async (workspaceId: string, openInNewWindow = false) => {
-    // If selecting current workspace, do nothing
-    if (workspaceId === windowWorkspaceId) return
-
     if (openInNewWindow) {
       // Open (or focus) the window for the selected workspace
       window.electronAPI.openWorkspace(workspaceId)
+    } else if (workspaceId === windowWorkspaceId) {
+      // If selecting current workspace in-place, do nothing
+      return
     } else {
       // Switch workspace in current window
       // 1. Update the main process's window-workspace mapping

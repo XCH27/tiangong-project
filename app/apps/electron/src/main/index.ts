@@ -782,6 +782,12 @@ app.whenReady().then(async () => {
         return remove(workspaceId)
       })
 
+      // Delete workspace from config and remove the backing folder from disk.
+      ipcMain.handle('workspace:delete', async (_event, workspaceId: string) => {
+        const { deleteWorkspace } = await import('@craft-agent/shared/config')
+        return deleteWorkspace(workspaceId)
+      })
+
       // Cross-server RPC — invoke a channel on an arbitrary remote server
       ipcMain.handle('server:invokeOnServer', async (_event, url: string, token: string, channel: string, ...args: unknown[]) => {
         const { connectToRemote } = await import('./handlers/workspace')

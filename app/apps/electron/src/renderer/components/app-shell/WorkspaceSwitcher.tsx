@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
-import { useState, useCallback, useRef } from "react"
-import { Check, ExternalLink, ChevronDown, Cloud, CloudOff, Pencil, Trash2 } from "lucide-react"
+import { useState, useCallback } from "react"
+import { ChevronDown, Cloud, CloudOff, ExternalLink, Pencil, Trash2, X } from "lucide-react"
 import { AnimatePresence } from "motion/react"
 import { useSetAtom } from "jotai"
 import { toast } from "sonner"
@@ -67,52 +67,6 @@ export function WorkspaceSwitcher({
   const connectionState = useTransportConnectionState()
   const isRemote = connectionState?.mode === 'remote'
 
-  // Health check results for non-active remote workspaces (checked on dropdown open)
-  const [remoteHealthMap, setRemoteHealthMap] = useState<Map<string, 'ok' | 'error' | 'checking'>>(new Map())
-  const healthCheckAbort = useRef<AbortController | null>(null)
-
-  /** Check connectivity for all non-active remote workspaces when dropdown opens. */
-  const checkRemoteHealth = useCallback(() => {
-    // Cancel any in-flight checks
-    healthCheckAbort.current?.abort()
-    const abort = new AbortController()
-    healthCheckAbort.current = abort
-
-    const remoteWorkspaces = workspaces.filter(w => w.remoteServer && w.id !== activeWorkspaceId)
-    if (remoteWorkspaces.length === 0) return
-
-    // Mark all as checking
-    setRemoteHealthMap(prev => {
-      const next = new Map(prev)
-      for (const ws of remoteWorkspaces) next.set(ws.id, 'checking')
-      return next
-    })
-
-    // Fire parallel checks
-    for (const ws of remoteWorkspaces) {
-      window.electronAPI.testRemoteConnection(ws.remoteServer!.url, ws.remoteServer!.token)
-        .then(result => {
-          if (abort.signal.aborted) return
-          setRemoteHealthMap(prev => new Map(prev).set(ws.id, result.ok ? 'ok' : 'error'))
-        })
-        .catch(() => {
-          if (abort.signal.aborted) return
-          setRemoteHealthMap(prev => new Map(prev).set(ws.id, 'error'))
-        })
-    }
-  }, [workspaces, activeWorkspaceId])
-
-  /** Tooltip for disconnected remote workspaces — shows error kind. */
-  const getDisconnectTooltip = (workspaceId: string): string => {
-    if (workspaceId === activeWorkspaceId && connectionState?.lastError) {
-      const { kind } = connectionState.lastError
-      if (kind === 'auth') return t('toast.authenticationFailed')
-      if (kind === 'timeout') return t('toast.serverUnreachable')
-      if (kind === 'network') return t('toast.serverUnreachable')
-    }
-    return t('toast.disconnected')
-  }
-
   /** True when we know a remote workspace is unreachable. */
   const isRemoteDisconnected = (workspaceId: string) => {
     // Active workspace: use live transport state
@@ -121,8 +75,7 @@ export function WorkspaceSwitcher({
       const { status } = connectionState
       return status !== 'connected' && status !== 'connecting' && status !== 'idle'
     }
-    // Non-active: use health check result
-    return remoteHealthMap.get(workspaceId) === 'error'
+    return false
   }
 
   const hasUnreadInOtherWorkspaces = React.useMemo(() => {
@@ -138,18 +91,6 @@ export function WorkspaceSwitcher({
     onSelect(workspace.id)
   }
 
-  const handleRemoveWorkspace = useCallback(async (workspace: Workspace) => {
-    if (workspace.id === activeWorkspaceId) {
-      toast.error(t('toast.cannotRemoveActiveWorkspace'))
-      return
-    }
-    const removed = await window.electronAPI.removeWorkspace(workspace.id)
-    if (removed) {
-      toast.success(t('toast.removedWorkspace', { name: workspace.name }))
-      onWorkspaceRemoved?.()
-    }
-  }, [activeWorkspaceId, onWorkspaceRemoved])
-
   const handleCloseCreationScreen = useCallback(() => {
     setShowCreationScreen(false)
     setReconnectTarget(null)
@@ -161,6 +102,47 @@ export function WorkspaceSwitcher({
     setRenameValue(selectedWorkspace.name)
     setRenameDialogOpen(true)
   }, [selectedWorkspace])
+
+  const handleOpenWorkspaceInNewWindow = useCallback(() => {
+    if (!selectedWorkspace) return
+    onSelect(selectedWorkspace.id, true)
+  }, [onSelect, selectedWorkspace])
+
+  const handleCloseWorkspace = useCallback(async () => {
+    if (!selectedWorkspace) return
+
+    const fallbackWorkspace = workspaces.find((workspace) => workspace.id !== selectedWorkspace.id)
+    const removed = await window.electronAPI.removeWorkspace(selectedWorkspace.id)
+    if (!removed) return
+
+    toast.success(t('toast.removedWorkspace', { name: selectedWorkspace.name }))
+    onWorkspaceRemoved?.()
+
+    if (fallbackWorkspace) {
+      await Promise.resolve(onSelect(fallbackWorkspace.id))
+    } else {
+      window.electronAPI.closeWindow()
+    }
+  }, [onSelect, onWorkspaceRemoved, selectedWorkspace, t, workspaces])
+
+  const handleDeleteWorkspace = useCallback(async () => {
+    if (!selectedWorkspace) return
+
+    const fallbackWorkspace = workspaces.find((workspace) => workspace.id !== selectedWorkspace.id)
+    if (fallbackWorkspace) {
+      await Promise.resolve(onSelect(fallbackWorkspace.id))
+    }
+
+    const deleted = await window.electronAPI.deleteWorkspace(selectedWorkspace.id)
+    if (!deleted) return
+
+    toast.success(t('toast.removedWorkspace', { name: selectedWorkspace.name }))
+    onWorkspaceRemoved?.()
+
+    if (!fallbackWorkspace) {
+      window.electronAPI.closeWindow()
+    }
+  }, [onSelect, onWorkspaceRemoved, selectedWorkspace, t, workspaces])
 
   const handleSubmitRename = useCallback(async () => {
     if (!selectedWorkspace) return
@@ -213,7 +195,7 @@ export function WorkspaceSwitcher({
         )}
       </AnimatePresence>
 
-      <DropdownMenu onOpenChange={(open) => { if (open) checkRemoteHealth() }}>
+      <DropdownMenu>
         <DropdownMenuTrigger asChild>
           {variant === 'topbar' ? (
             <button
@@ -277,88 +259,34 @@ export function WorkspaceSwitcher({
           sideOffset={variant === 'topbar' ? 6 : 4}
           minWidth={variant === 'topbar' ? 'min-w-64' : undefined}
         >
-          {workspaces.map((workspace) => {
-            const disconnected = isRemoteDisconnected(workspace.id)
-            return (
-              <StyledDropdownMenuItem
-                key={workspace.id}
-                onClick={(e) => {
-                  if (disconnected && workspace.remoteServer) {
-                    setReconnectTarget(workspace)
-                    setShowCreationScreen(true)
-                    setFullscreenOverlayOpen(true)
-                    return
-                  }
-                  if (disconnected) return
-                  const openInNewWindow = e.metaKey || e.ctrlKey
-                  onSelect(workspace.id, openInNewWindow)
-                }}
-                className={cn(
-                  "justify-between group",
-                  activeWorkspaceId === workspace.id && "bg-foreground/10",
-                  disconnected && "opacity-60",
-                )}
-              >
-                <div className="flex items-center gap-3 font-sans min-w-0 flex-1">
-                  <CrossfadeAvatar
-                    src={workspaceIconMap.get(workspace.id)}
-                    alt={workspace.name}
-                    className="h-5 w-5 rounded-full ring-1 ring-border/50"
-                    fallbackClassName="bg-muted text-xs rounded-full"
-                    fallback={workspace.name.charAt(0)}
-                  />
-                  <span className="truncate">{workspace.name}</span>
-                  {workspace.remoteServer && (
-                    disconnected
-                      ? <span title={getDisconnectTooltip(workspace.id)} className="shrink-0"><CloudOff className="h-3.5 w-3.5 text-destructive" /></span>
-                      : <Cloud className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  )}
-                  {workspaceUnreadMap?.[workspace.id] && <span className="h-2 w-2 rounded-full bg-accent shrink-0" />}
-                </div>
-                <div className="flex items-center gap-1">
-                  {/* Action buttons - only visible on hover for non-active workspaces */}
-                  {activeWorkspaceId !== workspace.id && (
-                    <button
-                      data-touch-reveal="true"
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/20 hover:text-destructive transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleRemoveWorkspace(workspace)
-                      }}
-                      title={t("workspace.removeWorkspace")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {activeWorkspaceId !== workspace.id && !disconnected && (
-                    <button
-                      data-touch-reveal="true"
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-foreground/10 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onSelect(workspace.id, true)
-                      }}
-                      title={t("sidebarMenu.openInNewWindow")}
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {activeWorkspaceId === workspace.id && (
-                    <Check className="h-3.5 w-3.5" />
-                  )}
-                </div>
-              </StyledDropdownMenuItem>
-            )
-          })}
-
-          {/* Separator and active workspace actions */}
-          <StyledDropdownMenuSeparator />
           <StyledDropdownMenuItem
             onClick={handleRenameWorkspace}
             className="font-sans"
           >
             <Pencil className="h-4 w-4" />
             {t("settings.workspace.renameWorkspace")}
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuItem
+            onClick={handleOpenWorkspaceInNewWindow}
+            className="font-sans"
+          >
+            <ExternalLink className="h-4 w-4" />
+            {t("sidebarMenu.openInNewWindow")}
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuItem
+            onClick={handleCloseWorkspace}
+            className="font-sans"
+          >
+            <X className="h-4 w-4" />
+            {t("workspace.closeWorkspace")}
+          </StyledDropdownMenuItem>
+          <StyledDropdownMenuSeparator />
+          <StyledDropdownMenuItem
+            onClick={handleDeleteWorkspace}
+            className="font-sans text-destructive focus:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+            {t("workspace.deleteWorkspace")}
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu>

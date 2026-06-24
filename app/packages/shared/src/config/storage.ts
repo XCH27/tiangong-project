@@ -11,6 +11,7 @@ import {
   generateSlug,
   getDefaultWorkspacesDir,
   workspaceFolderNameFromName,
+  deleteWorkspaceFolder,
 } from '../workspaces/storage.ts';
 import { findIconFile } from '../utils/icon.ts';
 import { extractWorkspaceSlugFromPath } from '../utils/workspace-slug.ts';
@@ -938,6 +939,17 @@ export async function removeWorkspace(workspaceId: string): Promise<boolean> {
   }
 
   return true;
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
+  const workspace = getWorkspaces().find(w => w.id === workspaceId);
+  if (!workspace) return false;
+
+  const removed = await removeWorkspace(workspaceId);
+  if (!removed) return false;
+
+  if (!existsSync(workspace.rootPath)) return true;
+  return deleteWorkspaceFolder(workspace.rootPath);
 }
 
 // Note: renameWorkspace() was removed - workspace names are now stored only in folder config
