@@ -49,6 +49,7 @@
 | 团队状态（待安排/进行中/待审查/完成/取消） | 映射到 craft 现有 session status / `SessionStatusIcon`；身份扩展原 `labels/config.json` + session `labels` | 别在团队规则或 renderer 建第二套身份/状态定义 |
 | 设置项 / 手动编辑逃生舱 | `renderer/pages/settings/*`、`components/settings/*`，写进 craft `config`/`preferences` | 别另起第二套设置真相 |
 | AI/API 连接配置 | `pages/settings/AiSettingsPage.tsx` 复用原 `OnboardingWizard` / `ProviderSelectStep` / `CredentialsStep` / `ApiKeyInput`。连接区直接露出 compact provider 卡片，点击进入同一套 API/OAuth/local model 流程；已有连接仍用原 `ConnectionRow` 管理、验证、编辑、删除 | 别新建第二套 API 配置页；别把 provider 选择藏成只有一行空态文字；别让按钮绕过原凭据保存/验证流程 |
+| 工作区切换 / 新增 / 重命名 | `renderer/components/app-shell/{TopBar,WorkspaceSwitcher}.tsx` + `components/workspace/*` + `shared/config/storage.ts`。顶部工作区 pill 的下拉只负责切换已有工作区和重命名当前工作区；“添加工作区”作为右侧顶栏按钮，打开原 `WorkspaceCreationScreen`。工作区名称不靠 UI 强行汉化，默认名称从主语言取 `workspace.myWorkspace`，真实文件夹名用同一名称（保留中文等非 ASCII），重命名时同步移动 workspace 根目录并更新全局 config 与 workspace `config.json` | 别把“添加工作区”塞回工作区下拉；别只改显示名不改文件夹；别新增第二套 workspace store；别用 slug 强行把中文默认工作区落成 `workspace`/`my-workspace` |
 | 右上角新建面板按钮 | `renderer/components/app-shell/TopBar.tsx`。新建会话面板与新建浏览器窗口是同一排的两个独立 `TopBarButton`（会话图标 / 浏览器图标），分别直接调用 `onAddSessionPanel` / `onAddBrowserPanel` | 别把两个常用动作藏回一个 `+` 下拉菜单，别新增第二套 panel 创建入口 |
 | 帮助文档入口 | `shared/menu-schema.ts` 的 `HELP_LINKS` + `renderer/components/app-menu/{DesktopAppMenu,MobileAppMenu}.tsx`。帮助链接统一放在左上 Craft 菜单 →「帮助」子菜单里，「帮助和文档」下面列数据源/技能/状态/权限/自动化/Messaging 等文档 | 别在 `TopBar` 右侧恢复 `?` 帮助按钮；别做第二套帮助下拉菜单 |
 | 浏览器 / 网页标注 / 设计选择 | `renderer/components/browser/*` + BrowserPane/CDP + session timeline | 别建孤岛 Figma 克隆页 |

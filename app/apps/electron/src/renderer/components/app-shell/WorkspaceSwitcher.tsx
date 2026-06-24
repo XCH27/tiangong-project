@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { useState, useCallback, useRef } from "react"
-import { Check, FolderPlus, ExternalLink, ChevronDown, Cloud, CloudOff, Trash2 } from "lucide-react"
+import { Check, ExternalLink, ChevronDown, Cloud, CloudOff, Pencil, Trash2 } from "lucide-react"
 import { AnimatePresence } from "motion/react"
 import { useSetAtom } from "jotai"
 import { toast } from "sonner"
@@ -19,6 +19,7 @@ import { CrossfadeAvatar } from "@/components/ui/avatar"
 import { FadingText } from "@/components/ui/fading-text"
 import { WorkspaceCreationScreen } from "@/components/workspace"
 import { waitForTransportConnected } from '@/lib/transport-wait'
+import { RenameDialog } from "@/components/ui/rename-dialog"
 import { useWorkspaceIcons } from "@/hooks/useWorkspaceIcon"
 import { useTransportConnectionState } from "@/hooks/useTransportConnectionState"
 import type { Workspace } from "../../../shared/types"
@@ -31,6 +32,7 @@ interface WorkspaceSwitcherProps {
   onSelect: (workspaceId: string, openInNewWindow?: boolean) => void | Promise<void>
   onWorkspaceCreated?: (workspace: Workspace) => void
   onWorkspaceRemoved?: () => void
+  onWorkspaceUpdated?: () => void
   /** workspaceId -> has unread */
   workspaceUnreadMap?: Record<string, boolean>
 }
@@ -50,16 +52,17 @@ export function WorkspaceSwitcher({
   onSelect,
   onWorkspaceCreated,
   onWorkspaceRemoved,
+  onWorkspaceUpdated,
   workspaceUnreadMap,
 }: WorkspaceSwitcherProps) {
   const { t } = useTranslation()
   const [showCreationScreen, setShowCreationScreen] = useState(false)
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
   const [reconnectTarget, setReconnectTarget] = useState<Workspace | null>(null)
   const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
   const selectedWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
-  const selectedWorkspaceName = selectedWorkspace?.name === 'My Workspace'
-    ? t('workspace.myWorkspace')
-    : selectedWorkspace?.name
+  const selectedWorkspaceName = selectedWorkspace?.name
   const workspaceIconMap = useWorkspaceIcons(workspaces)
   const connectionState = useTransportConnectionState()
   const isRemote = connectionState?.mode === 'remote'
@@ -127,11 +130,6 @@ export function WorkspaceSwitcher({
     return workspaces.some((workspace) => workspace.id !== activeWorkspaceId && workspaceUnreadMap[workspace.id])
   }, [workspaces, activeWorkspaceId, workspaceUnreadMap])
 
-  const handleNewWorkspace = () => {
-    setShowCreationScreen(true)
-    setFullscreenOverlayOpen(true)
-  }
-
   const handleWorkspaceCreated = (workspace: Workspace) => {
     setShowCreationScreen(false)
     setFullscreenOverlayOpen(false)
@@ -157,6 +155,34 @@ export function WorkspaceSwitcher({
     setReconnectTarget(null)
     setFullscreenOverlayOpen(false)
   }, [setFullscreenOverlayOpen])
+
+  const handleRenameWorkspace = useCallback(() => {
+    if (!selectedWorkspace) return
+    setRenameValue(selectedWorkspace.name)
+    setRenameDialogOpen(true)
+  }, [selectedWorkspace])
+
+  const handleSubmitRename = useCallback(async () => {
+    if (!selectedWorkspace) return
+
+    const nextName = renameValue.trim()
+    if (!nextName || nextName === selectedWorkspace.name) {
+      setRenameDialogOpen(false)
+      return
+    }
+
+    try {
+      await window.electronAPI.updateWorkspaceSetting(selectedWorkspace.id, 'name', nextName)
+      toast.success(t('toast.updatedWorkspaceSettings'))
+      onWorkspaceUpdated?.()
+    } catch (error) {
+      toast.error(t('toast.failedToUpdateWorkspaceSettings'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setRenameDialogOpen(false)
+    }
+  }, [onWorkspaceUpdated, renameValue, selectedWorkspace, t])
 
   const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => {
     await window.electronAPI.updateWorkspaceRemoteServer(workspaceId, remoteServer)
@@ -325,17 +351,79 @@ export function WorkspaceSwitcher({
             )
           })}
 
-          {/* Separator and New Workspace option */}
+          {/* Separator and active workspace actions */}
           <StyledDropdownMenuSeparator />
           <StyledDropdownMenuItem
-            onClick={handleNewWorkspace}
+            onClick={handleRenameWorkspace}
             className="font-sans"
           >
-            <FolderPlus className="h-4 w-4" />
-            {t("workspace.addWorkspace")}
+            <Pencil className="h-4 w-4" />
+            {t("settings.workspace.renameWorkspace")}
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu>
+
+      <RenameDialog
+        open={renameDialogOpen}
+        onOpenChange={setRenameDialogOpen}
+        title={t("settings.workspace.renameWorkspace")}
+        value={renameValue}
+        onValueChange={setRenameValue}
+        onSubmit={handleSubmitRename}
+        placeholder={t("settings.workspace.enterWorkspaceName")}
+      />
+    </>
+  )
+}
+
+interface WorkspaceAddButtonProps {
+  onSelect: (workspaceId: string, openInNewWindow?: boolean) => void | Promise<void>
+  onWorkspaceCreated?: (workspace: Workspace) => void
+  className?: string
+  children: React.ReactNode
+}
+
+export function WorkspaceAddButton({
+  onSelect,
+  onWorkspaceCreated,
+  className,
+  children,
+}: WorkspaceAddButtonProps) {
+  const { t } = useTranslation()
+  const [showCreationScreen, setShowCreationScreen] = useState(false)
+  const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
+
+  const open = useCallback(() => {
+    setShowCreationScreen(true)
+    setFullscreenOverlayOpen(true)
+  }, [setFullscreenOverlayOpen])
+
+  const close = useCallback(() => {
+    setShowCreationScreen(false)
+    setFullscreenOverlayOpen(false)
+  }, [setFullscreenOverlayOpen])
+
+  const handleWorkspaceCreated = useCallback((workspace: Workspace) => {
+    setShowCreationScreen(false)
+    setFullscreenOverlayOpen(false)
+    toast.success(t('toast.createdWorkspace', { name: workspace.name }))
+    onWorkspaceCreated?.(workspace)
+    onSelect(workspace.id)
+  }, [onSelect, onWorkspaceCreated, setFullscreenOverlayOpen, t])
+
+  return (
+    <>
+      <button type="button" className={className} onClick={open} aria-label={t("workspace.addWorkspace")}>
+        {children}
+      </button>
+      <AnimatePresence>
+        {showCreationScreen && (
+          <WorkspaceCreationScreen
+            onWorkspaceCreated={handleWorkspaceCreated}
+            onClose={close}
+          />
+        )}
+      </AnimatePresence>
     </>
   )
 }

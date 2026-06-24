@@ -98,8 +98,8 @@ import { setSearchPlatform, setImageProcessor } from '@craft-agent/server-core/s
 import { createApplicationMenu } from './menu'
 import { WindowManager } from './window-manager'
 import { loadWindowState, saveWindowState } from './window-state'
-import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig } from '@craft-agent/shared/config'
-import { getDefaultWorkspacesDir } from '@craft-agent/shared/workspaces'
+import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig, migrateDefaultWorkspaceNameAndFolder } from '@craft-agent/shared/config'
+import { getDefaultWorkspacesDir, workspaceFolderNameFromName } from '@craft-agent/shared/workspaces'
 import { initializeDocs } from '@craft-agent/shared/docs'
 import { initializeReleaseNotes } from '@craft-agent/shared/release-notes'
 import { ensureDefaultPermissions } from '@craft-agent/shared/agent/permissions-config'
@@ -332,16 +332,17 @@ async function createInitialWindows(): Promise<void> {
 
   // Load saved window state
   const savedState = loadWindowState()
+  const defaultWorkspaceName = i18n.t('workspace.myWorkspace')
   let workspaces = getWorkspaces()
 
-  // If no workspaces exist, create default "My Workspace" on first run
+  // If no workspaces exist, create the localized default workspace on first run.
   if (workspaces.length === 0) {
     // Ensure config file exists (addWorkspace requires it)
     if (!loadStoredConfig()) {
       saveConfig({ workspaces: [], activeWorkspaceId: null, activeSessionId: null })
     }
-    const defaultPath = join(getDefaultWorkspacesDir(), 'my-workspace')
-    addWorkspace({ rootPath: defaultPath, name: 'My Workspace' })
+    const defaultPath = join(getDefaultWorkspacesDir(), workspaceFolderNameFromName(defaultWorkspaceName))
+    addWorkspace({ rootPath: defaultPath, name: defaultWorkspaceName })
     workspaces = getWorkspaces() // Refresh after creation
     mainLog.info('Created default workspace on first run')
   }
@@ -621,6 +622,16 @@ app.whenReady().then(async () => {
 
       if (serverModeEnabled) {
         mainLog.info(`[server-mode] Enabled — binding ${rpcHost}:${rpcPort}${tls ? ' (TLS)' : ''}`)
+      }
+
+      // Workspace folder migrations must run before SessionManager initializes,
+      // otherwise file watchers and event logs can bind to stale root paths.
+      try {
+        migrateDefaultWorkspaceNameAndFolder(i18n.t('workspace.myWorkspace'))
+      } catch (error) {
+        mainLog.warn(
+          `Skipped default workspace folder migration: ${error instanceof Error ? error.message : String(error)}`
+        )
       }
 
       // Bootstrap the WS RPC server via shared bootstrap function.

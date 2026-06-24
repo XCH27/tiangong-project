@@ -240,7 +240,7 @@ export function getWorkspaceSummary(rootPath: string): WorkspaceSummary | null {
 // ============================================================
 
 /**
- * Generate URL-safe slug from name
+ * Generate URL-safe slug from name.
  */
 export function generateSlug(name: string): string {
   let slug = name
@@ -257,17 +257,35 @@ export function generateSlug(name: string): string {
 }
 
 /**
+ * Generate a filesystem folder name from a human-readable workspace name.
+ *
+ * Unlike `generateSlug`, this intentionally preserves non-ASCII names such as
+ * "我的工作区" so the visible workspace name and the folder name stay aligned.
+ */
+export function workspaceFolderNameFromName(name: string): string {
+  const folderName = name
+    .normalize('NFC')
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/g, '')
+    .trim();
+
+  return folderName || 'workspace';
+}
+
+/**
  * Generate a unique folder path for a workspace by appending a numeric suffix
- * if the slug-based folder already exists.
- * E.g., "my-workspace", "my-workspace-2", "my-workspace-3", ...
+ * if the name-based folder already exists.
+ * E.g., "我的工作区", "我的工作区 2", "我的工作区 3", ...
  *
  * @param name - Display name to derive the slug from
  * @param baseDir - Parent directory where workspace folders live (e.g., ~/.craft-agent/workspaces/)
  * @returns Full path to a unique, non-existing folder
  */
 export function generateUniqueWorkspacePath(name: string, baseDir: string): string {
-  const slug = generateSlug(name);
-  let candidate = join(baseDir, slug);
+  const folderName = workspaceFolderNameFromName(name);
+  let candidate = join(baseDir, folderName);
 
   if (!existsSync(candidate)) {
     return candidate;
@@ -275,11 +293,11 @@ export function generateUniqueWorkspacePath(name: string, baseDir: string): stri
 
   // Append numeric suffix until we find a non-existing path
   let counter = 2;
-  while (existsSync(join(baseDir, `${slug}-${counter}`))) {
+  while (existsSync(join(baseDir, `${folderName} ${counter}`))) {
     counter++;
   }
 
-  return join(baseDir, `${slug}-${counter}`);
+  return join(baseDir, `${folderName} ${counter}`);
 }
 
 /**

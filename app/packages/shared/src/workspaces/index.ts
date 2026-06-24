@@ -21,6 +21,7 @@ export {
   getWorkspaceSourcesPath,
   getWorkspaceSessionsPath,
   getWorkspaceSkillsPath,
+  workspaceFolderNameFromName,
   // Config operations
   loadWorkspaceConfig,
   saveWorkspaceConfig,

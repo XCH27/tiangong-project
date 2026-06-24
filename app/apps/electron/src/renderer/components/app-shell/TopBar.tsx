@@ -21,7 +21,7 @@ import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
+import { WorkspaceAddButton, WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
 import { AppMenu } from "../AppMenu"
 
@@ -35,6 +35,7 @@ interface TopBarProps {
   workspaceUnreadMap?: Record<string, boolean>
   onWorkspaceCreated?: (workspace: Workspace) => void
   onWorkspaceRemoved?: () => void
+  onWorkspaceUpdated?: () => void
   activeSessionId?: string | null
   onNewChat: () => void
   onNewWindow?: () => void
@@ -63,6 +64,7 @@ export function TopBar({
   workspaceUnreadMap,
   onWorkspaceCreated,
   onWorkspaceRemoved,
+  onWorkspaceUpdated,
   activeSessionId,
   onNewChat,
   onNewWindow,
@@ -211,6 +213,7 @@ export function TopBar({
                 onSelect={onSelectWorkspace}
                 onWorkspaceCreated={onWorkspaceCreated}
                 onWorkspaceRemoved={onWorkspaceRemoved}
+                onWorkspaceUpdated={onWorkspaceUpdated}
                 workspaceUnreadMap={workspaceUnreadMap}
               />
             )}
@@ -240,6 +243,18 @@ export function TopBar({
             </TooltipContent>
           </Tooltip>
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <WorkspaceAddButton
+              onSelect={onSelectWorkspace}
+              onWorkspaceCreated={onWorkspaceCreated}
+              className="header-icon-btn h-7 w-7 flex items-center justify-center rounded-[6px] titlebar-no-drag hover:bg-foreground/5 focus:outline-none focus-visible:ring-0 transition-colors duration-100"
+            >
+              <Icons.FolderPlus className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
+            </WorkspaceAddButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("workspace.addWorkspace")}</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <TopBarButton
