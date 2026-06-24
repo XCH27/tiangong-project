@@ -28,6 +28,9 @@ import { isValidThinkingLevel, normalizeThinkingLevel } from '../agent/thinking-
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
 import { type ConfigDefaults } from './config-defaults-schema.ts';
 import { isValidThemeFile } from './validators.ts';
+import type { DraftAttachmentContent, DraftAttachmentRef, SessionDraft } from './draft-types.ts';
+
+export type { DraftAttachmentContent, DraftAttachmentRef, SessionDraft } from './draft-types.ts';
 
 // Re-export CONFIG_DIR for convenience (centralized in paths.ts)
 export { CONFIG_DIR } from './paths.ts';
@@ -1120,28 +1123,6 @@ export function clearWorkspacePlan(workspaceId: string): void {
 // ============================================
 
 const DRAFTS_FILE = join(CONFIG_DIR, 'drafts.json');
-
-export interface DraftAttachmentContent {
-  type: 'image' | 'pdf' | 'text' | 'office' | 'audio' | 'unknown';
-  mimeType: string;
-  size: number;
-  base64?: string;
-  text?: string;
-  thumbnailBase64?: string;
-}
-
-export interface DraftAttachmentRef {
-  path: string;
-  name: string;
-  /** Inline content for attachments without a real filesystem path (paste, web-drag).
-   *  When present, hydrate reconstructs from these bytes and skips any disk read. */
-  content?: DraftAttachmentContent;
-}
-
-export interface SessionDraft {
-  text: string;
-  attachments?: DraftAttachmentRef[];
-}
 
 interface DraftsData {
   drafts: Record<string, SessionDraft>;

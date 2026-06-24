@@ -25,12 +25,15 @@ import { getDefaultLabelConfig, saveLabelConfig } from '../labels/storage.ts';
 import { loadConfigDefaults } from '../config/storage.ts';
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
 import { normalizeThinkingLevel } from '../agent/thinking-levels.ts';
+import { workspaceFolderNameFromName } from './name.ts';
 import type {
   WorkspaceConfig,
   CreateWorkspaceInput,
   LoadedWorkspace,
   WorkspaceSummary,
 } from './types.ts';
+
+export { workspaceFolderNameFromName } from './name.ts';
 
 const CONFIG_DIR = join(homedir(), '.craft-agent');
 const DEFAULT_WORKSPACES_DIR = join(CONFIG_DIR, 'workspaces');
@@ -254,24 +257,6 @@ export function generateSlug(name: string): string {
   }
 
   return slug;
-}
-
-/**
- * Generate a filesystem folder name from a human-readable workspace name.
- *
- * Unlike `generateSlug`, this intentionally preserves non-ASCII names such as
- * "我的工作区" so the visible workspace name and the folder name stay aligned.
- */
-export function workspaceFolderNameFromName(name: string): string {
-  const folderName = name
-    .normalize('NFC')
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/[. ]+$/g, '')
-    .trim();
-
-  return folderName || 'workspace';
 }
 
 /**

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft } from "lucide-react"
-import { workspaceFolderNameFromName } from "@craft-agent/shared/workspaces"
+import { workspaceFolderNameFromName } from "@craft-agent/shared/workspaces/name"
 import { cn } from "@/lib/utils"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"

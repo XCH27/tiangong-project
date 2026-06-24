@@ -12,6 +12,8 @@ export type {
   WorkspaceSummary,
 } from './types.ts';
 
+export { workspaceFolderNameFromName } from './name.ts';
+
 // Storage functions
 export {
   // Path utilities
@@ -21,7 +23,6 @@ export {
   getWorkspaceSourcesPath,
   getWorkspaceSessionsPath,
   getWorkspaceSkillsPath,
-  workspaceFolderNameFromName,
   // Config operations
   loadWorkspaceConfig,
   saveWorkspaceConfig,
