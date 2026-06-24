@@ -4,7 +4,7 @@
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前分支状态：团队身份已收敛到 Craft 原标签系统；`队长/开发/代码/测试/自动化/内容/上下文/审查/设计` 等身份通过 `labels/config.json` + session `labels` 注入系统提示词和 permission profile，不再新增第二套身份菜单。管理 Agent 已有右下角常驻入口，可创建 hidden craft session，按管理设置选择模型，并注入管理 Agent 专用系统提示词；记忆是独立设置页，且 Agent 可用 `list_memory` / `add_memory` / `delete_memory` 操作同一套本地 MemoryStore。仍未完成：真实全局专栏/退出行为、四个专业工作面。
+> 当前分支状态：团队身份已收敛到 Craft 原标签系统；`队长/开发/代码/测试/自动化/内容/上下文/审查/设计` 等身份通过 `labels/config.json` + session `labels` 注入系统提示词和 permission profile，不再新增第二套身份菜单。管理 Agent 已有右下角常驻入口，可创建 hidden craft session，按管理设置选择模型，并注入管理 Agent 专用系统提示词；入口支持最小化为常驻按钮，也可关闭当前管理会话并删除 hidden session。记忆是独立设置页，且 Agent 可用 `list_memory` / `add_memory` / `delete_memory` 操作同一套本地 MemoryStore。仍未完成：真实全局专栏、四个专业工作面。
 
 ---
 
@@ -87,7 +87,7 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 > - **接入点 2：中央权限路径（本轮新增）**——`SessionManager.requestWorkflowPermission` 接 `permissionAutoOutcome`：**所有**项目 Agent 的权限请求（file_write/mcp_mutation/api_mutation）开启后都按规则代答；`team:` 动作跳过（由接入点 1 处理），未开启/无规则/L3 → 照常弹用户。纯函数 `permissionAutoOutcome` 有 5 个单测。每次自动判断写 `manager_auto_decision` 进 timeline。
 > - **配置：`managerDecision` RPC**（getSettings/updateSettings）——设置落 `<workspace>/.fleet/manager-decision.json`，给设置页消费；默认 `enabled=false` → 全程行为不变、不绕过 permission。
 > - 已有 UI：`ManagerSettingsPage` 配置管理 Agent 模型、自动决策开关和 L2 规则；右下角 `ManagerAgentLauncher` 使用这些模型配置创建 hidden 管理会话。
-> - **未做**：记忆/偏好作为自动决策依据、真实全局专栏和退出行为设置。
+> - **未做**：记忆/偏好作为自动决策依据、真实全局专栏。
 
 默认情况下，涉及**权限、文件写入、运行命令、提交外部平台、删除记忆、修改项目方向**等关键动作，仍然问用户确认。当用户**主动开启自动决策**后，管理 Agent 可在低风险场景按记忆/偏好/规则/权限策略代替用户回复项目 Agent。
 

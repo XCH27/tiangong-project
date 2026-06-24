@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Bot, ChevronDown, Expand, Minus, Plus, RefreshCw, Send, Settings, Wand2 } from "lucide-react"
+import { Bot, ChevronDown, Expand, Minus, Plus, RefreshCw, Send, Wand2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { navigate, routes } from "@/lib/navigate"
 import { useAppShellContext, useSession } from "@/context/AppShellContext"
@@ -32,7 +32,7 @@ const QUICK_PROMPTS = [
  */
 export function ManagerAgentLauncher() {
   const { t } = useTranslation()
-  const { activeWorkspaceId, onCreateSession, onSendMessage } = useAppShellContext()
+  const { activeWorkspaceId, onCreateSession, onSendMessage, onDeleteSession } = useAppShellContext()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [settings, setSettings] = useState<AutoDecisionSettings | null>(null)
@@ -109,6 +109,17 @@ export function ManagerAgentLauncher() {
     setInput('')
   }, [input, sendManagerText])
 
+  const closeManagerSession = useCallback(async () => {
+    const sessionId = managerSessionId
+    setInput('')
+    setError(null)
+    setOpen(false)
+    setManagerSessionId(null)
+    if (sessionId) {
+      await onDeleteSession(sessionId, true)
+    }
+  }, [managerSessionId, onDeleteSession])
+
   return createPortal(
     <>
       {open ? (
@@ -164,10 +175,18 @@ export function ManagerAgentLauncher() {
               <button
                 type="button"
                 className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
-                aria-label="Minimize"
+                aria-label="Minimize to launcher"
                 onClick={() => setOpen(false)}
               >
                 <Minus className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
+                aria-label="Close manager chat"
+                onClick={() => void closeManagerSession()}
+              >
+                <X className="size-3.5" />
               </button>
             </div>
           </div>
