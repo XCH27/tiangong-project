@@ -51,7 +51,7 @@ CLI Runtime Host 是新基座的第一批重做能力：让用户在同一个 cr
 - Multica（黑盒参考）：采用 daemon/PATH 扫描多 CLI 的方向；Fleet 吸收“刷新即扫描全部本机 Agent CLI”，但不迁第二套 daemon/session。
 - Hermes（黑盒参考）：Codex/Grok/provider 走 runtime switch / provider plugin / gateway 思路；Fleet 当前只做检测与待 adapter 标记，后续 native/subscription adapter 再接发送。
 - Goose / Custom ACP：按 stdio ACP 做 opt-in 实机验证；Claude/Codex/Grok/Hermes/OpenCode/Antigravity/Qwen/Pi 等改走 native/subscription adapter 设计。
-- Provider 图标：LobeHub Icons 的 npm 包为 MIT，覆盖 Antigravity、XAI、Hermes Agent、Goose 等；当前 `lobehub.com/icons/skill.md` 会被 Vercel 安全页拦截，后续落地优先用 `@lobehub/icons-static-svg` 接现有 `<img src>` 管线，React 包 `@lobehub/icons` 需先做适配层，UIED SVG 作为补充来源。
+- Provider 图标：`ConnectionIcon`/`provider-icons.ts` 已统一覆盖 Antigravity、Grok Build、xAI、Hermes、OpenCode、DeepSeek 等静态 SVG；Groq 暂无绿灯静态资产，继续 favicon fallback。LobeHub Icons 的 npm 包为 MIT，覆盖大量 AI/LLM 品牌；后续新增优先用 `@lobehub/icons-static-svg` 接现有 `<img src>` 管线，React 包 `@lobehub/icons` 需先做适配层，UIED SVG 作为补充来源。
 
 ## 对标结论（2026-06-23）
 

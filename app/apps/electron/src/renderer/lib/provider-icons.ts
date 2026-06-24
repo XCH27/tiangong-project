@@ -7,18 +7,24 @@
 
 import awsIcon from '@/assets/provider-icons/aws.svg'
 import azureIcon from '@/assets/provider-icons/azure.svg'
+import antigravityIcon from '@/assets/provider-icons/antigravity.svg'
 import claudeIcon from '@/assets/provider-icons/claude.svg'
 import copilotIcon from '@/assets/provider-icons/copilot.svg'
+import deepseekIcon from '@/assets/provider-icons/deepseek.svg'
 import googleIcon from '@/assets/provider-icons/google.svg'
+import grokBuildIcon from '@/assets/provider-icons/grok-build.svg'
+import hermesIcon from '@/assets/provider-icons/hermes.svg'
 import huggingfaceIcon from '@/assets/provider-icons/huggingface.svg'
 import kimiIcon from '@/assets/provider-icons/kimi.svg'
 import minimaxIcon from '@/assets/provider-icons/minimax.svg'
 import mistralIcon from '@/assets/provider-icons/mistral.svg'
 import ollamaIcon from '@/assets/provider-icons/ollama.svg'
+import opencodeIcon from '@/assets/provider-icons/opencode.svg'
 import openaiIcon from '@/assets/provider-icons/openai.svg'
 import openrouterIcon from '@/assets/provider-icons/openrouter.svg'
 import piIcon from '@/assets/provider-icons/pi.svg'
 import vercelIcon from '@/assets/provider-icons/vercel.svg'
+import xaiIcon from '@/assets/provider-icons/xai.svg'
 
 import type { LlmProviderType } from '@craft-agent/shared/config/llm-connections'
 
@@ -27,19 +33,25 @@ import type { LlmProviderType } from '@craft-agent/shared/config/llm-connections
  */
 export const providerIcons = {
   anthropic: claudeIcon,
+  antigravity: antigravityIcon,
   aws: awsIcon,
   azure: azureIcon,
   copilot: copilotIcon,
+  deepseek: deepseekIcon,
   google: googleIcon,
+  grok: grokBuildIcon,
+  hermes: hermesIcon,
   huggingface: huggingfaceIcon,
   kimi: kimiIcon,
   minimax: minimaxIcon,
   mistral: mistralIcon,
   ollama: ollamaIcon,
+  opencode: opencodeIcon,
   openai: openaiIcon,
   openrouter: openrouterIcon,
   pi: piIcon,
   vercel: vercelIcon,
+  xai: xaiIcon,
 } as const
 
 export type ProviderIconKey = keyof typeof providerIcons
@@ -52,10 +64,13 @@ const providerDisplayNames: Record<string, string> = {
   copilot: 'GitHub Copilot',
   antigravity: 'Antigravity',
   deepseek: 'DeepSeek',
+  grok: 'Grok',
   groq: 'Groq',
+  hermes: 'Hermes',
   kimi: 'Kimi',
   minimax: 'Minimax',
   ollama: 'Ollama',
+  opencode: 'OpenCode',
   openrouter: 'OpenRouter',
   pi: 'Craft Agents Backend',
   pi_compat: 'Craft Agents Backend',
@@ -76,6 +91,9 @@ export function getProviderDisplayName(providerType: string, baseUrl?: string | 
     if (url.includes('v0.dev') || url.includes('vercel')) return 'Vercel'
     if (url.includes('manifest.build')) return 'Manifest'
     if (url.includes('x.ai')) return 'xAI'
+    if (url.includes('grok')) return 'Grok'
+    if (url.includes('hermes')) return 'Hermes'
+    if (url.includes('opencode')) return 'OpenCode'
     if (url.includes('groq.com')) return 'Groq'
     if (url.includes('deepseek.com')) return 'DeepSeek'
     if (url.includes('z.ai')) return 'Z.ai'
@@ -96,6 +114,12 @@ function detectProviderFromUrl(baseUrl: string): ProviderIconKey | null {
   if (url.includes('api.openai.com')) return 'openai'
   if (url.includes('v0.dev') || url.includes('vercel')) return 'vercel'
   if (url.includes('generativelanguage.googleapis.com') || url.includes('ai.google')) return 'google'
+  if (url.includes('x.ai')) return 'xai'
+  if (url.includes('grok')) return 'grok'
+  if (url.includes('deepseek.com')) return 'deepseek'
+  if (url.includes('antigravity')) return 'antigravity'
+  if (url.includes('hermes')) return 'hermes'
+  if (url.includes('opencode')) return 'opencode'
   if (url.includes('kimi.com')) return 'kimi'
   if (url.includes('minimax.io') || url.includes('minimaxi.com')) return 'minimax'
   if (url.includes('mistral.ai')) return 'mistral'
@@ -154,6 +178,20 @@ function piAuthProviderToIcon(piAuthProvider: string): ProviderIconKey | null {
       return 'huggingface'
     case 'vercel-ai-gateway':
       return 'vercel'
+    case 'antigravity':
+      return 'antigravity'
+    case 'xai':
+      return 'xai'
+    case 'grok':
+    case 'grok-build':
+      return 'grok'
+    case 'deepseek':
+      return 'deepseek'
+    case 'hermes':
+    case 'hermes-agent':
+      return 'hermes'
+    case 'opencode':
+      return 'opencode'
     default:
       return null
   }
@@ -169,6 +207,8 @@ const PI_AUTH_PROVIDER_DOMAINS: Record<string, string> = {
   xai: 'x.ai',
   cerebras: 'cerebras.ai',
   deepseek: 'deepseek.com',
+  hermes: 'hermesacp.dev',
+  opencode: 'opencode.ai',
   zai: 'z.ai',
 }
 
@@ -177,6 +217,8 @@ const PROVIDER_TYPE_DOMAINS: Record<string, string> = {
   cerebras: 'cerebras.ai',
   deepseek: 'deepseek.com',
   groq: 'groq.com',
+  hermes: 'hermesacp.dev',
+  opencode: 'opencode.ai',
   xai: 'x.ai',
   zai: 'z.ai',
 }
@@ -219,6 +261,18 @@ export function getProviderIcon(
       return providerIcons.openai
     case 'copilot':
       return providerIcons.copilot
+    case 'antigravity':
+      return providerIcons.antigravity
+    case 'deepseek':
+      return providerIcons.deepseek
+    case 'grok':
+      return providerIcons.grok
+    case 'hermes':
+      return providerIcons.hermes
+    case 'opencode':
+      return providerIcons.opencode
+    case 'xai':
+      return providerIcons.xai
     case 'pi':
     case 'pi_compat': {
       // Resolve to actual upstream provider icon
