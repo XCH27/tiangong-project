@@ -72,7 +72,7 @@ export function SessionItem({
   ) : sessionConnection ? (
     <ConnectionIcon connection={sessionConnection} size={14} showTooltip />
   ) : null
-  // 团队稳定序号（docs/33 §3，仅团队模式有值；占原 Project 字段的产品位置）。
+  // 团队稳定序号（docs/33 §3，仅团队模式有值）。
   const teamSequence = ctx.teamSequenceById?.[item.id]
   // 任务进度小药丸（docs/35 / docs/00A §4）：会话有进度清单时显示 done/total；无则不显示。
   const progressSummary = item.progress && item.progress.length > 0 ? summarizeProgress(item.progress) : null
@@ -214,13 +214,8 @@ export function SessionItem({
       titleClassName={cn("text-[13px]", item.isAsyncOperationOngoing && "animate-shimmer-text")}
       subtitle={previewText}
       titleSuffix={
-        (teamSequence || progressSummary || modelAvatar || hasMessagingBinding) ? (
+        (progressSummary || hasMessagingBinding) ? (
           <div className="flex items-center gap-1">
-            {teamSequence && (
-              <span className="text-[10px] font-medium tabular-nums text-foreground/45 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0" title={t('session.teamSequence')}>
-                {teamSequence}
-              </span>
-            )}
             {progressSummary && (
               <span
                 className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-foreground/55 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0"
@@ -230,7 +225,6 @@ export function SessionItem({
                 {progressSummary.done}/{progressSummary.total}
               </span>
             )}
-            {modelAvatar}
             {hasMessagingBinding && sessionBindings.map((binding) => {
               const pill = PLATFORM_PILL[binding.platform as 'telegram' | 'whatsapp']
               if (!pill) return null
@@ -272,7 +266,9 @@ export function SessionItem({
           {formatDistanceToNowStrict(new Date(item.lastMessageAt), { locale: shortTimeLocale as Locale, roundingMethod: 'floor' })}
         </span>
       ) : undefined}
-      badges={hasLabels ? <SessionBadges item={item} /> : undefined}
+      badges={(modelAvatar || teamSequence || hasLabels) ? (
+        <SessionBadges item={item} modelAvatar={modelAvatar} teamSequence={teamSequence} />
+      ) : undefined}
     />
   )
 }

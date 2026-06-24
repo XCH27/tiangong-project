@@ -42,7 +42,7 @@
 
 | 你想做 | 改这里（craft 现有挂点） | 别做 |
 |---|---|---|
-| 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
+| 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段；标签栏固定顺序为「模型/Runtime 图标 → 稳定编号 → 队长身份 → 其他标签」，队长必须引用 `LEADER_LABEL_ID`，不按名称或赋值顺序判断 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
 | `@` 人/Agent/身份、`/` Skill/命令/模板 | ✅ 聊天输入已先收口：`renderer/components/app-shell/input/FreeFormInput.tsx` 不再用 `@` 弹出 Skill/Source/File；`/` 菜单可插入 Skill 和 Source，内部仍生成原 `[skill:...]` / `[source:...]` 执行标记并复用原 badges/发送链路。下一步 `@` 只接团队名册/身份搜索（`components/ui/mention-menu.tsx` 可复用样式但不得再放 Skill/Source/File） | 别新建输入框/第二套 mention store，别恢复 `@Skill` 双入口 |
 | 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；群聊是「所有会话」顶部一条**原样式**特殊会话项 | 别建群聊页/群聊库，别在会话列表里加输入框 |
 | 管理 Agent 入口 | ✅ `renderer/components/app-shell/ManagerAgentLauncher.tsx`，挂在 `AppShell`。只保留一个可拖动的右下角 Craft 标识小球，渲染进单例 `#manager-agent-launcher-root`，挂载时清理旧管理 Agent 浮层；点击打开对齐原 `EditPopover` 视觉与尺寸的轻量 Agent 输入框（grip + 空态 + 底部输入框），点击外部收起。首次发送创建 hidden craft session，按 `ManagerSettingsPage` 的模型配置填 `llmConnection/model/thinkingLevel`，注入管理 Agent 专用系统提示词，发送走原 `onSendMessage`/permission/timeline。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别再加第二个圆形入口，别做特权后门绕 permission，别做未接后端的假发送 |
