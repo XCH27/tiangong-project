@@ -554,6 +554,15 @@ function AppShellContent({
   })
   const [selectedWorkspaceContextFile, setSelectedWorkspaceContextFile] = React.useState<string | null>(null)
 
+  React.useEffect(() => {
+    const hasRestoredWorkspaceContextSidebar = storage.get(storage.KEYS.workspaceContextSidebarVisibleRestored, false)
+    if (hasRestoredWorkspaceContextSidebar) return
+
+    setIsWorkspaceContextSidebarVisible(true)
+    storage.set(storage.KEYS.workspaceContextSidebarVisible, true)
+    storage.set(storage.KEYS.workspaceContextSidebarVisibleRestored, true)
+  }, [])
+
   // Hides both sidebar and navigator (CMD+. toggle)
   // Seed from either focused window param or persisted preference, then keep it toggleable.
   const [isSidebarAndNavigatorHidden, setIsSidebarAndNavigatorHidden] = React.useState(() => {
@@ -610,25 +619,21 @@ function AppShellContent({
   const workspaceContextSidebarMinWidth = 260
   const workspaceContextSidebarDefaultWidth = 320
   const workspaceContextSidebarMaxAllowedWidth = 480
-  const contentPanelCountForLayout = Math.max(panelCount, 1)
-  const requiredContentPanelsWidth =
-    (contentPanelCountForLayout * PANEL_MIN_WIDTH) +
-    (Math.max(0, contentPanelCountForLayout - 1) * PANEL_GAP)
 
-  // Keep the right context rail independently resizable without allowing it
-  // to consume the usable width of any currently-open content panel. The saved
-  // width is preserved; the rendered width is clamped to the current shell and
-  // returns when room becomes available again.
+  // Keep the right context rail independently resizable as a stable desktop
+  // workbench column. Content panels already own horizontal overflow through
+  // PanelStackContainer, so the rail must not disappear just because multiple
+  // panels need to scroll.
   const fixedShellColumnsWidth = effectiveSidebarAndNavigatorHidden
     ? 0
     : (isSidebarVisible ? sidebarWidth + PANEL_GAP : 0) + sessionListWidth + PANEL_GAP
-  const workspaceContextSidebarMaxWidth = Math.min(
-    workspaceContextSidebarMaxAllowedWidth,
-    shellWidth > 0
-      ? shellWidth - fixedShellColumnsWidth - requiredContentPanelsWidth - PANEL_GAP - PANEL_EDGE_INSET
-      : workspaceContextSidebarMaxAllowedWidth,
+  const availableWorkspaceContextWidth = shellWidth > 0
+    ? shellWidth - fixedShellColumnsWidth - PANEL_GAP - PANEL_EDGE_INSET
+    : workspaceContextSidebarMaxAllowedWidth
+  const workspaceContextSidebarMaxWidth = Math.max(
+    workspaceContextSidebarMinWidth,
+    Math.min(workspaceContextSidebarMaxAllowedWidth, availableWorkspaceContextWidth),
   )
-  const canRenderWorkspaceContextSidebar = shellWidth === 0 || workspaceContextSidebarMaxWidth >= workspaceContextSidebarMinWidth
   const renderedWorkspaceContextSidebarWidth = shellWidth === 0
     ? workspaceContextSidebarWidth
     : Math.min(Math.max(workspaceContextSidebarWidth, workspaceContextSidebarMinWidth), workspaceContextSidebarMaxWidth)
@@ -636,8 +641,7 @@ function AppShellContent({
   const isWorkspaceContextSidebarRendered =
     isWorkspaceContextSidebarVisible &&
     !isAutoCompact &&
-    !isFocusedMode &&
-    canRenderWorkspaceContextSidebar
+    !isFocusedMode
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -2271,7 +2275,7 @@ function AppShellContent({
           canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-          onToggleWorkspaceContextSidebar={!isFocusedMode && !isAutoCompact && canRenderWorkspaceContextSidebar ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
+          onToggleWorkspaceContextSidebar={!isFocusedMode && !isAutoCompact ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
           isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarRendered}
           onAddSessionPanel={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}

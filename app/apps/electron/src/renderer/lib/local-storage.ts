@@ -15,6 +15,7 @@ export const KEYS = {
   sidebarWidth: 'sidebar-width',
   sessionListWidth: 'session-list-width',
   workspaceContextSidebarVisible: 'workspace-context-sidebar-visible',
+  workspaceContextSidebarVisibleRestored: 'workspace-context-sidebar-visible-restored',
   workspaceContextSidebarWidth: 'workspace-context-sidebar-width',
   managerAgentLauncherPosition: 'manager-agent-launcher-position',
   sidebarMode: 'sidebar-mode',
