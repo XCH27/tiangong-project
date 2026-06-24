@@ -138,15 +138,28 @@ describe('TeamCoordinator — 承重墙', () => {
     expect(rules.rules?.leaderSessionId).toBe('m2')
   })
 
-  it('队长群聊的人类广播：投递给包括队长在内的全体成员，事件 visibility=broadcast', async () => {
+  it('队长群聊 @全体成员：投递给包括队长在内的全体成员，事件 visibility=broadcast', async () => {
     const { coordinator, store, events } = make([member('m1', 100), member('m2', 200)])
     await coordinator.handleCommand({ type: 'promoteTeamLeader', teamId: 'team-main', leaderSessionId: 'm1' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     await coordinator.handleCommand({ type: 'assignTeamTask', teamId: 'team-main', taskId: 't1', assigneeSessionId: 'm2', title: 'x' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
-    await coordinator.handleCommand({ type: 'sendTeamMessage', teamId: 'team-main', content: '全员注意' }, { issuerSessionId: 'm1', actor: USER_ACTOR })
+    await coordinator.handleCommand({ type: 'sendTeamMessage', teamId: 'team-main', content: '@全体成员 全员注意', audienceAll: true }, { issuerSessionId: 'm1', actor: USER_ACTOR })
     expect((await store.listInbox('m2')).some(i => i.kind === 'message')).toBe(true)
     expect((await store.listInbox('m1')).some(i => i.kind === 'message')).toBe(true)
     const msg = events.find(e => e.type === 'team_message') as any
     expect(msg.visibility).toBe('broadcast')
+  })
+
+  it('sendTeamMessage 无目标：默认只投队长，不把空目标当广播', async () => {
+    const { coordinator, rules, store, events, sessions } = make([member('m1', 100), member('m2', 200), member('m3', 300)])
+    seedRules(rules, ['m1', 'm2', 'm3'], 'm1')
+    sessions.get('m1')!.labels = [LEADER_LABEL_ID]
+    await coordinator.handleCommand({ type: 'sendTeamMessage', teamId: 'team-main', content: '找队长' }, { issuerSessionId: 'm2', actor: USER_ACTOR })
+    expect((await store.listInbox('m1')).length).toBe(1)
+    expect(await store.listInbox('m2')).toEqual([])
+    expect(await store.listInbox('m3')).toEqual([])
+    const msg = events.find(e => e.type === 'team_message') as any
+    expect(msg.visibility).toBe('private')
+    expect(msg.audienceSessionIds).toEqual(['m1'])
   })
 
   it('sendTeamMessage @私聊：只投递给 audience，事件 visibility=private', async () => {

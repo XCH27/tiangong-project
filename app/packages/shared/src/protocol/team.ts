@@ -220,6 +220,8 @@ export type TeamSessionCommand =
        * 根据当前 TeamProjection 解析成会话 ID，不能把成员映射真相放进 renderer。
        */
       audienceSequences?: string[]
+      /** 显式 @全体成员。没有该标记时，空 audience 不再表示广播。 */
+      audienceAll?: boolean
       audienceSessionIds?: string[]
       taskId?: string
       runId?: string

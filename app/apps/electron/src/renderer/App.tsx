@@ -106,9 +106,12 @@ function workspaceDistribution(sessions: Iterable<{ workspaceId?: string }>): Re
 }
 
 /** Team mentions are stable display identifiers. The server resolves them against the current projection. */
-function extractTeamAudienceSequences(message: string): string[] {
-  return [...message.matchAll(/(?:^|\s)@(G-\d{2,})(?=$|\s|[，。！？、,.!?])/gi)]
-    .map(match => match[1].toUpperCase())
+function extractTeamAudience(message: string): { audienceAll: boolean; audienceSequences: string[] } {
+  return {
+    audienceAll: /(?:^|\s)@全体成员(?=$|\s|[，。！？、,.!?])/u.test(message),
+    audienceSequences: [...message.matchAll(/(?:^|\s)@(G-\d{2,})(?=$|\s|[，。！？、,.!?])/gi)]
+      .map(match => match[1].toUpperCase()),
+  }
 }
 
 /**
@@ -1216,28 +1219,32 @@ export default function App() {
 
   const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
     try {
-      // A leader session is the group conversation anchor. Route its text through
-      // TeamCoordinator so it fans out to member inboxes and records one shared
-      // transcript event instead of starting an unrelated one-to-one model turn.
+      // A leader session is the group conversation anchor. Plain text remains a
+      // normal leader chat; only explicit @全体成员 / @G-xx uses TeamCoordinator fan-out.
       const team = windowWorkspaceId
         ? await window.electronAPI.getTeam(windowWorkspaceId)
         : null
       if (team?.leaderSessionId && team.teamConversationSessionId === sessionId) {
-        if (attachments?.length) {
-          throw new Error('团队群聊暂不支持附件；请在成员会话中发送带附件的任务。')
+        const teamAudience = extractTeamAudience(message)
+        const hasTeamAudience = teamAudience.audienceAll || teamAudience.audienceSequences.length > 0
+        if (hasTeamAudience) {
+          if (attachments?.length) {
+            throw new Error('团队群聊暂不支持附件；请在成员会话中发送带附件的任务。')
+          }
+          await window.electronAPI.sessionCommand(sessionId, {
+            type: 'sendTeamMessage',
+            teamId: team.teamId,
+            content: message,
+            audienceAll: teamAudience.audienceAll,
+            audienceSequences: teamAudience.audienceSequences,
+          })
+          const refreshedSession = await window.electronAPI.getSessionMessages(sessionId)
+          if (refreshedSession) {
+            replaceLoadedSession(refreshedSession)
+            syncSessionOptionsFromSession(refreshedSession)
+          }
+          return
         }
-        await window.electronAPI.sessionCommand(sessionId, {
-          type: 'sendTeamMessage',
-          teamId: team.teamId,
-          content: message,
-          audienceSequences: extractTeamAudienceSequences(message),
-        })
-        const refreshedSession = await window.electronAPI.getSessionMessages(sessionId)
-        if (refreshedSession) {
-          replaceLoadedSession(refreshedSession)
-          syncSessionOptionsFromSession(refreshedSession)
-        }
-        return
       }
 
       // Capture pre-send processing state so we can flag mid-stream sends

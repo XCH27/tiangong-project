@@ -80,7 +80,7 @@ describe('team session event and command shapes', () => {
     // 身份/队长标签变更不再是团队命令：统一走 craft 原 setLabels（set_session_labels）。
     const commands: TeamSessionCommand[] = [
       { type: 'promoteTeamLeader', teamId: 'team-1', leaderSessionId: 'leader-session' },
-      { type: 'sendTeamMessage', teamId: 'team-1', content: 'all' },
+      { type: 'sendTeamMessage', teamId: 'team-1', content: '@全体成员 all', audienceAll: true },
       { type: 'assignTeamTask', teamId: 'team-1', taskId: 'task-1', assigneeSessionId: 'member-session', title: '实现协议' },
       { type: 'submitTeamReport', teamId: 'team-1', taskId: 'task-1', runId: 'run-1', summary: '完成' },
       { type: 'updateTeamRules', teamId: 'team-1', rules: { version: 1, teamId: 'team-1' } },

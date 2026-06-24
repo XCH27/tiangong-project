@@ -1,7 +1,7 @@
 # 33 · T-TEAM-SPINE 团队编排脊柱协议
 
 > 状态：团队消息、任务、汇报、待审与权限脊柱使用 craft `SessionManager`/timeline；团队 renderer 只改 Craft 原会话列表、聊天面板和输入框，不另建群聊页或消息库。
-> **2026-06-24 更新：**身份唯一真相为 `labels/config.json` + session `labels`；队长标签确定队长会话，队长会话直接充当团队群聊锚点。人类输入无 `@` 走广播，`@G-编号` 由后端按当前 projection 定向投递；`team_*` 事件刷新原 transcript，Agent 消息显示只读身份标签栏。验证以当前分支的 `typecheck:electron` 与 `team-coordinator.test.ts` 为准。
+> **2026-06-24 更新：**身份唯一真相为 `labels/config.json` + session `labels`；队长标签确定队长会话，队长会话直接充当团队群聊锚点。人类输入无 `@` 走原 Craft 发送链路，等同跟队长聊天；`@全体成员` 才广播；`@G-编号` 由后端按当前 projection 定向投递；`team_*` 事件刷新原 transcript，Agent 消息显示只读身份标签栏。验证以当前分支的 `typecheck:electron` 与 `team-coordinator.test.ts` 为准。
 > 目的：固定“会话即 Agent、队长、团队群聊、身份标签、状态、`@`/`/`、管理 Agent”的共同契约，让后端和 UI 可以并行开发而不产生第二套 session/team/permission。
 > 参考：AionUi 可按绿灯范围迁 Team/进程生命周期；Warp 只黑盒学习 task/run、Agent 间消息、长任务 block 和失败信息。
 
@@ -60,7 +60,7 @@
 3. **打开队长群聊后**：继续使用 craft 原聊天面板和统一输入框。它像真实团队群，只承载队长安排、成员汇报、成员提出的问题/意见、待审提醒和少量方向性摘要；它不是“所有成员会话全文合集”。
 4. **摘要粒度**：群聊消息要短，目标是让人类快速判断“谁在做什么、完成了什么、哪里阻塞、项目方向是否正确”。完整思考过程、工具输出、长代码、长审查报告和成员原始对话都留在成员 session 或报告文件里，群聊只放可跳转引用。
 5. **消息投影**：群聊里的每条 Agent 团队消息在正文前显示稳定编号和原身份标签栏；标签来自 session `labels` 的派生 projection，renderer 只读展示、不复制身份真相。
-6. **可见性**：不带 `@` 的消息是广播，服务端投递给团队有效成员；不提供 `@所有人`。`@G-01`/`@G-02` 是定向消息，编号由服务端按当前 projection 解析，不能只靠前端隐藏或由 renderer 保存成员 ID 映射。
+6. **可见性**：不带 `@` 的消息是队长普通聊天，保留原 Craft 发送链路；`@全体成员` 才广播，服务端投递给团队有效成员；`@G-01`/`@G-02` 是定向消息，编号由服务端按当前 projection 解析，不能只靠前端隐藏或由 renderer 保存成员 ID 映射。
 7. **待审呈现**：成员进入 `awaitingReview` 时，群聊只插入一条待审简报卡，包含 `taskId/runId`、成员身份、报告摘要、风险/阻塞和源会话入口；不得复制成员完整聊天记录。
 8. **状态**：原有会话状态词在团队模式下映射为“待安排 / 进行中 / 待审查 / 完成 / 取消”；列表排序仍以用户选定的原规则为准，稳定序号只按创建时间生成，不随最近消息变动。
 9. **设置页**：复用原标签设置页，只为现有标签增加“用途 / 系统提示词 / 权限配置”字段。团队设置只保留状态映射、规范和管理 Agent 边界，不再维护身份定义或身份分配。
@@ -179,15 +179,15 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 
 ## 5 · 团队消息与隐私
 
-- 团队群聊内容存入 `teamConversationSessionId` 对应的 craft session；有队长时它就是 `leaderSessionId`。
-- 不带 `@`：`visibility='broadcast'`，服务端把消息投递到全部有效成员的 Agent mailbox。
+- 团队群聊内容存入 `teamConversationSessionId` 对应的 craft session；有队长时它就是 `leaderSessionId`。不带 `@` 的输入不走团队投递，直接作为队长会话普通消息发送。
+- `@全体成员`：`visibility='broadcast'`，服务端把消息投递到全部有效成员的 Agent mailbox。
 - `@G-01`：服务端解析为当前成员会话 ID，只把内容加入目标 Agent 上下文；其他项目 Agent 不得收到。
 - 人类与常驻管理 Agent可按权限审计团队消息；“私聊”表示对其他项目 Agent 不可见，不承诺操作系统级加密。
 - fanout 只保存消息引用/投递状态，不在每个成员 session 复制完整消息形成多份真相。
 - 团队群聊 transcript 只存团队层消息和卡片引用；成员执行日志、完整对话和工具输出仍留在成员 session。群聊卡片必须通过 `sourceSessionId`、`taskId`、`runId`、`reportId` 找回来源。
 - 后端写入群聊 transcript 前必须做摘要边界检查：任务安排、汇报、问题、意见、阻塞、待审卡可以进入；成员完整原话、长工具输出、长代码 diff、长文件内容默认不得进入，只能作为引用。
 - `@` 定向命中成员时，服务端必须把编号解析结果写入事件，不能让 renderer 重新推断；解析为空时返回可操作错误，不降级成广播。
-- 队长发布规范使用普通广播消息 + `team_norms_changed`/`team_rules_changed` 事件；不要再发一份隐藏系统消息给每个成员造成双写。
+- 队长发布规范使用 `@全体成员` 广播消息 + `team_norms_changed`/`team_rules_changed` 事件；不要再发一份隐藏系统消息给每个成员造成双写。
 
 ### 5.1 · 管理 Agent 信息隔离
 
@@ -216,7 +216,7 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 | `/` | Skill、命令、模板、工具动作、Source 动作 |
 | 附件/全部文件 | 文件、文件夹、素材 |
 
-- 删除用户可见的 `@Skill`、`@Source`、`@File` 分支，不保留兼容开关。聊天输入已完成这一收口；团队群聊的 `@G-编号` 名册菜单已接入，其他会话不显示该菜单。
+- 删除用户可见的 `@Skill`、`@Source`、`@File` 分支，不保留兼容开关。聊天输入已完成这一收口；团队群聊的 `@全体成员` / `@G-编号` 名册菜单已接入，其他会话不显示该菜单。
 - 内部存储标记如 `[skill:slug]` 可以继续作为执行格式；聊天输入已改为只能由 `/` 菜单生成，不能被 `@` 菜单触发。
 - 真实改动范围包括 `FreeFormInput.tsx`、实际的 `mention-menu.tsx`/inline mention hook、`rich-text-input.tsx`、shared mentions parser、相关测试、resources docs、tool-defs、handlers 和 session MCP 说明。
 - `skill-mention-menu.tsx` 已是 deprecated 转发文件，不应当作为主实现入口。

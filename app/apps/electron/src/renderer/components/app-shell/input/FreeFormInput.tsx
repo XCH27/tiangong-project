@@ -835,7 +835,13 @@ export function FreeFormInput({
   const teamMentionSections = React.useMemo((): MentionSection[] => {
     if (!isTeamConversation || !teamProjection?.members.length) return []
     const identityById = new Map(teamProjection.identityLabels.map(label => [label.id, label.displayName]))
-    const items: MentionItem[] = teamProjection.members.map(member => ({
+    const items: MentionItem[] = [{
+      id: 'all-members',
+      type: 'agent',
+      label: '全体成员',
+      description: `${teamProjection.members.length} ${t('session.teamMembers')}`,
+      agent: { sequence: '全体成员' },
+    }, ...teamProjection.members.map((member): MentionItem => ({
       id: member.sequence,
       type: 'agent',
       label: member.sequence,
@@ -843,9 +849,9 @@ export function FreeFormInput({
         .map(labelId => identityById.get(labelId) ?? labelId)
         .join(' · '),
       agent: { sequence: member.sequence },
-    }))
+    }))]
     return [{ id: 'team-members', label: 'team-members', items }]
-  }, [isTeamConversation, teamProjection])
+  }, [isTeamConversation, teamProjection, t])
 
   // Track last caret position for focus restoration (e.g., after permission mode popover closes)
   const lastCaretPositionRef = React.useRef<number | null>(null)
@@ -1616,7 +1622,7 @@ export function FreeFormInput({
     const nextValue = coerceInputText(value)
 
     const textBeforeCursor = nextValue.slice(0, cursorPosition)
-    const teamMentionMatch = isTeamConversation ? textBeforeCursor.match(/@(G-[\d-]*)?$/i) : null
+    const teamMentionMatch = isTeamConversation ? textBeforeCursor.match(/@([^\s@]*)?$/u) : null
     const teamMentionStart = teamMentionMatch ? textBeforeCursor.lastIndexOf('@') : -1
     if (teamMentionMatch && isValidMentionTrigger(textBeforeCursor, teamMentionStart)) {
       teamMentionInputRef.current = { value: nextValue, cursorPosition, atStart: teamMentionStart }

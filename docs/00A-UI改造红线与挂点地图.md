@@ -30,7 +30,7 @@
 2. **不造第二套真相。** 只用 craft 的 `SessionManager`/`SessionEvent`/permission/timeline；不新建第二套 conversation/session store、team store、身份 store、消息库。手动编辑写进原 `config`/`preferences`/`labels`。（AGENTS 13，docs/18 §7，docs/32 §5）
 3. **不做假按钮。** 没接真实后端/原生引擎/会话路由的按钮必须 `disabled` 或明确报错，**不准显示为可用、不准谎称完成**。（AGENTS 23，docs/18 §1.5，docs/32 §5）
 4. **不碰共享契约。** `protocol/{channels,routing,dto,index,team}.ts`、`transport/channel-map.ts`、`shared/types.ts`、`handlers/rpc/index.ts`、`handler-deps.ts`、`i18n/locales/*.json` 由 Lead 冻结，对并行 Agent **只读**。需要新 channel/event/type/i18n key → **回 Lead 加**，不自己改。（AGENTS 36，docs/32 §0）
-5. **`@` 只找人。** `@` = 人/Agent/会话/身份；`/` = Skill/命令/模板。不保留 `@Skill` 双入口，不加 `@所有人` 语法（不带 `@` 即广播）。（AGENTS 16，docs/32 §5）
+5. **`@` 只找人。** `@` = 人/Agent/会话/身份；`/` = Skill/命令/模板。不保留 `@Skill` 双入口。团队群聊里无 `@` 是跟队长普通聊天，`@全体成员` 才广播，`@G-01`/`@G-02` 定向成员。（AGENTS 16，docs/32 §5）
 6. **身份不双写。** 队长/代码/设计/审查等身份**只在 craft 原标签系统**（`labels/config.json` + session `labels`）表达；不在 team rules、renderer 或第二处再定义一套身份。加/取消「队长」标签就是升/降队长。（docs/18 §3.2，docs/33）
 7. **不用万能 patch。** 不用一个通用 Inspector / 通用 `DesignPatch` 强行解释设计、文档、视频、代码的内部结构。各工作面用各自原生引擎。（AGENTS 14，docs/01 §2，docs/18 §7）
 
@@ -44,7 +44,7 @@
 |---|---|---|
 | 会话列表显示模型/Runtime 图标、稳定序号、身份、团队状态 | `renderer/components/app-shell/{SessionItem,SessionList,SessionBadges,SessionInfoPopover,SessionStatusIcon}.tsx` 加显示字段；标签栏固定顺序为「模型/Runtime 图标 → 稳定编号 → 队长身份 → 其他标签」，队长必须引用 `LEADER_LABEL_ID`，不按名称或赋值顺序判断 | 别新建会话卡/团队会话栏组件（旧 `TeamConversationBar` 不复活） |
 | `@` 人/Agent/身份、`/` Skill/命令/模板 | ✅ 聊天输入已先收口：`renderer/components/app-shell/input/FreeFormInput.tsx` 不再用 `@` 弹出 Skill/Source/File；`/` 菜单可插入 Skill 和 Source，内部仍生成原 `[skill:...]` / `[source:...]` 执行标记并复用原 badges/发送链路。下一步 `@` 只接团队名册/身份搜索（`components/ui/mention-menu.tsx` 可复用样式但不得再放 Skill/Source/File） | 别新建输入框/第二套 mention store，别恢复 `@Skill` 双入口 |
-| 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；有队长时**队长会话本身**就是群聊 transcript，不在列表复制特殊会话项；无 `@` 广播，`@G-01` 定向成员，均由 `TeamCoordinator` 投递/写 timeline | 别建群聊页/群聊库，别在会话列表里加输入框或维护 renderer 成员映射 |
+| 团队群聊 | 原 `ChatDisplay.tsx` + 原聊天面板 + 原会话项样式；有队长时**队长会话本身**就是群聊 transcript，不在列表复制特殊会话项；无 `@` 走原 Craft 发送链路跟队长聊天，`@全体成员` 广播，`@G-01` 定向成员，团队投递均由 `TeamCoordinator` 写 timeline | 别建群聊页/群聊库，别在会话列表里加输入框或维护 renderer 成员映射 |
 | 管理 Agent 入口 | ✅ `renderer/components/app-shell/ManagerAgentLauncher.tsx`，挂在 `AppShell`。只保留一个可拖动的右下角 Craft 标识小球，渲染进单例 `#manager-agent-launcher-root`，挂载时清理旧管理 Agent 浮层；点击打开对齐原 `EditPopover` 视觉与尺寸的轻量 Agent 输入框（grip + 空态 + 底部输入框），点击外部收起。首次发送创建 hidden craft session，按 `ManagerSettingsPage` 的模型配置填 `llmConnection/model/thinkingLevel`，注入管理 Agent 专用系统提示词，发送走原 `onSendMessage`/permission/timeline。**不要占用 SessionList 顶部槽**，那里只给团队群聊。 | 别塞进某个 workspace 的普通会话，别把它做成「团队群聊」，别再加第二个圆形入口，别做特权后门绕 permission，别做未接后端的假发送 |
 | 团队状态（待安排/进行中/待审查/完成/取消） | 映射到 craft 现有 session status / `SessionStatusIcon`；身份扩展原 `labels/config.json` + session `labels` | 别在团队规则或 renderer 建第二套身份/状态定义 |
 | 设置项 / 手动编辑逃生舱 | `renderer/pages/settings/*`、`components/settings/*`，写进 craft `config`/`preferences` | 别另起第二套设置真相 |
@@ -60,7 +60,7 @@
 | 管理 Agent 设置（模型/决策） | ✅ 已落：`pages/settings/ManagerSettingsPage.tsx`（craft 设置骨架），真接 `managerDecision` RPC。模型配置写入管理 Agent 设置（跟随工作区默认 / 固定 API 连接+模型+推理强度）；自动决策开关+L2 规则增删。CLI Runtime 暂不作为管理 Agent 模型，需 native adapter 后再开放 | 别把记忆塞进管理 Agent 页面；别另做治理控制台；常驻悬浮入口走上面「管理 Agent 入口」行 |
 | 记忆模块 | ✅ 已落：`pages/settings/MemorySettingsPage.tsx`（craft 设置骨架），真接 `memory` RPC。按 user/software/project/agent/task/design_asset/external_review 分区查看、添加、删除；scoped 分区按 scopeId 隔离。Agent 结构化工具 `list_memory` / `add_memory` / `delete_memory` 已接同一个 `MemoryStore`。入口是设置里的「记忆」，不是管理 Agent 页的附属区 | 别和管理 Agent 自动决策混成一个页面；别建第二套 memory store；别做没有 scope 隔离的项目记忆 |
 | Progress 进度卡 | ✅ 已落：会话 `progress` 非空时在右侧上下文栏顶部渲染 `SessionProgressCard`（✓/spinner/○/删除线 + N/M + 进度条 + 活动态），和下方当前文件夹文件列表同栏；数据走 `progress_updated` 事件 → `session.progress`（dto.ts + event-processor，重载经 `managedToSession` 仍在）。✅ 会话行 `SessionItem` 的 N/M 小药丸也已落（commit `f36b9340`，`SessionMeta.progress` + `summarizeProgress`） | 别把 Progress 卡塞回聊天正文顶部；别新建 Progress 页/store；未真正驱动的步骤别显示为 in_progress/completed |
-| 团队群聊 | ✅ 已落：队长会话复用为 `teamConversationSessionId`，直接发送走 `sendTeamMessage` → fan-out inbox + 原 session timeline；收到 `team_*` 事件后刷新原 transcript。Agent 团队消息顶部复用只读身份标签栏；`@G-编号` 菜单由输入框显示、后端解析。旧 hidden conversation 仅在无队长时作内部 fallback，不显示重复入口。 | 别建群聊页/群聊库，别在会话列表里加输入框或再造群消息库 |
+| 团队群聊 | ✅ 已落：队长会话复用为 `teamConversationSessionId`。无 `@` 的直接聊天保留原 Craft 发送链路，等同跟队长聊天；`@全体成员` 才走 `sendTeamMessage(audienceAll)` 广播；`@G-编号` 定向成员，后端解析并写原 session timeline。收到 `team_*` 事件后刷新原 transcript。Agent 团队消息顶部复用只读身份标签栏。旧 hidden conversation 仅在无队长时作内部 fallback，不显示重复入口。 | 别建群聊页/群聊库，别在会话列表里加输入框或再造群消息库 |
 
 ---
 

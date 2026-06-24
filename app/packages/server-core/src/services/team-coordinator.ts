@@ -249,9 +249,7 @@ export class TeamCoordinator {
   ): Promise<{ messageId: string }> {
     const rules = await this.ensureRules(command.teamId)
     const requestedRecipients = this.resolveAudienceSessionIds(rules, command)
-    const visibility = requestedRecipients.length > 0 ? 'private' : 'broadcast'
-    // 人类在队长会话发言时，该会话只是群聊锚点而不是一个 agent 发件人：
-    // 必须投递给全体成员，包括队长。只有成员 agent 发言才排除自己。
+    const visibility = command.audienceAll ? 'broadcast' : 'private'
     const recipients = visibility === 'private'
       ? requestedRecipients
       : rules.memberSessionIds.filter(id => ctx.actor.kind !== 'agent' || id !== ctx.issuerSessionId)
@@ -566,7 +564,9 @@ export class TeamCoordinator {
       return recipients
     }
 
-    if (!command.audienceSequences?.length) return []
+    if (!command.audienceSequences?.length) {
+      return rules.leaderSessionId ? [rules.leaderSessionId] : []
+    }
 
     const projection = this.projectionFrom(rules)
     const bySequence = new Map(projection.members.map(member => [member.sequence.toLowerCase(), member.sessionId]))
