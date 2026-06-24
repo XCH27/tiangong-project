@@ -78,6 +78,10 @@ function parseEnv(text: string): Record<string, string> | undefined {
   return Object.keys(env).length ? env : undefined
 }
 
+function runtimeCommandLabel(runtime: CliRuntimeDefinition): string {
+  return [runtime.command, ...runtime.args].filter(Boolean).join(' ')
+}
+
 export default function CliRuntimeSettingsPage() {
   const [runtimes, setRuntimes] = useState<CliRuntimeDefinition[]>([])
   const [health, setHealth] = useState<Record<string, CliRuntimeHealthResult>>({})
@@ -220,20 +224,47 @@ export default function CliRuntimeSettingsPage() {
               ) : runtimes.map(runtime => {
                 const result = health[runtime.id]
                 const isOk = result?.health === 'available'
+                const isAcp = runtime.protocol === 'acp'
+                const runtimeTitle = (
+                  <span className="inline-flex items-center gap-2">
+                    <Terminal className="h-4 w-4 text-muted-foreground" />
+                    {runtime.displayName}
+                  </span>
+                )
+                const runtimeDescription = isAcp
+                  ? `${runtime.kind} · ACP · ${runtimeCommandLabel(runtime)}`
+                  : `${runtime.kind} · ${runtime.protocol} · ${runtimeCommandLabel(runtime)} · 检测展示，待 native adapter`
+                const runtimeActions = (
+                  <div className="flex items-center gap-1">
+                    {canEditRuntimeCommand(runtime.kind) && (
+                      <Button size="sm" variant="ghost" onClick={() => editRuntime(runtime)}>
+                        编辑
+                      </Button>
+                    )}
+                    {canDeleteRuntime(runtime.kind) && (
+                      <Button size="icon" variant="ghost" onClick={() => void deleteRuntime(runtime)} aria-label="删除 runtime">
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </div>
+                )
                 return (
                   <div key={runtime.id} className="border-t border-border/50 first:border-t-0">
-                    <SettingsToggle
-                      label={
-                        <span className="inline-flex items-center gap-2">
-                          <Terminal className="h-4 w-4 text-muted-foreground" />
-                          {runtime.displayName}
-                        </span>
-                      }
-                      description={`${runtime.kind} · ${runtime.protocol} · ${runtime.command} ${runtime.args.join(' ')}`}
-                      checked={runtime.enabled}
-                      disabled={runtime.kind === 'managed' || runtime.protocol !== 'acp'}
-                      onCheckedChange={(checked) => void setEnabled(runtime, checked)}
-                    />
+                    {isAcp ? (
+                      <SettingsToggle
+                        label={runtimeTitle}
+                        description={runtimeDescription}
+                        checked={runtime.enabled}
+                        disabled={runtime.kind === 'managed'}
+                        onCheckedChange={(checked) => void setEnabled(runtime, checked)}
+                      />
+                    ) : (
+                      <SettingsRow
+                        label={runtimeTitle}
+                        description={runtimeDescription}
+                        action={runtimeActions}
+                      />
+                    )}
                     {runtime.discoveredModels && runtime.discoveredModels.length > 0 && (
                       <div className="px-4 pb-2 -mt-1 text-xs text-muted-foreground">
                         模型：{runtime.discoveredModels.map(model => model.name).join('、')}
@@ -251,20 +282,7 @@ export default function CliRuntimeSettingsPage() {
                         </span>
                       }
                       description={result?.reason ?? runtime.adapterHint ?? (runtime.needsConfirmation ? '需要 adapter 后启用' : '刷新时自动检测')}
-                      action={
-                        <div className="flex items-center gap-1">
-                          {canEditRuntimeCommand(runtime.kind) && (
-                            <Button size="sm" variant="ghost" onClick={() => editRuntime(runtime)}>
-                              编辑
-                            </Button>
-                          )}
-                          {canDeleteRuntime(runtime.kind) && (
-                            <Button size="icon" variant="ghost" onClick={() => void deleteRuntime(runtime)} aria-label="删除 runtime">
-                              <Trash2 className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          )}
-                        </div>
-                      }
+                      action={isAcp ? runtimeActions : undefined}
                     />
                   </div>
                 )

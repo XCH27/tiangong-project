@@ -3,7 +3,7 @@
 > 状态日期：2026-06-24
 > 当前 `app/` 已重置为干净 craft-agents-oss 基座。本文只保留上一轮验证出的产品规格和实现边界，不再把旧代码视为当前实现。
 > **2026-06-23 进度：后端基座 + 输入框三按钮选择器 ✅ 已落主线**。
-> **2026-06-24 更新**：刷新会扫描常见本机 Agent CLI（Goose/Claude Code/Codex/Grok/Hermes/OpenCode/Antigravity/Qwen/Pi/Cursor Agent/OpenClaw），并自动测试。`protocol='acp'`（Goose/Custom ACP）才进入聊天可发送路径；`native/subscription`（Claude/Codex/Grok/Hermes/Antigravity 等）进入设置页并标记 `needs_adapter`，展示已知模型/adapter 提示，但不伪装成 ACP、不进聊天 runtime picker。Gemini CLI 不再作为内置本机 runtime 探测项；Google 路线以后按 Antigravity `agy`。
+> **2026-06-24 更新**：刷新会扫描常见本机 Agent CLI（Goose/Claude Code/Codex/Grok/Hermes/OpenCode/Antigravity/Qwen/Pi/Cursor Agent/OpenClaw），并自动测试。`protocol='acp'`（Goose/Custom ACP）才进入聊天可发送路径，并在设置页显示启用开关；`native/subscription`（Claude/Codex/Grok/Hermes/Antigravity 等）进入设置页并标记 `needs_adapter`，展示已知模型/adapter 提示，但不显示可启用开关、不伪装成 ACP、不进聊天 runtime picker。Gemini CLI 不再作为内置本机 runtime 探测项；Google 路线以后按 Antigravity `agy`。
 > **已完成**：catalog/health/RPC/协议（同上批）+ **ACP 发送链路**：`services/acp/`（`AcpConnection` JSON-RPC ndjson、`AcpRuntimeSession` initialize/new/prompt/stream/permission/cancel、stdio transport、`CliRuntimeHost` 进程复用与清理，均有 mock-transport 单测）+ 会话级 runtime/model 选择（`cliRuntimeId`、`cliRuntimeModelId`、`setCliRuntime`、`setCliRuntimeModel`、`cli_runtime_changed`、`cli_runtime_models_changed`）+ `sendMessage` 路由（`runCliRuntimeTurn` 复用 craft text_delta/text_complete/complete）+ 附件硬拒绝 + 进程清理（cancel/delete/cleanup）+ 输入框三按钮（CLI / 模型 / Token 环）+ 设置页本机 CLI 列表/自动测试 + **Custom runtime 新增/编辑/删除表单**。
 > **未完成（下一步）**：Claude/Codex/Grok/Hermes/OpenCode/Antigravity/Pi 等 native/subscription adapter、Custom runtime 高级校验、usage/额度采样适配器。验收以 `docs/24 §0` 为准。
 
@@ -18,7 +18,7 @@ CLI Runtime Host 是新基座的第一批重做能力：让用户在同一个 cr
 - **Custom ACP runtime**：用户可配置 `command/args/env`，用于接入任意本机 ACP stdio runtime。
 - **Detected scan**：刷新扫描常见本机 Agent CLI，且只在本机 PATH 上检测到命令后出现在设置页。
   - ACP：Goose `goose acp`，Custom ACP runtime。可直接进入聊天 runtime picker。
-  - Native/subscription：Claude Code、Codex、Grok、Hermes、OpenCode、Antigravity（命令 `agy`）、Qwen、Pi、Cursor Agent、OpenClaw。只显示“已检测，待 adapter”，不进入聊天 runtime picker。
+  - Native/subscription：Claude Code、Codex、Grok、Hermes、OpenCode、Antigravity（命令 `agy`）、Qwen、Pi、Cursor Agent、OpenClaw。只显示“已检测，待 adapter”，不显示启用开关，不进入聊天 runtime picker。
 - **模型信息**：ACP 模型以 runtime 握手为准；native/subscription 可显示已知静态模型提示（如 Codex/Grok），但不代表已可发送。
 - **健康测试分级**：`available`、`fail_cli`、`fail_acp`、`needs_adapter`、`disabled`，并保留阶段、原因、stdout/stderr tail。
 - **设置页边界**：
