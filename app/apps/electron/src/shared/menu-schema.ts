@@ -302,6 +302,48 @@ export const HELP_LINKS: MenuItemUrl[] = [
     url: 'https://agents.craft.do/docs',
     icon: 'HelpCircle',
   },
+  {
+    type: 'url',
+    id: 'sourcesDocs',
+    labelKey: 'sidebar.sources',
+    url: 'https://agents.craft.do/docs/sources/overview',
+    icon: 'DatabaseZap',
+  },
+  {
+    type: 'url',
+    id: 'skillsDocs',
+    labelKey: 'sidebar.skills',
+    url: 'https://agents.craft.do/docs/skills/overview',
+    icon: 'Zap',
+  },
+  {
+    type: 'url',
+    id: 'statusesDocs',
+    labelKey: 'sidebar.statuses',
+    url: 'https://agents.craft.do/docs/statuses/overview',
+    icon: 'CheckCircle2',
+  },
+  {
+    type: 'url',
+    id: 'permissionsDocs',
+    labelKey: 'settings.permissions.title',
+    url: 'https://agents.craft.do/docs/core-concepts/permissions',
+    icon: 'Settings',
+  },
+  {
+    type: 'url',
+    id: 'automationsDocs',
+    labelKey: 'sidebar.automations',
+    url: 'https://agents.craft.do/docs/automations/overview',
+    icon: 'Webhook',
+  },
+  {
+    type: 'url',
+    id: 'messagingDocs',
+    labelKey: 'settings.messaging.title',
+    url: 'https://agents.craft.do/docs/messaging/overview',
+    icon: 'MessageSquare',
+  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
