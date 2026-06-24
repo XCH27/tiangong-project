@@ -75,6 +75,12 @@ export interface SessionScopedToolCallbacks {
   assignTeamTaskFn?: (input: { taskId: string; assigneeSessionId: string; title: string; description?: string; autoRun?: boolean }) => Promise<{ taskId: string; runId?: string }>;
   /** Submit the current session's structured report into the review queue. */
   submitTeamReportFn?: (input: { taskId: string; runId: string; summary: string; artifactPaths?: string[] }) => Promise<{ reportId: string; reviewId: string }>;
+  /** List local layered memory entries visible to this workspace/scope. */
+  listMemoryFn?: (query?: import('@craft-agent/shared/protocol').MemoryQuery) => Promise<import('@craft-agent/shared/protocol').MemoryEntry[]>;
+  /** Add a local layered memory entry. */
+  addMemoryFn?: (input: import('@craft-agent/shared/protocol').AddMemoryInput) => Promise<import('@craft-agent/shared/protocol').MemoryEntry>;
+  /** Delete a local layered memory entry. */
+  deleteMemoryFn?: (id: string) => Promise<boolean>;
   /**
    * Activate a source in the running session (source_test auto-enable flow).
    * Wired by SessionManager to the per-session onSourceActivationRequest callback

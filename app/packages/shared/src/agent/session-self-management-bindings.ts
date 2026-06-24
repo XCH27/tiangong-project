@@ -125,6 +125,30 @@ export function attachSessionSelfManagementBindings(
     enumerable: true,
   });
 
+  Object.defineProperty(context, 'listMemory', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.listMemoryFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'addMemory', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.addMemoryFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'deleteMemory', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.deleteMemoryFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
   Object.defineProperty(context, 'activateSourceInSession', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.activateSourceInSessionFn;

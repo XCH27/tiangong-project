@@ -16,7 +16,7 @@ import type {
   MicrosoftService,
   McpSourceConfig,
 } from './types.ts';
-import type { ProgressTask } from '@craft-agent/shared/protocol';
+import type { AddMemoryInput, MemoryEntry, MemoryQuery, ProgressTask } from '@craft-agent/shared/protocol';
 
 // ============================================================
 // Source Credential Types
@@ -347,6 +347,13 @@ export interface SessionToolContext {
   assignTeamTask?(input: { taskId: string; assigneeSessionId: string; title: string; description?: string; autoRun?: boolean }): Promise<{ taskId: string; runId?: string }>;
   /** Submit the current session's structured report into the review queue. */
   submitTeamReport?(input: { taskId: string; runId: string; summary: string; artifactPaths?: string[] }): Promise<{ reportId: string; reviewId: string }>;
+
+  /** List local layered memory entries visible to this workspace/scope. */
+  listMemory?(query?: MemoryQuery): Promise<MemoryEntry[]>;
+  /** Add a local layered memory entry. */
+  addMemory?(input: AddMemoryInput): Promise<MemoryEntry>;
+  /** Delete a local layered memory entry. */
+  deleteMemory?(id: string): Promise<boolean>;
 
   /**
    * Activate a source in the running session: add to enabledSourceSlugs,

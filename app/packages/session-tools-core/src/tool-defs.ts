@@ -13,6 +13,7 @@
 
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
+import { MEMORY_PARTITIONS, MEMORY_TIERS } from '@craft-agent/shared/protocol';
 import type { SessionToolContext } from './context.ts';
 import type { ToolResult } from './types.ts';
 
@@ -42,6 +43,7 @@ import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
 import { handleAssignTeamTask, handleGetTeam, handleSendTeamMessage, handleSubmitTeamReport } from './handlers/team.ts';
+import { handleAddMemory, handleDeleteMemory, handleListMemory } from './handlers/memory.ts';
 
 // ============================================================
 // Canonical Zod Schemas
@@ -254,6 +256,31 @@ export const ListMessagingChannelsSchema = z.object({
 
 export const UnbindMessagingChannelSchema = z.object({
   platform: z.enum(['telegram', 'whatsapp']).optional().describe('Platform to unbind. If omitted, unbinds all.'),
+});
+
+const MemoryPartitionSchema = z.enum(MEMORY_PARTITIONS);
+const MemoryTierSchema = z.enum(MEMORY_TIERS);
+const MemorySensitivitySchema = z.enum(['low', 'medium', 'high']);
+
+export const ListMemorySchema = z.object({
+  partition: MemoryPartitionSchema.optional().describe('Memory partition to query. Scoped partitions require scopeId.'),
+  tier: MemoryTierSchema.optional().describe('Optional memory tier filter.'),
+  scopeId: z.string().optional().describe('Required for scoped partitions: project, task, agent.'),
+  contains: z.string().optional().describe('Case-insensitive substring match against memory content.'),
+  limit: z.number().min(1).max(50).optional().describe('Maximum entries to return. Defaults to all visible entries.'),
+});
+
+export const AddMemorySchema = z.object({
+  partition: MemoryPartitionSchema.describe('Memory partition. Use software for app state; user for durable preferences; project/task/agent with scopeId for scoped memory.'),
+  content: z.string().describe('Memory content to save.'),
+  tier: MemoryTierSchema.optional().describe('Memory tier. Defaults to semantic.'),
+  sensitivity: MemorySensitivitySchema.optional().describe('Sensitivity classification. Defaults by partition.'),
+  scopeId: z.string().optional().describe('Required for scoped partitions: project, task, agent.'),
+  source: z.string().optional().describe('Audit source such as session ID, task ID, or user instruction.'),
+});
+
+export const DeleteMemorySchema = z.object({
+  id: z.string().describe('Memory entry ID to delete.'),
 });
 
 // ============================================================
@@ -530,6 +557,18 @@ Shows which external chat apps are connected and can send/receive messages.`,
 
   unbind_messaging_channel: `Disconnect a messaging channel from the current session.
 Messages will no longer be forwarded between the chat app and this session.`,
+
+  list_memory: `List local layered memory entries from the current workspace.
+
+Use this before deciding from memory. Scoped partitions (project, task, agent) require scopeId and return nothing without it, so memories do not leak across projects or agents.`,
+
+  add_memory: `Add a local layered memory entry.
+
+Use this for confirmed durable facts, preferences, software state, team conventions, or scoped project/task/agent notes. Do not store secrets. For project, task, and agent partitions you must provide scopeId.`,
+
+  delete_memory: `Delete a local layered memory entry by ID.
+
+Use only when the user asks to remove or correct memory. This is a write operation and should remain permission-gated by the host.`,
 } as const;
 
 // ============================================================
@@ -608,6 +647,10 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'send_team_message', description: TOOL_DESCRIPTIONS.send_team_message, inputSchema: SendTeamMessageSchema, executionMode: 'registry', safeMode: 'block', handler: handleSendTeamMessage },
   { name: 'assign_team_task', description: TOOL_DESCRIPTIONS.assign_team_task, inputSchema: AssignTeamTaskSchema, executionMode: 'registry', safeMode: 'block', handler: handleAssignTeamTask },
   { name: 'submit_team_report', description: TOOL_DESCRIPTIONS.submit_team_report, inputSchema: SubmitTeamReportSchema, executionMode: 'registry', safeMode: 'block', handler: handleSubmitTeamReport },
+  // Layered memory tools — same local MemoryStore as the settings page.
+  { name: 'list_memory', description: TOOL_DESCRIPTIONS.list_memory, inputSchema: ListMemorySchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListMemory },
+  { name: 'add_memory', description: TOOL_DESCRIPTIONS.add_memory, inputSchema: AddMemorySchema, executionMode: 'registry', safeMode: 'block', handler: handleAddMemory },
+  { name: 'delete_memory', description: TOOL_DESCRIPTIONS.delete_memory, inputSchema: DeleteMemorySchema, executionMode: 'registry', safeMode: 'block', handler: handleDeleteMemory },
   // Messaging gateway tools
   { name: 'list_messaging_channels', description: TOOL_DESCRIPTIONS.list_messaging_channels, inputSchema: ListMessagingChannelsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListMessagingChannels },
   { name: 'unbind_messaging_channel', description: TOOL_DESCRIPTIONS.unbind_messaging_channel, inputSchema: UnbindMessagingChannelSchema, executionMode: 'registry', safeMode: 'block', handler: handleUnbindMessagingChannel },

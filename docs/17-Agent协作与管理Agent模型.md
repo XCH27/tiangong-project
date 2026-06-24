@@ -4,7 +4,7 @@
 > 对应决策：**D11 双层 Agent 架构**、**D12 分级自动决策**（见 `docs/04-产品决策记录.md`）。
 > 定位：定义 Fleet 的多 Agent 架构——一个常驻"管理 Agent"管软件本身，一套"项目 Agent"管具体执行；两者身份分离、共用一条 timeline、全程可授权可回放。它是 `docs/01` 主干第 4 块的展开。
 > 边界：不新建第二套 session/记忆/权限真相。所有 Agent 编排都适配进 craft `SessionManager`、`SessionEvent`、permission、tool event；多 Agent 源码与模式优先迁 **AionUi**（Apache-2.0 绿灯，team/@提及/进程生命周期），按 `docs/22-AionUi-CLI-ACP-Skill-迁移要点.md` §4.1 的 A–E 批次。
-> 当前分支状态：团队身份已收敛到 Craft 原标签系统；`队长/开发/代码/测试/自动化/内容/上下文/审查/设计` 等身份通过 `labels/config.json` + session `labels` 注入系统提示词和 permission profile，不再新增第二套身份菜单。管理 Agent 已有右下角常驻入口，可创建 hidden craft session，按管理设置选择模型，并注入管理 Agent 专用系统提示词；记忆是独立设置页。仍未完成：管理 Agent 对记忆生命周期的结构化工具、真实全局专栏/退出行为、四个专业工作面。
+> 当前分支状态：团队身份已收敛到 Craft 原标签系统；`队长/开发/代码/测试/自动化/内容/上下文/审查/设计` 等身份通过 `labels/config.json` + session `labels` 注入系统提示词和 permission profile，不再新增第二套身份菜单。管理 Agent 已有右下角常驻入口，可创建 hidden craft session，按管理设置选择模型，并注入管理 Agent 专用系统提示词；记忆是独立设置页，且 Agent 可用 `list_memory` / `add_memory` / `delete_memory` 操作同一套本地 MemoryStore。仍未完成：真实全局专栏/退出行为、四个专业工作面。
 
 ---
 
@@ -87,7 +87,7 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 > - **接入点 2：中央权限路径（本轮新增）**——`SessionManager.requestWorkflowPermission` 接 `permissionAutoOutcome`：**所有**项目 Agent 的权限请求（file_write/mcp_mutation/api_mutation）开启后都按规则代答；`team:` 动作跳过（由接入点 1 处理），未开启/无规则/L3 → 照常弹用户。纯函数 `permissionAutoOutcome` 有 5 个单测。每次自动判断写 `manager_auto_decision` 进 timeline。
 > - **配置：`managerDecision` RPC**（getSettings/updateSettings）——设置落 `<workspace>/.fleet/manager-decision.json`，给设置页消费；默认 `enabled=false` → 全程行为不变、不绕过 permission。
 > - 已有 UI：`ManagerSettingsPage` 配置管理 Agent 模型、自动决策开关和 L2 规则；右下角 `ManagerAgentLauncher` 使用这些模型配置创建 hidden 管理会话。
-> - **未做**：记忆/偏好作为自动决策依据、管理 Agent 操作记忆生命周期的结构化工具、真实全局专栏和退出行为设置。
+> - **未做**：记忆/偏好作为自动决策依据、真实全局专栏和退出行为设置。
 
 默认情况下，涉及**权限、文件写入、运行命令、提交外部平台、删除记忆、修改项目方向**等关键动作，仍然问用户确认。当用户**主动开启自动决策**后，管理 Agent 可在低风险场景按记忆/偏好/规则/权限策略代替用户回复项目 Agent。
 
@@ -144,7 +144,7 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 - 项目 Agent 仍是原 Craft 会话列表中的会话，不新建名册栏、团队控制台或第二套导航。
 - 每条会话只在原字段上增量显示模型/Runtime 图标、稳定序号、原标签中的身份与团队状态。图标仅用于识别，不承载升队长等操作。
 - `队长` 是 Craft 原标签的特殊身份能力；标签配置可附带系统提示词和 permission profile 引用，但不绕过 permission。
-- 有队长后，在“所有会话”顶部只增加一条原会话样式的“团队群聊”特殊会话项；打开后继续使用原聊天面板。它像真实团队群，只显示队长安排、成员汇报、问题/意见、待审提醒和方向摘要，不聚合成员完整会话。
+- 在“所有会话”顶部只增加一条原会话样式的“团队群聊”特殊会话项；打开后继续使用原聊天面板。队长只影响花名册/调度，不影响群聊入口存在。它像真实团队群，只显示队长安排、成员汇报、问题/意见、待审提醒和方向摘要，不聚合成员完整会话。
 - 团队消息和简报在消息内显示发送者头像、模型/Runtime、序号和身份。广播与私发由后端可见性保证，不靠前端隐藏。长工具输出、完整思考过程、代码 diff 和成员原始对话只保留在源成员会话或报告文件，群聊只放可跳转引用。
 - 管理 Agent 在“所有会话”层有独立的全局专栏，不塞进某个工作区的普通会话。右下角只可作为唤起入口。
 - 权限卡、执行记录和回放继续复用 Craft 现有会话与 timeline 表达；未经单独产品决策，不新增全局 Action Ticker。

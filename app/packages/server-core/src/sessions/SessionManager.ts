@@ -86,6 +86,7 @@ import { type Session, type SessionEvent, type FileAttachment, type SendMessageO
 import { CliRuntimeHost } from '../services/acp/cli-runtime-host'
 import { getDefaultCliRuntimeCatalog } from '../services/cli-runtime-catalog'
 import { ManagerDecisionService, permissionAutoOutcome } from '../services/manager-decision-service'
+import { MemoryStore } from '../services/memory-store'
 import { MANAGER_ACTOR } from '../services/team-coordinator'
 import { buildSessionUsageView } from '../services/usage-service'
 import { getModelById, getModelDisplayName } from '@craft-agent/shared/config'
@@ -4220,6 +4221,7 @@ export class SessionManager implements ISessionManager {
         workspaceRootPath: managed.workspace.rootPath,
         runtime: createSessionManagerTeamRuntime(this, managed.workspace.id, managed.workspace.rootPath),
       })
+      const memoryStoreForManaged = () => new MemoryStore(managed.workspace.rootPath)
 
       // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
       mergeSessionScopedToolCallbacks(managed.id, {
@@ -4373,6 +4375,9 @@ export class SessionManager implements ISessionManager {
           issuerSessionId: managed.id,
           actor: teamActorForManaged(),
         }) as Promise<{ reportId: string; reviewId: string }>,
+        listMemoryFn: async query => memoryStoreForManaged().list(query),
+        addMemoryFn: async input => memoryStoreForManaged().add(input),
+        deleteMemoryFn: async id => memoryStoreForManaged().delete(id),
         activateSourceInSessionFn: async (sourceSlug: string) => {
           const cb = managed.agent?.onSourceActivationRequest
           if (!cb) {

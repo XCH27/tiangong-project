@@ -34,6 +34,8 @@ interface ProviderSelectStepProps {
   onSelect: (choice: ProviderChoice) => void
   /** Called when the user chooses to skip setup */
   onSkip?: () => void
+  /** Compact list used inside settings cards. Full mode is kept for onboarding. */
+  compact?: boolean
 }
 
 /**
@@ -42,7 +44,7 @@ interface ProviderSelectStepProps {
  * Welcomes the user and asks them to pick their subscription / auth method.
  * Selecting a card immediately advances to the next step.
  */
-export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps) {
+export function ProviderSelectStep({ onSelect, onSkip, compact = false }: ProviderSelectStepProps) {
   const { t } = useTranslation()
 
   const PROVIDER_OPTIONS: ProviderOption[] = [
@@ -78,6 +80,37 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
     },
   ]
 
+  const optionButtons = (
+    <div className="space-y-2 sm:space-y-3">
+      {PROVIDER_OPTIONS.map((option) => (
+        <button
+          key={option.id}
+          onClick={() => onSelect(option.id)}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg bg-background p-3 text-left transition-all",
+            "sm:items-start sm:gap-4 sm:p-4",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "hover:bg-foreground/[0.02] shadow-minimal",
+          )}
+        >
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            {option.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="font-medium text-sm">{option.name}</span>
+            <p className="mt-0 hidden sm:block text-xs text-muted-foreground">
+              {option.description}
+            </p>
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+
+  if (compact) {
+    return optionButtons
+  }
+
   return (
     <StepFormLayout
       iconElement={
@@ -88,33 +121,7 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
       title={t("onboarding.providerSelect.title")}
       description={t("onboarding.providerSelect.description")}
     >
-      <div className="space-y-2 sm:space-y-3">
-        {PROVIDER_OPTIONS.map((option) => (
-          <button
-            key={option.id}
-            onClick={() => onSelect(option.id)}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-xl bg-foreground-2 p-3 text-left transition-all",
-              "sm:items-start sm:gap-4 sm:p-4",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              "hover:bg-foreground/[0.02] shadow-minimal",
-            )}
-          >
-            {/* Icon */}
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-              {option.icon}
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <span className="font-medium text-sm">{option.name}</span>
-              <p className="mt-0 hidden sm:block text-xs text-muted-foreground">
-                {option.description}
-              </p>
-            </div>
-          </button>
-        ))}
-      </div>
+      {optionButtons}
 
       {onSkip && (
         <div className="mt-4 text-center">

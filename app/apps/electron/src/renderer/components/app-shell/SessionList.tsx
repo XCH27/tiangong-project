@@ -159,8 +159,8 @@ export function SessionList({
   const { navigate, navigateToSession: navigateToSessionPrimary } = useNavigation()
   const navigateToSession = onNavigateToSession ?? navigateToSessionPrimary
 
-  // 团队群聊置顶项（docs/33 §1.1）：有队长时，在"所有会话"顶端插一条原样式特殊会话项，
-  // 点开进入 teamConversationSessionId。无队长时不显示（当前默认无团队，列表不变）。
+  // 团队群聊置顶项（docs/33 §1.1）：在"所有会话"顶端插一条原样式特殊会话项，
+  // 点开进入 teamConversationSessionId。队长只影响花名册/调度，不影响群聊入口存在。
   const { activeWorkspaceId } = useAppShellContext()
   const [teamProjection, setTeamProjection] = useState<TeamProjection | null>(null)
   const teamProjectionRefreshKey = useMemo(
@@ -175,7 +175,7 @@ export function SessionList({
       .catch(() => { if (!cancelled) setTeamProjection(null) })
     return () => { cancelled = true }
   }, [activeWorkspaceId, teamProjectionRefreshKey])
-  const teamChatSessionId = teamProjection?.leaderSessionId ? teamProjection.teamConversationSessionId : null
+  const teamChatSessionId = teamProjection?.teamConversationSessionId ?? null
   const teamSequenceById = useMemo(
     () => Object.fromEntries((teamProjection?.members ?? []).map((m) => [m.sessionId, m.sequence])),
     [teamProjection],
