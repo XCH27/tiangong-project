@@ -6,7 +6,7 @@
  * 不建第二套 store。状态严格按后端给的来：completed=✓、in_progress=spinner、
  * pending=○、cancelled=删除线，绝不把未驱动的步骤画成完成/进行中（docs/00A §3.3 诚实）。
  *
- * 挂点：原 ChatDisplay 内容列顶部（progress 非空才渲染；为空时此组件不出现，界面不变）。
+ * 挂点：默认工作台右侧上下文栏顶部；会话行仍只显示 N/M 小药丸。
  */
 
 import { Check, Circle, Loader2, X } from 'lucide-react'
@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { summarizeProgress, type ProgressTask } from '@craft-agent/shared/protocol'
 import { cn } from '@/lib/utils'
 
-export function SessionProgressCard({ tasks }: { tasks: ProgressTask[] }) {
+export function SessionProgressCard({ tasks, variant = 'card' }: { tasks: ProgressTask[]; variant?: 'card' | 'plain' }) {
   const { t } = useTranslation()
   if (!tasks || tasks.length === 0) return null
 
@@ -22,7 +22,13 @@ export function SessionProgressCard({ tasks }: { tasks: ProgressTask[] }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
 
   return (
-    <div className="rounded-[8px] border border-border/50 bg-foreground/[0.02] px-3 py-2.5">
+    <div
+      className={cn(
+        variant === 'card'
+          ? 'rounded-[8px] border border-border/50 bg-foreground/[0.02] px-3 py-2.5'
+          : 'px-0 py-0',
+      )}
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-[12px] font-medium text-foreground/70">{t('session.taskProgress')}</span>
         <span className="text-[11px] tabular-nums text-foreground/45">{done}/{total}</span>

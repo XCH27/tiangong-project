@@ -125,18 +125,18 @@ export function ManagerAgentLauncher() {
       {open ? (
         <div
           className={cn(
-            "fixed right-5 bottom-5 z-floating-menu",
-            "w-[360px] max-w-[calc(100vw-2.5rem)] h-[420px] max-h-[calc(100vh-5rem)]",
-            "rounded-[8px] border border-border bg-background text-foreground shadow-modal",
+            "fixed right-4 bottom-4 z-floating-menu",
+            "w-[340px] max-w-[calc(100vw-2rem)] h-[380px] max-h-[calc(100vh-4rem)]",
+            "rounded-[10px] border border-border bg-background text-foreground shadow-middle",
             "flex flex-col overflow-hidden",
           )}
           role="dialog"
           aria-label={title}
         >
-          <div className="h-12 px-3 border-b border-border/70 flex items-center gap-2">
+          <div className="h-11 px-3 border-b border-border flex items-center gap-1.5">
             <button
               type="button"
-              className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
+              className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
               aria-label={t('session.newSession')}
               onClick={() => {
                 setManagerSessionId(null)
@@ -148,7 +148,7 @@ export function ManagerAgentLauncher() {
             </button>
             <button
               type="button"
-              className="h-8 min-w-0 px-2 rounded-[6px] inline-flex items-center gap-1.5 hover:bg-foreground/[0.04]"
+              className="h-8 min-w-0 px-2 rounded-[7px] inline-flex items-center gap-1.5 hover:bg-foreground/[0.05]"
               onClick={openSettings}
             >
               <Bot className="size-4" />
@@ -158,7 +158,7 @@ export function ManagerAgentLauncher() {
             <div className="ml-auto flex items-center gap-1">
               <button
                 type="button"
-                className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
+                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
                 aria-label="Refresh"
                 onClick={() => void loadSettings()}
               >
@@ -166,7 +166,7 @@ export function ManagerAgentLauncher() {
               </button>
               <button
                 type="button"
-                className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
+                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
                 aria-label="Expand"
                 onClick={openSettings}
               >
@@ -174,7 +174,7 @@ export function ManagerAgentLauncher() {
               </button>
               <button
                 type="button"
-                className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
+                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
                 aria-label="Minimize to launcher"
                 onClick={() => setOpen(false)}
               >
@@ -182,7 +182,7 @@ export function ManagerAgentLauncher() {
               </button>
               <button
                 type="button"
-                className="size-7 rounded-[6px] inline-flex items-center justify-center hover:bg-foreground/[0.04]"
+                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
                 aria-label="Close manager chat"
                 onClick={() => void closeManagerSession()}
               >
@@ -191,24 +191,26 @@ export function ManagerAgentLauncher() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 px-5 py-5 overflow-y-auto flex flex-col gap-3">
+          <div className="flex-1 min-h-0 px-3 py-3 overflow-y-auto flex flex-col gap-3">
             {visibleMessages.length === 0 ? (
-              <div className="flex-1 min-h-[180px] flex flex-col items-center justify-center gap-3">
-                <div className="size-10 rounded-[8px] border border-border bg-foreground/[0.04] flex items-center justify-center">
-                  <Bot className="size-5" />
+              <div className="flex-1 min-h-[160px] flex flex-col gap-3">
+                <div className="rounded-[8px] border border-border bg-foreground/[0.02] px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Bot className="size-4 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <div className="truncate text-[13px] font-medium text-foreground">{title}</div>
+                      <div className="truncate text-[12px] text-muted-foreground">{t('settings.managerAgent.description')}</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <div className="text-[15px] font-semibold">你好，我是{title}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{t('settings.managerAgent.description')}</div>
-                </div>
-                <div className="w-full mt-3 flex flex-col gap-2">
+                <div className="flex flex-col gap-1">
                   {QUICK_PROMPTS.map(action => (
                     <button
                       key={action.label}
                       type="button"
                       onClick={() => void sendManagerText(action.prompt)}
                       disabled={managerSession?.isProcessing}
-                      className="w-full h-9 px-3 rounded-[6px] border border-border bg-background text-left text-sm hover:bg-foreground/[0.03] inline-flex items-center gap-2"
+                      className="w-full h-8 px-2 rounded-[7px] text-left text-[13px] hover:bg-foreground/[0.05] inline-flex items-center gap-2 disabled:opacity-50"
                     >
                       <Wand2 className="size-3.5 text-muted-foreground" />
                       <span className="truncate">{action.label}</span>
@@ -222,7 +224,7 @@ export function ManagerAgentLauncher() {
                   <div
                     key={message.id}
                     className={cn(
-                      "rounded-[8px] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap",
+                      "rounded-[8px] px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap",
                       message.role === 'user'
                         ? "ml-8 bg-foreground text-background"
                         : "mr-8 border border-border bg-foreground/[0.03]",
@@ -251,10 +253,10 @@ export function ManagerAgentLauncher() {
             </div>
           </div>
 
-          <div className="p-3 border-t border-border/70">
-            <div className="rounded-[8px] border border-border bg-background px-3 py-2">
+          <div className="p-3 border-t border-border">
+            <div className="rounded-[10px] border border-border bg-background px-3 py-2 shadow-minimal">
               <textarea
-                className="w-full h-12 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
+                className="w-full h-11 resize-none bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
                 placeholder={`给${title}发消息…`}
                 value={input}
                 onChange={event => setInput(event.target.value)}
@@ -269,7 +271,7 @@ export function ManagerAgentLauncher() {
               <div className="mt-2 flex items-center justify-between">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+                  className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground"
                   onClick={openSettings}
                 >
                   <Bot className="size-3.5" />
@@ -279,7 +281,7 @@ export function ManagerAgentLauncher() {
                 <button
                   type="button"
                   className={cn(
-                    "size-8 rounded-[8px] bg-foreground text-background inline-flex items-center justify-center",
+                    "size-7 rounded-[7px] bg-foreground text-background inline-flex items-center justify-center",
                     (!input.trim() || managerSession?.isProcessing) && "opacity-45 cursor-not-allowed",
                   )}
                   disabled={!input.trim() || managerSession?.isProcessing}
@@ -298,13 +300,13 @@ export function ManagerAgentLauncher() {
           onClick={() => setOpen(true)}
           aria-label={title}
           className={cn(
-            "fixed right-5 bottom-20 z-floating-menu",
-            "size-12 rounded-full border border-border bg-background text-foreground",
-            "flex items-center justify-center shadow-modal-small",
-            "hover:bg-foreground/[0.04] active:scale-95 transition",
+            "fixed right-5 bottom-5 z-floating-menu",
+            "size-10 rounded-full border border-border bg-background text-foreground",
+            "flex items-center justify-center shadow-middle",
+            "hover:bg-foreground/[0.05] active:scale-95 transition",
           )}
         >
-          <Bot className="size-5" />
+          <Bot className="size-4" />
         </button>
       )}
     </>,
