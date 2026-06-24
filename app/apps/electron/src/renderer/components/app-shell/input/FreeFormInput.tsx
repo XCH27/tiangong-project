@@ -550,7 +550,7 @@ export function FreeFormInput({
   const modelButtonDisplayName = activeCliRuntime
     ? cliRuntimeModels.find(model => model.id === cliRuntimeModelState?.currentModelId)?.name
       ?? cliRuntimeModelState?.currentModelId
-      ?? '模型由 CLI 管理'
+      ?? 'CLI 默认'
     : apiModelButtonDisplayName
 
   const contextUsageRing = React.useMemo(
@@ -2656,7 +2656,7 @@ export function FreeFormInput({
                   >
                     <ContextUsageRing percent={activeCliRuntime ? null : contextUsageRing.percent} title={activeCliRuntime ? '上下文由 CLI 管理' : contextUsageRing.title} />
                     <span className="text-muted-foreground">
-                      {activeCliRuntime ? 'CLI' : (contextUsageRing.percent == null ? 'Token' : contextUsageRing.label)}
+                      {activeCliRuntime || contextUsageRing.percent == null ? 'Token' : contextUsageRing.label}
                     </span>
                   </button>
                 </PopoverTrigger>

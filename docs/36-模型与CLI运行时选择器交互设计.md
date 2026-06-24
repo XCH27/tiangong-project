@@ -1,6 +1,6 @@
 # 36 · 模型 / CLI 运行时选择器交互设计（单一真相）
 
-> 状态日期：2026-06-23
+> 状态日期：2026-06-24
 > 起因：commit `2756b7dc` 把 CLI Runtime 同时塞进顶部栏和输入框模型选择器，且把"运行方式"和"模型"两条正交轴拍平成一个列表，导致截图里 `本机 CLI / API 模型 / Opus 4.8` 双勾混乱。本文是这个选择器的**唯一交互真相**，实现以本文为准；冲突处以 `docs/00A` 红线兜底。
 > 适用文件：`renderer/components/app-shell/input/FreeFormInput.tsx`、`CompactModelSelector.tsx`、`cli-runtime-model-picker.ts`、`components/app-shell/TopBar.tsx`。
 
@@ -54,10 +54,10 @@ Claude Code / Codex / Grok / Hermes / OpenCode / Antigravity(`agy`) / Qwen / Pi 
 ```
 〔运行方式=API〕 Opus 4.8✓ / Sonnet 4.6 / Haiku 4.5… + 推理强度
 〔运行方式=CLI 且暴露模型〕 该 CLI 的 availableModels（一个勾）
-〔运行方式=CLI 不暴露模型〕 "模型由 CLI 管理"（整按钮禁用）
+〔运行方式=CLI 不暴露模型〕 chip 显示"CLI 默认"，tooltip/弹层说明"模型由 CLI 管理"（整按钮禁用）
 ```
 
-**Token 环**：只读环显示 `context.percentFull`；点开弹层（`getSessionUsage`），上半"上下文占用"（N/window，CLI 时"由 CLI 管理"），下半"套餐额度"（默认"不可用"，不编造）。**两者分开画，不画进同一个环**。
+**Token 环**：只读环显示 `context.percentFull`；CLI 模式下 chip 仍显示 `Token`，tooltip/弹层说明"上下文由 CLI 管理"，避免和 CLI 运行方式按钮重复。点开弹层（`getSessionUsage`），上半"上下文占用"（N/window，CLI 时"由 CLI 管理"），下半"套餐额度"（默认"不可用"，不编造）。**两者分开画，不画进同一个环**。
 
 要点：每个按钮只有一个职责、各自最多一个勾；CLI 按钮和模型按钮**不互相嵌套**（这是修 `2756b7dc` 双勾的关键）。
 
