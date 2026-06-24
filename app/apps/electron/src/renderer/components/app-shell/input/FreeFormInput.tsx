@@ -74,7 +74,7 @@ import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
-import type { CliRuntimeDefinition, CliRuntimeModelState, SessionUsageView } from '@craft-agent/shared/protocol'
+import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type SessionUsageView } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
@@ -520,7 +520,7 @@ export function FreeFormInput({
   }, [availableModels, currentModel, connectionDefaultModel])
 
   const enabledCliRuntimes = React.useMemo(
-    () => cliRuntimes.filter(runtime => runtime.enabled && runtime.protocol === 'acp'),
+    () => cliRuntimes.filter(runtime => runtime.enabled && hasCliRuntimeSendAdapter(runtime)),
     [cliRuntimes],
   )
 

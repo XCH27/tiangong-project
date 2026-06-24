@@ -14,7 +14,7 @@ import {
   SettingsInput,
   SettingsTextarea,
 } from '@/components/settings'
-import { canDeleteRuntime, canEditRuntimeCommand, type CliRuntimeDefinition, type CliRuntimeHealthResult } from '@craft-agent/shared/protocol'
+import { canDeleteRuntime, canEditRuntimeCommand, hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeHealthResult } from '@craft-agent/shared/protocol'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
 export const meta: DetailsPageMeta = {
@@ -27,7 +27,7 @@ function healthLabel(result?: CliRuntimeHealthResult): string {
   if (result.health === 'available') return '可用'
   if (result.health === 'fail_cli') return 'CLI 启动失败'
   if (result.health === 'fail_acp') return 'ACP 握手失败'
-  if (result.health === 'needs_adapter') return '已检测，待 adapter'
+  if (result.health === 'needs_adapter') return '已检测，待接入'
   if (result.health === 'disabled') return '已禁用'
   return '未测试'
 }
@@ -225,6 +225,7 @@ export default function CliRuntimeSettingsPage() {
                 const result = health[runtime.id]
                 const isOk = result?.health === 'available'
                 const isAcp = runtime.protocol === 'acp'
+                const canSend = hasCliRuntimeSendAdapter(runtime)
                 const runtimeTitle = (
                   <span className="inline-flex items-center gap-2">
                     <Terminal className="h-4 w-4 text-muted-foreground" />
@@ -233,7 +234,9 @@ export default function CliRuntimeSettingsPage() {
                 )
                 const runtimeDescription = isAcp
                   ? `${runtime.kind} · ACP · ${runtimeCommandLabel(runtime)}`
-                  : `${runtime.kind} · ${runtime.protocol} · ${runtimeCommandLabel(runtime)} · 检测展示，待 native adapter`
+                  : canSend
+                    ? `${runtime.kind} · ${runtime.protocol} · ${runtimeCommandLabel(runtime)} · 可发送`
+                    : `${runtime.kind} · ${runtime.protocol} · ${runtimeCommandLabel(runtime)} · 检测展示，待 adapter`
                 const runtimeActions = (
                   <div className="flex items-center gap-1">
                     {canEditRuntimeCommand(runtime.kind) && (
@@ -250,7 +253,7 @@ export default function CliRuntimeSettingsPage() {
                 )
                 return (
                   <div key={runtime.id} className="border-t border-border/50 first:border-t-0">
-                    {isAcp ? (
+                    {canSend ? (
                       <SettingsToggle
                         label={runtimeTitle}
                         description={runtimeDescription}
@@ -282,7 +285,7 @@ export default function CliRuntimeSettingsPage() {
                         </span>
                       }
                       description={result?.reason ?? runtime.adapterHint ?? (runtime.needsConfirmation ? '需要 adapter 后启用' : '刷新时自动检测')}
-                      action={isAcp ? runtimeActions : undefined}
+                      action={canSend ? runtimeActions : undefined}
                     />
                   </div>
                 )

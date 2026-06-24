@@ -82,9 +82,10 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type ManagerAutoDecisionRecord, type SessionUsageView, type ContextSegment, estimateContextSegments, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type CliRuntimeDefinition, type ManagerAutoDecisionRecord, type SessionUsageView, type ContextSegment, estimateContextSegments, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId, hasCliRuntimeSendAdapter } from '@craft-agent/shared/protocol'
 import { CliRuntimeHost } from '../services/acp/cli-runtime-host'
 import { getDefaultCliRuntimeCatalog } from '../services/cli-runtime-catalog'
+import { runNativeCliRuntimeTurn } from '../services/native-cli-runtime'
 import { ManagerDecisionService, permissionAutoOutcome } from '../services/manager-decision-service'
 import { MemoryStore } from '../services/memory-store'
 import { MANAGER_ACTOR } from '../services/team-coordinator'
@@ -830,11 +831,11 @@ interface ManagedSession {
   labels?: string[]
   // 任务进度清单（docs/35）：会话内有序、有状态的步骤；会话级元数据，和 labels 同层。
   progress?: ProgressTask[]
-  // 选中的本机 CLI Runtime id（docs/23）。null/未设 = 走 API 模型路径；设了 = 走 ACP adapter。
+  // 选中的本机 CLI Runtime id（docs/23）。null/未设 = 走 API 模型路径；设了 = 走 ACP 或 native adapter。
   cliRuntimeId?: string | null
   // CLI 内部请求/实际模型；与 API 路径的 model 分开。
   cliRuntimeModelId?: string | null
-  // 活跃 ACP 进程报告的模型清单（runtime-only，不作为 catalog 真相落盘）。
+  // 活跃 ACP 进程报告的模型清单，或 native/subscription adapter 的静态模型投影。
   cliRuntimeModelState?: CliRuntimeModelState
   // Working directory for this session (used by agent for bash commands)
   workingDirectory?: string
@@ -7071,7 +7072,17 @@ export class SessionManager implements ISessionManager {
     if (!cliRuntimeId) return
     const runtime = getDefaultCliRuntimeCatalog().get(cliRuntimeId)
     if (!runtime || !runtime.enabled) throw new Error(`CLI Runtime 不可用：${cliRuntimeId}`)
-    await this.getCliRuntimeHost().prepare(sessionId, runtime)
+    if (!hasCliRuntimeSendAdapter(runtime)) throw new Error(`CLI Runtime 暂不可发送：${runtime.displayName}`)
+    if (runtime.protocol === 'acp') {
+      await this.getCliRuntimeHost().prepare(sessionId, runtime)
+    } else {
+      const state = this.createStaticCliRuntimeModelState(runtime)
+      managed.cliRuntimeModelState = state
+      managed.cliRuntimeModelId = state.currentModelId
+      this.sendEvent({ type: 'cli_runtime_models_changed', sessionId: managed.id, state }, managed.workspace.id)
+      this.persistSession(managed)
+      await this.flushSession(managed.id)
+    }
   }
 
   /** 切换当前 CLI session 的模型；模型清单与切换能力来自 ACP session/new。 */
@@ -7086,7 +7097,30 @@ export class SessionManager implements ISessionManager {
       await this.flushSession(sessionId)
       return
     }
+    if (runtime.protocol !== 'acp') {
+      const state = this.createStaticCliRuntimeModelState(runtime, modelId)
+      managed.cliRuntimeModelId = state.currentModelId
+      managed.cliRuntimeModelState = state
+      this.sendEvent({ type: 'cli_runtime_models_changed', sessionId: managed.id, state }, managed.workspace.id)
+      this.persistSession(managed)
+      await this.flushSession(sessionId)
+      return
+    }
     await this.getCliRuntimeHost().setModel(sessionId, runtime, modelId)
+  }
+
+  private createStaticCliRuntimeModelState(runtime: CliRuntimeDefinition, preferredModelId?: string | null): CliRuntimeModelState {
+    const models = runtime.discoveredModels ?? []
+    const currentModelId = preferredModelId && models.some(model => model.id === preferredModelId)
+      ? preferredModelId
+      : (models[0]?.id ?? null)
+    return {
+      runtimeId: runtime.id,
+      source: models.length > 0 ? 'models' : 'runtime_managed',
+      currentModelId,
+      availableModels: models,
+      canSwitch: models.length > 0,
+    }
   }
 
   // ---- CLI Runtime（ACP）发送路由（docs/23）-------------------------------
@@ -7190,11 +7224,11 @@ export class SessionManager implements ISessionManager {
       }, workspaceId)
       return
     }
-    if (runtime.protocol !== 'acp') {
+    if (!hasCliRuntimeSendAdapter(runtime)) {
       this.sendEvent({
         type: 'text_complete',
         sessionId,
-        text: `⚠️ ${runtime.displayName} 已检测到，但当前还没有 ${runtime.protocol} adapter，不能按 ACP 发送。请先选择 Goose/Custom ACP，或等待该 CLI 的 native adapter 接入。`,
+        text: `⚠️ ${runtime.displayName} 已检测到，但当前还没有 ${runtime.protocol} adapter，不能发送。请先选择已支持的 CLI，或切回 API 模型。`,
       }, workspaceId)
       return
     }
@@ -7202,7 +7236,27 @@ export class SessionManager implements ISessionManager {
     this.setProcessing(managed, true)
     managed.streamingText = ''
     try {
-      await this.getCliRuntimeHost().runTurn(sessionId, runtime, message, managed.cliRuntimeModelId)
+      if (runtime.protocol === 'acp') {
+        await this.getCliRuntimeHost().runTurn(sessionId, runtime, message, managed.cliRuntimeModelId)
+      } else {
+        const allowed = await this.requestWorkflowPermission(sessionId, {
+          toolName: runtime.displayName,
+          description: `运行本机 CLI：${runtime.command} ${runtime.args.join(' ')}`.trim(),
+          type: 'mcp_mutation',
+          reason: 'Native/subscription CLI runtime turn',
+        })
+        if (!allowed) {
+          this.translateCliRuntimeEvent(sessionId, { type: 'error', message: '用户未授权运行本机 CLI。' })
+          return
+        }
+        await runNativeCliRuntimeTurn({
+          runtime,
+          cwd: managed.workingDirectory ?? managed.workspace.rootPath ?? process.cwd(),
+          prompt: message,
+          modelId: managed.cliRuntimeModelId,
+          emitEvent: event => this.translateCliRuntimeEvent(sessionId, event),
+        })
+      }
     } catch (error) {
       this.translateCliRuntimeEvent(sessionId, { type: 'error', message: error instanceof Error ? error.message : String(error) })
     } finally {

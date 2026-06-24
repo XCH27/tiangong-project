@@ -8,7 +8,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import type { CliRuntimeDefinition, CliRuntimeHealthResult } from '@craft-agent/shared/protocol'
+import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeHealthResult } from '@craft-agent/shared/protocol'
 
 const HANDSHAKE_TIMEOUT_MS = 5000
 const TAIL_LEN = 600
@@ -75,6 +75,7 @@ export async function probeCliRuntimeHealth(
   if (runtime.protocol !== 'acp') {
     const binary = await probeBinary(runtime)
     if (binary.health === 'fail_cli') return binary
+    if (hasCliRuntimeSendAdapter(runtime)) return binary
     return {
       runtimeId: runtime.id,
       health: 'needs_adapter',

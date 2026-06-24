@@ -27,14 +27,16 @@ describe('CliRuntimeCatalog', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('默认扫描常见本机 Agent CLI，且只有 ACP runtime 可直接发送', () => {
+  it('默认扫描常见本机 Agent CLI，并区分 ACP 与 native/subscription 可发送 runtime', () => {
     const ids = catalog.list().map(r => r.mappingId)
     expect(ids).toContain('goose')
     expect(ids).toContain('claude')
     expect(ids).toContain('codex')
     expect(ids).toContain('grok')
     expect(ids).toContain('antigravity')
-    expect(catalog.list().filter(r => r.protocol === 'acp').map(r => r.mappingId)).toEqual(['goose'])
+    expect(catalog.list().filter(r => r.protocol === 'acp').map(r => r.mappingId)).toEqual(['goose', 'hermes', 'opencode'])
+    expect(catalog.list().find(r => r.mappingId === 'codex')?.args).toEqual(['exec'])
+    expect(catalog.list().find(r => r.mappingId === 'claude')?.args).toEqual(['-p'])
     expect(catalog.list().every(r => r.attachments === 'none')).toBe(true) // 第一版硬拒绝附件
   })
 
@@ -83,13 +85,14 @@ describe('CliRuntimeCatalog', () => {
     expect(canDeleteRuntime('managed')).toBe(false)
   })
 
-  it('native/subscription detected 进入 catalog，但标记为待 adapter', () => {
+  it('native/subscription detected 进入 catalog；已接 one-shot 的 runtime 带 adapter 提示和模型', () => {
     const grok = catalog.list().find(r => r.mappingId === 'grok')!
     expect(grok.protocol).toBe('subscription')
-    expect(grok.adapterHint).toContain('Grok')
+    expect(grok.adapterHint).toContain('grok --single')
     expect(grok.discoveredModels?.map(model => model.id)).toContain('grok-code-fast-1')
     const antigravity = catalog.list().find(r => r.mappingId === 'antigravity')!
     expect(antigravity.command).toBe('agy')
+    expect(antigravity.args).toEqual(['--print'])
   })
 })
 
