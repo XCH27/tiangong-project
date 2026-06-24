@@ -1,10 +1,11 @@
 import { createPortal } from "react-dom"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Bot, ChevronDown, Expand, Minus, Plus, RefreshCw, Send, Wand2, X } from "lucide-react"
+import { ArrowUp, GripHorizontal, Paperclip } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { navigate, routes } from "@/lib/navigate"
+import * as storage from "@/lib/local-storage"
 import { useAppShellContext, useSession } from "@/context/AppShellContext"
+import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
 import type { AutoDecisionSettings } from "@craft-agent/shared/protocol"
 import type { CreateSessionOptions } from "../../../shared/types"
 
@@ -17,42 +18,121 @@ const MANAGER_AGENT_SYSTEM_PROMPT = [
   '回答要短，先说你准备执行的内部动作；没有可用工具时明确说明只能给建议，不能假装已经操作。',
 ].join('\n')
 
-const QUICK_PROMPTS = [
-  { label: '整理当前团队状态', prompt: '请读取当前会话和团队状态，按待安排、进行中、待审查、完成、取消整理一份简短行动清单。' },
-  { label: '检查权限与自动决策', prompt: '请检查当前权限、身份标签和自动决策规则，指出会导致误操作或需要我确认的风险。' },
-  { label: '列出需要我处理的事项', prompt: '请列出当前需要用户确认、审查或下一步决策的事项，只保留可执行项。' },
-]
+const BUTTON_SIZE = 44
+const PANEL_WIDTH = 400
+const PANEL_HEIGHT = 480
+const EDGE = 20
+const PORTAL_HOST_ID = 'manager-agent-launcher-root'
+
+type Point = { x: number; y: number }
+
+function defaultLauncherPosition(): Point {
+  if (typeof window === 'undefined') return { x: 0, y: 0 }
+  return {
+    x: window.innerWidth - BUTTON_SIZE - 24,
+    y: window.innerHeight - BUTTON_SIZE - 24,
+  }
+}
+
+function clampLauncherPosition(position: Point): Point {
+  if (typeof window === 'undefined') return position
+  return {
+    x: Math.min(Math.max(EDGE, position.x), window.innerWidth - BUTTON_SIZE - EDGE),
+    y: Math.min(Math.max(EDGE, position.y), window.innerHeight - BUTTON_SIZE - EDGE),
+  }
+}
+
+function getPanelPosition(anchor: Point): Point {
+  if (typeof window === 'undefined') return { x: EDGE, y: EDGE }
+  const width = Math.min(PANEL_WIDTH, window.innerWidth - EDGE * 2)
+  const height = Math.min(PANEL_HEIGHT, window.innerHeight - EDGE * 2)
+  const preferredX = anchor.x + BUTTON_SIZE - width
+  const preferredY = anchor.y - height - 12
+  const fallbackY = anchor.y + BUTTON_SIZE + 12
+
+  return {
+    x: Math.min(Math.max(EDGE, preferredX), window.innerWidth - width - EDGE),
+    y: preferredY >= EDGE
+      ? preferredY
+      : Math.min(Math.max(EDGE, fallbackY), window.innerHeight - height - EDGE),
+  }
+}
 
 /**
  * Global Manager Agent entry.
  *
- * This intentionally lives outside SessionList: the list header slot is reserved
- * for team chat. Messages create a hidden Craft session so the manager still
- * uses the normal model, permission, tool, and timeline path.
+ * The visual shell intentionally follows Craft's existing inline agent edit
+ * popover language: floating grip, quiet empty state, and a bottom prompt box.
+ * Sending still creates a hidden Craft session and uses the normal model,
+ * permission, tool, and timeline path.
  */
 export function ManagerAgentLauncher() {
   const { t } = useTranslation()
-  const { activeWorkspaceId, onCreateSession, onSendMessage, onDeleteSession } = useAppShellContext()
+  const { activeWorkspaceId, onCreateSession, onSendMessage } = useAppShellContext()
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [settings, setSettings] = useState<AutoDecisionSettings | null>(null)
   const [managerSessionId, setManagerSessionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null)
+  const [launcherPosition, setLauncherPosition] = useState<Point>(() => {
+    return typeof window === 'undefined'
+      ? { x: 0, y: 0 }
+      : clampLauncherPosition(storage.get(storage.KEYS.managerAgentLauncherPosition, defaultLauncherPosition()))
+  })
+  const launcherPositionRef = useRef(launcherPosition)
+  const dragRef = useRef<{
+    active: boolean
+    pointerId: number | null
+    startX: number
+    startY: number
+    originX: number
+    originY: number
+    moved: boolean
+  }>({
+    active: false,
+    pointerId: null,
+    startX: 0,
+    startY: 0,
+    originX: 0,
+    originY: 0,
+    moved: false,
+  })
   const managerSession = useSession(managerSessionId ?? '__manager-agent-none__')
-
-  if (typeof document === 'undefined') return null
-
   const title = t('settings.managerAgent.title')
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    let host = document.getElementById(PORTAL_HOST_ID)
+    if (!host) {
+      host = document.createElement('div')
+      host.id = PORTAL_HOST_ID
+      document.body.appendChild(host)
+    }
+
+    document
+      .querySelectorAll('button[aria-label], div[role="dialog"][aria-label]')
+      .forEach((node) => {
+        if (!(node instanceof HTMLElement)) return
+        if (node.getAttribute('aria-label') !== title) return
+        if (host.contains(node)) return
+        if (!node.classList.contains('fixed')) return
+        node.remove()
+      })
+
+    setPortalHost(host)
+  }, [title])
+
+  useEffect(() => {
+    launcherPositionRef.current = launcherPosition
+  }, [launcherPosition])
+
   const visibleMessages = useMemo(() => {
     return (managerSession?.messages ?? [])
       .filter(message => message.role === 'user' || message.role === 'assistant' || message.role === 'error')
-      .slice(-8)
+      .slice(-6)
   }, [managerSession?.messages])
-
-  const openSettings = () => {
-    navigate(routes.view.settings('managerAgent'))
-    setOpen(false)
-  }
 
   const loadSettings = useCallback(async () => {
     if (!window.electronAPI || !activeWorkspaceId) return
@@ -68,6 +148,19 @@ export function ManagerAgentLauncher() {
     if (open) void loadSettings()
   }, [loadSettings, open])
 
+  useEffect(() => {
+    const handleResize = () => {
+      setLauncherPosition((current) => {
+        const next = clampLauncherPosition(current)
+        launcherPositionRef.current = next
+        storage.set(storage.KEYS.managerAgentLauncherPosition, next)
+        return next
+      })
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
   const createOptions = useCallback((): CreateSessionOptions => {
     const model = settings?.model
     return {
@@ -81,8 +174,8 @@ export function ManagerAgentLauncher() {
     }
   }, [settings?.model, title])
 
-  const sendManagerText = useCallback(async (rawText: string) => {
-    const text = rawText.trim()
+  const sendManagerText = useCallback(async () => {
+    const text = input.trim()
     if (!text) return
     if (!activeWorkspaceId) {
       setError('没有可用工作区')
@@ -96,220 +189,177 @@ export function ManagerAgentLauncher() {
         setManagerSessionId(session.id)
       }
       onSendMessage(sessionId, text)
+      setInput('')
       setError(null)
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : String(sendError))
     }
-  }, [activeWorkspaceId, createOptions, managerSessionId, onCreateSession, onSendMessage])
+  }, [activeWorkspaceId, createOptions, input, managerSessionId, onCreateSession, onSendMessage])
 
-  const sendInputMessage = useCallback(async () => {
-    const text = input.trim()
-    if (!text) return
-    await sendManagerText(text)
-    setInput('')
-  }, [input, sendManagerText])
-
-  const closeManagerSession = useCallback(async () => {
-    const sessionId = managerSessionId
-    setInput('')
-    setError(null)
-    setOpen(false)
-    setManagerSessionId(null)
-    if (sessionId) {
-      await onDeleteSession(sessionId, true)
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      active: true,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: launcherPosition.x,
+      originY: launcherPosition.y,
+      moved: false,
     }
-  }, [managerSessionId, onDeleteSession])
+  }
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (!drag.active || drag.pointerId !== event.pointerId) return
+    const dx = event.clientX - drag.startX
+    const dy = event.clientY - drag.startY
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true
+    const next = clampLauncherPosition({ x: drag.originX + dx, y: drag.originY + dy })
+    launcherPositionRef.current = next
+    setLauncherPosition(next)
+  }
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current
+    if (drag.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    dragRef.current = { ...drag, active: false, pointerId: null }
+    storage.set(storage.KEYS.managerAgentLauncherPosition, launcherPositionRef.current)
+    if (!drag.moved) setOpen(true)
+  }
+
+  if (!portalHost || typeof document === 'undefined') return null
+
+  const panelWidth = Math.min(PANEL_WIDTH, window.innerWidth - EDGE * 2)
+  const panelHeight = Math.min(PANEL_HEIGHT, window.innerHeight - EDGE * 2)
+  const panelPosition = getPanelPosition(launcherPosition)
 
   return createPortal(
     <>
-      {open ? (
-        <div
-          className={cn(
-            "fixed right-4 bottom-4 z-floating-menu",
-            "w-[340px] max-w-[calc(100vw-2rem)] h-[380px] max-h-[calc(100vh-4rem)]",
-            "rounded-[10px] border border-border bg-background text-foreground shadow-middle",
-            "flex flex-col overflow-hidden",
-          )}
-          role="dialog"
-          aria-label={title}
-        >
-          <div className="h-11 px-3 border-b border-border flex items-center gap-1.5">
-            <button
-              type="button"
-              className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
-              aria-label={t('session.newSession')}
-              onClick={() => {
-                setManagerSessionId(null)
-                setInput('')
-                setError(null)
-              }}
-            >
-              <Plus className="size-4 text-muted-foreground" />
-            </button>
-            <button
-              type="button"
-              className="h-8 min-w-0 px-2 rounded-[7px] inline-flex items-center gap-1.5 hover:bg-foreground/[0.05]"
-              onClick={openSettings}
-            >
-              <Bot className="size-4" />
-              <span className="text-sm font-medium truncate">{title}</span>
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            </button>
-            <div className="ml-auto flex items-center gap-1">
-              <button
-                type="button"
-                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
-                aria-label="Refresh"
-                onClick={() => void loadSettings()}
-              >
-                <RefreshCw className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
-                aria-label="Expand"
-                onClick={openSettings}
-              >
-                <Expand className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
-                aria-label="Minimize to launcher"
-                onClick={() => setOpen(false)}
-              >
-                <Minus className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                className="size-7 rounded-[7px] inline-flex items-center justify-center text-muted-foreground hover:bg-foreground/[0.05]"
-                aria-label="Close manager chat"
-                onClick={() => void closeManagerSession()}
-              >
-                <X className="size-3.5" />
-              </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-floating-menu cursor-default bg-transparent"
+            aria-label="Close manager agent"
+            onClick={() => setOpen(false)}
+            data-manager-agent-backdrop
+          />
+          <div
+            className="fixed z-floating-menu flex flex-col overflow-hidden rounded-[16px] bg-foreground-2 shadow-modal-small"
+            style={{
+              left: panelPosition.x,
+              top: panelPosition.y,
+              width: panelWidth,
+              height: panelHeight,
+            }}
+            role="dialog"
+            aria-label={title}
+            data-manager-agent-panel
+          >
+            <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 px-4 py-2">
+              <GripHorizontal className="h-4 w-4 text-muted-foreground/30" />
             </div>
-          </div>
 
-          <div className="flex-1 min-h-0 px-3 py-3 overflow-y-auto flex flex-col gap-3">
-            {visibleMessages.length === 0 ? (
-              <div className="flex-1 min-h-[160px] flex flex-col gap-3">
-                <div className="rounded-[8px] border border-border bg-foreground/[0.02] px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <Bot className="size-4 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <div className="truncate text-[13px] font-medium text-foreground">{title}</div>
-                      <div className="truncate text-[12px] text-muted-foreground">{t('settings.managerAgent.description')}</div>
-                    </div>
-                  </div>
+            <div className="flex min-h-0 flex-1 flex-col">
+              {visibleMessages.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+                  <div className="text-[16px] font-medium text-foreground/60">{t('editPopover.whatToChange')}</div>
+                  <div className="mt-2 text-[14px] text-muted-foreground/70">{t('editPopover.justDescribe')}</div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  {QUICK_PROMPTS.map(action => (
-                    <button
-                      key={action.label}
-                      type="button"
-                      onClick={() => void sendManagerText(action.prompt)}
-                      disabled={managerSession?.isProcessing}
-                      className="w-full h-8 px-2 rounded-[7px] text-left text-[13px] hover:bg-foreground/[0.05] inline-flex items-center gap-2 disabled:opacity-50"
-                    >
-                      <Wand2 className="size-3.5 text-muted-foreground" />
-                      <span className="truncate">{action.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {visibleMessages.map(message => (
-                  <div
-                    key={message.id}
-                    className={cn(
-                      "rounded-[8px] px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap",
-                      message.role === 'user'
-                        ? "ml-8 bg-foreground text-background"
-                        : "mr-8 border border-border bg-foreground/[0.03]",
-                      message.role === 'error' && "border-destructive/40 text-destructive",
+              ) : (
+                <div className="flex-1 overflow-y-auto px-5 py-10">
+                  <div className="space-y-3">
+                    {visibleMessages.map(message => (
+                      <div
+                        key={message.id}
+                        className={cn(
+                          'rounded-[10px] px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap',
+                          message.role === 'user'
+                            ? 'ml-10 bg-foreground text-background'
+                            : 'mr-10 bg-background/70 text-foreground shadow-minimal',
+                          message.role === 'error' && 'text-destructive',
+                        )}
+                      >
+                        {message.content}
+                      </div>
+                    ))}
+                    {managerSession?.isProcessing && (
+                      <div className="mr-10 rounded-[10px] bg-background/70 px-3 py-2 text-[13px] text-muted-foreground shadow-minimal">
+                        正在处理…
+                      </div>
                     )}
-                  >
-                    {message.content}
                   </div>
-                ))}
-                {managerSession?.isProcessing && (
-                  <div className="mr-8 rounded-[8px] border border-border bg-foreground/[0.03] px-3 py-2 text-sm text-muted-foreground">
-                    正在思考…
-                  </div>
-                )}
-              </div>
-            )}
-            {error && (
-              <div className="rounded-[8px] border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                {error}
-              </div>
-            )}
-            <div className="text-[11px] text-muted-foreground">
-              模型：{settings?.model?.mode === 'api_connection'
-                ? [settings.model.connectionSlug, settings.model.model || '连接默认模型'].filter(Boolean).join(' · ')
-                : '跟随工作区默认'}
-            </div>
-          </div>
+                </div>
+              )}
 
-          <div className="p-3 border-t border-border">
-            <div className="rounded-[10px] border border-border bg-background px-3 py-2 shadow-minimal">
-              <textarea
-                className="w-full h-11 resize-none bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/80 disabled:cursor-not-allowed"
-                placeholder={`给${title}发消息…`}
-                value={input}
-                onChange={event => setInput(event.target.value)}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    void sendInputMessage()
-                  }
-                }}
-                disabled={managerSession?.isProcessing}
-              />
-              <div className="mt-2 flex items-center justify-between">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground"
-                  onClick={openSettings}
-                >
-                  <Bot className="size-3.5" />
-                  <span>{title}</span>
-                  <ChevronDown className="size-3" />
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    "size-7 rounded-[7px] bg-foreground text-background inline-flex items-center justify-center",
-                    (!input.trim() || managerSession?.isProcessing) && "opacity-45 cursor-not-allowed",
-                  )}
-                  disabled={!input.trim() || managerSession?.isProcessing}
-                  onClick={() => void sendInputMessage()}
-                  aria-label="Send"
-                >
-                  <Send className="size-4" />
-                </button>
+              {error && (
+                <div className="mx-4 mb-2 rounded-[8px] bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  {error}
+                </div>
+              )}
+
+              <div className="p-4">
+                <div className="rounded-[14px] bg-background px-4 py-3 shadow-middle">
+                  <textarea
+                    className="h-28 w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed"
+                    placeholder={t('editPopover.placeholder3')}
+                    value={input}
+                    onChange={event => setInput(event.target.value)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault()
+                        void sendManagerText()
+                      }
+                    }}
+                    disabled={managerSession?.isProcessing}
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    <button
+                      type="button"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.05]"
+                      aria-label="Attach"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        'inline-flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-background',
+                        (!input.trim() || managerSession?.isProcessing) && 'cursor-not-allowed opacity-45',
+                      )}
+                      disabled={!input.trim() || managerSession?.isProcessing}
+                      onClick={() => void sendManagerText()}
+                      aria-label="Send"
+                    >
+                      <ArrowUp className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label={title}
-          className={cn(
-            "fixed right-5 bottom-5 z-floating-menu",
-            "size-10 rounded-full border border-border bg-background text-foreground",
-            "flex items-center justify-center shadow-middle",
-            "hover:bg-foreground/[0.05] active:scale-95 transition",
-          )}
-        >
-          <Bot className="size-4" />
-        </button>
+        </>
       )}
+
+      <button
+        type="button"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        aria-label={title}
+        className={cn(
+          'fixed z-floating-menu flex items-center justify-center rounded-full border border-border bg-background text-accent shadow-middle',
+          'h-11 w-11 cursor-grab active:cursor-grabbing hover:bg-foreground/[0.04]',
+        )}
+        style={{ left: launcherPosition.x, top: launcherPosition.y }}
+        data-manager-agent-launcher
+      >
+        <CraftAgentsSymbol className="h-5 w-5" />
+      </button>
     </>,
-    document.body,
+    portalHost,
   )
 }

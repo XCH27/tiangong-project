@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next"
 import * as Icons from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@craft-agent/ui"
 import { PanelLeftRounded } from "../icons/PanelLeftRounded"
+import { PanelRightRounded } from "../icons/PanelRightRounded"
 import { TopBarButton } from "../ui/TopBarButton"
 import { cn } from "@/lib/utils"
 import { isMac, isWebUI } from "@/lib/platform"
@@ -55,6 +56,8 @@ interface TopBarProps {
   canGoForward: boolean
   onToggleSidebar: () => void
   onToggleFocusMode: () => void
+  onToggleWorkspaceContextSidebar?: () => void
+  isWorkspaceContextSidebarVisible?: boolean
   onAddSessionPanel: () => void
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
@@ -81,6 +84,8 @@ export function TopBar({
   canGoForward,
   onToggleSidebar,
   onToggleFocusMode,
+  onToggleWorkspaceContextSidebar,
+  isWorkspaceContextSidebarVisible,
   onAddSessionPanel,
   onAddBrowserPanel,
   isCompact,
@@ -227,6 +232,22 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
+        {onToggleWorkspaceContextSidebar && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TopBarButton
+                onClick={onToggleWorkspaceContextSidebar}
+                aria-label={isWorkspaceContextSidebarVisible ? t('workspaceContext.hide') : t('workspaceContext.show')}
+                isActive={isWorkspaceContextSidebarVisible}
+              >
+                <PanelRightRounded className="h-[18px] w-[18px] text-foreground/70" />
+              </TopBarButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isWorkspaceContextSidebarVisible ? t('workspaceContext.hide') : t('workspaceContext.show')}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TopBarButton aria-label={t("menu.addPanelMenu")} className="ml-1 h-[26px] w-[26px] rounded-lg">

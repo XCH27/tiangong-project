@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { PanelRightClose } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -27,19 +27,7 @@ export function WorkspaceContextSidebar({
   const { t } = useTranslation()
 
   if (!visible) {
-    return (
-      <Button
-        type="button"
-        size="icon"
-        variant="outline"
-        onClick={onToggle}
-        className="absolute right-3 top-[74px] z-panel h-9 w-9 rounded-[9px] bg-background/95 shadow-middle"
-        aria-label={t('workspaceContext.show')}
-        title={t('workspaceContext.show')}
-      >
-        <PanelRightOpen className="h-4 w-4" />
-      </Button>
-    )
+    return null
   }
 
   return (

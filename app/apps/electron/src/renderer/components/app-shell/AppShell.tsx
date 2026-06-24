@@ -2214,6 +2214,8 @@ function AppShellContent({
           canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
+          onToggleWorkspaceContextSidebar={!isFocusedMode ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
+          isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarVisible}
           onAddSessionPanel={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
