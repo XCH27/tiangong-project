@@ -19,6 +19,7 @@ import type {
 } from '@craft-agent/shared/protocol'
 import { USER_ACTOR } from '@craft-agent/shared/protocol'
 import { DesignEngineService, type DesignPatchApplier } from './design-engine'
+import { createFilesInternalActions, InternalActionRegistryService } from './internal-action-registry'
 
 const SESSION = 'session-spine-1'
 
@@ -53,6 +54,19 @@ function agentAction(): DesignAction {
   }
 }
 
+function humanFileMoveAction(): DesignAction {
+  return {
+    actionId: 'invoke-human-file-move',
+    actionDefinitionId: 'files.move_entry',
+    contractVersion: 1,
+    sessionId: SESSION,
+    selectionId: 'sel-1',
+    actor: USER_ACTOR,
+    op: { kind: 'file_move', payload: { fromPath: 'a.txt', toPath: 'b.txt' } },
+    origin: 'human_ui',
+  }
+}
+
 /** 一个最小适配器：算 forward/inverse 并记录 apply/revert 调用（模拟原生引擎）。 */
 function makeRecordingApplier() {
   const calls: Array<{ kind: 'apply' | 'revert'; patchId: string }> = []
@@ -74,6 +88,12 @@ function makeRecordingApplier() {
 function makeEngine(applier?: DesignPatchApplier) {
   const events: SessionEvent[] = []
   const engine = new DesignEngineService((e) => events.push(e), applier) // no persistence → in-memory ledger
+  return { engine, events }
+}
+
+function makeEngineWithRegistry(applier?: DesignPatchApplier) {
+  const events: SessionEvent[] = []
+  const engine = new DesignEngineService((e) => events.push(e), applier, undefined, new InternalActionRegistryService(createFilesInternalActions()))
   return { engine, events }
 }
 
@@ -134,6 +154,37 @@ describe('DesignEngineService — 承重墙：一条 timeline，人机共编，�
     expect(permission?.level).toBe('L3')
     expect(permission?.requiresExplicitConfirm).toBe(true)
     expect(patch.status).toBe('pending')
+  })
+
+  it('registry permissionLevel 是权威：人类发起 L2 files.move_entry 也必须 pending', async () => {
+    const { engine } = makeEngineWithRegistry()
+    await engine.setSelection({ sessionId: SESSION, selection: makeSelection() })
+
+    const { permission, patch } = await engine.proposeAction({
+      sessionId: SESSION,
+      action: humanFileMoveAction(),
+    })
+
+    expect(permission?.required).toBe(true)
+    expect(permission?.level).toBe('L2')
+    expect(permission?.reason).toContain('files.move_entry')
+    expect(patch.status).toBe('pending')
+  })
+
+  it('registry permissionLevel 的 L2 可被显式预授权放行，并记录 ruleRef', async () => {
+    const { engine } = makeEngineWithRegistry()
+    await engine.setSelection({ sessionId: SESSION, selection: makeSelection() })
+
+    const { permission, patch } = await engine.proposeAction({
+      sessionId: SESSION,
+      action: humanFileMoveAction(),
+      decision: { hasPreAuth: true, memoryHints: [{ partition: 'software', id: 'rule-files-move' }] },
+    })
+
+    expect(permission?.required).toBe(false)
+    expect(permission?.level).toBe('L2')
+    expect(permission?.ruleRef).toBe('rule-files-move')
+    expect(patch.status).toBe('preview')
   })
 
   it('committed patch 可 rollback：applier.revert 被调用并发 design_patch_rolled_back', async () => {

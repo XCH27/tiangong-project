@@ -5,6 +5,7 @@ import { registerAuthHandlers } from './auth'
 import { registerAutomationsHandlers } from './automations'
 import { registerDesignHandlers } from './design'
 import { registerFilesHandlers } from './files'
+import { registerInternalActionHandlers } from './internal-actions'
 import { registerLabelsHandlers } from './labels'
 import { registerLlmConnectionsHandlers } from './llm-connections'
 import { registerOAuthHandlers } from './oauth'
@@ -40,6 +41,7 @@ export function registerCoreRpcHandlers(
   registerAutomationsHandlers(server, deps)
   registerDesignHandlers(server, deps)
   registerFilesHandlers(server, deps)
+  registerInternalActionHandlers(server, deps)
   registerLabelsHandlers(server, deps)
   registerLlmConnectionsHandlers(server, deps)
   registerCliRuntimeHandlers(server, deps)

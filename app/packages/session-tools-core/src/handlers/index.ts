@@ -74,3 +74,5 @@ export { handleGetSessionInfo } from './get-session-info.ts';
 export type { GetSessionInfoArgs } from './get-session-info.ts';
 export { handleListSessions } from './list-sessions.ts';
 export type { ListSessionsArgs } from './list-sessions.ts';
+export { handleInvokeInternalAction, handleListInternalActions } from './internal-action.ts';
+export type { InvokeInternalActionArgs, ListInternalActionsArgs } from './internal-action.ts';

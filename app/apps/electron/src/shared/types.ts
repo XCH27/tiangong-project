@@ -226,6 +226,12 @@ import type {
   MemoryQuery,
   AddMemoryInput,
   SessionUsageView,
+  ActionInvocation,
+  ActionSurface,
+  ActionVerb,
+  InternalActionSummary,
+  GitReviewState,
+  GitFileDiffResult,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -253,6 +259,7 @@ export interface ElectronAPI {
   setCliRuntimeEnabled(runtimeId: string, enabled: boolean): Promise<void>
   deleteCliRuntime(runtimeId: string): Promise<void>
   testCliRuntime(runtimeId: string): Promise<CliRuntimeHealthResult>
+  onCliRuntimesChanged(callback: () => void): () => void
 
   // 管理 Agent 分级自动决策（D12 / docs/17 §4）+ 分层记忆（D2 / docs/05），按 workspace 隔离。
   /** Token 环弹层数据：会话上下文占用 + 套餐额度（docs/16 §2.2 / docs/36 同源数据）。 */
@@ -280,6 +287,15 @@ export interface ElectronAPI {
   // Remote session transfer (main-process orchestrated, supports chunked upload)
   transferSessionToWorkspace(sessionId: string, targetWorkspaceId: string, sessionIndex?: number, sessionCount?: number): Promise<{ sessionId: string }>
   onTransferProgress(callback: (progress: { sessionIndex: number; sessionCount: number; chunkSent: number; chunkTotal: number }) => void): () => void
+
+  // Local bottom terminal — Electron-only, current-window scoped, not WS RPC.
+  terminalStart(options?: { cwd?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
+  terminalRestart(options?: { cwd?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
+  terminalWrite(id: string, data: string): Promise<boolean>
+  terminalResize(id: string, size: { cols: number; rows: number }): Promise<boolean>
+  terminalKill(id: string): Promise<boolean>
+  onTerminalData(callback: (payload: { id: string; data: string }) => void): () => void
+  onTerminalExit(callback: (payload: { id: string; code: number | null; signal: string | null }) => void): () => void
 
   // Session export/import (cross-workspace transfer)
   exportSession(sessionId: string): Promise<unknown>
@@ -361,6 +377,10 @@ export interface ElectronAPI {
   listServerDirectory(dirPath: string): Promise<DirectoryListingResult>
   /** Read-only file+directory listing for the All Files surface. */
   listFilesystemEntries(dirPath: string): Promise<FilesystemEntryListingResult>
+  /** List registered internal actions available to human UI and Agent tools. */
+  listInternalActions(filter?: { surface?: ActionSurface; verb?: ActionVerb }): Promise<InternalActionSummary[]>
+  /** Invoke an internal action through the registry, permission gate, and timeline. */
+  invokeInternalAction(sessionId: string, invocation: ActionInvocation): Promise<unknown>
   // Debug: send renderer logs to main process log file
   debugLog(...args: unknown[]): void
 
@@ -374,6 +394,8 @@ export interface ElectronAPI {
   getRuntimeEnvironment(): 'electron' | 'web'
   getHomeDir(): Promise<string>
   isDebugMode(): Promise<boolean>
+  getGitReview(dirPath: string): Promise<GitReviewState>
+  getGitFileDiff(dirPath: string, filePath: string): Promise<GitFileDiffResult>
 
   // Transport connection status (preload-local, not RPC channels)
   getTransportConnectionState(): Promise<TransportConnectionState>

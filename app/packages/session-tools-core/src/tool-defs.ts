@@ -40,6 +40,7 @@ import { handleSetSessionProgress } from './handlers/set-session-progress.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
+import { handleInvokeInternalAction, handleListInternalActions } from './handlers/internal-action.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
 import { handleAssignTeamTask, handleGetTeam, handleSendTeamMessage, handleSubmitTeamReport } from './handlers/team.ts';
@@ -214,6 +215,58 @@ export const ListSessionsSchema = z.object({
   sortBy: z.enum(['recent', 'name', 'status']).optional().describe('Sort order (default: recent)'),
   limit: z.number().optional().describe('Max sessions to return (default 20, max 100)'),
   offset: z.number().optional().describe('Skip first N results (for pagination)'),
+});
+
+const ActionSurfaceSchema = z.enum([
+  'session',
+  'files',
+  'library',
+  'team',
+  'manager',
+  'skill',
+  'settings',
+  'external-job',
+  'canvas',
+  'aigc',
+  'web-doc',
+  'video',
+  'code',
+]);
+
+const ActionVerbSchema = z.enum(['read', 'select', 'mutate', 'intent', 'undo', 'explain']);
+
+export const ListInternalActionsSchema = z.object({
+  surface: ActionSurfaceSchema.optional().describe('Filter by internal action surface, e.g. files.'),
+  verb: ActionVerbSchema.optional().describe('Filter by action verb, e.g. mutate or undo.'),
+});
+
+export const InvokeInternalActionSchema = z.object({
+  actionDefinitionId: z.string().describe('Stable Internal Action Registry id, e.g. files.move_entry.'),
+  contractVersion: z.number().int().min(1).describe('Contract version to invoke.'),
+  actor: z.object({
+    kind: z.enum(['user', 'agent']).describe('Who is invoking the action. Agents should use agent.'),
+    agentId: z.string().optional().describe('Stable agent id when kind=agent.'),
+    runtime: z.string().optional().describe('Runtime/provider id for agent invocations.'),
+    role: z.string().optional().describe('Agent role such as code, design, manager, leader.'),
+    displayName: z.string().optional().describe('Human-readable actor name.'),
+  }).describe('Actor metadata recorded into permission/timeline.'),
+  input: z.unknown().describe('Input payload matching the action inputSchema.'),
+  target: z.object({
+    surface: ActionSurfaceSchema,
+    kind: z.string(),
+    locator: z.record(z.string(), z.unknown()),
+    revision: z.string().optional(),
+    preview: z.object({
+      text: z.string().optional(),
+      screenshot: z.string().optional(),
+    }).optional(),
+  }).optional().describe('Optional structured target reference.'),
+  idempotencyKey: z.string().optional().describe('Stable retry key; same key must not execute the same mutation twice.'),
+  preconditions: z.array(z.object({
+    targetRevision: z.string().optional(),
+    assert: z.string(),
+  })).optional().describe('Preconditions that must hold before execution.'),
+  failurePolicy: z.enum(['abort', 'rollback', 'ask-user']).optional().describe('How executor should behave when a precondition fails.'),
 });
 
 // Inter-session messaging
@@ -537,6 +590,14 @@ Call with no arguments to introspect your own session state.`,
 Use filters (status, label, search) to narrow results instead of fetching everything. Default limit is 20 sessions.
 Use get_session_info for full details on a specific session (list-then-detail pattern).`,
 
+  list_internal_actions: `List Fleet internal actions available through the Internal Action Registry.
+
+Use this instead of screenshots, DOM selectors, mouse coordinates, or shell commands when operating Fleet itself. The result includes stable id, contractVersion, inputSchema, and permissionLevel so you can call invoke_internal_action with the same action a human UI uses.`,
+
+  invoke_internal_action: `Invoke a Fleet internal action by actionDefinitionId + contractVersion.
+
+This is the agent-native path for Fleet's own UI/workspace operations. Calls go through the shared permission, timeline, and undo path. For files, use files.move_entry for rename/move and files.undo_last_edit for undo; do not use shell mv for Fleet internal file operations.`,
+
   send_agent_message: `Send a message to another session. The message is delivered with your session ID so the target can reply back.
 
 Use this to coordinate with spawned sessions, send follow-up instructions, or relay information between sessions.
@@ -640,6 +701,8 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
+  { name: 'list_internal_actions', description: TOOL_DESCRIPTIONS.list_internal_actions, inputSchema: ListInternalActionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListInternalActions },
+  { name: 'invoke_internal_action', description: TOOL_DESCRIPTIONS.invoke_internal_action, inputSchema: InvokeInternalActionSchema, executionMode: 'registry', safeMode: 'block', handler: handleInvokeInternalAction },
   // Inter-session messaging
   { name: 'send_agent_message', description: TOOL_DESCRIPTIONS.send_agent_message, inputSchema: SendAgentMessageSchema, executionMode: 'registry', safeMode: 'block', handler: handleSendAgentMessage },
   // Team orchestration — all mutations pass through the shared TeamCoordinator.

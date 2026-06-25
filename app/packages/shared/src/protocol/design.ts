@@ -18,6 +18,14 @@
  * 新场景=注册对象/动作信封 + 原生 surface adapter，不另起第二套 session/permission/timeline。
  * 详见 docs/01、docs/30、docs/31。
  *
+ * 与 Internal Action Registry 的关系（docs/40）：本文件是「一次调用」的动作信封；
+ * 注册表（待建：shared/protocol/internal-action.ts + server-core/internal-action-registry.ts）
+ * 是「静态元数据目录」——声明每条 action 的 id/surface/schema/权限/撤销/谁能调。
+ * 二者是同一动作的两面：`DesignAction.actionId` 是一次调用/patch 关联 id，
+ * `DesignAction.actionDefinitionId` 才引用注册项；
+ * 调用走 proposeAction → permission → 面 applier → SessionEvent → DesignPatch.inverse(undo)。
+ * 不要再造第三套结构。注意区别 renderer 的快捷键注册表 `actions/registry.tsx`（不同概念）。
+ *
  * 落地分期：类型 M0 全定义；编辑器按各工作面原生引擎分期接。本文件只是信封契约，
  * 不含任何内容编辑实现。
  */
@@ -146,6 +154,10 @@ export type DesignActionOrigin = 'human_ui' | 'agent_tool'
 
 export interface DesignAction {
   actionId: string
+  /** Internal Action Registry 里的稳定 action id，如 `files.move_entry`。 */
+  actionDefinitionId?: string
+  /** 本次调用按哪个注册项契约版本发起。 */
+  contractVersion?: number
   sessionId: string
   /** 作用的选区。 */
   selectionId: string

@@ -17,6 +17,9 @@
  * Agent(agent_tool) 写动作默认 pending，L3 必须显式确认。自动决策若启用，由上层把
  * `decision` 上下文传进来作为记录依据，不替代闸门。
  *
+ * Internal Action Registry 接入后：若 `DesignAction.actionDefinitionId` 存在，权限等级
+ * 以注册项 `permissionLevel` 为唯一来源；`DesignAction.actionId` 仍是一条调用/patch id。
+ *
  * 持久化：默认开（`FileDesignEnginePersistence`）——承重墙必须可重启恢复，不做易失 Map。
  */
 
@@ -36,6 +39,8 @@ import type {
   CommitPatchResult,
   RollbackPatchInput,
   RollbackPatchResult,
+  InternalActionDefinition,
+  InternalActionRegistry,
 } from '@craft-agent/shared/protocol'
 import type { DesignEnginePersistence, PersistedDesignPatch } from './design-engine-persistence'
 
@@ -72,6 +77,7 @@ export class DesignEngineService implements DesignEngine {
     private readonly emit: (event: SessionEvent) => void,
     private readonly applier?: DesignPatchApplier,
     private readonly persistence?: DesignEnginePersistence,
+    private readonly internalActionRegistry?: InternalActionRegistry,
   ) {}
 
   async setSelection(input: SetSelectionInput): Promise<void> {
@@ -100,7 +106,8 @@ export class DesignEngineService implements DesignEngine {
       inverse = computed.inverse
     }
 
-    const permission = evaluatePermission(action, input.decision)
+    const actionDefinition = this.resolveActionDefinition(action)
+    const permission = evaluatePermission(action, input.decision, actionDefinition)
     const permissionRequestId = permission.required ? randomUUID() : undefined
     const patch: DesignPatch = {
       patchId: randomUUID(),
@@ -188,6 +195,19 @@ export class DesignEngineService implements DesignEngine {
     const selection = this.selections.get(sessionId) ?? null
     return selection?.selectionId === action.selectionId ? selection : null
   }
+
+  private resolveActionDefinition(action: DesignAction): InternalActionDefinition | undefined {
+    if (!action.actionDefinitionId) return undefined
+    if (!this.internalActionRegistry) {
+      throw new Error(`Action ${action.actionId} references ${action.actionDefinitionId}, but no Internal Action Registry is configured`)
+    }
+    const def = this.internalActionRegistry.get(action.actionDefinitionId, action.contractVersion)
+    if (!def) {
+      const suffix = action.contractVersion === undefined ? '' : `@${action.contractVersion}`
+      throw new Error(`Unknown internal action definition ${action.actionDefinitionId}${suffix}`)
+    }
+    return def
+  }
 }
 
 /**
@@ -197,9 +217,57 @@ export class DesignEngineService implements DesignEngine {
  * - L3（requiresExplicitConfirm）：无论谁发起都必须显式确认，不能被预授权代答。
  * - 自动决策 hasPreAuth：仅对 Agent 的非 L3 动作生效，allow 但记 ruleRef 依据。
  */
-function evaluatePermission(action: DesignAction, decision: ProposeActionInput['decision'] = {}): DesignActionPermission {
+function evaluatePermission(
+  action: DesignAction,
+  decision: ProposeActionInput['decision'] = {},
+  actionDefinition?: InternalActionDefinition,
+): DesignActionPermission {
   const actor = action.actor
   const isHuman = actor.kind === 'user' || action.origin === 'human_ui'
+
+  if (actionDefinition) {
+    const level = actionDefinition.permissionLevel
+    const base = {
+      level,
+      actor,
+      timestamp: Date.now(),
+    }
+
+    if (level === 'L3') {
+      return {
+        ...base,
+        required: true,
+        reason: `${actionDefinition.id} requires explicit confirmation`,
+        requiresExplicitConfirm: true,
+      }
+    }
+
+    if (level === 'L0') {
+      return {
+        ...base,
+        required: false,
+        reason: `${actionDefinition.id} is read-only`,
+      }
+    }
+
+    if (level === 'L1') {
+      const preAuthorized = isHuman || decision?.hasPreAuth === true
+      return {
+        ...base,
+        required: !preAuthorized,
+        reason: preAuthorized ? `${actionDefinition.id} is pre-authorized L1` : `${actionDefinition.id} requires L1 permission`,
+        ruleRef: decision?.memoryHints?.[0]?.id,
+      }
+    }
+
+    const hasPreAuth = decision?.hasPreAuth === true
+    return {
+      ...base,
+      required: !hasPreAuth,
+      reason: hasPreAuth ? `${actionDefinition.id} pre-authorized by rule` : `${actionDefinition.id} requires L2 permission`,
+      ruleRef: decision?.memoryHints?.[0]?.id,
+    }
+  }
 
   if (decision?.requiresExplicitConfirm) {
     return {

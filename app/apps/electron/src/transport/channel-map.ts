@@ -38,6 +38,7 @@ export const CHANNEL_MAP = {
   setCliRuntimeEnabled: invoke(RPC_CHANNELS.cliRuntimes.SET_ENABLED),
   deleteCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.DELETE),
   testCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.TEST),
+  onCliRuntimesChanged: listener(RPC_CHANNELS.cliRuntimes.CHANGED),
   getManagerDecisionSettings: invoke(RPC_CHANNELS.managerDecision.GET_SETTINGS),
   updateManagerDecisionSettings: invoke(RPC_CHANNELS.managerDecision.UPDATE_SETTINGS),
   getSessionUsage: invoke(RPC_CHANNELS.usage.GET_SESSION),
@@ -105,6 +106,8 @@ export const CHANNEL_MAP = {
   getVersions: invoke(RPC_CHANNELS.system.VERSIONS),
   getHomeDir: invoke(RPC_CHANNELS.system.HOME_DIR),
   isDebugMode: invoke(RPC_CHANNELS.system.IS_DEBUG_MODE),
+  getGitReview: invoke(RPC_CHANNELS.git.GET_REVIEW),
+  getGitFileDiff: invoke(RPC_CHANNELS.git.GET_FILE_DIFF),
 
   // Auto-update
   checkForUpdates: invoke(RPC_CHANNELS.update.CHECK),
@@ -201,6 +204,10 @@ export const CHANNEL_MAP = {
   // Server filesystem browsing (remote mode)
   listServerDirectory: invoke(RPC_CHANNELS.fs.LIST_DIRECTORY),
   listFilesystemEntries: invoke(RPC_CHANNELS.fs.LIST_ENTRIES),
+
+  // Internal Action Registry — human UI and Agent share these action ids.
+  listInternalActions: invoke(RPC_CHANNELS.internalActions.LIST),
+  invokeInternalAction: invoke(RPC_CHANNELS.internalActions.INVOKE),
 
   // Debug logging
   debugLog: invoke(RPC_CHANNELS.debug.LOG),

@@ -16,7 +16,7 @@ import type {
   MicrosoftService,
   McpSourceConfig,
 } from './types.ts';
-import type { AddMemoryInput, MemoryEntry, MemoryQuery, ProgressTask } from '@craft-agent/shared/protocol';
+import type { ActionInvocation, ActionSurface, ActionVerb, AddMemoryInput, InternalActionSummary, MemoryEntry, MemoryQuery, ProgressTask } from '@craft-agent/shared/protocol';
 
 // ============================================================
 // Source Credential Types
@@ -354,6 +354,11 @@ export interface SessionToolContext {
   addMemory?(input: AddMemoryInput): Promise<MemoryEntry>;
   /** Delete a local layered memory entry. */
   deleteMemory?(id: string): Promise<boolean>;
+
+  /** List Fleet internal actions available to humans and Agents. */
+  listInternalActions?(filter?: { surface?: ActionSurface; verb?: ActionVerb }): Promise<InternalActionSummary[]> | InternalActionSummary[];
+  /** Invoke a Fleet internal action through the shared permission/timeline path. */
+  invokeInternalAction?(invocation: ActionInvocation): Promise<unknown>;
 
   /**
    * Activate a source in the running session: add to enabledSourceSlugs,

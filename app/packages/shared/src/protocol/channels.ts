@@ -93,6 +93,10 @@ export const RPC_CHANNELS = {
     LIST_DIRECTORY: 'fs:listDirectory',
     LIST_ENTRIES: 'fs:listEntries',
   },
+  internalActions: {
+    LIST: 'internalActions:list',
+    INVOKE: 'internalActions:invoke',
+  },
   debug: {
     LOG: 'debug:log',
   },
@@ -360,6 +364,8 @@ export const RPC_CHANNELS = {
   },
   git: {
     GET_BRANCH: 'git:getBranch',
+    GET_REVIEW: 'git:getReview',
+    GET_FILE_DIFF: 'git:getFileDiff',
   },
   gitbash: {
     CHECK: 'gitbash:check',
