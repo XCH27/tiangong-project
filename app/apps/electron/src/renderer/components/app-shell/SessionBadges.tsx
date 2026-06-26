@@ -18,17 +18,26 @@ export function SessionBadges({ item, modelAvatar, teamSequence }: SessionBadges
   const resolvedLabels = useMemo(() => {
     if (!item.labels || item.labels.length === 0 || ctx.flatLabels.length === 0) return []
     const labels = item.labels
-      .map(entry => {
+      .map((entry, index) => {
         const parsed = parseLabelEntry(entry)
         const config = ctx.flatLabels.find(l => l.id === parsed.id)
         if (!config) return null
-        return { config, rawValue: parsed.rawValue }
+        return { config, rawValue: parsed.rawValue, index }
       })
-      .filter((l): l is { config: LabelConfig; rawValue: string | undefined } => l != null)
+      .filter((l): l is { config: LabelConfig; rawValue: string | undefined; index: number } => l != null)
 
-    // The leader is an identity, not a functional label. Keep it immediately
-    // after the model and stable team sequence regardless of assignment order.
-    return labels.sort((a, b) => Number(b.config.id === LEADER_LABEL_ID) - Number(a.config.id === LEADER_LABEL_ID))
+    // Fixed display order from docs/00A:
+    // model/runtime → stable sequence → leader → other identity labels → ordinary labels.
+    const labelRank = (label: LabelConfig): number => {
+      if (label.id === LEADER_LABEL_ID) return 0
+      if (label.kind === 'identity') return 1
+      return 2
+    }
+
+    return labels.sort((a, b) => {
+      const rankDiff = labelRank(a.config) - labelRank(b.config)
+      return rankDiff !== 0 ? rankDiff : a.index - b.index
+    })
   }, [item.labels, ctx.flatLabels])
 
   if (!modelAvatar && !teamSequence && resolvedLabels.length === 0) return null
