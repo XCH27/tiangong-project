@@ -12,8 +12,10 @@ import {
   SettingsInput,
   SettingsMenuSelectRow,
   SettingsSection,
+  SettingsToggle,
 } from '@/components/settings'
 import { useAppShellContext } from '@/context/AppShellContext'
+import { cn } from '@/lib/utils'
 import {
   MEMORY_PARTITIONS,
   isScopedPartition,
@@ -39,6 +41,7 @@ const PARTITION_LABEL: Record<MemoryPartition, string> = {
 
 export default function MemorySettingsPage(): React.ReactElement {
   const { activeWorkspaceId } = useAppShellContext()
+  const [enabled, setEnabled] = useState(true)
   const [partition, setPartition] = useState<MemoryPartition>('user')
   const [scopeId, setScopeId] = useState('')
   const [content, setContent] = useState('')
@@ -62,14 +65,50 @@ export default function MemorySettingsPage(): React.ReactElement {
     }
   }, [activeWorkspaceId, partition, queryScopeId])
 
+  const checkEnabled = useCallback(async () => {
+    if (!window.electronAPI || !activeWorkspaceId) return
+    try {
+      const list = await window.electronAPI.listMemory(activeWorkspaceId, {
+        partition: 'software',
+        contains: 'memory_enabled',
+      })
+      const isDisabled = list.some(e => e.partition === 'software' && e.content === 'memory_enabled:false')
+      setEnabled(!isDisabled)
+    } catch (error) {
+      console.error('Failed to check memory status:', error)
+    }
+  }, [activeWorkspaceId])
+
   useEffect(() => {
-    void load()
-  }, [load])
+    void checkEnabled()
+  }, [checkEnabled])
+
+  useEffect(() => {
+    if (enabled) {
+      void load()
+    } else {
+      setEntries([])
+    }
+  }, [load, enabled])
 
   const partitionOptions = useMemo(() => MEMORY_PARTITIONS.map(value => ({
     value,
     label: PARTITION_LABEL[value],
   })), [])
+
+  const handleToggle = useCallback(async (val: boolean) => {
+    if (!window.electronAPI || !activeWorkspaceId) return
+    try {
+      await window.electronAPI.addMemory(activeWorkspaceId, {
+        partition: 'software',
+        content: `memory_enabled:${val}`,
+      })
+      setEnabled(val)
+      toast.success(val ? '分层记忆已启用' : '分层记忆已禁用')
+    } catch (error) {
+      toast.error(`设置更新失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [activeWorkspaceId])
 
   const handlePartitionChange = useCallback((value: string) => {
     const nextPartition = value as MemoryPartition
@@ -117,6 +156,17 @@ export default function MemorySettingsPage(): React.ReactElement {
       <PanelHeader title="记忆" />
       <ScrollArea className="flex-1">
         <div className="px-5 py-7 max-w-3xl mx-auto space-y-8">
+          <SettingsSection title="配置">
+            <SettingsCard>
+              <SettingsToggle
+                label="启用分层记忆"
+                description="启用后，Agent 将在每个会话结束时自动抽取记忆，并在自动决策和检索中注入记忆作为依据"
+                checked={enabled}
+                onCheckedChange={handleToggle}
+              />
+            </SettingsCard>
+          </SettingsSection>
+
           <SettingsSection title="本地记忆">
             <SettingsCard>
               <SettingsMenuSelectRow
@@ -126,6 +176,7 @@ export default function MemorySettingsPage(): React.ReactElement {
                 onValueChange={handlePartitionChange}
                 options={partitionOptions}
                 menuWidth={220}
+                disabled={!enabled}
               />
               {isScopedPartition(partition) && (
                 <SettingsInput
@@ -136,6 +187,7 @@ export default function MemorySettingsPage(): React.ReactElement {
                   onChange={setScopeId}
                   onBlur={() => void load(partition, scopeId.trim() || undefined)}
                   placeholder="scope id"
+                  disabled={!enabled}
                 />
               )}
               <SettingsInput
@@ -144,8 +196,9 @@ export default function MemorySettingsPage(): React.ReactElement {
                 value={content}
                 onChange={setContent}
                 placeholder="写入一条本地记忆"
+                disabled={!enabled}
                 action={
-                  <Button variant="outline" onClick={() => void addEntry()}>
+                  <Button variant="outline" onClick={() => void addEntry()} disabled={!enabled}>
                     记住
                   </Button>
                 }
@@ -156,13 +209,13 @@ export default function MemorySettingsPage(): React.ReactElement {
           <SettingsSection
             title="已保存"
             action={
-              <Button size="sm" variant="ghost" onClick={() => void load()} disabled={loading}>
+              <Button size="sm" variant="ghost" onClick={() => void load()} disabled={loading || !enabled}>
                 {loading ? <Spinner className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
                 刷新
               </Button>
             }
           >
-            <SettingsCard>
+            <SettingsCard className={cn(!enabled && 'opacity-50 pointer-events-none')}>
               {loading ? (
                 <SettingsCardContent className="text-sm text-muted-foreground">
                   正在加载
@@ -179,7 +232,7 @@ export default function MemorySettingsPage(): React.ReactElement {
                       {PARTITION_LABEL[entry.partition]} · {entry.tier}{entry.scopeId ? ` · ${entry.scopeId}` : ''}
                     </div>
                   </div>
-                  <Button size="icon" variant="ghost" onClick={() => void deleteEntry(entry.id)} aria-label="删除记忆">
+                  <Button size="icon" variant="ghost" onClick={() => void deleteEntry(entry.id)} aria-label="删除记忆" disabled={!enabled}>
                     <Trash2 className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </div>

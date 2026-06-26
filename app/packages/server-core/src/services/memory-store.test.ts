@@ -12,12 +12,22 @@ import { MemoryStore } from './memory-store'
 describe('MemoryStore', () => {
   let root: string
   let store: MemoryStore
+  let origConfigDir: string | undefined
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'memory-'))
+    origConfigDir = process.env.CRAFT_CONFIG_DIR
+    process.env.CRAFT_CONFIG_DIR = join(root, 'config')
     store = new MemoryStore(root)
   })
-  afterEach(() => rmSync(root, { recursive: true, force: true }))
+  afterEach(() => {
+    if (origConfigDir !== undefined) {
+      process.env.CRAFT_CONFIG_DIR = origConfigDir
+    } else {
+      delete process.env.CRAFT_CONFIG_DIR
+    }
+    rmSync(root, { recursive: true, force: true })
+  })
 
   it('add + list：默认敏感度按分区，落盘可重载', () => {
     store.add({ partition: 'user', content: '用户喜欢 TS' })
@@ -64,5 +74,61 @@ describe('MemoryStore', () => {
     expect(store.delete(e.id)).toBe(true)
     expect(store.get(e.id)).toBeNull()
     expect(store.delete(e.id)).toBe(false) // 已删，再删返回 false
+  })
+
+  it('全局分区共享与工作区隔离', () => {
+    // Write user (global) memory in workspace A (store)
+    store.add({ partition: 'user', content: '全局共享用户偏好' })
+    // Write project (workspace) memory in workspace A (store)
+    store.add({ partition: 'project', content: '项目A专用记忆', scopeId: 'projA' })
+
+    // Create a new store instance with a different workspace root
+    const root2 = mkdtempSync(join(tmpdir(), 'memory-another-'))
+    const store2 = new MemoryStore(root2)
+
+    try {
+      // User partition (global) should be visible in store2
+      const globalMems = store2.list({ partition: 'user' })
+      expect(globalMems.length).toBeGreaterThan(0)
+      expect(globalMems.some(m => m.content === '全局共享用户偏好')).toBe(true)
+
+      // Project partition (workspace) from store should NOT be visible in store2
+      const projectMems = store2.list({ partition: 'project', scopeId: 'projA' })
+      expect(projectMems.length).toBe(0)
+    } finally {
+      rmSync(root2, { recursive: true, force: true })
+    }
+  })
+
+  it('模糊语义检索与衰减', () => {
+    store.add({ partition: 'user', content: 'I love writing TypeScript code in my editor' })
+    store.add({ partition: 'user', content: 'Random unrelated fact' })
+
+    // Fuzzy matching "typescript editor" should hit "I love writing TypeScript code in my editor"
+    const results = store.list({ partition: 'user', contains: 'typescript editor' })
+    expect(results.length).toBe(1)
+    expect(results[0]?.content).toContain('TypeScript')
+  })
+
+  it('开启/关闭状态控制', () => {
+    expect(store.isMemoryEnabled()).toBe(true)
+
+    // Disable memory by writing setting
+    store.add({ partition: 'software', content: 'memory_enabled:false' })
+    expect(store.isMemoryEnabled()).toBe(false)
+
+    // Normal add should throw when disabled
+    expect(() => store.add({ partition: 'user', content: 'Hello' })).toThrow(/disabled/)
+
+    // Normal list should return empty when disabled
+    store.add({ partition: 'software', content: 'memory_enabled:true' }) // Re-enable first
+    store.add({ partition: 'user', content: 'Enabled memory' })
+    store.add({ partition: 'software', content: 'memory_enabled:false' }) // Disable again
+    expect(store.list({ partition: 'user' }).length).toBe(0)
+
+    // Re-enable memory
+    store.add({ partition: 'software', content: 'memory_enabled:true' })
+    expect(store.isMemoryEnabled()).toBe(true)
+    expect(store.list({ partition: 'user' }).length).toBeGreaterThan(0)
   })
 })
