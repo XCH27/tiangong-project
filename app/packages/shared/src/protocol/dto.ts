@@ -27,6 +27,7 @@ import type { DesignActionPermission } from './design-service'
 import type { TeamSessionCommand, TeamSessionEvent } from './team'
 import type { ProgressTask } from './progress'
 import type { CliRuntimeModelState } from './cli-runtime'
+import type { ActionInvocation, ActionTargetRef } from './internal-action'
 
 // Re-export generateMessageId for handler convenience
 export { generateMessageId } from '@craft-agent/core/types'
@@ -231,6 +232,10 @@ export type SessionEvent =
   | { type: 'design_action_proposed'; sessionId: string; action: DesignAction; patchPreview: DesignPatch; permissionRequestId?: string; permission?: DesignActionPermission }
   | { type: 'design_patch_committed'; sessionId: string; patch: DesignPatch; actor: ActorRef }
   | { type: 'design_patch_rolled_back'; sessionId: string; patchId: string; actor: ActorRef }
+  // Fleet Internal Action Registry 事件（docs/40）——人/AI 共用同一 action id，进同一条 timeline。
+  | { type: 'internal_action_invoked'; sessionId: string; invocation: ActionInvocation; target?: ActionTargetRef; result: unknown; actor: ActorRef; timestamp: number }
+  | { type: 'file_entry_moved'; sessionId: string; patchId: string; fromPath: string; toPath: string; fromRevision: string; toRevision: string; actor: ActorRef; timestamp: number }
+  | { type: 'file_edit_undone'; sessionId: string; undonePatchId: string; actor: ActorRef; timestamp: number }
   // Fleet 团队编排事件（docs/33）：会话即 Agent，不引入第二套 team/session store。
   | TeamSessionEvent
 
