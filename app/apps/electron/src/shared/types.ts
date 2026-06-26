@@ -232,6 +232,9 @@ import type {
   InternalActionSummary,
   GitReviewState,
   GitFileDiffResult,
+  CreateExternalJobInput,
+  ConfirmExternalJobPermissionInput,
+  ExternalJobRecord,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -381,6 +384,14 @@ export interface ElectronAPI {
   listInternalActions(filter?: { surface?: ActionSurface; verb?: ActionVerb }): Promise<InternalActionSummary[]>
   /** Invoke an internal action through the registry, permission gate, and timeline. */
   invokeInternalAction(sessionId: string, invocation: ActionInvocation): Promise<unknown>
+  // External Job — AIGC / external AI review / deploy (LOCAL_ONLY, docs/31 §5 · D9)
+  createExternalJob(workspaceId: string, input: CreateExternalJobInput): Promise<ExternalJobRecord>
+  getExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>
+  listExternalJobs(workspaceId: string, sessionId?: string): Promise<ExternalJobRecord[]>
+  confirmExternalJobPermission(workspaceId: string, input: ConfirmExternalJobPermissionInput): Promise<ExternalJobRecord>
+  runExternalJob(workspaceId: string, jobId: string, tokensAfter?: number): Promise<ExternalJobRecord>
+  pollExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>
+  cancelExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>
   // Debug: send renderer logs to main process log file
   debugLog(...args: unknown[]): void
 

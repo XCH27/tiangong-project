@@ -209,6 +209,15 @@ export const CHANNEL_MAP = {
   listInternalActions: invoke(RPC_CHANNELS.internalActions.LIST),
   invokeInternalAction: invoke(RPC_CHANNELS.internalActions.INVOKE),
 
+  // External Job — AIGC / external AI review / deploy (LOCAL_ONLY)
+  createExternalJob: invoke(RPC_CHANNELS.externalJob.CREATE),
+  getExternalJob: invoke(RPC_CHANNELS.externalJob.GET),
+  listExternalJobs: invoke(RPC_CHANNELS.externalJob.LIST),
+  confirmExternalJobPermission: invoke(RPC_CHANNELS.externalJob.CONFIRM_PERMISSION),
+  runExternalJob: invoke(RPC_CHANNELS.externalJob.RUN),
+  pollExternalJob: invoke(RPC_CHANNELS.externalJob.POLL),
+  cancelExternalJob: invoke(RPC_CHANNELS.externalJob.CANCEL),
+
   // Debug logging
   debugLog: invoke(RPC_CHANNELS.debug.LOG),
 

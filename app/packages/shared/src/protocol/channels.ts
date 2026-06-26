@@ -97,6 +97,15 @@ export const RPC_CHANNELS = {
     LIST: 'internalActions:list',
     INVOKE: 'internalActions:invoke',
   },
+  externalJob: {
+    CREATE: 'externalJob:create',
+    GET: 'externalJob:get',
+    LIST: 'externalJob:list',
+    CONFIRM_PERMISSION: 'externalJob:confirmPermission',
+    RUN: 'externalJob:run',
+    POLL: 'externalJob:poll',
+    CANCEL: 'externalJob:cancel',
+  },
   debug: {
     LOG: 'debug:log',
   },

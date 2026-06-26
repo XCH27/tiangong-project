@@ -236,6 +236,10 @@ export type SessionEvent =
   | { type: 'internal_action_invoked'; sessionId: string; invocation: ActionInvocation; target?: ActionTargetRef; result: unknown; actor: ActorRef; timestamp: number }
   | { type: 'file_entry_moved'; sessionId: string; patchId: string; fromPath: string; toPath: string; fromRevision: string; toRevision: string; actor: ActorRef; timestamp: number }
   | { type: 'file_edit_undone'; sessionId: string; undonePatchId: string; actor: ActorRef; timestamp: number }
+  // Fleet External Job 事件（docs/31 §5 · D9）：生图/生视频/外部审查统一 job 生命周期。
+  | { type: 'external_job_created'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
+  | { type: 'external_job_updated'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
+  | { type: 'external_job_completed'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
   // Fleet 团队编排事件（docs/33）：会话即 Agent，不引入第二套 team/session store。
   | TeamSessionEvent
 

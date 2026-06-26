@@ -29,6 +29,7 @@ import { registerCliRuntimeHandlers } from './cli-runtime'
 import { registerManagerDecisionHandlers } from './manager-decision'
 import { registerMemoryHandlers } from './memory'
 import { registerUsageHandlers } from './usage'
+import { registerExternalJobHandlers } from './external-job'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
 
@@ -48,6 +49,7 @@ export function registerCoreRpcHandlers(
   registerManagerDecisionHandlers(server, deps)
   registerMemoryHandlers(server, deps)
   registerUsageHandlers(server, deps)
+  registerExternalJobHandlers(server, deps)
   registerOAuthHandlers(server, deps)
   registerOnboardingHandlers(server, deps)
   registerResourcesHandlers(server, deps)
