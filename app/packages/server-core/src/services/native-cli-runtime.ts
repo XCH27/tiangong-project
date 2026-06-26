@@ -17,12 +17,17 @@ export interface NativeCliRuntimeRunOptions {
   cwd: string
   prompt: string
   modelId?: string | null
+  reasoningEffort?: 'low' | 'medium' | 'high' | null
   emitEvent(event: CliRuntimeStreamEvent): void
   timeoutMs?: number
 }
 
+export function hasNativeOneShotAdapter(mappingId: string): boolean {
+  return ['codex', 'claude', 'grok', 'antigravity'].includes(mappingId)
+}
+
 export async function runNativeCliRuntimeTurn(options: NativeCliRuntimeRunOptions): Promise<CliRuntimePromptResult> {
-  const command = buildNativeCommand(options.runtime, options.prompt, options.modelId)
+  const command = buildNativeCommand(options.runtime, options.prompt, options.modelId, options.reasoningEffort)
   if (!command) {
     throw new Error(`${options.runtime.displayName} 还没有 native/subscription 发送 adapter`)
   }
@@ -40,33 +45,38 @@ export async function runNativeCliRuntimeTurn(options: NativeCliRuntimeRunOption
   return { stopReason: 'end_turn' }
 }
 
-function buildNativeCommand(
+export function buildNativeCommand(
   runtime: CliRuntimeDefinition,
   prompt: string,
   modelId?: string | null,
+  reasoningEffort?: 'low' | 'medium' | 'high' | null,
 ): { command: string; args: string[] } | null {
   switch (runtime.mappingId) {
     case 'codex': {
       const args = ['exec', '--color', 'never', '--sandbox', 'workspace-write']
       if (modelId) args.push('--model', modelId)
+      if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort)
       args.push(prompt)
       return { command: runtime.command, args }
     }
     case 'claude': {
       const args = ['-p']
       if (modelId) args.push('--model', modelId)
+      if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort)
       args.push(prompt)
       return { command: runtime.command, args }
     }
     case 'grok': {
       const args = ['--single']
       if (modelId) args.push('--model', modelId)
+      if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort)
       args.push(prompt)
       return { command: runtime.command, args }
     }
     case 'antigravity': {
       const args = ['--print']
       if (modelId) args.push('--model', modelId)
+      if (reasoningEffort) args.push('--reasoning-effort', reasoningEffort)
       args.push(prompt)
       return { command: runtime.command, args }
     }
