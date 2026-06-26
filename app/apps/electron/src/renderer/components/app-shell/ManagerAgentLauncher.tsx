@@ -1,13 +1,23 @@
 import { createPortal } from "react-dom"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowUp, GripHorizontal, Paperclip } from "lucide-react"
+import { useAtomValue } from "jotai"
 import { cn } from "@/lib/utils"
 import * as storage from "@/lib/local-storage"
 import { useAppShellContext, useSession } from "@/context/AppShellContext"
 import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
+import {
+  useNavigationState,
+  isSessionsNavigation,
+} from "@/contexts/NavigationContext"
+import { panelStackAtom } from "@/atoms/panel-stack"
 import type { AutoDecisionSettings } from "@craft-agent/shared/protocol"
 import type { CreateSessionOptions } from "../../../shared/types"
+import {
+  ManagerAgentColumn,
+  type ManagerAgentExitMode,
+  type ManagerAgentMessageView,
+} from "./ManagerAgentColumn"
 
 const MANAGER_AGENT_SYSTEM_PROMPT = [
   '你是 Fleet/Craft Agents 的管理 Agent，是软件级管家，不是某个项目的执行 Agent。',
@@ -21,10 +31,37 @@ const MANAGER_AGENT_SYSTEM_PROMPT = [
 const BUTTON_SIZE = 44
 const PANEL_WIDTH = 400
 const PANEL_HEIGHT = 480
+const COLUMN_WIDTH = 480
 const EDGE = 20
 const PORTAL_HOST_ID = 'manager-agent-launcher-root'
 
+// Renderer-local preference (no protocol/i18n key — kept inside Manager Agent domain).
+const EXIT_MODE_KEY = 'craft-manager-agent-exit-behavior'
+const DEFAULT_EXIT_MODE: ManagerAgentExitMode = 'persistent_mini'
+
 type Point = { x: number; y: number }
+
+function readExitMode(): ManagerAgentExitMode {
+  if (typeof window === 'undefined') return DEFAULT_EXIT_MODE
+  try {
+    const raw = window.localStorage.getItem(EXIT_MODE_KEY)
+    return raw === 'direct_exit' ? 'direct_exit' : 'persistent_mini'
+  } catch {
+    return DEFAULT_EXIT_MODE
+  }
+}
+
+function writeExitMode(mode: ManagerAgentExitMode): void {
+  try {
+    window.localStorage.setItem(EXIT_MODE_KEY, mode)
+  } catch {
+    // ignore storage errors
+  }
+}
+
+// Expose the exit-mode key for the settings page (same domain, no shared file).
+export const MANAGER_AGENT_EXIT_MODE_KEY = EXIT_MODE_KEY
+export const MANAGER_AGENT_DEFAULT_EXIT_MODE = DEFAULT_EXIT_MODE
 
 function defaultLauncherPosition(): Point {
   if (typeof window === 'undefined') return { x: 0, y: 0 }
@@ -59,22 +96,55 @@ function getPanelPosition(anchor: Point): Point {
 }
 
 /**
+ * Measure the content-area left boundary (right edge of the navigator panel).
+ * The Manager Agent column portals as a fixed panel anchored to this edge so
+ * it reads as a dedicated all-sessions column ("专门栏") in the content area,
+ * without modifying MainContentPanel (owned by others). Returns null until a
+ * navigator element is found.
+ */
+function measureContentLeft(): number | null {
+  if (typeof document === 'undefined') return null
+  const navigator = document.querySelector('[data-panel-role="navigator"]')
+  if (!(navigator instanceof HTMLElement)) return null
+  const rect = navigator.getBoundingClientRect()
+  if (rect.width === 0) return null
+  return Math.round(rect.right)
+}
+
+/**
  * Global Manager Agent entry.
  *
- * The visual shell intentionally follows Craft's existing inline agent edit
- * popover language: floating grip, quiet empty state, and a bottom prompt box.
- * Sending still creates a hidden Craft session and uses the normal model,
- * permission, tool, and timeline path.
+ * The software-level Manager Agent has two surfaces, both driven by a single
+ * hidden Craft session and the normal model / permission / tool / timeline path:
+ *
+ * 1. "所有会话"层专栏 (column variant) — the primary message surface, shown as a
+ *    dedicated column in the content area when the app is on the all-sessions
+ *    layer with nothing selected. It is NOT inserted into a project session and
+ *    does NOT occupy the team-chat SessionList top slot.
+ * 2. Right-bottom唤起/最小化 button (mini variant) — an optional quick entry
+ *    that唤起s the same manager chat as a corner popover when away from the
+ *    all-sessions layer (or after the user minimized the column).
+ *
+ * Exit behavior is configurable: "直接退出" clears the conversation ref on close,
+ * "常驻小窗" keeps it minimized and restorable. Sending never bypasses craft
+ * permission; L3 is never auto-confirmed. The Manager Agent coordinates only —
+ * it does not write project code on a project Agent's behalf.
  */
 export function ManagerAgentLauncher() {
   const { t } = useTranslation()
   const { activeWorkspaceId, onCreateSession, onSendMessage } = useAppShellContext()
-  const [open, setOpen] = useState(false)
+  const navState = useNavigationState()
+  const panelCount = useAtomValue(panelStackAtom).length
+
+  const [miniOpen, setMiniOpen] = useState(false)
+  const [columnOpen, setColumnOpen] = useState(true)
   const [input, setInput] = useState('')
   const [settings, setSettings] = useState<AutoDecisionSettings | null>(null)
   const [managerSessionId, setManagerSessionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [exitMode, setExitMode] = useState<ManagerAgentExitMode>(DEFAULT_EXIT_MODE)
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null)
+  const [contentLeft, setContentLeft] = useState<number | null>(null)
   const [launcherPosition, setLauncherPosition] = useState<Point>(() => {
     return typeof window === 'undefined'
       ? { x: 0, y: 0 }
@@ -100,6 +170,16 @@ export function ManagerAgentLauncher() {
   })
   const managerSession = useSession(managerSessionId ?? '__manager-agent-none__')
   const title = t('settings.managerAgent.title')
+
+  // The Manager Agent column is the primary surface at the all-sessions layer
+  // when nothing is selected (no content panels pushed). It must NOT appear for
+  // a single project session, and it does NOT touch the team SessionList slot.
+  const isAllSessionsEmpty = useMemo(() => {
+    if (!isSessionsNavigation(navState)) return false
+    if (navState.details) return false
+    if (panelCount > 0) return false
+    return navState.filter.kind === 'allSessions'
+  }, [navState, panelCount])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -128,10 +208,46 @@ export function ManagerAgentLauncher() {
     launcherPositionRef.current = launcherPosition
   }, [launcherPosition])
 
-  const visibleMessages = useMemo(() => {
+  useEffect(() => {
+    setExitMode(readExitMode())
+  }, [])
+
+  // Measure content-area left boundary for the column whenever the layout that
+  // affects it changes. Re-measured on resize; navigation changes are covered
+  // by the effect re-running when isAllSessionsEmpty flips true.
+  useEffect(() => {
+    if (!isAllSessionsEmpty) {
+      setContentLeft(null)
+      return
+    }
+    let frame = 0
+    const measure = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => setContentLeft(measureContentLeft()))
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('resize', measure)
+    }
+  }, [isAllSessionsEmpty])
+
+  // Build the column's message view from the shared hidden session. The column
+  // shows a longer tail than the corner mini popover since it's the primary
+  // conversation surface.
+  const columnMessages = useMemo<ManagerAgentMessageView[]>(() => {
+    return (managerSession?.messages ?? [])
+      .filter(message => message.role === 'user' || message.role === 'assistant' || message.role === 'error')
+      .slice(-40)
+      .map(message => ({ id: message.id, role: message.role, content: message.content }))
+  }, [managerSession?.messages])
+
+  const miniMessages = useMemo<ManagerAgentMessageView[]>(() => {
     return (managerSession?.messages ?? [])
       .filter(message => message.role === 'user' || message.role === 'assistant' || message.role === 'error')
       .slice(-6)
+      .map(message => ({ id: message.id, role: message.role, content: message.content }))
   }, [managerSession?.messages])
 
   const loadSettings = useCallback(async () => {
@@ -145,8 +261,8 @@ export function ManagerAgentLauncher() {
   }, [activeWorkspaceId])
 
   useEffect(() => {
-    if (open) void loadSettings()
-  }, [loadSettings, open])
+    if (miniOpen || isAllSessionsEmpty) void loadSettings()
+  }, [loadSettings, miniOpen, isAllSessionsEmpty])
 
   useEffect(() => {
     const handleResize = () => {
@@ -174,6 +290,10 @@ export function ManagerAgentLauncher() {
     }
   }, [settings?.model, title])
 
+  // Resolve the manager session id, creating a hidden Craft session (with the
+  // manager system prompt + ask permission mode) on first send. Sending flows
+  // through the normal onSendMessage → model / permission / tool / timeline
+  // path; nothing here bypasses permission or auto-confirms L3.
   const sendManagerText = useCallback(async () => {
     const text = input.trim()
     if (!text) return
@@ -195,6 +315,30 @@ export function ManagerAgentLauncher() {
       setError(sendError instanceof Error ? sendError.message : String(sendError))
     }
   }, [activeWorkspaceId, createOptions, input, managerSessionId, onCreateSession, onSendMessage])
+
+  // Exit honors the configured exit behavior. "direct_exit" clears the
+  // conversation ref so the next entry starts fresh; "persistent_mini" keeps
+  // the ref so the mini-window/column can be restored with history.
+  const handleExit = useCallback(() => {
+    setMiniOpen(false)
+    setColumnOpen(false)
+    if (exitMode === 'direct_exit') {
+      setManagerSessionId(null)
+    }
+  }, [exitMode])
+
+  const handleMinimize = useCallback(() => {
+    setMiniOpen(false)
+    setColumnOpen(false)
+  }, [])
+
+  // When the user leaves the all-sessions layer, the column is not the primary
+  // surface anymore; keep the conversation ref so the corner button can唤起 it.
+  useEffect(() => {
+    if (!isAllSessionsEmpty) {
+      setColumnOpen(false)
+    }
+  }, [isAllSessionsEmpty])
 
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -227,7 +371,15 @@ export function ManagerAgentLauncher() {
     }
     dragRef.current = { ...drag, active: false, pointerId: null }
     storage.set(storage.KEYS.managerAgentLauncherPosition, launcherPositionRef.current)
-    if (!drag.moved) setOpen(true)
+    if (!drag.moved) {
+      // Corner button唤起s the surface: prefer the column when on the
+      // all-sessions layer, otherwise the corner mini popover.
+      if (isAllSessionsEmpty) {
+        setColumnOpen(true)
+      } else {
+        setMiniOpen(true)
+      }
+    }
   }
 
   if (!portalHost || typeof document === 'undefined') return null
@@ -236,111 +388,74 @@ export function ManagerAgentLauncher() {
   const panelHeight = Math.min(PANEL_HEIGHT, window.innerHeight - EDGE * 2)
   const panelPosition = getPanelPosition(launcherPosition)
 
+  const showColumn = isAllSessionsEmpty && columnOpen && contentLeft !== null
+  const columnLeft = contentLeft ?? EDGE
+  const columnWidth = Math.min(COLUMN_WIDTH, window.innerWidth - columnLeft - EDGE)
+  const columnHeight = window.innerHeight - EDGE * 2
+
   return createPortal(
     <>
-      {open && (
+      {/* === All-sessions column (primary surface) === */}
+      {showColumn && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-floating-menu cursor-default bg-transparent"
+            aria-label="Close manager agent column"
+            onClick={handleMinimize}
+            data-manager-agent-column-backdrop
+          />
+          <ManagerAgentColumn
+            title={title}
+            variant="column"
+            exitMode={exitMode}
+            messages={columnMessages}
+            isProcessing={!!managerSession?.isProcessing}
+            input={input}
+            onInputChange={setInput}
+            onSend={() => void sendManagerText()}
+            onMinimize={handleMinimize}
+            onExit={handleExit}
+            emptyHint={'管理 Agent 在这里帮你看管软件'}
+            emptySub={'让它整理会话、改设置、调度团队任务、归档记忆——写操作都要你或规则授权'}
+            placeholder={t('editPopover.placeholder3')}
+            processingHint={'正在处理…'}
+            error={error}
+            className="fixed z-floating-menu"
+            style={{ left: columnLeft, top: EDGE, width: columnWidth, height: columnHeight }}
+          />
+        </>
+      )}
+
+      {/* === Corner mini popover (optional 唤起/最小化 entry) === */}
+      {miniOpen && !isAllSessionsEmpty && (
         <>
           <button
             type="button"
             className="fixed inset-0 z-floating-menu cursor-default bg-transparent"
             aria-label="Close manager agent"
-            onClick={() => setOpen(false)}
+            onClick={handleMinimize}
             data-manager-agent-backdrop
           />
-          <div
-            className="fixed z-floating-menu flex flex-col overflow-hidden rounded-[16px] bg-foreground-2 shadow-modal-small"
-            style={{
-              left: panelPosition.x,
-              top: panelPosition.y,
-              width: panelWidth,
-              height: panelHeight,
-            }}
-            role="dialog"
-            aria-label={title}
-            data-manager-agent-panel
-          >
-            <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2 px-4 py-2">
-              <GripHorizontal className="h-4 w-4 text-muted-foreground/30" />
-            </div>
-
-            <div className="flex min-h-0 flex-1 flex-col">
-              {visibleMessages.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
-                  <div className="text-[16px] font-medium text-foreground/60">{t('editPopover.whatToChange')}</div>
-                  <div className="mt-2 text-[14px] text-muted-foreground/70">{t('editPopover.justDescribe')}</div>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto px-5 py-10">
-                  <div className="space-y-3">
-                    {visibleMessages.map(message => (
-                      <div
-                        key={message.id}
-                        className={cn(
-                          'rounded-[10px] px-3 py-2 text-[13px] leading-relaxed whitespace-pre-wrap',
-                          message.role === 'user'
-                            ? 'ml-10 bg-foreground text-background'
-                            : 'mr-10 bg-background/70 text-foreground shadow-minimal',
-                          message.role === 'error' && 'text-destructive',
-                        )}
-                      >
-                        {message.content}
-                      </div>
-                    ))}
-                    {managerSession?.isProcessing && (
-                      <div className="mr-10 rounded-[10px] bg-background/70 px-3 py-2 text-[13px] text-muted-foreground shadow-minimal">
-                        正在处理…
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="mx-4 mb-2 rounded-[8px] bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                  {error}
-                </div>
-              )}
-
-              <div className="p-4">
-                <div className="rounded-[14px] bg-background px-4 py-3 shadow-middle">
-                  <textarea
-                    className="h-28 w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted-foreground/70 disabled:cursor-not-allowed"
-                    placeholder={t('editPopover.placeholder3')}
-                    value={input}
-                    onChange={event => setInput(event.target.value)}
-                    onKeyDown={event => {
-                      if (event.key === 'Enter' && !event.shiftKey) {
-                        event.preventDefault()
-                        void sendManagerText()
-                      }
-                    }}
-                    disabled={managerSession?.isProcessing}
-                  />
-                  <div className="mt-2 flex items-center justify-between">
-                    <button
-                      type="button"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.05]"
-                      aria-label="Attach"
-                    >
-                      <Paperclip className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        'inline-flex h-9 w-9 items-center justify-center rounded-full bg-foreground text-background',
-                        (!input.trim() || managerSession?.isProcessing) && 'cursor-not-allowed opacity-45',
-                      )}
-                      disabled={!input.trim() || managerSession?.isProcessing}
-                      onClick={() => void sendManagerText()}
-                      aria-label="Send"
-                    >
-                      <ArrowUp className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ManagerAgentColumn
+            title={title}
+            variant="mini"
+            exitMode={exitMode}
+            messages={miniMessages}
+            isProcessing={!!managerSession?.isProcessing}
+            input={input}
+            onInputChange={setInput}
+            onSend={() => void sendManagerText()}
+            onMinimize={handleMinimize}
+            onExit={handleExit}
+            emptyHint={t('editPopover.whatToChange')}
+            emptySub={t('editPopover.justDescribe')}
+            placeholder={t('editPopover.placeholder3')}
+            processingHint={'正在处理…'}
+            error={error}
+            className="fixed z-floating-menu"
+            style={{ left: panelPosition.x, top: panelPosition.y, width: panelWidth, height: panelHeight }}
+          />
         </>
       )}
 
@@ -362,4 +477,16 @@ export function ManagerAgentLauncher() {
     </>,
     portalHost,
   )
+}
+
+/**
+ * Re-export the exit-mode helpers so the Manager settings page (same domain)
+ * can read/persist the user's choice without touching shared settings files.
+ */
+export function readManagerAgentExitMode(): ManagerAgentExitMode {
+  return readExitMode()
+}
+
+export function persistManagerAgentExitMode(mode: ManagerAgentExitMode): void {
+  writeExitMode(mode)
 }

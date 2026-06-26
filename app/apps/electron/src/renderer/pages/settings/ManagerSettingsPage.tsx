@@ -6,8 +6,14 @@ import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { SettingsSection, SettingsCard, SettingsToggle, SettingsInput, SettingsMenuSelectRow } from '@/components/settings'
+import { SettingsSection, SettingsCard, SettingsToggle, SettingsInput, SettingsMenuSelectRow, SettingsSegmentedControl } from '@/components/settings'
 import { useAppShellContext } from '@/context/AppShellContext'
+import {
+  MANAGER_AGENT_DEFAULT_EXIT_MODE,
+  persistManagerAgentExitMode,
+  readManagerAgentExitMode,
+} from '@/components/app-shell/ManagerAgentLauncher'
+import type { ManagerAgentExitMode } from '@/components/app-shell/ManagerAgentColumn'
 import {
   type AutoDecisionSettings,
   type AutoDecisionRule,
@@ -33,6 +39,19 @@ export default function ManagerSettingsPage(): React.ReactElement {
 
   const [rulePrefix, setRulePrefix] = useState('')
   const [ruleReason, setRuleReason] = useState('')
+
+  // Exit behavior is a renderer-local preference (no protocol channel): it only
+  // affects whether minimizing the Manager Agent clears its conversation ref or
+  // keeps it restorable. Persisted via the Manager Agent domain helper.
+  const [exitMode, setExitMode] = useState<ManagerAgentExitMode>(MANAGER_AGENT_DEFAULT_EXIT_MODE)
+  useEffect(() => {
+    setExitMode(readManagerAgentExitMode())
+  }, [])
+
+  const onExitModeChange = useCallback((mode: ManagerAgentExitMode) => {
+    setExitMode(mode)
+    persistManagerAgentExitMode(mode)
+  }, [])
 
   const load = useCallback(async () => {
     if (!window.electronAPI || !activeWorkspaceId) return
@@ -224,6 +243,27 @@ export default function ManagerSettingsPage(): React.ReactElement {
                     <Button size="sm" variant="outline" onClick={() => void addRule('allow')} disabled={!settings.enabled}><Plus className="h-4 w-4 mr-1" />允许</Button>
                     <Button size="sm" variant="outline" onClick={() => void addRule('deny')} disabled={!settings.enabled}><Plus className="h-4 w-4 mr-1" />禁止</Button>
                   </div>
+                </div>
+              </div>
+            </SettingsCard>
+          </SettingsSection>
+
+          <SettingsSection title="退出行为">
+            <SettingsCard>
+              <div className="px-4 py-3 space-y-2">
+                <div className="text-sm font-medium">关闭管理 Agent 时</div>
+                <SettingsSegmentedControl
+                  value={exitMode}
+                  onValueChange={onExitModeChange}
+                  options={[
+                    { value: 'persistent_mini', label: '常驻小窗' },
+                    { value: 'direct_exit', label: '直接退出' },
+                  ]}
+                />
+                <div className="text-xs text-muted-foreground">
+                  {exitMode === 'persistent_mini'
+                    ? '收起为常驻小窗，保留管理 Agent、长任务和通知状态，可重新唤起恢复对话。'
+                    : '直接退出并清除当前管理对话引用，下次唤起从新对话开始。隐藏管理会话本身不会被删除。'}
                 </div>
               </div>
             </SettingsCard>
