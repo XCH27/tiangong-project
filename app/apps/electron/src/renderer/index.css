@@ -462,7 +462,7 @@ html[data-font="inter"] {
   /* Custom breakpoints for responsive panel layouts.
    * Generates @panel-compact:, @panel-medium:, @mobile: Tailwind utility prefixes. */
   --container-3xs: 16rem;           /* 256px */
-  --container-panel-compact: 28rem; /* 448px — PANEL_MIN_WIDTH */
+  --container-panel-compact: 18.75rem; /* 300px — PANEL_MIN_WIDTH */
   --container-panel-medium: 40rem;  /* 640px */
   --container-mobile: 48rem;        /* 768px — mobile breakpoint */
 }
@@ -1278,6 +1278,19 @@ html.dark[data-scenic] .fullscreen-overlay-background {
  * the fragile !important overrides previously in webui/src/index.css.
  * Works in both webui (narrow viewport) and desktop (narrow panels).
  * ============================================================================ */
+
+/* Input chrome: icon-only badges in narrow panels (status, mode, labels, attach…). */
+@container panel (max-width: 480px) {
+  [data-chat-input-badge-label] {
+    display: none;
+  }
+
+  [data-chat-input-badge] {
+    max-width: 100%;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
 
 /* Constrain floating elements (dropdowns, selects) in narrow panel containers */
 @container panel (max-width: 448px) {

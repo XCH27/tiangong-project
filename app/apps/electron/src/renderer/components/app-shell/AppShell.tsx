@@ -144,7 +144,6 @@ import {
   RADIUS_EDGE,
   RADIUS_INNER,
 } from "./panel-constants"
-import { getRequiredContentSize, shouldAutoCollapseSidebar, shouldPreferToolDockOverlay } from "./workbench-layout"
 import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
@@ -626,6 +625,18 @@ function AppShellContent({
   const panelStack = useAtomValue(panelStackAtom)
   const panelCount = useAtomValue(panelCountAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const prevPanelCountRef = React.useRef(panelCount)
+
+  // At 5+ content panels, auto-collapse the global sidebar (Sources/Settings nav)
+  // to free horizontal space. Navigator ("所有会话") stays visible; user can
+  // re-open via TopBar sidebar toggle (Cmd+B).
+  React.useEffect(() => {
+    const prev = prevPanelCountRef.current
+    if (panelCount >= 5 && prev < 5) {
+      setIsSidebarVisible(false)
+    }
+    prevPanelCountRef.current = panelCount
+  }, [panelCount])
 
   const workspaceContextSidebarMinWidth = 260
   const workspaceContextSidebarDefaultWidth = 320
@@ -634,9 +645,8 @@ function AppShellContent({
   const bottomTerminalMaxHeight = 520
 
   // Keep the right context rail independently resizable as a stable desktop
-  // workbench column. Content panels already own horizontal overflow through
-  // PanelStackContainer, so the rail must not disappear just because multiple
-  // panels need to scroll.
+  // workbench column. Content panels compress with ellipsis (no horizontal scroll),
+  // so the rail must not disappear just because multiple panels share a narrow viewport.
   const fixedShellColumnsWidth = effectiveSidebarAndNavigatorHidden
     ? 0
     : (isSidebarVisible ? sidebarWidth + PANEL_GAP : 0) + sessionListWidth + PANEL_GAP
@@ -656,39 +666,10 @@ function AppShellContent({
     workspaceToolDock.activeModules.length > 0 &&
     !isAutoCompact &&
     !isFocusedMode
-  const contentPanelCountForLayout = Math.max(panelCount, 1)
-  const requiredContentSize = getRequiredContentSize(contentPanelCountForLayout)
-  const requiredDockedContentWidth = requiredContentSize.width
-  const canDockWorkspaceContextSidebar = shellWidth === 0 || (
-    !shouldPreferToolDockOverlay(panelCount) &&
-    shellWidth - fixedShellColumnsWidth - renderedWorkspaceContextSidebarWidth - PANEL_GAP - PANEL_EDGE_INSET >= requiredDockedContentWidth
-  )
-  const isWorkspaceContextSidebarDocked =
-    isWorkspaceContextSidebarRendered && canDockWorkspaceContextSidebar
-  const isWorkspaceContextSidebarOverlay =
-    isWorkspaceContextSidebarRendered && !isWorkspaceContextSidebarDocked
+  const isWorkspaceContextSidebarDocked = isWorkspaceContextSidebarRendered
   const renderedBottomTerminalHeight = isBottomTerminalVisible && !isAutoCompact && !isFocusedMode
     ? Math.min(Math.max(bottomTerminalHeight, bottomTerminalMinHeight), bottomTerminalMaxHeight)
     : 0
-
-  // docs/37: 3+ content panels auto-fold left sidebar; user can reopen via TopBar.
-  const sidebarAutoCollapsedRef = React.useRef(false)
-  React.useEffect(() => {
-    if (isAutoCompact || isFocusedMode) return
-
-    if (shouldAutoCollapseSidebar(panelCount)) {
-      if (!sidebarAutoCollapsedRef.current && isSidebarVisible) {
-        sidebarAutoCollapsedRef.current = true
-        setIsSidebarVisible(false)
-      }
-      return
-    }
-
-    if (sidebarAutoCollapsedRef.current) {
-      sidebarAutoCollapsedRef.current = false
-      setIsSidebarVisible(true)
-    }
-  }, [panelCount, isAutoCompact, isFocusedMode, isSidebarVisible])
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -2675,8 +2656,8 @@ function AppShellContent({
               className="h-full flex flex-col min-w-0 relative z-panel"
             >
             <PanelHeader
-              title={isSidebarVisible ? listTitle : undefined}
-              compensateForStoplight={!isSidebarVisible}
+              title={listTitle}
+              compensateForStoplight={!effectiveSidebarAndNavigatorHidden && !isSidebarVisible}
               badge={automationFilter?.automationType === 'scheduled' ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -3465,30 +3446,6 @@ function AppShellContent({
             onResizeAdjacentModules={workspaceToolDock.resizeAdjacentModules}
             onResetModuleRatios={workspaceToolDock.resetRatios}
           />
-        )}
-        {isWorkspaceContextSidebarOverlay && (
-          <div
-            className="absolute bottom-0 right-1 top-0 z-[40]"
-            style={{ width: renderedWorkspaceContextSidebarWidth }}
-          >
-            <WorkspaceContextSidebar
-              visible={isWorkspaceContextSidebarVisible}
-              width={renderedWorkspaceContextSidebarWidth}
-              rootPath={activeWorkspace?.rootPath}
-              progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
-              selectedFilePath={selectedWorkspaceContextFile}
-              compact={isWorkspaceContextSidebarCompact}
-              activeModules={workspaceToolDock.activeModules}
-              moduleRatios={workspaceToolDock.ratios}
-              onFileClick={(path) => {
-                setSelectedWorkspaceContextFile(path)
-                onOpenFile(path)
-              }}
-              onCloseModule={workspaceToolDock.closeModule}
-              onResizeAdjacentModules={workspaceToolDock.resizeAdjacentModules}
-              onResetModuleRatios={workspaceToolDock.resetRatios}
-            />
-          </div>
         )}
 
         {/* Workspace context rail resize handle. It shares the shell's existing

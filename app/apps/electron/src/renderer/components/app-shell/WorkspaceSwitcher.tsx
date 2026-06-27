@@ -201,7 +201,7 @@ export function WorkspaceSwitcher({
             <button
               type="button"
               data-workspace-switcher="topbar"
-              className="header-icon-btn titlebar-no-drag ml-1 flex-1 min-w-0 flex items-center justify-start gap-0.5 h-[30px] px-3 rounded-[8px] border border-foreground/6 text-[13px] text-foreground/50 hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer data-[state=open]:bg-foreground/5 data-[state=open]:text-foreground"
+              className="header-icon-btn titlebar-no-drag ml-1 max-w-full min-w-0 inline-flex items-center justify-start gap-0.5 h-[30px] px-3 rounded-[8px] border border-foreground/6 text-[13px] text-foreground/50 hover:bg-foreground/5 hover:text-foreground transition-colors cursor-pointer data-[state=open]:bg-foreground/5 data-[state=open]:text-foreground"
               aria-label={t('workspace.selectWorkspace')}
             >
               <CrossfadeAvatar
@@ -211,7 +211,7 @@ export function WorkspaceSwitcher({
                 fallbackClassName="bg-muted text-[10px] rounded-full"
                 fallback={selectedWorkspaceName?.charAt(0) || t('workspace.fallbackInitial')}
               />
-              <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspaceName || t('workspace.selectWorkspace')}</span>
+              <span className="truncate min-w-0 max-w-[220px] text-left">{selectedWorkspaceName || t('workspace.selectWorkspace')}</span>
               {selectedWorkspace?.remoteServer && (
                 isRemoteDisconnected(selectedWorkspace.id)
                   ? <CloudOff className="h-3 w-3 text-destructive shrink-0" />

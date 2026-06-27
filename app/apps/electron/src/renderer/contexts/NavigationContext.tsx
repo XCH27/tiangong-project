@@ -50,6 +50,7 @@ import {
 import { routes, type Route, type ViewRoute } from '../../shared/routes'
 import { parsePermissionMode } from '@craft-agent/shared/agent/mode-types'
 import { NAVIGATE_EVENT, type NavigateOptions } from '../lib/navigate'
+import { isEmptySessionMeta } from '@/lib/session-navigation'
 import { normalizePanelRouteForReconcile } from './navigation-reconcile'
 import { buildSemanticHistoryKey, canRunInitialRestore } from './navigation-history'
 import * as storage from '@/lib/local-storage'
@@ -425,26 +426,22 @@ export function NavigationProvider({
           const colonIdx = entry.lastIndexOf(':')
           if (colonIdx > 0) {
             const proportion = parseFloat(entry.slice(colonIdx + 1))
-            if (!isNaN(proportion) && proportion > 0 && proportion < 1) {
-              const rawRoute = entry.slice(0, colonIdx) as ViewRoute
-              const route = normalizePanelRouteForReconcile(rawRoute, (state) => resolveAutoSelectionRef.current(state))
+            const rawRoute = entry.slice(0, colonIdx) as ViewRoute
+            const route = normalizePanelRouteForReconcile(rawRoute, (state) => resolveAutoSelectionRef.current(state))
+            if (!isNaN(proportion) && proportion > 0 && proportion <= 1) {
               return { route, proportion }
             }
+            return { route, proportion: 0 }
           }
           const rawRoute = entry as ViewRoute
           const route = normalizePanelRouteForReconcile(rawRoute, (state) => resolveAutoSelectionRef.current(state))
           return { route, proportion: 0 }
         })
 
-        const hasProportions = entries.some(e => e.proportion > 0)
-        if (!hasProportions) {
+        // Always equalize — grid layout ignores proportions; stale zeros break flex fallback.
+        if (entries.length > 0) {
           const equal = 1 / entries.length
           entries.forEach(e => { e.proportion = equal })
-        } else {
-          const total = entries.reduce((s, e) => s + e.proportion, 0)
-          if (total > 0 && Math.abs(total - 1) > 0.001) {
-            entries.forEach(e => { e.proportion = e.proportion / total })
-          }
         }
 
         focusedIndex = focusedIndexParam != null ? (parseInt(focusedIndexParam, 10) || 0) : 0
@@ -492,9 +489,7 @@ export function NavigationProvider({
       for (const prevId of prevVisibleSessionIdsRef.current) {
         if (!currentIds.has(prevId)) {
           const meta = store.get(sessionMetaMapAtom).get(prevId)
-          const isEmpty = meta && !meta.lastFinalMessageId && !meta.name && !meta.isProcessing
-          const hasDraft = getDraft?.(prevId)?.trim()
-          if (isEmpty && !hasDraft) {
+          if (isEmptySessionMeta(meta, getDraft)) {
             onAutoDeleteEmptySession(prevId)
           }
         }

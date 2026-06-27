@@ -15,15 +15,15 @@ import { useCallback, useRef } from 'react'
 import { useSetAtom, useAtomValue } from 'jotai'
 import { panelStackAtom, resizePanelsAtom } from '@/atoms/panel-stack'
 import { useResizeGradient } from '@/hooks/useResizeGradient'
+import { getAdaptivePanelMinWidth } from './workbench-layout'
 import {
-  PANEL_MIN_WIDTH,
   PANEL_SASH_FLEX_MARGIN,
   PANEL_SASH_HALF_HIT_WIDTH,
   PANEL_SASH_LINE_WIDTH,
   PANEL_STACK_VERTICAL_OVERFLOW,
 } from './panel-constants'
 
-export { PANEL_MIN_WIDTH }
+export { PANEL_MIN_WIDTH } from './panel-constants'
 
 interface PanelResizeSashProps {
   /** Index of the panel to the left of this sash (in panelStack) */
@@ -38,6 +38,7 @@ export function PanelResizeSash({
 }: PanelResizeSashProps) {
   const resizePanels = useSetAtom(resizePanelsAtom)
   const panelStack = useAtomValue(panelStackAtom)
+  const minPanelWidth = getAdaptivePanelMinWidth(panelStack.length)
   const { ref, handlers, gradientStyle } = useResizeGradient()
   const startXRef = useRef(0)
   const startLeftWidthRef = useRef(0)
@@ -74,13 +75,13 @@ export function PanelResizeSash({
       let newLeftWidth = startLeftWidthRef.current + delta
       let newRightWidth = startRightWidthRef.current - delta
 
-      if (newLeftWidth < PANEL_MIN_WIDTH) {
-        newLeftWidth = PANEL_MIN_WIDTH
-        newRightWidth = combinedWidth - PANEL_MIN_WIDTH
+      if (newLeftWidth < minPanelWidth) {
+        newLeftWidth = minPanelWidth
+        newRightWidth = combinedWidth - minPanelWidth
       }
-      if (newRightWidth < PANEL_MIN_WIDTH) {
-        newRightWidth = PANEL_MIN_WIDTH
-        newLeftWidth = combinedWidth - PANEL_MIN_WIDTH
+      if (newRightWidth < minPanelWidth) {
+        newRightWidth = minPanelWidth
+        newLeftWidth = combinedWidth - minPanelWidth
       }
 
       // Convert pixel ratio to proportions, preserving the combined proportion
@@ -103,7 +104,7 @@ export function PanelResizeSash({
     document.body.style.cursor = 'col-resize'
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-  }, [leftIndex, rightIndex, panelStack, resizePanels, handlers, ref])
+  }, [leftIndex, rightIndex, minPanelWidth, panelStack, resizePanels, handlers, ref])
 
   const handleDoubleClick = useCallback(() => {
     // Reset the two adjacent panels to equal share of their combined proportion

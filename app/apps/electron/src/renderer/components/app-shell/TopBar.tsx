@@ -1,7 +1,7 @@
 /**
  * TopBar - Persistent top bar above all panels (Slack-style)
  *
- * Layout: [Sidebar] [Menu] [Back] [Forward] [Workspace selector] ... [Browser strip] [Context] [New session panel] [New browser window]
+ * Layout: [Sidebar] [Menu] [Back] [Forward] [Workspace pill] [Add workspace] ... [Browser strip] [Context] [New session] [New browser]
  *
  * Fixed at top of window, 48px tall.
  * macOS: offset left to avoid stoplight controls.
@@ -208,27 +208,43 @@ export function TopBar({
             </>
           )}
 
-          <div className="min-w-0 flex-1">
-            {isCompact ? (
-              <CompactWorkspaceSwitcher
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onSelect={onSelectWorkspace}
-                onWorkspaceCreated={onWorkspaceCreated}
-                onWorkspaceRemoved={onWorkspaceRemoved}
-                workspaceUnreadMap={workspaceUnreadMap}
-              />
-            ) : (
-              <WorkspaceSwitcher
-                variant="topbar"
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onSelect={onSelectWorkspace}
-                onWorkspaceCreated={onWorkspaceCreated}
-                onWorkspaceRemoved={onWorkspaceRemoved}
-                onWorkspaceUpdated={onWorkspaceUpdated}
-                workspaceUnreadMap={workspaceUnreadMap}
-              />
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+            <div className="min-w-0 max-w-full overflow-hidden">
+              {isCompact ? (
+                <CompactWorkspaceSwitcher
+                  workspaces={workspaces}
+                  activeWorkspaceId={activeWorkspaceId}
+                  onSelect={onSelectWorkspace}
+                  onWorkspaceCreated={onWorkspaceCreated}
+                  onWorkspaceRemoved={onWorkspaceRemoved}
+                  workspaceUnreadMap={workspaceUnreadMap}
+                />
+              ) : (
+                <WorkspaceSwitcher
+                  variant="topbar"
+                  workspaces={workspaces}
+                  activeWorkspaceId={activeWorkspaceId}
+                  onSelect={onSelectWorkspace}
+                  onWorkspaceCreated={onWorkspaceCreated}
+                  onWorkspaceRemoved={onWorkspaceRemoved}
+                  onWorkspaceUpdated={onWorkspaceUpdated}
+                  workspaceUnreadMap={workspaceUnreadMap}
+                />
+              )}
+            </div>
+            {!isCompact && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <WorkspaceAddButton
+                    onSelect={onSelectWorkspace}
+                    onWorkspaceCreated={onWorkspaceCreated}
+                    className="header-icon-btn titlebar-no-drag shrink-0 flex items-center justify-center h-[30px] w-[30px] rounded-[8px] border border-foreground/6 text-foreground/50 hover:bg-foreground/5 hover:text-foreground transition-colors duration-100"
+                  >
+                    <Icons.FolderPlus className="h-4 w-4" strokeWidth={1.5} />
+                  </WorkspaceAddButton>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{t("workspace.addWorkspace")}</TooltipContent>
+              </Tooltip>
             )}
           </div>
         </div>
@@ -289,18 +305,6 @@ export function TopBar({
             </TooltipContent>
           </Tooltip>
         )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <WorkspaceAddButton
-              onSelect={onSelectWorkspace}
-              onWorkspaceCreated={onWorkspaceCreated}
-              className="header-icon-btn h-7 w-7 flex items-center justify-center rounded-[6px] titlebar-no-drag hover:bg-foreground/5 focus:outline-none focus-visible:ring-0 transition-colors duration-100"
-            >
-              <Icons.FolderPlus className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
-            </WorkspaceAddButton>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("workspace.addWorkspace")}</TooltipContent>
-        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <TopBarButton

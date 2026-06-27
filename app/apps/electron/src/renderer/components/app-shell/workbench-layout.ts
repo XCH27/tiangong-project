@@ -6,9 +6,16 @@
  *    document flow — never absolute, except the explicit right-rail overlay mode.
  * 2. Each region declares min width/height; children use min-w-0 min-h-0 so flex
  *    can shrink them instead of painting on top of siblings.
- * 3. When min constraints cannot all be satisfied, the content scroller grows
- *    (overflow:auto) — boxes scroll apart instead of overlapping.
+ * 3. When min constraints cannot all be satisfied, panels shrink (min-w-0) and inner
+ *    content truncates — no horizontal scroll on the panel row.
  * 4. Popovers/dialogs clamp to viewport margins; they are the only floating layer.
+ *
+ * Content panel grid recipes (docs/37 §0.4 / §81):
+ * - 2: side-by-side (2×1)
+ * - 3: 上二下一 (2×2, bottom spans full width)
+ * - 4: 2×2
+ * - 5: 上三下二 (3×2, one empty cell bottom-right)
+ * - 6: 上三下三 (3×2)
  */
 
 import { PANEL_GAP, PANEL_MIN_WIDTH } from './panel-constants'
@@ -41,7 +48,60 @@ export interface ContentGridSpec {
   cells: ContentPanelCell[]
 }
 
-/** Assign panels to non-overlapping grid cells per docs/37. */
+/** Uniform per-panel min width for all layout modes (docs/37 §6.4). */
+export function getAdaptivePanelMinWidth(_panelCount: number): number {
+  return PANEL_MIN_WIDTH
+}
+
+/** Pick cols×rows with zero empty cells; prefer wider layouts when tied. Used for 7+ panels. */
+export function findEqualGridLayout(panelCount: number): { columns: number; rows: number } {
+  if (panelCount <= 1) return { columns: 1, rows: 1 }
+
+  let best = { columns: panelCount, rows: 1, waste: 0, aspect: panelCount }
+
+  for (let columns = 1; columns <= panelCount; columns++) {
+    const rows = Math.ceil(panelCount / columns)
+    const waste = columns * rows - panelCount
+    const aspect = Math.abs(columns - rows)
+    const isBetter =
+      waste < best.waste ||
+      (waste === best.waste && aspect < best.aspect) ||
+      (waste === best.waste && aspect === best.aspect && columns > best.columns)
+
+    if (isBetter) {
+      best = { columns, rows, waste, aspect }
+    }
+  }
+
+  return { columns: best.columns, rows: best.rows }
+}
+
+function buildGridSpec(
+  columns: number,
+  rows: number,
+  cells: ContentPanelCell[],
+): ContentGridSpec {
+  return {
+    mode: 'grid',
+    columns,
+    rows,
+    columnTracks: Array.from({ length: columns }, () => '1fr').join(' '),
+    rowTracks: Array.from({ length: rows }, () => '1fr').join(' '),
+    cells,
+  }
+}
+
+function rowMajorCells(panelCount: number, columns: number): ContentPanelCell[] {
+  return Array.from({ length: panelCount }, (_, panelIndex) => ({
+    panelIndex,
+    column: (panelIndex % columns) + 1,
+    row: Math.floor(panelIndex / columns) + 1,
+    columnSpan: 1,
+    rowSpan: 1,
+  }))
+}
+
+/** Grid assignments for 2–6 content panels (docs/37). */
 export function getContentGridSpec(panelCount: number): ContentGridSpec {
   if (panelCount <= 1) {
     return {
@@ -55,93 +115,55 @@ export function getContentGridSpec(panelCount: number): ContentGridSpec {
   }
 
   if (panelCount === 2) {
-    return {
-      mode: 'row',
-      columns: 2,
-      rows: 1,
-      columnTracks: '1fr 1fr',
-      rowTracks: '1fr',
-      cells: [
-        { panelIndex: 0, column: 1, row: 1, columnSpan: 1, rowSpan: 1 },
-        { panelIndex: 1, column: 2, row: 1, columnSpan: 1, rowSpan: 1 },
-      ],
-    }
+    return buildGridSpec(2, 1, rowMajorCells(2, 2))
   }
 
   if (panelCount === 3) {
-    // 上二下一
-    return {
-      mode: 'grid',
-      columns: 2,
-      rows: 2,
-      columnTracks: '1fr 1fr',
-      rowTracks: '1fr 1fr',
-      cells: [
-        { panelIndex: 0, column: 1, row: 1, columnSpan: 1, rowSpan: 1 },
-        { panelIndex: 1, column: 2, row: 1, columnSpan: 1, rowSpan: 1 },
-        { panelIndex: 2, column: 1, row: 2, columnSpan: 2, rowSpan: 1 },
-      ],
-    }
+    // 上二下一 — same topology as Tool Dock 3-module grid
+    return buildGridSpec(2, 2, [
+      { panelIndex: 0, column: 1, row: 1, columnSpan: 1, rowSpan: 1 },
+      { panelIndex: 1, column: 2, row: 1, columnSpan: 1, rowSpan: 1 },
+      { panelIndex: 2, column: 1, row: 2, columnSpan: 2, rowSpan: 1 },
+    ])
   }
 
   if (panelCount === 4) {
-    return {
-      mode: 'grid',
-      columns: 2,
-      rows: 2,
-      columnTracks: '1fr 1fr',
-      rowTracks: '1fr 1fr',
-      cells: [
-        { panelIndex: 0, column: 1, row: 1, columnSpan: 1, rowSpan: 1 },
-        { panelIndex: 1, column: 2, row: 1, columnSpan: 1, rowSpan: 1 },
-        { panelIndex: 2, column: 1, row: 2, columnSpan: 1, rowSpan: 1 },
-        { panelIndex: 3, column: 2, row: 2, columnSpan: 1, rowSpan: 1 },
-      ],
-    }
+    return buildGridSpec(2, 2, rowMajorCells(4, 2))
   }
 
   if (panelCount === 5) {
     // 上三下二
-    return {
-      mode: 'grid',
-      columns: 6,
-      rows: 2,
-      columnTracks: 'repeat(6, 1fr)',
-      rowTracks: '1fr 1fr',
-      cells: [
-        { panelIndex: 0, column: 1, row: 1, columnSpan: 2, rowSpan: 1 },
-        { panelIndex: 1, column: 3, row: 1, columnSpan: 2, rowSpan: 1 },
-        { panelIndex: 2, column: 5, row: 1, columnSpan: 2, rowSpan: 1 },
-        { panelIndex: 3, column: 1, row: 2, columnSpan: 3, rowSpan: 1 },
-        { panelIndex: 4, column: 4, row: 2, columnSpan: 3, rowSpan: 1 },
-      ],
-    }
+    return buildGridSpec(3, 2, [
+      { panelIndex: 0, column: 1, row: 1, columnSpan: 1, rowSpan: 1 },
+      { panelIndex: 1, column: 2, row: 1, columnSpan: 1, rowSpan: 1 },
+      { panelIndex: 2, column: 3, row: 1, columnSpan: 1, rowSpan: 1 },
+      { panelIndex: 3, column: 1, row: 2, columnSpan: 1, rowSpan: 1 },
+      { panelIndex: 4, column: 2, row: 2, columnSpan: 1, rowSpan: 1 },
+    ])
   }
 
-  // 6: 上三下三
-  return {
-    mode: 'grid',
-    columns: 3,
-    rows: 2,
-    columnTracks: '1fr 1fr 1fr',
-    rowTracks: '1fr 1fr',
-    cells: Array.from({ length: Math.min(panelCount, 6) }, (_, panelIndex) => ({
-      panelIndex,
-      column: (panelIndex % 3) + 1,
-      row: Math.floor(panelIndex / 3) + 1,
-      columnSpan: 1,
-      rowSpan: 1,
-    })),
+  if (panelCount === 6) {
+    // 上三下三
+    return buildGridSpec(3, 2, rowMajorCells(6, 3))
   }
+
+  const { columns, rows } = findEqualGridLayout(panelCount)
+  return buildGridSpec(columns, rows, rowMajorCells(panelCount, columns))
 }
 
-/** Minimum content-column size so panels never overlap — used for dock vs overlay. */
+/** Minimum content width for dock-vs-overlay (grid cells shrink via minmax(0,1fr)). */
+export function getMinDockedContentWidth(_panelCount: number): number {
+  return PANEL_MIN_WIDTH
+}
+
+/** Minimum content-column size — used for layout diagnostics / scroll hints. */
 export function getRequiredContentSize(panelCount: number): { width: number; height: number } {
   const count = Math.max(panelCount, 1)
   const spec = getContentGridSpec(count)
+  const minPanelWidth = getAdaptivePanelMinWidth(count)
 
   const width =
-    spec.columns * PANEL_MIN_WIDTH +
+    spec.columns * minPanelWidth +
     Math.max(0, spec.columns - 1) * PANEL_GAP
 
   const height =
@@ -151,11 +173,12 @@ export function getRequiredContentSize(panelCount: number): { width: number; hei
   return { width, height }
 }
 
-/** Auto layout policy when space is tight (docs/37). */
-export function shouldAutoCollapseSidebar(panelCount: number): boolean {
-  return panelCount >= 3
+/** @deprecated §6.4 — global sidebar may auto-collapse at high panel count; navigator stays. */
+export function shouldAutoCollapseGlobalSidebar(panelCount: number): boolean {
+  return panelCount >= 5
 }
 
-export function shouldPreferToolDockOverlay(panelCount: number): boolean {
-  return panelCount >= 2
+/** @deprecated §6.4 — Tool Dock overlay is width-based only (see AppShell dock check). */
+export function shouldPreferToolDockOverlay(_panelCount: number): boolean {
+  return false
 }

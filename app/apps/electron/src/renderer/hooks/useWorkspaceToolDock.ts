@@ -58,6 +58,8 @@ export function useWorkspaceToolDock(workspaceId: string | null | undefined) {
   React.useEffect(() => {
     setRatios((prev) => {
       const next = normalizeRatios(activeModules, prev)
+      const missingModule = activeModules.some((id) => !(id in next) || (next[id] ?? 0) <= 0)
+      if (missingModule) return equalToolDockRatios(activeModules)
       const same = activeModules.every((id) => Math.abs((prev[id] ?? 0) - (next[id] ?? 0)) < 0.001)
       return same ? prev : next
     })
@@ -72,16 +74,22 @@ export function useWorkspaceToolDock(workspaceId: string | null | undefined) {
     setActiveModules((prev) => {
       if (prev.includes(id)) {
         const next = prev.filter((item) => item !== id)
-        return next.length > 0 ? next : prev
+        if (next.length === 0) return prev
+        setRatios(equalToolDockRatios(next))
+        return next
       }
-      return [...prev, id]
+      const next = [...prev, id]
+      setRatios(equalToolDockRatios(next))
+      return next
     })
   }, [])
 
   const closeModule = React.useCallback((id: ToolDockModuleId) => {
     setActiveModules((prev) => {
       if (prev.length <= 1) return prev
-      return prev.filter((item) => item !== id)
+      const next = prev.filter((item) => item !== id)
+      setRatios(equalToolDockRatios(next))
+      return next
     })
   }, [])
 

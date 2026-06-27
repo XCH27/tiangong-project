@@ -4,8 +4,8 @@
  * Renders a single content panel within the PanelStackContainer.
  *
  * When a panel is the only one (isOnly), it flex-grows to fill available space.
- * When multiple panels exist, each uses flex-grow with its proportion as the weight,
- * combined with min-width to prevent shrinking below PANEL_MIN_WIDTH.
+ * When multiple panels exist, each uses flex-grow with its proportion as the weight
+ * and min-w-0 so panels shrink with inner content ellipsis instead of horizontal scroll.
  *
  * Each PanelSlot overrides AppShellContext to inject a per-panel close button
  * into PanelHeader's rightSidebarButton slot. All panels are equal — closing
@@ -23,7 +23,7 @@ import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atom
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
-import { PANEL_MIN_WIDTH, RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
+import { RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
 
 interface PanelSlotProps {
   entry: PanelStackEntry
@@ -43,6 +43,8 @@ interface PanelSlotProps {
   isCompact?: boolean
   /** Fill parent grid/flex cell (multi-panel grid mode). */
   fillContainer?: boolean
+  /** Terminal or another bottom module sits below this content panel. */
+  isAboveBottomModule?: boolean
 }
 
 export function PanelSlot({
@@ -56,6 +58,7 @@ export function PanelSlot({
   sash,
   isCompact,
   fillContainer = false,
+  isAboveBottomModule = false,
 }: PanelSlotProps) {
   const { t } = useTranslation()
   const closePanel = useSetAtom(closePanelAtom)
@@ -117,6 +120,7 @@ export function PanelSlot({
           fillContainer ? 'h-full w-full' : 'h-full',
           'overflow-hidden relative @container/panel',
           !isOnly && isFocusedPanel ? 'shadow-panel-focused z-[1]' : 'shadow-middle z-0',
+          isAboveBottomModule && 'z-[1]',
           'bg-foreground-2',
         )}
         style={{
@@ -133,14 +137,14 @@ export function PanelSlot({
           // Corner radii: edge corners (touching window boundary) vs interior corners.
           // Compact mode panels run flush to the viewport floor — no rounded bottom.
           borderTopLeftRadius: RADIUS_INNER,
-          borderBottomLeftRadius: isCompact ? 0 : (isAtLeftEdge ? RADIUS_EDGE : RADIUS_INNER),
+          borderBottomLeftRadius: isCompact ? 0 : (isAboveBottomModule ? RADIUS_INNER : (isAtLeftEdge ? RADIUS_EDGE : RADIUS_INNER)),
           borderTopRightRadius: RADIUS_INNER,
-          borderBottomRightRadius: isCompact ? 0 : (isAtRightEdge ? RADIUS_EDGE : RADIUS_INNER),
+          borderBottomRightRadius: isCompact ? 0 : (isAboveBottomModule ? RADIUS_INNER : (isAtRightEdge ? RADIUS_EDGE : RADIUS_INNER)),
           ...(fillContainer
             ? { width: '100%', minWidth: 0, minHeight: 0 }
             : isOnly
             ? { flexGrow: 1, minWidth: 0 }
-            : { flexGrow: proportion, flexShrink: 1, flexBasis: 0, minWidth: PANEL_MIN_WIDTH }
+            : { flexGrow: proportion, flexShrink: 1, flexBasis: 0, minWidth: 0 }
           ),
         }}
       >

@@ -72,6 +72,7 @@ export const FreeFormInputContextBadge = React.forwardRef<HTMLButtonElement, Fre
         onClick={onClick}
         disabled={disabled}
         data-tutorial={dataTutorial}
+        data-chat-input-badge
         className={cn(
           // Base styles - shrink + min-w-0 allows badge to compress in tight layouts
           "input-toolbar-btn inline-flex items-center gap-1.5 h-7 rounded-[6px] text-[13px] text-foreground transition-colors select-none shrink min-w-0",
@@ -96,14 +97,19 @@ export const FreeFormInputContextBadge = React.forwardRef<HTMLButtonElement, Fre
         {showLabel && (
           isExpanded ? (
             // Expanded: simple truncate, placeholder (no selection) gets 60% opacity
-            <span className={cn("truncate max-w-[120px] min-w-0 shrink", !hasSelection && "opacity-50")}>
+            <span
+              data-chat-input-badge-label
+              className={cn("min-w-0 max-w-[120px] shrink truncate", !hasSelection && "opacity-50")}
+            >
               {label}
             </span>
           ) : (
             // Collapsed with selection: fading text with max width
-            <FadingText className="max-w-[140px] min-w-0 shrink" fadeWidth={20}>
-              {label}
-            </FadingText>
+            <span data-chat-input-badge-label className="min-w-0 max-w-[140px] shrink">
+              <FadingText className="min-w-0" fadeWidth={20}>
+                {label}
+              </FadingText>
+            </span>
           )
         )}
 

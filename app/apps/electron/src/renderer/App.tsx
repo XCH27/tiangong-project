@@ -26,6 +26,7 @@ import { useNotifications } from '@/hooks/useNotifications'
 import { useSession } from '@/hooks/useSession'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { NavigationProvider } from '@/contexts/NavigationContext'
+import { emptySessionCleanupDepsAtom } from '@/atoms/panel-stack'
 import { navigate, routes } from './lib/navigate'
 import { attachmentFromContentRef, toDraftRef } from './lib/drafts'
 import { stripMarkdown } from './utils/text'
@@ -1453,6 +1454,15 @@ export default function App() {
       : draft
     return coerceInputText(text)
   }, [])
+
+  const setEmptySessionCleanupDeps = useSetAtom(emptySessionCleanupDepsAtom)
+  useEffect(() => {
+    setEmptySessionCleanupDeps({
+      onAutoDelete: handleAutoDeleteEmptySession,
+      getDraft,
+    })
+    return () => setEmptySessionCleanupDeps(null)
+  }, [getDraft, handleAutoDeleteEmptySession, setEmptySessionCleanupDeps])
 
   // Getter for persisted attachment refs (path + name only — not hydrated files).
   // Consumers that need FileAttachment objects should call hydrateDraftAttachments.

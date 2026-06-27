@@ -29,7 +29,7 @@ export function EntityListLabelBadge({ label, rawValue, sessionLabels, onLabelsC
       role={readOnly ? undefined : 'button'}
       tabIndex={readOnly ? undefined : 0}
       className={cn(
-        'shrink-0 h-[18px] max-w-[120px] px-1.5 text-[10px] font-medium rounded flex items-center whitespace-nowrap gap-0.5',
+        'shrink min-w-0 h-[18px] max-w-[120px] px-1.5 text-[10px] font-medium rounded flex items-center gap-0.5 overflow-hidden',
         readOnly ? 'cursor-default' : 'cursor-pointer',
       )}
       onMouseDown={readOnly ? undefined : (e) => { e.stopPropagation(); e.preventDefault() }}
@@ -40,8 +40,9 @@ export function EntityListLabelBadge({ label, rawValue, sessionLabels, onLabelsC
         backgroundColor: 'rgba(var(--foreground-rgb), 0.05)',
         color: 'rgba(var(--foreground-rgb), 0.8)',
       }}
+      title={label.name}
     >
-      {label.name}
+      <span className="truncate min-w-0">{label.name}</span>
       {displayValue ? (
         <>
           <span style={{ opacity: 0.4 }}>·</span>

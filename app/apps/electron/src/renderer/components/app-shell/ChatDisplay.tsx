@@ -2241,7 +2241,7 @@ function TeamMessageBubble({
   return (
     <div className="flex justify-start">
       <div className="min-w-0 max-w-[90%] overflow-hidden rounded-[8px] bg-background shadow-minimal">
-        <div className="flex min-h-8 items-center gap-1.5 border-b border-border/50 px-3 py-1.5">
+        <div className="flex min-h-8 min-w-0 items-center gap-1.5 overflow-hidden border-b border-border/50 px-3 py-1.5">
           <span className="shrink-0 text-[10px] font-medium tabular-nums text-foreground/45">{member.sequence}</span>
           {identityIds.map((labelId) => {
             const label = labelsById.get(labelId)

@@ -1,8 +1,9 @@
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'
+import { RADIUS_INNER } from './panel-constants'
 
-interface WorkbenchModuleFrameProps {
+export interface CraftModulePanelProps {
   title: React.ReactNode
   icon: React.ComponentType<{ className?: string; strokeWidth?: string | number }>
   children: React.ReactNode
@@ -16,12 +17,16 @@ interface WorkbenchModuleFrameProps {
   onHeaderPointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void
   gripMode?: 'move' | 'resize-y'
   isDragging?: boolean
+  isDragSource?: boolean
   isHighlighted?: boolean
   ariaLabel?: string
 }
 
-export const WorkbenchModuleFrame = React.forwardRef<HTMLElement, WorkbenchModuleFrameProps>(
-  function WorkbenchModuleFrame({
+/**
+ * Compact module chrome for Tool Dock tiles and the bottom terminal card.
+ */
+export const CraftModulePanel = React.forwardRef<HTMLElement, CraftModulePanelProps>(
+  function CraftModulePanel({
     title,
     icon: Icon,
     children,
@@ -35,6 +40,7 @@ export const WorkbenchModuleFrame = React.forwardRef<HTMLElement, WorkbenchModul
     onHeaderPointerDown,
     gripMode = 'move',
     isDragging,
+    isDragSource,
     isHighlighted,
     ariaLabel,
   }, ref) {
@@ -49,28 +55,31 @@ export const WorkbenchModuleFrame = React.forwardRef<HTMLElement, WorkbenchModul
       <section
         ref={ref}
         className={cn(
-          'group/workbench-module relative flex min-w-0 flex-col overflow-visible rounded-[10px]',
+          'group/workbench-module relative flex min-w-0 flex-col overflow-hidden',
           'border border-border bg-background text-foreground shadow-middle',
-          isHighlighted && 'ring-1 ring-primary/50',
-          isDragging && 'ring-1 ring-primary/60',
+          isHighlighted && 'ring-2 ring-primary/60',
+          isDragging && 'z-30 scale-[1.02] shadow-strong ring-2 ring-primary/70',
+          isDragSource && 'pointer-events-none opacity-35',
           className,
         )}
-        style={style}
+        style={{ borderRadius: RADIUS_INNER, ...style }}
         aria-label={ariaLabel}
       >
         {onDragPointerDown && (
           <div
             className={cn(
-              'absolute left-0 right-0 top-0 z-10 flex h-6 justify-center pt-1 opacity-0 transition-opacity hover:opacity-100',
+              'absolute left-0 right-0 top-0 z-10 flex h-8 touch-none justify-center pt-1.5',
+              'opacity-50 transition-opacity hover:opacity-100',
               gripMode === 'resize-y' ? 'cursor-row-resize' : 'cursor-grab active:cursor-grabbing',
+              isDragSource && 'cursor-grabbing opacity-100',
             )}
             title={dragTitle}
             onPointerDown={onDragPointerDown}
           >
             <div
               className={cn(
-                'h-1 w-12 rounded-full bg-foreground/25 shadow-sm dark:bg-white/80',
-                isDragging && 'bg-primary dark:bg-primary',
+                'h-1 w-12 rounded-full bg-foreground/30 shadow-sm dark:bg-white/80',
+                isDragSource && 'bg-primary dark:bg-primary',
               )}
             />
           </div>
@@ -78,7 +87,7 @@ export const WorkbenchModuleFrame = React.forwardRef<HTMLElement, WorkbenchModul
 
         <div
           className={cn(
-            'flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border/50 px-3',
+            'flex h-10 shrink-0 touch-none items-center justify-between gap-2 border-b border-border/50 px-3',
             onHeaderPointerDown && 'cursor-grab select-none active:cursor-grabbing',
           )}
           onPointerDown={handleHeaderPointerDown}
