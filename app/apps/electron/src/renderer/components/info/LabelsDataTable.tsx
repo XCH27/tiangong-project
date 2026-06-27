@@ -169,10 +169,11 @@ export function LabelsDataTable({
   searchable = false,
   maxHeight = 400,
   fullscreen = false,
-  fullscreenTitle = 'Labels',
+  fullscreenTitle,
   className,
 }: LabelsDataTableProps) {
   const { t } = useTranslation()
+  const resolvedFullscreenTitle = fullscreenTitle ?? t('settings.labels.title')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { isDark } = useTheme()
   const columns = useMemo(() => getColumns(t), [t])
@@ -217,7 +218,7 @@ export function LabelsDataTable({
         <DataTableOverlay
           isOpen={isFullscreen}
           onClose={() => setIsFullscreen(false)}
-          title={fullscreenTitle}
+          title={resolvedFullscreenTitle}
           subtitle={t("table.labelCount", { count: totalCount })}
           theme={isDark ? 'dark' : 'light'}
         >

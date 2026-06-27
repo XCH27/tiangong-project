@@ -22,7 +22,7 @@
  * feel rather than a CSS reflow.
  */
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, type CSSProperties } from 'react'
 import { useAtomValue } from 'jotai'
 import { motion } from 'motion/react'
 import { cn } from '@/lib/utils'
@@ -36,9 +36,11 @@ import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
   PANEL_STACK_VERTICAL_OVERFLOW,
+  PANEL_MIN_WIDTH,
   RADIUS_EDGE,
   RADIUS_INNER,
 } from './panel-constants'
+import { getContentGridSpec, PANEL_MIN_HEIGHT } from './workbench-layout'
 
 /** Spring transition matching AppShell's sidebar/navigator animation */
 const PANEL_SPRING = { type: 'spring' as const, stiffness: 600, damping: 49 }
@@ -53,6 +55,9 @@ interface PanelStackContainerProps {
   navigatorWidth: number
   isSidebarAndNavigatorHidden: boolean
   isRightSidebarVisible?: boolean
+  /** Optional bottom slot in the middle content column (e.g. terminal card). */
+  contentBottomSlot?: React.ReactNode
+  contentBottomHeight?: number
   /** Compact mode: single-panel, list/content toggle (mobile or narrow window) */
   isCompact?: boolean
   isResizing?: boolean
@@ -65,6 +70,8 @@ export function PanelStackContainer({
   navigatorWidth,
   isSidebarAndNavigatorHidden,
   isRightSidebarVisible,
+  contentBottomSlot,
+  contentBottomHeight = 0,
   isCompact = false,
   isResizing,
 }: PanelStackContainerProps) {
@@ -95,6 +102,27 @@ export function PanelStackContainer({
   const hasNavigator = isCompact ? navigatorWidth > 0 : navigatorWidth > 0
   const isMultiPanel = visiblePanels.length > 1
   const isLeftEdge = !hasSidebar && !hasNavigator
+  const gridSpec = getContentGridSpec(visiblePanels.length)
+
+  const panelAreaStyle: CSSProperties = gridSpec.mode === 'grid'
+    ? {
+        display: 'grid',
+        gridTemplateColumns: gridSpec.columnTracks.replace(/1fr/g, `minmax(${PANEL_MIN_WIDTH}px, 1fr)`),
+        gridTemplateRows: gridSpec.rowTracks.replace(/1fr/g, `minmax(${PANEL_MIN_HEIGHT}px, 1fr)`),
+        gap: PANEL_GAP,
+        minWidth: gridSpec.columns * PANEL_MIN_WIDTH + Math.max(0, gridSpec.columns - 1) * PANEL_GAP,
+        minHeight: gridSpec.rows * PANEL_MIN_HEIGHT + Math.max(0, gridSpec.rows - 1) * PANEL_GAP,
+        width: '100%',
+        height: '100%',
+      }
+    : {
+        display: 'flex',
+        minWidth: visiblePanels.length > 1
+          ? visiblePanels.length * PANEL_MIN_WIDTH + Math.max(0, visiblePanels.length - 1) * PANEL_GAP
+          : 0,
+        width: '100%',
+        height: '100%',
+      }
 
   // Auto-scroll to newly pushed content panel (desktop multi-panel only).
   // Compact mode is single-panel so there's nothing to scroll into view.
@@ -244,30 +272,71 @@ export function PanelStackContainer({
           </div>
         </motion.div>
 
-        {/* === CONTENT PANELS WITH SASHES === */}
-        {visiblePanels.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center" />
-        ) : (
-          visiblePanels.map((entry, index) => (
-            <PanelSlot
-              key={entry.id}
-              entry={entry}
-              isOnly={visiblePanels.length === 1}
-              isFocusedPanel={isMultiPanel ? entry.id === focusedPanelId : true}
-              isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
-              isAtLeftEdge={index === 0 && isLeftEdge}
-              isAtRightEdge={index === visiblePanels.length - 1 && !isRightSidebarVisible}
-              proportion={entry.proportion}
-              isCompact={false}
-              sash={index > 0 ? (
-                <PanelResizeSash
-                  leftIndex={index - 1}
-                  rightIndex={index}
-                />
-              ) : undefined}
-            />
-          ))
-        )}
+        {/* === CONTENT COLUMN: panels + optional bottom module (terminal) === */}
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+            <div style={panelAreaStyle}>
+              {visiblePanels.length === 0 ? (
+                <div className="flex flex-1 items-center justify-center" />
+              ) : gridSpec.mode === 'grid' ? (
+                visiblePanels.map((entry, index) => {
+                  const cell = gridSpec.cells.find((item) => item.panelIndex === index)
+                  if (!cell) return null
+                  return (
+                    <div
+                      key={entry.id}
+                      className="min-h-0 min-w-0"
+                      style={{
+                        gridColumn: `${cell.column} / span ${cell.columnSpan}`,
+                        gridRow: `${cell.row} / span ${cell.rowSpan}`,
+                      }}
+                    >
+                      <PanelSlot
+                        entry={entry}
+                        isOnly={false}
+                        isFocusedPanel={isMultiPanel ? entry.id === focusedPanelId : true}
+                        isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
+                        isAtLeftEdge={index === 0 && isLeftEdge}
+                        isAtRightEdge={index === visiblePanels.length - 1 && !isRightSidebarVisible}
+                        proportion={entry.proportion}
+                        isCompact={false}
+                        fillContainer
+                      />
+                    </div>
+                  )
+                })
+              ) : (
+                visiblePanels.map((entry, index) => (
+                  <PanelSlot
+                    key={entry.id}
+                    entry={entry}
+                    isOnly={visiblePanels.length === 1}
+                    isFocusedPanel={isMultiPanel ? entry.id === focusedPanelId : true}
+                    isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
+                    isAtLeftEdge={index === 0 && isLeftEdge}
+                    isAtRightEdge={index === visiblePanels.length - 1 && !isRightSidebarVisible}
+                    proportion={entry.proportion}
+                    isCompact={false}
+                    sash={index > 0 ? (
+                      <PanelResizeSash
+                        leftIndex={index - 1}
+                        rightIndex={index}
+                      />
+                    ) : undefined}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+          {contentBottomSlot && contentBottomHeight > 0 && (
+            <div
+              className="shrink-0 min-h-0 pt-1"
+              style={{ height: contentBottomHeight + 4 }}
+            >
+              {contentBottomSlot}
+            </div>
+          )}
+        </div>
       </motion.div>
     </div>
   )

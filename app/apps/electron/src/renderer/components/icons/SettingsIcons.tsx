@@ -10,9 +10,12 @@ import {
   Brain,
   Building2,
   Database,
+  ExternalLink,
+  Github,
   Keyboard,
   MessageSquare,
   Palette,
+  Route,
   Server,
   ShieldCheck,
   Sparkles,
@@ -27,7 +30,10 @@ type IconProps = { className?: string }
 
 export const AppSettingsIcon = ({ className }: IconProps) => <ToggleRight className={className} />
 export const AiSettingsIcon = ({ className }: IconProps) => <Sparkles className={className} />
+export const ModelRoutingSettingsIcon = ({ className }: IconProps) => <Route className={className} />
 export const CliRuntimeSettingsIcon = ({ className }: IconProps) => <Terminal className={className} />
+export const ExternalJobsSettingsIcon = ({ className }: IconProps) => <ExternalLink className={className} />
+export const GitHubSettingsIcon = ({ className }: IconProps) => <Github className={className} />
 export const ManagerAgentIcon = ({ className }: IconProps) => <Brain className={className} />
 export const MemorySettingsIcon = ({ className }: IconProps) => <Database className={className} />
 export const AppearanceIcon = ({ className }: IconProps) => <Palette className={className} />
@@ -47,7 +53,10 @@ export const PreferencesIcon = ({ className }: IconProps) => <UserCircle classNa
 export const SETTINGS_ICONS: Record<SettingsSubpage, React.ComponentType<IconProps>> = {
   app: AppSettingsIcon,
   ai: AiSettingsIcon,
+  modelRouting: ModelRoutingSettingsIcon,
   cliRuntime: CliRuntimeSettingsIcon,
+  externalJobs: ExternalJobsSettingsIcon,
+  github: GitHubSettingsIcon,
   managerAgent: ManagerAgentIcon,
   memory: MemorySettingsIcon,
   appearance: AppearanceIcon,

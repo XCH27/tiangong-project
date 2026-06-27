@@ -5,6 +5,9 @@ import type {
   InternalActionRegistry,
   InternalActionSummary,
 } from '@craft-agent/shared/protocol'
+import { createSpineInternalActions } from './spine-internal-actions'
+
+export { createSpineInternalActions } from './spine-internal-actions'
 
 export class InternalActionRegistryService implements InternalActionRegistry {
   private readonly defs = new Map<string, InternalActionDefinition>()
@@ -189,6 +192,10 @@ export function createFilesInternalActions(): InternalActionDefinition[] {
   ]
 }
 
+export function createAllInternalActions(): InternalActionDefinition[] {
+  return [...createFilesInternalActions(), ...createSpineInternalActions()]
+}
+
 function keyFor(id: string, contractVersion: number): string {
   return `${id}@${contractVersion}`
 }
@@ -204,7 +211,8 @@ function assertValidDefinition(def: InternalActionDefinition): void {
   if (def.humanEntryPoints.length === 0 && !def.agentCallable) {
     throw new Error(`Internal action ${def.id} must have a human entry point or be agent-callable`)
   }
-  if (def.surface === 'files' && def.locality !== 'LOCAL_ONLY') {
-    throw new Error(`Internal action ${def.id} belongs to files and must be LOCAL_ONLY`)
+  const localOnlySurfaces: ActionSurface[] = ['files', 'session', 'manager', 'team']
+  if (localOnlySurfaces.includes(def.surface) && def.locality !== 'LOCAL_ONLY') {
+    throw new Error(`Internal action ${def.id} belongs to ${def.surface} and must be LOCAL_ONLY`)
   }
 }

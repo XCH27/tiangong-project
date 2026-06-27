@@ -330,7 +330,7 @@ async function runEsbuild(
 }
 
 // Build Pi agent server using bun instead of esbuild.
-// The Pi SDK (@mariozechner/pi-coding-agent) is ESM-only, and esbuild with
+// The Pi SDK (@earendil-works/pi-coding-agent) is ESM-only, and esbuild with
 // packages:external leaves ESM imports as require() calls that fail at runtime.
 // Bun's bundler handles ESM→ESM bundling correctly.
 async function buildPiAgentServer(): Promise<{ success: boolean; error?: string }> {
@@ -595,7 +595,7 @@ async function main(): Promise<void> {
   console.log("🚀 Starting Electron...\n");
 
   const electronProc = spawn({
-    cmd: [ELECTRON_BIN, "apps/electron"],
+    cmd: [ELECTRON_BIN, "apps/electron", "--remote-debugging-port=9222"],
     cwd: ROOT_DIR,
     stdin: "ignore",
     stdout: "inherit",

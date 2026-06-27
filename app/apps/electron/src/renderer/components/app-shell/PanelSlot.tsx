@@ -41,6 +41,8 @@ interface PanelSlotProps {
   sash?: React.ReactNode
   /** Compact (mobile) mode — shows back button in panel header */
   isCompact?: boolean
+  /** Fill parent grid/flex cell (multi-panel grid mode). */
+  fillContainer?: boolean
 }
 
 export function PanelSlot({
@@ -53,6 +55,7 @@ export function PanelSlot({
   proportion,
   sash,
   isCompact,
+  fillContainer = false,
 }: PanelSlotProps) {
   const { t } = useTranslation()
   const closePanel = useSetAtom(closePanelAtom)
@@ -111,7 +114,8 @@ export function PanelSlot({
         data-panel-role="content"
         data-compact={isCompact || undefined}
         className={cn(
-          'h-full overflow-hidden relative @container/panel',
+          fillContainer ? 'h-full w-full' : 'h-full',
+          'overflow-hidden relative @container/panel',
           !isOnly && isFocusedPanel ? 'shadow-panel-focused z-[1]' : 'shadow-middle z-0',
           'bg-foreground-2',
         )}
@@ -132,7 +136,9 @@ export function PanelSlot({
           borderBottomLeftRadius: isCompact ? 0 : (isAtLeftEdge ? RADIUS_EDGE : RADIUS_INNER),
           borderTopRightRadius: RADIUS_INNER,
           borderBottomRightRadius: isCompact ? 0 : (isAtRightEdge ? RADIUS_EDGE : RADIUS_INNER),
-          ...(isOnly
+          ...(fillContainer
+            ? { width: '100%', minWidth: 0, minHeight: 0 }
+            : isOnly
             ? { flexGrow: 1, minWidth: 0 }
             : { flexGrow: proportion, flexShrink: 1, flexBasis: 0, minWidth: PANEL_MIN_WIDTH }
           ),

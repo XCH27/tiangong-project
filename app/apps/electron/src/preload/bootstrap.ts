@@ -418,6 +418,21 @@ client.onConnectionStateChanged((state) => {
   ipcRenderer.invoke('server:invokeOnServer', url, token, channel, ...args)
 ;(api as ElectronAPI).transferSessionToWorkspace = (sessionId: string, targetWorkspaceId: string, sessionIndex?: number, sessionCount?: number) =>
   ipcRenderer.invoke('session:transferToRemoteWorkspace', sessionId, targetWorkspaceId, sessionIndex, sessionCount)
+;(api as ElectronAPI).terminalStart = (options) => ipcRenderer.invoke('terminal:start', options)
+;(api as ElectronAPI).terminalRestart = (options) => ipcRenderer.invoke('terminal:restart', options)
+;(api as ElectronAPI).terminalWrite = (id: string, data: string) => ipcRenderer.invoke('terminal:write', id, data)
+;(api as ElectronAPI).terminalResize = (id: string, size: { cols: number; rows: number }) => ipcRenderer.invoke('terminal:resize', id, size)
+;(api as ElectronAPI).terminalKill = (id: string) => ipcRenderer.invoke('terminal:kill', id)
+;(api as ElectronAPI).onTerminalData = (cb: (payload: { id: string; data: string }) => void) => {
+  const handler = (_e: any, payload: { id: string; data: string }) => cb(payload)
+  ipcRenderer.on('terminal:data', handler)
+  return () => { ipcRenderer.removeListener('terminal:data', handler) }
+}
+;(api as ElectronAPI).onTerminalExit = (cb: (payload: { id: string; code: number | null; signal: string | null }) => void) => {
+  const handler = (_e: any, payload: { id: string; code: number | null; signal: string | null }) => cb(payload)
+  ipcRenderer.on('terminal:exit', handler)
+  return () => { ipcRenderer.removeListener('terminal:exit', handler) }
+}
 ;(api as ElectronAPI).onTransferProgress = (cb: (progress: { sessionIndex: number; sessionCount: number; chunkSent: number; chunkTotal: number }) => void) => {
   const handler = (_e: any, progress: { sessionIndex: number; sessionCount: number; chunkSent: number; chunkTotal: number }) => cb(progress)
   ipcRenderer.on('transfer:progress', handler)

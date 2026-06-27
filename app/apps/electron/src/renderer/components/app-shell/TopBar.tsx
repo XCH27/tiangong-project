@@ -18,12 +18,13 @@ import { isMac, isWebUI } from "@/lib/platform"
 import { useActionLabel } from "@/actions"
 import type { SettingsMenuItem } from "../../../shared/menu-schema"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ComponentType } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceAddButton, WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
 import { AppMenu } from "../AppMenu"
+import type { ToolDockModuleId } from "./tool-dock-config"
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
 const RIGHT_SLOT_TWO_BADGES_THRESHOLD = 300
@@ -51,6 +52,15 @@ interface TopBarProps {
   onToggleFocusMode: () => void
   onToggleWorkspaceContextSidebar?: () => void
   isWorkspaceContextSidebarVisible?: boolean
+  onToggleBottomTerminal?: () => void
+  isBottomTerminalVisible?: boolean
+  toolDockModules?: Array<{
+    id: ToolDockModuleId
+    label: string
+    icon: ComponentType<{ className?: string; strokeWidth?: string | number }>
+    isActive: boolean
+    onToggle: () => void
+  }>
   onAddSessionPanel: () => void
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
@@ -80,6 +90,9 @@ export function TopBar({
   onToggleFocusMode,
   onToggleWorkspaceContextSidebar,
   isWorkspaceContextSidebarVisible,
+  onToggleBottomTerminal,
+  isBottomTerminalVisible,
+  toolDockModules,
   onAddSessionPanel,
   onAddBrowserPanel,
   isCompact,
@@ -227,6 +240,23 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
+        {toolDockModules?.map((module) => {
+          const ModuleIcon = module.icon
+          return (
+            <Tooltip key={module.id}>
+              <TooltipTrigger asChild>
+                <TopBarButton
+                  onClick={module.onToggle}
+                  aria-label={module.label}
+                  isActive={module.isActive}
+                >
+                  <ModuleIcon className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
+                </TopBarButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{module.label}</TooltipContent>
+            </Tooltip>
+          )
+        })}
         {onToggleWorkspaceContextSidebar && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -240,6 +270,22 @@ export function TopBar({
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {isWorkspaceContextSidebarVisible ? t('workspaceContext.hide') : t('workspaceContext.show')}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {onToggleBottomTerminal && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TopBarButton
+                onClick={onToggleBottomTerminal}
+                aria-label={isBottomTerminalVisible ? t('terminal.hide') : t('terminal.show')}
+                isActive={isBottomTerminalVisible}
+              >
+                <Icons.TerminalSquare className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
+              </TopBarButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isBottomTerminalVisible ? t('terminal.hide') : t('terminal.show')}
             </TooltipContent>
           </Tooltip>
         )}

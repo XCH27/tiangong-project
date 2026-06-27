@@ -67,6 +67,8 @@ import {
   type AuthRequestTurn,
 } from "@craft-agent/ui"
 import { MemoizedAuthRequestCard } from "@/components/chat/AuthRequestCard"
+import { ModelRoutingEvent, type ModelRoutingEventView } from "@/components/chat/ModelRoutingEvent"
+import { CacheLedgerEvent, type CacheLedgerEventView } from "@/components/chat/CacheLedgerEvent"
 import { ChatInputZone, type StructuredInputState, type StructuredResponse, type PermissionResponse, type AdminApprovalResponse } from "./input"
 import type { RichTextInputHandle } from "@/components/ui/rich-text-input"
 import { useBackgroundTasks } from "@/hooks/useBackgroundTasks"
@@ -2197,6 +2199,18 @@ function getTeamMessageEvent(message: Message): TeamMessageEventView | null {
   return event?.type === 'team_message' ? event as TeamMessageEventView : null
 }
 
+function getModelRoutingEvent(message: Message): ModelRoutingEventView | null {
+  const customData = asRecord((message as Message & { customData?: unknown }).customData)
+  const event = asRecord(customData?.sessionEvent)
+  return event?.type === 'model_routing_decision' ? event as unknown as ModelRoutingEventView : null
+}
+
+function getCacheLedgerEvent(message: Message): CacheLedgerEventView | null {
+  const customData = asRecord((message as Message & { customData?: unknown }).customData)
+  const event = asRecord(customData?.sessionEvent)
+  return event?.type === 'cache_ledger' ? event as unknown as CacheLedgerEventView : null
+}
+
 function TeamMessageBubble({
   message,
   event,
@@ -2444,6 +2458,16 @@ function MessageBubble({
         onOpenFile={onOpenFile}
         onOpenUrl={onOpenUrl}
       />
+    }
+
+    const routingEvent = getModelRoutingEvent(message)
+    if (routingEvent) {
+      return <ModelRoutingEvent event={routingEvent} />
+    }
+
+    const ledgerEvent = getCacheLedgerEvent(message)
+    if (ledgerEvent) {
+      return <CacheLedgerEvent event={ledgerEvent} />
     }
 
     // Compaction complete message - render as horizontal rule with centered label

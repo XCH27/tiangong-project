@@ -73,7 +73,9 @@ files:
 extraMetadata:
   main: dist/main.cjs
 
-# Auto-update: electron-updater fetches from this URL for update manifests (.yml files)
+# Auto-update: electron-updater fetches from this URL for update manifests (.yml files).
+# Fleet 发行：打包前设置 FLEET_ELECTRON_UPDATE_URL，或使用 `bun run electron:dist:mac:fleet`。
+# 未设置时默认 craft 官方源（开发/对照）；给用户推 Fleet 版必须换自有 URL。
 publish:
   provider: generic
   url: https://agents.craft.do/electron/latest

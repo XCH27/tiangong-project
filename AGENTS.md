@@ -78,6 +78,8 @@
 36. **并行开发：共享契约只由 Lead 改。** 多 Agent 并行时，跨 Agent 的共享契约文件（`shared/protocol/*` 尤其 `channels.ts`/`routing.ts`/`dto.ts`/`index.ts`、`electron transport/channel-map.ts`、`electron shared/types.ts`、`server-core handlers/rpc/index.ts`、`handler-deps.ts`、`i18n/locales/*.json`）由 **Lead 在 Wave 0 一次性冻结**，冻结后对并行 Agent **只读**。并行 Agent 需要新 channel/event/command/type/i18n key 时**必须回 Lead 加**，不得自行修改这些文件（否则必然冲突 + 漂移）。新 handler 文件用“Lead 建空壳并注册 → 对应 Agent 填实现”的顺序移交，Wave 0 后 Lead 不再碰。文件所有权矩阵、波次与每个 Agent 提示词见 `docs/32`/`docs/34`。
 37. **并行开发：单文件单所有者 + 独立 worktree。** 每个文件恰好一个 Agent 所有者；每个 Agent 在独立 git worktree+分支开发，只改自己名下文件，禁改清单是硬约束；完成后按 `docs/32 §6` 格式汇报（worktree/branch/commit/改了哪些文件/没碰哪些禁改/验证结果），缺项不合入。合入前由 Lead 核对实际 diff 是否越界改了契约（铁律 23）。
 38. **功能页面必须前后端同文档。** 新增或修改一个功能页面时，同一份功能文档必须同时写清：用户界面放哪里、沿用哪些原组件、显示哪些字段、后端服务/RPC/事件怎么接、Agent 用什么工具调用、permission/timeline/回滚怎么走、设置页和 i18n 怎么同步、验收怎么证明。禁止只写 UI 稿或只写后端服务；并行开发时可以拆人做，但不能拆成两份互相猜的文档。
+39. **智能模型路由只挂 API/OAuth 路径。** 选了 CLI Runtime（`cliRuntimeId != null`）时整条路由主干（Auto/Fusion/缓存/瘦身）跳过；生成类（生图/生视频）走 External Job 平面，不进 LLM 档位路由。Auto 路由 + 缓存 + 瘦身可早做；Fusion 默认关（D5）。管理 Agent 固定 cheap API、永不 Fusion、不给 CLI；队长默认触发者；执行 Agent hybrid。详见 `docs/03`。
+40. **路由决策和成本账本必须进 timeline。** 每条 Auto 路由请求写 `model_routing_decision` 事件（taskType/complexity/tier/fusionMode/basis）；Fusion 和缓存命中写 `cache_ledger`（真实/估算/未知分开）。偏好数据（接受/重试/换模型/回滚）采集进数据管线，数据够了训 RouteLLM 路由器。
 
 ## 常用入口
 
@@ -94,7 +96,21 @@
 ```bash
 ./scripts/craft.sh install
 ./scripts/craft.sh run typecheck:all
+./scripts/fleet-verify.sh          # 主线自动化门禁（类型+i18n+脊柱单测+oss-sync）
+./scripts/cli-subagents.sh --help  # 本机 Claude/Grok/Antigravity 并行子 agent（非 Fleet CLI Runtime）
 ./scripts/craft.sh run electron:dev
 ```
 
 如果本机已经全局安装 Bun，也可以在 `app/` 中直接执行 `bun run ...`。
+
+## Learned User Preferences
+
+- 用户偏好「想清楚再动手」：动手前先看清相关聊天记录和全部 md 文档，梳理出稳定方案再改，目标是一次到位、避免反复返工和重复犯同一个错；不要边想边改。
+- 已有最优方案或文档待收口时，直接更新文档并推进实现，不要为确认而反复对话（与硬规则 10 互补，强调文档侧主动收口）。
+- 开源能力选型默认「集成 vs 兼容」：需要频繁跟进上游才能保持最佳体验的能力走兼容/适配层；长期稳定、接口很少变的再考虑直接集成进产品，并帮用户预配置最佳组合而非让人自行拼凑。
+- 文档维护偏好：按前后端功能闭环整合文档；理念/愿景/痛点写入 `docs/WHITEPAPER-项目白皮书.md`，具体落地挂追溯表；文档序号用稳定 ID+tombstone，不追求连续编号。
+- 复杂度评估要平衡两端：拒绝无收益过度工程化，也拒绝为省事过度简化；用户拍板完整落地时不要用「Phase 2/远期目标」擅自缩水范围。
+
+## Learned Workspace Facts
+
+- 本工作区专指 `GUI 终端`（Fleet，基于 craft-agents-oss），与用户的另一个项目 `万象天视 / TianShi / OmniVerse Vision`（位于 `/Users/lullwen/Documents/OmniVerse Vision_Codex`）是不同仓库。不要把针对其中一个项目的修改改到另一个仓库；用户反馈某个项目的问题时只动那个项目对应的仓库，发现越界改动要全部恢复。

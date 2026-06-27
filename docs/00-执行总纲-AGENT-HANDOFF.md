@@ -1,8 +1,9 @@
 # 00 · 当前执行总纲
 
-> 状态日期：2026-06-22
+> 状态日期：2026-06-27
 > 当前分支：`work/fresh-base-spine`
 > 口径：只把当前分支已经存在并可验证的代码算作完成。其它 worktree、旧分支和 Agent 汇报只算候选资产。
+> **状态唯一真相**：模块级完成度见 `docs/32`；本文是事实摘要 + 执行优先级，不维护第二份长状态表。
 
 ## 1 · 当前代码事实
 
@@ -10,33 +11,46 @@
 
 - `DesignAction`、`DesignPatch`、`ActorRef` 等共享协议。
 - `DesignEngine` 的基础服务接口与实现。
-> **2026-06-23：本轮已提交主线**（`work/fresh-base-spine`）4 个 commit：`94f26416` 后端（团队收敛/Progress/CLI ACP/管理决策/记忆）、`2756b7dc` CLI 最小 UI、`28254ff6` 文档、`144bbefe` 管理 Agent 设置页。以下本轮项已由 🟡 候选升 **✅ 已落主线**；验收口径不变：typecheck 全过（shared/server-core/session-tools-core/electron），bun 单测在本机跑，Electron 视觉/重启手工验收仍待本机。
+> **2026-06-27：Wave 0 + Wave 1 已合入主线**（`work/fresh-base-spine`）：S1 内部动作注册表承重墙、S3 会话列表团队化 UI、S5 管理 Agent 全局专栏、S6 分层记忆增强（含输入建议接线）、S7 CLI native adapter、S8 `@`/`/` 输入迁移、S10 External Job 模型均已逐项核验并提交。验收口径：`typecheck:all` + `fleet-verify` 通过，相关目标单测通过；Electron 视觉/真实 CLI/真实外站仍需本机手工验收。未提交候选能力：oss-sync v0.10.4、人类交互终端 PTY、Git RPC（见 `docs/32 §8.1`）。
 
 - 团队编排后端 ✅ 已落主线：team rules、TeamCoordinator、事件持久化、投递/运行分离、收件箱、Agent session 工具；**身份双写已收敛到 craft 原标签系统**（`LabelConfig` 扩展 + session labels 派生 + `setSessionLabels` 队长唯一性，见 `docs/33` §0）。
-- 任务进度 Progress ✅ 已落主线（后端）：`protocol/progress.ts` + `set_session_progress` 工具 + `SessionManager.setSessionProgress` + RPC + JSONL 持久化字段 + round-trip 回归，见 `docs/35`。剩余：进度卡 UI、团队 rollup UI。
-- CLI Runtime + ACP 发送 ✅ 已落主线（后端）：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 设置页（CLI 列表/Custom 表单可用）。见 `docs/23`/`docs/24`。
-- ⚠️ **CLI / 模型选择器 UI 错乱，需按 `docs/36` 重做（不算已落地）**：commit `2756b7dc` 顶部栏+输入框各放一个运行方式选择器（重复），下拉把"运行方式/模型"两轴拍平成双勾。`docs/36` 给了正确交互。**只能本机起 Electron 视觉验收**。
-- 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + **设置页（模型配置：跟随工作区或固定 API 连接/模型/推理强度；自动决策开关/L2 规则增删；记忆查看/增删，真接 RPC）**。右下角入口可发消息：首次发送创建 hidden craft session，按管理 Agent 模型配置填入 `llmConnection/model/thinkingLevel`，仍走原 `onSendMessage`/permission/timeline。见 `docs/17 §4`。剩余：专用 manager system prompt/tool 注入、记忆作决策依据注入、全局专栏完整对话 UI。
-- 分层记忆 ✅ 已落主线（后端 + 设置页）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 管理 Agent 设置页内查看/增删。见 `docs/05`。剩余：全局共享分区、语义检索、衰减/归档。
-- 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：① 团队群聊置顶特殊会话项 ② Token 环点击的中文额度/上下文详情弹层（需先补 usage 后端）③ Progress 进度卡。管理 Agent 右下角悬浮入口已落 `ManagerAgentLauncher.tsx`，可用 hidden session 发消息；完整全局专栏/退出行为仍待做。
+- 任务进度 Progress ✅ 已落主线：`protocol/progress.ts` + `set_session_progress` 工具 + `SessionManager.setSessionProgress` + RPC + JSONL 持久化字段 + 会话顶部 Progress 卡 + 会话行 N/M 小药丸。剩余：团队 rollup UI、本机视觉验收。见 `docs/35`。
+- CLI Runtime + ACP/native 发送 ✅ 已落主线：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ Codex/Claude/Grok/Antigravity one-shot adapter + 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 设置页（CLI 列表/Custom 表单可用）。见 `docs/23`/`docs/24`。剩余：usage/额度采样、真实 CLI smoke、Claude 等 CLI 的 reasoning flag 实机确认。
+- CLI / 模型选择器 UI ✅ 已按 `docs/36` 收口：输入框底部拆为 CLI / 模型 / Token 三按钮；CLI 模式显示“模型由 CLI 管理”，不伪造模型列表；Token 环 API/CLI 诚实分级。剩余：本机 Electron 视觉验收。
+- 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + 设置页（模型配置：跟随工作区或固定 API 连接/模型/推理强度；自动决策开关/L2 规则增删）。S5 已补“所有会话”层专栏、右下角 mini 入口和退出行为设置；首次发送创建 hidden craft session，注入管理 Agent 专用系统提示词，仍走原 `onSendMessage`/permission/timeline。见 `docs/17 §4`。剩余：真正跨工作区单一全局 session、更多结构化管理动作。
+- 分层记忆 ✅ 已落主线（后端 + 设置页 + 输入建议）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 独立 `MemorySettingsPage`；S6 已补全局/工作区存储拆分、TF-IDF + 3-gram 语义检索、episodic 时间衰减、turn 事实抽取、管理决策依据注入、snippet/suggestion 服务；`MemoryInputSuggestions`/`useMemoryInputSuggestions` 已在 `FreeFormInput` 接线。见 `docs/05`。剩余：向量库/更稳健抽取、归档 UI、L3 清空/导出确认。
+- 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：会话列表团队化 UI、`@`/`/` 输入收口、管理 Agent 专栏、CLI 三按钮、Progress 卡、Token 环、记忆输入建议条均已落主线。仍需本机视觉验收和真实 CLI/外站 smoke。
 - craft 原有的 session、permission、timeline、BrowserPane/CDP、文件工具和标注能力。
+- 智能模型路由 + Fusion + 分层缓存 🟡 **候选/待合入**（工作区）：`model-orchestrator`/`fusion-pipeline`/`fusion-cache`/`semantic-cache`/`session-routing-bridge` + `SessionManager.sendMessage` Auto 分支 + 设置页 + 输入框 Auto + timeline 组件（`ModelRoutingEvent`/`CacheLedgerEvent`）。**工作区已实现**：mini 二段判官、语义缓存磁盘、RouteLLM 磁盘、Plan Fusion + verification hooks、cascade 文本/工具信号、偏好 accepted/retried/switched/rolled_back、git HEAD 精确缓存失效。**仍缺**：`context-shaper` 实接 rtk/codegraph（现为 pending 占位）、A1 commit、A2/A3 Fusion/Auto 实跑 smoke。
+> 验证口径（2026-06-27）：`typecheck:all` + `fleet-verify` 在 S3/S5/S6/S7/S8/S10 合入后通过；目标单测覆盖 S1/S6/S7/S8/S10。仍需单独补本机 Electron 视觉验收、真实 CLI 登录 smoke、真实外站审查 smoke。
 
-- 管理 Agent 分级自动决策 L0-L3 🟡 候选/待合入（**未提交主线**）：`shared/protocol/manager-decision.ts` 纯引擎 `decideAuto` + `manager-decision-service`（设置落盘 + decide + `manager_auto_decision` 事件）+ 单测，typecheck 通过（含 electron），见 `docs/17 §4`。剩余：接 craft permission 的 escalate 调用点、记忆/偏好作依据、设置页与全局专栏 UI。
+以下能力即使曾在其它工作树完成，也**尚未算当前分支完成**：全部文件/Library 写操作、无限画布、AIGC UI、网页/文档工作面、视频剪辑、上下文效率 UI、外部审查 UI、能力装载商城（S13）、Git 审查 UI 接线、Fleet 自有发布源。
 
-> 验证口径（2026-06-23）：shared / server-core / session-tools-core / electron typecheck 已通过；`git diff --check` 干净。已补跑并通过的目标 bun 单测包括 `progress.test.ts`、`progress-cli-runtime-persistence.test.ts`、`cli-runtime-catalog.test.ts`、`acp.test.ts`、`cli-runtime-host.test.ts`、`manager-decision*.test.ts`、团队与 session-tools 相关单测（合计 76 pass / 0 fail）。以上 🟡 项**均未提交** `work/fresh-base-spine`。
+**工作区未提交（2026-06-26 审计）**——已实现但未进主线 commit，合入前须跑验证：
 
-以下能力即使曾在其它工作树完成，也**尚未算当前分支完成**：CLI Runtime 产品化、完整管理 Agent 自动代理、分层记忆、全部文件/Library、无限画布、AIGC、网页/文档工作面、视频剪辑、上下文效率 UI、外部审查 UI。迁入前必须逐项核对 diff、许可证、测试和当前架构。
+| 能力 | 文件 | 状态 |
+|---|---|---|
+| 上游软分叉同步 v0.10.4 | `app/scripts/oss-sync.ts`、`.oss-sync-state.json` | ✅ 已同步+typecheck；未提交 |
+| 人类交互终端 PTY | `interactive-terminal-ipc.ts`、`BottomTerminalPanel.tsx`、xterm | ✅ wired；未提交；未视觉验收 |
+| Git 审查 | 🟡 候选/待合入 | `git-review-service` + RPC + `GitReviewPanel` 挂侧边栏 + `GitHubSettingsPage` 已注册；未提交、A2 视觉 smoke |
+| 工作面模块壳 / Tool Dock | 🟡 候选/待合入 | `WorkbenchModuleFrame` + `workbench-layout` + `tool-dock-config` 已挂 `AppShell`；未提交 |
+| 智能模型路由 + Fusion | 🟡 候选/待合入 | 见 §1 路由条目；工作区未提交 |
+| 本机 CLI 并行子 agent | `scripts/cli-subagents.sh` | ✅ 已配置；Claude `deepseek-v4-pro`、Grok `grok-build`/`grok-composer-2.5-fast`、Antigravity `Gemini 3.5 Flash (High)` |
+
+迁入前必须逐项核对 diff、许可证、测试和当前架构。
 
 ## 2 · 当前最高优先级
 
-先补齐团队编排剩余前端与管理 Agent 自动代理，使后续多 Agent 能安全并行：
+按 `docs/32 §8` 详细计划执行。摘要：
 
-1. 把 `@` 改为人/Agent/会话/身份提及，把 Skill/命令/模板迁到 `/`，不保留旧 `@Skill` 双入口。
-2. 先扩展原标签数据模型，再在原会话列表字段上显示模型/Runtime、稳定序号、身份和团队状态；不得先改布局或新建团队模块。
-3. 接常驻管理 Agent 的可运行代理能力，但所有写入、外发、删除和发布仍走 permission 与 L0-L3 决策。
-4. 保持团队群聊复用 craft session，不建第二套消息库。
+1. **合入未提交主线能力**：oss-sync v0.10.4、终端 PTY、Git/B4/B5 接线等；跑 `./scripts/fleet-verify.sh` 通过后 commit（A1）。
+2. **本机视觉验收（A2）**：按 `docs/32 §8.2` 清单逐项；自动化不能替代。
+3. **真实 CLI smoke（A3）**：Codex/Claude one-shot 各 1 次。
+4. **开 Wave 2（Phase C）**：S2 网页·文档 + S13 能力装载（Lead 先冻 `protocol/capability.ts`）。
+5. **发布与更新**：`electron-builder.yml` 换 Fleet 发布源（GitHub Releases 或自建 generic）；保留 craft `electron-updater` 客户端链路。
+6. **上游维护**：`源码参考/update_repos.sh` → `oss:sync --review` → `oss:sync` → typecheck；见 `docs/09`。
 
-完成这条脊柱后，按 `docs/32` 分派“全部文件/Library、创作工作面、外部任务桥”等互不冲突的任务。
+完成这条脊柱后，按 `docs/32` 继续推进创作工作面与外部任务桥。
 
 ## 3 · 产品主线
 
@@ -95,7 +109,7 @@ git diff --check
 | 退役号 | 原标题 | 处置 |
 |---|---|---|
 | `08` | 本地化显示层与输入建议 | 汉化引擎/商城同步并入 `43 §6.2/6.3`；输入建议并入 `05 §6.1`；已删 |
-| `09` | craft 基座 prep（过程性） | 过程快照，直接删除 |
+| `09` | craft 基座 prep（过程性） | **已复活**：上游软分叉同步说明 + baseline 记录，见 `docs/09-craft-base-prep.md` |
 | `10` | Fleet-Craft 功能缺口审计（过程性） | 过程快照，直接删除 |
 | `13` | Markdown 文档审计与维护规则 | 维护规则并入 `README`，已删 |
 | `34` | 多 Agent 并行执行手册与提示词 | 并行纪律并入本文 `§7.3` + `docs/32`，已删 |

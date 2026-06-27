@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { InternalActionDefinition } from '@craft-agent/shared/protocol'
-import { createFilesInternalActions, InternalActionRegistryService } from './internal-action-registry'
+import { createAllInternalActions, createFilesInternalActions, InternalActionRegistryService } from './internal-action-registry'
 
 function makeDef(overrides: Partial<InternalActionDefinition> = {}): InternalActionDefinition {
   return {
@@ -45,6 +45,16 @@ describe('InternalActionRegistryService', () => {
     expect(registry.get('files.move_entry')?.title).toBe('v2')
     expect(registry.get('files.move_entry', 1)?.title).toBe('v1')
     expect(() => registry.register(makeDef({ contractVersion: 1 }))).toThrow(/duplicate/i)
+  })
+
+  it('registers spine actions alongside files actions', () => {
+    const registry = new InternalActionRegistryService(createAllInternalActions())
+    expect(registry.list().length).toBe(11)
+    expect(registry.list({ surface: 'team' }).map((def) => def.id)).toEqual([
+      'team.get_projection',
+      'team.send_message',
+      'team.assign_task',
+    ])
   })
 
   it('lists low-token summaries by surface and verb', () => {

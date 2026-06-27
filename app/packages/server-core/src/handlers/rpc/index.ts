@@ -30,6 +30,7 @@ import { registerManagerDecisionHandlers } from './manager-decision'
 import { registerMemoryHandlers } from './memory'
 import { registerUsageHandlers } from './usage'
 import { registerExternalJobHandlers } from './external-job'
+import { registerGitHandlers } from './git'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
 
@@ -50,6 +51,7 @@ export function registerCoreRpcHandlers(
   registerMemoryHandlers(server, deps)
   registerUsageHandlers(server, deps)
   registerExternalJobHandlers(server, deps)
+  registerGitHandlers(server, deps)
   registerOAuthHandlers(server, deps)
   registerOnboardingHandlers(server, deps)
   registerResourcesHandlers(server, deps)

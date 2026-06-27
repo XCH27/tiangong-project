@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LabelIcon } from './label-icon'
@@ -91,6 +92,7 @@ export function InlineLabelMenu({
   activeStateId,
   onSelectState,
 }: InlineLabelMenuProps) {
+  const { t } = useTranslation()
   const menuRef = React.useRef<HTMLDivElement>(null)
   const listRef = React.useRef<HTMLDivElement>(null)
   const [selectedIndex, setSelectedIndex] = React.useState(0)
@@ -213,7 +215,7 @@ export function InlineLabelMenu({
             <div className="shrink-0 text-muted-foreground">
               <Plus className="h-3.5 w-3.5" />
             </div>
-            <span className="text-[13px]">Add New Label</span>
+            <span className="text-[13px]">{t('sidebarMenu.addNewLabel')}</span>
           </div>
         ) : (
           <>
@@ -222,7 +224,7 @@ export function InlineLabelMenu({
               <>
                 {showSectionHeaders && (
                   <div className="px-3 pt-1.5 pb-1 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                    States
+                    {t('sidebar.statuses')}
                   </div>
                 )}
                 {filteredStates_.map((state, index) => {
@@ -271,7 +273,7 @@ export function InlineLabelMenu({
               <>
                 {showSectionHeaders && (
                   <div className="px-3 pt-1.5 pb-1 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                    Labels
+                    {t('sidebar.labels')}
                   </div>
                 )}
                 {filteredItems.map((item, index) => {

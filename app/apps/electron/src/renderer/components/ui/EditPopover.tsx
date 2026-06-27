@@ -856,12 +856,20 @@ export function EditPopover({
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
 
-  // Reset drag position and size when popover opens
+  // Reset drag position and size when popover opens — clamp to viewport
   useEffect(() => {
     if (open) {
       dragOffsetRef.current = { x: 0, y: 0 }
       setDragOffset({ x: 0, y: 0 })
-      setContainerSize({ width: width || 400, height: 480 })
+      const MARGIN = 20
+      const MARGIN_TOP = 50
+      const baseWidth = width || 400
+      const maxWidth = Math.max(300, Math.min(baseWidth, window.innerWidth - MARGIN * 2))
+      const maxHeight = Math.max(250, window.innerHeight - MARGIN_TOP - MARGIN)
+      setContainerSize({
+        width: maxWidth,
+        height: Math.min(480, maxHeight),
+      })
     }
   }, [open, width])
 

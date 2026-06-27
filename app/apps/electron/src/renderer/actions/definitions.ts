@@ -136,6 +136,13 @@ export const actions = {
     defaultHotkey: 'mod+.',
     category: 'View',
   },
+  'view.toggleBottomTerminal': {
+    id: 'view.toggleBottomTerminal',
+    label: 'Toggle Terminal',
+    description: 'Show or hide the interactive shell panel',
+    defaultHotkey: 'mod+j',
+    category: 'View',
+  },
 
   // ═══════════════════════════════════════════
   // Navigator (scoped — active entity list in middle panel)

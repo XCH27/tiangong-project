@@ -4,18 +4,41 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SessionEvent } from '@craft-agent/shared/protocol'
 import { USER_ACTOR } from '@craft-agent/shared/protocol'
+import type { InternalActionRuntimeBridge } from './internal-action-bridge'
 import { FileMutationService } from './file-mutation-service'
 import { InternalActionExecutorService } from './internal-action-executor'
-import { createFilesInternalActions, InternalActionRegistryService } from './internal-action-registry'
+import { createAllInternalActions, createFilesInternalActions, InternalActionRegistryService } from './internal-action-registry'
 
 const SESSION = 'session-internal-actions-1'
 
-function makeExecutor(options: { allowPermission?: boolean } = {}) {
+function makeBridge(overrides: Partial<InternalActionRuntimeBridge> = {}): InternalActionRuntimeBridge {
+  return {
+    getSessionProgress: async () => [],
+    setSessionProgress: async () => {},
+    listMemory: async () => [],
+    addMemory: async () => ({
+      id: 'mem-1',
+      partition: 'user',
+      tier: 'semantic',
+      content: 'hello',
+      sensitivity: 'medium',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }),
+    getTeamProjection: async () => ({ teamId: 'team-main', members: [] } as never),
+    sendTeamMessage: async () => ({ messageId: 'msg-1' }),
+    assignTeamTask: async () => ({ taskId: 'task-1' }),
+    ...overrides,
+  }
+}
+
+function makeExecutor(options: { allowPermission?: boolean; bridge?: InternalActionRuntimeBridge } = {}) {
   const events: SessionEvent[] = []
   const permissionRequests: Array<{ toolName: string; description: string; type: string; reason?: string }> = []
   const executor = new InternalActionExecutorService({
     registry: new InternalActionRegistryService(createFilesInternalActions()),
     fileMutations: new FileMutationService(),
+    bridge: options.bridge,
     emit: (event) => events.push(event),
     requestPermission: async (_sessionId, input) => {
       permissionRequests.push(input)
@@ -202,5 +225,38 @@ describe('InternalActionExecutorService', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+
+  it('sets session progress through the runtime bridge', async () => {
+    let savedTasks: import('@craft-agent/shared/protocol').ProgressTask[] | undefined
+    const bridge = makeBridge({
+      setSessionProgress: async (_sessionId, tasks) => {
+        savedTasks = tasks
+      },
+    })
+    const events: SessionEvent[] = []
+    const executor = new InternalActionExecutorService({
+      registry: new InternalActionRegistryService(createAllInternalActions()),
+      fileMutations: new FileMutationService(),
+      emit: (event) => events.push(event),
+      requestPermission: async () => true,
+    })
+
+    await executor.invoke({
+      sessionId: SESSION,
+      workspaceRoot: '/tmp',
+      invocation: {
+        actionDefinitionId: 'session.set_progress',
+        contractVersion: 1,
+        actor: USER_ACTOR,
+        input: {
+          tasks: [{ id: '1', title: 'Step one', status: 'pending' }],
+        },
+      },
+      bridge,
+    })
+
+    expect(savedTasks).toEqual([{ id: '1', title: 'Step one', status: 'pending' }])
+    expect(events.some((event) => event.type === 'internal_action_invoked')).toBe(true)
   })
 })

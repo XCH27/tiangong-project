@@ -242,11 +242,23 @@ export type SessionEvent =
   | { type: 'external_job_completed'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
   // Fleet 团队编排事件（docs/33）：会话即 Agent，不引入第二套 team/session store。
   | TeamSessionEvent
+  // Fleet 智能模型路由事件（docs/03 §13）：路由决策 + 成本账本进 timeline。
+  | { type: 'model_routing_decision'; sessionId: string; taskType: string; complexity: number; tier: string; fusionMode: string; cascadeEligible: boolean; basis: string; hintOverrideReason?: string; timestamp: number }
+  | { type: 'cache_ledger'; sessionId: string; routing: { taskType: string; complexity: number; tier: string; fusionMode: string; cascadeUpgrades: number }; layers: { l1Provider?: { cacheReadTokens: number; cacheCreationTokens: number; provider: string }; l2Exact?: { hit: boolean }; l2Semantic?: { hit: boolean; similarity: number }; l3Panel?: { hits: number; misses: number } }; cost: { actual: number | null; estimated: number | null; savedByCache: number | null }; timestamp: number }
 
 export interface SendMessageOptions {
   skillSlugs?: string[]
   badges?: ContentBadge[]
   optimisticMessageId?: string
+  /** 队长派发子任务时的软约束（docs/03 §7.2） */
+  routingHint?: {
+    tierHint?: 'fast' | 'balanced' | 'best'
+    suggestFusion?: boolean
+    fusionForm?: 'synthesis' | 'plan'
+    budgetTokens?: number
+  }
+  /** 低延迟任务：尊重 prefs.cascade.respectLatencySensitive 时跳过级联 */
+  latencySensitive?: boolean
 }
 
 // ---------------------------------------------------------------------------

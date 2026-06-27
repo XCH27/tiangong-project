@@ -78,9 +78,11 @@ import { CompactSourceSelector } from '@/components/ui/CompactSourceSelector'
 import { CompactWorkingDirectorySelector } from '@/components/ui/CompactWorkingDirectorySelector'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
+import { MemoryInputSuggestions } from './MemoryInputSuggestions'
+import { useMemoryInputSuggestions } from './useMemoryInputSuggestions'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
-import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type TeamProjection } from '@craft-agent/shared/protocol'
+import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type MemoryEntry, type TeamProjection } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
@@ -373,6 +375,8 @@ export function FreeFormInput({
     connectionCount: llmConnections.length,
   })
 
+  const [autoRouting, setAutoRouting] = React.useState(false)
+
   // Compute available models from the effective connection.
   // All connections have models populated by backfillAllConnectionModels().
   const availableModels = React.useMemo(() => {
@@ -435,7 +439,9 @@ export function FreeFormInput({
     || stripPiPrefixForDisplay(getModelDisplayName(currentModel || connectionDefaultModel || ''))
     || '模型'
   const runtimeButtonDisplayName = activeCliRuntime?.displayName ?? 'API'
-  const modelButtonDisplayName = activeCliRuntime
+  const modelButtonDisplayName = !activeCliRuntime && autoRouting
+    ? 'Auto'
+    : activeCliRuntime
     ? cliRuntimeModels.find(model => model.id === cliRuntimeModelState?.currentModelId)?.name
       ?? cliRuntimeModelState?.currentModelId
       ?? 'CLI 默认'
@@ -616,6 +622,51 @@ export function FreeFormInput({
   const [inputMaxHeight, setInputMaxHeight] = React.useState(540)
   const [cliDropdownOpen, setCliDropdownOpen] = React.useState(false)
   const [modelDropdownOpen, setModelDropdownOpen] = React.useState(false)
+
+  const persistRoutingMode = React.useCallback(async (mode: 'manual' | 'auto') => {
+    if (!window.electronAPI?.readPreferences || !window.electronAPI?.writePreferences) return
+    try {
+      const result = await window.electronAPI.readPreferences()
+      const existing = JSON.parse(result.content || '{}')
+      const current = existing.modelRouting ?? {}
+      existing.modelRouting = { ...current, mode }
+      existing.updatedAt = Date.now()
+      await window.electronAPI.writePreferences(JSON.stringify(existing, null, 2))
+    } catch (error) {
+      console.error('Failed to persist model routing mode:', error)
+    }
+  }, [])
+
+  React.useEffect(() => {
+    const loadRoutingMode = async () => {
+      if (!window.electronAPI?.readPreferences) return
+      try {
+        const result = await window.electronAPI.readPreferences()
+        const parsed = JSON.parse(result.content || '{}')
+        setAutoRouting(parsed.modelRouting?.mode === 'auto')
+      } catch (error) {
+        console.error('Failed to load model routing mode:', error)
+      }
+    }
+    loadRoutingMode()
+  }, [])
+
+  const handleModelSelect = React.useCallback((modelId: string, connection?: string) => {
+    setAutoRouting(false)
+    void persistRoutingMode('manual')
+    onModelChange(modelId, connection)
+  }, [onModelChange, persistRoutingMode])
+
+  const handleCliRuntimeModelSelect = React.useCallback((modelId: string | null) => {
+    setAutoRouting(false)
+    void persistRoutingMode('manual')
+    onCliRuntimeModelChange?.(modelId)
+  }, [onCliRuntimeModelChange, persistRoutingMode])
+
+  const handleAutoRoutingSelect = React.useCallback(() => {
+    setAutoRouting(true)
+    void persistRoutingMode('auto')
+  }, [persistRoutingMode])
 
   // Input settings (loaded from config)
   const [autoCapitalisation, setAutoCapitalisation] = React.useState(true)
@@ -1073,6 +1124,28 @@ export function FreeFormInput({
     sessionStatuses,
     activeStateId: currentSessionStatus,
   })
+
+  const memorySuggestionsEnabled = Boolean(workspaceId)
+    && !teamMentionOpen
+    && !inlineSlash.isOpen
+    && !inlineLabel.isOpen
+    && input.trim().length >= 2
+    && !input.trim().startsWith('/')
+    && !input.trim().startsWith('#')
+    && !(isTeamConversation && input.includes('@'))
+
+  const { suggestions: memorySuggestions, loading: memorySuggestionsLoading } = useMemoryInputSuggestions(
+    workspaceId,
+    input,
+    memorySuggestionsEnabled,
+  )
+
+  const handleMemorySuggestionSelect = React.useCallback((entry: MemoryEntry) => {
+    const nextValue = entry.content
+    setInput(nextValue)
+    syncToParent(nextValue)
+    richInputRef.current?.focus()
+  }, [syncToParent])
 
   // "Add New Label" handler: cleans up the #trigger text and opens a controlled
   // EditPopover so the user can describe the label before the agent creates it.
@@ -1841,6 +1914,12 @@ export function FreeFormInput({
         />
         )}
 
+        <MemoryInputSuggestions
+          suggestions={memorySuggestions}
+          loading={memorySuggestionsLoading}
+          onSelect={handleMemorySuggestionSelect}
+        />
+
         <InlineMentionMenu
           open={teamMentionOpen}
           onOpenChange={setTeamMentionOpen}
@@ -2221,11 +2300,23 @@ export function FreeFormInput({
                   <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide select-none">
                     模型
                   </div>
+                  {!activeCliRuntime && (
+                    <StyledDropdownMenuItem
+                      onSelect={handleAutoRoutingSelect}
+                      className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
+                    >
+                      <div className="text-left">
+                        <div className="font-medium text-sm">Auto</div>
+                        <div className="text-xs text-muted-foreground">{t('chat.autoRoutingDesc')}</div>
+                      </div>
+                      {autoRouting && <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />}
+                    </StyledDropdownMenuItem>
+                  )}
                   {activeCliRuntime ? (
                     cliRuntimeModels.map((model) => (
                       <StyledDropdownMenuItem
                         key={model.id}
-                        onSelect={() => onCliRuntimeModelChange?.(model.id)}
+                        onSelect={() => handleCliRuntimeModelSelect(model.id)}
                         className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                       >
                         <div className="text-left">
@@ -2361,7 +2452,7 @@ export function FreeFormInput({
                                         onConnectionChange(conn.slug)
                                       }
                                       // Always pass connection with model for proper persistence
-                                      onModelChange(modelId, conn.slug)
+                                      handleModelSelect(modelId, conn.slug)
                                     }}
                                     className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                                   >
@@ -2447,7 +2538,7 @@ export function FreeFormInput({
                     return (
                       <StyledDropdownMenuItem
                         key={modelId}
-                        onSelect={() => onModelChange(modelId, effectiveConnection)}
+                        onSelect={() => handleModelSelect(modelId, effectiveConnection)}
                         className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                       >
                         <div className="text-left">

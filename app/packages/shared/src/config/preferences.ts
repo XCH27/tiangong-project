@@ -41,6 +41,33 @@ export interface UserPreferences {
   uiLanguage?: LanguageCode;
   // When the preferences were last updated
   updatedAt?: number;
+  // 智能模型路由 + Fusion + 缓存偏好（docs/03 D5）
+  // 完整类型见 server-core/services/fusion-types.ts ModelRoutingPrefs
+  // 这里用内联避免跨包循环依赖；两者保持同步。
+  modelRouting?: {
+    mode: 'manual' | 'auto'
+    cascade: { enabled: boolean; respectLatencySensitive: boolean }
+    shaping: { rtk: boolean; codegraph: boolean; reasonixPrefix: boolean }
+    taskTypeRouting?: Record<string, { tier?: string; fusionMode?: string }>
+    agentPolicy: {
+      manager: { connectionSlug: string; modelId: string }
+      leader: { allowAuto: boolean; allowFusion: boolean; allowCli: boolean }
+      executor: { allowAuto: boolean; allowCli: boolean; surfaceByTaskType?: Record<string, 'api' | 'cli'> }
+    }
+    fusion: {
+      enabled: 'off' | 'on' | 'smart'
+      preset: 'quality' | 'budget' | 'custom'
+      panelSize: 2 | 3
+      panelModels: string[]
+      judgeModel: string
+      writerModel: string
+      formsByTaskType?: Record<string, 'synthesis' | 'plan'>
+      budgetCap: { maxTokens: number; maxPanelists: number; perWorkspaceDaily?: number }
+      scope: 'leader-only' | 'all-agents'
+      verification: { enabled: boolean; models?: string[] }
+    }
+    cache: { exact: boolean; semantic: boolean; panelIntermediate: boolean }
+  }
 }
 
 const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');
@@ -112,6 +139,22 @@ export function setPersistedUiLanguage(code: LanguageCode): void {
   const current = loadPreferences();
   if (current.uiLanguage === code) return;
   savePreferences({ ...current, uiLanguage: code });
+}
+
+/**
+ * Native-language name to request for AI-generated session titles, or
+ * `undefined` to let the model follow the conversation's own language.
+ *
+ * Resolves from the explicitly persisted UI language (disk-backed) rather than
+ * `i18n.resolvedLanguage`, which in the main process hydrates asynchronously at
+ * startup and can still read the `'en'` fallback when an early title fires
+ * (#885). Returning `undefined` when no language was chosen lets the title
+ * prompt auto-detect the conversation language instead of being forced to
+ * English.
+ */
+export function resolveTitleLanguageName(): string | undefined {
+  const code = getPersistedUiLanguage();
+  return code ? LOCALE_REGISTRY[code]?.nativeName : undefined;
 }
 
 /**

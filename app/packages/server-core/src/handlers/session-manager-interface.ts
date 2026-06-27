@@ -258,6 +258,7 @@ export interface ISessionManager {
    * broadcast channel as model/tool events — no second timeline (docs/31 §1).
    */
   emitSessionEvent(event: SessionEvent): void
+  recordPatchRolledBackPreference(sessionId: string): void
   /** Persist a structured event in the owning session before broadcasting it. */
   appendSessionEvent(event: SessionEvent): Promise<string>
   /** Request approval for a non-agent workflow action through the existing permission UI. */

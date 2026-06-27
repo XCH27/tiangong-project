@@ -111,11 +111,12 @@ import { handleDeepLink } from './deep-link'
 import { BrowserPaneManager } from './browser-pane-manager'
 import { OAuthFlowStore } from '@craft-agent/shared/auth'
 import { registerThumbnailScheme, registerThumbnailHandler } from './thumbnail-protocol'
-import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog } from './logger'
+import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog, autoUpdateLog } from './logger'
 import { setPerfEnabled, enableDebug } from '@craft-agent/shared/utils'
 import { registerPiModelResolver } from '@craft-agent/shared/config'
 import { getPiModelsForAuthProvider, getAllPiModels } from '@craft-agent/shared/config'
 import { initNotificationService, initBadgeIcon, initInstanceBadge, updateBadgeCount } from './notifications'
+import { registerInteractiveTerminalIpc } from './interactive-terminal-ipc'
 import { checkForUpdatesOnLaunch, setAutoUpdateEventSink, isUpdating, setBeforeUpdateQuitHook } from './auto-update'
 import type { EventSink } from '@craft-agent/server-core/transport'
 import { validateGitBashPath, checkVCRedistInstalled } from '@craft-agent/server-core/services'
@@ -198,7 +199,7 @@ if (isDebugMode) {
 }
 
 // Register Pi model resolver so llm-connections.ts can resolve Pi models
-// without importing @mariozechner/pi-ai (which breaks the Vite renderer build)
+// without importing @earendil-works/pi-ai (which breaks the Vite renderer build)
 registerPiModelResolver((piAuthProvider) =>
   piAuthProvider ? getPiModelsForAuthProvider(piAuthProvider) : getAllPiModels()
 )
@@ -478,6 +479,7 @@ app.whenReady().then(async () => {
     browserPaneManager.setWindowManager(windowManager)
     browserPaneManager.registerToolbarIpc()
     browserPaneManager.registerCapabilityIpc()
+    registerInteractiveTerminalIpc()
 
     // Build real PlatformServices from Electron APIs
     const platform: PlatformServices = createElectronPlatform({
@@ -1203,13 +1205,22 @@ app.on('before-quit', async (event) => {
     } else {
       captureAndSaveWindowState('before-quit')
     }
-    // Diagnostic correlation with installUpdate's [update-flow] log.
-    mainLog.info('[update-flow] before-quit save', {
+    // Diagnostic correlation with installUpdate's [update-flow] log. During an
+    // update-quit, record it to the dedicated always-on auto-update log (#891)
+    // so the install/quit handoff is diagnosable in production; normal quits
+    // stay on the debug-only main log.
+    const isUpdateQuit = isUpdating()
+    const beforeQuitSave = {
       windowCount: windows.length,
       electronWindowCount: BrowserWindow.getAllWindows().length,
-      isUpdating: isUpdating(),
-      reason: isUpdating() ? 'update-quit' : 'user-quit',
-    })
+      isUpdating: isUpdateQuit,
+      reason: isUpdateQuit ? 'update-quit' : 'user-quit',
+    }
+    if (isUpdateQuit) {
+      autoUpdateLog.info('before-quit save', beforeQuitSave)
+    } else {
+      mainLog.info('[update-flow] before-quit save', beforeQuitSave)
+    }
   }
 
   // Flush all pending session writes before quitting

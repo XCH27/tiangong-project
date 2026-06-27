@@ -49,6 +49,8 @@ export function registerDesignHandlers(server: RpcServer, deps: HandlerDeps): vo
   })
 
   server.handle(RPC_CHANNELS.design.ROLLBACK_PATCH, async (_ctx, input: RollbackPatchInput) => {
-    return engine.rollbackPatch(input)
+    const result = await engine.rollbackPatch(input)
+    sessionManager.recordPatchRolledBackPreference(input.sessionId)
+    return result
   })
 }

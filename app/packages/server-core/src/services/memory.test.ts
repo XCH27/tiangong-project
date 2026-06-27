@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ManagerDecisionService } from './manager-decision-service'
 import { MemoryStore } from './memory-store'
+import { installMemoryHooks } from './memory'
 import { SessionManager } from '../sessions/SessionManager'
 
 describe('MemoryService Hook Tests', () => {
@@ -12,6 +13,7 @@ describe('MemoryService Hook Tests', () => {
   let origConfigDir: string | undefined
 
   beforeEach(() => {
+    installMemoryHooks()
     root = mkdtempSync(join(tmpdir(), 'memory-service-'))
     origConfigDir = process.env.CRAFT_CONFIG_DIR
     process.env.CRAFT_CONFIG_DIR = join(root, 'config')

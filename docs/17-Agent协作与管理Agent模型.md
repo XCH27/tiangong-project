@@ -47,8 +47,9 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 4. **任务入口与调度**：接收用户任务，判断该交给哪类项目 Agent，或是否需要先打包/审查/整理上下文。
 5. **跨项目 / 跨平台自动化**：尤其是调用"上下文效率 / 审查中心"（`docs/16`）——见第 5 节。
 6. **权限与上下文守门**：在自动决策模式下，按规则代答低风险请求、拒绝违规操作、提醒不要复制黑盒源码、把任务转给更合适的 Agent。
+7. **智能模型路由的预算守门人**（`docs/03 §7`）：管理 Agent 用**固定单一 cheap API 连接**，**永不触发 Fusion、不给 CLI Runtime**；负责配预算上限 / Fusion scope（L2/L3）。守门人不执行高消耗路径。
 
-它**不做**：不替项目 Agent 写代码、不深读每个项目全部源码、不在没有触发时主动消耗大上下文、不成为绕过 craft permission 的特权身份。
+它**不做**：不替项目 Agent 写代码、不深读每个项目全部源码、不在没有触发时主动消耗大上下文、不成为绕过 craft permission 的特权身份、不触发 Fusion、不跑 CLI Runtime。
 
 ## 2.1 · 信息隔离与上下文注入
 
@@ -68,14 +69,14 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 真正做项目的是另一套 Agent，每个有独立 runtime、scope、permission profile、workspace/worktree：
 
-| 角色 | 负责 | 典型 runtime |
-|---|---|---|
-| 队长（Leader） | 任务拆分、子任务分派、集成、确认门 | 强模型 / 内置 Fleet runtime |
-| 代码 Agent | 实现、重构、修 bug | Claude/Codex/Grok 等 CLI 或 API |
-| 设计 Agent | 浏览器标注、Artifact 编辑、DesignAction | 支持设计工具的 runtime |
-| 审查 Agent | 代码审查、安全、回归、合并外部审查报告 | 审查向 runtime |
-| 测试 Agent | 跑测试、验收、回归门禁 | — |
-| 上下文 Agent | 打包、转换、压缩、检索、整理上下文 | 接审查中心 |
+| 角色 | 负责 | 典型 runtime | 路由/Fusion 权（`docs/03 §8`） |
+|---|---|---|---|
+| 队长（Leader） | 任务拆分、子任务分派、集成、确认门 | 强模型 / 内置 Fleet runtime | **API 路径**（best/Auto）；**Fusion 默认触发者**（D5 smart 判官）；选 CLI 则丢 Fusion |
+| 代码 Agent | 实现、重构、修 bug | Claude/Codex/Grok 等 CLI 或 API | hybrid：代码任务常用 CLI 原生工具/订阅；可受 `routingHint` 引导 |
+| 设计 Agent | 浏览器标注、Artifact 编辑、DesignAction | 支持设计工具的 runtime | **API + `DesignAction`**（才能 Plan/Verification Fusion + 回滚） |
+| 审查 Agent | 代码审查、安全、回归、合并外部审查报告 | 审查向 runtime | API；Synthesis Fusion（C4） |
+| 测试 Agent | 跑测试、验收、回归门禁 | — | API/CLI；Verification Fusion 的取证者 |
+| 上下文 Agent | 打包、转换、压缩、检索、整理上下文 | 接审查中心 | API cheap 档；不 Fusion |
 
 队长可以调度队员，但队长仍是"项目级"身份，与"软件级"的管理 Agent 分开。管理 Agent → 队长 → 队员，是三段不同身份，不是一个长链。
 

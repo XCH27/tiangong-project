@@ -16,7 +16,10 @@ import type { SettingsSubpage } from '../../../shared/settings-registry'
 
 import AppSettingsPage from './AppSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
+import ModelRoutingSettingsPage from './ModelRoutingSettingsPage'
 import CliRuntimeSettingsPage from './CliRuntimeSettingsPage'
+import ExternalJobsSettingsPage from './ExternalJobsSettingsPage'
+import GitHubSettingsPage from './GitHubSettingsPage'
 import ManagerSettingsPage from './ManagerSettingsPage'
 import MemorySettingsPage from './MemorySettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
@@ -36,7 +39,10 @@ import PreferencesPage from './PreferencesPage'
 export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = {
   app: AppSettingsPage,
   ai: AiSettingsPage,
+  modelRouting: ModelRoutingSettingsPage,
   cliRuntime: CliRuntimeSettingsPage,
+  externalJobs: ExternalJobsSettingsPage,
+  github: GitHubSettingsPage,
   managerAgent: ManagerSettingsPage,
   memory: MemorySettingsPage,
   appearance: AppearanceSettingsPage,

@@ -13,7 +13,6 @@ import {
   type MemoryEntry,
   type MemoryQuery,
 } from '@craft-agent/shared/protocol'
-import './memory'
 
 const STORE_RELATIVE_PATH = '.fleet/memory.json'
 

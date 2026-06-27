@@ -35,6 +35,7 @@ import {
 } from "lucide-react"
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
+import { BottomTerminalPanel } from "./BottomTerminalPanel"
 import { TopBar } from "./TopBar"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { McpIcon } from "../icons/McpIcon"
@@ -96,6 +97,7 @@ import { useStatuses } from "@/hooks/useStatuses"
 import { useLabels } from "@/hooks/useLabels"
 import { useViews } from "@/hooks/useViews"
 import { useContainerWidth } from "@/hooks/useContainerWidth"
+import { useWorkspaceToolDock } from "@/hooks/useWorkspaceToolDock"
 import { LabelIcon, LabelValueTypeIcon } from "@/components/ui/label-icon"
 import { filterSessionStatuses as filterLabelMenuStates } from "@/components/ui/label-menu"
 import { createLabelMenuItems, filterItems as filterLabelMenuItems, type LabelMenuItem } from "@/components/ui/label-menu-utils"
@@ -120,6 +122,7 @@ import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
 import { AutomationsListPanel } from "../automations/AutomationsListPanel"
 import { WorkspaceContextSidebar } from "./WorkspaceContextSidebar"
+import { TOOL_DOCK_MODULES } from "./tool-dock-config"
 import { APP_EVENTS, AGENT_EVENTS, type AutomationFilterKind, AUTOMATION_TYPE_TO_FILTER_KIND } from "../automations/types"
 import { useAutomations } from "@/hooks/useAutomations"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -141,6 +144,7 @@ import {
   RADIUS_EDGE,
   RADIUS_INNER,
 } from "./panel-constants"
+import { getRequiredContentSize, shouldAutoCollapseSidebar, shouldPreferToolDockOverlay } from "./workbench-layout"
 import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
@@ -553,6 +557,13 @@ function AppShellContent({
     return storage.get(storage.KEYS.workspaceContextSidebarWidth, 320)
   })
   const [selectedWorkspaceContextFile, setSelectedWorkspaceContextFile] = React.useState<string | null>(null)
+  const [isBottomTerminalVisible, setIsBottomTerminalVisible] = React.useState(() => {
+    return storage.get(storage.KEYS.bottomTerminalVisible, false)
+  })
+  const [bottomTerminalHeight, setBottomTerminalHeight] = React.useState(() => {
+    return storage.get(storage.KEYS.bottomTerminalHeight, 260)
+  })
+  const workspaceToolDock = useWorkspaceToolDock(activeWorkspaceId)
 
   React.useEffect(() => {
     const hasRestoredWorkspaceContextSidebar = storage.get(storage.KEYS.workspaceContextSidebarVisibleRestored, false)
@@ -593,7 +604,7 @@ function AppShellContent({
     })
   }, [])
 
-  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | 'workspace-context' | null>(null)
+  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | 'workspace-context' | 'bottom-terminal' | null>(null)
   const [sidebarHandleY, setSidebarHandleY] = React.useState<number | null>(null)
   const [sessionListHandleY, setSessionListHandleY] = React.useState<number | null>(null)
   const [workspaceContextHandleY, setWorkspaceContextHandleY] = React.useState<number | null>(null)
@@ -619,6 +630,8 @@ function AppShellContent({
   const workspaceContextSidebarMinWidth = 260
   const workspaceContextSidebarDefaultWidth = 320
   const workspaceContextSidebarMaxAllowedWidth = 480
+  const bottomTerminalMinHeight = 140
+  const bottomTerminalMaxHeight = 520
 
   // Keep the right context rail independently resizable as a stable desktop
   // workbench column. Content panels already own horizontal overflow through
@@ -640,19 +653,42 @@ function AppShellContent({
   const isWorkspaceContextSidebarCompact = renderedWorkspaceContextSidebarWidth < 300
   const isWorkspaceContextSidebarRendered =
     isWorkspaceContextSidebarVisible &&
+    workspaceToolDock.activeModules.length > 0 &&
     !isAutoCompact &&
     !isFocusedMode
   const contentPanelCountForLayout = Math.max(panelCount, 1)
-  const requiredDockedContentWidth =
-    (contentPanelCountForLayout * PANEL_MIN_WIDTH) +
-    (Math.max(0, contentPanelCountForLayout - 1) * PANEL_GAP)
+  const requiredContentSize = getRequiredContentSize(contentPanelCountForLayout)
+  const requiredDockedContentWidth = requiredContentSize.width
   const canDockWorkspaceContextSidebar = shellWidth === 0 || (
+    !shouldPreferToolDockOverlay(panelCount) &&
     shellWidth - fixedShellColumnsWidth - renderedWorkspaceContextSidebarWidth - PANEL_GAP - PANEL_EDGE_INSET >= requiredDockedContentWidth
   )
   const isWorkspaceContextSidebarDocked =
     isWorkspaceContextSidebarRendered && canDockWorkspaceContextSidebar
   const isWorkspaceContextSidebarOverlay =
     isWorkspaceContextSidebarRendered && !isWorkspaceContextSidebarDocked
+  const renderedBottomTerminalHeight = isBottomTerminalVisible && !isAutoCompact && !isFocusedMode
+    ? Math.min(Math.max(bottomTerminalHeight, bottomTerminalMinHeight), bottomTerminalMaxHeight)
+    : 0
+
+  // docs/37: 3+ content panels auto-fold left sidebar; user can reopen via TopBar.
+  const sidebarAutoCollapsedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (isAutoCompact || isFocusedMode) return
+
+    if (shouldAutoCollapseSidebar(panelCount)) {
+      if (!sidebarAutoCollapsedRef.current && isSidebarVisible) {
+        sidebarAutoCollapsedRef.current = true
+        setIsSidebarVisible(false)
+      }
+      return
+    }
+
+    if (sidebarAutoCollapsedRef.current) {
+      sidebarAutoCollapsedRef.current = false
+      setIsSidebarVisible(true)
+    }
+  }, [panelCount, isAutoCompact, isFocusedMode, isSidebarVisible])
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -893,6 +929,19 @@ function AppShellContent({
   }, [skills, setSkillsAtom])
   // Automations — state, handlers, loading, subscriptions
   const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
+
+  const toolDockTopBarModules = useMemo(() => {
+    return TOOL_DOCK_MODULES.map((module) => ({
+      id: module.id,
+      label: t(module.labelKey),
+      icon: module.icon,
+      isActive: workspaceToolDock.isModuleActive(module.id),
+      onToggle: () => {
+        workspaceToolDock.toggleModule(module.id)
+        setIsWorkspaceContextSidebarVisible(true)
+      },
+    }))
+  }, [t, workspaceToolDock])
 
   // Send to Workspace dialog state (driven by sendToWorkspaceAtom set from SessionMenu/BatchSessionMenu)
   const sendToWorkspaceIds = useAtomValue(sendToWorkspaceAtom)
@@ -1181,6 +1230,9 @@ function AppShellContent({
 
   // Focus mode toggle (CMD+.) - hides both sidebars
   useAction('view.toggleFocusMode', () => setIsSidebarAndNavigatorHidden(v => !v))
+  useAction('view.toggleBottomTerminal', () => {
+    setIsBottomTerminalVisible((value) => !value)
+  }, { enabled: () => !isAutoCompact && !isFocusedMode })
 
   // Panel focus navigation (CMD+SHIFT+[ / ])
   const focusNextPanel = useSetAtom(focusNextPanelAtom)
@@ -1320,6 +1372,13 @@ function AppShellContent({
           const rect = workspaceContextResizeHandleRef.current.getBoundingClientRect()
           setWorkspaceContextHandleY(e.clientY - rect.top)
         }
+      } else if (isResizing === 'bottom-terminal') {
+        const shellBottom = shellRef.current?.getBoundingClientRect().bottom ?? window.innerHeight
+        const newHeight = Math.min(
+          Math.max(shellBottom - e.clientY - PANEL_EDGE_INSET, bottomTerminalMinHeight),
+          bottomTerminalMaxHeight,
+        )
+        setBottomTerminalHeight(newHeight)
       }
     }
 
@@ -1333,6 +1392,8 @@ function AppShellContent({
       } else if (isResizing === 'workspace-context') {
         storage.set(storage.KEYS.workspaceContextSidebarWidth, workspaceContextSidebarWidth)
         setWorkspaceContextHandleY(null)
+      } else if (isResizing === 'bottom-terminal') {
+        storage.set(storage.KEYS.bottomTerminalHeight, bottomTerminalHeight)
       }
       setIsResizing(null)
     }
@@ -1353,6 +1414,9 @@ function AppShellContent({
     workspaceContextSidebarMaxWidth,
     workspaceContextSidebarMinWidth,
     workspaceContextSidebarDefaultWidth,
+    bottomTerminalHeight,
+    bottomTerminalMinHeight,
+    bottomTerminalMaxHeight,
   ])
 
   // Spring transition config - shared between sidebar and header
@@ -1698,6 +1762,14 @@ function AppShellContent({
     storage.set(storage.KEYS.workspaceContextSidebarVisible, isWorkspaceContextSidebarVisible)
   }, [isWorkspaceContextSidebarVisible])
 
+  React.useEffect(() => {
+    storage.set(storage.KEYS.bottomTerminalVisible, isBottomTerminalVisible)
+  }, [isBottomTerminalVisible])
+
+  React.useEffect(() => {
+    storage.set(storage.KEYS.bottomTerminalHeight, bottomTerminalHeight)
+  }, [bottomTerminalHeight])
+
   // Persist focus mode state to localStorage
   React.useEffect(() => {
     storage.set(storage.KEYS.focusModeEnabled, isSidebarAndNavigatorHidden)
@@ -1834,9 +1906,9 @@ function AppShellContent({
   const [editPopoverOpen, setEditPopoverOpen] = useState<'statuses' | 'labels' | 'views' | 'add-source' | 'add-source-api' | 'add-source-mcp' | 'add-source-local' | 'add-skill' | 'add-label' | 'automation-config' | null>(null)
 
   // Stores the Y position of the last right-clicked sidebar item so the EditPopover
-  // appears near it rather than at a fixed location. Updated synchronously before
-  // the setTimeout that opens the popover, ensuring the ref is set before render.
-  const editPopoverAnchorY = useRef<number>(120)
+  // appears near it rather than at a fixed location. State (not ref) so anchors
+  // re-render when the popover opens.
+  const [editPopoverAnchorY, setEditPopoverAnchorY] = useState(120)
   // Tracks which label was right-clicked when opening label EditPopovers,
   // so the agent knows the target for commands like "make this red" or "add below this"
   const editLabelTargetId = useRef<string | undefined>(undefined)
@@ -1852,7 +1924,7 @@ function AppShellContent({
     const trigger = document.querySelector('.group\\/section > [data-state="open"]')
     if (trigger) {
       const rect = trigger.getBoundingClientRect()
-      editPopoverAnchorY.current = rect.top
+      setEditPopoverAnchorY(rect.top)
       editPopoverTriggerRef.current = trigger
     }
   }, [])
@@ -2286,8 +2358,11 @@ function AppShellContent({
           canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
+          toolDockModules={toolDockTopBarModules}
           onToggleWorkspaceContextSidebar={!isFocusedMode && !isAutoCompact ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
           isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarRendered}
+          onToggleBottomTerminal={!isFocusedMode && !isAutoCompact ? () => setIsBottomTerminalVisible((value) => !value) : undefined}
+          isBottomTerminalVisible={renderedBottomTerminalHeight > 0}
           onAddSessionPanel={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
@@ -3016,7 +3091,7 @@ function AppShellContent({
                                 Supports keyboard navigation (ArrowUp/Down/Enter in input). */}
                             {filterDropdownResults.states.length === 0 && filterDropdownResults.labels.length === 0 ? (
                               <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                                No matching statuses or labels
+                                {t('common.noMatches')}
                               </div>
                             ) : (
                               <div ref={filterDropdownListRef} className="max-h-[240px] overflow-y-auto py-1">
@@ -3112,7 +3187,7 @@ function AppShellContent({
                                 {filterDropdownResults.labels.length > 0 && (
                                   <>
                                     <div className="px-3 pt-1.5 pb-1 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                                      Labels
+                                      {t("sidebar.labels")}
                                     </div>
                                     {filterDropdownResults.labels.map((item, index) => {
                                       // Offset by state count for unified index
@@ -3359,6 +3434,18 @@ function AppShellContent({
           isRightSidebarVisible={isWorkspaceContextSidebarDocked}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
+          contentBottomHeight={renderedBottomTerminalHeight}
+          contentBottomSlot={renderedBottomTerminalHeight > 0 ? (
+            <BottomTerminalPanel
+              cwd={activeWorkspace?.rootPath}
+              onClose={() => setIsBottomTerminalVisible(false)}
+              onResizeStart={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setIsResizing('bottom-terminal')
+              }}
+            />
+          ) : undefined}
         />
         {isWorkspaceContextSidebarDocked && (
           <WorkspaceContextSidebar
@@ -3368,11 +3455,15 @@ function AppShellContent({
             progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
             selectedFilePath={selectedWorkspaceContextFile}
             compact={isWorkspaceContextSidebarCompact}
+            activeModules={workspaceToolDock.activeModules}
+            moduleRatios={workspaceToolDock.ratios}
             onFileClick={(path) => {
               setSelectedWorkspaceContextFile(path)
               onOpenFile(path)
             }}
-            onToggle={() => setIsWorkspaceContextSidebarVisible((value) => !value)}
+            onCloseModule={workspaceToolDock.closeModule}
+            onResizeAdjacentModules={workspaceToolDock.resizeAdjacentModules}
+            onResetModuleRatios={workspaceToolDock.resetRatios}
           />
         )}
         {isWorkspaceContextSidebarOverlay && (
@@ -3387,11 +3478,15 @@ function AppShellContent({
               progressTasks={effectiveSessionId ? sessionMetaMap.get(effectiveSessionId)?.progress : undefined}
               selectedFilePath={selectedWorkspaceContextFile}
               compact={isWorkspaceContextSidebarCompact}
+              activeModules={workspaceToolDock.activeModules}
+              moduleRatios={workspaceToolDock.ratios}
               onFileClick={(path) => {
                 setSelectedWorkspaceContextFile(path)
                 onOpenFile(path)
               }}
-              onToggle={() => setIsWorkspaceContextSidebarVisible((value) => !value)}
+              onCloseModule={workspaceToolDock.closeModule}
+              onResizeAdjacentModules={workspaceToolDock.resizeAdjacentModules}
+              onResetModuleRatios={workspaceToolDock.resetRatios}
             />
           </div>
         )}
@@ -3521,7 +3616,7 @@ function AppShellContent({
             trigger={
               <div
                 className="fixed w-0 h-0 pointer-events-none"
-                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                 aria-hidden="true"
               />
             }
@@ -3541,7 +3636,7 @@ function AppShellContent({
             trigger={
               <div
                 className="fixed w-0 h-0 pointer-events-none"
-                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                 aria-hidden="true"
               />
             }
@@ -3577,7 +3672,7 @@ function AppShellContent({
             trigger={
               <div
                 className="fixed w-0 h-0 pointer-events-none"
-                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                 aria-hidden="true"
               />
             }
@@ -3601,7 +3696,7 @@ function AppShellContent({
               trigger={
                 <div
                   className="fixed w-0 h-0 pointer-events-none"
-                  style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                  style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                   aria-hidden="true"
                 />
               }
@@ -3618,7 +3713,7 @@ function AppShellContent({
             trigger={
               <div
                 className="fixed w-0 h-0 pointer-events-none"
-                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                 aria-hidden="true"
               />
             }
@@ -3634,7 +3729,7 @@ function AppShellContent({
             trigger={
               <div
                 className="fixed w-0 h-0 pointer-events-none"
-                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                 aria-hidden="true"
               />
             }
@@ -3650,7 +3745,7 @@ function AppShellContent({
             trigger={
               <div
                 className="fixed w-0 h-0 pointer-events-none"
-                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY.current }}
+                style={{ left: sidebarWidth + 20, top: editPopoverAnchorY }}
                 aria-hidden="true"
               />
             }
