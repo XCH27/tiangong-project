@@ -493,6 +493,16 @@ export const RPC_CHANNELS = {
     GET_REVIEW_QUEUE: 'team:getReviewQueue',
     GET_INBOX: 'team:getInbox',
   },
+  teamRun: {
+    GET_TEAM: 'teamRun:getTeam',
+    PROPOSE_RUN: 'teamRun:proposeRun',
+    START_RUN: 'teamRun:startRun',
+    GET_STATUS: 'teamRun:getStatus',
+    GET_REPORT: 'teamRun:getReport',
+    CANCEL_RUN: 'teamRun:cancelRun',
+    SEND_MESSAGE: 'teamRun:sendMessage',
+    INVOKE_ACTION: 'teamRun:invokeAction',
+  },
 } as const
 
 // IPC_CHANNELS compat alias removed — all consumers now use RPC_CHANNELS

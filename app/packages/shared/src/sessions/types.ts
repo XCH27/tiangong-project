@@ -56,6 +56,8 @@ export const SESSION_PERSISTENT_FIELDS = [
   'transferredSessionSummaryApplied',
   // Automation origin
   'triggeredBy',
+  // D19 surface separation: 'chat' (default, API-only) or 'terminal' (CLI/PTY)
+  'surface',
 ] as const;
 
 export type SessionPersistentField = typeof SESSION_PERSISTENT_FIELDS[number];
@@ -206,7 +208,17 @@ export interface SessionConfig {
   transferredSessionSummaryApplied?: boolean;
   /** Metadata for sessions created by automations */
   triggeredBy?: { automationName?: string; event?: string; timestamp?: number };
+  /**
+   * D19 surface separation (docs/38-API-CLI).
+   * - 'chat' (default): normal conversation, API-only. CLI runtime picker not shown.
+   * - 'terminal': CLI/PTY/external harness session, binds cliRuntimeId.
+   * Undefined on old sessions is treated as 'chat'.
+   */
+  surface?: SessionSurface;
 }
+
+/** D19 session surface (docs/38-API-CLI §3). */
+export type SessionSurface = 'chat' | 'terminal';
 
 /**
  * Stored session with conversation data

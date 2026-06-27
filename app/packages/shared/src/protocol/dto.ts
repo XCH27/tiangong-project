@@ -112,6 +112,12 @@ export interface Session {
   }
   /** When true, session is hidden from session list (e.g., mini edit sessions) */
   hidden?: boolean
+  /**
+   * D19 surface separation (docs/38-API-CLI).
+   * 'chat' = normal API conversation; 'terminal' = CLI/PTY session.
+   * Undefined on old sessions = 'chat'.
+   */
+  surface?: 'chat' | 'terminal'
   isArchived?: boolean
   archivedAt?: number
   supportsBranching?: boolean
@@ -242,6 +248,11 @@ export type SessionEvent =
   | { type: 'external_job_completed'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
   // Fleet 团队编排事件（docs/33）：会话即 Agent，不引入第二套 team/session store。
   | TeamSessionEvent
+  // Fleet TeamRun 事件（D19 · docs/38-API-CLI）：跨 Runtime 编排，CLI 队长经 Fleet Bridge 调 API 队员。
+  | { type: 'team_run_created'; sessionId: string; runId: string; initiatorSeatId: string; targetSeatId: string; taskDescription: string; timestamp: number }
+  | { type: 'team_run_status_changed'; sessionId: string; runId: string; status: string; previousStatus?: string; errorCode?: string; timestamp: number }
+  | { type: 'team_run_report_ready'; sessionId: string; runId: string; summary: string; changedFiles?: string[]; timestamp: number }
+  | { type: 'team_run_lease_blocked'; sessionId: string; runId: string; conflictRunId: string; targets: string[]; timestamp: number }
   // Fleet 智能模型路由事件（docs/03 §13）：路由决策 + 成本账本进 timeline。
   | { type: 'model_routing_decision'; sessionId: string; taskType: string; complexity: number; tier: string; fusionMode: string; cascadeEligible: boolean; basis: string; hintOverrideReason?: string; timestamp: number }
   | { type: 'cache_ledger'; sessionId: string; routing: { taskType: string; complexity: number; tier: string; fusionMode: string; cascadeUpgrades: number }; layers: { l1Provider?: { cacheReadTokens: number; cacheCreationTokens: number; provider: string }; l2Exact?: { hit: boolean }; l2Semantic?: { hit: boolean; similarity: number }; l3Panel?: { hits: number; misses: number } }; cost: { actual: number | null; estimated: number | null; savedByCache: number | null }; timestamp: number }
