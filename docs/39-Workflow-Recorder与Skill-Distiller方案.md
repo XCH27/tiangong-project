@@ -283,7 +283,7 @@ Replay 不能靠坐标。优先级：
 ### W0 · 文档与边界
 
 - 登记 Codex Record & Replay 为 proprietary 黑盒参考。
-- 写入 D19 产品决策。
+- 写入 D7/D14 agent-native 与 Internal Action 主线；D19 保留给 API/CLI 分离与跨 Runtime 编排。
 - 明确不复制 OpenAI bundled plugin。
 
 ### W1 · Internal Action Registry / Command Bus

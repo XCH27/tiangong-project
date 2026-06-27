@@ -6,6 +6,7 @@
 > **2026-06-24 更新**：刷新会扫描常见本机 Agent CLI（Goose/Claude Code/Codex/Grok/Hermes/OpenCode/Antigravity/Qwen/Pi/Cursor Agent/OpenClaw），并自动测试。`protocol='acp'`（Goose/Hermes/OpenCode/Custom ACP）走 stdio ACP；Codex/Claude Code/Grok/Antigravity(`agy`) 走官方 one-shot CLI adapter，进入聊天 runtime picker 并可发送；Qwen/Pi/Cursor Agent/OpenClaw 等未接发送 adapter 的 runtime 才标记 `needs_adapter`。Gemini CLI 不再作为内置本机 runtime 探测项；Google 路线以后按 Antigravity `agy`。
 > **已完成**：catalog/health/RPC/协议（同上批）+ **ACP 发送链路**：`services/acp/`（`AcpConnection` JSON-RPC ndjson、`AcpRuntimeSession` initialize/new/prompt/stream/permission/cancel、stdio transport、`CliRuntimeHost` 进程复用与清理，均有 mock-transport 单测）+ 会话级 runtime/model 选择（`cliRuntimeId`、`cliRuntimeModelId`、`setCliRuntime`、`setCliRuntimeModel`、`cli_runtime_changed`、`cli_runtime_models_changed`）+ `sendMessage` 路由（`runCliRuntimeTurn` 复用 craft text_delta/text_complete/complete）+ 附件硬拒绝 + 进程清理（cancel/delete/cleanup）+ 输入框三按钮（CLI / 模型 / Token 环）+ 设置页本机 CLI 列表/自动测试 + **Custom runtime 新增/编辑/删除表单**。
 > **未完成（下一步）**：Qwen/Pi/Cursor Agent/OpenClaw 等 native/subscription adapter、Custom runtime 高级校验、usage/额度采样适配器；Codex/Claude/Grok/Antigravity 当前是 one-shot adapter，尚未做完整会话恢复/逐工具权限细分。验收以 `docs/24 §0` 为准。
+> **2026-06-27 D19 迁移说明**：输入框 CLI picker 是当前已落路径；目标态会迁到 `surface='terminal'` 的一等终端面板，普通对话只走 API。迁移完成前，不得把聊天 picker 写成已删除，也不得把 terminal surface 写成已实现。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
 
 ## 目标
 
@@ -92,3 +93,14 @@ git diff --check
 - 进程 dispose。
 
 真实 Goose / Hermes / OpenCode / Custom ACP 只能做 opt-in smoke，不进入默认 CI。Codex/Claude/Grok/Antigravity 的 one-shot adapter 可做本机手动验收；Qwen/Pi/Cursor Agent/OpenClaw 等未接 native/subscription adapter 前只能检测和展示，不能承诺已可发送。
+
+## Surface 分离目标（D19 · 2026-06-27）
+
+> **Fleet owns the team, CLI owns a run.** CLI Runtime 的目标归属是 terminal surface，不是普通对话框 runtime picker。当前聊天 picker 是迁移期已落事实。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
+
+- **当前事实**：普通对话已可通过输入框 CLI picker 选择本机 CLI runtime；这是 D3/P0 已落功能。
+- **目标态**：`surface = 'chat'` 的普通会话不显示 CLI runtime picker，只走 API 模型路径。
+- **CLI 目标入口**：终端面板创建会话时 `surface = 'terminal'`，绑定 CLI runtime。
+- **终端升级为一等面板**（`docs/37 §0.4`）：终端从底部卡片迁移为可多开、进多面板 grid、与 API 队员对话并排的一等面板。
+- **现有 `cliRuntimeId` 字段语义不变**：`cliRuntimeId` / `cliRuntimeModelId` 仍记录会话绑定的 CLI runtime 和模型；目标态只是普通对话不再暴露 picker，`surface = 'terminal'` 的会话才绑定。
+- **不新建第二套 session**：CLI 会话仍在 craft `SessionManager` 里，带 `surface = 'terminal'` 标识；不另起第二套 store。

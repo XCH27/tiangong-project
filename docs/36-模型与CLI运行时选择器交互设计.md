@@ -3,6 +3,7 @@
 > 状态日期：2026-06-24
 > 起因：commit `2756b7dc` 把 CLI Runtime 同时塞进顶部栏和输入框模型选择器，且把"运行方式"和"模型"两条正交轴拍平成一个列表，导致截图里 `本机 CLI / API 模型 / Opus 4.8` 双勾混乱。本文是这个选择器的**唯一交互真相**，实现以本文为准；冲突处以 `docs/00A` 红线兜底。
 > 适用文件：`renderer/components/app-shell/input/FreeFormInput.tsx`、`CompactModelSelector.tsx`、`cli-runtime-model-picker.ts`、`components/app-shell/TopBar.tsx`。
+> D19 迁移说明：本文描述的是**当前已落的聊天输入框 CLI picker**。D19 目标态会把 CLI runtime 迁到 `surface='terminal'` 的一等终端面板，普通对话只保留 API 模型选择。迁移完成前，本文仍是当前实现的交互真相；迁移方案见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
 
 ---
 

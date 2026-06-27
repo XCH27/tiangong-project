@@ -55,7 +55,7 @@ export interface SessionProgress {
 
 ---
 
-## 3 · agent-native：人和 Agent 共用一套动作（D7/D19）
+## 3 · agent-native：人和 Agent 共用一套动作（D7/D14）
 
 一个结构化工具，人和 AI 同一条路径，全部进 timeline：
 

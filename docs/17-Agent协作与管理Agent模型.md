@@ -80,6 +80,40 @@ Fleet 不吸收的是 LobeHub 的代码、目录结构、组件、文案和样�
 
 队长可以调度队员，但队长仍是"项目级"身份，与"软件级"的管理 Agent 分开。管理 Agent → 队长 → 队员，是三段不同身份，不是一个长链。
 
+### 3.1 · RuntimeLane：队长不是 CLI，CLI 只是队长的执行 lane（D19）
+
+队长是 Fleet 里的身份（`AgentSeat`），CLI 只是队长当前使用的执行 lane。一个队长可以同时拥有多个 RuntimeLane：
+
+- **control lane（API）**：用于规划、调度、调用 Fleet 内部能力、团队状态、permission。必须走 API，才能用 Fleet 内部结构化能力和 Authorization 链路。
+- **harness lane（CLI）**：用于编码、跑测试、处理本机命令。走外部 CLI harness（Claude Code / Codex / Grok 等），享受成熟 coding loop。
+
+"队长是 CLI"不是队长身份变成 CLI，而是队长当前编码任务走 CLI harness lane。两条 lane 同属一个 AgentSeat，共享同一个稳定身份和序号。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
+
+### 3.2 · 跨 Runtime 编排（D19）
+
+CLI 队长可以经 **Fleet Bridge** 调用 API 队员，但不能直接调 API 队员工具，而是发起受控 **TeamRun**：
+
+- CLI 队长用 Fleet Bridge 工具（`fleet.start_member_run` 等）发起 TeamRun；Bridge 对外表现为同步工具调用，对内创建异步 TeamRun。
+- TeamCoordinator 判断目标成员、权限、loadout、是否可并发。
+- RuntimeLauncherAdapter 负责把 Fleet Bridge/MCP 按当前 CLI 的启动方式注入；无法注入时 lane 标 `BRIDGE_UNAVAILABLE`，只能当普通 CLI 使用。
+- API 队员在自己的 session 异步执行（autoRun），完整细节留在自己的 session。
+- API 队员回压缩 RunReport（summary / changedFiles / diffSummary / evidenceRefs / requiresLeaderAction）；不回完整对话。
+- CLI 队长只收到 report / diff / evidence refs。
+
+Bridge 默认阻塞等待短任务完成；长任务或等待人工超过阈值时返回 `RUN_TIMEOUT_PENDING_REPORT` + `runId`，释放黑盒 CLI 的 tool call。支持轮询的 CLI 可继续查状态，不支持轮询也不会卡死。权限卡显示完整 attributionChain：`user → seat/runtime → fleet.start_member_run → target seat/runtime → action`。文件/Git 写入还必须经过 WorkspaceFileLeaseManager，冲突进入 blocked，不并发写。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`、`docs/33 §10`。
+
+### 3.3 · 运行策略（按任务类型分配最强执行面，D19）
+
+| 任务 | 默认路径 | 原因 |
+|---|---|---|
+| 管理 Agent、记忆、设置、权限、能力装载 | API cheap | 可审计、稳定、低成本，**不允许 CLI**（§2 已定） |
+| 普通聊天、需求澄清、轻分析 | API Auto | 快、干净、能用 Fleet 内部上下文 |
+| 操控 Fleet 内部工作面（canvas/browser/video/doc） | API + Internal Action | 结构化动作、可回放、能撤销 |
+| 代码实现、重构、跑测试、修 CI | CLI harness | 直接吃 Claude Code/Codex/Grok 等成熟工程能力 |
+| 队长规划、分派、验收 | API control lane | 团队状态和权限必须归 Fleet |
+| 队长亲自编码 | CLI harness lane | 享受外部 coding harness |
+| API 队员被 CLI 队长调用 | Fleet TeamRun Bridge | CLI 只发起受控 run，不直接改 Fleet 真相 |
+
 ## 4 · 分级自动决策（D12）
 
 > **2026-06-24 进度 ✅ 已落主线**：L0–L3 判定引擎、设置落盘、RPC、首批接入点和设置页已提交。默认关闭，不改变原 permission 行为。

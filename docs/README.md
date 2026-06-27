@@ -32,6 +32,7 @@
 - `docs/36`：模型 / CLI 运行时选择器交互设计。
 - `docs/37`：右侧 Tool Dock 与终端面板落地规格。
 - `docs/38`：内部结构化能力与 Agent-native 优化主线。
+- `docs/38-API-CLI分离与跨Runtime团队编排.md`：混合 Runtime 团队编排与 API/CLI 分离（D19）。`docs/44` 已合并到此（tombstone）。
 - `docs/40`：Internal Action Registry 规格与样板闭环（S1 承重墙）。
 - `docs/41`：项目问题审计与方向收口。
 - `docs/42`：系统路线与最佳落地方案。

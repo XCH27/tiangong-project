@@ -266,3 +266,37 @@ status ID 仍允许 workspace 自定义，因此后端必须通过 `statusMap` �
 | T-MANAGER-AGENT | Agent registry、管理 Agent 工具/提示词、permission 接线 | 跨文件夹管理入口的后端能力；不先做新治理面板 |
 
 并行 Agent 不得改 `docs/33` 协议；发现缺口必须回主线提出，不能自行加字段。每个任务按 `docs/32` 的汇报格式交付。
+
+## 10 · RuntimeLane 与 TeamRun 协议摘要（D19 · 2026-06-27）
+
+> 本节只放团队脊柱里的概念摘要。详细工程契约（状态机、attributionChain、错误码、RuntimeLauncherAdapter、同步阻塞桥、WorkspaceFileLeaseManager、前后端/环境/工具调用边界）见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。共享协议文件必须按 `AGENTS.md` 规则 36 由 Lead 冻结后再改。
+
+### 10.1 · 三个概念
+
+| 概念 | 归属 | 作用 |
+|---|---|---|
+| **AgentSeat** | Fleet | 稳定身份（队长/代码/设计/审查/测试），不随 runtime 变 |
+| **RuntimeLane** | Fleet 管理，runtime 执行 | API lane / CLI lane / terminal lane；一个 AgentSeat 可绑多个 lane |
+| **TeamRun** | Fleet | 一次跨成员执行任务，含 runId、状态、权限链、租约、成本、报告 |
+
+队长不是 CLI；CLI 只是队长当前使用的执行 lane。队长可同时拥有 control lane（API）和 harness lane（CLI）。
+
+### 10.2 · Fleet Bridge 工具集
+
+CLI lane 只看到固定工具集（不动态生成成员工具）：
+
+- `fleet.get_team` / `fleet.propose_member_run` / `fleet.start_member_run`
+- `fleet.get_run_status` / `fleet.get_run_report` / `fleet.cancel_run`
+- `fleet.send_team_message` / `fleet.invoke_internal_action`（仅只读或 L0/L1）
+
+Bridge 对外同步阻塞、对内异步 TeamRun；详见 `docs/38-API-CLI` §4。
+
+### 10.3 · 落点
+
+协议类型落点（P0 冻结目标，不代表当前已实现）：
+
+- `shared/protocol/team-run.ts`：`AgentSeat` / `RuntimeLane` / `TeamRun` / `RunReport` / `AttributionChain` 类型
+- `shared/protocol/dto.ts`：新增 `team_run_*` SessionEvent
+- `shared/protocol/channels.ts`：新增 `teamRun` RPC namespace
+- `server-core/src/services/team-run-coordinator.ts`：TeamRun 调度
+- `session-tools-core/src/handlers/fleet-bridge.ts`：CLI lane 注入的 Bridge 工具集

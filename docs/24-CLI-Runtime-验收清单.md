@@ -2,6 +2,7 @@
 
 > 状态日期：2026-06-20（验收矩阵）；进度更新 2026-06-24。
 > 用途：CLI Runtime 在干净 craft 基座上重做完成后，用本文做验收。
+> D19 迁移说明：本文验收的是当前聊天输入框 CLI picker / 设置页 / 发送路由。D19 目标态会把 CLI runtime 迁到 terminal surface；迁移前不得把本文的“已完成”误读为 terminal surface 已落，迁移后需新增对应验收矩阵。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
 
 ## 0 · 当前进度（2026-06-24 · ✅ 已落主线）
 

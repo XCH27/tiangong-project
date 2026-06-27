@@ -17,6 +17,7 @@
 - 任务进度 Progress ✅ 已落主线：`protocol/progress.ts` + `set_session_progress` 工具 + `SessionManager.setSessionProgress` + RPC + JSONL 持久化字段 + 会话顶部 Progress 卡 + 会话行 N/M 小药丸。剩余：团队 rollup UI、本机视觉验收。见 `docs/35`。
 - CLI Runtime + ACP/native 发送 ✅ 已落主线：catalog/health/RPC/协议 + `services/acp/`（JSON-RPC 客户端/runtime session/stdio transport/host，mock-transport 单测）+ Codex/Claude/Grok/Antigravity one-shot adapter + 会话级 runtime/model 选择 + JSONL 持久化 + `sendMessage` 路由 + 附件硬拒绝 + 进程清理 + 设置页（CLI 列表/Custom 表单可用）。见 `docs/23`/`docs/24`。剩余：usage/额度采样、真实 CLI smoke、Claude 等 CLI 的 reasoning flag 实机确认。
 - CLI / 模型选择器 UI ✅ 已按 `docs/36` 收口：输入框底部拆为 CLI / 模型 / Token 三按钮；CLI 模式显示“模型由 CLI 管理”，不伪造模型列表；Token 环 API/CLI 诚实分级。剩余：本机 Electron 视觉验收。
+- D19 API/CLI 分离与跨 Runtime 编排是**目标架构**，不是当前已落代码：当前聊天 CLI picker 和底部终端卡片保留；TeamRun、Fleet Bridge、RuntimeLauncherAdapter、WorkspaceFileLeaseManager、terminal surface 一等面板尚未实现。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
 - 管理 Agent 分级自动决策 L0-L3 ✅ 已落主线：`decideAuto` 引擎 + 两个接入点（`TeamCoordinator.enforcePermission` + 中央 `requestWorkflowPermission`）+ `managerDecision` RPC + 设置页（模型配置：跟随工作区或固定 API 连接/模型/推理强度；自动决策开关/L2 规则增删）。S5 已补“所有会话”层专栏、右下角 mini 入口和退出行为设置；首次发送创建 hidden craft session，注入管理 Agent 专用系统提示词，仍走原 `onSendMessage`/permission/timeline。见 `docs/17 §4`。剩余：真正跨工作区单一全局 session、更多结构化管理动作。
 - 分层记忆 ✅ 已落主线（后端 + 设置页 + 输入建议）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 独立 `MemorySettingsPage`；S6 已补全局/工作区存储拆分、TF-IDF + 3-gram 语义检索、episodic 时间衰减、turn 事实抽取、管理决策依据注入、snippet/suggestion 服务；`MemoryInputSuggestions`/`useMemoryInputSuggestions` 已在 `FreeFormInput` 接线。见 `docs/05`。剩余：向量库/更稳健抽取、归档 UI、L3 清空/导出确认。
 - 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：会话列表团队化 UI、`@`/`/` 输入收口、管理 Agent 专栏、CLI 三按钮、Progress 卡、Token 环、记忆输入建议条均已落主线。仍需本机视觉验收和真实 CLI/外站 smoke。
@@ -33,7 +34,7 @@
 | 上游软分叉同步 v0.10.4 | `app/scripts/oss-sync.ts`、`.oss-sync-state.json` | ✅ 已提交；待 A2 视觉验收 |
 | 人类交互终端 PTY | `interactive-terminal-ipc.ts`、`BottomTerminalPanel.tsx`、xterm | ✅ 已提交；待 A2 视觉验收 |
 | Git 审查 | ✅ 已落主线 | `git-review-service` + RPC + `GitReviewPanel` + `GitHubSettingsPage`；已提交，待 A2 视觉 smoke |
-| 工作面模块壳 / Tool Dock | ✅ 已落主线 | `WorkbenchModuleFrame` + `workbench-layout` + `tool-dock-config` 已挂 `AppShell`；已提交 |
+| 工作面模块壳 / Tool Dock | ✅ 已落主线 | `CraftModulePanel` + `ResizablePanelGroup` + `workbench-layout` + `tool-dock-config`；规范见 `docs/37` §0/§6 |
 | 智能模型路由 + Fusion | ✅ 已落主线 | 见 §1 路由条目；已提交 `362d02b1` |
 | 本机 CLI 并行子 agent | `scripts/cli-subagents.sh` | ✅ 已提交；Claude `deepseek-v4-pro`、Grok `grok-build`/`grok-composer-2.5-fast`、Antigravity `Gemini 3.5 Flash (High)` |
 

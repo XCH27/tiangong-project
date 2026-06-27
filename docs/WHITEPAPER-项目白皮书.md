@@ -134,7 +134,7 @@ session / permission / timeline / actor 身份是唯一真相；所有能力适�
 | 终端三概念 | 3 | D21 | `docs/42 §1.1`、`docs/23` |
 | CLI 运行时/外部桥 | 5/6 | D3 | `docs/22/23/24/25/36`、`docs/28` |
 | 设计/视频工作面 | 1 | D6/D8 | `docs/15`、`docs/30/31` |
-| 流程录制/Skill | 2/7 | D19 | `docs/39`、`docs/40` |
+| 流程录制/Skill | 2/7 | D7/D14 | `docs/39`、`docs/40` |
 | 插件能力对齐 | 5 | D20 | `docs/43`、`docs/29` |
 
 ---

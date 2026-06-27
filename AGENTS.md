@@ -23,10 +23,11 @@
 - **D13 AI 工作创作台统一定位**：Fleet 是"AI 工作创作台"——人类主导、AI 辅助，在一个软件里完成真实生产流程。默认工作台保留 Craft 原结构；无限画布、AIGC、网页/文档、视频剪辑可用不同专业布局和原生引擎。它们共用工作区、全部文件/Library、Agent、记忆、permission、session timeline、成本账本和导出；输入语义按当前选区/工作面/项目类型/上下文路由，但不强制共用同一页面壳或 React 组件（见 `docs/02`、`docs/18`）。
 - **D14 原生引擎 + 统一脊柱**：不同工作面使用适合自己的原生文档模型/引擎；统一的是 craft session、permission、timeline、actor、结构化工具动词、资产交接和成本账本。`DesignAction/Patch` 是动作信封，不是所有内容格式的内部模型（见 `docs/30`、`docs/31`）。
 - **D15 全部文件 / 本地素材仓库**：默认工作台右侧上下文栏显示全部文件/当前工作区文件夹（上方任务看板 Progress、下方文件列表，右侧按钮整体隐藏/显示），直接对应“我的工作区”和用户选择的本地目录；Library 是项目选用、授权、索引后的资产层。AI 整理文件必须走 permission + timeline，禁止在左侧再加“全部文件”按钮。
-- **D15a 工作区命名与入口**：顶部工作区 pill 的下拉是当前工作区动作菜单：重命名、在新窗口打开、关闭工作区、删除工作区；“添加工作区”放在右侧顶栏按钮。关闭工作区只从软件工作区列表移除，不删除真实文件夹；删除工作区才删除磁盘 rootPath。默认工作区名称从主语言取 `workspace.myWorkspace`，真实文件夹名与显示名同步（中文就用中文文件夹名），重命名必须同步移动 workspace 根目录并更新全局 config 与 workspace `config.json`，不得只做 UI 汉化或只改显示字段。
+- **D15a 工作区命名与入口**：顶部工作区 pill 的下拉是当前工作区动作菜单：重命名、在新窗口打开、关闭工作区、删除工作区；「添加工作区」紧跟工作区 pill 右侧，同 pill 边框/高度，桌面宽度足够可显示图标+文案，窄宽用仅图标+tooltip。关闭工作区只从软件工作区列表移除，不删除真实文件夹；删除工作区才删除磁盘 rootPath。默认工作区名称从主语言取 `workspace.myWorkspace`，真实文件夹名与显示名同步（中文就用中文文件夹名），重命名必须同步移动 workspace 根目录并更新全局 config 与 workspace `config.json`，不得只做 UI 汉化或只改显示字段。
 - **D16 会话即 Agent + 团队群聊**：会话显示模型/Runtime、稳定序号和身份；模型图标只作识别，原“标签”菜单里的“队长”身份标签负责提升队长。团队群聊复用 craft session。`@` 只找人/Agent/会话/身份，Skill/命令/模板统一走 `/`，不保留旧 `@Skill` 双入口（见 `docs/33`）。
 - **D17 常驻管理 Agent**：跨文件夹的软件级 Agent 负责设置、记忆、知识、Skill、素材和跨项目协调，但不能绕过 permission 或自动同意 L3。它的消息入口在“所有会话”层的专门栏，不塞进单个工作区 普通会话；右下角可作为唤起/最小化入口。退出支持直接退出或常驻小窗。
 - **D18 默认工作台 + 四个专业工作面**：保留默认工作台，增加无限画布、AIGC、网页/文档、视频剪辑；所有工作面共享本地素材、Library、Agent、记忆、权限和 timeline。
+- **D19 API/CLI 分离与跨 Runtime 编排**：Fleet owns the team, CLI owns a run。普通对话目标态只走 API；CLI 从 terminal surface 创建；CLI 队长通过 Fleet Bridge 发起受控 TeamRun 调 API 队员；Bridge 对外同步阻塞、对内异步 TeamRun；RuntimeLauncherAdapter 负责不同 CLI 的 Bridge/MCP 注入；WorkspaceFileLeaseManager 负责文件/Git 写租约。当前聊天 CLI picker 和底部终端卡片是迁移期事实，不能写成目标态已落。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
 - **待用户拍板**：① 分叉策略（建议软分叉）。
 
 与以上决策冲突的内容不得作为执行依据。
@@ -80,6 +81,8 @@
 38. **功能页面必须前后端同文档。** 新增或修改一个功能页面时，同一份功能文档必须同时写清：用户界面放哪里、沿用哪些原组件、显示哪些字段、后端服务/RPC/事件怎么接、Agent 用什么工具调用、permission/timeline/回滚怎么走、设置页和 i18n 怎么同步、验收怎么证明。禁止只写 UI 稿或只写后端服务；并行开发时可以拆人做，但不能拆成两份互相猜的文档。
 39. **智能模型路由只挂 API/OAuth 路径。** 选了 CLI Runtime（`cliRuntimeId != null`）时整条路由主干（Auto/Fusion/缓存/瘦身）跳过；生成类（生图/生视频）走 External Job 平面，不进 LLM 档位路由。Auto 路由 + 缓存 + 瘦身可早做；Fusion 默认关（D5）。管理 Agent 固定 cheap API、永不 Fusion、不给 CLI；队长默认触发者；执行 Agent hybrid。详见 `docs/03`。
 40. **路由决策和成本账本必须进 timeline。** 每条 Auto 路由请求写 `model_routing_decision` 事件（taskType/complexity/tier/fusionMode/basis）；Fusion 和缓存命中写 `cache_ledger`（真实/估算/未知分开）。偏好数据（接受/重试/换模型/回滚）采集进数据管线，数据够了训 RouteLLM 路由器。
+41. **Fleet owns the team, CLI owns a run。** `AgentSeat` 是稳定身份，`RuntimeLane` 是执行面，`TeamRun` 是跨成员任务。CLI 队长可经 Fleet Bridge 调 API 队员，但 Bridge 对外同步阻塞、对内异步 TeamRun；权限、timeline、成本、租约和报告仍归 Fleet。普通对话 API-only 与一等 terminal surface 是目标态，当前聊天 CLI picker / 底部终端卡片属于迁移期事实。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`、`docs/33 §10`、`docs/23`、`docs/37 §0.4`。
+42. **不同 runtime 的 Skill/MCP/模型不强行统一。** 统一的是 Capability Catalog 和 loadout；按 RuntimeLane 裁剪可用能力。Fleet Internal Action 最高优先；Fleet Skill 声明所需 internal action/MCP/CLI；CLI native skill 只在该 CLI lane 可用；MCP Bridge 由 RuntimeLauncherAdapter 按 workspace/session scope 注入；API lane 走 `docs/03` 模型路由，CLI lane 走 CLI 自带模型，Fleet 不猜模型名。详见 `docs/38-API-CLI §8-§12`、`docs/40`、`docs/43`。
 
 ## 常用入口
 
@@ -88,6 +91,7 @@
 - Main process：`app/apps/electron/src/main`
 - Shared/session/tool packages：`app/packages/*`
 - 构建与脚本：`app/package.json`
+- **Workbench / Tool Dock UI 规范**：`docs/37` §0（Craft 原生栈）与 §6（布局契约）；挂点速查 `docs/00A` §4
 
 ## 推荐命令
 
@@ -105,11 +109,13 @@
 
 ## Learned User Preferences
 
-- 用户偏好「想清楚再动手」：动手前先看清相关聊天记录和全部 md 文档，梳理出稳定方案再改，目标是一次到位、避免反复返工和重复犯同一个错；不要边想边改。
+- 用户偏好「想清楚再动手」：动手前先看清相关聊天记录、docs 与 craft 原版对应实现，梳理稳定方案并定位根因再改，目标一次到位；已验收项不得在后续迭代中回归，禁止边想边改或打地鼠式叠补丁。
 - 已有最优方案或文档待收口时，直接更新文档并推进实现，不要为确认而反复对话（与硬规则 10 互补，强调文档侧主动收口）。
 - 开源能力选型默认「集成 vs 兼容」：需要频繁跟进上游才能保持最佳体验的能力走兼容/适配层；长期稳定、接口很少变的再考虑直接集成进产品，并帮用户预配置最佳组合而非让人自行拼凑。
 - 文档维护偏好：按前后端功能闭环整合文档；理念/愿景/痛点写入 `docs/WHITEPAPER-项目白皮书.md`，具体落地挂追溯表；文档序号用稳定 ID+tombstone，不追求连续编号。
 - 复杂度评估要平衡两端：拒绝无收益过度工程化，也拒绝为省事过度简化；用户拍板完整落地时不要用「Phase 2/远期目标」擅自缩水范围。
+- 推进或验收时要持续核对方案文档与已实现代码是否对齐，明确标注半成品与未闭环项；避免文档超前于代码或代码漂移无记录。
+- Workbench/UI 改造须统筹全布局联动（多面板等分、间距、阴影裁切层级、Tool Dock 总高、自适应），对照 craft 原版读码比对后再改；正式设计规范写入 docs，不为单次返工另起过程性说明。
 
 ## Learned Workspace Facts
 
