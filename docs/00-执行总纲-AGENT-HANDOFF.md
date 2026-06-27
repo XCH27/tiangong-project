@@ -21,21 +21,21 @@
 - 分层记忆 ✅ 已落主线（后端 + 设置页 + 输入建议）：7 分区/4 层 + scopeId 隔离 + `memory` RPC + 独立 `MemorySettingsPage`；S6 已补全局/工作区存储拆分、TF-IDF + 3-gram 语义检索、episodic 时间衰减、turn 事实抽取、管理决策依据注入、snippet/suggestion 服务；`MemoryInputSuggestions`/`useMemoryInputSuggestions` 已在 `FreeFormInput` 接线。见 `docs/05`。剩余：向量库/更稳健抽取、归档 UI、L3 清空/导出确认。
 - 前端剩余（最小 UI，需本机视觉验收，**挂点见 `docs/00A` + 下表**）：会话列表团队化 UI、`@`/`/` 输入收口、管理 Agent 专栏、CLI 三按钮、Progress 卡、Token 环、记忆输入建议条均已落主线。仍需本机视觉验收和真实 CLI/外站 smoke。
 - craft 原有的 session、permission、timeline、BrowserPane/CDP、文件工具和标注能力。
-- 智能模型路由 + Fusion + 分层缓存 🟡 **候选/待合入**（工作区）：`model-orchestrator`/`fusion-pipeline`/`fusion-cache`/`semantic-cache`/`session-routing-bridge` + `SessionManager.sendMessage` Auto 分支 + 设置页 + 输入框 Auto + timeline 组件（`ModelRoutingEvent`/`CacheLedgerEvent`）。**工作区已实现**：mini 二段判官、语义缓存磁盘、RouteLLM 磁盘、Plan Fusion + verification hooks、cascade 文本/工具信号、偏好 accepted/retried/switched/rolled_back、git HEAD 精确缓存失效。**仍缺**：`context-shaper` 实接 rtk/codegraph（现为 pending 占位）、A1 commit、A2/A3 Fusion/Auto 实跑 smoke。
+- 智能模型路由 + Fusion + 分层缓存 ✅ **已落主线**（commit `362d02b1`）：`model-orchestrator`/`fusion-pipeline`/`fusion-cache`/`semantic-cache`/`session-routing-bridge` + `SessionManager.sendMessage` Auto 分支 + 设置页 + 输入框 Auto + timeline 组件（`ModelRoutingEvent`/`CacheLedgerEvent`）。**主线已实现**：mini 二段判官、语义缓存磁盘、RouteLLM 磁盘、Plan Fusion + verification hooks、cascade 文本/工具信号、偏好 accepted/retried/switched/rolled_back、git HEAD 精确缓存失效。**仍缺**：`context-shaper` 实接 rtk/codegraph（骨架已合入，sidecar 调用待接）、A2/A3 Fusion/Auto 实跑 smoke。
 > 验证口径（2026-06-27）：`typecheck:all` + `fleet-verify` 在 S3/S5/S6/S7/S8/S10 合入后通过；目标单测覆盖 S1/S6/S7/S8/S10。仍需单独补本机 Electron 视觉验收、真实 CLI 登录 smoke、真实外站审查 smoke。
 
 以下能力即使曾在其它工作树完成，也**尚未算当前分支完成**：全部文件/Library 写操作、无限画布、AIGC UI、网页/文档工作面、视频剪辑、上下文效率 UI、外部审查 UI、能力装载商城（S13）、Git 审查 UI 接线、Fleet 自有发布源。
 
-**工作区未提交（2026-06-26 审计）**——已实现但未进主线 commit，合入前须跑验证：
+**已提交主线（2026-06-27，commit `362d02b1`）**——以下能力已合入主线：
 
 | 能力 | 文件 | 状态 |
 |---|---|---|
-| 上游软分叉同步 v0.10.4 | `app/scripts/oss-sync.ts`、`.oss-sync-state.json` | ✅ 已同步+typecheck；未提交 |
-| 人类交互终端 PTY | `interactive-terminal-ipc.ts`、`BottomTerminalPanel.tsx`、xterm | ✅ wired；未提交；未视觉验收 |
-| Git 审查 | 🟡 候选/待合入 | `git-review-service` + RPC + `GitReviewPanel` 挂侧边栏 + `GitHubSettingsPage` 已注册；未提交、A2 视觉 smoke |
-| 工作面模块壳 / Tool Dock | 🟡 候选/待合入 | `WorkbenchModuleFrame` + `workbench-layout` + `tool-dock-config` 已挂 `AppShell`；未提交 |
-| 智能模型路由 + Fusion | 🟡 候选/待合入 | 见 §1 路由条目；工作区未提交 |
-| 本机 CLI 并行子 agent | `scripts/cli-subagents.sh` | ✅ 已配置；Claude `deepseek-v4-pro`、Grok `grok-build`/`grok-composer-2.5-fast`、Antigravity `Gemini 3.5 Flash (High)` |
+| 上游软分叉同步 v0.10.4 | `app/scripts/oss-sync.ts`、`.oss-sync-state.json` | ✅ 已提交；待 A2 视觉验收 |
+| 人类交互终端 PTY | `interactive-terminal-ipc.ts`、`BottomTerminalPanel.tsx`、xterm | ✅ 已提交；待 A2 视觉验收 |
+| Git 审查 | ✅ 已落主线 | `git-review-service` + RPC + `GitReviewPanel` + `GitHubSettingsPage`；已提交，待 A2 视觉 smoke |
+| 工作面模块壳 / Tool Dock | ✅ 已落主线 | `WorkbenchModuleFrame` + `workbench-layout` + `tool-dock-config` 已挂 `AppShell`；已提交 |
+| 智能模型路由 + Fusion | ✅ 已落主线 | 见 §1 路由条目；已提交 `362d02b1` |
+| 本机 CLI 并行子 agent | `scripts/cli-subagents.sh` | ✅ 已提交；Claude `deepseek-v4-pro`、Grok `grok-build`/`grok-composer-2.5-fast`、Antigravity `Gemini 3.5 Flash (High)` |
 
 迁入前必须逐项核对 diff、许可证、测试和当前架构。
 
@@ -43,9 +43,9 @@
 
 按 `docs/32 §8` 详细计划执行。摘要：
 
-1. **合入未提交主线能力**：oss-sync v0.10.4、终端 PTY、Git/B4/B5 接线等；跑 `./scripts/fleet-verify.sh` 通过后 commit（A1）。
+1. ~~**合入未提交主线能力**（A1）~~ ✅ 已完成（commit `362d02b1`，含 oss-sync v0.10.4 / 终端 PTY / Git RPC / 路由 Fusion / workbench）。
 2. **本机视觉验收（A2）**：按 `docs/32 §8.2` 清单逐项；自动化不能替代。
-3. **真实 CLI smoke（A3）**：Codex/Claude one-shot 各 1 次。
+3. **真实 CLI smoke（A3）**：Codex/Claude one-shot 各 1 次 + Auto/Fusion API 路径 smoke。
 4. **开 Wave 2（Phase C）**：S2 网页·文档 + S13 能力装载（Lead 先冻 `protocol/capability.ts`）。
 5. **发布与更新**：`electron-builder.yml` 换 Fleet 发布源（GitHub Releases 或自建 generic）；保留 craft `electron-updater` 客户端链路。
 6. **上游维护**：`源码参考/update_repos.sh` → `oss:sync --review` → `oss:sync` → typecheck；见 `docs/09`。

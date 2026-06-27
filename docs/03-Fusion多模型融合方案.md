@@ -400,21 +400,21 @@ app/packages/shared/src/protocol/dto.ts          # RoutingDecision/CacheLedger �
 
 ---
 
-## 15 · 工作区实现状态（2026-06-27，未提交主线）
+## 15 · 实现状态（2026-06-27，已落主线 commit `362d02b1`）
 
 | 序 | 交付 | 状态 | 备注 |
 |---|---|---|---|
-| 1 | 两轴路由 + timeline | 🟡 工作区 | `SessionManager` Auto 分支 + `ModelRoutingEvent` |
-| 2 | 级联升级 | 🟡 工作区 | 文本/工具错误信号 + `planCascadeRetry`；schema/test 级联仍薄 |
-| 3 | L1 观测 + L2 Exact | 🟡 工作区 | git HEAD 失效 + 语义缓存磁盘 |
-| 4 | 杠杆0 瘦身 | 🟨 占位 | `context-shaper` 仅空白规范化；rtk/codegraph pending |
-| 5 | Synthesis Fusion | 🟡 工作区 | pipeline + L3 panel cache；A3 实跑待验 |
-| 6–7 | Plan Fusion + Verification | 🟡 工作区 | hooks 已接；设计/视频引擎未绿灯 |
-| 8 | 预算/分权/routingHint | 🟡 工作区 | `budget-gatekeeper` + `agent-routing-policy` |
-| 9 | L2 Semantic | 🟡 工作区 | 默认关；磁盘 persist |
-| 10 | 偏好 + RouteLLM | 🟡 工作区 | 五类偏好信号 + `~/.craft-agent/cache/routellm-router.json` |
+| 1 | 两轴路由 + timeline | ✅ 已落主线 | `SessionManager` Auto 分支 + `ModelRoutingEvent` |
+| 2 | 级联升级 | ✅ 已落主线 | 文本/工具错误信号 + `planCascadeRetry`；schema/test 级联仍薄 |
+| 3 | L1 观测 + L2 Exact | ✅ 已落主线 | git HEAD 失效 + 语义缓存磁盘 |
+| 4 | 杠杆0 瘦身 | 🟨 占位 | `context-shaper` 仅空白规范化；骨架已合入，rtk/codegraph sidecar 调用待接 |
+| 5 | Synthesis Fusion | ✅ 已落主线 | pipeline + L3 panel cache；A3 实跑待验 |
+| 6–7 | Plan Fusion + Verification | ✅ 已落主线 | hooks 已接；设计/视频引擎未绿灯 |
+| 8 | 预算/分权/routingHint | ✅ 已落主线 | `budget-gatekeeper` + `agent-routing-policy` |
+| 9 | L2 Semantic | ✅ 已落主线 | 默认关；磁盘 persist |
+| 10 | 偏好 + RouteLLM | ✅ 已落主线 | 五类偏好信号 + `~/.craft-agent/cache/routellm-router.json` |
 
-合入前：`./scripts/fleet-verify.sh` + A2/A3 smoke。并行验证见 `docs/32 §8.6`。
+合入后：`./scripts/fleet-verify.sh` 8/8 通过；A2/A3 smoke 待验。并行验证见 `docs/32 §8.6`。
 
 ---
 
