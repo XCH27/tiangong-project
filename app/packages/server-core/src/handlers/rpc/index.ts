@@ -25,6 +25,7 @@ import { registerSystemCoreHandlers } from './system'
 import { registerTransferHandlers } from './transfer'
 import { registerTeamRulesHandlers } from './team-rules'
 import { registerTeamHandlers } from './team'
+import { registerTeamRunHandlers } from './team-run'
 import { registerCliRuntimeHandlers } from './cli-runtime'
 import { registerManagerDecisionHandlers } from './manager-decision'
 import { registerMemoryHandlers } from './memory'
@@ -65,6 +66,7 @@ export function registerCoreRpcHandlers(
   registerTransferHandlers(server)
   registerTeamRulesHandlers(server, deps)
   registerTeamHandlers(server, deps)
+  registerTeamRunHandlers(server, deps)
   registerWorkspaceCoreHandlers(server, deps)
   registerMessagingHandlers(server, deps)
 }
