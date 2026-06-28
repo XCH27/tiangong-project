@@ -54,6 +54,8 @@ interface TopBarProps {
   isWorkspaceContextSidebarVisible?: boolean
   onToggleBottomTerminal?: () => void
   isBottomTerminalVisible?: boolean
+  /** D19: create a new terminal panel (surface='terminal'). Replaces bottom-card toggle. */
+  onNewTerminalPanel?: () => void
   toolDockModules?: Array<{
     id: ToolDockModuleId
     label: string
@@ -62,7 +64,6 @@ interface TopBarProps {
     onToggle: () => void
   }>
   onAddSessionPanel: () => void
-  onAddTerminalPanel?: () => void
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
@@ -93,9 +94,9 @@ export function TopBar({
   isWorkspaceContextSidebarVisible,
   onToggleBottomTerminal,
   isBottomTerminalVisible,
+  onNewTerminalPanel,
   toolDockModules,
   onAddSessionPanel,
-  onAddTerminalPanel,
   onAddBrowserPanel,
   isCompact,
 }: TopBarProps) {
@@ -291,19 +292,18 @@ export function TopBar({
             </TooltipContent>
           </Tooltip>
         )}
-        {onToggleBottomTerminal && (
+        {onNewTerminalPanel && (
           <Tooltip>
             <TooltipTrigger asChild>
               <TopBarButton
-                onClick={onToggleBottomTerminal}
-                aria-label={isBottomTerminalVisible ? t('terminal.hide') : t('terminal.show')}
-                isActive={isBottomTerminalVisible}
+                onClick={onNewTerminalPanel}
+                aria-label={t("terminal.newPanel")}
               >
                 <Icons.TerminalSquare className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
               </TopBarButton>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {isBottomTerminalVisible ? t('terminal.hide') : t('terminal.show')}
+              {t("terminal.newPanel")}
             </TooltipContent>
           </Tooltip>
         )}
@@ -319,21 +319,6 @@ export function TopBar({
           </TooltipTrigger>
           <TooltipContent side="bottom">{t("session.newSessionInPanel")}</TooltipContent>
         </Tooltip>
-
-        {onAddTerminalPanel && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <TopBarButton
-              onClick={onAddTerminalPanel}
-              aria-label={t("terminal.newPanel")}
-              className="h-[26px] w-[26px] rounded-lg"
-            >
-              <Icons.Terminal className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
-            </TopBarButton>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("terminal.newPanel")}</TooltipContent>
-        </Tooltip>
-        )}
 
         <Tooltip>
           <TooltipTrigger asChild>

@@ -2354,10 +2354,9 @@ function AppShellContent({
           toolDockModules={toolDockTopBarModules}
           onToggleWorkspaceContextSidebar={!isFocusedMode && !isAutoCompact ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
           isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarRendered}
-          onToggleBottomTerminal={!isFocusedMode && !isAutoCompact ? () => setIsBottomTerminalVisible((value) => !value) : undefined}
+          onNewTerminalPanel={!isFocusedMode && !isAutoCompact ? () => handleNewTerminalPanel() : undefined}
           isBottomTerminalVisible={renderedBottomTerminalHeight > 0}
           onAddSessionPanel={() => handleNewChat(true)}
-          onAddTerminalPanel={() => handleNewTerminalPanel()}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
         />
