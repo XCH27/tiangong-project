@@ -389,10 +389,6 @@ export function EntityRow({
               {badges && (
                 <div
                   className="flex-1 flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-hide"
-                  style={{
-                    maskImage: 'linear-gradient(to right, black calc(100% - 16px), transparent 100%)',
-                    WebkitMaskImage: 'linear-gradient(to right, black calc(100% - 16px), transparent 100%)',
-                  }}
                 >
                   {badges}
                 </div>
