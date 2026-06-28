@@ -23,6 +23,7 @@ import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atom
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
+import { TerminalPanel } from './TerminalPanel'
 import { RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
 
 interface PanelSlotProps {
@@ -150,10 +151,14 @@ export function PanelSlot({
       >
         <div className="h-full flex flex-col">
           <AppShellProvider value={contextOverride}>
-            <MainContentPanel
-              navStateOverride={navState}
-              isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
-            />
+            {entry.route === 'terminal' ? (
+              <TerminalPanel onClose={handleClose} />
+            ) : (
+              <MainContentPanel
+                navStateOverride={navState}
+                isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
+              />
+            )}
           </AppShellProvider>
         </div>
       </div>

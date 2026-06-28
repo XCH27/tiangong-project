@@ -183,6 +183,9 @@ export const routes = {
       return `files/file/${encodeURIComponent(filePath)}` as const
     },
 
+    /** Terminal panel (D19: surface='terminal', renders xterm PTY, not a chat session). */
+    terminal: () => 'terminal' as const,
+
     /** Settings view (settings navigator) - uses SettingsSubpage from registry */
     settings: (subpage?: SettingsSubpage) =>
       subpage

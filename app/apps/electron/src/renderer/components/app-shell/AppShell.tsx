@@ -91,7 +91,7 @@ import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSourc
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
-import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
+import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, pushPanelAtom } from "@/atoms/panel-stack"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
 import { useLabels } from "@/hooks/useLabels"
@@ -2022,16 +2022,14 @@ function AppShellContent({
   }, [activeWorkspace, focusZone, navigate])
 
   // Create a new terminal panel (D19: surface='terminal')
+  // Terminal panels render xterm PTY directly — they are NOT craft sessions.
+  const pushPanel = useSetAtom(pushPanelAtom)
   const handleNewTerminalPanel = useCallback(() => {
     if (!activeWorkspace) return
     setSearchActive(false)
     setSearchQuery('')
-    navigate(
-      routes.action.newSession({ surface: 'terminal' }),
-      { newPanel: true, targetLaneId: 'main' }
-    )
-    setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
-  }, [activeWorkspace, focusZone, navigate])
+    pushPanel({ route: routes.view.terminal(), targetLaneId: 'main' })
+  }, [activeWorkspace, pushPanel])
 
   // Create a brand new dedicated browser window and focus it.
   // Intentionally unbound: this action should always create a NEW window.
