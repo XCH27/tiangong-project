@@ -150,6 +150,8 @@ interface ChatDisplayProps {
   cliRuntimeModelState?: CliRuntimeModelState
   onCliRuntimeChange?: (runtimeId: string | null) => void
   onCliRuntimeModelChange?: (modelId: string | null) => void
+  /** D19 surface: 'chat' hides CLI picker; 'terminal' shows it. */
+  surface?: 'chat' | 'terminal'
   // Connection selection (locked after first message)
   /** Callback when LLM connection changes (only works when session is empty) */
   onConnectionChange?: (connectionSlug: string) => void
@@ -460,6 +462,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   cliRuntimeModelState,
   onCliRuntimeChange,
   onCliRuntimeModelChange,
+  surface,
   onConnectionChange,
   textareaRef: externalTextareaRef,
   disabled = false,
@@ -1981,6 +1984,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               cliRuntimeModelState,
               onCliRuntimeChange,
               onCliRuntimeModelChange,
+              surface,
               thinkingLevel,
               onThinkingLevelChange,
               enabledModes,

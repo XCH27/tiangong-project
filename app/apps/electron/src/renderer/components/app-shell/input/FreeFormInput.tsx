@@ -244,6 +244,8 @@ export interface FreeFormInputProps {
    * `enableCompactModelPicker`.
    */
   compactMode?: boolean
+  /** D19 surface: 'chat' hides CLI runtime picker; 'terminal' shows it. */
+  surface?: 'chat' | 'terminal'
   /**
    * When `compactMode` is true, render the compact (drawer-based) model
    * selector next to the permission-mode pill. Defaults to false so that
@@ -324,6 +326,7 @@ export function FreeFormInput({
   onFollowUpClick,
   onFollowUpIndexClick,
   compactMode = false,
+  surface = 'chat',
   enableCompactModelPicker = false,
   currentConnection,
   onConnectionChange,
@@ -2199,6 +2202,7 @@ export function FreeFormInput({
           {/* 5. Runtime / Model / Usage - Hidden in compact mode (EditPopover embedding) */}
           {!compactMode && (
             <>
+              {surface === 'terminal' && (
               <DropdownMenu open={cliDropdownOpen} onOpenChange={setCliDropdownOpen}>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -2258,6 +2262,7 @@ export function FreeFormInput({
                   </StyledDropdownMenuItem>
                 </StyledDropdownMenuContent>
               </DropdownMenu>
+              )}
 
               <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
                 <Tooltip>

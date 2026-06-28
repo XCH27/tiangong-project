@@ -1427,6 +1427,7 @@
   "tableOfContents.noHeadings": "无标题",
   "terminal.copyOutput": "复制输出",
   "terminal.hide": "隐藏终端",
+  "terminal.newPanel": "新建终端面板",
   "terminal.output": "输出",
   "terminal.resize": "拖动以调整终端高度",
   "terminal.show": "显示终端",

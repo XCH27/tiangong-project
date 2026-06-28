@@ -64,6 +64,8 @@ export interface SessionMeta {
   cliRuntimeModelState?: CliRuntimeModelState
   /** LLM connection slug for this session */
   llmConnection?: string
+  /** D19 surface: 'chat' (API-only) or 'terminal' (CLI/PTY). Undefined = 'chat'. */
+  surface?: 'chat' | 'terminal'
   /** Token usage stats (from JSONL header, available without loading messages) */
   tokenUsage?: {
     inputTokens: number

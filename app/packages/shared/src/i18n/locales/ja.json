@@ -1427,6 +1427,7 @@
   "tableOfContents.noHeadings": "見出しなし",
   "terminal.copyOutput": "出力をコピー",
   "terminal.hide": "ターミナルを隠す",
+  "terminal.newPanel": "New terminal panel",
   "terminal.output": "出力",
   "terminal.resize": "ドラッグしてターミナルの高さを調整",
   "terminal.show": "ターミナルを表示",

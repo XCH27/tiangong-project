@@ -1427,6 +1427,7 @@
   "tableOfContents.noHeadings": "No headings",
   "terminal.copyOutput": "Copy output",
   "terminal.hide": "Hide terminal",
+  "terminal.newPanel": "New terminal panel",
   "terminal.output": "Output",
   "terminal.resize": "Drag to resize terminal",
   "terminal.show": "Show terminal",

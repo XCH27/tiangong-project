@@ -155,6 +155,8 @@ export interface CreateSessionOptions {
   branchFromMessageId?: string
   /** Parent session ID used together with branchFromMessageId. */
   branchFromSessionId?: string
+  /** D19 surface: 'chat' (default, API-only) or 'terminal' (CLI/PTY). */
+  surface?: 'chat' | 'terminal'
 }
 
 export interface RemoteSessionTransferPayload {

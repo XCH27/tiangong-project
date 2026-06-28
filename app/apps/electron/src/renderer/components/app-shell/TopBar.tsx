@@ -62,6 +62,7 @@ interface TopBarProps {
     onToggle: () => void
   }>
   onAddSessionPanel: () => void
+  onAddTerminalPanel?: () => void
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
@@ -94,6 +95,7 @@ export function TopBar({
   isBottomTerminalVisible,
   toolDockModules,
   onAddSessionPanel,
+  onAddTerminalPanel,
   onAddBrowserPanel,
   isCompact,
 }: TopBarProps) {
@@ -317,6 +319,21 @@ export function TopBar({
           </TooltipTrigger>
           <TooltipContent side="bottom">{t("session.newSessionInPanel")}</TooltipContent>
         </Tooltip>
+
+        {onAddTerminalPanel && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <TopBarButton
+              onClick={onAddTerminalPanel}
+              aria-label={t("terminal.newPanel")}
+              className="h-[26px] w-[26px] rounded-lg"
+            >
+              <Icons.Terminal className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
+            </TopBarButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("terminal.newPanel")}</TooltipContent>
+        </Tooltip>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>

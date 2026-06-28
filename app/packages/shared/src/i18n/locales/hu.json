@@ -1427,6 +1427,7 @@
   "tableOfContents.noHeadings": "Nincsenek címsorok",
   "terminal.copyOutput": "Kimenet másolása",
   "terminal.hide": "Terminál elrejtése",
+  "terminal.newPanel": "New terminal panel",
   "terminal.output": "Kimenet",
   "terminal.resize": "Húzza a terminál méretének módosításához",
   "terminal.show": "Terminál megjelenítése",

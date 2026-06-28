@@ -2021,6 +2021,18 @@ function AppShellContent({
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
   }, [activeWorkspace, focusZone, navigate])
 
+  // Create a new terminal panel (D19: surface='terminal')
+  const handleNewTerminalPanel = useCallback(() => {
+    if (!activeWorkspace) return
+    setSearchActive(false)
+    setSearchQuery('')
+    navigate(
+      routes.action.newSession({ surface: 'terminal' }),
+      { newPanel: true, targetLaneId: 'main' }
+    )
+    setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
+  }, [activeWorkspace, focusZone, navigate])
+
   // Create a brand new dedicated browser window and focus it.
   // Intentionally unbound: this action should always create a NEW window.
   const handleNewBrowserWindow = useCallback(async () => {
@@ -2345,6 +2357,7 @@ function AppShellContent({
           onToggleBottomTerminal={!isFocusedMode && !isAutoCompact ? () => setIsBottomTerminalVisible((value) => !value) : undefined}
           isBottomTerminalVisible={renderedBottomTerminalHeight > 0}
           onAddSessionPanel={() => handleNewChat(true)}
+          onAddTerminalPanel={() => handleNewTerminalPanel()}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
         />
