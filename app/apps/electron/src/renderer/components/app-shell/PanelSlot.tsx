@@ -15,11 +15,12 @@
 
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSetAtom } from 'jotai'
+import { useSetAtom, useAtomValue } from 'jotai'
 import { cn } from '@/lib/utils'
 import { X, ChevronLeft } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
-import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atoms/panel-stack'
+import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry, parseSessionIdFromRoute } from '@/atoms/panel-stack'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
@@ -66,6 +67,11 @@ export function PanelSlot({
   const setFocusedPanel = useSetAtom(focusedPanelIdAtom)
   const parentContext = useAppShellContext()
   const navState = parseRouteToNavigationState(entry.route)
+
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
+  const sessionId = parseSessionIdFromRoute(entry.route)
+  const isTerminalSession = sessionId ? (sessionMetaMap.get(sessionId)?.surface === 'terminal') : false
+  const isTerminalRoute = entry.route.startsWith('terminal') || isTerminalSession
 
   const handleClose = useCallback(() => {
     closePanel(entry.id)
@@ -151,8 +157,8 @@ export function PanelSlot({
       >
         <div className="h-full flex flex-col">
           <AppShellProvider value={contextOverride}>
-            {entry.route === 'terminal' ? (
-              <TerminalPanel onClose={handleClose} />
+            {isTerminalRoute ? (
+              <TerminalPanel onClose={handleClose} sessionId={sessionId ?? undefined} />
             ) : (
               <MainContentPanel
                 navStateOverride={navState}

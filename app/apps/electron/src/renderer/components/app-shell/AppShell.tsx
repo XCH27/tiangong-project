@@ -684,9 +684,14 @@ function AppShellContent({
       }
     }
 
-    // Not open in any panel — navigate() updates the focused panel
-    navigateToSession(sessionId)
-  }, [store, setFocusedPanel, navigateToSession])
+    // Check if the session is terminal surface
+    const meta = store.get(sessionMetaMapAtom).get(sessionId)
+    if (meta?.surface === 'terminal') {
+      navigate(routes.view.terminal(sessionId))
+    } else {
+      navigateToSession(sessionId)
+    }
+  }, [store, setFocusedPanel, navigateToSession, navigate])
 
   const sessionsContext = React.useMemo(() => {
     if (isSessionsNavigation(navState)) {
@@ -2022,14 +2027,12 @@ function AppShellContent({
   }, [activeWorkspace, focusZone, navigate])
 
   // Create a new terminal panel (D19: surface='terminal')
-  // Terminal panels render xterm PTY directly — they are NOT craft sessions.
-  const pushPanel = useSetAtom(pushPanelAtom)
   const handleNewTerminalPanel = useCallback(() => {
     if (!activeWorkspace) return
     setSearchActive(false)
     setSearchQuery('')
-    pushPanel({ route: routes.view.terminal(), targetLaneId: 'main' })
-  }, [activeWorkspace, pushPanel])
+    navigate(routes.action.newSession({ surface: 'terminal' }), { newPanel: true, targetLaneId: 'main' })
+  }, [activeWorkspace, navigate])
 
   // Create a brand new dedicated browser window and focus it.
   // Intentionally unbound: this action should always create a NEW window.
@@ -2353,9 +2356,6 @@ function AppShellContent({
           onToggleWorkspaceContextSidebar={!isFocusedMode && !isAutoCompact ? () => setIsWorkspaceContextSidebarVisible((value) => !value) : undefined}
           isWorkspaceContextSidebarVisible={isWorkspaceContextSidebarRendered}
           onNewTerminalPanel={!isFocusedMode && !isAutoCompact ? () => handleNewTerminalPanel() : undefined}
-          isBottomTerminalVisible={renderedBottomTerminalHeight > 0}
-          onAddSessionPanel={() => handleNewChat(true)}
-          onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
         />
 
@@ -3375,7 +3375,11 @@ function AppShellContent({
                     focusChatInputForSession(targetSessionId ?? focusedSessionId ?? session.selected)
                   }}
                   onSessionSelect={(selectedMeta) => {
-                    navigateToSession(selectedMeta.id)
+                    if (selectedMeta.surface === 'terminal') {
+                      navigate(routes.view.terminal(selectedMeta.id))
+                    } else {
+                      navigateToSession(selectedMeta.id)
+                    }
                   }}
                   onOpenInNewWindow={(selectedMeta) => {
                     if (activeWorkspaceId) {

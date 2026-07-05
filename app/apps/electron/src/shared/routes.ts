@@ -184,7 +184,8 @@ export const routes = {
     },
 
     /** Terminal panel (D19: surface='terminal', renders xterm PTY, not a chat session). */
-    terminal: () => 'terminal' as const,
+    terminal: (sessionId?: string) =>
+      sessionId ? (`terminal/session/${sessionId}` as const) : ('terminal' as const),
 
     /** Settings view (settings navigator) - uses SettingsSubpage from registry */
     settings: (subpage?: SettingsSubpage) =>

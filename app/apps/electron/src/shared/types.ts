@@ -292,8 +292,8 @@ export interface ElectronAPI {
   onTransferProgress(callback: (progress: { sessionIndex: number; sessionCount: number; chunkSent: number; chunkTotal: number }) => void): () => void
 
   // Local bottom terminal — Electron-only, current-window scoped, not WS RPC.
-  terminalStart(options?: { cwd?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
-  terminalRestart(options?: { cwd?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
+  terminalStart(options?: { cwd?: string | null; sessionId?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
+  terminalRestart(options?: { cwd?: string | null; sessionId?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
   terminalWrite(id: string, data: string): Promise<boolean>
   terminalResize(id: string, size: { cols: number; rows: number }): Promise<boolean>
   terminalKill(id: string): Promise<boolean>
@@ -318,6 +318,20 @@ export interface ElectronAPI {
   getTeam(workspaceId: string): Promise<TeamProjection | null>
   getTeamReviewQueue(workspaceId: string): Promise<TeamReviewQueueItem[]>
   getTeamInbox(workspaceId: string, sessionId: string): Promise<TeamInboxItem[]>
+  // TeamRun — Fleet 团队协作 RPC（docs/38 §4-§5 / D19）
+  proposeTeamRun(params: {
+    initiatorSeatId: string
+    initiatorLaneId: string
+    targetSeatId: string
+    targetLaneId: string
+    taskDescription: string
+    taskId?: string
+    idempotencyKey?: string
+  }): Promise<import('@craft-agent/shared/protocol/team-run').TeamRun>
+  startTeamRun(input: string | { runId: string; waitForReport?: boolean; timeoutMs?: number }): Promise<import('@craft-agent/shared/protocol/team-run').TeamRun>
+  getTeamRunStatus(runId: string): Promise<import('@craft-agent/shared/protocol/team-run').TeamRunStatus | null>
+  getTeamRunReport(runId: string): Promise<import('@craft-agent/shared/protocol/team-run').RunReport | null>
+  cancelTeamRun(runId: string, reason?: string): Promise<import('@craft-agent/shared/protocol/team-run').TeamRun | null>
   createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
   updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }): Promise<{ success: boolean }>
@@ -384,6 +398,12 @@ export interface ElectronAPI {
   listInternalActions(filter?: { surface?: ActionSurface; verb?: ActionVerb }): Promise<InternalActionSummary[]>
   /** Invoke an internal action through the registry, permission gate, and timeline. */
   invokeInternalAction(sessionId: string, invocation: ActionInvocation): Promise<unknown>
+  // Design Engine — human UI and Agent tools share the same action spine (docs/31)
+  setDesignSelection(input: import('@craft-agent/shared/protocol').SetSelectionInput): Promise<void>
+  getDesignSelection(sessionId: string): Promise<import('@craft-agent/shared/protocol/design').DesignSelection | null>
+  proposeDesignAction(input: import('@craft-agent/shared/protocol').ProposeActionInput): Promise<import('@craft-agent/shared/protocol/design').DesignPatch>
+  commitDesignPatch(input: import('@craft-agent/shared/protocol').CommitPatchInput): Promise<import('@craft-agent/shared/protocol/design').DesignPatch>
+  rollbackDesignPatch(input: import('@craft-agent/shared/protocol').RollbackPatchInput): Promise<import('@craft-agent/shared/protocol/design').DesignPatch>
   // External Job — AIGC / external AI review / deploy (LOCAL_ONLY, docs/31 §5 · D9)
   createExternalJob(workspaceId: string, input: CreateExternalJobInput): Promise<ExternalJobRecord>
   getExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>

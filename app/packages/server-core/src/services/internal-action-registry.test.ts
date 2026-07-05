@@ -49,7 +49,7 @@ describe('InternalActionRegistryService', () => {
 
   it('registers spine actions alongside files actions', () => {
     const registry = new InternalActionRegistryService(createAllInternalActions())
-    expect(registry.list().length).toBe(11)
+    expect(registry.list().length).toBe(12)
     expect(registry.list({ surface: 'team' }).map((def) => def.id)).toEqual([
       'team.get_projection',
       'team.send_message',

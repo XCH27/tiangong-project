@@ -17,6 +17,7 @@ import { useAppShellContext } from '@/context/AppShellContext'
 
 interface TerminalPanelProps {
   onClose: () => void
+  sessionId?: string
 }
 
 function readTerminalColors(mount: HTMLElement): { background: string; foreground: string } {
@@ -44,7 +45,7 @@ function waitForNonZeroSize(el: HTMLElement, timeoutMs = 2000): Promise<void> {
   })
 }
 
-export function TerminalPanel({ onClose }: TerminalPanelProps) {
+export function TerminalPanel({ onClose, sessionId }: TerminalPanelProps) {
   const { t } = useTranslation()
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const termRef = React.useRef<Terminal | null>(null)
@@ -52,6 +53,10 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const terminalIdRef = React.useRef<string | null>(null)
   const resizeTimerRef = React.useRef<number | null>(null)
   const appCtx = useAppShellContext()
+
+  // Get active workspace root path to bind terminal cwd
+  const activeWorkspace = appCtx.workspaces?.find((w) => w.id === appCtx.activeWorkspaceId)
+  const cwd = activeWorkspace?.rootPath
 
   React.useEffect(() => {
     const mount = containerRef.current
@@ -79,6 +84,32 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
     termRef.current = term
     fitRef.current = fit
 
+    // Buffers for transcript logging
+    let inputLineBuffer = ''
+    let outputBuffer = ''
+    let flushTimer: number | null = null
+
+    const cleanAnsi = (str: string) => {
+      return str.replace(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '')
+    }
+
+    const flushOutput = () => {
+      if (flushTimer) {
+        window.clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      const content = cleanAnsi(outputBuffer).trim()
+      if (content && sessionId && terminalIdRef.current) {
+        window.electronAPI.sessionCommand(sessionId, {
+          type: 'appendTerminalTranscript',
+          role: 'tool',
+          content,
+          terminalId: terminalIdRef.current,
+        }).catch(() => {})
+      }
+      outputBuffer = ''
+    }
+
     void waitForNonZeroSize(mount).then(() => {
       if (disposed) return
       term.open(mount)
@@ -88,7 +119,11 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       const rows = term.rows
 
       window.electronAPI
-        .terminalRestart({ size: { cols, rows } })
+        .terminalRestart({
+          cwd: cwd ?? null,
+          sessionId: sessionId ?? null,
+          size: { cols, rows },
+        })
         .then((result) => {
           if (disposed) return
           terminalIdRef.current = result.id
@@ -121,11 +156,46 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       const id = terminalIdRef.current
       if (!id) return
       window.electronAPI.terminalWrite(id, data).catch(() => { /* noop */ })
+
+      if (sessionId) {
+        if (data === '\r' || data === '\n') {
+          const cmd = inputLineBuffer.trim()
+          if (cmd) {
+            window.electronAPI.sessionCommand(sessionId, {
+              type: 'appendTerminalTranscript',
+              role: 'user',
+              content: cmd,
+              terminalId: id,
+            }).catch(() => {})
+          }
+          inputLineBuffer = ''
+        } else if (data === '\x7f') { // backspace
+          inputLineBuffer = inputLineBuffer.slice(0, -1)
+        } else {
+          const char = data.replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+          inputLineBuffer += char
+        }
+      }
     })
 
     const unsubscribeData = window.electronAPI.onTerminalData(({ id, data }) => {
       if (id === terminalIdRef.current && termRef.current) {
         termRef.current.write(data)
+        if (sessionId) {
+          outputBuffer += data
+          if (flushTimer) window.clearTimeout(flushTimer)
+          flushTimer = window.setTimeout(flushOutput, 1000)
+        }
+      }
+    })
+
+    const unsubscribeExit = window.electronAPI.onTerminalExit(({ id }) => {
+      if (id === terminalIdRef.current) {
+        if (flushTimer) {
+          flushOutput()
+        }
+        term.writeln('\r\n\x1b[90m[process exited]\x1b[0m')
+        terminalIdRef.current = null
       }
     })
 
@@ -134,6 +204,11 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       onData.dispose()
       resizeObserver.disconnect()
       unsubscribeData()
+      unsubscribeExit()
+      if (flushTimer) {
+        window.clearTimeout(flushTimer)
+        flushTimer = null
+      }
       const id = terminalIdRef.current
       if (id) {
         window.electronAPI.terminalKill(id).catch(() => { /* noop */ })
@@ -141,7 +216,7 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
       term.dispose()
       if (resizeTimerRef.current) window.clearTimeout(resizeTimerRef.current)
     }
-  }, [])
+  }, [sessionId, cwd])
 
   return (
     <div className="flex h-full flex-col">
