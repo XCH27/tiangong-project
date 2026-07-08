@@ -90,37 +90,79 @@ If a security boundary field (`allowedTargets`, `blockedTargets`, `destructiveHi
 
 Providing 2–3 concrete correct examples in the model's system prompt reduces hallucination more effectively than enforcing a maximally rigid schema. Use examples to show what "good" looks like. Use schema only to reject structurally invalid output.
 
-## 9. Agent-Native Actions
+## 9. Hook Pipeline
+
+Every `ActionInvocation` passes through a two-stage Hook Pipeline before execution.
+This is a deterministic infrastructure guarantee — not a prompt instruction.
+
+### 9.1 PreInvoke Hook
+
+Runs before any action executes. Checks in order:
+
+1. **Permission level gate** — reject if caller permission level is below the action's declared
+   `permissionLevel`.
+2. **File lease check** — reject if any `ActionTargetRef` points to a file held by another active
+   `WorkspaceFileLease`.
+3. **Destructive action guard** — if `destructiveHint: true`, emit a `SupervisionRequest`
+   SessionEvent and pause execution until the Captain resolves it. The Captain responds to the
+   event; it does not poll for it.
+
+On rejection the hook returns a structured `ActionBlockedEvent` (not a thrown exception) so the
+Timeline records the blocked attempt as evidence.
+
+### 9.2 PostInvoke Hook
+
+Runs after the action executor returns a result, before the result is emitted to the SessionEvent
+stream.
+
+1. **Output normalization** — convert Unix timestamps to ISO 8601, coerce numeric status codes to
+   canonical enum strings, strip fields not declared in the action's output contract.
+2. **Confidence downgrade** — if a semantic judgment field carries `confidence: 'low'`, mark the
+   result event `requiresReview: true` before emitting.
+3. **Structured error passthrough** — wrap executor errors into `ActionErrorEvent` with
+   `errorCategory` (`transient | validation | business | permission`) and `isRetryable` flag.
+
+### 9.3 Rule Carrier Discipline
+
+| Rule type | Carrier | Guarantee |
+|---|---|---|
+| Business safety (file write, cross-project read, L2/L3 action) | PreInvoke Hook (code) | Deterministic — 100% |
+| Workflow preference (inspect-before-write, summary format) | Agent system prompt | Probabilistic — >90% |
+
+Never move a business safety rule into a system prompt. Never move a workflow preference into the
+hook pipeline.
+
+## 10. Agent-Native Actions
 
 Generic list/invoke tools. Do not create one tool per action.
 
-## 10. Files To Inspect First
+## 11. Files To Inspect First
 
 - `app/packages/shared/src/protocol/internal-action.ts`
 - `app/packages/server-core/src/services/internal-action-*`
 - `app/packages/session-tools-core/src/handlers`
 
-## 11. Files Likely Touched
+## 12. Files Likely Touched
 
 Registry service, executor, permission evaluator, first UI-backed action component.
 
-## 12. Parallel Work Packages
+## 13. Parallel Work Packages
 
 Lead freezes contract; one worker can implement registry/executor; one worker can implement a sample surface only after action ids are fixed.
 
-## 13. File Ownership
+## 14. File Ownership
 
 Protocol and action surface vocabulary are Lead-owned. Surface implementers own their own handlers.
 
-## 14. Validation Ladder
+## 15. Validation Ladder
 
 Typecheck shared/server/session-tools, registry unit tests, real human+agent same-action smoke.
 
-## 15. Done / Not Done
+## 16. Done / Not Done
 
 `usable`: same action id works for human and agent. `display-only`: button exists without agent-callable path.
 
-## 16. Risks And Blocked Decisions
+## 17. Risks And Blocked Decisions
 
 Risk: action schemas mutate without versioning. All behavior/schema changes require contract version discipline.
 

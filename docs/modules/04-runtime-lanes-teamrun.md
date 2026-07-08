@@ -81,3 +81,46 @@ Coordinator unit tests, session-tools/MCP tests, UI card smoke, one end-to-end B
 ## 16. Risks And Blocked Decisions
 
 Risk: treating API members as synchronous CLI tools. Bridge is synchronous outward, asynchronous inward.
+
+## 17. TeamRun Journal (Crash Recovery)
+
+### 17.1 Why
+
+TeamRun lifetime currently equals Electron app lifetime. If the Bridge disconnects or the app
+crashes, all in-progress TaskRun state is lost and RunReport cannot be resumed. This section
+mandates a local persistence layer so TeamRuns survive restarts without introducing a daemon.
+
+### 17.2 Schema (SQLite-backed)
+
+```
+TeamRun         { id, status, leaderId, createdAt, updatedAt }
+TaskRun         { id, teamRunId, assignee, status, inputHash, outputRef, errorLog, batchId? }
+AttributionChain { id, taskRunId, events: JSON }
+JournalManifest { teamRunId, gracefulShutdown: boolean, lastWrittenAt }
+```
+
+`status` values for TaskRun: `queued | running | suspended | completed | failed`
+
+### 17.3 Lifecycle Rules
+
+1. Every `TaskRun` status change is written to the journal **before** the in-memory state
+   changes (write-ahead).
+2. `WorkspaceFileLease` for a TaskRun is released when the TaskRun enters `completed`,
+   `failed`, or `suspended`. The lease release is written to the journal atomically with the
+   status change.
+3. On graceful app exit, write `gracefulShutdown: true` to `JournalManifest`.
+4. On restart, if `gracefulShutdown` is absent for a TeamRun, treat all its `running` TaskRuns
+   as `suspended` (dirty state). Prompt the user to resume or cancel each suspended TaskRun
+   before proceeding.
+
+### 17.4 Batch TaskRun Integration
+
+Batch-eligible TaskRuns (`batchMode: 'async-native'`) store their `batchId` in the journal's
+`TaskRun.batchId` field. Module 11's `BatchJobExecutor` polls and writes results back into
+`TaskRun.outputRef`. The Captain registers a journal-watch callback on the TaskRun row instead
+of blocking on the Bridge — this decouples TeamRun survival from Bridge lifetime.
+
+### 17.5 No Daemon
+
+This section does not introduce a background daemon. The journal is a write-ahead log read only
+at app startup. Decision D22 (no daemon) is honoured.

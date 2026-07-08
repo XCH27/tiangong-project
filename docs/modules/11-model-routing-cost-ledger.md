@@ -92,3 +92,27 @@ Risk: treating CLI subscriptions as API model choices. CLI/API choice is task-le
 3. **Chunking & Flow Control**: Large batches must be sliced to respect model context size and rate limits.
 4. **ID Mapping**: All outputs must be mapped back to the input task IDs.
 
+### 17.4 BatchJobExecutor Ownership
+
+Module 11 is the **sole owner** of the Batch execution engine. Other modules declare batch
+eligibility; they do not implement batch submission, polling, or result mapping.
+
+| Module | Role | Does NOT implement |
+|---|---|---|
+| 04 (TeamRun) | Declares `batchEligible: true` on TaskRun; stores `batchId` in Journal | Submit JSONL, poll status |
+| 08 (AIGC/ExternalJob) | Carries `batchMode` field on `ExternalJob` schema | Build batch file, download results |
+| 10 (Memory/Context) | Marks `DistilledToolMemory` entries `batchMode: 'async-native'` | Call Batch API |
+| **11 (this module)** | **Implements `BatchJobExecutor`** | — |
+
+`BatchJobExecutor` responsibilities:
+
+1. Accept `ExternalJob[]` from any module via a typed `submitBatch(jobs: ExternalJob[])` call.
+2. Build JSONL input file from job payloads.
+3. Submit to provider Batch API; store `batchId` in TeamRun Journal (`TaskRun.batchId`).
+4. Poll status; on completion download results and map back to job IDs.
+5. Write results into `ExternalJob.batchResultFile`; emit `BatchJobCompleted` event.
+6. **Idempotency guard**: if `batchId` already exists in the journal for this job set, skip
+   re-submission.
+
+Dependency direction: Modules 04, 08, 10 depend on `ExternalJob` schema (owned by Module 08).
+`BatchJobExecutor` (Module 11) consumes `ExternalJob`. No circular dependency.
