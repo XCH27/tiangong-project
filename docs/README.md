@@ -7,6 +7,7 @@ Active documentation is now English-only.
 | File | Purpose |
 |---|---|
 | `START-HERE.md` | Entry point, read order, and working status labels |
+| `AGENT-ENTRY-MAP.md` | Exact repository, local path, app, docs, legacy, and reference locations |
 | `PROJECT-DIRECTION.md` | Product direction, non-goals, architecture direction, and development spine |
 | `DECISIONS-LEDGER.md` | Final promoted decisions from the legacy corpus |
 | `DEVELOPMENT-PROCESS.md` | How project work moves from direction to module specs to agent execution |

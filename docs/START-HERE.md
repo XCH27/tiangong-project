@@ -11,19 +11,20 @@ The old documents were moved under `docs/legacy/`. They are historical evidence 
 > `AGENTS.md` and report the discrepancy to the Lead so the active doc can be updated.
 
 1. `docs/START-HERE.md` ← you are here
-2. `docs/PROJECT-DIRECTION.md`
-3. `docs/DECISIONS-LEDGER.md`
-4. `docs/DEVELOPMENT-PROCESS.md`
-5. `docs/CLOUD-LOCAL-WORKFLOW.md`
-6. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
-7. `docs/OWNERSHIP-MATRIX.md`
-8. `docs/WAVE-MODULE-MAP.md`
-9. `docs/REFERENCE-PROJECT-POLICY.md`
-10. The module spec under `docs/modules/` for the work you are doing
-11. The wave packet under `docs/agent-packets/` if you are a parallel worker
-12. `AGENTS.md` as the forced-read execution summary
-13. The current `app/` code, starting from the Craft Agents modules you are about to modify
-14. `docs/legacy/` only when you need to recover historical rationale or verify a prior decision
+2. `docs/AGENT-ENTRY-MAP.md`
+3. `docs/PROJECT-DIRECTION.md`
+4. `docs/DECISIONS-LEDGER.md`
+5. `docs/DEVELOPMENT-PROCESS.md`
+6. `docs/CLOUD-LOCAL-WORKFLOW.md`
+7. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+8. `docs/OWNERSHIP-MATRIX.md`
+9. `docs/WAVE-MODULE-MAP.md`
+10. `docs/REFERENCE-PROJECT-POLICY.md`
+11. The module spec under `docs/modules/` for the work you are doing
+12. The wave packet under `docs/agent-packets/` if you are a parallel worker
+13. `AGENTS.md` as the forced-read execution summary
+14. The current `app/` code, starting from the Craft Agents modules you are about to modify
+15. `docs/legacy/` only when you need to recover historical rationale or verify a prior decision
 
 ## Working Rule
 
