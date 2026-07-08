@@ -31,7 +31,7 @@ in `OWNERSHIP-MATRIX.md` is worse than no board. This file exists to prevent tha
 | Card | Represents | Source of truth for scope |
 |---|---|---|
 | Wave card | One execution wave or track, for example Wave 2 or F-track. | `docs/WAVE-MODULE-MAP.md` |
-| Slice card | One bounded section of one module implemented inside one wave. | The module spec plus the wave packet's "Module Sections Covered" |
+| Slice card | One bounded section of one module implemented inside one wave. | The module spec plus the wave packet’s “Module Sections Covered” |
 | Handoff record | One completed or blocked delivery from one agent against one slice card. | Worker handoff report |
 
 A slice card never claims an entire module unless the module spec and the wave packet both
@@ -47,14 +47,14 @@ Every slice card carries the same fields, in this order. No renamed or invented 
 |---|---|---|
 | `wave` | Wave or track this card belongs to. | Matches a wave name in `WAVE-MODULE-MAP.md` |
 | `module` | Module this card implements a slice of. | Matches a file name in `docs/modules/` |
-| `slice` | The exact bounded section covered, not "the whole module." | Free text naming sections or a closed loop |
+| `slice` | The exact bounded section covered, not “the whole module.” | Free text naming sections or a closed loop |
 | `owner` | The single agent currently responsible. | One agent identifier |
 | `worktree` | Path to the isolated worktree. | Path |
 | `branch` | Branch name for this slice. | Branch name |
 | `status` | Feature status using the exact `AGENTS.md` labels. | `not implemented`, `display-only`, `wired but not visually checked`, `usable` |
 | `ui_state` | UI-side progress, independent of feature status. | `not started`, `placed by lead`, `implemented`, `verified` |
 | `backend_state` | Backend-side progress, independent of feature status. | `not started`, `service wired`, `handler wired`, `verified` |
-| `contracts` | Frozen contracts this slice depends on. | Names from "Frozen Contracts Consumed" in the packet |
+| `contracts` | Frozen contracts this slice depends on. | Names from “Frozen Contracts Consumed” in the packet |
 | `allowed_files` | Files this agent may edit. | Inherited from the packet, not redefined here |
 | `forbidden_files` | Files this agent may not touch. | Inherited from the packet, not redefined here |
 | `validation` | Checks actually run, cheapest first. | Free text list |
@@ -67,7 +67,7 @@ stops and returns to the Lead instead of inventing a value.
 ## Status Discipline
 
 Status values are exactly the four labels defined in `AGENTS.md`. No fifth informal status
-like "almost done" or "mostly working" is valid.
+like “almost done” or “mostly working” is valid.
 
 Allowed forward transitions:
 
@@ -110,14 +110,14 @@ by reading the current cards and the ownership docs.
   ownership for this wave.
 - **Scope overlap check**: the requested `slice` maps to a section of a module that
   `docs/WAVE-MODULE-MAP.md` assigns to the current wave. A card cannot claim sections assigned
-  to a different wave, and cannot claim "the whole module" when the map splits it across waves.
+  to a different wave, and cannot claim “the whole module” when the map splits it across waves.
 
 If either check fails, the agent does not claim the card. It reports the conflict to the Lead
 instead of proceeding around it.
 
 ## Card Template
 
-Use this exact block inside the relevant wave packet's tracking section, or inside a per-wave
+Use this exact block inside the relevant wave packet’s tracking section, or inside a per-wave
 tracking file if the packet becomes too long to hold many cards. Do not create a new file format
 for this; append the block as Markdown.
 
@@ -155,3 +155,67 @@ for this; append the block as Markdown.
   questions in that document are unanswered.
 - `AGENTS.md` still defines the four status labels and the validation rhythm. This file adds no
   new labels and no new validation steps.
+
+## Current Board
+
+> This section holds the live card state. The Lead initializes Wave 0 cards; workers claim
+> slices by updating the relevant card fields. Do not add cards outside a wave packet or
+> Lead-controlled initialization.
+
+### Card: Wave 0 / Platform Spine / Contract freeze and shared DTO scaffold
+
+- Owner: Lead
+- Worktree: (root — Lead works in main worktree)
+- Branch: work/fresh-base-spine
+- Status: not implemented
+- UI State: not started
+- Backend State: not started
+- Contracts: (none yet — this card produces the frozen contracts)
+- Allowed Files:
+  - `app/packages/shared/`
+  - `app/packages/protocol/`
+  - `docs/modules/`
+  - `docs/agent-packets/`
+  - `docs/OWNERSHIP-MATRIX.md`
+  - `docs/WAVE-MODULE-MAP.md`
+- Forbidden Files:
+  - `app/apps/electron/src/renderer/`
+  - `app/apps/electron/src/main/`
+- Validation:
+  - none yet
+- Remaining Not Implemented:
+  - Session/permission/timeline DTO types
+  - Actor and runtime metadata types
+  - Shared event channel contracts
+  - Internal Action Registry interface
+  - First module spec (Terminal / CLI Runtime)
+  - Wave 0 agent packet
+- Blocker: none
+
+### Card: Wave 0 / Clean Craft Baseline / Upstream sync and shell reset
+
+- Owner: Lead
+- Worktree: (root — Lead works in main worktree)
+- Branch: work/fresh-base-spine
+- Status: not implemented
+- UI State: not started
+- Backend State: not started
+- Contracts: (depends on Platform Spine DTO freeze)
+- Allowed Files:
+  - `app/` (classification pass only — no feature code until DTO freeze)
+  - `docs/DECISIONS-LEDGER.md`
+  - `docs/START-HERE.md`
+  - `README.md`
+  - `AGENTS.md`
+- Forbidden Files:
+  - `app/packages/shared/`
+  - `app/packages/protocol/`
+- Validation:
+  - `./scripts/craft.sh install`
+  - `./scripts/craft.sh run typecheck:all`
+  - `./scripts/craft.sh run electron:dev` (smoke launch)
+- Remaining Not Implemented:
+  - Code classification pass (baseline / candidate / legacy / delete)
+  - Quarantine of wrong old UI
+  - Upstream sync verification
+- Blocker: none

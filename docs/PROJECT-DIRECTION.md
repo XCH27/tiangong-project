@@ -110,7 +110,10 @@ Human controls and agent tools must call the same underlying action. A button-on
 
 The first spine is not “build all surfaces.” It is the minimum product backbone that makes later surfaces real.
 
-### Phase 0: Clean Craft Baseline
+> **Phase → Wave cross-reference:** The phases below map to execution waves in
+> `docs/WAVE-MODULE-MAP.md`. See the table at the end of this section for the full mapping.
+
+### Phase 0: Clean Craft Baseline `[Wave 0 + U Track]`
 
 Goal: Craft runs cleanly and remains recognizable.
 
@@ -129,7 +132,7 @@ Do not:
 
 Exit criteria: default Craft workbench is usable, and the repo has a known baseline state.
 
-### Phase 1: Terminal and CLI Runtime Loop
+### Phase 1: Terminal and CLI Runtime Loop `[Wave 1]`
 
 Goal: one real local runtime loop works end to end.
 
@@ -141,7 +144,7 @@ This is the first serious product loop because it turns Fleet from a chat surfac
 
 Exit criteria: at least one CLI/runtime path is `usable`, not merely detected or displayed.
 
-### Phase 2: Internal Action Spine
+### Phase 2: Internal Action Spine `[Wave 0 → Wave 1]`
 
 Goal: human UI and agents use the same action path for real project operations.
 
@@ -156,7 +159,7 @@ Start with narrow, useful actions:
 
 Exit criteria: a human action and an agent action both produce permissioned timeline events through the same registry path.
 
-### Phase 3: Runtime Lanes and TeamRun
+### Phase 3: Runtime Lanes and TeamRun `[Wave 0 → Wave 2]`
 
 Goal: Fleet owns the team; a CLI owns one run.
 
@@ -164,7 +167,7 @@ Do not make “multi-agent” mean multiple chat bubbles. Use stable `AgentSeat`
 
 Exit criteria: one leader runtime can request a bounded member task, receive a compressed report, and leave evidence in the shared timeline.
 
-### Phase 4: Files and Library
+### Phase 4: Files and Library `[Wave 1]`
 
 Goal: make the user’s workspace real inside Fleet.
 
@@ -177,7 +180,7 @@ Agents may organize files only through permissioned actions. Library assets must
 
 Exit criteria: files are visible, selectable, usable by agents, and write operations are permissioned and reversible.
 
-### Phase 5: Browser and Artifact Workflow
+### Phase 5: Browser and Artifact Workflow `[Wave 3]`
 
 Goal: turn BrowserPane into the design/review entry point.
 
@@ -200,13 +203,25 @@ permission overrides, and a separate high-risk developer toggle for full CDP acc
 
 Exit criteria: selected web evidence can become agent context, timeline evidence, and an editable artifact handoff, while browser permissions and data controls remain visible in settings.
 
-### Phase 6: Canvas, AIGC, and Video
+### Phase 6: Canvas, AIGC, and Video `[F Track + Wave 3]`
 
 Goal: add the creative surfaces only after the spine works.
 
 Design canvas uses a native design document model. AIGC uses External Jobs. Video uses a native timeline model. All three connect back to Library, permissions, and timeline.
 
 Exit criteria for the first canvas slice: a human edits one design object, an agent edits one design object, both changes enter the same timeline, and both can be undone.
+
+### Phase → Wave Reference Table
+
+| Phase | Name | Wave / Track |
+|---|---|---|
+| Phase 0 | Clean Craft Baseline | Wave 0 + U Track |
+| Phase 1 | Terminal and CLI Runtime Loop | Wave 1 |
+| Phase 2 | Internal Action Spine | Wave 0 → Wave 1 |
+| Phase 3 | Runtime Lanes and TeamRun | Wave 0 → Wave 2 |
+| Phase 4 | Files and Library | Wave 1 |
+| Phase 5 | Browser and Artifact Workflow | Wave 3 |
+| Phase 6 | Canvas, AIGC, and Video | F Track + Wave 3 |
 
 ## 7. External Jobs
 
@@ -323,9 +338,9 @@ The next useful work is:
 3. Create the Wave 0 agent packet for contract freeze and code classification.
 4. Perform a code classification pass against this document:
 
-1. baseline Craft code
-2. candidate Fleet spine code
-3. legacy experiment code
-4. code to delete or quarantine
+   1. baseline Craft code
+   2. candidate Fleet spine code
+   3. legacy experiment code
+   4. code to delete or quarantine
 
 After that, implement the first complete loop: terminal/CLI runtime from UI to process to session timeline to visible output.
