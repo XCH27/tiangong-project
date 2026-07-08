@@ -51,3 +51,21 @@ Example:
 
 - Good: "Wave 1 Terminal: runtime catalog + terminal surface transcript + launcher diagnostics."
 - Bad: "Implement CLI Runtime module."
+
+## Wave 3 Internal Dependency Sequence
+
+Wave 3 is not flat-parallel. Agents must not start a gated slice until its dependency is `usable`.
+
+| Slice | Depends on | Blocks |
+|---|---|---|
+| M08 ExternalJob schema freeze | — (Wave 2 BatchJobExecutor contract) | M09 Video surface, M10 Review bundle, M11 Batch wiring |
+| M09 Video surface | M08 ExternalJob schema | — |
+| M10 Review bundle / Memory flywheel | M08 ExternalJob schema | — |
+| M11 Batch wiring into routing | M08 ExternalJob schema | — |
+| M06 Browser/Artifact handoff | M05 Library lease (Wave 1 gate) | — |
+| M12 Capability loadout | Wave 2 TeamRun Bridge smoke | — |
+| M14 Messaging | Wave 2 permission card (M04 gate) | — |
+
+Rule: an agent assigned a gated slice that finds its dependency is not yet `usable` must
+stop, file a blocker card (see `BOARD-SYNC.md`), and return to the Lead. It must not
+proceed speculatively or stub the dependency.
