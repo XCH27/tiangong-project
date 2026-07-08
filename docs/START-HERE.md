@@ -6,14 +6,18 @@ The old documents were moved under `docs/legacy/`. They are historical evidence 
 
 ## Read Order
 
-1. `docs/PROJECT-DIRECTION.md`
-2. `docs/DECISIONS-LEDGER.md`
-3. `docs/DEVELOPMENT-PROCESS.md`
-4. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
-5. `docs/OWNERSHIP-MATRIX.md`
-6. `docs/WAVE-MODULE-MAP.md`
-7. `docs/REFERENCE-PROJECT-POLICY.md`
-8. `docs/BOARD-SYNC.md` if you are claiming, handing off, closing, or reassigning parallel work
+> **Authority note:** The read order below matches `AGENTS.md § Read First` exactly.
+> If you encounter any conflict between the two, follow `AGENTS.md` and report the discrepancy
+> to the Lead so the active doc can be updated.
+
+1. `docs/START-HERE.md` ← you are here
+2. `docs/PROJECT-DIRECTION.md`
+3. `docs/DECISIONS-LEDGER.md`
+4. `docs/DEVELOPMENT-PROCESS.md`
+5. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+6. `docs/OWNERSHIP-MATRIX.md`
+7. `docs/WAVE-MODULE-MAP.md`
+8. `docs/REFERENCE-PROJECT-POLICY.md`
 9. The module spec under `docs/modules/` for the work you are doing
 10. The wave packet under `docs/agent-packets/` if you are a parallel worker
 11. `AGENTS.md` as the forced-read execution summary
