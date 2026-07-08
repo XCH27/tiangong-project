@@ -20,7 +20,7 @@ jobs:
         run: bun install
 
       - name: Typecheck all modules
-        run: ./scripts/craft.sh run typecheck:all || echo "Typecheck failed, but continuing for demonstration (modify as needed)"
+        run: ./scripts/craft.sh run typecheck:all
 
       - name: Fleet Verify Script
-        run: ./scripts/fleet-verify.sh || echo "Verify script failed or missing targets"
+        run: ./scripts/fleet-verify.sh
