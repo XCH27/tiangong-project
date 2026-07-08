@@ -2,7 +2,7 @@
 
 Fleet documentation is now treated as a project operating system for parallel development, not as a pile of planning notes.
 
-The process has five layers:
+The process has six layers:
 
 1. **Direction**
    `PROJECT-DIRECTION.md` defines what Fleet is and is not.
@@ -13,10 +13,13 @@ The process has five layers:
 3. **Control Plane**
    `PARALLEL-AGENT-OPERATING-MODEL.md`, `OWNERSHIP-MATRIX.md`, and `WAVE-MODULE-MAP.md` define who may change what and in what order.
 
-4. **Module Specs**
+4. **Cloud/Local Workflow**
+   `CLOUD-LOCAL-WORKFLOW.md` defines branch, PR, local verification, and documentation-agent responsibilities.
+
+5. **Module Specs**
    `docs/modules/*.md` defines one closed product loop per module.
 
-5. **Agent Packets**
+6. **Agent Packets**
    `docs/agent-packets/*.md` turns one or more module sections into isolated work packages for parallel agents.
 
 ## Closed-Loop Requirement
@@ -75,6 +78,15 @@ If the same validation path fails twice, stop and identify the blocker instead o
 6. Implementation follows the agent packet and reports back using the packet's completion format.
 
 Do not use a legacy document as a work packet.
+
+## Cloud and Local Flow
+
+GitHub is the integration source of truth. Agents create task branches from
+`origin/work/fresh-base-spine`, open PRs, and do not push directly to integration branches.
+
+Local checkouts are used for real behavior verification, especially Electron, terminal,
+browser, file-system, and credential-dependent flows. If local state is dirty or behind the
+remote branch, synchronize or move to a clean worktree before starting shared work.
 
 ## `AGENTS.md` Migration Target
 
