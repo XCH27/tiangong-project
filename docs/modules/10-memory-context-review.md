@@ -83,7 +83,7 @@ interface DistilledToolMemory {
   expectedUseCases?: string[]
   expiresAt?: string
 
-  // Escape hatch — model says "I'm uncertain about X" rather than guessing
+  // Escape hatch — model says “I’m uncertain about X” rather than guessing
   notes?: string
 }
 ```
@@ -128,4 +128,100 @@ Memory leakage tests, project pack dry run, secret scan fixture, review report s
 
 ## 16. Risks And Blocked Decisions
 
-Risk: calling external AI websites as "free." Cost source must remain real/estimated/unknown.
+Risk: calling external AI websites as “free.” Cost source must remain real/estimated/unknown.
+
+## 17. Token & Context Optimisation Architecture
+
+This section defines how Fleet reduces token consumption across the full request lifecycle.
+It supersedes any informal notes on RTK, Repomix, Headroom, or Reasonix integration.
+
+### 17.1 Five-Layer Model
+
+Each layer owns exactly one concern. No layer may apply compression or reordering to
+another layer’s output.
+
+| Layer | Name | Core concern | Primary reference | Owner module |
+|---|---|---|---|---|
+| 0 | Memory | Avoid re-injecting history | Mem0 (dedup/conflict ideas), Letta (3-tier model) | M10 |
+| 1 | Retrieval Assembly | Send only relevant context | codegraph (Green-Light MCP), Zvec (FTS5+vector interface), Tree-sitter AST outline (self-impl) | M10 |
+| 2 | Prompt Assembly | Fix segment order for cache hit | DeepSeek-Reasonix (Green-Light stable-prefix) | **M11** |
+| 3 | Transport / Cache | Request-level token caching | Headroom (interface reference, self-impl backend) | M11 |
+| 4 | Execution Output | Prevent terminal/file output explosion | RTK (Green-Light, direct integration), Context-mode (ELv2 — fold criteria reference only) | M10 + UI |
+
+### 17.2 Layer Rules (Hard)
+
+1. **No stacked compression.** Once RTK (Layer 4) has semantically compressed a tool
+   return value, no other layer may further truncate or rewrite that string before it
+   reaches the model. Doing so produces model-visible garbled output.
+2. **Prompt Assembly (Layer 2) is the sole assembler.** No module constructs the final
+   Prompt string directly. Modules submit typed `ContextSegment` objects to M11’s
+   assembler, which owns the join order. See M11 §18.
+3. **RTK only touches unstructured streams.** RTK compression applies exclusively to
+   terminal `stderr`/`stdout` log streams. It must never be applied to JSON payloads,
+   AST structures, or any field that is subsequently parsed by code.
+4. **Context-mode (ELv2) code is absolutely forbidden.** Big-output fold criteria may
+   be studied and independently re-implemented in Fleet’s UI layer. No source code,
+   type definitions, or configs from Context-mode may enter the repo.
+
+### 17.3 Per-Tool Integration Decisions
+
+#### RTK (Layer 4 — Execution Output)
+- **Operation**: Direct integration, Green-Light.
+- **Scope**: Opt-in, sandboxed. Intercepts terminal execution log streams only.
+- **What it must not touch**: Any structured return value (JSON, diff hunks, AST).
+
+#### codegraph + Zvec (Layer 1 — Retrieval Assembly)
+- **Operation**: Independent MCP Server. Model calls `query_code_graph` and
+  `query_vector_index` tool calls. Fleet never imports their internals.
+- **Upgrade path**: MCP protocol means engine upgrades require no Fleet changes.
+
+#### AST Structural Outline — replaces Repomix copy (Layer 1)
+- **Policy note**: `Repomix` is a candidate reference. Its Policy entry explicitly
+  forbids copying AST parsers, line counters, or ignore file readers.
+  Extracting its Tree-sitter algorithm and “second-developing” it into a Fleet
+  package is a **policy violation**.
+- **Correct approach**: Implement a lightweight `@fleet/ast-outline` package using
+  the official `tree-sitter` Node.js binding and grammar packages directly.
+  No Repomix code enters the repo. Repomix is studied only as a behavior reference
+  for which node types to surface.
+- **Trigger rule in `read_file` handler**: if file line count > 500, default response
+  degrades to AST skeleton only (top-level declarations, exported symbols). Full
+  content available on explicit `read_file({ fullContent: true })`.
+
+#### Headroom (Layer 3 — Transport / Cache)
+- **Policy note**: Cannot copy compression layers, MCP proxy servers, or local drivers.
+- **Correct approach**: Reference its reversible hash caching interface specification.
+  Implement the cache backend inside Fleet’s existing Cost Ledger (M11). The hash
+  key is the stable Prompt prefix hash produced by Layer 2.
+
+#### Mem0 + Letta (Layer 0 — Memory)
+- **Policy note**: Cannot copy backend storage wrappers or Qdrant/Milvus interfaces.
+- **Correct approach**: Adopt the three-tier memory model concept (Core / Recall /
+  Archival) at the interface level. Storage backend is Fleet-native SQLite + FTS5
+  (leveraging Zvec’s indexing patterns). `DistilledToolMemory` schema in §8 is
+  the concrete implementation of the “Recall” tier.
+
+#### Context-mode (Layer 4 UI — Big Output Fold)
+- **Policy note**: ELv2 — strictly no code copy, no binary bundling.
+- **Correct approach**: Study fold criteria (minimum output length threshold,
+  diff hunk detection, code block detection). Re-implement the fold logic in
+  `app/packages/ui/src/components` from scratch. No Context-mode file enters
+  the repo even as a reference file on disk.
+
+#### DeepSeek-Reasonix (Layer 2 — Prompt Assembly)
+- **Policy note**: Green-Light MIT. May reference stable prefix cache and
+  planner/executor patterns directly.
+- **Correct approach**: Implement stable-prefix Prompt ordering in M11’s
+  Prompt Assembly layer (§18). This is **not** a TeamRun concern. TeamRun
+  dispatches tasks; M11 assembles the Prompts sent to models.
+
+### 17.4 Anti-Patterns (Forbidden)
+
+| Anti-pattern | Why forbidden |
+|---|---|
+| Running RTK on a JSON tool result before passing to model | Corrupts structured data the model needs to parse |
+| Inserting a memory snippet mid-Prompt after stable prefix is assembled | Breaks prefix cache, wastes ~50% cost saving |
+| Repomix source copy for AST outline | Policy violation: AST parser copy is explicitly forbidden |
+| Context-mode code in any form in the repo | ELv2 high-risk licence |
+| TeamRun building the final Prompt string | Prompt Assembly is M11-owned; TeamRun only submits ContextSegments |
+| Headroom MCP proxy or compression layer copy | Policy: only interface specification may be referenced |

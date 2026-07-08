@@ -116,3 +116,84 @@ eligibility; they do not implement batch submission, polling, or result mapping.
 
 Dependency direction: Modules 04, 08, 10 depend on `ExternalJob` schema (owned by Module 08).
 `BatchJobExecutor` (Module 11) consumes `ExternalJob`. No circular dependency.
+
+## 18. Prompt Assembly Layer (Stable Prefix)
+
+Module 11 is the **sole owner** of Prompt construction. No other module builds the final
+Prompt string sent to a model. Modules submit typed `ContextSegment` objects; the assembler
+joins them in fixed order.
+
+### 18.1 Why Ownership Matters
+
+Provider-native Prompt Caching (Anthropic, OpenAI, DeepSeek) saves ~50% token cost by
+caching a shared prefix. The prefix is only cacheable if its byte sequence is identical
+across turns. Any module that inserts content at an arbitrary position breaks the prefix
+and eliminates the saving. Centralising assembly in M11 is the only reliable fix.
+
+Reference: DeepSeek-Reasonix (Green-Light MIT) stable-prefix cache and planner/executor
+patterns inform this design. Reasonix work belongs here in M11, not in TeamRun.
+
+### 18.2 Fixed Segment Order
+
+The assembler joins segments in this order, frozen after Wave 0 contract freeze:
+
+```
+1. system_prompt          — global Fleet identity + tool list (never changes within a version)
+2. frozen_memory          — Core-tier facts from DistilledToolMemory (global_preference scope)
+3. project_outline        — AST skeleton of active project files (Layer 1 Retrieval output)
+4. dynamic_context        — Recall-tier memory + ProjectPack excerpts (session-scoped)
+5. tool_results_summary   — compressed RTK output (Layer 4), if any
+6. user_turn              — current human message (always last)
+```
+
+Segments 1–3 form the **stable prefix**. They must be byte-identical across turns within
+the same session version. Any change to segments 1–3 invalidates the cache and must be
+treated as a new session for billing purposes.
+
+Segment 4 and below are the **dynamic tail**. They change per turn; provider caching does
+not apply to them.
+
+### 18.3 ContextSegment Contract
+
+```ts
+type SegmentSlot =
+  | 'system_prompt'
+  | 'frozen_memory'
+  | 'project_outline'
+  | 'dynamic_context'
+  | 'tool_results_summary'
+  | 'user_turn'
+
+interface ContextSegment {
+  slot: SegmentSlot
+  content: string          // plain text or XML-tagged block
+  tokenEstimate: number    // caller’s best estimate; assembler may recount
+  sourceModule: string     // e.g. 'M10', 'M03', 'terminal'
+  immutable: boolean       // true for stable-prefix slots (1–3)
+}
+```
+
+The assembler **rejects** any segment that:
+- Claims slot `system_prompt` / `frozen_memory` / `project_outline` with `immutable: false`.
+- Is submitted after the assembler has already serialised the stable prefix for this turn.
+- Exceeds the per-slot token budget defined in routing settings.
+
+### 18.4 Prefix Hash & Cache Attribution
+
+After joining segments 1–3, the assembler computes `prefixHash = sha256(prefix_string)`
+and writes it to the routing cost ledger alongside the turn’s usage sample. This enables:
+
+- Cache hit detection: if `prefixHash` matches the previous turn’s value, the provider
+  should return a `cache_read_input_tokens` discount. If no discount is observed despite
+  a matching hash, flag the turn `cacheStatus: 'miss_unexpected'` for diagnostics.
+- Cost attribution: `SUBSCRIPTION_QUOTA` turns with a confirmed cache hit are labelled
+  `cacheStatus: 'hit'` and their token cost is reduced accordingly in the ledger.
+
+### 18.5 Validation
+
+- Unit test: same `system_prompt` + `frozen_memory` + `project_outline` across two turns
+  produces identical `prefixHash`.
+- Integration test: a turn that modifies only `dynamic_context` does not change
+  `prefixHash`.
+- Regression test: any new feature that injects content into a stable-prefix slot must
+  pass a `prefixHash` stability check in CI before merge.
