@@ -25,15 +25,12 @@ import { getDefaultLabelConfig, saveLabelConfig } from '../labels/storage.ts';
 import { loadConfigDefaults } from '../config/storage.ts';
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
 import { normalizeThinkingLevel } from '../agent/thinking-levels.ts';
-import { workspaceFolderNameFromName } from './name.ts';
 import type {
   WorkspaceConfig,
   CreateWorkspaceInput,
   LoadedWorkspace,
   WorkspaceSummary,
 } from './types.ts';
-
-export { workspaceFolderNameFromName } from './name.ts';
 
 const CONFIG_DIR = join(homedir(), '.craft-agent');
 const DEFAULT_WORKSPACES_DIR = join(CONFIG_DIR, 'workspaces');
@@ -243,7 +240,7 @@ export function getWorkspaceSummary(rootPath: string): WorkspaceSummary | null {
 // ============================================================
 
 /**
- * Generate URL-safe slug from name.
+ * Generate URL-safe slug from name
  */
 export function generateSlug(name: string): string {
   let slug = name
@@ -261,16 +258,16 @@ export function generateSlug(name: string): string {
 
 /**
  * Generate a unique folder path for a workspace by appending a numeric suffix
- * if the name-based folder already exists.
- * E.g., "我的工作区", "我的工作区 2", "我的工作区 3", ...
+ * if the slug-based folder already exists.
+ * E.g., "my-workspace", "my-workspace-2", "my-workspace-3", ...
  *
  * @param name - Display name to derive the slug from
  * @param baseDir - Parent directory where workspace folders live (e.g., ~/.craft-agent/workspaces/)
  * @returns Full path to a unique, non-existing folder
  */
 export function generateUniqueWorkspacePath(name: string, baseDir: string): string {
-  const folderName = workspaceFolderNameFromName(name);
-  let candidate = join(baseDir, folderName);
+  const slug = generateSlug(name);
+  let candidate = join(baseDir, slug);
 
   if (!existsSync(candidate)) {
     return candidate;
@@ -278,11 +275,11 @@ export function generateUniqueWorkspacePath(name: string, baseDir: string): stri
 
   // Append numeric suffix until we find a non-existing path
   let counter = 2;
-  while (existsSync(join(baseDir, `${folderName} ${counter}`))) {
+  while (existsSync(join(baseDir, `${slug}-${counter}`))) {
     counter++;
   }
 
-  return join(baseDir, `${folderName} ${counter}`);
+  return join(baseDir, `${slug}-${counter}`);
 }
 
 /**

@@ -57,39 +57,6 @@ describe('resolveServerPath fallback', () => {
     const paths = resolveBackendRuntimePaths(hostRuntime);
     expect(paths.piServerPath).toBe(join(primaryDir, 'index.js'));
   });
-
-  it('finds server under resourcesPath/app/resources in packaged builds', () => {
-    const appRoot = join(tmpBase, 'packaged-app-root');
-    const resourcesPath = join(tmpBase, 'Contents', 'Resources');
-    const serverDir = join(resourcesPath, 'app', 'resources', 'pi-agent-server');
-    mkdirSync(serverDir, { recursive: true });
-    writeFileSync(join(serverDir, 'index.js'), '// packaged resourcesPath server');
-
-    const hostRuntime: BackendHostRuntimeContext = {
-      appRootPath: appRoot,
-      resourcesPath,
-      isPackaged: true,
-    };
-
-    const paths = resolveBackendRuntimePaths(hostRuntime);
-    expect(paths.piServerPath).toBe(join(serverDir, 'index.js'));
-  });
-
-  it('finds monorepo server when dev appRootPath is the repository root above app/', () => {
-    const repoRoot = join(tmpBase, 'repo-root');
-    const serverDir = join(repoRoot, 'app', 'packages', 'pi-agent-server', 'dist');
-    mkdirSync(serverDir, { recursive: true });
-    writeFileSync(join(serverDir, 'index.js'), '// dev monorepo server');
-
-    const hostRuntime: BackendHostRuntimeContext = {
-      appRootPath: repoRoot,
-      resourcesPath: repoRoot,
-      isPackaged: false,
-    };
-
-    const paths = resolveBackendRuntimePaths(hostRuntime);
-    expect(paths.piServerPath).toBe(join(serverDir, 'index.js'));
-  });
 });
 
 describe('resolveRipgrepPath', () => {

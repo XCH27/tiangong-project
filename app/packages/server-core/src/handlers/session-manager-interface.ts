@@ -22,11 +22,6 @@ import type {
   PermissionModeState,
   UnreadSummary,
   ShareResult,
-  SessionEvent,
-  TeamInboxItem,
-  TeamReport,
-  ProgressTask,
-  SessionUsageView,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -76,10 +71,6 @@ export interface ISessionManager {
   updateWorkingDirectory(sessionId: string, path: string): void
   setSessionSources(sessionId: string, sourceSlugs: string[]): Promise<void>
   setSessionLabels(sessionId: string, labels: string[]): void
-  setSessionProgress(sessionId: string, tasks: ProgressTask[]): void
-  setSessionCliRuntime(sessionId: string, cliRuntimeId: string | null): void
-  getSessionUsageView(sessionId: string): SessionUsageView | null
-  setSessionCliRuntimeModel(sessionId: string, modelId: string | null): void
   setSessionConnection(sessionId: string, connectionSlug: string): Promise<void>
   updateSessionModel(sessionId: string, workspaceId: string, model: string | null, connection?: string): Promise<void>
 
@@ -251,23 +242,6 @@ export interface ISessionManager {
   setAutomationBinder?(
     fn: (input: { workspaceId: string; sessionId: string; topicName: string }) => Promise<void>,
   ): void
-
-  /**
-   * Emit a SessionEvent into the one shared timeline (Fleet 工作台动作引擎用)。
-   * Used by the design action engine so human/AI actions land on the same
-   * broadcast channel as model/tool events — no second timeline (docs/31 §1).
-   */
-  emitSessionEvent(event: SessionEvent): void
-  recordPatchRolledBackPreference(sessionId: string): void
-  /** Persist a structured event in the owning session before broadcasting it. */
-  appendSessionEvent(event: SessionEvent): Promise<string>
-  /** Request approval for a non-agent workflow action through the existing permission UI. */
-  requestWorkflowPermission(
-    sessionId: string,
-    input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
-  ): Promise<boolean>
-  getLatestTeamReport(sessionId: string): Promise<TeamReport | null>
-  resolveTeamInbox(items: TeamInboxItem[]): Promise<string>
 }
 
 /**

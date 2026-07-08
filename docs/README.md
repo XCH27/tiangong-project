@@ -1,66 +1,39 @@
-# Fleet 文档索引
+# Fleet Documentation
 
-> 当前基线：`work/fresh-base-spine`。只认当前分支代码和 `docs/32` 状态；旧 worktree 与口头汇报不算完成。
-> **文档正在按"前后端功能套件的闭环"收束**：当前 42 篇 → 收束目标 ≈ 北极星 + 4 核心 + 13 闭环套件 + 1 参考。收束原则、迁移地图与执行顺序见 `docs/00 §7`。
+Active documentation is now English-only.
 
-## 必读主干
+## Active Docs
 
-| 顺序 | 文档 | 用途 |
-|---|---|---|
-| 0 | `docs/00A-UI改造红线与挂点地图.md` | **改 UI / 加功能前必读单页**：三道闸 + 七条硬「不要」+ 挂点地图 |
-| 0.5 | `docs/WHITEPAPER-项目白皮书.md` | **WHY 北极星**：愿景/痛点/理念 P1–P12 + 追溯表 + 评审协议 |
-| 1 | `AGENTS.md` | 硬规则与已拍板产品决策 |
-| 2 | `docs/04-产品决策记录.md` | 做什么（D1–D25） |
-| 3 | `docs/01-产品主干与落地序列.md` | 按什么顺序做 |
-| 4 | `docs/30-架构重审与最优落地判断.md` | 原生引擎、统一脊柱和废弃路线裁决 |
-| 5 | `docs/00-执行总纲-AGENT-HANDOFF.md` | 当前代码事实与下一步 + 文档收束计划（§7） |
-| 6 | `docs/32-并行开发状态看板与工作令.md` | 已做/未做、并行边界、**套件级并行波次（§7）** |
-| 7 | `docs/33-T-TEAM-SPINE-团队编排脊柱协议.md` | 当前最高优先级团队协议 |
+| File | Purpose |
+|---|---|
+| `START-HERE.md` | Entry point, read order, and working status labels |
+| `PROJECT-DIRECTION.md` | Product direction, non-goals, architecture direction, and development spine |
+| `DECISIONS-LEDGER.md` | Final promoted decisions from the legacy corpus |
+| `DEVELOPMENT-PROCESS.md` | How project work moves from direction to module specs to agent execution |
+| `PARALLEL-AGENT-OPERATING-MODEL.md` | Lead/worker rules for conflict-free multi-agent development |
+| `OWNERSHIP-MATRIX.md` | Module by package ownership and frozen contract boundaries |
+| `WAVE-MODULE-MAP.md` | Which modules are built in which waves and why |
+| `REFERENCE-PROJECT-POLICY.md` | Green-light source projects, black-box references, and license boundaries |
+| `BOARD-SYNC.md` | Card format and sync points for tracking parallel wave/module progress |
 
-## 产品与界面
+The repository-level `AGENTS.md` is a short forced-read execution summary that points back
+to these active documents. It must not grow into a second roadmap.
 
-- `docs/02`：统一创作台与交互模型。
-- `docs/17`：管理 Agent、项目 Agent、记忆与自动决策。
-- `docs/18`：默认工作台与专业工作面目标布局。
-- `docs/15`：设计工作流。
-- `docs/06`：浏览器与网页标注。
-- `docs/03`：智能模型路由 + 多模型融合(Fusion) + 分层缓存（D5，全量：两轴路由+级联、两种 Fusion+验证、四层缓存、三层 Agent 分权、数据回流）。
-- `docs/16`：上下文效率与外部任务/审查（rtk/codegraph 等输入瘦身能力归属地）。
-- `docs/05`：分层记忆（+ 输入建议 §6.1）。
-- `docs/28`：本地运行环境与系统工具。
-- `docs/35`：任务进度 Progress（团队/非团队）。
-- `docs/36`：模型 / CLI 运行时选择器交互设计。
-- `docs/37`：右侧 Tool Dock 与终端面板落地规格。
-- `docs/38`：内部结构化能力与 Agent-native 优化主线。
-- `docs/38-API-CLI分离与跨Runtime团队编排.md`：混合 Runtime 团队编排与 API/CLI 分离（D19）。`docs/44` 已合并到此（tombstone）。
-- `docs/40`：Internal Action Registry 规格与样板闭环（S1 承重墙）。
-- `docs/41`：项目问题审计与方向收口。
-- `docs/42`：系统路线与最佳落地方案。
-- `docs/43`：能力装载与插件技能商城（D25 + 汉化引擎）。
+## Work Package Docs
 
-## 工程落地
+| Folder | Purpose |
+|---|---|
+| `docs/modules/` | One closed-loop specification per product module |
+| `docs/agent-packets/` | Wave-level execution packets for parallel agents |
 
-- `docs/19`：干净基座与可复用资产。
-- `docs/31`：模块、源码参考与落地映射。
-- `docs/33`：团队编排脊柱契约（§0 复审修正为权威）。
-- `docs/32`：并行开发看板（契约冻结 + 文件所有权 + 波次 + 套件级并行 §7）。
-- `docs/23`、`docs/24`、`docs/25`：CLI Runtime 规格、验收与附件边界。
-- `docs/22`：AionUi 迁移要点。
-- `docs/07`：难点与更新韧性（D24 集成/兼容设计根基）。
-- `docs/39`：Workflow Recorder 与 Skill Distiller。
+## Legacy Docs
 
-## 源码与许可证
+To minimize token cost and prevent search/context pollution, all legacy Chinese planning documents, blueprints, and implementation plans have been zipped into `docs/legacy/legacy-corpus.zip`.
 
-- `docs/14`：本地源码参考真实状态矩阵。
-- `docs/26`：红绿灯与使用规则。
-- `docs/27`：实际迁移归因。
-- `docs/29`：每个参考项目学什么、不学什么（含 D24 集成/兼容分流 §1.5）。
-- `源码参考/README.md`：software/plugins 目录清单。
+| File | Purpose |
+|---|---|
+| `docs/legacy/LEGACY-INDEX.md` | Full catalog index of all zipped legacy files with original sizes and titles |
+| `docs/legacy/LEGACY-LESSONS.md` | Extracted high-value architectural lessons and engineering guidelines from the legacy files |
 
-## 维护规则
+Legacy docs are historical material. If a legacy decision is still valid, promote it into a small English active document instead of editing the old files.
 
-- **文档编号 = 稳定 ID**：编号永不回收、永不平移；空号（08/10/13/34）为墓碑。**`09` 已复活**为上游软分叉同步说明（`docs/09-craft-base-prep.md`）。新增文档优先复用剩余墓碑空号。
-- **状态标注**：`✅ 已落当前分支`（代码+接线+验证齐）/`🟨 部分`/`⛔ 未实现`/`🧊 冻结收口`。"某 Agent 完成/某 worktree 通过"不得直接写成已落，合入并复核后才改。
-- **真相分工（唯一维护位）**：理念/愿景/痛点(WHY)=`docs/WHITEPAPER-项目白皮书.md`；决策=`AGENTS.md`/`docs/04`；路线与下一步=`docs/00`/`docs/01`；当前状态=`docs/32`（唯一）；架构裁决=`docs/30`；内部动作类型=`internal-action.ts`(代码)+`docs/40`；问题与方向=`docs/41`；源码许可=`docs/14/26/27/29`。理念有变先改白皮书，再改 `docs/04` 决策，下游跟随。
-- **改动纪律**：改方向先改 `docs/04`；改状态只改 `docs/32`；改页面/按钮/输入/工具按 `AGENTS.md` 规则 35 同步 bundled docs、tool schema、MCP 说明。
-- 第三方仓库 Markdown 和 `node_modules` 不纳入 Fleet 文档状态审计。

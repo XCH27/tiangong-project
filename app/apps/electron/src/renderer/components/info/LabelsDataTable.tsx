@@ -3,7 +3,7 @@
  *
  * Hierarchical data table for displaying label configurations.
  * Uses TanStack Table's built-in expand/collapse for tree rendering.
- * Columns: Color, Name (indented + chevron), Role, Permission, Prompt.
+ * Columns: Color, Name (indented + chevron), Value Type.
  */
 
 import * as React from 'react'
@@ -99,50 +99,12 @@ function getColumns(t: TFunction): ColumnDef<LabelConfig>[] {
       meta: { fillWidth: true },
     },
     {
-      id: 'kind',
-      accessorKey: 'kind',
-      header: ({ column }) => <SortableHeader column={column} title={t("settings.labels.identityColumn")} />,
+      id: 'valueType',
+      accessorKey: 'valueType',
+      header: ({ column }) => <SortableHeader column={column} title={t("common.type")} />,
       cell: ({ row }) => (
         <div className="p-1.5 pl-2.5">
-          {row.original.kind === 'identity' ? (
-            <Info_Badge color="default" className="whitespace-nowrap">
-              {t("settings.labels.identityBadge")}
-            </Info_Badge>
-          ) : (
-            <span className="text-muted-foreground/50 text-sm">—</span>
-          )}
-        </div>
-      ),
-      minSize: 110,
-    },
-    {
-      id: 'permissionProfile',
-      accessorKey: 'permissionProfile',
-      header: ({ column }) => <SortableHeader column={column} title={t("settings.labels.permissionProfile")} />,
-      cell: ({ row }) => (
-        <div className="p-1.5 pl-2.5">
-          {row.original.permissionProfile ? (
-            <Info_Badge color="muted" className="whitespace-nowrap">
-              {row.original.permissionProfile}
-            </Info_Badge>
-          ) : (
-            <span className="text-muted-foreground/50 text-sm">—</span>
-          )}
-        </div>
-      ),
-      minSize: 120,
-    },
-    {
-      id: 'systemPromptPreset',
-      accessorKey: 'systemPromptPreset',
-      header: () => <span className="p-1.5 pl-2.5">{t("settings.labels.systemPromptPreset")}</span>,
-      cell: ({ row }) => (
-        <div className="p-1.5 pl-2.5 max-w-[220px]">
-          {row.original.systemPromptPreset ? (
-            <span className="text-sm text-muted-foreground truncate block">
-              {row.original.systemPromptPreset}
-            </span>
-          ) : row.original.valueType ? (
+          {row.original.valueType ? (
             <Info_Badge color="muted" className="capitalize whitespace-nowrap">
               {t(`sidebar.labelValueType.${row.original.valueType}`)}
             </Info_Badge>
@@ -151,7 +113,7 @@ function getColumns(t: TFunction): ColumnDef<LabelConfig>[] {
           )}
         </div>
       ),
-      minSize: 180,
+      minSize: 120,
     },
   ]
 }
@@ -169,11 +131,10 @@ export function LabelsDataTable({
   searchable = false,
   maxHeight = 400,
   fullscreen = false,
-  fullscreenTitle,
+  fullscreenTitle = 'Labels',
   className,
 }: LabelsDataTableProps) {
   const { t } = useTranslation()
-  const resolvedFullscreenTitle = fullscreenTitle ?? t('settings.labels.title')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { isDark } = useTheme()
   const columns = useMemo(() => getColumns(t), [t])
@@ -218,7 +179,7 @@ export function LabelsDataTable({
         <DataTableOverlay
           isOpen={isFullscreen}
           onClose={() => setIsFullscreen(false)}
-          title={resolvedFullscreenTitle}
+          title={fullscreenTitle}
           subtitle={t("table.labelCount", { count: totalCount })}
           theme={isDark ? 'dark' : 'light'}
         >

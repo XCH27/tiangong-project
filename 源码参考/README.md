@@ -12,20 +12,24 @@
 - 绿灯项目仍需按 `docs/26-源码参考使用规则与索引.md` 和 `docs/27-源码迁移清单.md` 记录迁移来源、commit、许可证和归因。
 - 红灯/黄灯/候选项目即使放在 `plugins/`，也只能黑盒学习行为，不能复制源码、类型、测试、配置、样式或资源。
 - 任何新克隆项目先放入对应分类，再更新 `docs/14-源码参考目录专项审计.md`。
+- `software/*` 与 `plugins/*` 是本机参考源码 checkout，按根 `.gitignore` 忽略；Fleet 仓库只跟踪本 README 与 `clone_repos.sh` / `update_repos.sh` 等索引脚本，不再把第三方目录作为 gitlink/submodule 跟踪。更新参考源码不得污染 Fleet 主仓 `git status`。
 
 当前分类：
 
 ## software
 
 - `AionUi`
+- `agents-cli`
 - `AstrBot`
 - `CowAgent`
+- `CoreCoder`
 - `DeepSeek-Reasonix`
 - `Kun`
 - `OpenHands`
 - `OpenMontage`
 - `cc-switch`
 - `cherry-studio`
+- `cline`
 - `cmux`
 - `cockpit-tools`
 - `craft-agents-oss`
@@ -34,34 +38,60 @@
 - `kdenlive`
 - `lobehub`
 - `multica`
+- `nezha`
+- `omnigent`
 - `open-pencil`
 - `opencut`
 - `opencut-classic`
 - `openpencil`
+- `orca`
 - `palmier-pro`
 - `penpot`
+- `tldraw`
 - `warp`
 - `zed`
 
 ## plugins
 
+- `awesome-design-md`
 - `codegraph`
 - `context-mode`
+- `Cowart`
 - `deepcode-cli`
+- `dockview`
+- `doubao-ui-assets` (unzipped from Desktop, containing 700+ icons and dashboard ui kits)
 - `headroom`
 - `hyperframes`
 - `letta-code`
 - `markitdown`
 - `mem0`
+- `memanto`
 - `mempalace`
+- `moveable`
 - `open-design`
 - `openui`
+- `react-moveable` (see `moveable`)
+- `react-resizable-panels`
+- `react-rnd`
+- `react-timeline-editor`
 - `remotion`
 - `repomix`
 - `rtk`
+- `stitch-sdk`
+- `stitch-skills`
 - `supermemory`
+- `tapnow-reverse-config` (unzipped from Desktop, containing reverse engineered Electron client codebase & contracts)
+- `trae-ui-kits` (unzipped from Desktop, containing Trae dashboard and dev-explorer UI designs)
+- `trae-work-kits` (unzipped from Desktop, containing settings, landing, pricing, and keyframe designs)
+- `zvec`
+
+## assets (静态资产)
+
+- `assets/ui-screenshots/` (包含从用户上传的原始图片中归档的 UI 参考截图，涵盖 TapNow, Lovart, Stitch 及当前工作台原型)
 
 `clone_repos.sh` 暂留在根目录；后续如果继续批量克隆，应让脚本按 `software/` 和 `plugins/` 自动落位。
+
+
 
 ## 完整性警告
 

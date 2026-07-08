@@ -1,7 +1,7 @@
 /**
  * TopBar - Persistent top bar above all panels (Slack-style)
  *
- * Layout: [Sidebar] [Menu] [Back] [Forward] [Workspace pill] [Add workspace] ... [Browser strip] [Context] [New session] [New browser]
+ * Layout: [Sidebar] [Menu] [Back] [Forward] [Workspace selector] ... [Browser strip] [+] [Help]
  *
  * Fixed at top of window, 48px tall.
  * macOS: offset left to avoid stoplight controls.
@@ -11,20 +11,26 @@ import { useTranslation } from "react-i18next"
 import * as Icons from "lucide-react"
 import { Tooltip, TooltipTrigger, TooltipContent } from "@craft-agent/ui"
 import { PanelLeftRounded } from "../icons/PanelLeftRounded"
-import { PanelRightRounded } from "../icons/PanelRightRounded"
 import { TopBarButton } from "../ui/TopBarButton"
 import { cn } from "@/lib/utils"
 import { isMac, isWebUI } from "@/lib/platform"
 import { useActionLabel } from "@/actions"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  StyledDropdownMenuContent,
+  StyledDropdownMenuItem,
+  StyledDropdownMenuSeparator,
+} from "@/components/ui/styled-dropdown"
 import type { SettingsMenuItem } from "../../../shared/menu-schema"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
-import { useEffect, useRef, useState, type ComponentType } from "react"
+import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
-import { WorkspaceAddButton, WorkspaceSwitcher } from "./WorkspaceSwitcher"
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
+import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
 import { AppMenu } from "../AppMenu"
-import type { ToolDockModuleId } from "./tool-dock-config"
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
 const RIGHT_SLOT_TWO_BADGES_THRESHOLD = 300
@@ -36,7 +42,6 @@ interface TopBarProps {
   workspaceUnreadMap?: Record<string, boolean>
   onWorkspaceCreated?: (workspace: Workspace) => void
   onWorkspaceRemoved?: () => void
-  onWorkspaceUpdated?: () => void
   activeSessionId?: string | null
   onNewChat: () => void
   onNewWindow?: () => void
@@ -50,19 +55,6 @@ interface TopBarProps {
   canGoForward: boolean
   onToggleSidebar: () => void
   onToggleFocusMode: () => void
-  onToggleWorkspaceContextSidebar?: () => void
-  isWorkspaceContextSidebarVisible?: boolean
-  onToggleBottomTerminal?: () => void
-  isBottomTerminalVisible?: boolean
-  /** D19: create a new terminal panel (surface='terminal'). Replaces bottom-card toggle. */
-  onNewTerminalPanel?: () => void
-  toolDockModules?: Array<{
-    id: ToolDockModuleId
-    label: string
-    icon: ComponentType<{ className?: string; strokeWidth?: string | number }>
-    isActive: boolean
-    onToggle: () => void
-  }>
   onAddSessionPanel: () => void
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
@@ -76,7 +68,6 @@ export function TopBar({
   workspaceUnreadMap,
   onWorkspaceCreated,
   onWorkspaceRemoved,
-  onWorkspaceUpdated,
   activeSessionId,
   onNewChat,
   onNewWindow,
@@ -90,12 +81,6 @@ export function TopBar({
   canGoForward,
   onToggleSidebar,
   onToggleFocusMode,
-  onToggleWorkspaceContextSidebar,
-  isWorkspaceContextSidebarVisible,
-  onToggleBottomTerminal,
-  isBottomTerminalVisible,
-  onNewTerminalPanel,
-  toolDockModules,
   onAddSessionPanel,
   onAddBrowserPanel,
   isCompact,
@@ -211,127 +196,100 @@ export function TopBar({
             </>
           )}
 
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-            <div className="min-w-0 max-w-full overflow-hidden">
-              {isCompact ? (
-                <CompactWorkspaceSwitcher
-                  workspaces={workspaces}
-                  activeWorkspaceId={activeWorkspaceId}
-                  onSelect={onSelectWorkspace}
-                  onWorkspaceCreated={onWorkspaceCreated}
-                  onWorkspaceRemoved={onWorkspaceRemoved}
-                  workspaceUnreadMap={workspaceUnreadMap}
-                />
-              ) : (
-                <WorkspaceSwitcher
-                  variant="topbar"
-                  workspaces={workspaces}
-                  activeWorkspaceId={activeWorkspaceId}
-                  onSelect={onSelectWorkspace}
-                  onWorkspaceCreated={onWorkspaceCreated}
-                  onWorkspaceRemoved={onWorkspaceRemoved}
-                  onWorkspaceUpdated={onWorkspaceUpdated}
-                  workspaceUnreadMap={workspaceUnreadMap}
-                />
-              )}
-            </div>
-            {!isCompact && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <WorkspaceAddButton
-                    onSelect={onSelectWorkspace}
-                    onWorkspaceCreated={onWorkspaceCreated}
-                    className="header-icon-btn titlebar-no-drag shrink-0 flex items-center justify-center h-[30px] w-[30px] rounded-[8px] border border-foreground/6 text-foreground/50 hover:bg-foreground/5 hover:text-foreground transition-colors duration-100"
-                  >
-                    <Icons.FolderPlus className="h-4 w-4" strokeWidth={1.5} />
-                  </WorkspaceAddButton>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{t("workspace.addWorkspace")}</TooltipContent>
-              </Tooltip>
+          <div className="min-w-0 flex-1">
+            {isCompact ? (
+              <CompactWorkspaceSwitcher
+                workspaces={workspaces}
+                activeWorkspaceId={activeWorkspaceId}
+                onSelect={onSelectWorkspace}
+                onWorkspaceCreated={onWorkspaceCreated}
+                onWorkspaceRemoved={onWorkspaceRemoved}
+                workspaceUnreadMap={workspaceUnreadMap}
+              />
+            ) : (
+              <WorkspaceSwitcher
+                variant="topbar"
+                workspaces={workspaces}
+                activeWorkspaceId={activeWorkspaceId}
+                onSelect={onSelectWorkspace}
+                onWorkspaceCreated={onWorkspaceCreated}
+                onWorkspaceRemoved={onWorkspaceRemoved}
+                workspaceUnreadMap={workspaceUnreadMap}
+              />
             )}
           </div>
         </div>
       </div>
 
-      {/* === RIGHT: Browser strip + context + panel actions === */}
+      {/* === RIGHT: Browser strip + add + help === */}
       {!isCompact && (
       <div ref={rightSlotRef} className="flex min-w-0 shrink-0 items-center justify-end gap-1" style={{ paddingRight: 12 }}>
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
-        {toolDockModules?.map((module) => {
-          const ModuleIcon = module.icon
-          return (
-            <Tooltip key={module.id}>
-              <TooltipTrigger asChild>
-                <TopBarButton
-                  onClick={module.onToggle}
-                  aria-label={module.label}
-                  isActive={module.isActive}
-                >
-                  <ModuleIcon className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
-                </TopBarButton>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{module.label}</TooltipContent>
-            </Tooltip>
-          )
-        })}
-        {onToggleWorkspaceContextSidebar && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <TopBarButton
-                onClick={onToggleWorkspaceContextSidebar}
-                aria-label={isWorkspaceContextSidebarVisible ? t('workspaceContext.hide') : t('workspaceContext.show')}
-                isActive={isWorkspaceContextSidebarVisible}
-              >
-                <PanelRightRounded className="h-[18px] w-[18px] text-foreground/70" />
-              </TopBarButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {isWorkspaceContextSidebarVisible ? t('workspaceContext.hide') : t('workspaceContext.show')}
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {onNewTerminalPanel && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <TopBarButton
-                onClick={onNewTerminalPanel}
-                aria-label={t("terminal.newPanel")}
-              >
-                <Icons.TerminalSquare className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
-              </TopBarButton>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t("terminal.newPanel")}
-            </TooltipContent>
-          </Tooltip>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <TopBarButton
-              onClick={onAddSessionPanel}
-              aria-label={t("session.newSessionInPanel")}
-              className="ml-1 h-[26px] w-[26px] rounded-lg"
-            >
-              <SquarePenRounded className="h-4 w-4 text-foreground/50" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TopBarButton aria-label={t("menu.addPanelMenu")} className="ml-1 h-[26px] w-[26px] rounded-lg">
+              <Icons.Plus className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
             </TopBarButton>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("session.newSessionInPanel")}</TooltipContent>
-        </Tooltip>
+          </DropdownMenuTrigger>
+          <StyledDropdownMenuContent align="end" minWidth="min-w-56">
+            <StyledDropdownMenuItem onClick={onAddSessionPanel}>
+              <SquarePenRounded className="h-3.5 w-3.5" />
+              {t("session.newSessionInPanel")}
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={onAddBrowserPanel}>
+              <Icons.Globe className="h-3.5 w-3.5" />
+              {t("browser.newWindow")}
+            </StyledDropdownMenuItem>
+          </StyledDropdownMenuContent>
+        </DropdownMenu>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <TopBarButton
-              onClick={onAddBrowserPanel}
-              aria-label={t("browser.newWindow")}
-              className="h-[26px] w-[26px] rounded-lg"
-            >
-              <Icons.Globe className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
+        {/* Help button */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TopBarButton aria-label={t("menu.helpAndDocs")} className="h-[26px] w-[26px] rounded-lg">
+              <Icons.HelpCircle className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
             </TopBarButton>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("browser.newWindow")}</TooltipContent>
-        </Tooltip>
+          </DropdownMenuTrigger>
+          <StyledDropdownMenuContent align="end" minWidth="min-w-48">
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('sources'))}>
+              <Icons.DatabaseZap className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("sidebar.sources")}</span>
+              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('skills'))}>
+              <Icons.Zap className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("sidebar.skills")}</span>
+              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('statuses'))}>
+              <Icons.CheckCircle2 className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("sidebar.statuses")}</span>
+              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('permissions'))}>
+              <Icons.Settings className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("settings.permissions.title")}</span>
+              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('automations'))}>
+              <Icons.Webhook className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("sidebar.automations")}</span>
+              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('messaging'))}>
+              <Icons.MessageSquare className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("settings.messaging.title")}</span>
+              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </StyledDropdownMenuItem>
+            <StyledDropdownMenuSeparator />
+            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl('https://agents.craft.do/docs')}>
+              <Icons.ExternalLink className="h-3.5 w-3.5" />
+              <span className="flex-1">{t("menu.allDocumentation")}</span>
+            </StyledDropdownMenuItem>
+          </StyledDropdownMenuContent>
+        </DropdownMenu>
       </div>
       )}
       </div>

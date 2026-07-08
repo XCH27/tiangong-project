@@ -14,7 +14,6 @@ import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { SessionMenu } from '@/components/app-shell/SessionMenu'
 import { CompactSessionMenu } from '@/components/app-shell/CompactSessionMenu'
 import { SessionInfoPopover } from '@/components/app-shell/SessionInfoPopover'
-import { SessionUsageButton } from '@/components/app-shell/SessionUsageButton'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { toast } from 'sonner'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
@@ -29,7 +28,6 @@ import { ensureSessionMessagesLoadedAtom, forceSessionMessagesReloadAtom, loaded
 import { getSessionTitle } from '@/utils/session'
 // Model resolution: connection.defaultModel (no hardcoded defaults)
 import { resolveEffectiveConnectionSlug, isSessionConnectionUnavailable } from '@config/llm-connections'
-import type { CliRuntimeDefinition } from '@craft-agent/shared/protocol'
 
 export interface ChatPageProps {
   sessionId: string
@@ -92,22 +90,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
 
   // Use per-session atom for isolated updates
   const session = useSessionData(sessionId)
-  const [cliRuntimes, setCliRuntimes] = React.useState<CliRuntimeDefinition[]>([])
-
-  React.useEffect(() => {
-    let cancelled = false
-    window.electronAPI.listCliRuntimes()
-      .then((runtimes) => {
-        if (!cancelled) setCliRuntimes(runtimes)
-      })
-      .catch((error: unknown) => {
-        console.warn('Failed to load CLI runtimes:', error)
-        if (!cancelled) setCliRuntimes([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // Track if messages are loaded for this session (for lazy loading)
   const loadedSessions = useAtomValue(loadedSessionsAtom)
@@ -299,32 +281,11 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   }, [sessionId, onAttachmentsChange])
 
   // Session model change handler - persists per-session model and connection
-  const handleModelChange = React.useCallback(async (model: string, connection?: string) => {
+  const handleModelChange = React.useCallback((model: string, connection?: string) => {
     if (activeWorkspaceId) {
-      if (session?.cliRuntimeId) {
-        await window.electronAPI.sessionCommand(sessionId, { type: 'setCliRuntime', cliRuntimeId: null })
-      }
-      await window.electronAPI.setSessionModel(sessionId, activeWorkspaceId, model, connection)
+      window.electronAPI.setSessionModel(sessionId, activeWorkspaceId, model, connection)
     }
-  }, [sessionId, activeWorkspaceId, session?.cliRuntimeId])
-
-  const handleCliRuntimeChange = React.useCallback(async (cliRuntimeId: string | null) => {
-    try {
-      await window.electronAPI.sessionCommand(sessionId, { type: 'setCliRuntime', cliRuntimeId })
-    } catch (error) {
-      console.error('Failed to change CLI runtime:', error)
-      toast.error(error instanceof Error ? error.message : '切换 CLI Runtime 失败')
-    }
-  }, [sessionId])
-
-  const handleCliRuntimeModelChange = React.useCallback(async (modelId: string | null) => {
-    try {
-      await window.electronAPI.sessionCommand(sessionId, { type: 'setCliRuntimeModel', modelId })
-    } catch (error) {
-      console.error('Failed to change CLI runtime model:', error)
-      toast.error(error instanceof Error ? error.message : '切换 CLI 模型失败')
-    }
-  }, [sessionId])
+  }, [sessionId, activeWorkspaceId])
 
   // Session connection change handler - can only change before first message
   const handleConnectionChange = React.useCallback(async (connectionSlug: string) => {
@@ -640,22 +601,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   }, [isCompactMode, sessionId, session?.sessionFolderPath, sessionMeta])
 
   const headerActions = isCompactMode ? compactInfoButton : shareButton
-  const usageButton = React.useMemo(() => {
-    if (!sessionMeta) return undefined
-    const tokenUsage = session?.tokenUsage ?? sessionMeta.tokenUsage
-    return (
-      <SessionUsageButton
-        sessionId={sessionId}
-        currentModel={effectiveModel}
-        contextStatus={{
-          isCompacting: session?.currentStatus?.statusType === 'compacting',
-          inputTokens: tokenUsage?.inputTokens,
-          contextWindow: session?.tokenUsage?.contextWindow,
-        }}
-        isCliRuntimeActive={!!(session?.cliRuntimeId ?? sessionMeta.cliRuntimeId)}
-      />
-    )
-  }, [sessionMeta, session, sessionId, effectiveModel])
 
   // Build title menu content for chat sessions using shared SessionMenu.
   // Desktop uses Radix DropdownMenu via PanelHeader; compact mode uses a
@@ -752,7 +697,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
       return (
         <>
           <div className="h-full flex flex-col">
-            <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} leftActions={usageButton} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
+            <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
             <div className="flex-1 flex flex-col min-h-0">
               <ChatDisplay
                 ref={chatDisplayRef}
@@ -763,12 +708,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
                 currentModel={effectiveModel}
                 onModelChange={handleModelChange}
                 onConnectionChange={handleConnectionChange}
-                cliRuntimes={cliRuntimes}
-                activeCliRuntimeId={sessionMeta.cliRuntimeId ?? null}
-                cliRuntimeModelState={sessionMeta.cliRuntimeModelState}
-                onCliRuntimeChange={handleCliRuntimeChange}
-                onCliRuntimeModelChange={handleCliRuntimeModelChange}
-                surface={sessionMeta.surface ?? 'chat'}
                 pendingPermission={undefined}
                 onRespondToPermission={onRespondToPermission}
                 pendingCredential={undefined}
@@ -831,7 +770,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   return (
     <>
       <div className="h-full flex flex-col">
-        <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} leftActions={usageButton} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
+        <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />
         <div className="flex-1 flex flex-col min-h-0">
           <ChatDisplay
             ref={chatDisplayRef}
@@ -846,12 +785,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
             currentModel={effectiveModel}
             onModelChange={handleModelChange}
             onConnectionChange={handleConnectionChange}
-            cliRuntimes={cliRuntimes}
-            activeCliRuntimeId={session.cliRuntimeId ?? null}
-            cliRuntimeModelState={session.cliRuntimeModelState}
-            onCliRuntimeChange={handleCliRuntimeChange}
-            onCliRuntimeModelChange={handleCliRuntimeModelChange}
-            surface={session.surface ?? 'chat'}
             pendingPermission={pendingPermission}
             onRespondToPermission={onRespondToPermission}
             pendingCredential={pendingCredential}

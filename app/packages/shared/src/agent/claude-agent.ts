@@ -1003,7 +1003,7 @@ export class ClaudeAgent extends BaseAgent {
                 this.config.debugMode,
                 this.workspaceRootPath,
                 this.config.session?.workingDirectory,
-                this.config.systemPromptPreset,
+                undefined, // preset
                 undefined, // backendName
                 this.pinnedIncludeCoAuthoredBy ?? undefined
               ),

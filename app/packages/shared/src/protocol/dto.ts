@@ -22,12 +22,6 @@ import type {
   CredentialInputMode as SharedCredentialInputMode,
   CredentialAuthRequest as SharedCredentialAuthRequest,
 } from '../agent/index'
-import type { ActorRef, DesignSelection, DesignAction, DesignPatch } from './design'
-import type { DesignActionPermission } from './design-service'
-import type { TeamSessionCommand, TeamSessionEvent } from './team'
-import type { ProgressTask } from './progress'
-import type { CliRuntimeModelState } from './cli-runtime'
-import type { ActionInvocation, ActionTargetRef } from './internal-action'
 
 // Re-export generateMessageId for handler convenience
 export { generateMessageId } from '@craft-agent/core/types'
@@ -65,8 +59,6 @@ export interface Session {
   sessionStatus?: SessionStatus
   /** Labels (additive tags, many-per-session — bare IDs or "id::value" entries) */
   labels?: string[]
-  /** Session task progress (docs/35): ordered checklist; replace-all semantics, like labels. */
-  progress?: ProgressTask[]
   lastReadMessageId?: string
   /**
    * Explicit unread flag - single source of truth for NEW badge.
@@ -80,12 +72,6 @@ export interface Session {
   sharedUrl?: string
   sharedId?: string
   model?: string
-  /** Selected local CLI Runtime id; null/undefined means normal API path. */
-  cliRuntimeId?: string | null
-  /** Requested model inside the selected CLI Runtime. */
-  cliRuntimeModelId?: string | null
-  /** Live model state reported by the active CLI process; not persisted as catalog truth. */
-  cliRuntimeModelState?: CliRuntimeModelState
   llmConnection?: string
   thinkingLevel?: ThinkingLevel
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
@@ -112,12 +98,6 @@ export interface Session {
   }
   /** When true, session is hidden from session list (e.g., mini edit sessions) */
   hidden?: boolean
-  /**
-   * D19 surface separation (docs/38-API-CLI).
-   * 'chat' = normal API conversation; 'terminal' = CLI/PTY session.
-   * Undefined on old sessions = 'chat'.
-   */
-  surface?: 'chat' | 'terminal'
   isArchived?: boolean
   archivedAt?: number
   supportsBranching?: boolean
@@ -155,8 +135,6 @@ export interface CreateSessionOptions {
   branchFromMessageId?: string
   /** Parent session ID used together with branchFromMessageId. */
   branchFromSessionId?: string
-  /** D19 surface: 'chat' (default, API-only) or 'terminal' (CLI/PTY). */
-  surface?: 'chat' | 'terminal'
 }
 
 export interface RemoteSessionTransferPayload {
@@ -207,10 +185,6 @@ export type SessionEvent =
   | { type: 'plan_submitted'; sessionId: string; message: Message }
   | { type: 'sources_changed'; sessionId: string; enabledSourceSlugs: string[] }
   | { type: 'labels_changed'; sessionId: string; labels: string[] }
-  | { type: 'progress_updated'; sessionId: string; tasks: ProgressTask[] }
-  | { type: 'cli_runtime_changed'; sessionId: string; cliRuntimeId: string | null }
-  | { type: 'cli_runtime_models_changed'; sessionId: string; state: CliRuntimeModelState }
-  | { type: 'manager_auto_decision'; sessionId: string; decisionId: string; level: string; outcome: string; basis: string; ruleId?: string; revocable: boolean; action: string; timestamp: number }
   | { type: 'connection_changed'; sessionId: string; connectionSlug: string; supportsBranching?: boolean }
   | { type: 'task_backgrounded'; sessionId: string; toolUseId: string; taskId: string; intent?: string; turnId?: string }
   | { type: 'shell_backgrounded'; sessionId: string; toolUseId: string; shellId: string; intent?: string; command?: string; turnId?: string }
@@ -235,43 +209,11 @@ export type SessionEvent =
   | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
-  // Fleet 工作台动作引擎事件（承重墙 · docs/31 §1）——人/AI 共用一条 timeline。
-  | { type: 'selection_changed'; sessionId: string; selection: DesignSelection }
-  | { type: 'design_action_proposed'; sessionId: string; action: DesignAction; patchPreview: DesignPatch; permissionRequestId?: string; permission?: DesignActionPermission }
-  | { type: 'design_patch_committed'; sessionId: string; patch: DesignPatch; actor: ActorRef }
-  | { type: 'design_patch_rolled_back'; sessionId: string; patchId: string; actor: ActorRef }
-  // Fleet Internal Action Registry 事件（docs/40）——人/AI 共用同一 action id，进同一条 timeline。
-  | { type: 'internal_action_invoked'; sessionId: string; invocation: ActionInvocation; target?: ActionTargetRef; result: unknown; actor: ActorRef; timestamp: number }
-  | { type: 'file_entry_moved'; sessionId: string; patchId: string; fromPath: string; toPath: string; fromRevision: string; toRevision: string; actor: ActorRef; timestamp: number }
-  | { type: 'file_edit_undone'; sessionId: string; undonePatchId: string; actor: ActorRef; timestamp: number }
-  // Fleet External Job 事件（docs/31 §5 · D9）：生图/生视频/外部审查统一 job 生命周期。
-  | { type: 'external_job_created'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
-  | { type: 'external_job_updated'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
-  | { type: 'external_job_completed'; sessionId: string; jobId: string; jobType: string; status: string; message: string; timestamp: number }
-  // Fleet 团队编排事件（docs/33）：会话即 Agent，不引入第二套 team/session store。
-  | TeamSessionEvent
-  // Fleet TeamRun 事件（D19 · docs/38-API-CLI）：跨 Runtime 编排，CLI 队长经 Fleet Bridge 调 API 队员。
-  | { type: 'team_run_created'; sessionId: string; runId: string; initiatorSeatId: string; targetSeatId: string; taskDescription: string; timestamp: number }
-  | { type: 'team_run_status_changed'; sessionId: string; runId: string; status: string; previousStatus?: string; errorCode?: string; timestamp: number }
-  | { type: 'team_run_report_ready'; sessionId: string; runId: string; summary: string; changedFiles?: string[]; timestamp: number }
-  | { type: 'team_run_lease_blocked'; sessionId: string; runId: string; conflictRunId: string; targets: string[]; timestamp: number }
-  // Fleet 智能模型路由事件（docs/03 §13）：路由决策 + 成本账本进 timeline。
-  | { type: 'model_routing_decision'; sessionId: string; taskType: string; complexity: number; tier: string; fusionMode: string; cascadeEligible: boolean; basis: string; hintOverrideReason?: string; timestamp: number }
-  | { type: 'cache_ledger'; sessionId: string; routing: { taskType: string; complexity: number; tier: string; fusionMode: string; cascadeUpgrades: number }; layers: { l1Provider?: { cacheReadTokens: number; cacheCreationTokens: number; provider: string }; l2Exact?: { hit: boolean }; l2Semantic?: { hit: boolean; similarity: number }; l3Panel?: { hits: number; misses: number } }; cost: { actual: number | null; estimated: number | null; savedByCache: number | null }; timestamp: number }
 
 export interface SendMessageOptions {
   skillSlugs?: string[]
   badges?: ContentBadge[]
   optimisticMessageId?: string
-  /** 队长派发子任务时的软约束（docs/03 §7.2） */
-  routingHint?: {
-    tierHint?: 'fast' | 'balanced' | 'best'
-    suggestFusion?: boolean
-    fusionForm?: 'synthesis' | 'plan'
-    budgetTokens?: number
-  }
-  /** 低延迟任务：尊重 prefs.cascade.respectLatencySensitive 时跳过级联 */
-  latencySensitive?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -293,9 +235,6 @@ export type SessionCommand =
   | { type: 'updateWorkingDirectory'; dir: string }
   | { type: 'setSources'; sourceSlugs: string[] }
   | { type: 'setLabels'; labels: string[] }
-  | { type: 'setProgress'; tasks: ProgressTask[] }
-  | { type: 'setCliRuntime'; cliRuntimeId: string | null }
-  | { type: 'setCliRuntimeModel'; modelId: string | null }
   | { type: 'showInFinder' }
   | { type: 'copyPath' }
   | { type: 'shareToViewer' }
@@ -310,7 +249,6 @@ export type SessionCommand =
   | { type: 'addAnnotation'; messageId: string; annotation: AnnotationV1 }
   | { type: 'removeAnnotation'; messageId: string; annotationId: string }
   | { type: 'updateAnnotation'; messageId: string; annotationId: string; patch: Partial<AnnotationV1> }
-  | TeamSessionCommand
 
 export interface NewChatActionParams {
   input?: string
@@ -368,31 +306,6 @@ export interface DirectoryListingResult {
   totalEntries: number
   /** Child directory entries. */
   entries: Array<{ name: string; path: string; isSymlink: boolean }>
-}
-
-/** Server-side file+directory listing result for the read-only All Files surface. */
-export interface FilesystemEntryListingResult {
-  /** Normalized absolute path of the listed directory. */
-  currentPath: string
-  /** Parent directory path, or null if at root. */
-  parentPath: string | null
-  /** Pre-split breadcrumb segments for display. */
-  breadcrumbs: Array<{ name: string; path: string }>
-  /** Server platform info. */
-  platform: 'win32' | 'darwin' | 'linux'
-  /** Whether the server truncated the entry list for safety/performance. */
-  truncated: boolean
-  /** Total child entries before truncation. */
-  totalEntries: number
-  /** Child files and directories in the current directory only. */
-  entries: Array<{
-    name: string
-    path: string
-    type: 'file' | 'directory'
-    isSymlink: boolean
-    size?: number
-    modifiedTime?: number
-  }>
 }
 
 // ---------------------------------------------------------------------------

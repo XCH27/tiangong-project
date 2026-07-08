@@ -1,0 +1,74 @@
+[
+  {
+    "strategy": "A",
+    "runCount": 5,
+    "helpfulRecallAt5": 0,
+    "precisionAt5": 0,
+    "leakageAt5": 0,
+    "conflictRate": 0,
+    "sensitiveLeakCount": 0,
+    "avgInjectedTokens": 0,
+    "avgPlanScore": 0,
+    "successRate": 0,
+    "verdict": "pass",
+    "failureReasons": []
+  },
+  {
+    "strategy": "B",
+    "runCount": 5,
+    "helpfulRecallAt5": 48.33,
+    "precisionAt5": 65,
+    "leakageAt5": 0,
+    "conflictRate": 0,
+    "sensitiveLeakCount": 0,
+    "avgInjectedTokens": 64,
+    "avgPlanScore": 0,
+    "successRate": 0,
+    "verdict": "pass",
+    "failureReasons": []
+  },
+  {
+    "strategy": "C",
+    "runCount": 5,
+    "helpfulRecallAt5": 88.33,
+    "precisionAt5": 52,
+    "leakageAt5": 16,
+    "conflictRate": 80,
+    "sensitiveLeakCount": 0,
+    "avgInjectedTokens": 120,
+    "avgPlanScore": 0,
+    "successRate": 0,
+    "verdict": "fail",
+    "failureReasons": [
+      "naive global leakage@5 above 10%; use as counterexample only"
+    ]
+  },
+  {
+    "strategy": "D",
+    "runCount": 5,
+    "helpfulRecallAt5": 76.67,
+    "precisionAt5": 86.67,
+    "leakageAt5": 0,
+    "conflictRate": 0,
+    "sensitiveLeakCount": 0,
+    "avgInjectedTokens": 49,
+    "avgPlanScore": 0,
+    "successRate": 0,
+    "verdict": "pass",
+    "failureReasons": []
+  },
+  {
+    "strategy": "E",
+    "runCount": 5,
+    "helpfulRecallAt5": 76.67,
+    "precisionAt5": 86.67,
+    "leakageAt5": 0,
+    "conflictRate": 0,
+    "sensitiveLeakCount": 0,
+    "avgInjectedTokens": 49,
+    "avgPlanScore": 0,
+    "successRate": 0,
+    "verdict": "pass",
+    "failureReasons": []
+  }
+]

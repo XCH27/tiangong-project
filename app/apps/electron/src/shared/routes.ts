@@ -45,7 +45,7 @@ export const routes = {
      * @param status - Optional status/todo-state ID to apply to the new session
      * @param label - Optional label ID to apply to the new session
      */
-    newSession: (params?: { input?: string; name?: string; send?: boolean; status?: string; label?: string; surface?: 'chat' | 'terminal' }) =>
+    newSession: (params?: { input?: string; name?: string; send?: boolean; status?: string; label?: string }) =>
       `action/new-session${toQueryString(params ? { ...params, send: params.send ? 'true' : undefined } : undefined)}` as const,
 
     /** Rename a session */
@@ -176,16 +176,6 @@ export const routes = {
     /** Agentic automations view (automations navigator, agentic filter) */
     automationsAgentic: (automationId?: string) =>
       automationId ? `automations/agentic/automation/${automationId}` as const : 'automations/agentic' as const,
-
-    /** All Files view (files navigator). Pass an absolute file path for preview. */
-    files: (filePath?: string) => {
-      if (!filePath) return 'files' as const
-      return `files/file/${encodeURIComponent(filePath)}` as const
-    },
-
-    /** Terminal panel (D19: surface='terminal', renders xterm PTY, not a chat session). */
-    terminal: (sessionId?: string) =>
-      sessionId ? (`terminal/session/${sessionId}` as const) : ('terminal' as const),
 
     /** Settings view (settings navigator) - uses SettingsSubpage from registry */
     settings: (subpage?: SettingsSubpage) =>

@@ -38,15 +38,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.window.FOCUS_STATE,
   RPC_CHANNELS.window.GET_FOCUS_STATE,
 
-  // team rules — workspace-local policy file; writes are gated by session command/permission
-  RPC_CHANNELS.teamRules.GET,
-  RPC_CHANNELS.teamRules.VALIDATE,
-
-  // team orchestration read API — derived from local session/rules; writes go via sessions:command
-  RPC_CHANNELS.team.GET,
-  RPC_CHANNELS.team.GET_REVIEW_QUEUE,
-  RPC_CHANNELS.team.GET_INBOX,
-
   // file — native file dialog
   RPC_CHANNELS.file.OPEN_DIALOG,
   // file — draft hydration for user-attached paths. Paths in drafts.json were captured
@@ -217,13 +208,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.settings.GET_SERVER_CONFIG,
   RPC_CHANNELS.settings.SET_SERVER_CONFIG,
   RPC_CHANNELS.settings.GET_SERVER_STATUS,
-
-  // design — Fleet 工作台动作引擎（进程内账本 + 本地持久化，承重墙 · docs/31）
-  RPC_CHANNELS.design.SET_SELECTION,
-  RPC_CHANNELS.design.GET_SELECTION,
-  RPC_CHANNELS.design.PROPOSE_ACTION,
-  RPC_CHANNELS.design.COMMIT_PATCH,
-  RPC_CHANNELS.design.ROLLBACK_PATCH,
 ])
 
 // ---------------------------------------------------------------------------
@@ -293,7 +277,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   // fs — workspace filesystem
   RPC_CHANNELS.fs.SEARCH,
   RPC_CHANNELS.fs.LIST_DIRECTORY,
-  RPC_CHANNELS.fs.LIST_ENTRIES,
 
   // credentials — remote server's credential state
   RPC_CHANNELS.credentials.HEALTH_CHECK,

@@ -31,8 +31,6 @@ import type {
   WorkingDirectoryChangedEvent,
   PermissionModeChangedEvent,
   SessionModelChangedEvent,
-  CliRuntimeModelsChangedEvent,
-  CliRuntimeChangedEvent,
   LLMConnectionChangedEvent,
   UserMessageEvent,
   MessageAnnotationsUpdatedEvent,
@@ -477,41 +475,6 @@ export function handleSessionModelChanged(
     state: {
       session: { ...session, model: event.model ?? undefined },
       streaming,
-    },
-    effects: [],
-  }
-}
-
-export function handleCliRuntimeModelsChanged(
-  state: SessionState,
-  event: CliRuntimeModelsChangedEvent
-): ProcessResult {
-  return {
-    state: {
-      session: {
-        ...state.session,
-        cliRuntimeModelId: event.state.currentModelId,
-        cliRuntimeModelState: event.state,
-      },
-      streaming: state.streaming,
-    },
-    effects: [],
-  }
-}
-
-export function handleCliRuntimeChanged(
-  state: SessionState,
-  event: CliRuntimeChangedEvent
-): ProcessResult {
-  return {
-    state: {
-      session: {
-        ...state.session,
-        cliRuntimeId: event.cliRuntimeId,
-        cliRuntimeModelId: undefined,
-        cliRuntimeModelState: undefined,
-      },
-      streaming: state.streaming,
     },
     effects: [],
   }
@@ -983,3 +946,4 @@ export function handleUsageUpdate(
     effects: [],
   }
 }
+

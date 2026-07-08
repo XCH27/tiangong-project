@@ -1,0 +1,90 @@
+[
+  {
+    "memoryId": "M-0001",
+    "sourceProjectNo": "GLOBAL",
+    "scope": "global_preference",
+    "content": "用户偏好先读项目文档和当前实现，再制定方案或修改代码。",
+    "allowedTargets": ["any_project"],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": ["planning", "code-change", "review"],
+    "mustNotInjectWhen": []
+  },
+  {
+    "memoryId": "M-0002",
+    "sourceProjectNo": "P-0010",
+    "scope": "project_specific",
+    "content": "GUI 终端改 UI 前必须先读 docs/00A-UI改造红线与挂点地图.md。",
+    "allowedTargets": ["P-0010"],
+    "blockedTargets": ["P-0017"],
+    "risk": "medium",
+    "expectedUseCases": ["ui-change"],
+    "mustNotInjectWhen": ["目标项目不是 GUI 终端或不存在 docs/00A"]
+  },
+  {
+    "memoryId": "M-0003",
+    "sourceProjectNo": "P-0010",
+    "scope": "transferable",
+    "content": "在有 UI 红线文档的项目里，改 UI 前先读取项目指定的 UI 挂点/红线文档。",
+    "allowedTargets": ["any_project"],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": ["ui-change", "planning"],
+    "mustNotInjectWhen": ["目标项目没有任何 UI 规范或挂点文档"]
+  },
+  {
+    "memoryId": "M-0004",
+    "sourceProjectNo": "P-0010",
+    "scope": "tool_pattern",
+    "content": "Bun monorepo 的局部验证优先跑 targeted bun test，再按触达面决定是否 typecheck。",
+    "allowedTargets": ["similar_stack", "P-0010"],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": ["test-selection", "debugging"],
+    "mustNotInjectWhen": ["目标项目不是 Bun/TypeScript 工作区"]
+  },
+  {
+    "memoryId": "M-0005",
+    "sourceProjectNo": "P-0017",
+    "scope": "project_specific",
+    "content": "OmniVerse Vision_Codex 的真实项目路径是 /Users/lullwen/Documents/OmniVerse Vision_Codex。",
+    "allowedTargets": ["P-0017"],
+    "blockedTargets": ["P-0010"],
+    "risk": "high",
+    "expectedUseCases": ["path-resolution"],
+    "mustNotInjectWhen": ["目标项目不是 OmniVerse Vision_Codex"]
+  },
+  {
+    "memoryId": "M-0006",
+    "sourceProjectNo": "P-0017",
+    "scope": "transferable",
+    "content": "跨项目迁移设计经验时，项目专属路径和文件名必须先抽象成条件化规则。",
+    "allowedTargets": ["any_project"],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": ["memory-transfer", "planning"],
+    "mustNotInjectWhen": []
+  },
+  {
+    "memoryId": "M-0007",
+    "sourceProjectNo": "P-0010",
+    "scope": "sensitive",
+    "content": "某个 OAuth/token/账号相关会话含有敏感凭据讨论，不能跨项目注入。",
+    "allowedTargets": [],
+    "blockedTargets": ["any_project"],
+    "risk": "high",
+    "expectedUseCases": ["security-boundary"],
+    "mustNotInjectWhen": ["任何默认检索或跨项目注入"]
+  },
+  {
+    "memoryId": "M-0008",
+    "sourceProjectNo": "P-0010",
+    "scope": "tool_pattern",
+    "content": "遇到 CLI runtime PATH 或版本不一致时，先读系统工具/能力目录，避免反复试错。",
+    "allowedTargets": ["any_project"],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": ["cli-runtime", "debugging", "tool-selection"],
+    "mustNotInjectWhen": []
+  }
+]

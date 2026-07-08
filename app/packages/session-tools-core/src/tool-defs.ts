@@ -13,7 +13,6 @@
 
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { MEMORY_PARTITIONS, MEMORY_TIERS } from '@craft-agent/shared/protocol';
 import type { SessionToolContext } from './context.ts';
 import type { ToolResult } from './types.ts';
 
@@ -36,15 +35,11 @@ import { handleScriptSandbox } from './handlers/script-sandbox.ts';
 import { handleRenderTemplate } from './handlers/render-template.ts';
 import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.ts';
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
-import { handleSetSessionProgress } from './handlers/set-session-progress.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
-import { handleInvokeInternalAction, handleListInternalActions } from './handlers/internal-action.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
-import { handleAssignTeamTask, handleGetTeam, handleSendTeamMessage, handleSubmitTeamReport } from './handlers/team.ts';
-import { handleAddMemory, handleDeleteMemory, handleListMemory } from './handlers/memory.ts';
 
 // ============================================================
 // Canonical Zod Schemas
@@ -194,16 +189,6 @@ export const SetSessionStatusSchema = z.object({
   status: z.string().describe('Status to set (e.g., "todo", "in_progress", "done")'),
 });
 
-export const SetSessionProgressSchema = z.object({
-  sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
-  tasks: z.array(z.object({
-    id: z.string().describe('Stable task id.'),
-    title: z.string().describe('Short step title.'),
-    status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']).describe('Task status.'),
-    note: z.string().optional().describe('Optional one-line note / active-form text.'),
-  })).describe('The full progress checklist (replaces the existing list).'),
-});
-
 export const GetSessionInfoSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to query. Omit to get info about the current session.'),
 });
@@ -217,58 +202,6 @@ export const ListSessionsSchema = z.object({
   offset: z.number().optional().describe('Skip first N results (for pagination)'),
 });
 
-const ActionSurfaceSchema = z.enum([
-  'session',
-  'files',
-  'library',
-  'team',
-  'manager',
-  'skill',
-  'settings',
-  'external-job',
-  'canvas',
-  'aigc',
-  'web-doc',
-  'video',
-  'code',
-]);
-
-const ActionVerbSchema = z.enum(['read', 'select', 'mutate', 'intent', 'undo', 'explain']);
-
-export const ListInternalActionsSchema = z.object({
-  surface: ActionSurfaceSchema.optional().describe('Filter by internal action surface, e.g. files.'),
-  verb: ActionVerbSchema.optional().describe('Filter by action verb, e.g. mutate or undo.'),
-});
-
-export const InvokeInternalActionSchema = z.object({
-  actionDefinitionId: z.string().describe('Stable Internal Action Registry id, e.g. files.move_entry.'),
-  contractVersion: z.number().int().min(1).describe('Contract version to invoke.'),
-  actor: z.object({
-    kind: z.enum(['user', 'agent']).describe('Who is invoking the action. Agents should use agent.'),
-    agentId: z.string().optional().describe('Stable agent id when kind=agent.'),
-    runtime: z.string().optional().describe('Runtime/provider id for agent invocations.'),
-    role: z.string().optional().describe('Agent role such as code, design, manager, leader.'),
-    displayName: z.string().optional().describe('Human-readable actor name.'),
-  }).describe('Actor metadata recorded into permission/timeline.'),
-  input: z.unknown().describe('Input payload matching the action inputSchema.'),
-  target: z.object({
-    surface: ActionSurfaceSchema,
-    kind: z.string(),
-    locator: z.record(z.string(), z.unknown()),
-    revision: z.string().optional(),
-    preview: z.object({
-      text: z.string().optional(),
-      screenshot: z.string().optional(),
-    }).optional(),
-  }).optional().describe('Optional structured target reference.'),
-  idempotencyKey: z.string().optional().describe('Stable retry key; same key must not execute the same mutation twice.'),
-  preconditions: z.array(z.object({
-    targetRevision: z.string().optional(),
-    assert: z.string(),
-  })).optional().describe('Preconditions that must hold before execution.'),
-  failurePolicy: z.enum(['abort', 'rollback', 'ask-user']).optional().describe('How executor should behave when a precondition fails.'),
-});
-
 // Inter-session messaging
 export const SendAgentMessageSchema = z.object({
   sessionId: z.string().describe('Target session ID to send the message to'),
@@ -279,61 +212,12 @@ export const SendAgentMessageSchema = z.object({
   })).optional().describe('Files to include with the message'),
 });
 
-export const GetTeamSchema = z.object({});
-
-export const SendTeamMessageSchema = z.object({
-  content: z.string().describe('Message for the team or selected members.'),
-  audienceSessionIds: z.array(z.string()).optional().describe('Private recipients. Omit to broadcast to the team.'),
-  taskId: z.string().optional().describe('Related team task ID.'),
-  runId: z.string().optional().describe('Related execution run ID.'),
-});
-
-export const AssignTeamTaskSchema = z.object({
-  taskId: z.string().describe('Stable task ID.'),
-  assigneeSessionId: z.string().describe('Target member session ID.'),
-  title: z.string().describe('Short task title.'),
-  description: z.string().optional().describe('Detailed acceptance criteria.'),
-  autoRun: z.boolean().optional().describe('Start the assignee immediately. Defaults to false and requires permission when true.'),
-});
-
-export const SubmitTeamReportSchema = z.object({
-  taskId: z.string().describe('Completed team task ID.'),
-  runId: z.string().describe('Execution run ID.'),
-  summary: z.string().describe('Structured completion summary for leader review.'),
-  artifactPaths: z.array(z.string()).optional().describe('Relevant local artifact paths.'),
-});
-
 export const ListMessagingChannelsSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to list bindings for. Defaults to current session.'),
 });
 
 export const UnbindMessagingChannelSchema = z.object({
   platform: z.enum(['telegram', 'whatsapp']).optional().describe('Platform to unbind. If omitted, unbinds all.'),
-});
-
-const MemoryPartitionSchema = z.enum(MEMORY_PARTITIONS);
-const MemoryTierSchema = z.enum(MEMORY_TIERS);
-const MemorySensitivitySchema = z.enum(['low', 'medium', 'high']);
-
-export const ListMemorySchema = z.object({
-  partition: MemoryPartitionSchema.optional().describe('Memory partition to query. Scoped partitions require scopeId.'),
-  tier: MemoryTierSchema.optional().describe('Optional memory tier filter.'),
-  scopeId: z.string().optional().describe('Required for scoped partitions: project, task, agent.'),
-  contains: z.string().optional().describe('Case-insensitive substring match against memory content.'),
-  limit: z.number().min(1).max(50).optional().describe('Maximum entries to return. Defaults to all visible entries.'),
-});
-
-export const AddMemorySchema = z.object({
-  partition: MemoryPartitionSchema.describe('Memory partition. Use software for app state; user for durable preferences; project/task/agent with scopeId for scoped memory.'),
-  content: z.string().describe('Memory content to save.'),
-  tier: MemoryTierSchema.optional().describe('Memory tier. Defaults to semantic.'),
-  sensitivity: MemorySensitivitySchema.optional().describe('Sensitivity classification. Defaults by partition.'),
-  scopeId: z.string().optional().describe('Required for scoped partitions: project, task, agent.'),
-  source: z.string().optional().describe('Audit source such as session ID, task ID, or user instruction.'),
-});
-
-export const DeleteMemorySchema = z.object({
-  id: z.string().describe('Memory entry ID to delete.'),
 });
 
 // ============================================================
@@ -571,10 +455,6 @@ Use this to share anything that would help improve the product — issues you hi
 Use this to tag sessions for filtering or to trigger label-based automations (LabelAdd/LabelRemove events).
 Pass an empty array to clear all labels. Omit sessionId to target the current session.`,
 
-  set_session_progress: `Set the task progress checklist for the current session (or a specific session by ID).
-
-Break the current work into ordered steps and keep their status live as you go (pending → in_progress → completed; use cancelled to drop a step). Pass the FULL list each call (replace-all). This renders as a progress widget in the session and feeds team progress rollups. Pass an empty array to clear. Omit sessionId to target the current session.`,
-
   set_session_status: `Set the status of the current session or a specific session by ID (e.g., "todo", "in_progress", "done").
 
 Use this to signal completion or trigger status-based automations (SessionStatusChange events).
@@ -590,14 +470,6 @@ Call with no arguments to introspect your own session state.`,
 Use filters (status, label, search) to narrow results instead of fetching everything. Default limit is 20 sessions.
 Use get_session_info for full details on a specific session (list-then-detail pattern).`,
 
-  list_internal_actions: `List Fleet internal actions available through the Internal Action Registry.
-
-Use this instead of screenshots, DOM selectors, mouse coordinates, or shell commands when operating Fleet itself. The result includes stable id, contractVersion, inputSchema, and permissionLevel so you can call invoke_internal_action with the same action a human UI uses.`,
-
-  invoke_internal_action: `Invoke a Fleet internal action by actionDefinitionId + contractVersion.
-
-This is the agent-native path for Fleet's own UI/workspace operations. Calls go through the shared permission, timeline, and undo path. For files, use files.move_entry for rename/move and files.undo_last_edit for undo; do not use shell mv for Fleet internal file operations.`,
-
   send_agent_message: `Send a message to another session. The message is delivered with your session ID so the target can reply back.
 
 Use this to coordinate with spawned sessions, send follow-up instructions, or relay information between sessions.
@@ -605,31 +477,11 @@ Use list_sessions to find session IDs, or use the sessionId returned by spawn_se
 
 The target session receives your message with a sender envelope containing your session ID, so it can use send_agent_message to reply.`,
 
-  get_team: `Read the current workspace team, including leader, members, stable sequence numbers, roles, statuses, and norms.`,
-
-  send_team_message: `Send through the shared team conversation. Omit audienceSessionIds to broadcast; provide session IDs for a private delivery. Delivery queues context but does not start another Agent.`,
-
-  assign_team_task: `Assign a structured task to a team member. By default this only queues the task. Set autoRun=true only when the member should start immediately; the coordinator will request permission.`,
-
-  submit_team_report: `Submit the current session's structured completion report. This moves the session to awaiting review and queues the report for the leader or management Agent.`,
-
   list_messaging_channels: `List messaging channels (Telegram, WhatsApp) bound to a session.
 Shows which external chat apps are connected and can send/receive messages.`,
 
   unbind_messaging_channel: `Disconnect a messaging channel from the current session.
 Messages will no longer be forwarded between the chat app and this session.`,
-
-  list_memory: `List local layered memory entries from the current workspace.
-
-Use this before deciding from memory. Scoped partitions (project, task, agent) require scopeId and return nothing without it, so memories do not leak across projects or agents.`,
-
-  add_memory: `Add a local layered memory entry.
-
-Use this for confirmed durable facts, preferences, software state, team conventions, or scoped project/task/agent notes. Do not store secrets. For project, task, and agent partitions you must provide scopeId.`,
-
-  delete_memory: `Delete a local layered memory entry by ID.
-
-Use only when the user asks to remove or correct memory. This is a write operation and should remain permission-gated by the host.`,
 } as const;
 
 // ============================================================
@@ -697,23 +549,11 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'browser_tool', description: TOOL_DESCRIPTIONS.browser_tool, inputSchema: BrowserToolSchema, executionMode: 'backend', safeMode: 'allow', handler: null },
   // Session self-management tools (registry — use context callbacks to reach SessionManager)
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
-  { name: 'set_session_progress', description: TOOL_DESCRIPTIONS.set_session_progress, inputSchema: SetSessionProgressSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSetSessionProgress },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
-  { name: 'list_internal_actions', description: TOOL_DESCRIPTIONS.list_internal_actions, inputSchema: ListInternalActionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListInternalActions },
-  { name: 'invoke_internal_action', description: TOOL_DESCRIPTIONS.invoke_internal_action, inputSchema: InvokeInternalActionSchema, executionMode: 'registry', safeMode: 'block', handler: handleInvokeInternalAction },
   // Inter-session messaging
   { name: 'send_agent_message', description: TOOL_DESCRIPTIONS.send_agent_message, inputSchema: SendAgentMessageSchema, executionMode: 'registry', safeMode: 'block', handler: handleSendAgentMessage },
-  // Team orchestration — all mutations pass through the shared TeamCoordinator.
-  { name: 'get_team', description: TOOL_DESCRIPTIONS.get_team, inputSchema: GetTeamSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetTeam },
-  { name: 'send_team_message', description: TOOL_DESCRIPTIONS.send_team_message, inputSchema: SendTeamMessageSchema, executionMode: 'registry', safeMode: 'block', handler: handleSendTeamMessage },
-  { name: 'assign_team_task', description: TOOL_DESCRIPTIONS.assign_team_task, inputSchema: AssignTeamTaskSchema, executionMode: 'registry', safeMode: 'block', handler: handleAssignTeamTask },
-  { name: 'submit_team_report', description: TOOL_DESCRIPTIONS.submit_team_report, inputSchema: SubmitTeamReportSchema, executionMode: 'registry', safeMode: 'block', handler: handleSubmitTeamReport },
-  // Layered memory tools — same local MemoryStore as the settings page.
-  { name: 'list_memory', description: TOOL_DESCRIPTIONS.list_memory, inputSchema: ListMemorySchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListMemory },
-  { name: 'add_memory', description: TOOL_DESCRIPTIONS.add_memory, inputSchema: AddMemorySchema, executionMode: 'registry', safeMode: 'block', handler: handleAddMemory },
-  { name: 'delete_memory', description: TOOL_DESCRIPTIONS.delete_memory, inputSchema: DeleteMemorySchema, executionMode: 'registry', safeMode: 'block', handler: handleDeleteMemory },
   // Messaging gateway tools
   { name: 'list_messaging_channels', description: TOOL_DESCRIPTIONS.list_messaging_channels, inputSchema: ListMessagingChannelsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListMessagingChannels },
   { name: 'unbind_messaging_channel', description: TOOL_DESCRIPTIONS.unbind_messaging_channel, inputSchema: UnbindMessagingChannelSchema, executionMode: 'registry', safeMode: 'block', handler: handleUnbindMessagingChannel },

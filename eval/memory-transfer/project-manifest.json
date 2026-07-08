@@ -1,0 +1,405 @@
+[
+  {
+    "projectNo": "P-0001",
+    "projectKey": "lullwen",
+    "displayName": "lullwen",
+    "rootPath": "/Users/lullwen",
+    "sourceApps": [
+      "codex"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0002",
+    "projectKey": "codex-temp-59236502",
+    "displayName": "codex-temp-59236502",
+    "rootPath": "/Users/lullwen/.aionui/conversations/2026/07/04/codex-temp-59236502",
+    "sourceApps": [
+      "codex"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0003",
+    "projectKey": "codex-temp-5fdd8ca1",
+    "displayName": "codex-temp-5fdd8ca1",
+    "rootPath": "/Users/lullwen/.aionui/conversations/2026/07/04/codex-temp-5fdd8ca1",
+    "sourceApps": [
+      "codex"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0004",
+    "projectKey": "my-workspace",
+    "displayName": "My Workspace",
+    "rootPath": "/Users/lullwen/.craft-agent/workspaces/My Workspace",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0005",
+    "projectKey": "我的工作区",
+    "displayName": "我的工作区",
+    "rootPath": "/Users/lullwen/.craft-agent/workspaces/我的工作区",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 4,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0006",
+    "projectKey": "260703-misty-twilight",
+    "displayName": "260703-misty-twilight",
+    "rootPath": "/Users/lullwen/.craft-agent/workspaces/我的工作区/sessions/260703-misty-twilight",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0007",
+    "projectKey": "cold",
+    "displayName": "cold",
+    "rootPath": "/Users/lullwen/Documents/Codex/2026-06-28/cold",
+    "sourceApps": [
+      "codex"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0008",
+    "projectKey": "new-chat",
+    "displayName": "new-chat",
+    "rootPath": "/Users/lullwen/Documents/Codex/2026-06-28/new-chat",
+    "sourceApps": [
+      "codex"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0009",
+    "projectKey": "deskflow",
+    "displayName": "deskflow",
+    "rootPath": "/Users/lullwen/Documents/Codex/2026-06-30/deskflow",
+    "sourceApps": [
+      "codex"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0010",
+    "projectKey": "gui-终端",
+    "displayName": "GUI 终端",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端",
+    "sourceApps": [
+      "claude",
+      "codex",
+      "opencode"
+    ],
+    "conversationCount": 36,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0011",
+    "projectKey": "agent-a1650f443203c0542",
+    "displayName": "agent-a1650f443203c0542",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端/.claude/worktrees/agent-a1650f443203c0542",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0012",
+    "projectKey": "agent-a7c14c4e0ae9c6bff",
+    "displayName": "agent-a7c14c4e0ae9c6bff",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端/.claude/worktrees/agent-a7c14c4e0ae9c6bff",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0013",
+    "projectKey": "agent-a9cf28c0ad6d02964",
+    "displayName": "agent-a9cf28c0ad6d02964",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端/.claude/worktrees/agent-a9cf28c0ad6d02964",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0014",
+    "projectKey": "agent-ae11264d2af1e50a3",
+    "displayName": "agent-ae11264d2af1e50a3",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端/.claude/worktrees/agent-ae11264d2af1e50a3",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0015",
+    "projectKey": "app",
+    "displayName": "app",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端/app",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0016",
+    "projectKey": "server-core",
+    "displayName": "server-core",
+    "rootPath": "/Users/lullwen/Documents/GUI 终端/app/packages/server-core",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 3,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0017",
+    "projectKey": "omniverse-vision-codex",
+    "displayName": "OmniVerse Vision_Codex",
+    "rootPath": "/Users/lullwen/Documents/OmniVerse Vision_Codex",
+    "sourceApps": [
+      "claude",
+      "codex",
+      "opencode"
+    ],
+    "conversationCount": 55,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0018",
+    "projectKey": "codex",
+    "displayName": "Codex",
+    "rootPath": "/Users/lullwen/Documents/OmniVerse/Vision/Codex",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  },
+  {
+    "projectNo": "P-0019",
+    "projectKey": "claude-temp-ce1f4c53",
+    "displayName": "claude-temp-ce1f4c53",
+    "rootPath": "/Users/lullwen/Library/Application Support/AionUi/aionui/conversations/claude-temp-ce1f4c53",
+    "sourceApps": [
+      "claude"
+    ],
+    "conversationCount": 1,
+    "memoryScope": "source_project",
+    "allowedMemoryImports": [
+      "global_preference",
+      "transferable",
+      "tool_pattern"
+    ],
+    "blockedMemoryImports": [
+      "project_specific",
+      "sensitive",
+      "raw_path"
+    ]
+  }
+]

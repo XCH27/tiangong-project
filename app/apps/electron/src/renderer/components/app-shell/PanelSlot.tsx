@@ -4,8 +4,8 @@
  * Renders a single content panel within the PanelStackContainer.
  *
  * When a panel is the only one (isOnly), it flex-grows to fill available space.
- * When multiple panels exist, each uses flex-grow with its proportion as the weight
- * and min-w-0 so panels shrink with inner content ellipsis instead of horizontal scroll.
+ * When multiple panels exist, each uses flex-grow with its proportion as the weight,
+ * combined with min-width to prevent shrinking below PANEL_MIN_WIDTH.
  *
  * Each PanelSlot overrides AppShellContext to inject a per-panel close button
  * into PanelHeader's rightSidebarButton slot. All panels are equal — closing
@@ -15,17 +15,15 @@
 
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSetAtom, useAtomValue } from 'jotai'
+import { useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { X, ChevronLeft } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
-import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry, parseSessionIdFromRoute } from '@/atoms/panel-stack'
-import { sessionMetaMapAtom } from '@/atoms/sessions'
+import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atoms/panel-stack'
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
-import { TerminalPanel } from './TerminalPanel'
-import { RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
+import { PANEL_MIN_WIDTH, RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
 
 interface PanelSlotProps {
   entry: PanelStackEntry
@@ -43,10 +41,6 @@ interface PanelSlotProps {
   sash?: React.ReactNode
   /** Compact (mobile) mode — shows back button in panel header */
   isCompact?: boolean
-  /** Fill parent grid/flex cell (multi-panel grid mode). */
-  fillContainer?: boolean
-  /** Terminal or another bottom module sits below this content panel. */
-  isAboveBottomModule?: boolean
 }
 
 export function PanelSlot({
@@ -59,19 +53,12 @@ export function PanelSlot({
   proportion,
   sash,
   isCompact,
-  fillContainer = false,
-  isAboveBottomModule = false,
 }: PanelSlotProps) {
   const { t } = useTranslation()
   const closePanel = useSetAtom(closePanelAtom)
   const setFocusedPanel = useSetAtom(focusedPanelIdAtom)
   const parentContext = useAppShellContext()
   const navState = parseRouteToNavigationState(entry.route)
-
-  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
-  const sessionId = parseSessionIdFromRoute(entry.route)
-  const isTerminalSession = sessionId ? (sessionMetaMap.get(sessionId)?.surface === 'terminal') : false
-  const isTerminalRoute = entry.route.startsWith('terminal') || isTerminalSession
 
   const handleClose = useCallback(() => {
     closePanel(entry.id)
@@ -124,10 +111,8 @@ export function PanelSlot({
         data-panel-role="content"
         data-compact={isCompact || undefined}
         className={cn(
-          fillContainer ? 'h-full w-full' : 'h-full',
-          'overflow-hidden relative @container/panel',
+          'h-full overflow-hidden relative @container/panel',
           !isOnly && isFocusedPanel ? 'shadow-panel-focused z-[1]' : 'shadow-middle z-0',
-          isAboveBottomModule && 'z-[1]',
           'bg-foreground-2',
         )}
         style={{
@@ -144,27 +129,21 @@ export function PanelSlot({
           // Corner radii: edge corners (touching window boundary) vs interior corners.
           // Compact mode panels run flush to the viewport floor — no rounded bottom.
           borderTopLeftRadius: RADIUS_INNER,
-          borderBottomLeftRadius: isCompact ? 0 : (isAboveBottomModule ? RADIUS_INNER : (isAtLeftEdge ? RADIUS_EDGE : RADIUS_INNER)),
+          borderBottomLeftRadius: isCompact ? 0 : (isAtLeftEdge ? RADIUS_EDGE : RADIUS_INNER),
           borderTopRightRadius: RADIUS_INNER,
-          borderBottomRightRadius: isCompact ? 0 : (isAboveBottomModule ? RADIUS_INNER : (isAtRightEdge ? RADIUS_EDGE : RADIUS_INNER)),
-          ...(fillContainer
-            ? { width: '100%', minWidth: 0, minHeight: 0 }
-            : isOnly
+          borderBottomRightRadius: isCompact ? 0 : (isAtRightEdge ? RADIUS_EDGE : RADIUS_INNER),
+          ...(isOnly
             ? { flexGrow: 1, minWidth: 0 }
-            : { flexGrow: proportion, flexShrink: 1, flexBasis: 0, minWidth: 0 }
+            : { flexGrow: proportion, flexShrink: 1, flexBasis: 0, minWidth: PANEL_MIN_WIDTH }
           ),
         }}
       >
         <div className="h-full flex flex-col">
           <AppShellProvider value={contextOverride}>
-            {isTerminalRoute ? (
-              <TerminalPanel onClose={handleClose} sessionId={sessionId ?? undefined} />
-            ) : (
-              <MainContentPanel
-                navStateOverride={navState}
-                isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
-              />
-            )}
+            <MainContentPanel
+              navStateOverride={navState}
+              isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
+            />
           </AppShellProvider>
         </div>
       </div>

@@ -12,7 +12,6 @@ import { atom } from 'jotai'
 import type { Getter, Setter } from 'jotai/vanilla'
 import { atomFamily } from 'jotai-family'
 import type { Session, Message } from '../../shared/types'
-import type { CliRuntimeModelState, ProgressTask } from '@craft-agent/shared/protocol'
 
 /**
  * Session metadata for list display (lightweight, no messages)
@@ -48,8 +47,6 @@ export interface SessionMeta {
   permissionMode?: string
   /** Session status for filtering */
   sessionStatus?: string
-  /** Session task progress checklist (docs/35) — for the list-row N/M pill. */
-  progress?: ProgressTask[]
   /** Role/type of the last message (for badge display without loading messages) */
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
   /** Whether an async operation is ongoing (sharing, updating share, revoking, title regeneration) */
@@ -58,14 +55,8 @@ export interface SessionMeta {
   isRegeneratingTitle?: boolean
   /** Model override for this session */
   model?: string
-  /** Selected local CLI Runtime id; null/undefined means normal API path. */
-  cliRuntimeId?: string | null
-  /** Live model state reported by the active CLI runtime. */
-  cliRuntimeModelState?: CliRuntimeModelState
   /** LLM connection slug for this session */
   llmConnection?: string
-  /** D19 surface: 'chat' (API-only) or 'terminal' (CLI/PTY). Undefined = 'chat'. */
-  surface?: 'chat' | 'terminal'
   /** Token usage stats (from JSONL header, available without loading messages) */
   tokenUsage?: {
     inputTokens: number

@@ -50,10 +50,9 @@ export const MetadataBadge = React.forwardRef<HTMLButtonElement, MetadataBadgePr
       <button
         ref={ref}
         type={type}
-        data-chat-input-badge
         {...buttonProps}
         className={cn(
-          'h-[30px] pl-3 pr-4 text-xs font-medium rounded-[8px] flex items-center shrink min-w-0 max-w-full',
+          'h-[30px] pl-3 pr-4 text-xs font-medium rounded-[8px] flex items-center shrink-0',
           'outline-none select-none transition-colors',
           shadow === 'minimal' && 'shadow-minimal',
           'bg-[color-mix(in_srgb,var(--background)_97%,var(--badge-color))]',
@@ -67,13 +66,7 @@ export const MetadataBadge = React.forwardRef<HTMLButtonElement, MetadataBadgePr
       >
         {icon}
 
-        <span
-          data-chat-input-badge-label
-          className={cn('min-w-0 shrink truncate whitespace-nowrap max-w-[120px]', icon ? 'ml-2' : '')}
-          title={label}
-        >
-          {label}
-        </span>
+        <span className={cn('whitespace-nowrap', icon ? 'ml-2' : '')}>{label}</span>
 
         {value ? (
           <>

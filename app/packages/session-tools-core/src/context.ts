@@ -16,7 +16,6 @@ import type {
   MicrosoftService,
   McpSourceConfig,
 } from './types.ts';
-import type { ActionInvocation, ActionSurface, ActionVerb, AddMemoryInput, InternalActionSummary, MemoryEntry, MemoryQuery, ProgressTask } from '@craft-agent/shared/protocol';
 
 // ============================================================
 // Source Credential Types
@@ -314,9 +313,6 @@ export interface SessionToolContext {
   /** Set labels on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionLabels?(sessionId: string | undefined, labels: string[]): void | Promise<void>;
 
-  /** Set the task progress checklist on a session (docs/35). Replace-all. Injected by backend. */
-  setSessionProgress?(sessionId: string | undefined, tasks: ProgressTask[]): void | Promise<void>;
-
   /** Set status on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionStatus?(sessionId: string | undefined, status: string): void | Promise<void>;
 
@@ -338,27 +334,6 @@ export interface SessionToolContext {
 
   /** Send a message to another session. Injected by backend (SessionManager). */
   sendAgentMessage?(sessionId: string, message: string, attachments?: Array<{ path: string; name?: string }>): Promise<void>;
-
-  /** Read the current workspace team projection. */
-  getTeam?(): Promise<unknown>;
-  /** Queue a broadcast/private message through the shared team coordinator. */
-  sendTeamMessage?(input: { content: string; audienceSessionIds?: string[]; taskId?: string; runId?: string }): Promise<{ messageId: string }>;
-  /** Assign a task; autoRun=true is permission-gated by the coordinator. */
-  assignTeamTask?(input: { taskId: string; assigneeSessionId: string; title: string; description?: string; autoRun?: boolean }): Promise<{ taskId: string; runId?: string }>;
-  /** Submit the current session's structured report into the review queue. */
-  submitTeamReport?(input: { taskId: string; runId: string; summary: string; artifactPaths?: string[] }): Promise<{ reportId: string; reviewId: string }>;
-
-  /** List local layered memory entries visible to this workspace/scope. */
-  listMemory?(query?: MemoryQuery): Promise<MemoryEntry[]>;
-  /** Add a local layered memory entry. */
-  addMemory?(input: AddMemoryInput): Promise<MemoryEntry>;
-  /** Delete a local layered memory entry. */
-  deleteMemory?(id: string): Promise<boolean>;
-
-  /** List Fleet internal actions available to humans and Agents. */
-  listInternalActions?(filter?: { surface?: ActionSurface; verb?: ActionVerb }): Promise<InternalActionSummary[]> | InternalActionSummary[];
-  /** Invoke a Fleet internal action through the shared permission/timeline path. */
-  invokeInternalAction?(invocation: ActionInvocation): Promise<unknown>;
 
   /**
    * Activate a source in the running session: add to enabledSourceSlugs,

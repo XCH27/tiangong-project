@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fleet AIGC - Creative Workstation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&amp;family=Satoshi:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "outline-variant": "#3c4a42",
+                        "primary": "#4edea3",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#ffdad7",
+                        "on-background": "#dde4dd",
+                        "surface-variant": "#2f3632",
+                        "on-tertiary-fixed": "#410005",
+                        "on-secondary-fixed-variant": "#73323d",
+                        "outline": "#86948a",
+                        "inverse-surface": "#dde4dd",
+                        "on-tertiary": "#650911",
+                        "on-primary-fixed-variant": "#005236",
+                        "surface-bright": "#343b36",
+                        "error-container": "#93000a",
+                        "tertiary": "#ffb3af",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed": "#3b0613",
+                        "background": "#0e1511",
+                        "tertiary-container": "#fc7c78",
+                        "surface-container-low": "#161d19",
+                        "on-tertiary-container": "#711419",
+                        "primary-fixed-dim": "#4edea3",
+                        "on-error": "#690005",
+                        "on-surface-variant": "#bbcabf",
+                        "surface": "#0e1511",
+                        "surface-container-highest": "#2f3632",
+                        "primary-fixed": "#6ffbbe",
+                        "surface-tint": "#4edea3",
+                        "on-primary": "#003824",
+                        "secondary-fixed": "#ffd9dc",
+                        "secondary-container": "#73323d",
+                        "on-surface": "#dde4dd",
+                        "surface-dim": "#0e1511",
+                        "surface-container-lowest": "#09100c",
+                        "inverse-primary": "#006c49",
+                        "on-secondary-container": "#f59da8",
+                        "inverse-on-surface": "#2b322d",
+                        "on-tertiary-fixed-variant": "#842225",
+                        "secondary": "#ffb2bb",
+                        "secondary-fixed-dim": "#ffb2bb",
+                        "on-primary-container": "#00422b",
+                        "primary-container": "#10b981",
+                        "on-secondary": "#571c27",
+                        "surface-container-high": "#242c27",
+                        "tertiary-fixed-dim": "#ffb3af",
+                        "on-primary-fixed": "#002113",
+                        "surface-container": "#1a211d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "12px",
+                        "margin-md": "24px",
+                        "panel-padding": "12px",
+                        "unit": "4px",
+                        "margin-sm": "16px"
+                    },
+                    "fontFamily": {
+                        "body-sm": ["Satoshi"],
+                        "mono-code": ["JetBrains Mono"],
+                        "mono-label": ["JetBrains Mono"],
+                        "body-md": ["Satoshi"],
+                        "headline-lg": ["Satoshi"],
+                        "headline-md": ["Satoshi"]
+                    },
+                    "fontSize": {
+                        "body-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}],
+                        "mono-code": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "mono-label": ["11px", {"lineHeight": "14px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-lg": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #0e1511;
+            color: #dde4dd;
+            overflow: hidden;
+            font-family: 'Satoshi', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+            font-size: 1.25rem;
+        }
+        .grid-canvas {
+            background-image: 
+                linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 32px 32px;
+        }
+        .node-connection {
+            pointer-events: none;
+            stroke-dasharray: 4;
+            animation: dash 30s linear infinite;
+        }
+        @keyframes dash {
+            to { stroke-dashoffset: -1000; }
+        }
+        .terminal-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        .terminal-scroll::-webkit-scrollbar-thumb {
+            background: #3c4a42;
+            border-radius: 2px;
+        }
+        .active-glow {
+            box-shadow: 0 0 15px rgba(78, 222, 163, 0.2);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-background border-b border-outline-variant flex justify-between items-center px-margin-md h-12 w-full z-50">
+<div class="flex items-center gap-margin-sm">
+<span class="text-headline-md font-headline-md font-black text-primary">Fleet</span>
+<span class="text-on-surface-variant font-body-sm opacity-50 ml-unit">AIGC Creative Workstation</span>
+</div>
+<div class="flex items-center gap-unit bg-surface-container-low p-unit rounded-lg">
+<button class="px-3 py-1 rounded text-primary border-b-2 border-primary font-bold font-body-sm">Design</button>
+<button class="px-3 py-1 rounded text-on-surface-variant font-medium font-body-sm hover:bg-surface-variant transition-colors">Code</button>
+<button class="px-3 py-1 rounded text-on-surface-variant font-medium font-body-sm hover:bg-surface-variant transition-colors">Work</button>
+</div>
+<div class="flex items-center gap-margin-sm">
+<div class="flex items-center gap-unit mr-margin-sm">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">help</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors">notifications</span>
+</div>
+<button class="bg-primary-container text-on-primary-container px-margin-sm py-1.5 rounded-full font-headline-md font-bold text-body-md hover:opacity-80 active:scale-95 transition-all">Share</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="Close-up portrait of a professional creative technologist with sleek black glasses and minimalist aesthetic against a soft emerald green background. The lighting is crisp and studio-quality, emphasizing a focused and intelligent expression." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVg0qU_7supAQekK9m4V9ZidodxSfU3xkbFu17Rk76Ffa5sC139SoyoTWQoePRVd8xtSxXqNsGqC1VmT_k0RoNMhS2UIjeG_nWyW9rJjd9ZVrauGvkitwJUb9-wtCG8DvLHaqW6cwUmY90m2ABILYkB64ZIG4q2eM-j4WKPEXCLDFX9bk7XmM0R2zyhWgaqn-6frUaCTq0rW0-Gtpk9q7PmgSvNgz51VU1BDWc-URk6ig1fe5GxSnMqWHH5-QW0fQwxEPPeg7Agw"/>
+</div>
+</div>
+</header>
+<!-- Main Workspace Area -->
+<main class="flex-1 flex overflow-hidden">
+<!-- SideNavBar Left: Explorer -->
+<aside class="w-64 bg-surface-container-low border-r border-outline-variant flex flex-col h-full py-panel-padding gap-unit">
+<div class="px-panel-padding mb-margin-sm">
+<h2 class="text-headline-sm font-headline-sm font-bold text-primary flex items-center gap-unit">
+<span class="material-symbols-outlined">folder</span>
+                    Files
+                </h2>
+</div>
+<nav class="flex-1 overflow-y-auto px-panel-padding space-y-1">
+<!-- Projects -->
+<details class="group" open="">
+<summary class="flex items-center gap-2 py-1 text-on-surface-variant hover:text-on-surface cursor-pointer font-body-sm">
+<span class="material-symbols-outlined transition-transform group-open:rotate-90">chevron_right</span>
+<span class="material-symbols-outlined">account_tree</span>
+                        Projects
+                    </summary>
+<div class="pl-6 mt-1 space-y-1 border-l border-outline-variant ml-2">
+<div class="py-1 px-2 text-on-surface-variant hover:bg-surface-variant rounded font-body-sm cursor-pointer">Project Alpha</div>
+<div class="py-1 px-2 text-on-surface-variant hover:bg-surface-variant rounded font-body-sm cursor-pointer">Marketplace_UI</div>
+</div>
+</details>
+<!-- Assets -->
+<details class="group" open="">
+<summary class="flex items-center gap-2 py-1 text-primary cursor-pointer font-body-sm font-bold">
+<span class="material-symbols-outlined transition-transform group-open:rotate-90">chevron_right</span>
+<span class="material-symbols-outlined">grid_view</span>
+                        Assets
+                    </summary>
+<div class="pl-6 mt-1 space-y-1 border-l border-outline-variant ml-2">
+<div class="py-1 px-2 bg-surface-variant text-primary rounded-lg font-body-sm flex items-center gap-2">
+<span class="material-symbols-outlined">description</span>
+                            Scene_01_Draft
+                        </div>
+<div class="py-1 px-2 text-on-surface-variant hover:bg-surface-variant rounded font-body-sm flex items-center gap-2">
+<span class="material-symbols-outlined">image</span>
+                            Ref_Image_01
+                        </div>
+<div class="py-1 px-2 text-on-surface-variant hover:bg-surface-variant rounded font-body-sm flex items-center gap-2">
+<span class="material-symbols-outlined">image</span>
+                            Ref_Image_02
+                        </div>
+</div>
+</details>
+<div class="flex items-center gap-2 py-1 text-on-surface-variant hover:text-on-surface cursor-pointer font-body-sm">
+<span class="material-symbols-outlined">tune</span>
+                    Presets
+                </div>
+</nav>
+<div class="px-panel-padding pt-panel-padding border-t border-outline-variant mt-auto">
+<button class="w-full bg-surface-variant text-primary py-2 rounded-lg font-mono-label flex items-center justify-center gap-2 hover:bg-surface-container-high transition-all">
+<span class="material-symbols-outlined">add</span>
+                    NEW PROJECT
+                </button>
+</div>
+</aside>
+<!-- Central Workspace -->
+<div class="flex-1 flex flex-col min-w-0 bg-background relative">
+<!-- Canvas Tabs -->
+<div class="flex items-center h-10 border-b border-outline-variant bg-surface-container-low px-2">
+<div class="h-full px-4 flex items-center gap-2 bg-background border-x border-outline-variant border-t-2 border-t-primary text-on-surface font-body-sm">
+<span class="material-symbols-outlined text-sm">hub</span>
+                    Creative Workflow
+                    <span class="material-symbols-outlined text-xs opacity-50 cursor-pointer">close</span>
+</div>
+</div>
+<!-- Graph Canvas -->
+<div class="flex-1 overflow-hidden relative grid-canvas">
+<svg class="absolute inset-0 w-full h-full pointer-events-none">
+<defs>
+<lineargradient id="line-grad" x1="0%" x2="100%" y1="0%" y2="0%">
+<stop offset="0%" stop-color="#4edea3"></stop>
+<stop offset="100%" stop-color="#ffb2bb"></stop>
+</lineargradient>
+</defs>
+<!-- Connections -->
+<path class="node-connection" d="M 380 250 C 450 250, 450 350, 520 350" fill="none" stroke="url(#line-grad)" stroke-width="2"></path>
+<path class="node-connection opacity-50" d="M 720 350 C 800 350, 800 300, 880 300" fill="none" stroke="#ffb2bb" stroke-width="2"></path>
+</svg>
+<!-- Floating Toolbar -->
+<div class="absolute top-8 left-1/2 -translate-x-1/2 flex items-center gap-margin-sm bg-surface-container-highest border border-outline-variant p-2 rounded-full shadow-2xl active-glow z-10">
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-black rounded-full font-headline-md text-body-md font-bold">
+<span class="material-symbols-outlined">auto_awesome</span>
+                        Generate
+                    </button>
+<div class="h-6 w-px bg-outline-variant"></div>
+<button class="flex items-center gap-2 px-3 py-1.5 text-on-surface-variant hover:text-on-surface transition-colors font-body-md">
+<span class="material-symbols-outlined">edit_note</span>
+                        Refine
+                    </button>
+<button class="flex items-center gap-2 px-3 py-1.5 text-on-surface-variant hover:text-on-surface transition-colors font-body-md">
+<span class="material-symbols-outlined">upload</span>
+                        Export
+                    </button>
+</div>
+<!-- Nodes -->
+<!-- Node 1: Image Prompt -->
+<div class="absolute left-margin-md top-40 w-64 bg-surface-container border border-primary rounded-xl overflow-hidden shadow-xl active-glow">
+<div class="bg-surface-container-highest px-3 py-2 flex justify-between items-center border-b border-outline-variant">
+<div class="flex items-center gap-2 text-primary font-body-sm font-bold">
+<span class="material-symbols-outlined text-sm">image_search</span>
+                            Image Prompt
+                        </div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm">more_vert</span>
+</div>
+<div class="p-3 space-y-3">
+<div class="flex flex-wrap gap-1">
+<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant rounded font-mono-label">#CINEMATIC</span>
+<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant rounded font-mono-label">#VAPORWAVE</span>
+</div>
+<div class="aspect-video w-full rounded-lg overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A vibrant, hyper-realistic digital artwork in vaporwave style. A central retro astronaut figure stands on a glowing neon grid that extends toward a massive, pixelated purple sun on the horizon. The sky is a gradient of deep magenta and cyan with twinkling stars and digital artifacts. Soft glowing lens flares and a cinematic haze permeate the scene, using emerald green and electric pink as primary accent colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC748uEvwLczf50EgRxB92VKhkkpf0egAKjYyhoe9VZ4K8gTRm5srCQwVScL-t_BARX2IP6LdHwViZvAKTXB-2ilO2dRAzcXxHcpWUwB4PHdUvoEccgZRynMcxU8ebgheu86bmbXswStmZbJNOV23Z19Hj3Tv7G6I2rhtNVii4tbByL2Z5X1QVoa82O6G8HXBMOuf4llVAYKM83eqmIGgBWj_CPOynSdy8hLvxhOzhSBSrQi2y5DmOAuSbw2FsFCIRSbEOjTDeVRQ"/>
+</div>
+</div>
+</div>
+<!-- Node 2: Video Tracks -->
+<div class="absolute left-1/2 -translate-x-1/2 top-72 w-80 bg-surface-container border border-outline-variant rounded-xl overflow-hidden shadow-xl">
+<div class="bg-surface-container-highest px-3 py-2 flex justify-between items-center border-b border-outline-variant">
+<div class="flex items-center gap-2 text-on-surface font-body-sm font-bold">
+<span class="material-symbols-outlined text-sm">video_library</span>
+                            Video Timeline Tracks
+                        </div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm">more_vert</span>
+</div>
+<div class="p-3 space-y-2">
+<div class="flex items-center justify-between text-[10px] text-outline px-1">
+<span>0s</span><span>1s</span><span>2s</span><span>3s</span><span>4s</span>
+</div>
+<div class="space-y-1">
+<div class="h-4 bg-surface-variant rounded relative overflow-hidden">
+<div class="absolute left-0 top-0 h-full w-2/3 bg-primary-container opacity-40"></div>
+</div>
+<div class="h-4 bg-surface-variant rounded relative overflow-hidden">
+<div class="absolute left-1/4 top-0 h-full w-1/2 bg-secondary-container opacity-40"></div>
+</div>
+<div class="h-4 bg-surface-variant rounded relative overflow-hidden">
+<div class="absolute left-1/2 top-0 h-full w-1/3 bg-tertiary-container opacity-40"></div>
+</div>
+</div>
+<div class="flex justify-center gap-4 pt-2 border-t border-outline-variant">
+<span class="material-symbols-outlined text-sm cursor-pointer hover:text-primary">skip_previous</span>
+<span class="material-symbols-outlined text-sm cursor-pointer hover:text-primary">play_arrow</span>
+<span class="material-symbols-outlined text-sm cursor-pointer hover:text-primary">skip_next</span>
+</div>
+</div>
+</div>
+<!-- Node 3: Preview -->
+<div class="absolute right-margin-md top-48 w-56 bg-surface-container border border-outline-variant rounded-xl overflow-hidden shadow-xl">
+<div class="bg-surface-container-highest px-3 py-2 flex justify-between items-center border-b border-outline-variant">
+<div class="flex items-center gap-2 text-on-surface font-body-sm font-bold">
+<span class="material-symbols-outlined text-sm">smartphone</span>
+                            Mobile App Preview
+                        </div>
+<span class="material-symbols-outlined text-on-surface-variant text-sm">more_vert</span>
+</div>
+<div class="p-4 flex justify-center bg-surface-container-low">
+<div class="w-24 h-48 bg-[#000] border-4 border-[#222] rounded-[24px] relative overflow-hidden">
+<div class="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-1.5 bg-[#222] rounded-full"></div>
+<div class="p-2 pt-6 space-y-2">
+<div class="h-16 w-full bg-surface-variant rounded"></div>
+<div class="h-2 w-3/4 bg-surface-variant rounded"></div>
+<div class="h-2 w-1/2 bg-surface-variant rounded"></div>
+<div class="mt-4 h-6 w-full bg-primary rounded-full"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Console -->
+<div class="h-48 bg-surface-container-lowest border-t border-outline-variant flex flex-col">
+<div class="px-4 py-2 flex justify-between items-center bg-surface-container-low border-b border-outline-variant">
+<span class="text-mono-label font-mono-label text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">terminal</span>
+                        CONSOLE
+                    </span>
+<div class="flex gap-4">
+<span class="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer">filter_list</span>
+<span class="material-symbols-outlined text-on-surface-variant text-sm cursor-pointer">delete</span>
+</div>
+</div>
+<div class="flex-1 p-4 font-mono-code text-mono-code overflow-y-auto terminal-scroll space-y-1">
+<div class="flex gap-2">
+<span class="text-primary">&gt;</span>
+<span class="text-on-surface">Compiling shader graph... <span class="text-primary">[Done]</span></span>
+</div>
+<div class="flex gap-2">
+<span class="text-primary">&gt;</span>
+<span class="text-on-surface">Rendering frame 120/500... <span class="text-tertiary">[43.1s remaining]</span></span>
+</div>
+<div class="flex gap-2">
+<span class="text-primary">&gt;</span>
+<span class="text-on-surface-variant opacity-60">Model loaded: fleet-creative-core-v1.2</span>
+</div>
+<div class="flex gap-2">
+<span class="text-primary">&gt;</span>
+<span class="text-on-surface-variant opacity-60">Initializing WebGL engine... Success.</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Side Panel: Agent Hub -->
+<aside class="w-80 bg-surface-container-low border-l border-outline-variant flex flex-col h-full py-panel-padding gap-unit">
+<div class="px-panel-padding mb-margin-sm flex items-center justify-between">
+<div>
+<h2 class="text-headline-sm font-headline-sm font-bold text-secondary flex items-center gap-unit">
+<span class="material-symbols-outlined">smart_toy</span>
+                        AI Agent
+                    </h2>
+<p class="text-mono-label font-mono-label text-primary uppercase text-[8px] tracking-widest">● ONLINE</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer">more_horiz</span>
+</div>
+<div class="flex-1 overflow-y-auto px-panel-padding space-y-4">
+<!-- Chat Bubbles -->
+<div class="space-y-4">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 mb-1">
+<div class="w-6 h-6 rounded-full bg-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-xs text-on-secondary" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</div>
+<span class="text-mono-label font-mono-label text-secondary">AI ASSISTANT</span>
+<span class="text-[10px] text-outline ml-auto">3:30 PM</span>
+</div>
+<div class="bg-secondary-container text-on-secondary-container p-3 rounded-xl rounded-tl-none font-body-sm">
+                            Generating alternatives based on prompt... Would you like me to refine the color palette to be more "Cyber-Noir"?
+                        </div>
+</div>
+<div class="flex flex-col items-end gap-1">
+<div class="flex items-center gap-2 mb-1">
+<span class="text-[10px] text-outline mr-auto">3:32 PM</span>
+<span class="text-mono-label font-mono-label text-on-surface-variant">YOU</span>
+</div>
+<div class="bg-surface-container-highest text-on-surface p-3 rounded-xl rounded-tr-none font-body-sm border border-outline-variant">
+                            Yes, let's try more deep emeralds and soft rose shadows.
+                        </div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 mb-1">
+<div class="w-6 h-6 rounded-full bg-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-xs text-on-secondary" style="font-variation-settings: 'FILL' 1;">smart_toy</span>
+</div>
+<span class="text-mono-label font-mono-label text-secondary">AI ASSISTANT</span>
+</div>
+<div class="bg-secondary-container text-on-secondary-container p-3 rounded-xl rounded-tl-none font-body-sm">
+                            Processing. Applying "Cyber-Noir" refinement v2.0...
+                            <div class="mt-2 flex gap-2 overflow-x-auto pb-1">
+<div class="w-16 h-16 rounded bg-surface-dim border border-outline-variant flex-shrink-0 animate-pulse"></div>
+<div class="w-16 h-16 rounded bg-surface-dim border border-outline-variant flex-shrink-0 animate-pulse"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-panel-padding pt-4">
+<div class="relative group">
+<textarea class="w-full bg-background border border-outline-variant rounded-xl p-3 pr-10 text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:border-primary transition-all resize-none" placeholder="Type a message..." rows="3"></textarea>
+<button class="absolute bottom-3 right-3 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+</div>
+</aside>
+</main>
+<!-- Global Search FAB Overlay -->
+<div class="fixed bottom-margin-md left-1/2 -translate-x-1/2 z-50">
+<div class="flex items-center bg-background/80 backdrop-blur-xl border border-outline-variant px-6 py-3 rounded-full shadow-2xl hover:border-primary transition-all group w-96">
+<span class="material-symbols-outlined text-primary mr-3 group-hover:scale-110 transition-transform">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-md w-full p-0" placeholder="Search prompts, nodes, or files..." type="text"/>
+<div class="flex items-center gap-1 opacity-40 ml-2">
+<kbd class="px-1.5 py-0.5 rounded bg-surface-variant text-[10px] font-mono-code border border-outline-variant">⌘</kbd>
+<kbd class="px-1.5 py-0.5 rounded bg-surface-variant text-[10px] font-mono-code border border-outline-variant">K</kbd>
+</div>
+</div>
+</div>
+<script>
+        // Simple micro-interaction for console scrolling
+        const terminal = document.querySelector('.terminal-scroll');
+        const autoScroll = () => {
+            if (terminal) {
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        };
+        setInterval(autoScroll, 2000);
+
+        // Interaction for the Generate button
+        const genBtn = document.querySelector('button:has(.material-symbols-outlined:contains("auto_awesome"))');
+        if (genBtn) {
+            genBtn.addEventListener('click', () => {
+                genBtn.classList.add('opacity-80', 'scale-95');
+                setTimeout(() => genBtn.classList.remove('opacity-80', 'scale-95'), 150);
+            });
+        }
+    </script>
+</body></html>

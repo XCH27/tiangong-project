@@ -1,9 +1,8 @@
 import { readFile, writeFile, stat } from 'fs/promises'
 import { join } from 'path'
-import { RPC_CHANNELS, USER_ACTOR, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
 import type { StoredAttachment } from '@craft-agent/core/types'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
-import { createSessionManagerTeamRuntime, getTeamCoordinator } from '../../services/team-coordinator'
 import { perf } from '@craft-agent/shared/utils'
 import { isValidThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
@@ -334,12 +333,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.setSessionSources(sessionId, command.sourceSlugs)
       case 'setLabels':
         return sessionManager.setSessionLabels(sessionId, command.labels)
-      case 'setProgress':
-        return sessionManager.setSessionProgress(sessionId, command.tasks)
-      case 'setCliRuntime':
-        return sessionManager.setSessionCliRuntime(sessionId, command.cliRuntimeId)
-      case 'setCliRuntimeModel':
-        return sessionManager.setSessionCliRuntimeModel(sessionId, command.modelId)
       case 'showInFinder': {
         const sessionPath = sessionManager.getSessionPath(sessionId)
         if (sessionPath) {
@@ -380,22 +373,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.removeMessageAnnotation(sessionId, command.messageId, command.annotationId)
       case 'updateAnnotation':
         return sessionManager.updateMessageAnnotation(sessionId, command.messageId, command.annotationId, command.patch)
-      case 'promoteTeamLeader':
-      case 'sendTeamMessage':
-      case 'assignTeamTask':
-      case 'submitTeamReport':
-      case 'updateTeamRules': {
-        // 团队命令统一经 TeamCoordinator：过权限分级 → 写 SessionEvent 进同一条 timeline
-        // → 规则落 .fleet/team.rules.json。RPC 由人发起，actor = 人（L1 直行，L2 人类点击即授权）。
-        // 身份/队长标签变更不在这里：走 setLabels（见上面的 'setLabels' 分支）。
-        const session = sessionManager.getSessions().find(s => s.id === sessionId)
-        if (!session) throw new Error(`Session ${sessionId} not found`)
-        const workspace = getWorkspaceByNameOrId(session.workspaceId)
-        if (!workspace) throw new Error(`Workspace not found: ${session.workspaceId}`)
-        const runtime = createSessionManagerTeamRuntime(sessionManager, session.workspaceId, workspace.rootPath)
-        const coordinator = getTeamCoordinator({ workspaceRootPath: workspace.rootPath, runtime })
-        return coordinator.handleCommand(command, { issuerSessionId: sessionId, actor: USER_ACTOR })
-      }
       default: {
         const _exhaustive: never = command
         throw new Error(`Unknown session command: ${JSON.stringify(command)}`)

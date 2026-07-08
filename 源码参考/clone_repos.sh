@@ -16,6 +16,29 @@ SOFTWARE_REPOS=(
     "https://github.com/AstrBotDevs/AstrBot"
     "https://github.com/esengine/DeepSeek-Reasonix"
     "https://github.com/OpenHands/OpenHands"
+    "https://github.com/can1357/oh-my-pi"
+    "https://github.com/zhayujie/CowAgent"
+    "https://github.com/jackwener/OpenCLI"
+    "https://github.com/calesthio/OpenMontage"
+    "https://github.com/CherryHQ/cherry-studio"
+    "https://github.com/citrolabs/ego-lite"
+    "https://github.com/KDE/kdenlive"
+    "https://github.com/lobehub/lobehub"
+    "https://github.com/cosmicstack-labs/mercury-agent"
+    "https://github.com/open-pencil/open-pencil"
+    "https://github.com/anomalyco/opencode"
+    "https://github.com/opencut-app/opencut"
+    "https://github.com/opencut-app/opencut-classic"
+    "https://github.com/ZSeven-W/openpencil"
+    "https://github.com/palmier-io/palmier-pro"
+    "https://github.com/penpot/penpot"
+    "https://github.com/omnigent-ai/omnigent"
+    "https://github.com/hanshuaikang/nezha"
+    "https://github.com/he-yufeng/CoreCoder"
+    "https://github.com/google/agents-cli"
+    "https://github.com/cline/cline"
+    "https://github.com/tldraw/tldraw"
+    "https://github.com/stablyai/orca"
 )
 
 PLUGIN_REPOS=(
@@ -23,7 +46,33 @@ PLUGIN_REPOS=(
     "https://github.com/chopratejas/headroom"
     "https://github.com/yamadashy/repomix"
     "https://github.com/microsoft/markitdown"
+    "https://github.com/colbymchenry/codegraph"
+    "https://github.com/mksglu/context-mode"
+    "https://github.com/heygen-com/hyperframes"
+    "https://github.com/letta-ai/letta-code"
+    "https://github.com/mem0ai/mem0"
+    "https://github.com/MemPalace/mempalace"
+    "https://github.com/moorcheh-ai/memanto"
+    "https://github.com/nexu-io/open-design"
+    "https://github.com/thesysdev/openui"
+    "https://github.com/remotion-dev/remotion"
+    "https://github.com/rtk-ai/rtk"
+    "https://github.com/supermemoryai/supermemory"
+    "https://github.com/VoltAgent/awesome-design-md"
+    "https://github.com/xzdarcy/react-timeline-editor"
+    "https://github.com/daybrush/moveable"
+    "https://github.com/mathuo/dockview"
+    "https://github.com/bvaughn/react-resizable-panels"
+    "https://github.com/bokuweb/react-rnd"
+    "https://github.com/google-labs-code/stitch-sdk"
+    "https://github.com/google-labs-code/stitch-skills"
+    "https://github.com/alibaba/zvec"
+    "https://github.com/zhongerxin/Cowart"
 )
+
+
+
+
 
 cd "/Users/lullwen/Documents/GUI 终端/源码参考"
 mkdir -p software plugins
@@ -31,7 +80,7 @@ mkdir -p software plugins
 clone_repo() {
     local target_dir="$1"
     local repo="$2"
-    name=$(basename "$repo")
+    name=$(basename "$repo" .git)
     echo "----------------------------------------"
     echo "正在克隆 $name ($repo) -> $target_dir/$name ..."
     if [ -d "$target_dir/$name" ]; then

@@ -428,18 +428,16 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
       label: 'Label Configuration',
       filePath: `${location}/labels/config.json`,
       context:
-        'The user wants to customize identity labels for team/session routing. ' +
-        'Labels are stored in labels/config.json as a hierarchical tree and remain the single source of truth for identities. ' +
+        'The user wants to customize session labels (tagging/categorization). ' +
+        'Labels are stored in labels/config.json as a hierarchical tree. ' +
         'Each label has: id (slug, globally unique), name (display), color (optional EntityColor), children (sub-labels array). ' +
-        'Identity labels set kind: "identity" and may include systemPromptPreset and permissionProfile ("safe", "ask", or "allow-all"). ' +
-        'Do not create a separate identity store. Reuse existing labels such as priority->队长, development/code/design/research/bug/writing. ' +
         'Colors use EntityColor format: string shorthand (e.g. "blue") or { light, dark } object for theme-aware colors. ' +
         'Labels are color-only (no icons) — rendered as colored circles in the UI. ' +
         'Children form a recursive tree structure — array position determines display order. ' +
         'Read ~/.craft-agent/docs/labels.md for full format reference. ' +
         'Confirm clearly when done.',
     },
-    example: 'Set the 设计 identity prompt and permissionProfile',
+    example: 'Add a "Bug" label with red color',
     displayLabelKey: 'editPopover.label.labelConfiguration',
     exampleKey: 'editPopover.example.editLabels',
     model: 'fast',               // Use fast model for quick config edits
@@ -475,17 +473,16 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
       label: 'Add Label',
       filePath: `${location}/labels/config.json`,
       context:
-        'The user wants to create a new identity label from the # inline menu. ' +
+        'The user wants to create a new label from the # inline menu. ' +
         'Labels are stored in labels/config.json as a hierarchical tree. ' +
         'Each label has: id (slug, globally unique), name (display), color (optional EntityColor), children (sub-labels array). ' +
-        'For an Agent role, set kind: "identity" and optionally systemPromptPreset and permissionProfile ("safe", "ask", or "allow-all"). ' +
         'Colors use EntityColor format: string shorthand (e.g. "blue") or { light, dark } object for theme-aware colors. ' +
         'Labels are color-only (no icons) — rendered as colored circles in the UI. ' +
         'Read ~/.craft-agent/docs/labels.md for full format reference. ' +
         'Confirm clearly when done.',
     },
-    example: 'A 审查 identity label with safe permission',
-    overridePlaceholder: 'What identity label would you like to create?',
+    example: 'A red "Bug" label',
+    overridePlaceholder: 'What label would you like to create?',
     displayLabelKey: 'editPopover.label.addLabel',
     exampleKey: 'editPopover.example.addLabel',
     overridePlaceholderKey: 'editPopover.placeholder.addLabel',
@@ -856,20 +853,12 @@ export function EditPopover({
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
 
-  // Reset drag position and size when popover opens — clamp to viewport
+  // Reset drag position and size when popover opens
   useEffect(() => {
     if (open) {
       dragOffsetRef.current = { x: 0, y: 0 }
       setDragOffset({ x: 0, y: 0 })
-      const MARGIN = 20
-      const MARGIN_TOP = 50
-      const baseWidth = width || 400
-      const maxWidth = Math.max(300, Math.min(baseWidth, window.innerWidth - MARGIN * 2))
-      const maxHeight = Math.max(250, window.innerHeight - MARGIN_TOP - MARGIN)
-      setContainerSize({
-        width: maxWidth,
-        height: Math.min(480, maxHeight),
-      })
+      setContainerSize({ width: width || 400, height: 480 })
     }
   }, [open, width])
 

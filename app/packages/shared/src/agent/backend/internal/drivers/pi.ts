@@ -225,123 +225,6 @@ async function testAnthropicCompatible(
   }
 }
 
-async function testOpenAICompletionsCompatible(
-  apiKey: string,
-  baseUrl: string,
-  model: string,
-  timeoutMs: number,
-): Promise<{ success: boolean; error?: string }> {
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 16,
-        messages: [{ role: 'user', content: 'Say ok' }],
-      }),
-    });
-
-    if (res.ok) return { success: true };
-
-    const text = await res.text().catch(() => '');
-    return { success: false, error: `${res.status} ${text}`.slice(0, 500) };
-  } catch (err) {
-    if ((err as Error).name === 'AbortError') {
-      return { success: false, error: 'Connection test timed out' };
-    }
-    return { success: false, error: (err as Error).message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function testOpenAIResponsesCompatible(
-  apiKey: string,
-  baseUrl: string,
-  model: string,
-  timeoutMs: number,
-): Promise<{ success: boolean; error?: string }> {
-  const url = `${baseUrl.replace(/\/$/, '')}/responses`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        max_output_tokens: 16,
-        input: 'Say ok',
-      }),
-    });
-
-    if (res.ok) return { success: true };
-
-    const text = await res.text().catch(() => '');
-    return { success: false, error: `${res.status} ${text}`.slice(0, 500) };
-  } catch (err) {
-    if ((err as Error).name === 'AbortError') {
-      return { success: false, error: 'Connection test timed out' };
-    }
-    return { success: false, error: (err as Error).message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function testGoogleGenerativeAI(
-  apiKey: string,
-  baseUrl: string,
-  model: string,
-  timeoutMs: number,
-): Promise<{ success: boolean; error?: string }> {
-  const bareModel = model.startsWith('models/') ? model.slice('models/'.length) : model;
-  const url = `${baseUrl.replace(/\/$/, '')}/models/${encodeURIComponent(bareModel)}:generateContent`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'Say ok' }] }],
-        generationConfig: { maxOutputTokens: 16 },
-      }),
-    });
-
-    if (res.ok) return { success: true };
-
-    const text = await res.text().catch(() => '');
-    return { success: false, error: `${res.status} ${text}`.slice(0, 500) };
-  } catch (err) {
-    if ((err as Error).name === 'AbortError') {
-      return { success: false, error: 'Connection test timed out' };
-    }
-    return { success: false, error: (err as Error).message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export const piDriver: ProviderDriver = {
   provider: 'pi',
   buildRuntime: ({ context, providerOptions, resolvedPaths }) => ({
@@ -414,33 +297,23 @@ export const piDriver: ProviderDriver = {
       }
     } catch { /* ignore — fall through to subprocess */ }
 
+    if (modelApi !== 'anthropic-messages') {
+      // Non-Anthropic API types need the full Pi SDK — let factory.ts handle it
+      return null;
+    }
+
     const baseUrl = args.baseUrl?.trim() || modelBaseUrl || getPiProviderBaseUrl(piAuthProvider);
     if (!baseUrl) {
       return { success: false, error: 'Could not determine API endpoint for provider' };
     }
 
-    // Strip Pi SDK's 'pi/' prefix — provider endpoints only accept bare model IDs
+    // Strip Pi SDK's 'pi/' prefix — Anthropic-compatible endpoints only accept bare model IDs
     let bareModel = args.model.startsWith('pi/') ? args.model.slice(3) : args.model;
     // MiniMax CN API doesn't accept the 'MiniMax-' prefix on model names
     if (piAuthProvider === 'minimax-cn' && bareModel.startsWith('MiniMax-')) {
       bareModel = bareModel.slice('MiniMax-'.length);
     }
-
-    if (modelApi === 'anthropic-messages') {
-      return testAnthropicCompatible(args.apiKey, baseUrl, bareModel, args.timeoutMs);
-    }
-    if (modelApi === 'openai-completions') {
-      return testOpenAICompletionsCompatible(args.apiKey, baseUrl, bareModel, args.timeoutMs);
-    }
-    if (modelApi === 'openai-responses') {
-      return testOpenAIResponsesCompatible(args.apiKey, baseUrl, bareModel, args.timeoutMs);
-    }
-    if (modelApi === 'google-generative-ai') {
-      return testGoogleGenerativeAI(args.apiKey, baseUrl, bareModel, args.timeoutMs);
-    }
-
-    // Other Pi SDK-specific API types still need the full SDK path.
-    return null;
+    return testAnthropicCompatible(args.apiKey, baseUrl, bareModel, args.timeoutMs);
   },
   validateStoredConnection: async () => ({ success: true }),
 };

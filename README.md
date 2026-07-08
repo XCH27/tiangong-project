@@ -5,10 +5,11 @@
 ## 当前入口
 
 - 执行铁律：`AGENTS.md`
-- 单一产品决策（做什么）：`docs/04-产品决策记录.md`
-- 路线主干（怎么排序 · 做什么/不做/先后）：`docs/01-产品主干与落地序列.md`
-- 产品定义与交互模型（是什么 · 怎么交互）：`docs/02-统一创作台与交互模型.md`
-- 目标态界面：`docs/18-统一界面信息架构与人机协作总设计.md`
+- 项目方向与非目标：`docs/PROJECT-DIRECTION.md`
+- 决策台账：`docs/DECISIONS-LEDGER.md`
+- 工作面架构：`docs/PROJECT-DIRECTION.md`
+- 设置与壳层目标态：`docs/modules/13-settings-shell-ux.md`
+- 并行看板同步：`docs/BOARD-SYNC.md`
 - 文档索引：`docs/README.md`
 - 当前资产来源：`app/`
 - 新主工程：干净 craft-agents-oss 基座
@@ -30,7 +31,7 @@
 
 全仓库有大量第三方 Markdown，不能都当成当前执行依据：
 
-- 当前执行入口：`AGENTS.md`、`docs/README.md`、`docs/00-执行总纲-AGENT-HANDOFF.md`、`docs/19-重启二开与可复用资产清单.md`。
+- 当前执行入口：`AGENTS.md`、`docs/START-HERE.md`、`docs/README.md`、`docs/PROJECT-DIRECTION.md`、`docs/DECISIONS-LEDGER.md`、`docs/BOARD-SYNC.md`。
 - 当前自有文档：`docs/` 下的 active 文档。
 - 第三方/参考：`app/` 的 craft 自带文档、`源码参考/`、`node_modules/` 只按索引说明阅读，不直接覆盖当前决策。
 

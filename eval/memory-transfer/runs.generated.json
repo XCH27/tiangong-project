@@ -1,0 +1,262 @@
+[
+  {
+    "runId": "RR-0001",
+    "strategy": "A",
+    "taskId": "T-0001",
+    "retrievedMemoryIds": [],
+    "injectedTokens": 0
+  },
+  {
+    "runId": "RR-0002",
+    "strategy": "A",
+    "taskId": "T-0002",
+    "retrievedMemoryIds": [],
+    "injectedTokens": 0
+  },
+  {
+    "runId": "RR-0003",
+    "strategy": "A",
+    "taskId": "T-0003",
+    "retrievedMemoryIds": [],
+    "injectedTokens": 0
+  },
+  {
+    "runId": "RR-0004",
+    "strategy": "A",
+    "taskId": "T-0004",
+    "retrievedMemoryIds": [],
+    "injectedTokens": 0
+  },
+  {
+    "runId": "RR-0005",
+    "strategy": "A",
+    "taskId": "T-0005",
+    "retrievedMemoryIds": [],
+    "injectedTokens": 0
+  },
+  {
+    "runId": "RR-0006",
+    "strategy": "B",
+    "taskId": "T-0001",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0003",
+      "M-0004",
+      "M-0008"
+    ],
+    "injectedTokens": 96
+  },
+  {
+    "runId": "RR-0007",
+    "strategy": "B",
+    "taskId": "T-0002",
+    "retrievedMemoryIds": [
+      "M-0006"
+    ],
+    "injectedTokens": 17
+  },
+  {
+    "runId": "RR-0008",
+    "strategy": "B",
+    "taskId": "T-0003",
+    "retrievedMemoryIds": [
+      "M-0008",
+      "M-0002",
+      "M-0003",
+      "M-0004"
+    ],
+    "injectedTokens": 96
+  },
+  {
+    "runId": "RR-0009",
+    "strategy": "B",
+    "taskId": "T-0004",
+    "retrievedMemoryIds": [
+      "M-0006"
+    ],
+    "injectedTokens": 17
+  },
+  {
+    "runId": "RR-0010",
+    "strategy": "B",
+    "taskId": "T-0005",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0004",
+      "M-0003",
+      "M-0008"
+    ],
+    "injectedTokens": 96
+  },
+  {
+    "runId": "RR-0011",
+    "strategy": "C",
+    "taskId": "T-0001",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0003",
+      "M-0001",
+      "M-0004",
+      "M-0005"
+    ],
+    "injectedTokens": 126
+  },
+  {
+    "runId": "RR-0012",
+    "strategy": "C",
+    "taskId": "T-0002",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0003",
+      "M-0005",
+      "M-0001",
+      "M-0004"
+    ],
+    "injectedTokens": 126
+  },
+  {
+    "runId": "RR-0013",
+    "strategy": "C",
+    "taskId": "T-0003",
+    "retrievedMemoryIds": [
+      "M-0008",
+      "M-0002",
+      "M-0001",
+      "M-0003",
+      "M-0004"
+    ],
+    "injectedTokens": 110
+  },
+  {
+    "runId": "RR-0014",
+    "strategy": "C",
+    "taskId": "T-0004",
+    "retrievedMemoryIds": [
+      "M-0006",
+      "M-0005",
+      "M-0002",
+      "M-0001",
+      "M-0003"
+    ],
+    "injectedTokens": 113
+  },
+  {
+    "runId": "RR-0015",
+    "strategy": "C",
+    "taskId": "T-0005",
+    "retrievedMemoryIds": [
+      "M-0004",
+      "M-0002",
+      "M-0001",
+      "M-0003",
+      "M-0005"
+    ],
+    "injectedTokens": 126
+  },
+  {
+    "runId": "RR-0016",
+    "strategy": "D",
+    "taskId": "T-0001",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0003",
+      "M-0001"
+    ],
+    "injectedTokens": 56
+  },
+  {
+    "runId": "RR-0017",
+    "strategy": "D",
+    "taskId": "T-0002",
+    "retrievedMemoryIds": [
+      "M-0003",
+      "M-0001"
+    ],
+    "injectedTokens": 35
+  },
+  {
+    "runId": "RR-0018",
+    "strategy": "D",
+    "taskId": "T-0003",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0008",
+      "M-0001"
+    ],
+    "injectedTokens": 59
+  },
+  {
+    "runId": "RR-0019",
+    "strategy": "D",
+    "taskId": "T-0004",
+    "retrievedMemoryIds": [
+      "M-0006",
+      "M-0001"
+    ],
+    "injectedTokens": 31
+  },
+  {
+    "runId": "RR-0020",
+    "strategy": "D",
+    "taskId": "T-0005",
+    "retrievedMemoryIds": [
+      "M-0002",
+      "M-0004",
+      "M-0001"
+    ],
+    "injectedTokens": 65
+  },
+  {
+    "runId": "RR-0021",
+    "strategy": "E",
+    "taskId": "T-0001",
+    "retrievedMemoryIds": [
+      "M-0003",
+      "M-0002",
+      "M-0001"
+    ],
+    "injectedTokens": 56
+  },
+  {
+    "runId": "RR-0022",
+    "strategy": "E",
+    "taskId": "T-0002",
+    "retrievedMemoryIds": [
+      "M-0003",
+      "M-0001"
+    ],
+    "injectedTokens": 35
+  },
+  {
+    "runId": "RR-0023",
+    "strategy": "E",
+    "taskId": "T-0003",
+    "retrievedMemoryIds": [
+      "M-0008",
+      "M-0002",
+      "M-0001"
+    ],
+    "injectedTokens": 59
+  },
+  {
+    "runId": "RR-0024",
+    "strategy": "E",
+    "taskId": "T-0004",
+    "retrievedMemoryIds": [
+      "M-0006",
+      "M-0001"
+    ],
+    "injectedTokens": 31
+  },
+  {
+    "runId": "RR-0025",
+    "strategy": "E",
+    "taskId": "T-0005",
+    "retrievedMemoryIds": [
+      "M-0004",
+      "M-0002",
+      "M-0001"
+    ],
+    "injectedTokens": 65
+  }
+]

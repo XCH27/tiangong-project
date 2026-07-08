@@ -1,9 +1,6 @@
 import { formatDistanceToNowStrict } from "date-fns"
 import type { Locale } from "date-fns"
-import { Flag, ShieldAlert, Terminal, ListChecks, Users } from "lucide-react"
-import { useTranslation } from "react-i18next"
-import { summarizeProgress } from "@craft-agent/shared/protocol"
-import { ConnectionIcon } from "@/components/icons/ConnectionIcon"
+import { Flag, ShieldAlert } from "lucide-react"
 import { useActionLabel } from "@/actions"
 import { cn } from "@/lib/utils"
 import { rendererPerf } from "@/lib/perf"
@@ -22,7 +19,7 @@ import { navigate, routes } from "@/lib/navigate"
 import type { SessionMeta } from "@/atoms/sessions"
 import { messagingBindingsBySessionAtom } from "@/atoms/messaging"
 import { useAtomValue } from "jotai"
-import { extractLabelId, hasLeaderLabel } from "@craft-agent/shared/labels"
+import { extractLabelId } from "@craft-agent/shared/labels"
 
 const PLATFORM_PILL: Record<'telegram' | 'whatsapp', { label: string; colorClass: string }> = {
   telegram: {
@@ -57,26 +54,8 @@ export function SessionItem({
   onToggleSelect,
   onRangeSelect,
 }: SessionItemProps) {
-  const { t } = useTranslation()
   const ctx = useSessionListContext()
-  const { workspaces, isCompactMode, llmConnections } = useAppShellContext()
-  // 会话使用的模型/Runtime 头像（docs/18 §3.1：每条会话增量显示模型/Runtime 图标）。
-  // CLI runtime 会话显示终端图标；否则显示该会话连接的 provider 图标。仅识别用，不可点击。
-  const sessionConnection = item.llmConnection
-    ? llmConnections.find((c) => c.slug === item.llmConnection)
-    : undefined
-  const modelAvatar = item.cliRuntimeId ? (
-    <span className="inline-flex items-center justify-center h-[14px] w-[14px] rounded-[3px] bg-foreground/10 flex-shrink-0" title="本机 CLI Runtime">
-      <Terminal className="h-[10px] w-[10px] text-foreground/60" />
-    </span>
-  ) : sessionConnection ? (
-    <ConnectionIcon connection={sessionConnection} size={14} showTooltip />
-  ) : null
-  // 团队稳定序号（docs/33 §3，仅团队模式有值）。
-  const teamSequence = ctx.teamSequenceById?.[item.id]
-  const isTeamConversation = hasLeaderLabel(item.labels ?? [])
-  // 任务进度小药丸（docs/35 / docs/00A §4）：会话有进度清单时显示 done/total；无则不显示。
-  const progressSummary = item.progress && item.progress.length > 0 ? summarizeProgress(item.progress) : null
+  const { workspaces, isCompactMode } = useAppShellContext()
   const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
@@ -127,10 +106,7 @@ export function SessionItem({
   return (
     <EntityRow
       className="session-item"
-      dataAttributes={{
-        'data-session-id': item.id,
-        'data-team-conversation': isTeamConversation ? 'true' : undefined,
-      }}
+      dataAttributes={{ 'data-session-id': item.id }}
       showSeparator={!isFirstInGroup}
       separatorClassName="pl-[38px] pr-4"
       isSelected={isSelected}
@@ -138,13 +114,6 @@ export function SessionItem({
       onMouseDown={handleClick}
       buttonProps={{
         ...itemProps,
-        className: cn(
-          (itemProps as { className?: string }).className,
-          isTeamConversation && [
-            "bg-accent/[0.045] hover:bg-accent/[0.07]",
-            "ring-1 ring-inset ring-accent/12",
-          ],
-        ),
         onKeyDown: (e: React.KeyboardEvent) => {
           ;(itemProps as { onKeyDown: (event: React.KeyboardEvent) => void }).onKeyDown(e)
           ctx.onKeyDown(e, item)
@@ -225,26 +194,9 @@ export function SessionItem({
       titleClassName={cn("text-[13px]", item.isAsyncOperationOngoing && "animate-shimmer-text")}
       subtitle={previewText}
       titleSuffix={
-        (isTeamConversation || progressSummary || hasMessagingBinding) ? (
+        hasMessagingBinding ? (
           <div className="flex items-center gap-1">
-            {isTeamConversation && (
-              <span
-                className="inline-flex items-center justify-center h-[18px] w-[18px] rounded-[6px] text-accent bg-accent/10 flex-shrink-0"
-                title={t('session.teamChat')}
-              >
-                <Users className="h-3 w-3" />
-              </span>
-            )}
-            {progressSummary && (
-              <span
-                className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-foreground/55 bg-foreground/[0.06] rounded px-1 py-0.5 flex-shrink-0"
-                title={t('session.taskProgress')}
-              >
-                <ListChecks className="h-2.5 w-2.5" />
-                {progressSummary.done}/{progressSummary.total}
-              </span>
-            )}
-            {hasMessagingBinding && sessionBindings.map((binding) => {
+            {sessionBindings.map((binding) => {
               const pill = PLATFORM_PILL[binding.platform as 'telegram' | 'whatsapp']
               if (!pill) return null
               return (
@@ -285,9 +237,7 @@ export function SessionItem({
           {formatDistanceToNowStrict(new Date(item.lastMessageAt), { locale: shortTimeLocale as Locale, roundingMethod: 'floor' })}
         </span>
       ) : undefined}
-      badges={(modelAvatar || teamSequence || hasLabels) ? (
-        <SessionBadges item={item} modelAvatar={modelAvatar} teamSequence={teamSequence} />
-      ) : undefined}
+      badges={hasLabels ? <SessionBadges item={item} /> : undefined}
     />
   )
 }

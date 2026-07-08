@@ -1,0 +1,282 @@
+[
+  {
+    "memoryId": "M-CAND-0001",
+    "sourceProjectNo": "P-0010",
+    "sourceProjectKey": "gui-终端",
+    "scope": "sensitive",
+    "content": "该会话包含敏感凭据、账号或 token 相关讨论，默认禁止注入或跨项目迁移。",
+    "evidenceConversationNos": [
+      "C-0006"
+    ],
+    "allowedTargets": [],
+    "blockedTargets": [
+      "any_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "security-boundary"
+    ],
+    "mustNotInjectWhen": [
+      "任何默认检索、自动注入或跨项目迁移"
+    ],
+    "confidence": 0.95
+  },
+  {
+    "memoryId": "M-CAND-0002",
+    "sourceProjectNo": "P-0010",
+    "sourceProjectKey": "gui-终端",
+    "scope": "raw_path",
+    "content": "该会话包含项目本地绝对路径，默认只可在源项目内用于定位。",
+    "evidenceConversationNos": [
+      "C-0016"
+    ],
+    "allowedTargets": [
+      "P-0010"
+    ],
+    "blockedTargets": [
+      "cross_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "path-resolution"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是源项目，或正在做跨项目迁移"
+    ],
+    "confidence": 0.8
+  },
+  {
+    "memoryId": "M-CAND-0003",
+    "sourceProjectNo": "P-0010",
+    "sourceProjectKey": "gui-终端",
+    "scope": "tool_pattern",
+    "content": "Bun/TypeScript 工作区的局部验证优先跑 targeted bun test，再按触达面决定是否 typecheck。",
+    "evidenceConversationNos": [
+      "C-0025"
+    ],
+    "allowedTargets": [
+      "similar_stack",
+      "P-0010"
+    ],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": [
+      "test-selection",
+      "debugging"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是 Bun/TypeScript 工作区"
+    ],
+    "confidence": 0.78
+  },
+  {
+    "memoryId": "M-CAND-0004",
+    "sourceProjectNo": "P-0017",
+    "sourceProjectKey": "omniverse-vision-codex",
+    "scope": "raw_path",
+    "content": "该会话包含项目本地绝对路径，默认只可在源项目内用于定位。",
+    "evidenceConversationNos": [
+      "C-0042"
+    ],
+    "allowedTargets": [
+      "P-0017"
+    ],
+    "blockedTargets": [
+      "cross_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "path-resolution"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是源项目，或正在做跨项目迁移"
+    ],
+    "confidence": 0.8
+  },
+  {
+    "memoryId": "M-CAND-0005",
+    "sourceProjectNo": "P-0009",
+    "sourceProjectKey": "deskflow",
+    "scope": "raw_path",
+    "content": "该会话包含项目本地绝对路径，默认只可在源项目内用于定位。",
+    "evidenceConversationNos": [
+      "C-0052"
+    ],
+    "allowedTargets": [
+      "P-0009"
+    ],
+    "blockedTargets": [
+      "cross_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "path-resolution"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是源项目，或正在做跨项目迁移"
+    ],
+    "confidence": 0.8
+  },
+  {
+    "memoryId": "M-CAND-0006",
+    "sourceProjectNo": "P-0017",
+    "sourceProjectKey": "omniverse-vision-codex",
+    "scope": "sensitive",
+    "content": "该会话包含敏感凭据、账号或 token 相关讨论，默认禁止注入或跨项目迁移。",
+    "evidenceConversationNos": [
+      "C-0071"
+    ],
+    "allowedTargets": [],
+    "blockedTargets": [
+      "any_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "security-boundary"
+    ],
+    "mustNotInjectWhen": [
+      "任何默认检索、自动注入或跨项目迁移"
+    ],
+    "confidence": 0.95
+  },
+  {
+    "memoryId": "M-CAND-0007",
+    "sourceProjectNo": "P-0008",
+    "sourceProjectKey": "new-chat",
+    "scope": "raw_path",
+    "content": "该会话包含项目本地绝对路径，默认只可在源项目内用于定位。",
+    "evidenceConversationNos": [
+      "C-0090"
+    ],
+    "allowedTargets": [
+      "P-0008"
+    ],
+    "blockedTargets": [
+      "cross_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "path-resolution"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是源项目，或正在做跨项目迁移"
+    ],
+    "confidence": 0.8
+  },
+  {
+    "memoryId": "M-CAND-0008",
+    "sourceProjectNo": "P-0011",
+    "sourceProjectKey": "agent-a1650f443203c0542",
+    "scope": "raw_path",
+    "content": "该会话包含项目本地绝对路径，默认只可在源项目内用于定位。",
+    "evidenceConversationNos": [
+      "C-0093"
+    ],
+    "allowedTargets": [
+      "P-0011"
+    ],
+    "blockedTargets": [
+      "cross_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "path-resolution"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是源项目，或正在做跨项目迁移"
+    ],
+    "confidence": 0.8
+  },
+  {
+    "memoryId": "M-CAND-0009",
+    "sourceProjectNo": "P-0013",
+    "sourceProjectKey": "agent-a9cf28c0ad6d02964",
+    "scope": "sensitive",
+    "content": "该会话包含敏感凭据、账号或 token 相关讨论，默认禁止注入或跨项目迁移。",
+    "evidenceConversationNos": [
+      "C-0094"
+    ],
+    "allowedTargets": [],
+    "blockedTargets": [
+      "any_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "security-boundary"
+    ],
+    "mustNotInjectWhen": [
+      "任何默认检索、自动注入或跨项目迁移"
+    ],
+    "confidence": 0.95
+  },
+  {
+    "memoryId": "M-CAND-0010",
+    "sourceProjectNo": "P-0012",
+    "sourceProjectKey": "agent-a7c14c4e0ae9c6bff",
+    "scope": "raw_path",
+    "content": "该会话包含项目本地绝对路径，默认只可在源项目内用于定位。",
+    "evidenceConversationNos": [
+      "C-0095"
+    ],
+    "allowedTargets": [
+      "P-0012"
+    ],
+    "blockedTargets": [
+      "cross_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "path-resolution"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是源项目，或正在做跨项目迁移"
+    ],
+    "confidence": 0.8
+  },
+  {
+    "memoryId": "M-CAND-0011",
+    "sourceProjectNo": "P-0014",
+    "sourceProjectKey": "agent-ae11264d2af1e50a3",
+    "scope": "tool_pattern",
+    "content": "Bun/TypeScript 工作区的局部验证优先跑 targeted bun test，再按触达面决定是否 typecheck。",
+    "evidenceConversationNos": [
+      "C-0096"
+    ],
+    "allowedTargets": [
+      "similar_stack",
+      "P-0014"
+    ],
+    "blockedTargets": [],
+    "risk": "low",
+    "expectedUseCases": [
+      "test-selection",
+      "debugging"
+    ],
+    "mustNotInjectWhen": [
+      "目标项目不是 Bun/TypeScript 工作区"
+    ],
+    "confidence": 0.78
+  },
+  {
+    "memoryId": "M-CAND-0012",
+    "sourceProjectNo": "P-0016",
+    "sourceProjectKey": "server-core",
+    "scope": "sensitive",
+    "content": "该会话包含敏感凭据、账号或 token 相关讨论，默认禁止注入或跨项目迁移。",
+    "evidenceConversationNos": [
+      "C-0108"
+    ],
+    "allowedTargets": [],
+    "blockedTargets": [
+      "any_project"
+    ],
+    "risk": "high",
+    "expectedUseCases": [
+      "security-boundary"
+    ],
+    "mustNotInjectWhen": [
+      "任何默认检索、自动注入或跨项目迁移"
+    ],
+    "confidence": 0.95
+  }
+]

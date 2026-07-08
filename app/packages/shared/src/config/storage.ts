@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, renameSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { getCredentialManager } from '../credentials/index.ts';
 import { getOrCreateLatestSession, type SessionConfig } from '../sessions/index.ts';
@@ -8,10 +8,6 @@ import {
   saveWorkspaceConfig,
   createWorkspaceAtPath,
   isValidWorkspace,
-  generateSlug,
-  getDefaultWorkspacesDir,
-  workspaceFolderNameFromName,
-  deleteWorkspaceFolder,
 } from '../workspaces/storage.ts';
 import { findIconFile } from '../utils/icon.ts';
 import { extractWorkspaceSlugFromPath } from '../utils/workspace-slug.ts';
@@ -28,9 +24,6 @@ import { isValidThinkingLevel, normalizeThinkingLevel } from '../agent/thinking-
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
 import { type ConfigDefaults } from './config-defaults-schema.ts';
 import { isValidThemeFile } from './validators.ts';
-import type { DraftAttachmentContent, DraftAttachmentRef, SessionDraft } from './draft-types.ts';
-
-export type { DraftAttachmentContent, DraftAttachmentRef, SessionDraft } from './draft-types.ts';
 
 // Re-export CONFIG_DIR for convenience (centralized in paths.ts)
 export { CONFIG_DIR } from './paths.ts';
@@ -879,74 +872,6 @@ export function syncWorkspaces(): void {
   }
 }
 
-export function renameWorkspaceRootAndName(workspaceId: string, newName: string): Workspace {
-  const trimmedName = newName.trim();
-  if (!trimmedName) {
-    throw new Error('Workspace name is required');
-  }
-
-  const config = loadStoredConfig();
-  if (!config) {
-    throw new Error('No config found');
-  }
-
-  const workspace = config.workspaces.find(w => w.id === workspaceId);
-  if (!workspace) {
-    throw new Error('Workspace not found');
-  }
-
-  const currentRootPath = workspace.rootPath;
-  const nextRootPath = join(dirname(currentRootPath), workspaceFolderNameFromName(trimmedName));
-
-  if (currentRootPath !== nextRootPath) {
-    if (existsSync(nextRootPath)) {
-      throw new Error(`Workspace folder already exists: ${nextRootPath}`);
-    }
-    renameSync(currentRootPath, nextRootPath);
-  }
-
-  const workspaceConfig = loadWorkspaceConfig(nextRootPath);
-  if (workspaceConfig) {
-    workspaceConfig.name = trimmedName;
-    workspaceConfig.slug = generateSlug(trimmedName);
-    saveWorkspaceConfig(nextRootPath, workspaceConfig);
-  }
-
-  workspace.name = trimmedName;
-  workspace.rootPath = nextRootPath;
-  workspace.slug = extractWorkspaceSlugFromPath(nextRootPath, workspace.id);
-  saveConfig(config);
-
-  return getWorkspaces().find(w => w.id === workspaceId) ?? workspace;
-}
-
-export function migrateDefaultWorkspaceNameAndFolder(preferredName: string): boolean {
-  const folderName = workspaceFolderNameFromName(preferredName);
-  const defaultRoot = join(getDefaultWorkspacesDir(), folderName);
-  const legacyDefaultNames = new Set(['My Workspace', '我的工作区']);
-  const legacyDefaultFolders = new Set(['my-workspace', 'workspace', 'My Workspace']);
-  const config = loadStoredConfig();
-  if (!config) return false;
-
-  const workspace = config.workspaces.find((ws) => {
-    const rootParent = dirname(ws.rootPath);
-    if (rootParent !== getDefaultWorkspacesDir()) return false;
-
-    const folder = basename(ws.rootPath);
-    const workspaceConfig = loadWorkspaceConfig(ws.rootPath);
-    const name = workspaceConfig?.name || ws.name;
-
-    if (ws.rootPath === defaultRoot && name === preferredName) return false;
-    if (legacyDefaultNames.has(name)) return true;
-    return legacyDefaultFolders.has(folder);
-  });
-
-  if (!workspace) return false;
-
-  renameWorkspaceRootAndName(workspace.id, preferredName);
-  return true;
-}
-
 export async function removeWorkspace(workspaceId: string): Promise<boolean> {
   const config = loadStoredConfig();
   if (!config) return false;
@@ -978,17 +903,6 @@ export async function removeWorkspace(workspaceId: string): Promise<boolean> {
   }
 
   return true;
-}
-
-export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
-  const workspace = getWorkspaces().find(w => w.id === workspaceId);
-  if (!workspace) return false;
-
-  const removed = await removeWorkspace(workspaceId);
-  if (!removed) return false;
-
-  if (!existsSync(workspace.rootPath)) return true;
-  return deleteWorkspaceFolder(workspace.rootPath);
 }
 
 // Note: renameWorkspace() was removed - workspace names are now stored only in folder config
@@ -1159,6 +1073,28 @@ export function clearWorkspacePlan(workspaceId: string): void {
 // ============================================
 
 const DRAFTS_FILE = join(CONFIG_DIR, 'drafts.json');
+
+export interface DraftAttachmentContent {
+  type: 'image' | 'pdf' | 'text' | 'office' | 'audio' | 'unknown';
+  mimeType: string;
+  size: number;
+  base64?: string;
+  text?: string;
+  thumbnailBase64?: string;
+}
+
+export interface DraftAttachmentRef {
+  path: string;
+  name: string;
+  /** Inline content for attachments without a real filesystem path (paste, web-drag).
+   *  When present, hydrate reconstructs from these bytes and skips any disk read. */
+  content?: DraftAttachmentContent;
+}
+
+export interface SessionDraft {
+  text: string;
+  attachments?: DraftAttachmentRef[];
+}
 
 interface DraftsData {
   drafts: Record<string, SessionDraft>;

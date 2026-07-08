@@ -101,7 +101,7 @@ Send a prompt to Craft Agent (creates a new session for scheduled prompts).
 ```json
 {
   "type": "prompt",
-  "prompt": "Run the /weather skill and summarize the forecast"
+  "prompt": "Run the @weather skill and summarize the forecast"
 }
 ```
 
@@ -113,7 +113,7 @@ Send a prompt to Craft Agent (creates a new session for scheduled prompts).
 | `model` | string | Workspace default | Model ID for the created session |
 
 **Features:**
-- Use bracket references such as `[source:linear]` or `[skill:commit]` for sources and skills
+- Use `@mentions` to reference sources or skills
 - Environment variables are expanded (e.g., `$CRAFT_LABEL`)
 
 **LLM Connection & Model:** Optionally specify which AI provider and model to use for the created session. If omitted, the workspace default connection and model are used.
@@ -285,7 +285,7 @@ Use the optional `name` field to give an automation a human-readable display nam
   "name": "Morning Weather Report",
   "cron": "0 8 * * *",
   "actions": [
-    { "type": "prompt", "prompt": "Run the /weather skill" }
+    { "type": "prompt", "prompt": "Run the @weather skill" }
   ]
 }
 ```
@@ -534,7 +534,7 @@ Verify by checking the supergroup row in Settings shows the group title. If auto
         "timezone": "Europe/Budapest",
         "labels": ["Scheduled", "weather"],
         "actions": [
-          { "type": "prompt", "prompt": "Run the /weather skill and give me today's forecast" }
+          { "type": "prompt", "prompt": "Run the @weather skill and give me today's forecast" }
         ]
       }
     ]
@@ -564,7 +564,7 @@ Use a `time` condition to restrict a daily schedule to weekdays only:
         ],
         "labels": ["Scheduled", "ai-news"],
         "actions": [
-          { "type": "prompt", "prompt": "Run the /ai-news skill and summarize today's AI developments" }
+          { "type": "prompt", "prompt": "Run the @ai-news skill and summarize today's AI developments" }
         ]
       }
     ]
@@ -865,7 +865,7 @@ When a limit is hit, further events of that type are **silently dropped** for th
 ### Prompt not creating session
 
 1. Check that the prompt is not empty
-2. Verify bracket references point to valid sources/skills
+2. Verify @mentions reference valid sources/skills
 
 ### Webhook not working
 

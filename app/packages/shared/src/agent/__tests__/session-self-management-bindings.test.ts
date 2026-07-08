@@ -208,38 +208,6 @@ describe('attachSessionSelfManagementBindings', () => {
     expect(receivedSid).toBeUndefined();
   });
 
-  it('team bindings resolve lazily from the callback registry', async () => {
-    const ctx = createBaseContext(sessionId);
-    attachSessionSelfManagementBindings(ctx, sessionId);
-
-    registerSessionScopedToolCallbacks(sessionId, {
-      getTeamFn: async () => ({ teamId: 'team-main' }),
-      sendTeamMessageFn: async input => ({ messageId: input.content }),
-      assignTeamTaskFn: async input => ({ taskId: input.taskId }),
-      submitTeamReportFn: async input => ({ reportId: input.taskId, reviewId: input.runId }),
-    });
-
-    await expect(ctx.getTeam!()).resolves.toEqual({ teamId: 'team-main' });
-    await expect(ctx.sendTeamMessage!({ content: 'm1' })).resolves.toEqual({ messageId: 'm1' });
-    await expect(ctx.assignTeamTask!({ taskId: 'T-1', assigneeSessionId: 's2', title: 'Do it' })).resolves.toEqual({ taskId: 'T-1' });
-    await expect(ctx.submitTeamReport!({ taskId: 'T-1', runId: 'R-1', summary: 'Done' })).resolves.toEqual({ reportId: 'T-1', reviewId: 'R-1' });
-  });
-
-  it('memory bindings resolve lazily from the callback registry', async () => {
-    const ctx = createBaseContext(sessionId);
-    attachSessionSelfManagementBindings(ctx, sessionId);
-
-    registerSessionScopedToolCallbacks(sessionId, {
-      listMemoryFn: async () => [{ id: 'm1', partition: 'software', tier: 'semantic', content: 'remembered', sensitivity: 'low', createdAt: 1, updatedAt: 1 }],
-      addMemoryFn: async input => ({ id: 'm2', tier: input.tier ?? 'semantic', sensitivity: input.sensitivity ?? 'low', createdAt: 2, updatedAt: 2, ...input }),
-      deleteMemoryFn: async id => id === 'm1',
-    });
-
-    await expect(ctx.listMemory!({ partition: 'software' })).resolves.toHaveLength(1);
-    await expect(ctx.addMemory!({ partition: 'software', content: 'new memory' })).resolves.toMatchObject({ id: 'm2', content: 'new memory' });
-    await expect(ctx.deleteMemory!('m1')).resolves.toBe(true);
-  });
-
   it('no identity fallback — resolveLabels returns undefined when no callback', () => {
     const ctx = createBaseContext(sessionId);
     attachSessionSelfManagementBindings(ctx, sessionId);

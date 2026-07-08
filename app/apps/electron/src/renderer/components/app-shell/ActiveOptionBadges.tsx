@@ -145,9 +145,9 @@ export function ActiveOptionBadges({
   }
 
   return (
-    <div className={cn("flex items-start gap-2 mb-2 min-w-0 overflow-hidden px-px pt-px pb-0.5", className)}>
+    <div className={cn("flex items-start gap-2 mb-2 px-px pt-px pb-0.5", className)}>
       {/* Left side: mode → state → labels stack */}
-      <div className="flex min-w-0 flex-1 items-start gap-2 overflow-hidden">
+      <div className="flex items-start gap-2 min-w-0 flex-1">
         {/* Permission Mode Badge */}
         {permissionMode && (
           <div className="shrink-0">
@@ -353,8 +353,7 @@ function StateBadge({
               {state.icon}
             </span>
           )}
-          className="max-w-full pl-2.5"
-          title={stateLabel}
+          className="pl-2.5"
         />
       </PopoverTrigger>
       <PopoverContent
@@ -392,18 +391,16 @@ function FilesPopoverButton({ sessionId, sessionFolderPath }: { sessionId?: stri
       trigger={(
         <button
           type="button"
-          data-chat-input-badge
           className={cn(
-            "h-[30px] pl-[12px] pr-[14px] text-xs font-medium rounded-[8px] flex items-center gap-1.5 shrink min-w-0 max-w-full",
+            "h-[30px] pl-[12px] pr-[14px] text-xs font-medium rounded-[8px] flex items-center gap-1.5 shrink-0",
             "outline-none select-none transition-colors shadow-minimal",
             "hover:bg-foreground/5 data-[state=open]:bg-foreground/5",
             "bg-[color-mix(in_srgb,var(--background)_97%,var(--foreground)_3%)]",
             "text-foreground/80",
           )}
-          title={t("common.info")}
         >
           <Info className="h-3.5 w-3.5 shrink-0" />
-          <span data-chat-input-badge-label className="whitespace-nowrap truncate">{t("common.info")}</span>
+          <span className="whitespace-nowrap">{t("common.info")}</span>
         </button>
       )}
     />
@@ -469,17 +466,15 @@ function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessio
         <button
           type="button"
           data-tutorial="permission-mode-dropdown"
-          data-chat-input-badge
           className={cn(
-            "h-[30px] pl-2.5 pr-2 text-xs font-medium rounded-[8px] flex items-center gap-1.5 shadow-tinted outline-none select-none shrink min-w-0 max-w-full",
+            "h-[30px] pl-2.5 pr-2 text-xs font-medium rounded-[8px] flex items-center gap-1.5 shadow-tinted outline-none select-none",
             currentStyle.className
           )}
           style={{ '--shadow-color': currentStyle.shadowVar } as React.CSSProperties}
-          title={t(`mode.${optimisticMode}`)}
         >
-          <PermissionModeIcon mode={optimisticMode} className="h-3.5 w-3.5 shrink-0" />
-          <span data-chat-input-badge-label className="truncate">{t(`mode.${optimisticMode}`)}</span>
-          <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+          <PermissionModeIcon mode={optimisticMode} className="h-3.5 w-3.5" />
+          <span>{t(`mode.${optimisticMode}`)}</span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
         </button>
       </PopoverTrigger>
       <PopoverContent

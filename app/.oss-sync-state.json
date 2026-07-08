@@ -1,6 +1,0 @@
-{
-  "upstreamRemote": "https://github.com/craft-ai-agents/craft-agents-oss.git",
-  "upstreamLocalPath": "../源码参考/software/craft-agents-oss",
-  "baselineCommit": "a512da7a77891d6e5c6332a8f698859be60cdf34",
-  "lastSyncedCommit": "556c59a7dbb2054aa9b4267d9876ef836ec47932"
-}

@@ -5,7 +5,7 @@
  * All agent events flow through a single pure function for consistent state transitions.
  */
 
-import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta, CliRuntimeModelState, ProgressTask } from '../../shared/types'
+import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
 
 /**
  * Streaming state for a session - replaces streamingTextRef
@@ -312,18 +312,6 @@ export interface SessionModelChangedEvent {
   model: string | null
 }
 
-export interface CliRuntimeModelsChangedEvent {
-  type: 'cli_runtime_models_changed'
-  sessionId: string
-  state: CliRuntimeModelState
-}
-
-export interface CliRuntimeChangedEvent {
-  type: 'cli_runtime_changed'
-  sessionId: string
-  cliRuntimeId: string | null
-}
-
 /**
  * LLM connection changed event - syncs session.llmConnection to renderer
  */
@@ -482,20 +470,9 @@ export interface UsageUpdateEvent {
 }
 
 /**
- * Session progress updated event (docs/35) — replace-all task checklist for this session.
- * Mirrors the backend `progress_updated` SessionEvent emitted by setSessionProgress.
- */
-export interface ProgressUpdatedEvent {
-  type: 'progress_updated'
-  sessionId: string
-  tasks: ProgressTask[]
-}
-
-/**
  * Union of all agent events
  */
 export type AgentEvent =
-  | ProgressUpdatedEvent
   | TextDeltaEvent
   | TextCompleteEvent
   | ToolStartEvent
@@ -524,8 +501,6 @@ export type AgentEvent =
   | WorkingDirectoryErrorEvent
   | PermissionModeChangedEvent
   | SessionModelChangedEvent
-  | CliRuntimeModelsChangedEvent
-  | CliRuntimeChangedEvent
   | LLMConnectionChangedEvent
   | TaskBackgroundedEvent
   | ShellBackgroundedEvent

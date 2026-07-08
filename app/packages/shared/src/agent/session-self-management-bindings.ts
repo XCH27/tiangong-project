@@ -45,14 +45,6 @@ export function attachSessionSelfManagementBindings(
     enumerable: true,
   });
 
-  Object.defineProperty(context, 'setSessionProgress', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.setSessionProgressFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
   Object.defineProperty(context, 'setSessionStatus', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.setSessionStatusFn;
@@ -88,62 +80,6 @@ export function attachSessionSelfManagementBindings(
   Object.defineProperty(context, 'sendAgentMessage', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.sendAgentMessageFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'getTeam', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.getTeamFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'sendTeamMessage', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.sendTeamMessageFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'assignTeamTask', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.assignTeamTaskFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'submitTeamReport', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.submitTeamReportFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'listMemory', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.listMemoryFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'addMemory', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.addMemoryFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  Object.defineProperty(context, 'deleteMemory', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.deleteMemoryFn;
     },
     configurable: true,
     enumerable: true,

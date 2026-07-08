@@ -12,34 +12,29 @@ import {
   ChevronUp,
   AlertCircle,
   Image as ImageIcon,
-  Settings2,
-  Terminal,
   X,
 } from 'lucide-react'
 import { Icon_Home, Icon_Folder, Spinner } from '@craft-agent/ui'
 
 import * as storage from '@/lib/local-storage'
-import { navigate, routes } from '@/lib/navigate'
 import { useDirectoryPicker } from '@/hooks/useDirectoryPicker'
 import { ServerDirectoryBrowser } from '@/components/ServerDirectoryBrowser'
 import { Button } from '@/components/ui/button'
 import {
   InlineSlashCommand,
   useInlineSlashCommand,
-  type SlashSkillItem,
-  type SlashSourceItem,
   type SlashCommandId,
 } from '@/components/ui/slash-command-menu'
+import {
+  InlineMentionMenu,
+  useInlineMention,
+  type MentionItem,
+  type MentionItemType,
+} from '@/components/ui/mention-menu'
 import {
   InlineLabelMenu,
   useInlineLabelMenu,
 } from '@/components/ui/label-menu'
-import {
-  InlineMentionMenu,
-  isValidMentionTrigger,
-  type MentionItem,
-  type MentionSection,
-} from '@/components/ui/mention-menu'
 import type { LabelConfig } from '@craft-agent/shared/labels'
 import { parseMentions } from '@/lib/mentions'
 import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-text-input'
@@ -78,11 +73,8 @@ import { CompactSourceSelector } from '@/components/ui/CompactSourceSelector'
 import { CompactWorkingDirectorySelector } from '@/components/ui/CompactWorkingDirectorySelector'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
-import { MemoryInputSuggestions } from './MemoryInputSuggestions'
-import { useMemoryInputSuggestions } from './useMemoryInputSuggestions'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
-import { hasCliRuntimeSendAdapter, type CliRuntimeDefinition, type CliRuntimeModelState, type MemoryEntry, type TeamProjection } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
@@ -99,12 +91,10 @@ import { useWorkingDirectoryState } from './use-working-directory-state'
 import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
 import { CompactModelSelector } from './CompactModelSelector'
 import {
+  formatTokenCount,
   groupConnectionsByProvider,
   stripPiPrefixForDisplay,
 } from './model-picker-helpers'
-import {
-  getCliRuntimeSelectableModels,
-} from './cli-runtime-model-picker'
 import { useModelVisionToggle } from './useModelVisionToggle'
 
 function formatFollowUpChipText(text: string, fallback: string, maxLength = 50): string {
@@ -115,6 +105,7 @@ function formatFollowUpChipText(text: string, fallback: string, maxLength = 50):
     ? `${normalized.slice(0, maxLength - 1).trimEnd()}…`
     : normalized
 }
+
 
 /** Platform-specific modifier key for keyboard shortcuts */
 const cmdKey = isMac ? '⌘' : 'Ctrl'
@@ -148,7 +139,7 @@ export interface FreeFormInputProps {
   disabled?: boolean
   /** Whether the session is currently processing */
   isProcessing?: boolean
-  /** Callback when message is submitted (skillSlugs from slash-inserted skill mentions) */
+  /** Callback when message is submitted (skillSlugs from @mentions) */
   onSubmit: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
   /** Callback to stop processing. Pass silent=true to skip "Response interrupted" message */
   onStop?: (silent?: boolean) => void
@@ -158,12 +149,6 @@ export interface FreeFormInputProps {
   currentModel: string
   /** Callback when model changes (includes connection slug for proper persistence) */
   onModelChange: (model: string, connection?: string) => void
-  /** Local CLI runtimes shown inside the existing model selector. */
-  cliRuntimes?: CliRuntimeDefinition[]
-  activeCliRuntimeId?: string | null
-  cliRuntimeModelState?: CliRuntimeModelState
-  onCliRuntimeChange?: (runtimeId: string | null) => void
-  onCliRuntimeModelChange?: (modelId: string | null) => void
   // Thinking level (session-level setting)
   /** Current thinking level ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel
@@ -196,8 +181,8 @@ export interface FreeFormInputProps {
   enabledSourceSlugs?: string[]
   /** Callback when source selection changes */
   onSourcesChange?: (slugs: string[]) => void
-  // Skill selection (for slash menu)
-  /** Available skills for slash menu insertion */
+  // Skill selection (for @mentions)
+  /** Available skills for @mention autocomplete */
   skills?: LoadedSkill[]
   // Label selection (for #labels)
   /** Available labels for #label autocomplete */
@@ -244,8 +229,6 @@ export interface FreeFormInputProps {
    * `enableCompactModelPicker`.
    */
   compactMode?: boolean
-  /** D19 surface: 'chat' hides CLI runtime picker; 'terminal' shows it. */
-  surface?: 'chat' | 'terminal'
   /**
    * When `compactMode` is true, render the compact (drawer-based) model
    * selector next to the permission-mode pill. Defaults to false so that
@@ -281,7 +264,6 @@ export interface FreeFormInputProps {
  * - Active option badges
  */
 export function FreeFormInput({
-  sessionId,
   placeholder,
   disabled = false,
   isProcessing = false,
@@ -290,11 +272,6 @@ export function FreeFormInput({
   inputRef: externalInputRef,
   currentModel,
   onModelChange,
-  cliRuntimes = [],
-  activeCliRuntimeId,
-  cliRuntimeModelState,
-  onCliRuntimeChange,
-  onCliRuntimeModelChange,
   thinkingLevel = 'medium',
   onThinkingLevelChange,
   permissionMode = 'ask',
@@ -318,6 +295,7 @@ export function FreeFormInput({
   workingDirectory,
   onWorkingDirectoryChange,
   sessionFolderPath,
+  sessionId,
   currentSessionStatus,
   disableSend = false,
   isEmptySession = false,
@@ -326,7 +304,6 @@ export function FreeFormInput({
   onFollowUpClick,
   onFollowUpIndexClick,
   compactMode = false,
-  surface = 'chat',
   enableCompactModelPicker = false,
   currentConnection,
   onConnectionChange,
@@ -378,8 +355,6 @@ export function FreeFormInput({
     connectionCount: llmConnections.length,
   })
 
-  const [autoRouting, setAutoRouting] = React.useState(false)
-
   // Compute available models from the effective connection.
   // All connections have models populated by backfillAllConnectionModels().
   const availableModels = React.useMemo(() => {
@@ -421,34 +396,6 @@ export function FreeFormInput({
     // never goes blank.
     return model.name ?? stripPiPrefixForDisplay(model.id)
   }, [availableModels, currentModel, connectionDefaultModel])
-
-  const enabledCliRuntimes = React.useMemo(
-    () => cliRuntimes.filter(runtime => runtime.enabled && hasCliRuntimeSendAdapter(runtime)),
-    [cliRuntimes],
-  )
-
-  const activeCliRuntime = React.useMemo(
-    () => enabledCliRuntimes.find(runtime => runtime.id === activeCliRuntimeId) ?? null,
-    [activeCliRuntimeId, enabledCliRuntimes],
-  )
-  const apiConnectionUnavailable = connectionUnavailable && !activeCliRuntime
-
-  const cliRuntimeModels = React.useMemo(
-    () => getCliRuntimeSelectableModels(cliRuntimeModelState),
-    [cliRuntimeModelState],
-  )
-
-  const apiModelButtonDisplayName = currentModelDisplayName.trim()
-    || stripPiPrefixForDisplay(getModelDisplayName(currentModel || connectionDefaultModel || ''))
-    || '模型'
-  const runtimeButtonDisplayName = activeCliRuntime?.displayName ?? 'API'
-  const modelButtonDisplayName = !activeCliRuntime && autoRouting
-    ? 'Auto'
-    : activeCliRuntime
-    ? cliRuntimeModels.find(model => model.id === cliRuntimeModelState?.currentModelId)?.name
-      ?? cliRuntimeModelState?.currentModelId
-      ?? 'CLI 默认'
-    : apiModelButtonDisplayName
 
   // Group connections by provider type for hierarchical dropdown.
   // Each provider (Anthropic, Pi) can have multiple connections (API Key, OAuth, etc.)
@@ -623,53 +570,7 @@ export function FreeFormInput({
   const [sourceDropdownOpen, setSourceDropdownOpen] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
   const [inputMaxHeight, setInputMaxHeight] = React.useState(540)
-  const [cliDropdownOpen, setCliDropdownOpen] = React.useState(false)
   const [modelDropdownOpen, setModelDropdownOpen] = React.useState(false)
-
-  const persistRoutingMode = React.useCallback(async (mode: 'manual' | 'auto') => {
-    if (!window.electronAPI?.readPreferences || !window.electronAPI?.writePreferences) return
-    try {
-      const result = await window.electronAPI.readPreferences()
-      const existing = JSON.parse(result.content || '{}')
-      const current = existing.modelRouting ?? {}
-      existing.modelRouting = { ...current, mode }
-      existing.updatedAt = Date.now()
-      await window.electronAPI.writePreferences(JSON.stringify(existing, null, 2))
-    } catch (error) {
-      console.error('Failed to persist model routing mode:', error)
-    }
-  }, [])
-
-  React.useEffect(() => {
-    const loadRoutingMode = async () => {
-      if (!window.electronAPI?.readPreferences) return
-      try {
-        const result = await window.electronAPI.readPreferences()
-        const parsed = JSON.parse(result.content || '{}')
-        setAutoRouting(parsed.modelRouting?.mode === 'auto')
-      } catch (error) {
-        console.error('Failed to load model routing mode:', error)
-      }
-    }
-    loadRoutingMode()
-  }, [])
-
-  const handleModelSelect = React.useCallback((modelId: string, connection?: string) => {
-    setAutoRouting(false)
-    void persistRoutingMode('manual')
-    onModelChange(modelId, connection)
-  }, [onModelChange, persistRoutingMode])
-
-  const handleCliRuntimeModelSelect = React.useCallback((modelId: string | null) => {
-    setAutoRouting(false)
-    void persistRoutingMode('manual')
-    onCliRuntimeModelChange?.(modelId)
-  }, [onCliRuntimeModelChange, persistRoutingMode])
-
-  const handleAutoRoutingSelect = React.useCallback(() => {
-    setAutoRouting(true)
-    void persistRoutingMode('auto')
-  }, [persistRoutingMode])
 
   // Input settings (loaded from config)
   const [autoCapitalisation, setAutoCapitalisation] = React.useState(true)
@@ -718,49 +619,6 @@ export function FreeFormInput({
   // Merge refs for RichTextInput
   const internalInputRef = React.useRef<RichTextInputHandle>(null)
   const richInputRef = externalInputRef || internalInputRef
-
-  // @ in a team conversation is deliberately limited to stable member numbers.
-  // The selected number is resolved by TeamCoordinator, so this UI never owns a
-  // second member/session mapping.
-  const [teamProjection, setTeamProjection] = React.useState<TeamProjection | null>(null)
-  const [teamMentionOpen, setTeamMentionOpen] = React.useState(false)
-  const [teamMentionFilter, setTeamMentionFilter] = React.useState('')
-  const [teamMentionPosition, setTeamMentionPosition] = React.useState({ x: 0, y: 0 })
-  const teamMentionInputRef = React.useRef({ value: '', cursorPosition: 0, atStart: -1 })
-
-  React.useEffect(() => {
-    let cancelled = false
-    if (!workspaceId || !sessionId || !window.electronAPI?.getTeam) {
-      setTeamProjection(null)
-      return
-    }
-    void window.electronAPI.getTeam(workspaceId)
-      .then((projection) => { if (!cancelled) setTeamProjection(projection) })
-      .catch(() => { if (!cancelled) setTeamProjection(null) })
-    return () => { cancelled = true }
-  }, [workspaceId, sessionId])
-
-  const isTeamConversation = teamProjection?.teamConversationSessionId === sessionId
-  const teamMentionSections = React.useMemo((): MentionSection[] => {
-    if (!isTeamConversation || !teamProjection?.members.length) return []
-    const identityById = new Map(teamProjection.identityLabels.map(label => [label.id, label.displayName]))
-    const items: MentionItem[] = [{
-      id: 'all-members',
-      type: 'agent',
-      label: '全体成员',
-      description: `${teamProjection.members.length} ${t('session.teamMembers')}`,
-      agent: { sequence: '全体成员' },
-    }, ...teamProjection.members.map((member): MentionItem => ({
-      id: member.sequence,
-      type: 'agent',
-      label: member.sequence,
-      description: member.identityLabelIds
-        .map(labelId => identityById.get(labelId) ?? labelId)
-        .join(' · '),
-      agent: { sequence: member.sequence },
-    }))]
-    return [{ id: 'team-members', label: 'team-members', items }]
-  }, [isTeamConversation, teamProjection, t])
 
   // Track last caret position for focus restoration (e.g., after permission mode popover closes)
   const lastCaretPositionRef = React.useRef<number | null>(null)
@@ -1090,7 +948,7 @@ export function FreeFormInput({
     }
   }, [onWorkingDirectoryChange, workspaceId])
 
-  // Get recent folders and home directory for slash menu
+  // Get recent folders and home directory for slash menu and mention menu
   const [recentFolders, setRecentFolders] = React.useState<string[]>([])
   const [homeDir, setHomeDir] = React.useState<string>('')
 
@@ -1109,8 +967,32 @@ export function FreeFormInput({
     activeCommands,
     recentFolders,
     homeDir,
+  })
+
+  // Handle mention selection (sources, skills, files)
+  const handleMentionSelect = React.useCallback((item: MentionItem) => {
+    // For sources: enable the source immediately
+    if (item.type === 'source' && item.source && onSourcesChange) {
+      const slug = item.source.config.slug
+      if (!optimisticSourceSlugs.includes(slug)) {
+        const newSlugs = [...optimisticSourceSlugs, slug]
+        setOptimisticSourceSlugs(newSlugs)
+        onSourcesChange(newSlugs)
+      }
+    }
+
+    // Files via @ mention in text are sufficient context for the agent.
+    // Skills also don't need special handling beyond text insertion.
+  }, [optimisticSourceSlugs, onSourcesChange])
+
+  // Inline mention hook (for skills, sources, and files)
+  const inlineMention = useInlineMention({
+    inputRef: richInputRef,
     skills,
     sources,
+    basePath: workingDirectory,
+    onSelect: handleMentionSelect,
+    // Use workspace slug (not UUID) for SDK skill qualification
     workspaceId: workspaceSlug,
   })
 
@@ -1127,28 +1009,6 @@ export function FreeFormInput({
     sessionStatuses,
     activeStateId: currentSessionStatus,
   })
-
-  const memorySuggestionsEnabled = Boolean(workspaceId)
-    && !teamMentionOpen
-    && !inlineSlash.isOpen
-    && !inlineLabel.isOpen
-    && input.trim().length >= 2
-    && !input.trim().startsWith('/')
-    && !input.trim().startsWith('#')
-    && !(isTeamConversation && input.includes('@'))
-
-  const { suggestions: memorySuggestions, loading: memorySuggestionsLoading } = useMemoryInputSuggestions(
-    workspaceId,
-    input,
-    memorySuggestionsEnabled,
-  )
-
-  const handleMemorySuggestionSelect = React.useCallback((entry: MemoryEntry) => {
-    const nextValue = entry.content
-    setInput(nextValue)
-    syncToParent(nextValue)
-    richInputRef.current?.focus()
-  }, [syncToParent])
 
   // "Add New Label" handler: cleans up the #trigger text and opens a controlled
   // EditPopover so the user can describe the label before the agent creates it.
@@ -1398,7 +1258,7 @@ export function FreeFormInput({
     // Tutorial may disable sending to guide user through specific steps
     if (disableSend) return false
 
-    // Parse slash-inserted bracket mentions (skills, sources, files, folders)
+    // Parse all @mentions (skills, sources, folders)
     const skillSlugs = skills.map(s => s.slug)
     const sourceSlugs = sources.map(s => s.config.slug)
     const mentions = parseMentions(input, skillSlugs, sourceSlugs)
@@ -1460,6 +1320,21 @@ export function FreeFormInput({
     // During IME composition, ESC should cancel composition, not trigger app/menu ESC behavior.
     if (e.key === 'Escape' && e.nativeEvent.isComposing) {
       return
+    }
+
+    // Don't submit when mention menu is open AND has visible content
+    if (inlineMention.isOpen) {
+      // Only intercept navigation/selection keys if menu actually shows items or is loading
+      const hasVisibleContent = inlineMention.sections.some(s => s.items.length > 0) || inlineMention.isSearching
+      if (hasVisibleContent && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        // These keys are handled by the InlineMentionMenu component
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        inlineMention.close()
+        return
+      }
     }
 
     // Don't submit when slash command menu is open - let it handle the Enter key
@@ -1552,27 +1427,16 @@ export function FreeFormInput({
   const handleRichInput = React.useCallback((value: string, cursorPosition: number) => {
     const nextValue = coerceInputText(value)
 
-    const textBeforeCursor = nextValue.slice(0, cursorPosition)
-    const teamMentionMatch = isTeamConversation ? textBeforeCursor.match(/@([^\s@]*)?$/u) : null
-    const teamMentionStart = teamMentionMatch ? textBeforeCursor.lastIndexOf('@') : -1
-    if (teamMentionMatch && isValidMentionTrigger(textBeforeCursor, teamMentionStart)) {
-      teamMentionInputRef.current = { value: nextValue, cursorPosition, atStart: teamMentionStart }
-      setTeamMentionFilter(teamMentionMatch[1] ?? '')
-      const fallbackRect = richInputRef.current?.getBoundingClientRect()
-      const caretRect = richInputRef.current?.getCaretRect?.() ?? fallbackRect
-      if (caretRect) setTeamMentionPosition({ x: caretRect.left, y: caretRect.top })
-      setTeamMentionOpen(true)
-    } else {
-      setTeamMentionOpen(false)
-    }
-
     // Update inline slash command state
     inlineSlash.handleInputChange(nextValue, cursorPosition)
+
+    // Update inline mention state (for @mentions - skills, sources, folders)
+    inlineMention.handleInputChange(nextValue, cursorPosition)
 
     // Update inline label state (for #labels)
     inlineLabel.handleInputChange(nextValue, cursorPosition)
 
-    // Auto-capitalize first letter (but not for slash commands, @people mentions, or #labels)
+    // Auto-capitalize first letter (but not for slash commands, @mentions, or #labels)
     // Only if autoCapitalisation setting is enabled
     let newValue = nextValue
     if (autoCapitalisation && nextValue.length > 0 && nextValue.charAt(0) !== '/' && nextValue.charAt(0) !== '@' && nextValue.charAt(0) !== '#') {
@@ -1596,22 +1460,7 @@ export function FreeFormInput({
       setInput(newValue)
       syncToParent(newValue)
     }
-  }, [inlineSlash, inlineLabel, isTeamConversation, syncToParent, autoCapitalisation])
-
-  const handleTeamMentionSelect = React.useCallback((item: MentionItem) => {
-    const sequence = item.agent?.sequence
-    const { value, cursorPosition, atStart } = teamMentionInputRef.current
-    if (!sequence || atStart < 0) return
-    const nextValue = `${value.slice(0, atStart)}@${sequence} ${value.slice(cursorPosition)}`
-    const nextCursor = atStart + sequence.length + 2
-    setInput(nextValue)
-    syncToParent(nextValue)
-    setTeamMentionOpen(false)
-    setTimeout(() => {
-      richInputRef.current?.focus()
-      richInputRef.current?.setSelectionRange(nextCursor, nextCursor)
-    }, 0)
-  }, [syncToParent])
+  }, [inlineSlash, inlineMention, inlineLabel, syncToParent, autoCapitalisation])
 
   // Handle inline slash command selection (removes the /command text)
   const handleInlineSlashCommandSelect = React.useCallback((commandId: SlashCommandId) => {
@@ -1629,33 +1478,17 @@ export function FreeFormInput({
     richInputRef.current?.focus()
   }, [inlineSlash, syncToParent])
 
-  // Handle inline slash skill selection (inserts [skill:...] execution marker)
-  const handleInlineSlashSkillSelect = React.useCallback((item: SlashSkillItem) => {
-    const { value: newValue, cursorPosition } = inlineSlash.handleSelectSkill(item)
+  // Handle inline mention selection (inserts appropriate mention text)
+  const handleInlineMentionSelect = React.useCallback((item: MentionItem) => {
+    const { value: newValue, cursorPosition } = inlineMention.handleSelect(item)
     setInput(newValue)
     syncToParent(newValue)
+    // Focus input and restore cursor position after badge renders
     setTimeout(() => {
       richInputRef.current?.focus()
       richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
     }, 0)
-  }, [inlineSlash, syncToParent])
-
-  // Handle inline slash source selection (inserts [source:...] and enables it)
-  const handleInlineSlashSourceSelect = React.useCallback((item: SlashSourceItem) => {
-    const { value: newValue, cursorPosition } = inlineSlash.handleSelectSource(item)
-    const slug = item.source.config.slug
-    if (slug && onSourcesChange && !optimisticSourceSlugs.includes(slug)) {
-      const newSlugs = [...optimisticSourceSlugs, slug]
-      setOptimisticSourceSlugs(newSlugs)
-      onSourcesChange(newSlugs)
-    }
-    setInput(newValue)
-    syncToParent(newValue)
-    setTimeout(() => {
-      richInputRef.current?.focus()
-      richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
-    }, 0)
-  }, [inlineSlash, optimisticSourceSlugs, onSourcesChange, syncToParent])
+  }, [inlineMention, syncToParent])
 
   // Handle inline label selection (removes the #label text from input)
   const handleInlineLabelSelect = React.useCallback((labelId: string) => {
@@ -1740,10 +1573,21 @@ export function FreeFormInput({
           activeCommands={activeCommands}
           onSelectCommand={handleInlineSlashCommandSelect}
           onSelectFolder={handleInlineSlashFolderSelect}
-          onSelectSkill={handleInlineSlashSkillSelect}
-          onSelectSource={handleInlineSlashSourceSelect}
           filter={inlineSlash.filter}
           position={inlineSlash.position}
+        />
+
+        {/* Inline Mention Autocomplete (skills, sources, files) */}
+        <InlineMentionMenu
+          open={inlineMention.isOpen}
+          onOpenChange={(open) => !open && inlineMention.close()}
+          sections={inlineMention.sections}
+          onSelect={handleInlineMentionSelect}
+          filter={inlineMention.filter}
+          position={inlineMention.position}
+          workspaceId={workspaceId}
+          maxWidth={280}
+          isSearching={inlineMention.isSearching}
         />
 
         {/* Inline Label & State Autocomplete (#labels / #states) */}
@@ -1916,22 +1760,6 @@ export function FreeFormInput({
           spellCheck={spellCheck}
         />
         )}
-
-        <MemoryInputSuggestions
-          suggestions={memorySuggestions}
-          loading={memorySuggestionsLoading}
-          onSelect={handleMemorySuggestionSelect}
-        />
-
-        <InlineMentionMenu
-          open={teamMentionOpen}
-          onOpenChange={setTeamMentionOpen}
-          sections={teamMentionSections}
-          onSelect={handleTeamMentionSelect}
-          filter={teamMentionFilter}
-          position={teamMentionPosition}
-          headerLabel={t('session.teamMembers')}
-        />
 
         {/* Bottom Row: Controls - wrapped in relative container for status slot overlay */}
         <div className="relative">
@@ -2197,146 +2025,42 @@ export function FreeFormInput({
             <div className="flex-1" />
           )}
 
-          {/* Right side: runtime/model controls may shrink; send/stop remains fixed and visible. */}
-          <div className="flex min-w-0 shrink items-center overflow-hidden">
-          {/* 5. Runtime / Model / Usage - Hidden in compact mode (EditPopover embedding) */}
+          {/* Right side: Model + Send - never shrink so they're always visible */}
+          <div className="flex items-center shrink-0">
+          {/* 5. Model/Connection Selector - Hidden in compact mode (EditPopover embedding) */}
           {!compactMode && (
-            <>
-              {surface === 'terminal' && (
-              <DropdownMenu open={cliDropdownOpen} onOpenChange={setCliDropdownOpen}>
+          <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
                     className={cn(
-                      "input-toolbar-btn inline-flex h-7 min-w-0 max-w-[128px] shrink items-center gap-1 rounded-[6px] px-1.5 text-[13px] transition-colors hover:bg-foreground/5 select-none",
-                      cliDropdownOpen && "bg-foreground/5",
+                      "input-toolbar-btn inline-flex items-center h-7 px-1.5 gap-0.5 text-[13px] shrink-0 rounded-[6px] hover:bg-foreground/5 transition-colors select-none",
+                      modelDropdownOpen && "bg-foreground/5",
+                      connectionUnavailable && "text-destructive",
                     )}
                   >
-                    <Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{runtimeButtonDisplayName}</span>
-                    <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
+                    {connectionUnavailable ? (
+                      <>
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        {t('common.unavailable')}
+                      </>
+                    ) : (
+                      <>
+                        {effectiveConnectionDetails && llmConnections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && <ConnectionIcon connection={effectiveConnectionDetails} size={14} showTooltip />}
+                        {currentModelDisplayName}
+                        {pickerMode !== 'locked-single' && <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />}
+                      </>
+                    )}
                   </button>
                 </DropdownMenuTrigger>
-                <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[260px]">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide select-none">
-                    运行方式
-                  </div>
-                  <StyledDropdownMenuItem
-                    onSelect={() => onCliRuntimeChange?.(null)}
-                    className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                  >
-                    <div className="text-left">
-                      <div className="font-medium text-sm">API（当前连接）</div>
-                      <div className="text-xs text-muted-foreground">使用当前连接的模型列表</div>
-                    </div>
-                    {!activeCliRuntime && <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />}
-                  </StyledDropdownMenuItem>
-                  {enabledCliRuntimes.map((runtime) => {
-                    const isSelectedRuntime = activeCliRuntime?.id === runtime.id
-                    return (
-                      <StyledDropdownMenuItem
-                        key={runtime.id}
-                        onSelect={() => onCliRuntimeChange?.(runtime.id)}
-                        className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                      >
-                        <div className="text-left min-w-0">
-                          <div className="font-medium text-sm flex items-center gap-1.5">
-                            <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span className="truncate">{runtime.displayName}</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate">
-                            {runtime.needsConfirmation ? '候选 · ' : ''}{runtime.command} {runtime.args.join(' ')}
-                          </div>
-                        </div>
-                        {isSelectedRuntime && <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />}
-                      </StyledDropdownMenuItem>
-                    )
-                  })}
-                  <StyledDropdownMenuSeparator className="my-1" />
-                  <StyledDropdownMenuItem
-                    onSelect={() => navigate(routes.view.settings('cliRuntime'))}
-                    className="px-2 py-2 rounded-lg cursor-pointer"
-                  >
-                    <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    管理本机 CLI…
-                  </StyledDropdownMenuItem>
-                </StyledDropdownMenuContent>
-              </DropdownMenu>
-              )}
-
-              <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        disabled={!!activeCliRuntime && cliRuntimeModels.length === 0}
-                        aria-label={apiConnectionUnavailable ? '模型不可用' : '模型'}
-                        className={cn(
-                          "input-toolbar-btn inline-flex h-7 min-w-0 max-w-[170px] shrink items-center gap-0.5 rounded-[6px] px-1.5 text-[13px] transition-colors hover:bg-foreground/5 select-none disabled:cursor-not-allowed disabled:opacity-60",
-                          modelDropdownOpen && "bg-foreground/5",
-                          apiConnectionUnavailable && "text-destructive",
-                        )}
-                      >
-                        {apiConnectionUnavailable ? (
-                          <>
-                            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                            <span>不可用</span>
-                          </>
-                        ) : (
-                          <>
-                            {!activeCliRuntime && effectiveConnectionDetails && llmConnections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && (
-                              <ConnectionIcon connection={effectiveConnectionDetails} size={14} showTooltip />
-                            )}
-                            <span className="truncate">{modelButtonDisplayName}</span>
-                            {(!activeCliRuntime && pickerMode !== 'locked-single') || cliRuntimeModels.length > 0 ? (
-                              <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
-                            ) : null}
-                          </>
-                        )}
-                      </button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    {activeCliRuntime && cliRuntimeModels.length === 0 ? '模型由 CLI 管理' : '模型'}
-                  </TooltipContent>
-                </Tooltip>
-                <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[260px]">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide select-none">
-                    模型
-                  </div>
-                  {!activeCliRuntime && (
-                    <StyledDropdownMenuItem
-                      onSelect={handleAutoRoutingSelect}
-                      className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                    >
-                      <div className="text-left">
-                        <div className="font-medium text-sm">Auto</div>
-                        <div className="text-xs text-muted-foreground">{t('chat.autoRoutingDesc')}</div>
-                      </div>
-                      {autoRouting && <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />}
-                    </StyledDropdownMenuItem>
-                  )}
-                  {activeCliRuntime ? (
-                    cliRuntimeModels.map((model) => (
-                      <StyledDropdownMenuItem
-                        key={model.id}
-                        onSelect={() => handleCliRuntimeModelSelect(model.id)}
-                        className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                      >
-                        <div className="text-left">
-                          <div className="font-medium text-sm">{model.name}</div>
-                          {model.description && (
-                            <div className="text-xs text-muted-foreground">{model.description}</div>
-                          )}
-                        </div>
-                        {cliRuntimeModelState?.currentModelId === model.id && (
-                          <Check className="h-3 w-3 text-foreground ml-3 shrink-0" />
-                        )}
-                      </StyledDropdownMenuItem>
-                    ))
-                  ) : (
-                    <>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {t('common.model')}
+              </TooltipContent>
+            </Tooltip>
+            <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[260px]">
               {/* Connection unavailable message */}
               {pickerMode === 'unavailable' ? (
                 <div className="flex flex-col items-center justify-center py-6 px-4 text-center">
@@ -2457,7 +2181,7 @@ export function FreeFormInput({
                                         onConnectionChange(conn.slug)
                                       }
                                       // Always pass connection with model for proper persistence
-                                      handleModelSelect(modelId, conn.slug)
+                                      onModelChange(modelId, conn.slug)
                                     }}
                                     className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                                   >
@@ -2543,7 +2267,7 @@ export function FreeFormInput({
                     return (
                       <StyledDropdownMenuItem
                         key={modelId}
-                        onSelect={() => handleModelSelect(modelId, effectiveConnection)}
+                        onSelect={() => onModelChange(modelId, effectiveConnection)}
                         className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                       >
                         <div className="text-left">
@@ -2636,12 +2360,25 @@ export function FreeFormInput({
                 </>
               )}
 
-                    </>
-                  )}
-                </StyledDropdownMenuContent>
-              </DropdownMenu>
-
-            </>
+              {/* Context usage footer - only show when we have token data */}
+              {contextStatus?.inputTokens != null && contextStatus.inputTokens > 0 && (
+                <>
+                  <StyledDropdownMenuSeparator className="my-1" />
+                  <div className="px-2 py-1.5 select-none">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{t('chat.context')}</span>
+                      <span className="flex items-center gap-1.5">
+                        {contextStatus.isCompacting && (
+                          <Spinner className="h-3 w-3" />
+                        )}
+                        {t('chat.tokensUsed', { displayCount: formatTokenCount(contextStatus.inputTokens) })}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </StyledDropdownMenuContent>
+          </DropdownMenu>
           )}
 
           {/* 5.5 Context Usage Warning Badge - shows when approaching auto-compaction threshold */}

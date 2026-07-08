@@ -7,24 +7,18 @@
 
 import awsIcon from '@/assets/provider-icons/aws.svg'
 import azureIcon from '@/assets/provider-icons/azure.svg'
-import antigravityIcon from '@/assets/provider-icons/antigravity.svg'
 import claudeIcon from '@/assets/provider-icons/claude.svg'
 import copilotIcon from '@/assets/provider-icons/copilot.svg'
-import deepseekIcon from '@/assets/provider-icons/deepseek.svg'
 import googleIcon from '@/assets/provider-icons/google.svg'
-import grokBuildIcon from '@/assets/provider-icons/grok-build.svg'
-import hermesIcon from '@/assets/provider-icons/hermes.svg'
 import huggingfaceIcon from '@/assets/provider-icons/huggingface.svg'
 import kimiIcon from '@/assets/provider-icons/kimi.svg'
 import minimaxIcon from '@/assets/provider-icons/minimax.svg'
 import mistralIcon from '@/assets/provider-icons/mistral.svg'
 import ollamaIcon from '@/assets/provider-icons/ollama.svg'
-import opencodeIcon from '@/assets/provider-icons/opencode.svg'
 import openaiIcon from '@/assets/provider-icons/openai.svg'
 import openrouterIcon from '@/assets/provider-icons/openrouter.svg'
 import piIcon from '@/assets/provider-icons/pi.svg'
 import vercelIcon from '@/assets/provider-icons/vercel.svg'
-import xaiIcon from '@/assets/provider-icons/xai.svg'
 
 import type { LlmProviderType } from '@craft-agent/shared/config/llm-connections'
 
@@ -33,25 +27,19 @@ import type { LlmProviderType } from '@craft-agent/shared/config/llm-connections
  */
 export const providerIcons = {
   anthropic: claudeIcon,
-  antigravity: antigravityIcon,
   aws: awsIcon,
   azure: azureIcon,
   copilot: copilotIcon,
-  deepseek: deepseekIcon,
   google: googleIcon,
-  grok: grokBuildIcon,
-  hermes: hermesIcon,
   huggingface: huggingfaceIcon,
   kimi: kimiIcon,
   minimax: minimaxIcon,
   mistral: mistralIcon,
   ollama: ollamaIcon,
-  opencode: opencodeIcon,
   openai: openaiIcon,
   openrouter: openrouterIcon,
   pi: piIcon,
   vercel: vercelIcon,
-  xai: xaiIcon,
 } as const
 
 export type ProviderIconKey = keyof typeof providerIcons
@@ -62,21 +50,14 @@ const providerDisplayNames: Record<string, string> = {
   openai: 'OpenAI',
   openai_compat: 'OpenAI',
   copilot: 'GitHub Copilot',
-  antigravity: 'Antigravity',
   deepseek: 'DeepSeek',
-  grok: 'Grok',
-  groq: 'Groq',
-  hermes: 'Hermes',
   kimi: 'Kimi',
   minimax: 'Minimax',
   ollama: 'Ollama',
-  opencode: 'OpenCode',
   openrouter: 'OpenRouter',
   pi: 'Craft Agents Backend',
   pi_compat: 'Craft Agents Backend',
   vercel: 'Vercel',
-  xai: 'xAI',
-  zai: 'Z.ai',
 }
 
 /** Get a human-readable provider name from provider type and optional base URL */
@@ -90,14 +71,6 @@ export function getProviderDisplayName(providerType: string, baseUrl?: string | 
     if (url.includes('minimax.io') || url.includes('minimaxi.com')) return 'Minimax'
     if (url.includes('v0.dev') || url.includes('vercel')) return 'Vercel'
     if (url.includes('manifest.build')) return 'Manifest'
-    if (url.includes('x.ai')) return 'xAI'
-    if (url.includes('grok')) return 'Grok'
-    if (url.includes('hermes')) return 'Hermes'
-    if (url.includes('opencode')) return 'OpenCode'
-    if (url.includes('groq.com')) return 'Groq'
-    if (url.includes('deepseek.com')) return 'DeepSeek'
-    if (url.includes('z.ai')) return 'Z.ai'
-    if (url.includes('antigravity')) return 'Antigravity'
   }
   return providerDisplayNames[providerType] || providerType
 }
@@ -114,33 +87,12 @@ function detectProviderFromUrl(baseUrl: string): ProviderIconKey | null {
   if (url.includes('api.openai.com')) return 'openai'
   if (url.includes('v0.dev') || url.includes('vercel')) return 'vercel'
   if (url.includes('generativelanguage.googleapis.com') || url.includes('ai.google')) return 'google'
-  if (url.includes('x.ai')) return 'xai'
-  if (url.includes('grok')) return 'grok'
-  if (url.includes('deepseek.com')) return 'deepseek'
-  if (url.includes('antigravity')) return 'antigravity'
-  if (url.includes('hermes')) return 'hermes'
-  if (url.includes('opencode')) return 'opencode'
   if (url.includes('kimi.com')) return 'kimi'
   if (url.includes('minimax.io') || url.includes('minimaxi.com')) return 'minimax'
   if (url.includes('mistral.ai')) return 'mistral'
   if (url.includes('bedrock')) return 'aws'
   if (url.includes('huggingface.co')) return 'huggingface'
 
-  return null
-}
-
-function faviconUrl(domain: string): string {
-  return `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://${domain}`
-}
-
-function detectProviderDomainFromUrl(baseUrl: string): string | null {
-  const url = baseUrl.toLowerCase()
-  if (url.includes('x.ai')) return 'x.ai'
-  if (url.includes('groq.com')) return 'groq.com'
-  if (url.includes('deepseek.com')) return 'deepseek.com'
-  if (url.includes('z.ai')) return 'z.ai'
-  if (url.includes('antigravity')) return 'antigravity.google'
-  if (url.includes('cerebras.ai')) return 'cerebras.ai'
   return null
 }
 
@@ -178,20 +130,6 @@ function piAuthProviderToIcon(piAuthProvider: string): ProviderIconKey | null {
       return 'huggingface'
     case 'vercel-ai-gateway':
       return 'vercel'
-    case 'antigravity':
-      return 'antigravity'
-    case 'xai':
-      return 'xai'
-    case 'grok':
-    case 'grok-build':
-      return 'grok'
-    case 'deepseek':
-      return 'deepseek'
-    case 'hermes':
-    case 'hermes-agent':
-      return 'hermes'
-    case 'opencode':
-      return 'opencode'
     default:
       return null
   }
@@ -202,24 +140,10 @@ function piAuthProviderToIcon(piAuthProvider: string): ProviderIconKey | null {
  * Used to generate Google Favicon V2 URLs as fallback.
  */
 const PI_AUTH_PROVIDER_DOMAINS: Record<string, string> = {
-  antigravity: 'antigravity.google',
   groq: 'groq.com',
   xai: 'x.ai',
   cerebras: 'cerebras.ai',
   deepseek: 'deepseek.com',
-  hermes: 'hermesacp.dev',
-  opencode: 'opencode.ai',
-  zai: 'z.ai',
-}
-
-const PROVIDER_TYPE_DOMAINS: Record<string, string> = {
-  antigravity: 'antigravity.google',
-  cerebras: 'cerebras.ai',
-  deepseek: 'deepseek.com',
-  groq: 'groq.com',
-  hermes: 'hermesacp.dev',
-  opencode: 'opencode.ai',
-  xai: 'x.ai',
   zai: 'z.ai',
 }
 
@@ -246,10 +170,8 @@ export function getProviderIcon(
     }
     // Manifest has no bundled SVG — fall back to Google Favicon V2 (same trick used for groq/xai elsewhere).
     if (baseUrl.toLowerCase().includes('manifest.build')) {
-      return faviconUrl('app.manifest.build')
+      return 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://app.manifest.build'
     }
-    const detectedDomain = detectProviderDomainFromUrl(baseUrl)
-    if (detectedDomain) return faviconUrl(detectedDomain)
   }
 
   // Map provider type to icon
@@ -261,18 +183,6 @@ export function getProviderIcon(
       return providerIcons.openai
     case 'copilot':
       return providerIcons.copilot
-    case 'antigravity':
-      return providerIcons.antigravity
-    case 'deepseek':
-      return providerIcons.deepseek
-    case 'grok':
-      return providerIcons.grok
-    case 'hermes':
-      return providerIcons.hermes
-    case 'opencode':
-      return providerIcons.opencode
-    case 'xai':
-      return providerIcons.xai
     case 'pi':
     case 'pi_compat': {
       // Resolve to actual upstream provider icon
@@ -282,7 +192,7 @@ export function getProviderIcon(
         // Favicon fallback for providers without static SVGs
         const domain = PI_AUTH_PROVIDER_DOMAINS[piAuthProvider]
         if (domain) {
-          return faviconUrl(domain)
+          return `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://${domain}`
         }
       }
       return null  // Unknown/custom Pi provider — caller shows brain icon
@@ -294,11 +204,7 @@ export function getProviderIcon(
         if (detectedProvider) {
           return providerIcons[detectedProvider]
         }
-        const detectedDomain = detectProviderDomainFromUrl(baseUrl)
-        if (detectedDomain) return faviconUrl(detectedDomain)
       }
-      const domain = PROVIDER_TYPE_DOMAINS[providerType]
-      if (domain) return faviconUrl(domain)
       return null
   }
 }

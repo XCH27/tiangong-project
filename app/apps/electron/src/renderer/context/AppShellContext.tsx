@@ -50,12 +50,12 @@ export interface AppShellContextType {
   /** Get draft input text for a session - reads from ref without triggering re-renders */
   getDraft: (sessionId: string) => string
   /** Get persisted attachment refs (path + name) for a session's draft - no file IO */
-  getDraftAttachmentRefs: (sessionId: string) => import('@craft-agent/shared/config/draft-types').DraftAttachmentRef[]
+  getDraftAttachmentRefs: (sessionId: string) => import('@craft-agent/shared/config').DraftAttachmentRef[]
   /** Hydrate persisted attachment refs into full FileAttachment objects (async, reads files) */
   hydrateDraftAttachments: (sessionId: string) => Promise<FileAttachment[]>
   /** All enabled sources for this workspace - provided by AppShell component */
   enabledSources?: LoadedSource[]
-  /** All skills for this workspace - provided by AppShell component (for slash menu insertion) */
+  /** All skills for this workspace - provided by AppShell component (for @mentions) */
   skills?: LoadedSkill[]
   /** Working directory of the active session — needed for project-level skill resolution */
   activeSessionWorkingDirectory?: string

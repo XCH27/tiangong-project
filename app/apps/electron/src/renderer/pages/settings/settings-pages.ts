@@ -16,18 +16,13 @@ import type { SettingsSubpage } from '../../../shared/settings-registry'
 
 import AppSettingsPage from './AppSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
-import ModelRoutingSettingsPage from './ModelRoutingSettingsPage'
-import CliRuntimeSettingsPage from './CliRuntimeSettingsPage'
-import ExternalJobsSettingsPage from './ExternalJobsSettingsPage'
-import GitHubSettingsPage from './GitHubSettingsPage'
-import ManagerSettingsPage from './ManagerSettingsPage'
-import MemorySettingsPage from './MemorySettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
 import InputSettingsPage from './InputSettingsPage'
 import WorkspaceSettingsPage from './WorkspaceSettingsPage'
 import PermissionsSettingsPage from './PermissionsSettingsPage'
 import LabelsSettingsPage from './LabelsSettingsPage'
 import MessagingSettingsPage from './MessagingSettingsPage'
+import BrowserSettingsPage from './BrowserSettingsPage'
 import ServerSettingsPage from './ServerSettingsPage'
 import ShortcutsPage from './ShortcutsPage'
 import PreferencesPage from './PreferencesPage'
@@ -39,18 +34,13 @@ import PreferencesPage from './PreferencesPage'
 export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = {
   app: AppSettingsPage,
   ai: AiSettingsPage,
-  modelRouting: ModelRoutingSettingsPage,
-  cliRuntime: CliRuntimeSettingsPage,
-  externalJobs: ExternalJobsSettingsPage,
-  github: GitHubSettingsPage,
-  managerAgent: ManagerSettingsPage,
-  memory: MemorySettingsPage,
   appearance: AppearanceSettingsPage,
   input: InputSettingsPage,
   workspace: WorkspaceSettingsPage,
   permissions: PermissionsSettingsPage,
   labels: LabelsSettingsPage,
   messaging: MessagingSettingsPage,
+  browser: BrowserSettingsPage,
   server: ServerSettingsPage,
   shortcuts: ShortcutsPage,
   preferences: PreferencesPage,

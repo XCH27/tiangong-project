@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Enforce a strict connection timeout of 15 seconds for git operations to prevent hanging indefinitely
+export GIT_HTTP_TIMEOUT=15
+export GIT_SSH_COMMAND="ssh -o ConnectTimeout=15 -o BatchMode=yes"
+
 SCRIPT_DIR="/Users/lullwen/Documents/GUI 终端/源码参考"
 cd "$SCRIPT_DIR"
 

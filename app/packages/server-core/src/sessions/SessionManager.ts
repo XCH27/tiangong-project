@@ -22,7 +22,6 @@ import {
 } from '@craft-agent/shared/agent/backend'
 import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
-import { createSessionManagerTeamRuntime, getTeamCoordinator } from '../services/team-coordinator'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
 import { i18n } from '@craft-agent/shared/i18n'
@@ -82,69 +81,18 @@ import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
-import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, type TeamInboxItem, type TeamReport, type ActorRef, type ProgressTask, type CliRuntimeStreamEvent, type CliRuntimePermissionRequest, type CliRuntimeModelState, type CliRuntimeDefinition, type ManagerAutoDecisionRecord, type SessionUsageView, type ContextSegment, estimateContextSegments, CLI_RUNTIME_ATTACHMENT_REJECTION, RPC_CHANNELS, generateMessageId, hasCliRuntimeSendAdapter } from '@craft-agent/shared/protocol'
-import { CliRuntimeHost } from '../services/acp/cli-runtime-host'
-import { getDefaultCliRuntimeCatalog } from '../services/cli-runtime-catalog'
-import { runNativeCliRuntimeTurn } from '../services/native-cli-runtime'
-import { ManagerDecisionService, permissionAutoOutcome } from '../services/manager-decision-service'
-import { MemoryStore } from '../services/memory-store'
-import { installMemoryHooks } from '../services/memory'
-import { MANAGER_ACTOR } from '../services/team-coordinator'
-import { buildSessionUsageView } from '../services/usage-service'
-import { plan as routePlan, shape as shapeContext } from '../services'
-import {
-  refineComplexityWithMini,
-  rebuildDecisionForComplexity,
-  inferLatencySensitive,
-} from '../services/model-orchestrator'
-import { runFusion } from '../services/fusion-pipeline'
-import {
-  budgetTracker,
-  routingDataCollector,
-  resolveSessionAgentRole,
-  applyRoutingPolicy,
-  buildFusionConfig,
-  createQueryLlmAdapter,
-  syncSemanticCacheEnabled,
-  estimateFusionTokens,
-  type QueryLlmAgent,
-} from '../services/model-routing-runtime'
-import {
-  applyTrainedRouter,
-  trySemanticCacheHit,
-  storeSemanticCacheEntry,
-  buildPlanFusionHook,
-  buildFusionVerificationHooks,
-  planCascadeRetry,
-  recordRoutingPreferenceAccepted,
-  recordRoutingPreferenceRetried,
-  recordRoutingPreferenceRejected,
-  recordRoutingPreferenceRolledBack,
-  emitProviderCacheLedger,
-  resolveWorkspaceGitHead,
-  lookupExactWithGitHead,
-  writeExactWithGitHead,
-  collectCascadeToolSignal,
-  type RoutingTurnContext,
-  type SessionRoutingPorts,
-} from '../services/session-routing-bridge'
-import { createInternalActionRuntimeBridge } from '../services/internal-action-bridge'
-import type { RoutingInput, RoutingDecision, ModelRoutingPrefs, CacheKey, RoutingHint } from '../services/fusion-types'
-import type { CascadeSignal } from '../services/cascade-evaluator'
-import { DEFAULT_MODEL_ROUTING_PREFS } from '../services/fusion-types'
-import { getModelById, getModelDisplayName } from '@craft-agent/shared/config'
+import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
-import { invalidateContextFileCache, getSystemPrompt } from '@craft-agent/shared/prompts/system'
-import { estimateTokens } from '@craft-agent/shared/utils/large-response'
+import { invalidateContextFileCache } from '@craft-agent/shared/prompts/system'
 import { getToolIconsDir, getMiniModel } from '@craft-agent/shared/config'
 import { getDefaultSummarizationModel } from '@craft-agent/shared/config/models'
 import type { SummarizeCallback } from '@craft-agent/shared/sources'
 import { type ThinkingLevel, DEFAULT_THINKING_LEVEL, normalizeThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import { evaluateAutoLabels } from '@craft-agent/shared/labels/auto'
 import { listLabels, loadLabelConfig } from '@craft-agent/shared/labels/storage'
-import { resolveSessionLabels, LEADER_LABEL_ID, hasLeaderLabel, withoutLeaderLabel, resolveIdentityLabelEffects } from '@craft-agent/shared/labels'
+import { extractLabelId, resolveSessionLabels } from '@craft-agent/shared/labels'
 import { ensureLabelsExist } from '@craft-agent/shared/labels/crud'
 import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
@@ -222,28 +170,6 @@ export const AGENT_FLAGS = {
 const MAX_ADMIN_REMEMBER_MINUTES = 60
 const MAX_ANNOTATIONS_PER_MESSAGE = 200
 const MAX_ANNOTATION_JSON_BYTES = 32 * 1024
-
-type NativeCliReasoningEffort = 'low' | 'medium' | 'high'
-
-function toNativeCliReasoningEffort(level: ThinkingLevel | undefined): NativeCliReasoningEffort | null {
-  switch (level) {
-    case undefined:
-    case 'off':
-      return null
-    case 'low':
-      return 'low'
-    case 'medium':
-      return 'medium'
-    case 'high':
-    case 'xhigh':
-    case 'max':
-      return 'high'
-    default: {
-      const exhaustive: never = level
-      return exhaustive
-    }
-  }
-}
 
 // Window during which fs.watch metadata-revert events from our own atomic write
 // are ignored, so the watcher does not roll back the in-memory mutation we
@@ -893,22 +819,6 @@ interface ManagedSession {
   enabledSourceSlugs?: string[]
   // Labels applied to this session (additive tags, many-per-session)
   labels?: string[]
-  // 任务进度清单（docs/35）：会话内有序、有状态的步骤；会话级元数据，和 labels 同层。
-  progress?: ProgressTask[]
-  // 选中的本机 CLI Runtime id（docs/23）。null/未设 = 走 API 模型路径；设了 = 走 ACP 或 native adapter。
-  cliRuntimeId?: string | null
-  /** Auto 路由本轮上下文（runtime-only，不持久化） */
-  routingTurnContext?: RoutingTurnContext
-  /** 级联升级待重试（onProcessingStopped 设置，下轮 sendMessage 消费） */
-  cascadeRetryPending?: boolean
-  /** 本轮工具/测试失败等级联信号（runtime-only） */
-  cascadeSignals?: CascadeSignal[]
-  /** 用户显式锁定模型时跳过 Auto 路由覆写 */
-  manualModelLock?: boolean
-  // CLI 内部请求/实际模型；与 API 路径的 model 分开。
-  cliRuntimeModelId?: string | null
-  // 活跃 ACP 进程报告的模型清单，或 native/subscription adapter 的静态模型投影。
-  cliRuntimeModelState?: CliRuntimeModelState
   // Working directory for this session (used by agent for bash commands)
   workingDirectory?: string
   // SDK cwd for session storage - set once at creation, never changes.
@@ -1040,108 +950,6 @@ interface ManagedSession {
     /** True after the first matching sendMessage consumes the slot; later matches drop. */
     committed: boolean
   }
-}
-
-interface PromptSectionTokenEstimate {
-  systemTokens: number
-  toolTokens: number
-  rulesTokens: number
-  skillTokens: number
-  mcpTokens: number
-  subagentTokens: number
-}
-
-function estimatePromptSections(prompt: string): PromptSectionTokenEstimate {
-  const result: PromptSectionTokenEstimate = {
-    systemTokens: 0,
-    toolTokens: 0,
-    rulesTokens: 0,
-    skillTokens: 0,
-    mcpTokens: 0,
-    subagentTokens: 0,
-  }
-
-  const sections = prompt.split(/\n(?=##\s+)/g)
-  for (const section of sections) {
-    const heading = section.match(/^##\s+(.+)$/m)?.[1]?.toLowerCase() ?? ''
-    const tokens = estimateTokens(section)
-    if (/\bskill/.test(heading)) {
-      result.skillTokens += tokens
-    } else if (/mcp|external sources|source management/.test(heading)) {
-      result.mcpTokens += tokens
-    } else if (/available tools|browser tools|llm tool|document tools|tool metadata|craft agent cli/.test(heading)) {
-      result.toolTokens += tokens
-    } else if (/guidelines|permission|rules|git conventions|debug mode/.test(heading)) {
-      result.rulesTokens += tokens
-    } else if (/subagent|task/.test(heading)) {
-      result.subagentTokens += tokens
-    } else {
-      result.systemTokens += tokens
-    }
-  }
-
-  return result
-}
-
-function estimateSourceContextTokens(sources: readonly LoadedSource[]): number {
-  return sources.reduce((sum, source) => {
-    const config = source.config
-    const summary = [
-      config.name,
-      config.type,
-      config.provider,
-      config.tagline,
-      config.mcp?.transport,
-      config.mcp?.url,
-      config.mcp?.command,
-      config.api?.baseUrl,
-      config.api?.authType,
-      source.guide?.scope,
-      source.guide?.guidelines,
-      source.guide?.apiNotes,
-    ].filter(Boolean).join('\n')
-    return sum + estimateTokens(summary)
-  }, 0)
-}
-
-function estimateMentionedSkillTokens(messages: readonly Message[], workspaceRootPath: string, workingDirectory?: string): number {
-  const slugs = new Set<string>()
-  for (const message of messages) {
-    for (const badge of message.badges ?? []) {
-      if (badge.type !== 'skill') continue
-      const slug = badge.rawText.replace(/^@+/, '').trim()
-      if (slug) slugs.add(slug)
-    }
-  }
-
-  let total = 0
-  for (const slug of slugs) {
-    try {
-      const skill = loadSkillBySlug(workspaceRootPath, slug, workingDirectory)
-      if (skill) {
-        total += estimateTokens(`${skill.metadata.name}\n${skill.metadata.description}\n${skill.content}`)
-      }
-    } catch {
-      // Usage estimates must never block the usage popup.
-    }
-  }
-  return total
-}
-
-function estimateSubagentContextTokens(messages: readonly Message[]): number {
-  const subagentMessages = messages.filter(message =>
-    message.toolName === 'Task' ||
-    message.toolName === 'spawn_session' ||
-    message.toolName === 'mcp__session__spawn_session' ||
-    Boolean(message.parentToolUseId)
-  )
-  if (subagentMessages.length === 0) return 0
-  return estimateTokens(subagentMessages.map(message => [
-    message.toolName,
-    message.toolIntent,
-    message.toolInput ? JSON.stringify(message.toolInput) : '',
-    message.toolResult ?? '',
-  ].filter(Boolean).join('\n')).join('\n\n'))
 }
 
 const PI_SDK_MESSAGE_ID_CACHE_LIMIT = 256
@@ -1279,7 +1087,6 @@ function managedToSession(m: ManagedSession, overrides?: Partial<Session>): Sess
     isProcessing: m.isProcessing,
     sessionFolderPath: getSessionStoragePath(m.workspace.rootPath, m.id),
     supportsBranching: resolveSupportsBranching(m),
-    cliRuntimeModelState: m.cliRuntimeModelState,
     ...overrides,
   } as Session
 }
@@ -1290,19 +1097,6 @@ const DELTA_BATCH_INTERVAL_MS = 50  // Flush batched deltas every 50ms
 interface PendingDelta {
   delta: string
   turnId?: string
-}
-
-function formatWorkflowEvent(event: SessionEvent): string {
-  switch (event.type) {
-    case 'team_message': return event.content
-    case 'team_task_assigned': return `团队任务：${event.title}${event.description ? `\n${event.description}` : ''}`
-    case 'team_report_submitted': return `工作汇报：${event.summary}`
-    case 'team_review_queued': return `工作汇报已进入待审队列：${event.reportId}`
-    case 'team_leader_changed': return event.leaderSessionId ? `队长已更新：${event.leaderSessionId}` : '队长已清空'
-    case 'team_rules_changed': return `团队规则已更新：${event.changedKeys.join(', ')}`
-    case 'team_rules_validation_failed': return `团队规则校验失败：${event.error}`
-    default: return `工作流事件：${event.type}`
-  }
 }
 
 export class SessionManager implements ISessionManager {
@@ -1322,11 +1116,6 @@ export class SessionManager implements ISessionManager {
     type?: 'bash' | 'file_write' | 'mcp_mutation' | 'api_mutation' | 'admin_approval'
     commandHash?: string
   }> = new Map()
-  private pendingWorkflowPermissionResolvers = new Map<string, {
-    sessionId: string
-    resolve: (allowed: boolean) => void
-    timer: ReturnType<typeof setTimeout>
-  }>()
   // Privileged approval binding + audit logger
   private privilegedExecutionBroker = new PrivilegedExecutionBroker(sessionLog)
   // Session-local admin remember windows (exact command hash binding)
@@ -1581,13 +1370,6 @@ export class SessionManager implements ISessionManager {
     for (const [requestId, metadata] of this.pendingPermissionRequests.entries()) {
       if (metadata.sessionId === sessionId) {
         this.pendingPermissionRequests.delete(requestId)
-      }
-    }
-    for (const [requestId, pending] of this.pendingWorkflowPermissionResolvers.entries()) {
-      if (pending.sessionId === sessionId) {
-        clearTimeout(pending.timer)
-        pending.resolve(false)
-        this.pendingWorkflowPermissionResolvers.delete(requestId)
       }
     }
   }
@@ -2016,8 +1798,6 @@ export class SessionManager implements ISessionManager {
 
   async initialize(): Promise<void> {
     try {
-      installMemoryHooks()
-
       // Backfill missing `models` arrays on existing LLM connections
       migrateLegacyLlmConnectionsConfig()
 
@@ -2691,7 +2471,7 @@ export class SessionManager implements ISessionManager {
     const globalDefaults = loadConfigDefaults()
 
     // Read permission mode from workspace config, fallback to global defaults
-    let defaultPermissionMode = options?.permissionMode
+    const defaultPermissionMode = options?.permissionMode
       ?? wsConfig?.defaults?.permissionMode
       ?? globalDefaults.workspaceDefaults.permissionMode
 
@@ -2707,14 +2487,6 @@ export class SessionManager implements ISessionManager {
     const defaultModel = wsConfig?.defaults?.model
     // Get default enabled sources from workspace config
     const defaultEnabledSourceSlugs = options?.enabledSourceSlugs ?? wsConfig?.defaults?.enabledSourceSlugs
-
-    const identityEffects = options?.labels?.length
-      ? resolveIdentityLabelEffects(options.labels, loadLabelConfig(workspaceRootPath).labels)
-      : undefined
-    if (!options?.permissionMode && identityEffects?.permissionMode) {
-      defaultPermissionMode = identityEffects.permissionMode
-    }
-    const defaultSystemPromptPreset = options?.systemPromptPreset ?? identityEffects?.systemPromptPreset
 
     // Resolve model tier hints ('fast' / 'default') to actual model IDs.
     // EditPopover uses tier hints instead of hardcoded Anthropic model names
@@ -3026,8 +2798,8 @@ export class SessionManager implements ISessionManager {
     const resolvedModel = resolvedContext.resolvedModel
 
     // Log mini agent session creation
-    if (defaultSystemPromptPreset === 'mini' || options?.model) {
-      sessionLog.info(`🤖 Creating mini agent session: model=${resolvedModel}, systemPromptPreset=${defaultSystemPromptPreset}`)
+    if (options?.systemPromptPreset === 'mini' || options?.model) {
+      sessionLog.info(`🤖 Creating mini agent session: model=${resolvedModel}, systemPromptPreset=${options?.systemPromptPreset}`)
     }
 
     const isBranch = !!validatedBranch
@@ -3038,7 +2810,7 @@ export class SessionManager implements ISessionManager {
       model: resolvedModel,
       llmConnection: options?.llmConnection,
       thinkingLevel: defaultThinkingLevel,
-      systemPromptPreset: defaultSystemPromptPreset,
+      systemPromptPreset: options?.systemPromptPreset,
       enabledSourceSlugs: defaultEnabledSourceSlugs,
       branchFromMessageId: validatedBranch?.sourceMessageId,
       branchContextStrategy: validatedBranch?.branchContextStrategy,
@@ -4285,26 +4057,10 @@ export class SessionManager implements ISessionManager {
         }
       }
 
-      const teamActorForManaged = (): ActorRef => ({
-        kind: 'agent',
-        agentId: managed.id,
-        role: 'member',
-        displayName: managed.name ?? managed.id,
-        runtime: managed.llmConnection ?? managed.model,
-      })
-      const teamCoordinatorForManaged = () => getTeamCoordinator({
-        workspaceRootPath: managed.workspace.rootPath,
-        runtime: createSessionManagerTeamRuntime(this, managed.workspace.id, managed.workspace.rootPath),
-      })
-      const memoryStoreForManaged = () => new MemoryStore(managed.workspace.rootPath)
-
       // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
       mergeSessionScopedToolCallbacks(managed.id, {
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
           await this.setSessionLabels(sessionId ?? managed.id, labels)
-        },
-        setSessionProgressFn: async (sessionId: string | undefined, tasks: ProgressTask[]) => {
-          await this.setSessionProgress(sessionId ?? managed.id, tasks)
         },
         setSessionStatusFn: async (sessionId: string | undefined, status: string) => {
           await this.setSessionStatus(sessionId ?? managed.id, status as SessionStatus)
@@ -4415,44 +4171,6 @@ export class SessionManager implements ISessionManager {
 
           await this.sendMessage(sessionId, message, fileAttachments)
         },
-        getTeamFn: async () => teamCoordinatorForManaged().getProjection(),
-        sendTeamMessageFn: async input => teamCoordinatorForManaged().handleCommand({
-          type: 'sendTeamMessage',
-          teamId: 'team-main',
-          content: input.content,
-          audienceSessionIds: input.audienceSessionIds,
-          taskId: input.taskId,
-          runId: input.runId,
-        }, {
-          issuerSessionId: managed.id,
-          actor: teamActorForManaged(),
-        }) as Promise<{ messageId: string }>,
-        assignTeamTaskFn: async input => teamCoordinatorForManaged().handleCommand({
-          type: 'assignTeamTask',
-          teamId: 'team-main',
-          taskId: input.taskId,
-          assigneeSessionId: input.assigneeSessionId,
-          title: input.title,
-          description: input.description,
-          autoRun: input.autoRun,
-        }, {
-          issuerSessionId: managed.id,
-          actor: teamActorForManaged(),
-        }) as Promise<{ taskId: string; runId?: string }>,
-        submitTeamReportFn: async input => teamCoordinatorForManaged().handleCommand({
-          type: 'submitTeamReport',
-          teamId: 'team-main',
-          taskId: input.taskId,
-          runId: input.runId,
-          summary: input.summary,
-          artifactPaths: input.artifactPaths,
-        }, {
-          issuerSessionId: managed.id,
-          actor: teamActorForManaged(),
-        }) as Promise<{ reportId: string; reviewId: string }>,
-        listMemoryFn: async query => memoryStoreForManaged().list(query),
-        addMemoryFn: async input => memoryStoreForManaged().add(input),
-        deleteMemoryFn: async id => memoryStoreForManaged().delete(id),
         activateSourceInSessionFn: async (sourceSlug: string) => {
           const cb = managed.agent?.onSourceActivationRequest
           if (!cb) {
@@ -5382,21 +5100,6 @@ export class SessionManager implements ISessionManager {
     sessionLog.info(`[updateSessionModel] sessionId=${sessionId}, model=${model}, connection=${connection}`)
     const managed = this.sessions.get(sessionId)
     if (managed) {
-      if (model) {
-        if (managed.routingTurnContext && managed.model && managed.model !== model) {
-          routingDataCollector.recordPreference({
-            type: 'switched_model',
-            sessionId,
-            taskType: managed.routingTurnContext.decision.taskType,
-            complexity: managed.routingTurnContext.decision.complexity,
-            tier: managed.routingTurnContext.decision.tier,
-            modelId: model,
-          })
-        }
-        managed.manualModelLock = true
-      } else {
-        managed.manualModelLock = false
-      }
       managed.model = model ?? undefined
       // Also update connection if provided and not already locked
       if (connection && !managed.connectionLocked) {
@@ -5623,9 +5326,6 @@ export class SessionManager implements ISessionManager {
       return
     }
 
-    // CLI Runtime（ACP）子进程随会话删除清理（docs/23）
-    this.cliRuntimeHost?.dispose(sessionId)
-
     // Get workspace slug before deleting
     const workspaceRootPath = managed.workspace.rootPath
 
@@ -5765,206 +5465,6 @@ export class SessionManager implements ISessionManager {
 
     // Ensure messages are loaded before we try to add new ones
     await this.ensureMessagesLoaded(managed)
-
-    // CLI Runtime 路由（docs/23）：选了本机 CLI runtime 时走 ACP adapter，不走 API 模型路径。
-    // 附件第一版硬拒绝（docs/25）：选了 runtime 且带附件 → 抛可操作错误，不启动进程。
-    if (managed.cliRuntimeId) {
-      if ((attachments?.length ?? 0) > 0 || (storedAttachments?.length ?? 0) > 0) {
-        throw new Error(CLI_RUNTIME_ATTACHMENT_REJECTION)
-      }
-      if (managed.isProcessing) {
-        // v1：CLI runtime 不支持 mid-stream steering；正在跑时直接拒绝新一轮。
-        throw new Error('CLI Runtime 正在执行上一轮，请等当前轮结束或停止后再发。')
-      }
-      await this.runCliRuntimeTurn(managed, message, onAck)
-      return
-    }
-
-    // ── 智能模型路由（docs/03 §3）─────────────────────────────────────────
-    // 在 CLI 分支之后、mid-stream 处理之前插入。
-    // 只在 Auto 模式 + 未手动锁模型时生效。
-    let pendingRoutingDecision: RoutingDecision | null = null
-    let pendingRoutingPrefs: ModelRoutingPrefs | null = null
-    let shapedRoutingMessage = message
-    let routingExactCacheKey: CacheKey | null = null
-
-    // 用户继续对话 → 记录上一轮路由偏好为 accepted
-    if (managed.routingTurnContext && !_isAuthRetry && !managed.cascadeRetryPending) {
-      recordRoutingPreferenceAccepted(managed.routingTurnContext, sessionId)
-    }
-
-    const routingPrefs = loadPreferences().modelRouting
-
-    // 用户显式锁定模型 → 跳过 Auto 路由（仍走普通 agent 流程）
-    const autoRoutingAllowed = routingPrefs?.mode === 'auto' && !managed.manualModelLock
-
-    // 级联升级重试：复用已升级的 decision，跳过重新规划
-    if (managed.cascadeRetryPending && managed.routingTurnContext) {
-      pendingRoutingDecision = managed.routingTurnContext.decision
-      pendingRoutingPrefs = managed.routingTurnContext.prefs
-      shapedRoutingMessage = managed.routingTurnContext.shapedMessage
-      routingExactCacheKey = managed.routingTurnContext.exactCacheKey
-      managed.routingTurnContext.turnStartedAt = Date.now()
-      managed.cascadeRetryPending = false
-
-      if (pendingRoutingDecision.tier === 'fast' && !managed.model) {
-        const resolvedConn = resolveSessionConnection(managed.llmConnection, undefined)
-        if (resolvedConn) {
-          const miniModel = getMiniModel(resolvedConn)
-          if (miniModel) managed.model = miniModel
-        }
-      }
-    } else if (autoRoutingAllowed) {
-      const prefsNormalized: ModelRoutingPrefs = { ...DEFAULT_MODEL_ROUTING_PREFS, ...routingPrefs } as ModelRoutingPrefs
-      pendingRoutingPrefs = prefsNormalized
-      syncSemanticCacheEnabled(prefsNormalized)
-
-      const resolvedConn = resolveSessionConnection(managed.llmConnection, undefined)
-      const workspaceGitHead = resolveWorkspaceGitHead(managed.workspace.rootPath)
-
-      // 杠杆0：输入瘦身（docs/16 能力，当前 no-op 占位）
-      const shaped = shapeContext(message, 'chat-text', prefsNormalized.shaping)
-      shapedRoutingMessage = shaped.shapedMessage
-
-      if (shaped.tools.length > 0 && shaped.beforeTokens > shaped.afterTokens) {
-        this.emitRoutingTimelineEvent({
-          type: 'cache_ledger',
-          sessionId,
-          routing: { taskType: 'chat-text', complexity: 1, tier: 'fast', fusionMode: 'none', cascadeUpgrades: 0 },
-          layers: {},
-          cost: {
-            actual: null,
-            estimated: null,
-            savedByCache: shaped.beforeTokens - shaped.afterTokens,
-          },
-          timestamp: Date.now(),
-        })
-      }
-
-      // L2 Exact 缓存查询
-      if (prefsNormalized.cache.exact) {
-        routingExactCacheKey = {
-          workspaceId: managed.workspace.id,
-          connectionSlug: resolvedConn?.slug ?? managed.llmConnection ?? '',
-          modelId: managed.model ?? '',
-          taskType: 'chat-text',
-          toolSetHash: (managed.enabledSourceSlugs ?? []).join(','),
-          memoryInjectionHash: '',
-          permissionMode: managed.permissionMode ?? '',
-          normalizedMessage: shaped.shapedMessage.trim(),
-          attachmentHashes: [],
-        }
-        const hit = lookupExactWithGitHead(routingExactCacheKey, workspaceGitHead)
-        if (hit.hit && hit.entry) {
-          // 缓存命中：直接返回答，零 API
-          this.emitRoutingTimelineEvent({
-            type: 'cache_ledger',
-            sessionId,
-            routing: { taskType: 'chat-text', complexity: 1, tier: 'fast', fusionMode: 'none', cascadeUpgrades: 0 },
-            layers: { l2Exact: { hit: true } },
-            cost: { actual: 0, estimated: 0, savedByCache: null },
-            timestamp: Date.now(),
-          })
-          const cachedMsg: Message = { id: generateMessageId(), role: 'assistant', content: hit.entry.payload.answer, timestamp: this.monotonic() }
-          managed.messages.push(cachedMsg)
-          this.sendEvent({ type: 'text_complete', sessionId, text: hit.entry.payload.answer, messageId: cachedMsg.id }, managed.workspace.id)
-          onAck?.(cachedMsg.id)
-          this.sendEvent({ type: 'complete', sessionId }, managed.workspace.id)
-          return
-        }
-      }
-
-      // L2 Semantic 缓存查询（exact miss 后）
-      if (prefsNormalized.cache.semantic && routingExactCacheKey) {
-        const semHit = trySemanticCacheHit(routingExactCacheKey)
-        if (semHit.hit && semHit.answer) {
-          this.emitRoutingTimelineEvent({
-            type: 'cache_ledger',
-            sessionId,
-            routing: { taskType: 'chat-text', complexity: 1, tier: 'fast', fusionMode: 'none', cascadeUpgrades: 0 },
-            layers: { l2Semantic: { hit: true, similarity: semHit.similarity ?? 0 } },
-            cost: { actual: 0, estimated: 0, savedByCache: null },
-            timestamp: Date.now(),
-          })
-          const cachedMsg: Message = { id: generateMessageId(), role: 'assistant', content: semHit.answer, timestamp: this.monotonic() }
-          managed.messages.push(cachedMsg)
-          this.sendEvent({ type: 'text_complete', sessionId, text: semHit.answer, messageId: cachedMsg.id }, managed.workspace.id)
-          onAck?.(cachedMsg.id)
-          this.sendEvent({ type: 'complete', sessionId }, managed.workspace.id)
-          return
-        }
-      }
-
-      // 两轴路由决策
-      const routingInput: RoutingInput = {
-        message: shaped.shapedMessage,
-        attachmentsCount: (attachments?.length ?? 0) + (storedAttachments?.length ?? 0),
-        hasCodeBlocks: /```/.test(message),
-        hasFileMentions: /@[\w-]/.test(message),
-        hasToolIntent: /\b(改|写|删|运行|执行|build|test|fix|create|delete|run)\b/i.test(message),
-        conversationTurns: managed.messages.filter(m => m.role === 'user').length,
-        routingHint: options?.routingHint as RoutingHint | undefined,
-        latencySensitive: options?.latencySensitive,
-      }
-      let decision: RoutingDecision = routePlan(routingInput, prefsNormalized)
-      const agentRole = resolveSessionAgentRole(sessionId, managed.labels)
-      decision = applyRoutingPolicy(agentRole, decision, prefsNormalized)
-      decision = applyTrainedRouter(decision)
-
-      if (decision.fusionMode !== 'none') {
-        const budgetCheck = budgetTracker.checkBudget(
-          managed.workspace.id,
-          sessionId,
-          estimateFusionTokens(prefsNormalized),
-          prefsNormalized,
-        )
-        if (!budgetCheck.allowed) {
-          sessionLog.info('Fusion denied by budget gatekeeper', { sessionId, reason: budgetCheck.reason })
-          decision = { ...decision, fusionMode: 'none', basis: `${decision.basis}; budget-denied` }
-        }
-      }
-
-      pendingRoutingDecision = decision
-
-      const connSlugForCtx = resolvedConn?.slug ?? managed.llmConnection ?? ''
-      managed.routingTurnContext = {
-        decision,
-        prefs: prefsNormalized,
-        shapedMessage: shapedRoutingMessage,
-        exactCacheKey: routingExactCacheKey,
-        cascadeRetries: managed.routingTurnContext?.cascadeRetries ?? 0,
-        modelId: managed.model ?? '',
-        connectionSlug: connSlugForCtx,
-        turnStartedAt: Date.now(),
-        workspaceGitHead,
-      }
-
-      // 路由决策写 timeline
-      this.emitRoutingTimelineEvent({
-        type: 'model_routing_decision',
-        sessionId,
-        taskType: decision.taskType,
-        complexity: decision.complexity,
-        tier: decision.tier,
-        fusionMode: decision.fusionMode,
-        cascadeEligible: decision.cascadeEligible,
-        basis: decision.basis,
-        hintOverrideReason: decision.hintOverrideReason,
-        timestamp: Date.now(),
-      })
-
-      // 单模型档位覆写：fast 档用 mini 模型；balanced/best 用 connection 默认
-      // 只在用户未显式选模型时覆写（managed.model 为空 = 跟随连接默认）
-      if (decision.tier === 'fast' && !managed.model) {
-        if (resolvedConn) {
-          const miniModel = getMiniModel(resolvedConn)
-          if (miniModel) {
-            managed.model = miniModel
-          }
-        }
-      }
-    }
-    // ── 智能模型路由结束 ─────────────────────────────────────────────────────
 
     // If currently processing, behavior depends on the connection's
     // `midStreamBehavior` (resolved via {@link resolveMidStreamBehavior},
@@ -6160,7 +5660,6 @@ export class SessionManager implements ISessionManager {
     managed.lastSentAttachments = attachments
     managed.lastSentStoredAttachments = storedAttachments
     managed.lastSentOptions = options
-    managed.cascadeSignals = []
 
     // Capture the generation to detect if a new request supersedes this one.
     // This prevents the finally block from clobbering state when a follow-up message arrives.
@@ -6255,168 +5754,6 @@ export class SessionManager implements ISessionManager {
     const agent = await this.getOrCreateAgent(managed)
     sendSpan.mark('agent.ready')
 
-    // mini 二段判官：C2 边界模糊时用 mini 模型 refine（docs/03 §4.2）
-    if (
-      pendingRoutingDecision
-      && pendingRoutingPrefs
-      && pendingRoutingDecision.complexity === 2
-      && typeof (agent as { runMiniCompletion?: (p: string) => Promise<string | null> }).runMiniCompletion === 'function'
-    ) {
-      const runMini = (agent as { runMiniCompletion: (p: string) => Promise<string | null> }).runMiniCompletion.bind(agent)
-      const refined = await refineComplexityWithMini(
-        pendingRoutingDecision.complexity,
-        shapedRoutingMessage,
-        pendingRoutingDecision.taskType,
-        runMini,
-      )
-      if (refined.complexity !== pendingRoutingDecision.complexity || refined.basisSuffix) {
-        const latencySensitive = options?.latencySensitive
-          ?? inferLatencySensitive(
-            shapedRoutingMessage,
-            pendingRoutingDecision.taskType,
-            refined.complexity,
-          )
-        pendingRoutingDecision = rebuildDecisionForComplexity(
-          pendingRoutingDecision,
-          refined.complexity,
-          pendingRoutingPrefs,
-          latencySensitive,
-          refined.basisSuffix || undefined,
-        )
-        pendingRoutingDecision = applyTrainedRouter(pendingRoutingDecision)
-        if (managed.routingTurnContext) {
-          managed.routingTurnContext.decision = pendingRoutingDecision
-        }
-        if (refined.basisSuffix) {
-          this.emitRoutingTimelineEvent({
-            type: 'model_routing_decision',
-            sessionId,
-            taskType: pendingRoutingDecision.taskType,
-            complexity: pendingRoutingDecision.complexity,
-            tier: pendingRoutingDecision.tier,
-            fusionMode: pendingRoutingDecision.fusionMode,
-            cascadeEligible: pendingRoutingDecision.cascadeEligible,
-            basis: pendingRoutingDecision.basis,
-            hintOverrideReason: pendingRoutingDecision.hintOverrideReason,
-            timestamp: Date.now(),
-          })
-        }
-        if (pendingRoutingDecision.tier === 'fast' && !managed.model) {
-          const resolvedConn = resolveSessionConnection(managed.llmConnection, undefined)
-          if (resolvedConn) {
-            const miniModel = getMiniModel(resolvedConn)
-            if (miniModel) managed.model = miniModel
-          }
-        }
-      }
-    }
-
-    // Fusion 路径：Auto 模式已决策且 agent 就绪后执行（需 queryLlm）
-    if (
-      pendingRoutingDecision
-      && pendingRoutingDecision.fusionMode !== 'none'
-      && pendingRoutingPrefs
-    ) {
-      const connSlug = resolveSessionConnection(managed.llmConnection, undefined)?.slug ?? managed.llmConnection ?? ''
-      const fusionConfig = buildFusionConfig(pendingRoutingPrefs, connSlug)
-      const queryLlmAgent = agent as QueryLlmAgent
-      if (fusionConfig && queryLlmAgent.queryLlm) {
-        const fusionStart = Date.now()
-        const agentRole = resolveSessionAgentRole(sessionId, managed.labels)
-        const routingPorts = this.createRoutingPorts(managed, sessionId)
-        try {
-          const queryLlm = createQueryLlmAdapter(queryLlmAgent)
-          const stablePrefixHash = `${connSlug}:${(managed.enabledSourceSlugs ?? []).join(',')}`
-          const fusionResult = await runFusion(
-            pendingRoutingDecision,
-            shapedRoutingMessage,
-            '',
-            fusionConfig,
-            queryLlm,
-            stablePrefixHash,
-            buildPlanFusionHook(routingPorts),
-            buildFusionVerificationHooks(managed.workspace.rootPath),
-          )
-
-          budgetTracker.recordUsage(
-            managed.workspace.id,
-            sessionId,
-            agentRole,
-            'fusion-panel',
-            fusionResult.totalTokens,
-            fusionResult.totalCostUsd,
-          )
-          routingDataCollector.record({
-            decision: pendingRoutingDecision,
-            modelId: fusionConfig.writerModel.modelId,
-            tokens: fusionResult.totalTokens,
-            latencyMs: Date.now() - fusionStart,
-            agentId: sessionId,
-          })
-
-          const panelHits = fusionResult.panelResults.filter(r => r.cacheHit).length
-          const panelMisses = fusionResult.panelResults.length - panelHits
-          this.emitRoutingTimelineEvent({
-            type: 'cache_ledger',
-            sessionId,
-            routing: {
-              taskType: pendingRoutingDecision.taskType,
-              complexity: pendingRoutingDecision.complexity,
-              tier: pendingRoutingDecision.tier,
-              fusionMode: pendingRoutingDecision.fusionMode,
-              cascadeUpgrades: fusionResult.cascadeUpgrades,
-            },
-            layers: {
-              l3Panel: { hits: panelHits, misses: panelMisses },
-            },
-            cost: {
-              actual: fusionResult.totalCostUsd,
-              estimated: fusionResult.totalCostUsd,
-              savedByCache: null,
-            },
-            timestamp: Date.now(),
-          })
-
-          const fusionGitHead = managed.routingTurnContext?.workspaceGitHead
-          if (pendingRoutingPrefs.cache.exact && routingExactCacheKey) {
-            writeExactWithGitHead(routingExactCacheKey, fusionResult.finalAnswer, fusionGitHead)
-          }
-          if (pendingRoutingPrefs.cache.semantic && routingExactCacheKey) {
-            storeSemanticCacheEntry(routingExactCacheKey, fusionResult.finalAnswer)
-          }
-
-          const assistantMsg: Message = {
-            id: generateMessageId(),
-            role: 'assistant',
-            content: fusionResult.finalAnswer,
-            timestamp: this.monotonic(),
-          }
-          managed.messages.push(assistantMsg)
-          managed.lastMessageRole = 'assistant'
-          this.persistSession(managed)
-          this.sendEvent({
-            type: 'text_complete',
-            sessionId,
-            text: fusionResult.finalAnswer,
-            messageId: assistantMsg.id,
-          }, managed.workspace.id)
-          if (myGeneration === managed.processingGeneration) {
-            this.setProcessing(managed, false)
-          }
-          this.sendEvent({ type: 'complete', sessionId }, managed.workspace.id)
-          sendSpan.end()
-          return
-        } catch (err) {
-          sessionLog.warn('Fusion pipeline failed; falling through to single-model turn', {
-            sessionId,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        }
-      } else {
-        sessionLog.info('Fusion skipped: missing panel config or queryLlm', { sessionId })
-      }
-    }
-
     // Always set all sources for context (even if none are enabled), including built-ins
     const allSources = loadAllSources(workspaceRootPath)
     agent.setAllSources(allSources)
@@ -6470,20 +5807,9 @@ export class SessionManager implements ISessionManager {
       // Uses <system-reminder> tags so the LLM treats it as transient system guidance
       // rather than part of the user's message content. The original message is stored
       // in session JSONL (line ~3952); this only affects the SDK's in-process context.
-      let teamInboxContext = ''
-      try {
-        const coordinator = getTeamCoordinator({
-          workspaceRootPath: managed.workspace.rootPath,
-          runtime: createSessionManagerTeamRuntime(this, managed.workspace.id, managed.workspace.rootPath),
-        })
-        teamInboxContext = await coordinator.drainInboxContext(sessionId)
-      } catch (error) {
-        sessionLog.warn(`Failed to drain team inbox for ${sessionId}`, error)
-      }
-
-      let effectiveMessage = teamInboxContext ? `${teamInboxContext}\n\n${message}` : message
+      let effectiveMessage = message
       if (managed.wasInterrupted) {
-        effectiveMessage = `${effectiveMessage}\n\n<system-reminder>The previous assistant response was interrupted by the user and may be incomplete. Do not repeat or continue the interrupted response unless asked. Focus on the new message above.</system-reminder>`
+        effectiveMessage = `${message}\n\n<system-reminder>The previous assistant response was interrupted by the user and may be incomplete. Do not repeat or continue the interrupted response unless asked. Focus on the new message above.</system-reminder>`
         managed.wasInterrupted = false
       }
 
@@ -6705,9 +6031,6 @@ export class SessionManager implements ISessionManager {
 
     sessionLog.info('Cancelling processing for session:', sessionId, silent ? '(silent)' : '')
 
-    // CLI Runtime（ACP）：发 session/cancel 取消当前轮（不关进程，留作下一轮复用，docs/23）
-    if (managed.cliRuntimeId) this.cliRuntimeHost?.cancel(sessionId)
-
     // Collect queued message text for input restoration before clearing
     const queuedTexts = managed.messageQueue.map(q => q.message)
 
@@ -6871,35 +6194,6 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * 路由/缓存 timeline 事件 — 持久化到 session messages 供 ChatDisplay 渲染。
-   */
-  private emitRoutingTimelineEvent(event: SessionEvent): void {
-    this.emitSessionEvent(event)
-  }
-
-  /**
-   * 模型路由 / Plan Fusion 运行时端口（SessionManager → session-routing-bridge）
-   */
-  private createRoutingPorts(managed: ManagedSession, sessionId: string): SessionRoutingPorts {
-    const workspaceId = managed.workspace.id
-    const workspaceRoot = managed.workspace.rootPath
-    const bridge = createInternalActionRuntimeBridge(
-      this,
-      workspaceRoot,
-      createSessionManagerTeamRuntime(this, workspaceId, workspaceRoot),
-    )
-    return {
-      sessionId,
-      workspaceId,
-      workspaceRoot,
-      labels: managed.labels,
-      sendEvent: (event) => this.sendEvent(event, workspaceId),
-      requestWorkflowPermission: (sid, input) => this.requestWorkflowPermission(sid, input),
-      getInternalActionBridge: () => bridge,
-    }
-  }
-
-  /**
    * Central handler for when processing stops (any reason).
    * Single source of truth for cleanup and queue processing.
    *
@@ -6914,13 +6208,6 @@ export class SessionManager implements ISessionManager {
     if (!managed) return
 
     sessionLog.info(`Processing stopped for session ${sessionId}: ${reason}`)
-
-    if (
-      (reason === 'interrupted' || reason === 'timeout')
-      && managed.routingTurnContext
-    ) {
-      recordRoutingPreferenceRejected(managed.routingTurnContext, sessionId)
-    }
 
     // 1. Cleanup state
     this.setProcessing(managed, false)
@@ -6974,93 +6261,6 @@ export class SessionManager implements ISessionManager {
       managed.pendingExternalMetadata = undefined
       sessionLog.info(`Applying deferred external metadata for session ${sessionId} after processing stop`)
       this.applyExternalSessionMetadata(managed, pendingHeader)
-    }
-
-    // 4.5 单模型 Auto 路由：语义缓存写入 + 级联升级重试
-    if (reason === 'complete' && managed.routingTurnContext && managed.messageQueue.length === 0) {
-      const ctx = managed.routingTurnContext
-      const lastAssistant = [...managed.messages].reverse().find(
-        m => m.role === 'assistant' && !m.isIntermediate,
-      )
-      const assistantText = typeof lastAssistant?.content === 'string' ? lastAssistant.content : ''
-
-      if (assistantText && ctx.prefs.cache.semantic && ctx.exactCacheKey) {
-        storeSemanticCacheEntry(ctx.exactCacheKey, assistantText)
-      }
-
-      if (assistantText && ctx.prefs.cache.exact && ctx.exactCacheKey) {
-        writeExactWithGitHead(ctx.exactCacheKey, assistantText, ctx.workspaceGitHead)
-      }
-
-      if (assistantText && !managed.cascadeRetryPending) {
-        routingDataCollector.record({
-          decision: ctx.decision,
-          modelId: ctx.modelId || managed.model || '',
-          tokens: managed.tokenUsage?.totalTokens ?? 0,
-          latencyMs: Date.now() - ctx.turnStartedAt,
-          agentId: sessionId,
-        })
-      }
-
-      if (
-        !managed.cascadeRetryPending
-        && ctx.decision.cascadeEligible
-        && assistantText
-        && managed.lastSentMessage
-      ) {
-        const plan = planCascadeRetry(ctx, assistantText, managed.cascadeSignals ?? [])
-        managed.cascadeSignals = []
-        if (plan.upgraded && plan.nextDecision) {
-          recordRoutingPreferenceRetried(ctx, sessionId)
-          managed.routingTurnContext = {
-            ...ctx,
-            decision: plan.nextDecision,
-            cascadeRetries: ctx.cascadeRetries + plan.cascadeUpgrades,
-          }
-          managed.cascadeRetryPending = true
-
-          if (lastAssistant) {
-            const idx = managed.messages.indexOf(lastAssistant)
-            if (idx >= 0) managed.messages.splice(idx, 1)
-          }
-
-          this.emitRoutingTimelineEvent({
-            type: 'model_routing_decision',
-            sessionId,
-            taskType: plan.nextDecision.taskType,
-            complexity: plan.nextDecision.complexity,
-            tier: plan.nextDecision.tier,
-            fusionMode: plan.nextDecision.fusionMode,
-            cascadeEligible: plan.nextDecision.cascadeEligible,
-            basis: plan.nextDecision.basis,
-            hintOverrideReason: plan.nextDecision.hintOverrideReason,
-            timestamp: Date.now(),
-          })
-
-          const retryMessage = managed.lastSentMessage
-          const retryAttachments = managed.lastSentAttachments
-          const retryStored = managed.lastSentStoredAttachments
-          const retryOptions = managed.lastSentOptions
-
-          setImmediate(() => {
-            this.sendMessage(
-              sessionId,
-              retryMessage,
-              retryAttachments,
-              retryStored,
-              retryOptions,
-            ).catch(err => {
-              sessionLog.error('Cascade retry sendMessage failed', {
-                sessionId,
-                error: err instanceof Error ? err.message : String(err),
-              })
-              this.onProcessingStopped(sessionId, 'error')
-            })
-          })
-          this.persistSession(managed)
-          return
-        }
-      }
     }
 
     // 5. Check queue and process or complete
@@ -7280,15 +6480,6 @@ export class SessionManager implements ISessionManager {
     alwaysAllow: boolean,
     options?: import('@craft-agent/shared/protocol').PermissionResponseOptions,
   ): boolean {
-    const workflowRequest = this.pendingWorkflowPermissionResolvers.get(requestId)
-    if (workflowRequest) {
-      if (workflowRequest.sessionId !== sessionId) return false
-      clearTimeout(workflowRequest.timer)
-      this.pendingWorkflowPermissionResolvers.delete(requestId)
-      workflowRequest.resolve(allowed)
-      return true
-    }
-
     const managed = this.sessions.get(sessionId)
     if (managed?.agent) {
       const requestMeta = this.pendingPermissionRequests.get(requestId)
@@ -7317,74 +6508,6 @@ export class SessionManager implements ISessionManager {
       sessionLog.warn(`Cannot respond to permission - no agent for session ${sessionId}`)
       return false
     }
-  }
-
-  private readonly managerDecisionServices = new Map<string, ManagerDecisionService>()
-
-  private getManagerDecisionService(workspaceRootPath: string): ManagerDecisionService {
-    let service = this.managerDecisionServices.get(workspaceRootPath)
-    if (!service) {
-      service = new ManagerDecisionService(workspaceRootPath)
-      this.managerDecisionServices.set(workspaceRootPath, service)
-    }
-    return service
-  }
-
-  /**
-   * 分级自动决策（D12 / docs/17 §4）：开启自动决策后，按规则代答低风险权限请求。
-   * 安全边界：只在有显式 L2 规则匹配时 auto_allow；L3/无规则/未开启 → 返回 null（照常弹给用户）。
-   * `team:` 动作由 TeamCoordinator 自己分级，这里跳过避免双判。每次自动判断写 timeline。
-   */
-  private tryAutoDecidePermission(
-    managed: ManagedSession,
-    input: { toolName: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation' },
-  ): boolean | null {
-    const service = this.getManagerDecisionService(managed.workspace.rootPath)
-    const outcome = permissionAutoOutcome(input.toolName, service.getSettings())
-    if (outcome === 'prompt') return null
-    const { record } = service.decide(
-      { kind: 'write_execute_external', action: input.toolName, sessionId: managed.id },
-      MANAGER_ACTOR,
-    )
-    void this.appendSessionEvent(this.managerDecisionEvent(record)).catch(() => { /* timeline best-effort */ })
-    return outcome === 'allow'
-  }
-
-  private managerDecisionEvent(record: ManagerAutoDecisionRecord): SessionEvent {
-    return ManagerDecisionService.toEventPayload(record) as unknown as SessionEvent
-  }
-
-  requestWorkflowPermission(
-    sessionId: string,
-    input: { toolName: string; description: string; type: 'file_write' | 'mcp_mutation' | 'api_mutation'; reason?: string },
-  ): Promise<boolean> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return Promise.resolve(false)
-
-    const auto = this.tryAutoDecidePermission(managed, input)
-    if (auto !== null) return Promise.resolve(auto)
-
-    const requestId = randomUUID()
-
-    return new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => {
-        this.pendingWorkflowPermissionResolvers.delete(requestId)
-        resolve(false)
-      }, 120_000)
-      this.pendingWorkflowPermissionResolvers.set(requestId, { sessionId, resolve, timer })
-      this.sendEvent({
-        type: 'permission_request',
-        sessionId,
-        request: {
-          requestId,
-          sessionId,
-          toolName: input.toolName,
-          description: input.description,
-          type: input.type,
-          reason: input.reason,
-        },
-      }, managed.workspace.id)
-    })
   }
 
   /**
@@ -7542,40 +6665,7 @@ export class SessionManager implements ISessionManager {
   async setSessionLabels(sessionId: string, labels: string[]): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
-      // 队长唯一性（docs/33 §1.2）：给一个会话加裸 `priority`（显示为「队长」）身份标签时，
-      // 原子移除同 workspace 其它会话的队长标签，走同一条 labels_changed → timeline。
-      const becomesLeader = hasLeaderLabel(labels)
-      if (becomesLeader) {
-        for (const other of this.sessions.values()) {
-          if (other.id === sessionId) continue
-          if (other.workspace.id !== managed.workspace.id) continue
-          const otherLabels = other.labels ?? []
-          if (!hasLeaderLabel(otherLabels)) continue
-          other.labels = withoutLeaderLabel(otherLabels)
-          this.setMetadataWriteGuard(other)
-          this.sendEvent({
-            type: 'labels_changed',
-            sessionId: other.id,
-            labels: other.labels,
-          }, other.workspace.id)
-          this.persistSession(other)
-          await this.flushSession(other.id)
-          this.configWatchers.get(other.workspace.rootPath)?.notifyFileChange(`sessions/${other.id}/session.jsonl`)
-        }
-      }
-
       managed.labels = labels
-      const identityEffects = resolveIdentityLabelEffects(labels, loadLabelConfig(managed.workspace.rootPath).labels)
-      const nextSystemPromptPreset = managed.systemPromptPreset === 'mini'
-        ? managed.systemPromptPreset
-        : identityEffects.systemPromptPreset
-      if (managed.systemPromptPreset !== nextSystemPromptPreset) {
-        managed.systemPromptPreset = nextSystemPromptPreset
-        managed.agent?.setSystemPromptPreset?.(nextSystemPromptPreset)
-      }
-      if (identityEffects.permissionMode && managed.permissionMode !== identityEffects.permissionMode) {
-        this.setSessionPermissionMode(sessionId, identityEffects.permissionMode)
-      }
       this.setMetadataWriteGuard(managed)
 
       this.sendEvent({
@@ -7592,305 +6682,6 @@ export class SessionManager implements ISessionManager {
       const watcher = this.configWatchers.get(managed.workspace.rootPath)
       watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
     }
-  }
-
-  /**
-   * 设置会话任务进度清单（docs/35）。replace-all 语义，和 setSessionLabels 同机制：
-   * 写内存 → 发 `progress_updated` 事件进 timeline → 持久化。人和 Agent 共用此路径。
-   */
-  async setSessionProgress(sessionId: string, tasks: ProgressTask[]): Promise<void> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return
-    managed.progress = tasks
-    this.setMetadataWriteGuard(managed)
-    this.sendEvent({
-      type: 'progress_updated',
-      sessionId: managed.id,
-      tasks: managed.progress,
-    }, managed.workspace.id)
-    this.persistSession(managed)
-    await this.flushSession(managed.id)
-    this.configWatchers.get(managed.workspace.rootPath)?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
-  }
-
-  /**
-   * 选择/清除会话的本机 CLI Runtime（docs/23）。null = 回到 API 模型路径。
-   * 只改选择；真正发送路由在 sendMessage 里按 `cliRuntimeId` 分支。
-   */
-  async setSessionCliRuntime(sessionId: string, cliRuntimeId: string | null): Promise<void> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return
-    const changedRuntime = managed.cliRuntimeId !== cliRuntimeId
-    if (changedRuntime) this.cliRuntimeHost?.dispose(sessionId)
-    managed.cliRuntimeId = cliRuntimeId
-    managed.cliRuntimeModelId = null
-    managed.cliRuntimeModelState = undefined
-    this.setMetadataWriteGuard(managed)
-    this.sendEvent({ type: 'cli_runtime_changed', sessionId: managed.id, cliRuntimeId }, managed.workspace.id)
-    this.persistSession(managed)
-    await this.flushSession(managed.id)
-    this.configWatchers.get(managed.workspace.rootPath)?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
-    if (!cliRuntimeId) return
-    const runtime = getDefaultCliRuntimeCatalog().get(cliRuntimeId)
-    if (!runtime || !runtime.enabled) throw new Error(`CLI Runtime 不可用：${cliRuntimeId}`)
-    if (!hasCliRuntimeSendAdapter(runtime)) throw new Error(`CLI Runtime 暂不可发送：${runtime.displayName}`)
-    if (runtime.protocol === 'acp') {
-      await this.getCliRuntimeHost().prepare(sessionId, runtime)
-    } else {
-      const state = this.createStaticCliRuntimeModelState(runtime)
-      managed.cliRuntimeModelState = state
-      managed.cliRuntimeModelId = state.currentModelId
-      this.sendEvent({ type: 'cli_runtime_models_changed', sessionId: managed.id, state }, managed.workspace.id)
-      this.persistSession(managed)
-      await this.flushSession(managed.id)
-    }
-  }
-
-  /** 切换当前 CLI session 的模型；模型清单与切换能力来自 ACP session/new。 */
-  async setSessionCliRuntimeModel(sessionId: string, modelId: string | null): Promise<void> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed?.cliRuntimeId) throw new Error('请先选择 CLI Runtime')
-    const runtime = getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId)
-    if (!runtime || !runtime.enabled) throw new Error(`CLI Runtime 不可用：${managed.cliRuntimeId}`)
-    if (!modelId) {
-      managed.cliRuntimeModelId = null
-      this.persistSession(managed)
-      await this.flushSession(sessionId)
-      return
-    }
-    if (runtime.protocol !== 'acp') {
-      const state = this.createStaticCliRuntimeModelState(runtime, modelId)
-      managed.cliRuntimeModelId = state.currentModelId
-      managed.cliRuntimeModelState = state
-      this.sendEvent({ type: 'cli_runtime_models_changed', sessionId: managed.id, state }, managed.workspace.id)
-      this.persistSession(managed)
-      await this.flushSession(sessionId)
-      return
-    }
-    await this.getCliRuntimeHost().setModel(sessionId, runtime, modelId)
-  }
-
-  private createStaticCliRuntimeModelState(runtime: CliRuntimeDefinition, preferredModelId?: string | null): CliRuntimeModelState {
-    const models = runtime.discoveredModels ?? []
-    const currentModelId = preferredModelId && models.some(model => model.id === preferredModelId)
-      ? preferredModelId
-      : (models[0]?.id ?? null)
-    return {
-      runtimeId: runtime.id,
-      source: models.length > 0 ? 'models' : 'runtime_managed',
-      currentModelId,
-      availableModels: models,
-      canSwitch: models.length > 0,
-    }
-  }
-
-  // ---- CLI Runtime（ACP）发送路由（docs/23）-------------------------------
-
-  private cliRuntimeHost?: CliRuntimeHost
-
-  private getCliRuntimeHost(): CliRuntimeHost {
-    if (!this.cliRuntimeHost) {
-      this.cliRuntimeHost = new CliRuntimeHost({
-        emitEvent: (sessionId, event) => this.translateCliRuntimeEvent(sessionId, event),
-        requestPermission: (sessionId, request) => this.requestCliRuntimePermission(sessionId, request),
-        resolveCwd: sessionId => {
-          const managed = this.sessions.get(sessionId)
-          return managed?.workingDirectory ?? managed?.workspace.rootPath ?? process.cwd()
-        },
-      })
-    }
-    return this.cliRuntimeHost
-  }
-
-  /** 把 ACP 归一化流事件翻成 craft 的流式事件（复用 text_delta/text_complete 管线，不重造）。 */
-  private translateCliRuntimeEvent(sessionId: string, event: CliRuntimeStreamEvent): void {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return
-    const workspaceId = managed.workspace.id
-    switch (event.type) {
-      case 'text':
-        managed.streamingText += event.text
-        this.sendEvent({ type: 'text_delta', sessionId, delta: event.text }, workspaceId)
-        break
-      case 'thought':
-        // 思考过程不投影为正式消息（保持与 API 路径一致的简洁）
-        break
-      case 'tool_call':
-        // v1 不把 ACP 工具调用投影成 craft 工具卡（避免造第二套工具事件）；留到接 UI 时统一设计
-        break
-      case 'models_changed': {
-        const managed = this.sessions.get(sessionId)
-        if (!managed) break
-        managed.cliRuntimeModelState = event.state
-        managed.cliRuntimeModelId = event.state.currentModelId
-        this.sendEvent({ type: 'cli_runtime_models_changed', sessionId, state: event.state }, managed.workspace.id)
-        this.persistSession(managed)
-        break
-      }
-      case 'done': {
-        const text = managed.streamingText
-        managed.streamingText = ''
-        if (text.length > 0) {
-          const assistantMessage: Message = {
-            id: generateMessageId(),
-            role: 'assistant',
-            content: text,
-            timestamp: this.monotonic(),
-          }
-          managed.messages.push(assistantMessage)
-          managed.lastMessageRole = 'assistant'
-          managed.lastFinalMessageId = assistantMessage.id
-          this.sendEvent({ type: 'text_complete', sessionId, text, messageId: assistantMessage.id }, workspaceId)
-        }
-        break
-      }
-      case 'error':
-        managed.streamingText = ''
-        this.sendEvent({ type: 'text_complete', sessionId, text: `⚠️ CLI Runtime 出错：${event.message}` }, workspaceId)
-        break
-    }
-  }
-
-  private async requestCliRuntimePermission(sessionId: string, request: CliRuntimePermissionRequest): Promise<boolean> {
-    return this.requestWorkflowPermission(sessionId, {
-      toolName: request.title || 'cli-runtime-tool',
-      description: `CLI Runtime 请求执行工具：${request.title}`,
-      type: 'mcp_mutation',
-      reason: 'CLI Runtime ACP tool call',
-    })
-  }
-
-  /**
-   * 选了 CLI Runtime 时的一轮发送（docs/23/24）。记录用户消息 → 跑一轮 ACP → 助手消息进 timeline。
-   * 复用 craft 的 setProcessing / user_message / text_* / complete 事件，不建第二套 session。
-   */
-  private async runCliRuntimeTurn(managed: ManagedSession, message: string, onAck?: (messageId: string) => void): Promise<void> {
-    const sessionId = managed.id
-    const workspaceId = managed.workspace.id
-
-    const userMessage: Message = { id: generateMessageId(), role: 'user', content: message, timestamp: this.monotonic() }
-    managed.messages.push(userMessage)
-    managed.lastMessageRole = 'user'
-    this.sendEvent({ type: 'user_message', sessionId, message: userMessage, status: 'accepted' }, workspaceId)
-    this.persistSession(managed)
-    await this.flushSession(sessionId)
-    onAck?.(userMessage.id)
-
-    const runtime = getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId ?? '')
-    if (!runtime || !runtime.enabled) {
-      this.sendEvent({
-        type: 'text_complete',
-        sessionId,
-        text: `⚠️ 选中的 CLI Runtime 不可用（${managed.cliRuntimeId ?? 'none'}）。请在设置里检查/启用，或切回 API 模型。`,
-      }, workspaceId)
-      return
-    }
-    if (!hasCliRuntimeSendAdapter(runtime)) {
-      this.sendEvent({
-        type: 'text_complete',
-        sessionId,
-        text: `⚠️ ${runtime.displayName} 已检测到，但当前还没有 ${runtime.protocol} adapter，不能发送。请先选择已支持的 CLI，或切回 API 模型。`,
-      }, workspaceId)
-      return
-    }
-
-    this.setProcessing(managed, true)
-    managed.streamingText = ''
-    try {
-      if (runtime.protocol === 'acp') {
-        await this.getCliRuntimeHost().runTurn(sessionId, runtime, message, managed.cliRuntimeModelId)
-      } else {
-        const allowed = await this.requestWorkflowPermission(sessionId, {
-          toolName: runtime.displayName,
-          description: `运行本机 CLI：${runtime.command} ${runtime.args.join(' ')}`.trim(),
-          type: 'mcp_mutation',
-          reason: 'Native/subscription CLI runtime turn',
-        })
-        if (!allowed) {
-          this.translateCliRuntimeEvent(sessionId, { type: 'error', message: '用户未授权运行本机 CLI。' })
-          return
-        }
-        await runNativeCliRuntimeTurn({
-          runtime,
-          cwd: managed.workingDirectory ?? managed.workspace.rootPath ?? process.cwd(),
-          prompt: message,
-          modelId: managed.cliRuntimeModelId,
-          reasoningEffort: toNativeCliReasoningEffort(managed.thinkingLevel),
-          emitEvent: event => this.translateCliRuntimeEvent(sessionId, event),
-        })
-      }
-    } catch (error) {
-      this.translateCliRuntimeEvent(sessionId, { type: 'error', message: error instanceof Error ? error.message : String(error) })
-    } finally {
-      this.setProcessing(managed, false)
-      this.sendEvent({ type: 'complete', sessionId, tokenUsage: managed.tokenUsage }, workspaceId)
-      this.persistSession(managed)
-      await this.flushSession(sessionId)
-    }
-  }
-
-  /**
-   * Token 环点击弹层的数据（docs/16 §2.2）：本会话上下文占用 + 套餐额度，诚实分级。
-   * CLI 运行时上下文窗口未知（由 CLI 管理）；额度默认不可用，不编造数字。
-   */
-  getSessionUsageView(sessionId: string): SessionUsageView | null {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return null
-    const isCli = Boolean(managed.cliRuntimeId)
-    const usage = managed.tokenUsage
-    const window = isCli
-      ? null
-      : (usage?.contextWindow ?? (managed.model ? getModelById(managed.model)?.contextWindow ?? null : null))
-    const modelLabel = isCli
-      ? (getDefaultCliRuntimeCatalog().get(managed.cliRuntimeId ?? '')?.displayName ?? '本机 CLI')
-      : (managed.model ? getModelDisplayName(managed.model) : 'API 模型')
-
-    // 上下文分段（Cursor 式）：仅 API 运行方式且占用已知时估算。系统提示+规则用 getSystemPrompt
-    // 估算，对话用消息文本估算，余量归 other，整体归一到真实 contextTokens（标 estimated）。
-    // CLI 运行时上下文由 CLI 管理 → 不拆分。
-    let segments: ContextSegment[] | undefined
-    const usedTokens = usage?.contextTokens ?? 0
-    if (!isCli && usedTokens > 0) {
-      try {
-        const systemPromptText = getSystemPrompt(
-          undefined,
-          undefined,
-          managed.workspace.rootPath,
-          managed.workingDirectory ?? managed.workspace.rootPath,
-          managed.systemPromptPreset,
-          undefined,
-        )
-        const promptSections = estimatePromptSections(systemPromptText)
-        const enabledSources = getSourcesBySlugs(managed.workspace.rootPath, managed.enabledSourceSlugs ?? [])
-          .filter(isSourceUsable)
-        const conversationText = managed.messages.map(message => message.content ?? '').join('\n')
-        segments = estimateContextSegments({
-          total: usedTokens,
-          systemTokens: promptSections.systemTokens,
-          toolTokens: promptSections.toolTokens,
-          rulesTokens: promptSections.rulesTokens,
-          skillTokens: promptSections.skillTokens + estimateMentionedSkillTokens(
-            managed.messages,
-            managed.workspace.rootPath,
-            managed.workingDirectory,
-          ),
-          mcpTokens: promptSections.mcpTokens + estimateSourceContextTokens(enabledSources),
-          subagentTokens: promptSections.subagentTokens + estimateSubagentContextTokens(managed.messages),
-          conversationTokens: estimateTokens(conversationText),
-        })
-      } catch {
-        segments = undefined
-      }
-    }
-
-    return buildSessionUsageView({
-      sessionId,
-      runtime: isCli ? 'cli' : 'api',
-      modelLabel,
-      usedTokens,
-      contextWindow: window,
-      segments,
-    })
   }
 
   /**
@@ -8270,10 +7061,6 @@ export class SessionManager implements ISessionManager {
           existingToolMsg.toolResult = formattedResult
           existingToolMsg.toolStatus = inferredError ? 'error' : 'completed'
           existingToolMsg.isError = inferredError
-          if (inferredError && managed.routingTurnContext) {
-            const toolSignals = collectCascadeToolSignal(toolName, formattedResult, true)
-            managed.cascadeSignals = [...(managed.cascadeSignals ?? []), ...toolSignals]
-          }
           // If message doesn't have parent set, use event's parentToolUseId
           if (!existingToolMsg.parentToolUseId && event.parentToolUseId) {
             existingToolMsg.parentToolUseId = event.parentToolUseId
@@ -8645,17 +7432,6 @@ export class SessionManager implements ISessionManager {
           // Cache tokens reflect current state, not accumulated
           managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens ?? 0
           managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens ?? 0
-          if (managed.routingTurnContext) {
-            const conn = resolveSessionConnection(managed.llmConnection, undefined)
-            emitProviderCacheLedger(
-              (evt) => this.emitRoutingTimelineEvent(evt),
-              sessionId,
-              managed.routingTurnContext,
-              event.usage.cacheReadTokens ?? 0,
-              event.usage.cacheCreationTokens ?? 0,
-              conn?.providerType ?? conn?.slug ?? managed.llmConnection ?? 'unknown',
-            )
-          }
           // Update context window (use latest value - may change if model switches)
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
@@ -8705,81 +7481,6 @@ export class SessionManager implements ISessionManager {
       // Note: working_directory_changed is user-initiated only (via updateWorkingDirectory),
       // the agent no longer has a change_working_directory tool
     }
-  }
-
-  /**
-   * Emit a SessionEvent into the one shared timeline (Fleet 工作台动作引擎用)。
-   * Resolves the workspace from the session so design/action events reach the
-   * same broadcast channel as model/tool events —— 没有第二条 timeline（docs/31 §1）。
-   */
-  emitSessionEvent(event: SessionEvent): void {
-    void this.appendSessionEvent(event).catch(error => {
-      sessionLog.error(`Failed to persist ${event.type} for ${event.sessionId}`, error)
-    })
-  }
-
-  /** Design patch 回滚 → RouteLLM 偏好信号 */
-  recordPatchRolledBackPreference(sessionId: string): void {
-    const managed = this.sessions.get(sessionId)
-    if (!managed?.routingTurnContext) return
-    recordRoutingPreferenceRolledBack(managed.routingTurnContext, sessionId)
-  }
-
-  async appendSessionEvent(event: SessionEvent): Promise<string> {
-    const managed = this.sessions.get(event.sessionId)
-    if (!managed) throw new Error(`Session ${event.sessionId} not found`)
-    await this.ensureMessagesLoaded(managed)
-    const messageId = generateMessageId()
-    const message: Message = {
-      id: messageId,
-      role: 'info',
-      content: formatWorkflowEvent(event),
-      timestamp: this.monotonic(),
-      infoLevel: 'info',
-      customData: { sessionEvent: event },
-    }
-    managed.messages.push(message)
-    this.persistSession(managed)
-    await this.flushSession(managed.id)
-    this.sendEvent(event, managed.workspace.id)
-    return messageId
-  }
-
-  async getLatestTeamReport(sessionId: string): Promise<TeamReport | null> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) return null
-    await this.ensureMessagesLoaded(managed)
-    for (let index = managed.messages.length - 1; index >= 0; index--) {
-      const event = managed.messages[index]?.customData?.sessionEvent as SessionEvent | undefined
-      if (event?.type === 'team_report_submitted') {
-        return {
-          reportId: event.reportId,
-          taskId: event.taskId,
-          runId: event.runId,
-          reporterSessionId: event.reporterSessionId,
-          summary: event.summary,
-          artifactPaths: event.artifactPaths,
-          createdAt: event.timestamp,
-        }
-      }
-    }
-    return null
-  }
-
-  async resolveTeamInbox(items: TeamInboxItem[]): Promise<string> {
-    const lines: string[] = []
-    for (const item of items) {
-      const source = this.sessions.get(item.sourceSessionId)
-      if (!source) continue
-      await this.ensureMessagesLoaded(source)
-      const message = source.messages.find(candidate => candidate.id === item.sourceMessageId)
-      if (!message) continue
-      const sender = item.fromActor.displayName ?? item.fromActor.agentId ?? item.fromActor.kind
-      lines.push(`- [${item.kind}] 来自 ${sender}: ${message.content}`)
-    }
-    return lines.length > 0
-      ? `<team-inbox>\n${lines.join('\n')}\n</team-inbox>`
-      : ''
   }
 
   private sendEvent(event: SessionEvent, workspaceId?: string): void {
@@ -9349,9 +8050,6 @@ export class SessionManager implements ISessionManager {
   cleanup(): void {
     sessionLog.info('Cleaning up resources...')
 
-    // CLI Runtime（ACP）子进程全部清理（docs/23：窗口关闭/退出必须清理）
-    this.cliRuntimeHost?.disposeAll()
-
     // Stop all ConfigWatchers (file system watchers)
     for (const [path, watcher] of this.configWatchers) {
       watcher.stop()
@@ -9380,11 +8078,6 @@ export class SessionManager implements ISessionManager {
     // Clear pending credential resolvers (they won't be resolved, but prevents memory leak)
     this.pendingCredentialResolvers.clear()
     this.pendingPermissionRequests.clear()
-    for (const pending of this.pendingWorkflowPermissionResolvers.values()) {
-      clearTimeout(pending.timer)
-      pending.resolve(false)
-    }
-    this.pendingWorkflowPermissionResolvers.clear()
     this.adminRememberApprovals.clear()
 
     // Clean up session-scoped tool callbacks for all sessions

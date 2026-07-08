@@ -373,10 +373,7 @@ export function getSystemPrompt(
   // to enable prompt caching. The system prompt stays static and cacheable.
   // Safe Mode context is also in user messages for the same reason.
   const basePrompt = getCraftAssistantPrompt(workspaceRootPath, backendName, resolvedIncludeCoAuthoredBy);
-  const identityPrompt = preset && preset !== 'default'
-    ? `\n\n## Session Identity\n${preset}\n`
-    : '';
-  const fullPrompt = `${basePrompt}${identityPrompt}${preferences}${debugContext}${projectContextFiles}`;
+  const fullPrompt = `${basePrompt}${preferences}${debugContext}${projectContextFiles}`;
 
   debug('[getSystemPrompt] full prompt length:', fullPrompt.length);
 

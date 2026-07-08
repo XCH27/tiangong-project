@@ -4,9 +4,7 @@ import { useSetAtom } from "jotai"
 import { isToday, isYesterday, format, startOfDay } from "date-fns"
 import { getDateLocale } from "@craft-agent/shared/i18n"
 import { useAction } from "@/actions"
-import { Inbox, Archive, Users } from "lucide-react"
-import { useAppShellContext } from "@/context/AppShellContext"
-import type { TeamProjection } from "@craft-agent/shared/protocol"
+import { Inbox, Archive } from "lucide-react"
 
 import { getSessionStatus } from "@/utils/session"
 import * as storage from "@/lib/local-storage"
@@ -158,28 +156,6 @@ export function SessionList({
 
   const { navigate, navigateToSession: navigateToSessionPrimary } = useNavigation()
   const navigateToSession = onNavigateToSession ?? navigateToSessionPrimary
-
-  // 队长会话本身就是团队群聊锚点。只有旧数据仍指向 hidden fallback 时才显示
-  // 置顶入口，避免把同一会话重复显示成“队长”和“团队群聊”。
-  const { activeWorkspaceId } = useAppShellContext()
-  const [teamProjection, setTeamProjection] = useState<TeamProjection | null>(null)
-  const teamProjectionRefreshKey = useMemo(
-    () => items.map(item => `${item.id}:${(item.labels ?? []).join(',')}`).join('|'),
-    [items],
-  )
-  useEffect(() => {
-    let cancelled = false
-    if (!activeWorkspaceId || !window.electronAPI?.getTeam) { setTeamProjection(null); return }
-    void window.electronAPI.getTeam(activeWorkspaceId)
-      .then((projection) => { if (!cancelled) setTeamProjection(projection) })
-      .catch(() => { if (!cancelled) setTeamProjection(null) })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, teamProjectionRefreshKey])
-  const teamChatSessionId = teamProjection?.teamConversationSessionId ?? null
-  const teamSequenceById = useMemo(
-    () => Object.fromEntries((teamProjection?.members ?? []).map((m) => [m.sessionId, m.sequence])),
-    [teamProjection],
-  )
   const navState = useNavigationState()
   const { showEscapeOverlay } = useEscapeInterrupt()
 
@@ -638,7 +614,6 @@ export function SessionList({
   const resolvedSearchQuery = isSearchMode ? highlightQuery : searchQuery
 
   const listContext = useMemo((): SessionListContextValue => ({
-    teamSequenceById,
     onRenameClick: handleRenameClick,
     onSessionStatusChange,
     onFlag: onFlag ? handleFlagWithToast : undefined,
@@ -672,7 +647,6 @@ export function SessionList({
     sessionStatuses, flatLabels, labels, resolvedSearchQuery,
     focusedSessionId, selectionStore.state.selected, isMultiSelectActive,
     sessionOptions, contentSearchResults, activeChatMatchInfo, hasPendingPrompt,
-    teamSequenceById,
   ])
 
   // --- Empty state (non-search) — render before EntityList ---
@@ -737,19 +711,6 @@ export function SessionList({
         }}
         header={
           <>
-            {teamChatSessionId && teamChatSessionId !== teamProjection?.leaderSessionId && !searchActive && (
-              <button
-                type="button"
-                onClick={() => navigateToSession(teamChatSessionId)}
-                title={t('session.teamChat')}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-foreground/[0.04] border-b border-border/40"
-              >
-                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-accent/15 text-accent flex-shrink-0">
-                  <Users className="h-3.5 w-3.5" />
-                </span>
-                <span className="text-[13px] font-medium truncate">{t('session.teamChat')}</span>
-              </button>
-            )}
             {searchActive && (
               <SessionSearchHeader
                 searchQuery={searchQuery}

@@ -39,8 +39,6 @@ import {
   handleWorkingDirectoryChanged,
   handlePermissionModeChanged,
   handleSessionModelChanged,
-  handleCliRuntimeModelsChanged,
-  handleCliRuntimeChanged,
   handleConnectionChanged,
   handleUserMessage,
   handleMessageAnnotationsUpdated,
@@ -149,12 +147,6 @@ export function processEvent(
     case 'session_model_changed':
       return handleSessionModelChanged(state, event)
 
-    case 'cli_runtime_models_changed':
-      return handleCliRuntimeModelsChanged(state, event)
-
-    case 'cli_runtime_changed':
-      return handleCliRuntimeChanged(state, event)
-
     case 'connection_changed':
       return handleConnectionChanged(state, event)
 
@@ -216,13 +208,6 @@ export function processEvent(
 
     case 'usage_update':
       return handleUsageUpdate(state, event)
-
-    case 'progress_updated':
-      // Session task checklist (docs/35). Replace-all, like labels — store on session.
-      return {
-        state: { ...state, session: { ...state.session, progress: event.tasks } },
-        effects: [],
-      }
 
     default: {
       // Unknown event type - return state unchanged but as new reference

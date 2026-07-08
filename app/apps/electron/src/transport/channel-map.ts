@@ -31,20 +31,6 @@ export const CHANNEL_MAP = {
   respondToPermission: invoke(RPC_CHANNELS.sessions.RESPOND_TO_PERMISSION),
   respondToCredential: invoke(RPC_CHANNELS.sessions.RESPOND_TO_CREDENTIAL),
   sessionCommand: invoke(RPC_CHANNELS.sessions.COMMAND),
-  listCliRuntimes: invoke(RPC_CHANNELS.cliRuntimes.LIST),
-  getCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.GET),
-  addCustomCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.ADD_CUSTOM),
-  updateCustomCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.UPDATE_CUSTOM),
-  setCliRuntimeEnabled: invoke(RPC_CHANNELS.cliRuntimes.SET_ENABLED),
-  deleteCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.DELETE),
-  testCliRuntime: invoke(RPC_CHANNELS.cliRuntimes.TEST),
-  onCliRuntimesChanged: listener(RPC_CHANNELS.cliRuntimes.CHANGED),
-  getManagerDecisionSettings: invoke(RPC_CHANNELS.managerDecision.GET_SETTINGS),
-  updateManagerDecisionSettings: invoke(RPC_CHANNELS.managerDecision.UPDATE_SETTINGS),
-  getSessionUsage: invoke(RPC_CHANNELS.usage.GET_SESSION),
-  listMemory: invoke(RPC_CHANNELS.memory.LIST),
-  addMemory: invoke(RPC_CHANNELS.memory.ADD),
-  deleteMemory: invoke(RPC_CHANNELS.memory.DELETE),
   exportSession: invoke(RPC_CHANNELS.sessions.EXPORT),
   importSession: invoke(RPC_CHANNELS.sessions.IMPORT),
   exportRemoteSessionTransfer: invoke(RPC_CHANNELS.sessions.EXPORT_REMOTE_TRANSFER),
@@ -61,11 +47,6 @@ export const CHANNEL_MAP = {
 
   // Workspace management
   getWorkspaces: invoke(RPC_CHANNELS.workspaces.GET),
-  getTeamRules: invoke(RPC_CHANNELS.teamRules.GET),
-  validateTeamRules: invoke(RPC_CHANNELS.teamRules.VALIDATE),
-  getTeam: invoke(RPC_CHANNELS.team.GET),
-  getTeamReviewQueue: invoke(RPC_CHANNELS.team.GET_REVIEW_QUEUE),
-  getTeamInbox: invoke(RPC_CHANNELS.team.GET_INBOX),
   createWorkspace: invoke(RPC_CHANNELS.workspaces.CREATE),
   checkWorkspaceSlug: invoke(RPC_CHANNELS.workspaces.CHECK_SLUG),
   updateWorkspaceRemoteServer: invoke(RPC_CHANNELS.workspaces.UPDATE_REMOTE),
@@ -106,8 +87,6 @@ export const CHANNEL_MAP = {
   getVersions: invoke(RPC_CHANNELS.system.VERSIONS),
   getHomeDir: invoke(RPC_CHANNELS.system.HOME_DIR),
   isDebugMode: invoke(RPC_CHANNELS.system.IS_DEBUG_MODE),
-  getGitReview: invoke(RPC_CHANNELS.git.GET_REVIEW),
-  getGitFileDiff: invoke(RPC_CHANNELS.git.GET_FILE_DIFF),
 
   // Auto-update
   checkForUpdates: invoke(RPC_CHANNELS.update.CHECK),
@@ -203,20 +182,6 @@ export const CHANNEL_MAP = {
 
   // Server filesystem browsing (remote mode)
   listServerDirectory: invoke(RPC_CHANNELS.fs.LIST_DIRECTORY),
-  listFilesystemEntries: invoke(RPC_CHANNELS.fs.LIST_ENTRIES),
-
-  // Internal Action Registry — human UI and Agent share these action ids.
-  listInternalActions: invoke(RPC_CHANNELS.internalActions.LIST),
-  invokeInternalAction: invoke(RPC_CHANNELS.internalActions.INVOKE),
-
-  // External Job — AIGC / external AI review / deploy (LOCAL_ONLY)
-  createExternalJob: invoke(RPC_CHANNELS.externalJob.CREATE),
-  getExternalJob: invoke(RPC_CHANNELS.externalJob.GET),
-  listExternalJobs: invoke(RPC_CHANNELS.externalJob.LIST),
-  confirmExternalJobPermission: invoke(RPC_CHANNELS.externalJob.CONFIRM_PERMISSION),
-  runExternalJob: invoke(RPC_CHANNELS.externalJob.RUN),
-  pollExternalJob: invoke(RPC_CHANNELS.externalJob.POLL),
-  cancelExternalJob: invoke(RPC_CHANNELS.externalJob.CANCEL),
 
   // Debug logging
   debugLog: invoke(RPC_CHANNELS.debug.LOG),

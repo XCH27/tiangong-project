@@ -483,9 +483,6 @@ export interface AgentBackend {
   /** Set permission mode */
   setPermissionMode(mode: PermissionMode): void;
 
-  /** Update the session system prompt preset/injected identity prompt. */
-  setSystemPromptPreset?(preset: 'default' | 'mini' | string | undefined): void;
-
   /** Cycle to next permission mode */
   cyclePermissionMode(): PermissionMode;
 

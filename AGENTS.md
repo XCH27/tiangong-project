@@ -1,122 +1,121 @@
 # AGENTS.md
 
-> ⛔ **改 UI / 加功能前，先读一页 `docs/00A-UI改造红线与挂点地图.md`。** 它把本文分散的反跑偏规则（9/13/16/18/23/24/35/36）收口成一页速查：三道闸 + 七条硬「不要」+ 挂点地图。Agent 在 UI 上「胡乱加东西」就是没过这一页。
+This file is the forced-read execution summary for agents working in this repository.
+It is not an independent roadmap and must not define a second source of truth.
 
-本项目当前进入“干净基座二开”阶段：`app/` 已重置为干净 craft-agents-oss 基座。旧二开代码不再作为实现来源；后续只按 `docs/19-重启二开与可复用资产清单.md` 保留少量可重做的能力边界。
+Active project documentation is English-only. The old Chinese documents are archived under
+`docs/legacy/` and are historical evidence, not execution instructions.
 
-> **路线主干（先读）**：`docs/01-产品主干与落地序列.md` 是路线单一真相。它把下面 D1–D12 收敛成一条主干（CLI 接入 → 动作引擎 → 浏览器/Artifact 画布 → 管理 Agent + 项目 Agent + 分层记忆 + 审查中心）并排序成 M0–M3。**决策"做什么"看本文与 `docs/04`，"按什么顺序做、什么不做"看 `docs/01`。** 加任何功能前先回答 `docs/01` 第 3 节的"挂槽三问"，避免堆按钮。
+## Read First
 
-## 当前产品决策（用户已拍板，单一真相见 `docs/04-产品决策记录.md`）
+Use this order before changing product code or project documentation:
 
-- **D1 手动修改**：agent-native 为主 + 关键项加"手动编辑"逃生舱；手动编辑写进 craft 现有 `config`/`preferences`/settings，**不另起第二套真相**。
-- **D2 记忆**：全本地**分级记忆**，可查可删；UI 入口是独立「记忆」设置页，不塞进管理 Agent 设置（见 `docs/05-记忆系统方案.md`）。
-- **D3 首攻**：第一个落地功能 = **终端 / 本机 CLI Runtime Host**。当前 `app/` 是干净 craft-agents-oss 基座，CLI Runtime 需按 `docs/23-P0-D-CLI-Runtime-重做规格.md` 重新落地；旧二开代码不再作为当前实现。浏览器人类层升级为 D6 设计工作流入口，见 `docs/06-浏览器与网页标注方案.md` 与 `docs/15-设计工作流一体化方案.md`。
-- **D4 账号**：仅做**合法多账号 Profile 干净切换、不丢记录**；**不做**绕用量限制/规避检测的自动轮换。
-- **D5 融合**：多模型融合做成**设置项**，**默认关**（见 `docs/03-Fusion多模型融合方案.md`）。
-- **D6 设计工作流一体化**：把 Open Design、Claude Artifacts 类体验、Figma 和 Google Stitch 式 prompt/image-to-UI/code/Figma handoff 融进 Fleet 一个软件。第一落点是原 **内置浏览器 + 网页标注** 页面：单选、框选、多选、批量注释、Comment AI；对 AI 生成网页/APP/PPT/商品页进入 Artifact Studio，支持插入图片/视频/形状、剪切蒙版、内部裁切、位置/尺寸/旋转/圆角/模糊/清晰感参数、自建媒体/组件/UI 效果/骨架模板库，再接 Figma/Stitch bridge（见 `docs/15-设计工作流一体化方案.md`、`docs/06-浏览器与网页标注方案.md`）。
-- **D7 Agent-native 可共同编辑**：继承 craft-agents-oss 的核心哲学：这个软件本身也要能被 AI 编辑，且人类和 AI 使用同一个工作台、同一套 session、权限、工具、补丁和回放链路。任何新增手动编辑能力都必须同时设计 AI 可调用的结构化动作；不要做只有鼠标 UI 能触发、AI 无法复现的暗状态。
-- **D8 字体/颜色/动画创意编辑**：Artifact Studio 还要覆盖字体库、文字编辑、颜色/品牌色板、AI 文字特效、生成动画、动画模板库、时间线/关键帧编辑和网页动画复用。字体可来自本机、项目文件、合法网络字体服务或用户授权字体包；动画可参考 SVGator 模板形态、HyperFrames 的 HTML-native 视频/动画、Kdenlive 的时间线剪辑概念、Remotion 的程序化视频思路，但源码复制边界必须按许可证单独核准。
-- **D9 上下文效率与外部 AI 审查**：把 Repomix 式项目打包、MarkItDown 式多格式转 Markdown、Headroom/rtk/Reasonix/codegraph/context-mode 式上下文节省、Cursor/OpenCode/Claude Context Usage 式用量可视化、OpenHands 式自动化控制台和“内置浏览器提交外部 AI 网站审查”打通。外部网站只走用户授权登录和正常 Web/API，不绕过用量/风控；真实 token、估算节省和外部平台成本必须分开标注（见 `docs/16-上下文效率与外部AI审查方案.md`）。
-- **D10 浏览器自动化增强**：保留 craft 内置 BrowserPane/CDP/`browser_tool` 作为主浏览器栈，不用外部浏览器替换核心。browser-harness 只吸收“薄 CDP、自修复 helper、失败诊断”思路；OpenClaw 只吸收“隔离 managed profile + loopback gateway + profile 路由”思路；CloakBrowser/反检测/stealth 浏览器只能高风险黑盒参考，不进默认产品，不用于绕过 bot detection、验证码、平台风控或用量限制（见 `docs/06-浏览器与网页标注方案.md`、`docs/12-最新开源Agent与CLI参考更新.md`）。
-- **D11 双层 Agent 架构**：一个常驻**管理 Agent**管软件本身（状态/记忆/设置/权限/上下文/任务入口/跨项目自动化），一套**项目 Agent**（队长/代码/设计/审查/测试/上下文）管具体执行；两者身份分离，管理 Agent 可调度但不混成一个身份。多 Agent 不是多个聊天气泡：所有动作进同一条 timeline，带 `agentId/runtime/role`，权限按 Agent 分组，输出不混流。源码优先迁 AionUi（绿灯），不另起第二套 session/记忆/权限（见 `docs/17-Agent协作与管理Agent模型.md`）。
-- **D12 分级自动决策**：默认关键动作问用户；用户主动开启"自动决策"后，管理 Agent 可在低风险场景按记忆/偏好/规则代答，但必须分级——L0 只读自动 / L1 低风险本地按偏好 / L2 写文件·运行命令·外部审查需规则或预授权 / L3 删除·发布·付款·登录·敏感必须明确确认。每个自动判断要有依据、有记录、可回放、可撤销，不得自动同意 L3、不得绕过 permission（见 `docs/17` 第 4 节）。
-- **D13 AI 工作创作台统一定位**：Fleet 是"AI 工作创作台"——人类主导、AI 辅助，在一个软件里完成真实生产流程。默认工作台保留 Craft 原结构；无限画布、AIGC、网页/文档、视频剪辑可用不同专业布局和原生引擎。它们共用工作区、全部文件/Library、Agent、记忆、permission、session timeline、成本账本和导出；输入语义按当前选区/工作面/项目类型/上下文路由，但不强制共用同一页面壳或 React 组件（见 `docs/02`、`docs/18`）。
-- **D14 原生引擎 + 统一脊柱**：不同工作面使用适合自己的原生文档模型/引擎；统一的是 craft session、permission、timeline、actor、结构化工具动词、资产交接和成本账本。`DesignAction/Patch` 是动作信封，不是所有内容格式的内部模型（见 `docs/30`、`docs/31`）。
-- **D15 全部文件 / 本地素材仓库**：默认工作台右侧上下文栏显示全部文件/当前工作区文件夹（上方任务看板 Progress、下方文件列表，右侧按钮整体隐藏/显示），直接对应“我的工作区”和用户选择的本地目录；Library 是项目选用、授权、索引后的资产层。AI 整理文件必须走 permission + timeline，禁止在左侧再加“全部文件”按钮。
-- **D15a 工作区命名与入口**：顶部工作区 pill 的下拉是当前工作区动作菜单：重命名、在新窗口打开、关闭工作区、删除工作区；「添加工作区」紧跟工作区 pill 右侧，同 pill 边框/高度，桌面宽度足够可显示图标+文案，窄宽用仅图标+tooltip。关闭工作区只从软件工作区列表移除，不删除真实文件夹；删除工作区才删除磁盘 rootPath。默认工作区名称从主语言取 `workspace.myWorkspace`，真实文件夹名与显示名同步（中文就用中文文件夹名），重命名必须同步移动 workspace 根目录并更新全局 config 与 workspace `config.json`，不得只做 UI 汉化或只改显示字段。
-- **D16 会话即 Agent + 团队群聊**：会话显示模型/Runtime、稳定序号和身份；模型图标只作识别，原“标签”菜单里的“队长”身份标签负责提升队长。团队群聊复用 craft session。`@` 只找人/Agent/会话/身份，Skill/命令/模板统一走 `/`，不保留旧 `@Skill` 双入口（见 `docs/33`）。
-- **D17 常驻管理 Agent**：跨文件夹的软件级 Agent 负责设置、记忆、知识、Skill、素材和跨项目协调，但不能绕过 permission 或自动同意 L3。它的消息入口在“所有会话”层的专门栏，不塞进单个工作区 普通会话；右下角可作为唤起/最小化入口。退出支持直接退出或常驻小窗。
-- **D18 默认工作台 + 四个专业工作面**：保留默认工作台，增加无限画布、AIGC、网页/文档、视频剪辑；所有工作面共享本地素材、Library、Agent、记忆、权限和 timeline。
-- **D19 API/CLI 分离与跨 Runtime 编排**：Fleet owns the team, CLI owns a run。普通对话目标态只走 API；CLI 从 terminal surface 创建；CLI 队长通过 Fleet Bridge 发起受控 TeamRun 调 API 队员；Bridge 对外同步阻塞、对内异步 TeamRun；RuntimeLauncherAdapter 负责不同 CLI 的 Bridge/MCP 注入；WorkspaceFileLeaseManager 负责文件/Git 写租约。当前聊天 CLI picker 和底部终端卡片是迁移期事实，不能写成目标态已落。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`。
-- **待用户拍板**：① 分叉策略（建议软分叉）。
+1. `docs/START-HERE.md`
+2. `docs/PROJECT-DIRECTION.md`
+3. `docs/DECISIONS-LEDGER.md`
+4. `docs/DEVELOPMENT-PROCESS.md`
+5. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+6. `docs/OWNERSHIP-MATRIX.md`
+7. `docs/WAVE-MODULE-MAP.md`
+8. `docs/REFERENCE-PROJECT-POLICY.md`
+9. The relevant module spec in `docs/modules/`
+10. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
+11. The current Craft-based implementation under `app/`
 
-与以上决策冲突的内容不得作为执行依据。
+Read `docs/legacy/` only to verify historical rationale or recover a missing decision.
+If a legacy document conflicts with an active English document, follow the active English
+document and update the active doc if it is incomplete.
 
-## 当前硬规则
+## Product Direction
 
-1. **基于干净 craft-agents-oss 改。** 下一轮先克隆干净 craft-agents-oss，确认原版能跑，再按 `docs/19` 迁移已验证资产。不重建 Electron/Vite/IPC/renderer 壳，仍优先理解并修改 craft 现有结构。
-2. **AionUi 作为第二绿灯来源。** 需要 CLI Runtime/custom agent、ACP、进程生命周期、群聊、多 Agent、@ 提及、Skill 会话注入、团队交互时，优先从 `源码参考/software/AionUi` 迁移 Apache-2.0 代码或模式。
-3. **只允许直接复制绿灯源码。** 目前可直接迁移源码的项目包括：
-   - `源码参考/software/craft-agents-oss`（Apache-2.0，主基座）
-   - `源码参考/software/AionUi`（Apache-2.0，补 CLI Runtime/ACP/custom agent/Agent/会话/Skill 交互）
-   - `源码参考/plugins/open-design`（Apache-2.0，补 CLI runtime definitions、模型探测、prompt transport、stream parsers、Skill/Plugin/DESIGN.md/artifact/eval 体系；复制具体模板/设计系统/技能前需检查该子目录是否有额外 LICENSE）
-   - `源码参考/plugins/rtk`（Apache-2.0，补命令输出压缩、gain/discover 统计、hook 矩阵；不得未经用户确认自动安装全局 hook 或改写 shell/agent 配置）
-   - `源码参考/plugins/codegraph`（MIT，补本地代码图谱、索引、结构化查询、MCP installer 经验；接入必须走 Fleet/craft 权限与本地数据边界）
-   - `源码参考/software/DeepSeek-Reasonix`（MIT，补 ACP/stdio、稳定前缀缓存、planner/executor 分层、权限/沙箱/配置思路）
-   - `源码参考/plugins/deepcode-cli`（MIT，补跨客户端 Skill 路径、推理强度、MCP、CLI/session 管理）
-4. **红灯/黄灯/候选项目只能黑盒参考。** Kun、Cherry Studio、Zed、LobeHub、Warp、OpenCode、Gemini CLI、Qwen Code、Cline、Roo Code、OpenHands、OpenClaw、ACP SDK/schema、browser-harness、CloakBrowser、cmux、golutra、multica、hermes-agent、cc-switch、AstrBot、cockpit-tools、context-mode、headroom、repomix、markitdown、OpenUI、HyperFrames、Kdenlive、Remotion、SVGator、Adobe Firefly/Express 等在未逐项核准许可证并写入绿灯表前，不允许复制源码进 `app/`。最新候选状态见 `docs/12-最新开源Agent与CLI参考更新.md`，`源码参考/` 全量矩阵见 `docs/14-源码参考目录专项审计.md`。
-5. **源码参考目录按使用方式分层。** `源码参考/software/` 放完整软件、客户端、Agent 平台和编辑器；`源码参考/plugins/` 放可作为能力模块、sidecar、CLI、库、引擎或协议适配参考的项目。这个分层只解决查找路径，不改变红绿灯；复制源码仍必须按规则 3/4 和 `docs/26`。
-6. **保留许可证和 NOTICE。** 迁移绿灯源码时必须保留原文件版权、SPDX/许可证标识；craft 的 `NOTICE` 必须随产品保留；复制带子目录独立 LICENSE 的文件前必须单独核对并记录。
-7. **先保基座可跑，再迁能力。** 先保持干净 craft 原项目能跑，再按 `docs/19` 小步迁 CLI Runtime、动作契约、BrowserPane 和专业工作面能力。
-8. **每次动手前先看 craft 对应模块。** 例如桌面窗口看 `app/apps/electron/src/main/*`，renderer 看 `app/apps/electron/src/renderer/*`，工具/session 看 `app/packages/*`。
-9. **UI 改造必须从新基座的原有界面做。** 优先修改 craft 现有工作区、会话列表、聊天、设置和 BrowserPane 的结构；不能为了功能另套 `WorkbenchShell`、控制台或线框式壳层。只有原有结构没有合理挂点时，才新增专业工作面；新界面仍必须接真实 craft session/permission/timeline。
-10. **单人主线快速推进优先。** 默认由当前 Codex 直接选方向、实现、验证、同步文档。不要反复向用户确认，不要把时间耗在审查交接上；在边界清楚、风险可控时直接做一个用户可见产品闭环，再跑必要验证并记录结果。只有用户明确要求并行或任务天然独立时，才再拆给其他智能体。
-11. **动手前先看参考项目做法。** 每次推进主线能力前，先快速查看绿灯项目或黑盒参考的相关交互/错误处理/协议模式，判断是否有更好的实现方式；绿灯可按许可证迁移并归因，黑盒项目只能借鉴行为和命令输出，不能复制源码/测试/类型/结构。
-12. **不要再保留过程性快照和流水记录。** 当前目标是干净开发环境；除非用户明确要求，不再创建过程快照目录或过程性任务记录。需要保护大改动时，优先用 Git 分支/提交表达可恢复点。
-13. **不得引入第二套会话系统。** AionUi 的 ACP、Team、Skill 能力只能适配进 craft 的 `SessionManager`、`SessionEvent`、permission、RPC 和现有 renderer event flow，不迁入第二套 conversation/session store。
-14. **本机能力必须标注 RPC locality。** CLI Runtime、PTY、本机文件、BrowserView 等本机 OS 能力默认 `LOCAL_ONLY`；新增 RPC 必须先归类到 local-only 或 remote-eligible，远端 workspace 行为必须单独定义。
-15. **多 Agent 必须带身份元数据。** Agent 编排相关事件、权限请求、工具调用、日志和持久化都要能追踪 `agentId`、runtime、role/displayName，避免并发输出混成单 Agent 流。
-16. **CLI/终端/Git/桌面操作必须走权限和回放。** 探测可以无 UI 执行；启动 CLI、写文件、运行命令、Git mutate、桌面软件控制必须接 craft permission、session timeline、停止/回滚/证据链。
-17. **MIT/Apache 不自动等于绿灯。** 未写入绿灯表的项目，即使本地 LICENSE 看起来宽松，也只能黑盒参考，不能复制源码、测试、类型定义、配置、样式、资源或结构性实现；一旦用户明确核准并写入绿灯表，才可按限定范围复制并归因。
-18. **设计工作流先挂原浏览器标注页。** 不要另建孤岛 Figma 克隆页；优先在 craft browser pane / annotation / session timeline 上做设计选择模式、框选、多选、批量注释和 Comment AI 证据包。普通网页默认只能选择/注释/截图/给 Agent 上下文；只有 Fleet/Open Design artifact 或本地 editable preview 才能进入 Artifact Studio，做图片/视频/形状/蒙版/裁切/效果/参数/组件库/模板库等非破坏性手动编辑。
-19. **所有新编辑能力必须 agent-native。** UI 与 AI 使用同一个结构化工具/动作信封，经各工作面的原生引擎执行，再写入 `SessionEvent`；记录 actor、agentId/runtime、选区、权限、回滚和导出。禁止用 renderer 暗状态、临时 DOM mutation 或万能 patch 代替原生文档模型。
-20. **字体/颜色/动画资产必须可授权、可回放。** 本机字体扫描、网络字体加载、字体文件导入、Adobe/Firefly 类 AI 生成、SVG/Lottie/视频模板、动画 preset 都必须记录来源、许可证/商业复用范围、hash/version、导出方式和回滚点。Kdenlive（GPL-3.0）只能黑盒学习时间线/剪辑概念；Remotion 有特殊商用许可证，不能默认复制；SVGator 是外部服务/模板参考，不抓取私有状态；HyperFrames 虽是 Apache-2.0，也需用户核准并写入绿灯表后才可复制源码。
-21. **上下文节省和外部审查必须诚实可观测。** 打包项目、转换文档、压缩上下文、调用外部 AI 网站、生成审查报告都必须记录 bundle hash、文件清单、secret scan、目标平台、权限确认、原始输出、token before/after、真实/估算/未知成本和回滚点。外部 AI 网站只能用用户授权的登录态和正常交互，不自动注册账号、不读 cookies/token、不绕过验证码/额度/风控；“不消耗 Fleet API token”不能写成“免费”。Repomix、MarkItDown、Headroom、OpenHands 在未绿灯前只能做 optional sidecar/黑盒参考。
-22. **浏览器自动化不换主栈、不做规避。** 当前 Craft/Fleet 的浏览器能力以 BrowserPane、Electron CDP、`browser_tool`、permission、session timeline 为主。新增浏览器自动化必须先扩展这条链路：选择/点击/截图/网络/console/下载/回放/权限/证据包。browser-harness 可学自修复 helper、低层 CDP fallback 和失败诊断；OpenClaw 可学 managed profile、loopback gateway 和 profile 路由；CloakBrowser 或任何 stealth/anti-detect 浏览器不得作为默认依赖、插件或产品卖点，不得用于绕过平台检测、验证码、登录限制、配额或服务条款。
-23. **外部/多智能体报告必须本机核验。** 不再按 agent 口头“完成/通过/真实闭环”判断项目状态。接收其他 agent 产物前必须核对：实际 worktree/path、`git status --short`、关键 diff、是否污染 `.claude/` 或当前主线文件、是否有对应测试、用户可见 UI 是否真实接线、AI/CLI 实际发送路径是否使用了新增上下文。模型名、连接名和运行时元数据不能当作真实 provider/计费来源证明；必须把声明模型、连接、endpoint/provider、计费来源和验证状态分开标注。
-24. **一条主干，不并行铺开。** D1–D12 不是十二条平行线。加任何功能前先回答 `docs/01` 的"挂槽三问"（挂哪个 Surface 的哪个槽 / 用哪套选区动作 / 怎么进 timeline 和回滚），并确认它在 M0–M3 的位置；不要在主干（CLI 接入 → 动作引擎 → 浏览器/Artifact 画布 → 协作记忆审查）尚未就绪时先做下游挂件。同类能力（设计工作流、上下文效率、多 Agent、记忆）必须合成一个完整模块，遵守 `docs/01` 第 3 节五个"唯一"，不堆散按钮。
-25. **管理 Agent 与项目 Agent 身份分离。** 管理 Agent 是软件管家（管软件/记忆/权限/上下文/跨项目自动化），默认低上下文足迹，不读每个项目全部代码，不替项目 Agent 写代码，不成为绕过 craft permission 的特权身份；项目 Agent 做具体执行。两者及队长/队员都带 `agentId/role`，进同一条 timeline，不混流。多 Agent 源码优先迁 AionUi，不另起第二套 session（见 `docs/17`、`AGENTS.md` 规则 13/15）。信息隔离遵守“附庸的附庸不是我的附庸”：有队长时管理 Agent 默认只看队长摘要，不看队员完整记录；无队长时才看普通 Agent 摘要。跨项目记录和用户长期偏好只能由管理 Agent 按设置注入，深读成员上下文必须走权限。
-26. **自动决策必须分级且可回放。** 默认关键动作问用户；开启自动决策后只在 L0/L1 自动，L2 需规则/预授权，L3（删除/发布/付款/登录/敏感）必须明确确认。每个自动判断要引用依据（记忆/偏好/规则）、写 timeline、可撤销。记忆按七分区隔离（用户/软件/项目/Agent/任务/设计资产/外部审查），项目记忆默认不串区，删除走 L3 确认（见 `docs/17` 第 4 节、`docs/05`）。
-27. **一套底层，多种工作面。** 默认工作台、无限画布、AIGC、网页/文档、视频剪辑可有不同布局与原生引擎，但共用 Project、全部文件/Library、Agent、记忆、permission、timeline、账本和导出。Timeline/Board/Compositor/最小视频剪辑是 M2 主线，不是地平线（见 `docs/01`、`docs/18`）。
-28. **本机运行环境必须统一检测和诊断。** 新增 CLI、sidecar、ProjectPack、MarkItDown、codegraph、浏览器 helper、设计/视频导出依赖时，不允许各模块私自探测 PATH 和版本；必须接统一 System Tools / Project Environment registry，记录版本、路径、来源、`resolvedPathEnv`、项目 override、冲突诊断和修复建议。探测可自动；安装、改 PATH、写配置、运行修复命令必须走 permission + timeline。详见 `docs/28`。
-29. **治理面封顶，创作面优先。** 上下文效率、外部审查、记忆和决策 UI 只收口；工时优先给团队脊柱、全部文件/Library 和四个创作工作面。
-30. **只认当前分支完成状态。** 旧 worktree 和 Agent 汇报不是当前代码事实；状态以 `docs/00`、`docs/32` 和本机 diff/测试为准。
-31. **团队编排复用会话。** 不新建孤岛多 Agent 页或第二套 team/session store；协议以 `docs/33` 为准。
-32. **状态与身份是调度协议。** 待安排/进行中/待审查/完成/取消映射到现有 session status。身份能力必须扩展原 `labels/config.json` 与 session `labels`，增加提示词和 permission profile 引用；不得在团队规则或 renderer 建第二套身份定义/分配。稳定序号只派生显示。
-33. **管理 Agent 不是特权后门。** 它可跨项目协调，但写文件、改设置、外发、删除和发布仍走 permission 与 L0-L3。
-34. **专业工作面共享本地素材。** 网页动画也是一等资产，可继续编辑或渲染后进入视频剪辑；不得为工作面另建素材仓库。
-35. **前端与 Agent 说明同步。** 页面、按钮、输入语法、设置或工具变化必须同步 `AGENTS.md`、相关 docs、bundled docs、session tool schema/handlers 和 MCP Agent 说明。
-36. **并行开发：共享契约只由 Lead 改。** 多 Agent 并行时，跨 Agent 的共享契约文件（`shared/protocol/*` 尤其 `channels.ts`/`routing.ts`/`dto.ts`/`index.ts`、`electron transport/channel-map.ts`、`electron shared/types.ts`、`server-core handlers/rpc/index.ts`、`handler-deps.ts`、`i18n/locales/*.json`）由 **Lead 在 Wave 0 一次性冻结**，冻结后对并行 Agent **只读**。并行 Agent 需要新 channel/event/command/type/i18n key 时**必须回 Lead 加**，不得自行修改这些文件（否则必然冲突 + 漂移）。新 handler 文件用“Lead 建空壳并注册 → 对应 Agent 填实现”的顺序移交，Wave 0 后 Lead 不再碰。文件所有权矩阵、波次与每个 Agent 提示词见 `docs/32`/`docs/34`。
-37. **并行开发：单文件单所有者 + 独立 worktree。** 每个文件恰好一个 Agent 所有者；每个 Agent 在独立 git worktree+分支开发，只改自己名下文件，禁改清单是硬约束；完成后按 `docs/32 §6` 格式汇报（worktree/branch/commit/改了哪些文件/没碰哪些禁改/验证结果），缺项不合入。合入前由 Lead 核对实际 diff 是否越界改了契约（铁律 23）。
-38. **功能页面必须前后端同文档。** 新增或修改一个功能页面时，同一份功能文档必须同时写清：用户界面放哪里、沿用哪些原组件、显示哪些字段、后端服务/RPC/事件怎么接、Agent 用什么工具调用、permission/timeline/回滚怎么走、设置页和 i18n 怎么同步、验收怎么证明。禁止只写 UI 稿或只写后端服务；并行开发时可以拆人做，但不能拆成两份互相猜的文档。
-39. **智能模型路由只挂 API/OAuth 路径。** 选了 CLI Runtime（`cliRuntimeId != null`）时整条路由主干（Auto/Fusion/缓存/瘦身）跳过；生成类（生图/生视频）走 External Job 平面，不进 LLM 档位路由。Auto 路由 + 缓存 + 瘦身可早做；Fusion 默认关（D5）。管理 Agent 固定 cheap API、永不 Fusion、不给 CLI；队长默认触发者；执行 Agent hybrid。详见 `docs/03`。
-40. **路由决策和成本账本必须进 timeline。** 每条 Auto 路由请求写 `model_routing_decision` 事件（taskType/complexity/tier/fusionMode/basis）；Fusion 和缓存命中写 `cache_ledger`（真实/估算/未知分开）。偏好数据（接受/重试/换模型/回滚）采集进数据管线，数据够了训 RouteLLM 路由器。
-41. **Fleet owns the team, CLI owns a run。** `AgentSeat` 是稳定身份，`RuntimeLane` 是执行面，`TeamRun` 是跨成员任务。CLI 队长可经 Fleet Bridge 调 API 队员，但 Bridge 对外同步阻塞、对内异步 TeamRun；权限、timeline、成本、租约和报告仍归 Fleet。普通对话 API-only 与一等 terminal surface 是目标态，当前聊天 CLI picker / 底部终端卡片属于迁移期事实。详见 `docs/38-API-CLI分离与跨Runtime团队编排.md`、`docs/33 §10`、`docs/23`、`docs/37 §0.4`。
-42. **不同 runtime 的 Skill/MCP/模型不强行统一。** 统一的是 Capability Catalog 和 loadout；按 RuntimeLane 裁剪可用能力。Fleet Internal Action 最高优先；Fleet Skill 声明所需 internal action/MCP/CLI；CLI native skill 只在该 CLI lane 可用；MCP Bridge 由 RuntimeLauncherAdapter 按 workspace/session scope 注入；API lane 走 `docs/03` 模型路由，CLI lane 走 CLI 自带模型，Fleet 不猜模型名。详见 `docs/38-API-CLI §8-§12`、`docs/40`、`docs/43`。
+Fleet is a local-first AI work creation platform built on the Craft Agents base.
+It is not a chat app, terminal wrapper, IDE clone, Figma clone, or account/subscription product.
+Humans own the top 10% of creative judgment and the bottom 10% of common-sense guardrails;
+agents execute the middle 80% of concrete production work.
 
-## 常用入口
+The shared product spine is:
 
-- Electron app：`app/apps/electron`
-- Renderer：`app/apps/electron/src/renderer`
-- Main process：`app/apps/electron/src/main`
-- Shared/session/tool packages：`app/packages/*`
-- 构建与脚本：`app/package.json`
-- **Workbench / Tool Dock UI 规范**：`docs/37` §0（Craft 原生栈）与 §6（布局契约）；挂点速查 `docs/00A` §4
+- Craft session, permission, timeline, actor identity, and replay.
+- Internal Action Registry for both human UI actions and agent actions.
+- RuntimeLane and TeamRun for API, CLI, and cross-agent execution.
+- Workspace files, Library assets, leases, provenance, and export records.
+- Local memory, context packaging, external review, routing decisions, and cost ledger.
 
-## 推荐命令
+Professional surfaces may use native engines, but they must share this spine.
+Do not create a second session store, permission system, memory store, team store,
+timeline, Library, or settings truth.
 
-优先从仓库根目录执行：
+## Non-Negotiable Rules
+
+- Build on the clean Craft Agents base in `app/`; keep Craft's shell and simplify it instead
+  of replacing it with a new default shell.
+- Complete coherent user-visible loops. Cover interface, core logic, state or persistence,
+  permissions, timeline evidence, error handling, and status wording before validating.
+- Status must be reported as `usable`, `wired but not visually checked`, `display-only`,
+  or `not implemented`. Passing tests is not a feature status.
+- Human UI and agent tools must use the same structured action path.
+- CLI, terminal, Git, desktop automation, local files, and browser operations must go through
+  permission and replayable timeline evidence when they mutate state or launch real work.
+- Fleet owns the team; a CLI owns one run. Do not mix terminal UI, CLI Runtime identity,
+  Fleet Bridge, and TeamRun into one ambiguous concept.
+- Manager Agent and project Agents are separate identities. Manager Agent is not a privileged
+  backdoor and does not bypass permission.
+- `@` addresses people, agents, sessions, and roles. `/` addresses skills, commands, and templates.
+- Browser automation extends the Craft BrowserPane, Electron CDP, and browser tool path.
+  Do not add stealth, anti-detection, quota bypass, cookie extraction, or terms-of-service bypass
+  behavior.
+- External AI review, web profiles, and account handling must use user-authorized normal paths.
+- Model routing, cache, and Fusion apply only to API/OAuth lanes. CLI Runtime lanes use the CLI's
+  own runtime and model behavior.
+- Memory is local, partitioned, inspectable, deletable, and permissioned.
+- New source-code copying is allowed only from green-light sources listed in
+  `docs/REFERENCE-PROJECT-POLICY.md`. Permissive licenses alone are not approval.
+
+## Parallel Development
+
+Parallel work is Lead-controlled.
+
+- Wave 0 freezes shared contracts before worker agents start.
+- Shared contract files are owned by the Lead and are read-only for parallel workers after freeze.
+- Each file has exactly one owner during a wave.
+- Each worker uses an isolated worktree and branch.
+- Workers must stay inside their assigned module and packet boundaries.
+- New channels, events, DTOs, commands, i18n keys, shared types, and handler registrations go
+  through the Lead.
+- A worker handoff must report worktree, branch, commit, changed files, forbidden files not touched,
+  validation performed, and remaining `not implemented` items.
+
+Use `docs/OWNERSHIP-MATRIX.md`, `docs/WAVE-MODULE-MAP.md`, and the packet under
+`docs/agent-packets/` as the binding ownership rules.
+
+## Validation Rhythm
+
+Do not micro-test after every small edit. Finish a coherent feature or documentation block, then run
+the cheapest useful checks:
+
+1. Static analysis or format checks for touched areas.
+2. Targeted tests for the changed behavior.
+3. Real behavior checks for user-facing or externally observable flows.
+
+If the same validation path fails twice, stop blind edits and report the exact blocker, likely cause,
+and smallest next decision needed.
+
+## Common Entrypoints
+
+- Electron app: `app/apps/electron`
+- Renderer: `app/apps/electron/src/renderer`
+- Main process: `app/apps/electron/src/main`
+- Shared/session/tool packages: `app/packages/*`
+- Build scripts: `app/package.json`
+
+Recommended commands from the repository root:
 
 ```bash
 ./scripts/craft.sh install
 ./scripts/craft.sh run typecheck:all
-./scripts/fleet-verify.sh          # 主线自动化门禁（类型+i18n+脊柱单测+oss-sync）
-./scripts/cli-subagents.sh --help  # 本机 Claude/Grok/Antigravity 并行子 agent（非 Fleet CLI Runtime）
+./scripts/fleet-verify.sh
+./scripts/cli-subagents.sh --help
 ./scripts/craft.sh run electron:dev
 ```
 
-如果本机已经全局安装 Bun，也可以在 `app/` 中直接执行 `bun run ...`。
-
-## Learned User Preferences
-
-- 用户偏好「想清楚再动手」：动手前先看清相关聊天记录、docs 与 craft 原版对应实现，梳理稳定方案并定位根因再改，目标一次到位；修复前先制定检查标准和验收标准，不要重复返工、不要同一个错误反复犯；已验收项不得在后续迭代中回归，禁止边想边改或打地鼠式叠补丁。
-- 已有最优方案或文档待收口时，直接更新文档并推进实现，不要为确认而反复对话（与硬规则 10 互补，强调文档侧主动收口）。
-- 开源能力选型默认「集成 vs 兼容」：需要频繁跟进上游才能保持最佳体验的能力走兼容/适配层；长期稳定、接口很少变的再考虑直接集成进产品，并帮用户预配置最佳组合而非让人自行拼凑。
-- 文档维护偏好：按前后端功能闭环整合文档；理念/愿景/痛点写入 `docs/WHITEPAPER-项目白皮书.md`，具体落地挂追溯表；文档序号用稳定 ID+tombstone，不追求连续编号。
-- 复杂度评估要平衡两端：拒绝无收益过度工程化，也拒绝为省事过度简化；用户拍板完整落地时不要用「Phase 2/远期目标」擅自缩水范围。
-- 推进或验收时要持续核对方案文档与已实现代码是否对齐，明确标注半成品与未闭环项；避免文档超前于代码或代码漂移无记录。
-- Workbench/UI 改造须统筹全布局联动（多面板等分、间距、阴影裁切层级、Tool Dock 总高、自适应），对照 craft 原版读码比对后再改；必须验证全部功能一起打开/关闭时的冲突、重叠和自适应，不能只盯单个模块，正式设计规范写入 docs，不为单次返工另起过程性说明。
-
-## Learned Workspace Facts
-
-- 本工作区专指 `GUI 终端`（Fleet，基于 craft-agents-oss），与用户的另一个项目 `万象天视 / TianShi / OmniVerse Vision`（位于 `/Users/lullwen/Documents/OmniVerse Vision_Codex`）是不同仓库。不要把针对其中一个项目的修改改到另一个仓库；用户反馈某个项目的问题时只动那个项目对应的仓库，发现越界改动要全部恢复。
+If Bun is already installed globally, equivalent `bun run ...` commands may be run inside `app/`.

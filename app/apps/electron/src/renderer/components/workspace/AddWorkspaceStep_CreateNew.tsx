@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { ArrowLeft } from "lucide-react"
-import { workspaceFolderNameFromName } from "@craft-agent/shared/workspaces/name"
 import { cn } from "@/lib/utils"
+import { slugify } from "@/lib/slugify"
 import { Input } from "../ui/input"
 import { Button } from "../ui/button"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspaceSecondaryButton, AddWorkspacePrimaryButton } from "./primitives"
@@ -31,7 +31,7 @@ export function AddWorkspaceStep_CreateNew({
   isCreating
 }: AddWorkspaceStep_CreateNewProps) {
   const { t } = useTranslation()
-  const [name, setName] = useState(() => t("workspace.myWorkspace"))
+  const [name, setName] = useState('')
   const [locationOption, setLocationOption] = useState<LocationOption>('default')
   const [customPath, setCustomPath] = useState<string | null>(null)
   const [homeDir, setHomeDir] = useState('')
@@ -43,27 +43,27 @@ export function AddWorkspaceStep_CreateNew({
     window.electronAPI.getHomeDir().then(setHomeDir)
   }, [])
 
-  const folderName = workspaceFolderNameFromName(name)
+  const slug = slugify(name)
   const defaultBasePath = homeDir ? `${homeDir}/.craft-agent/workspaces` : null
   const finalPath = locationOption === 'default'
-    ? (defaultBasePath && folderName ? `${defaultBasePath}/${folderName}` : null)
-    : customPath && folderName
-      ? `${customPath}/${folderName}`
+    ? (defaultBasePath && slug ? `${defaultBasePath}/${slug}` : null)
+    : customPath && slug
+      ? `${customPath}/${slug}`
       : null
 
-  // Validate folder uniqueness when name changes
+  // Validate slug uniqueness when name changes
   useEffect(() => {
-    if (!folderName) {
+    if (!slug) {
       setError(null)
       return
     }
 
-    const validateFolder = async () => {
+    const validateSlug = async () => {
       setIsValidating(true)
       try {
-        const result = await window.electronAPI.checkWorkspaceSlug(folderName)
+        const result = await window.electronAPI.checkWorkspaceSlug(slug)
         if (result.exists) {
-          setError(`A workspace folder named "${folderName}" already exists`)
+          setError(`A workspace named "${slug}" already exists`)
         } else {
           setError(null)
         }
@@ -75,9 +75,9 @@ export function AddWorkspaceStep_CreateNew({
     }
 
     // Debounce validation
-    const timeout = setTimeout(validateFolder, 300)
+    const timeout = setTimeout(validateSlug, 300)
     return () => clearTimeout(timeout)
-  }, [folderName])
+  }, [slug])
 
   const handleFolderSelected = useCallback((path: string) => {
     setCustomPath(path)

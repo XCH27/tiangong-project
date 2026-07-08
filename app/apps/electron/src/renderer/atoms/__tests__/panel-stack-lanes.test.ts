@@ -47,22 +47,6 @@ describe('panel stack single-lane behavior', () => {
     expect(stack.some((p) => p.route === 'allSessions/session/s1')).toBe(true)
   })
 
-  it('assigns equal proportions when adding panels', () => {
-    const store = createStore()
-
-    store.set(pushPanelAtom, { route: 'allSessions/session/s1' })
-    store.set(pushPanelAtom, { route: 'allSessions/session/s2' })
-
-    const stack = getStack(store)
-    expect(stack).toHaveLength(2)
-    expect(stack[0].proportion).toBeCloseTo(0.5, 5)
-    expect(stack[1].proportion).toBeCloseTo(0.5, 5)
-
-    store.set(pushPanelAtom, { route: 'allSessions/session/s3' })
-    const triple = getStack(store)
-    expect(triple.every((p) => Math.abs(p.proportion - 1 / 3) < 0.0001)).toBe(true)
-  })
-
   it('pushPanel afterIndex inserts immediately after the given panel', () => {
     const store = createStore()
 

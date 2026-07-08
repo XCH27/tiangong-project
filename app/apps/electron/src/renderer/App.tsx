@@ -4,7 +4,7 @@ import { useTheme } from '@/hooks/useTheme'
 import type { ThemeOverrides } from '@config/theme'
 import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
 import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
-import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config/draft-types'
+import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
 import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
 import { generateMessageId } from '../shared/types'
@@ -26,7 +26,6 @@ import { useNotifications } from '@/hooks/useNotifications'
 import { useSession } from '@/hooks/useSession'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { NavigationProvider } from '@/contexts/NavigationContext'
-import { emptySessionCleanupDepsAtom } from '@/atoms/panel-stack'
 import { navigate, routes } from './lib/navigate'
 import { attachmentFromContentRef, toDraftRef } from './lib/drafts'
 import { stripMarkdown } from './utils/text'
@@ -104,15 +103,6 @@ function workspaceDistribution(sessions: Iterable<{ workspaceId?: string }>): Re
     distribution[key] = (distribution[key] ?? 0) + 1
   }
   return distribution
-}
-
-/** Team mentions are stable display identifiers. The server resolves them against the current projection. */
-function extractTeamAudience(message: string): { audienceAll: boolean; audienceSequences: string[] } {
-  return {
-    audienceAll: /(?:^|\s)@全体成员(?=$|\s|[，。！？、,.!?])/u.test(message),
-    audienceSequences: [...message.matchAll(/(?:^|\s)@(G-\d{2,})(?=$|\s|[，。！？、,.!?])/gi)]
-      .map(match => match[1].toUpperCase()),
-  }
 }
 
 /**
@@ -789,7 +779,7 @@ export default function App() {
     // Handoff events signal end of streaming - need to sync back to React state
     // Also includes todo_state_changed so status updates immediately reflect in sidebar
     // async_operation included so shimmer effect on session titles updates in real-time
-    const handoffEventTypes = new Set(['complete', 'error', 'interrupted', 'typed_error', 'session_status_changed', 'session_flagged', 'session_unflagged', 'name_changed', 'labels_changed', 'progress_updated', 'title_generated', 'async_operation'])
+    const handoffEventTypes = new Set(['complete', 'error', 'interrupted', 'typed_error', 'session_status_changed', 'session_flagged', 'session_unflagged', 'name_changed', 'labels_changed', 'title_generated', 'async_operation'])
 
     // Helper to handle side effects (same logic for both paths)
     const handleEffects = (effects: Effect[], sessionId: string, eventType: string) => {
@@ -916,20 +906,6 @@ export default function App() {
 
       if (event.type === 'session_deleted') {
         removeSession(sessionId)
-        return
-      }
-
-      // TeamCoordinator persists team events as normal craft messages. They are not
-      // AgentEvent stream deltas, so hydrate the authoritative transcript instead
-      // of letting the generic event processor discard them as an unknown event.
-      if (typeof event.type === 'string' && event.type.startsWith('team_')) {
-        window.electronAPI.getSessionMessages(sessionId)
-          .then((updatedSession: Session | null) => {
-            if (!updatedSession) return
-            replaceLoadedSession(updatedSession)
-            syncSessionOptionsFromSession(updatedSession)
-          })
-          .catch((error: unknown) => console.error('Failed to refresh team transcript:', error))
         return
       }
 
@@ -1220,34 +1196,6 @@ export default function App() {
 
   const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
     try {
-      // A leader session is the group conversation anchor. Plain text remains a
-      // normal leader chat; only explicit @全体成员 / @G-xx uses TeamCoordinator fan-out.
-      const team = windowWorkspaceId
-        ? await window.electronAPI.getTeam(windowWorkspaceId)
-        : null
-      if (team?.leaderSessionId && team.teamConversationSessionId === sessionId) {
-        const teamAudience = extractTeamAudience(message)
-        const hasTeamAudience = teamAudience.audienceAll || teamAudience.audienceSequences.length > 0
-        if (hasTeamAudience) {
-          if (attachments?.length) {
-            throw new Error('团队群聊暂不支持附件；请在成员会话中发送带附件的任务。')
-          }
-          await window.electronAPI.sessionCommand(sessionId, {
-            type: 'sendTeamMessage',
-            teamId: team.teamId,
-            content: message,
-            audienceAll: teamAudience.audienceAll,
-            audienceSequences: teamAudience.audienceSequences,
-          })
-          const refreshedSession = await window.electronAPI.getSessionMessages(sessionId)
-          if (refreshedSession) {
-            replaceLoadedSession(refreshedSession)
-            syncSessionOptionsFromSession(refreshedSession)
-          }
-          return
-        }
-      }
-
       // Capture pre-send processing state so we can flag mid-stream sends
       // for the queued badge (#616 follow-up — covers Pi steer path which
       // returns status 'accepted', not 'queued').
@@ -1410,7 +1358,7 @@ export default function App() {
         ]
       }))
     }
-  }, [replaceLoadedSession, sessionOptions, syncSessionOptionsFromSession, updateSessionById, skills, sources, windowWorkspaceId])
+  }, [sessionOptions, updateSessionById, skills, sources, windowWorkspaceId])
 
   /**
    * Unified handler for all session option changes.
@@ -1454,15 +1402,6 @@ export default function App() {
       : draft
     return coerceInputText(text)
   }, [])
-
-  const setEmptySessionCleanupDeps = useSetAtom(emptySessionCleanupDepsAtom)
-  useEffect(() => {
-    setEmptySessionCleanupDeps({
-      onAutoDelete: handleAutoDeleteEmptySession,
-      getDraft,
-    })
-    return () => setEmptySessionCleanupDeps(null)
-  }, [getDraft, handleAutoDeleteEmptySession, setEmptySessionCleanupDeps])
 
   // Getter for persisted attachment refs (path + name only — not hydrated files).
   // Consumers that need FileAttachment objects should call hydrateDraftAttachments.
@@ -1762,12 +1701,12 @@ export default function App() {
   // - Default: switch workspace in same window (in-window switching)
   // - With openInNewWindow=true: open in new window (or focus existing)
   const handleSelectWorkspace = useCallback(async (workspaceId: string, openInNewWindow = false) => {
+    // If selecting current workspace, do nothing
+    if (workspaceId === windowWorkspaceId) return
+
     if (openInNewWindow) {
       // Open (or focus) the window for the selected workspace
       window.electronAPI.openWorkspace(workspaceId)
-    } else if (workspaceId === windowWorkspaceId) {
-      // If selecting current workspace in-place, do nothing
-      return
     } else {
       // Switch workspace in current window
       // 1. Update the main process's window-workspace mapping

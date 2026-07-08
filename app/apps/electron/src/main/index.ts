@@ -98,8 +98,8 @@ import { setSearchPlatform, setImageProcessor } from '@craft-agent/server-core/s
 import { createApplicationMenu } from './menu'
 import { WindowManager } from './window-manager'
 import { loadWindowState, saveWindowState } from './window-state'
-import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig, migrateDefaultWorkspaceNameAndFolder } from '@craft-agent/shared/config'
-import { getDefaultWorkspacesDir, workspaceFolderNameFromName } from '@craft-agent/shared/workspaces'
+import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig } from '@craft-agent/shared/config'
+import { getDefaultWorkspacesDir } from '@craft-agent/shared/workspaces'
 import { initializeDocs } from '@craft-agent/shared/docs'
 import { initializeReleaseNotes } from '@craft-agent/shared/release-notes'
 import { ensureDefaultPermissions } from '@craft-agent/shared/agent/permissions-config'
@@ -116,7 +116,6 @@ import { setPerfEnabled, enableDebug } from '@craft-agent/shared/utils'
 import { registerPiModelResolver } from '@craft-agent/shared/config'
 import { getPiModelsForAuthProvider, getAllPiModels } from '@craft-agent/shared/config'
 import { initNotificationService, initBadgeIcon, initInstanceBadge, updateBadgeCount } from './notifications'
-import { registerInteractiveTerminalIpc } from './interactive-terminal-ipc'
 import { checkForUpdatesOnLaunch, setAutoUpdateEventSink, isUpdating, setBeforeUpdateQuitHook } from './auto-update'
 import type { EventSink } from '@craft-agent/server-core/transport'
 import { validateGitBashPath, checkVCRedistInstalled } from '@craft-agent/server-core/services'
@@ -333,17 +332,16 @@ async function createInitialWindows(): Promise<void> {
 
   // Load saved window state
   const savedState = loadWindowState()
-  const defaultWorkspaceName = i18n.t('workspace.myWorkspace')
   let workspaces = getWorkspaces()
 
-  // If no workspaces exist, create the localized default workspace on first run.
+  // If no workspaces exist, create default "My Workspace" on first run
   if (workspaces.length === 0) {
     // Ensure config file exists (addWorkspace requires it)
     if (!loadStoredConfig()) {
       saveConfig({ workspaces: [], activeWorkspaceId: null, activeSessionId: null })
     }
-    const defaultPath = join(getDefaultWorkspacesDir(), workspaceFolderNameFromName(defaultWorkspaceName))
-    addWorkspace({ rootPath: defaultPath, name: defaultWorkspaceName })
+    const defaultPath = join(getDefaultWorkspacesDir(), 'my-workspace')
+    addWorkspace({ rootPath: defaultPath, name: 'My Workspace' })
     workspaces = getWorkspaces() // Refresh after creation
     mainLog.info('Created default workspace on first run')
   }
@@ -479,7 +477,6 @@ app.whenReady().then(async () => {
     browserPaneManager.setWindowManager(windowManager)
     browserPaneManager.registerToolbarIpc()
     browserPaneManager.registerCapabilityIpc()
-    registerInteractiveTerminalIpc()
 
     // Build real PlatformServices from Electron APIs
     const platform: PlatformServices = createElectronPlatform({
@@ -624,16 +621,6 @@ app.whenReady().then(async () => {
 
       if (serverModeEnabled) {
         mainLog.info(`[server-mode] Enabled — binding ${rpcHost}:${rpcPort}${tls ? ' (TLS)' : ''}`)
-      }
-
-      // Workspace folder migrations must run before SessionManager initializes,
-      // otherwise file watchers and event logs can bind to stale root paths.
-      try {
-        migrateDefaultWorkspaceNameAndFolder(i18n.t('workspace.myWorkspace'))
-      } catch (error) {
-        mainLog.warn(
-          `Skipped default workspace folder migration: ${error instanceof Error ? error.message : String(error)}`
-        )
       }
 
       // Bootstrap the WS RPC server via shared bootstrap function.
@@ -782,12 +769,6 @@ app.whenReady().then(async () => {
       ipcMain.handle('workspace:remove', async (_event, workspaceId: string) => {
         const { removeWorkspace: remove } = await import('@craft-agent/shared/config')
         return remove(workspaceId)
-      })
-
-      // Delete workspace from config and remove the backing folder from disk.
-      ipcMain.handle('workspace:delete', async (_event, workspaceId: string) => {
-        const { deleteWorkspace } = await import('@craft-agent/shared/config')
-        return deleteWorkspace(workspaceId)
       })
 
       // Cross-server RPC — invoke a channel on an arbitrary remote server
@@ -1279,27 +1260,9 @@ app.on('before-quit', async (event) => {
   }
 })
 
-function isBrokenPipeError(error: unknown): boolean {
-  return Boolean(
-    error &&
-    typeof error === 'object' &&
-    (error as { code?: unknown }).code === 'EPIPE' &&
-    (error as { syscall?: unknown }).syscall === 'write',
-  )
-}
-
 // Handle uncaught exceptions — forward to Sentry explicitly since registering
 // a custom handler can interfere with @sentry/electron's automatic capture.
 process.on('uncaughtException', (error) => {
-  if (isBrokenPipeError(error)) {
-    // Dev tools can detach stdout/stderr while Electron is still alive. Logging
-    // that EPIPE through the console transport recursively throws and floods the
-    // app. Keep file logging alive and silence only the broken console pipe.
-    log.transports.console.level = false
-    mainLog.warn('Disabled console transport after stdout/stderr EPIPE')
-    return
-  }
-
   mainLog.error('Uncaught exception:', error)
   Sentry.captureException(error)
 })

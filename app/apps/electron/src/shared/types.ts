@@ -68,8 +68,7 @@ import type { ExportResourcesOptions, ExportResult, ResourceImportMode, Resource
 export type { ExportResourcesOptions, ExportResult, ResourceImportMode, ResourceBundle, ResourceImportResult };
 
 // LLM connection types
-import type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType } from '@craft-agent/shared/config/llm-connections';
-import type { NetworkProxySettings } from '@craft-agent/shared/config/types';
+import type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, NetworkProxySettings } from '@craft-agent/shared/config';
 export type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, NetworkProxySettings };
 
 // =============================================================================
@@ -210,31 +209,8 @@ import type {
   TestAutomationResult,
   WindowCloseRequest,
   DirectoryListingResult,
-  FilesystemEntryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
-  TeamRulesV1,
-  TeamRulesLoadResult,
-  TeamRulesValidationResult,
-  TeamProjection,
-  TeamReviewQueueItem,
-  TeamInboxItem,
-  CliRuntimeDefinition,
-  CliRuntimeHealthResult,
-  AutoDecisionSettings,
-  MemoryEntry,
-  MemoryQuery,
-  AddMemoryInput,
-  SessionUsageView,
-  ActionInvocation,
-  ActionSurface,
-  ActionVerb,
-  InternalActionSummary,
-  GitReviewState,
-  GitFileDiffResult,
-  CreateExternalJobInput,
-  ConfirmExternalJobPermissionInput,
-  ExternalJobRecord,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
@@ -254,24 +230,6 @@ export interface ElectronAPI {
 
   // Consolidated session command handler
   sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
-  /** Enabled/configured local CLI runtimes shown in the existing model selector. */
-  listCliRuntimes(): Promise<CliRuntimeDefinition[]>
-  getCliRuntime(runtimeId: string): Promise<CliRuntimeDefinition | null>
-  addCustomCliRuntime(input: { displayName: string; command: string; args?: string[]; env?: Record<string, string> }): Promise<CliRuntimeDefinition>
-  updateCustomCliRuntime(runtimeId: string, patch: { displayName?: string; command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean }): Promise<CliRuntimeDefinition>
-  setCliRuntimeEnabled(runtimeId: string, enabled: boolean): Promise<void>
-  deleteCliRuntime(runtimeId: string): Promise<void>
-  testCliRuntime(runtimeId: string): Promise<CliRuntimeHealthResult>
-  onCliRuntimesChanged(callback: () => void): () => void
-
-  // 管理 Agent 分级自动决策（D12 / docs/17 §4）+ 分层记忆（D2 / docs/05），按 workspace 隔离。
-  /** Token 环弹层数据：会话上下文占用 + 套餐额度（docs/16 §2.2 / docs/36 同源数据）。 */
-  getSessionUsage(sessionId: string): Promise<SessionUsageView | null>
-  getManagerDecisionSettings(workspaceId: string): Promise<AutoDecisionSettings>
-  updateManagerDecisionSettings(workspaceId: string, patch: Partial<AutoDecisionSettings>): Promise<AutoDecisionSettings>
-  listMemory(workspaceId: string, query?: MemoryQuery): Promise<MemoryEntry[]>
-  addMemory(workspaceId: string, input: AddMemoryInput): Promise<MemoryEntry>
-  deleteMemory(workspaceId: string, id: string): Promise<boolean>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>
@@ -284,21 +242,11 @@ export interface ElectronAPI {
   // App lifecycle
   relaunchApp(): Promise<void>
   removeWorkspace(workspaceId: string): Promise<boolean>
-  deleteWorkspace(workspaceId: string): Promise<boolean>
   invokeOnServer(url: string, token: string, channel: string, ...args: any[]): Promise<any>
 
   // Remote session transfer (main-process orchestrated, supports chunked upload)
   transferSessionToWorkspace(sessionId: string, targetWorkspaceId: string, sessionIndex?: number, sessionCount?: number): Promise<{ sessionId: string }>
   onTransferProgress(callback: (progress: { sessionIndex: number; sessionCount: number; chunkSent: number; chunkTotal: number }) => void): () => void
-
-  // Local bottom terminal — Electron-only, current-window scoped, not WS RPC.
-  terminalStart(options?: { cwd?: string | null; sessionId?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
-  terminalRestart(options?: { cwd?: string | null; sessionId?: string | null; size?: { cols?: number; rows?: number } }): Promise<{ id: string; buffer?: string; reconnected?: boolean }>
-  terminalWrite(id: string, data: string): Promise<boolean>
-  terminalResize(id: string, size: { cols: number; rows: number }): Promise<boolean>
-  terminalKill(id: string): Promise<boolean>
-  onTerminalData(callback: (payload: { id: string; data: string }) => void): () => void
-  onTerminalExit(callback: (payload: { id: string; code: number | null; signal: string | null }) => void): () => void
 
   // Session export/import (cross-workspace transfer)
   exportSession(sessionId: string): Promise<unknown>
@@ -313,25 +261,6 @@ export interface ElectronAPI {
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
-  getTeamRules(workspaceId: string): Promise<TeamRulesLoadResult>
-  validateTeamRules(workspaceId: string, rules: TeamRulesV1): Promise<TeamRulesValidationResult>
-  getTeam(workspaceId: string): Promise<TeamProjection | null>
-  getTeamReviewQueue(workspaceId: string): Promise<TeamReviewQueueItem[]>
-  getTeamInbox(workspaceId: string, sessionId: string): Promise<TeamInboxItem[]>
-  // TeamRun — Fleet 团队协作 RPC（docs/38 §4-§5 / D19）
-  proposeTeamRun(params: {
-    initiatorSeatId: string
-    initiatorLaneId: string
-    targetSeatId: string
-    targetLaneId: string
-    taskDescription: string
-    taskId?: string
-    idempotencyKey?: string
-  }): Promise<import('@craft-agent/shared/protocol/team-run').TeamRun>
-  startTeamRun(input: string | { runId: string; waitForReport?: boolean; timeoutMs?: number }): Promise<import('@craft-agent/shared/protocol/team-run').TeamRun>
-  getTeamRunStatus(runId: string): Promise<import('@craft-agent/shared/protocol/team-run').TeamRunStatus | null>
-  getTeamRunReport(runId: string): Promise<import('@craft-agent/shared/protocol/team-run').RunReport | null>
-  cancelTeamRun(runId: string, reason?: string): Promise<import('@craft-agent/shared/protocol/team-run').TeamRun | null>
   createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
   updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }): Promise<{ success: boolean }>
@@ -392,26 +321,6 @@ export interface ElectronAPI {
 
   // Server filesystem browsing (remote mode)
   listServerDirectory(dirPath: string): Promise<DirectoryListingResult>
-  /** Read-only file+directory listing for the All Files surface. */
-  listFilesystemEntries(dirPath: string): Promise<FilesystemEntryListingResult>
-  /** List registered internal actions available to human UI and Agent tools. */
-  listInternalActions(filter?: { surface?: ActionSurface; verb?: ActionVerb }): Promise<InternalActionSummary[]>
-  /** Invoke an internal action through the registry, permission gate, and timeline. */
-  invokeInternalAction(sessionId: string, invocation: ActionInvocation): Promise<unknown>
-  // Design Engine — human UI and Agent tools share the same action spine (docs/31)
-  setDesignSelection(input: import('@craft-agent/shared/protocol').SetSelectionInput): Promise<void>
-  getDesignSelection(sessionId: string): Promise<import('@craft-agent/shared/protocol/design').DesignSelection | null>
-  proposeDesignAction(input: import('@craft-agent/shared/protocol').ProposeActionInput): Promise<import('@craft-agent/shared/protocol/design').DesignPatch>
-  commitDesignPatch(input: import('@craft-agent/shared/protocol').CommitPatchInput): Promise<import('@craft-agent/shared/protocol/design').DesignPatch>
-  rollbackDesignPatch(input: import('@craft-agent/shared/protocol').RollbackPatchInput): Promise<import('@craft-agent/shared/protocol/design').DesignPatch>
-  // External Job — AIGC / external AI review / deploy (LOCAL_ONLY, docs/31 §5 · D9)
-  createExternalJob(workspaceId: string, input: CreateExternalJobInput): Promise<ExternalJobRecord>
-  getExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>
-  listExternalJobs(workspaceId: string, sessionId?: string): Promise<ExternalJobRecord[]>
-  confirmExternalJobPermission(workspaceId: string, input: ConfirmExternalJobPermissionInput): Promise<ExternalJobRecord>
-  runExternalJob(workspaceId: string, jobId: string, tokensAfter?: number): Promise<ExternalJobRecord>
-  pollExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>
-  cancelExternalJob(workspaceId: string, jobId: string): Promise<ExternalJobRecord>
   // Debug: send renderer logs to main process log file
   debugLog(...args: unknown[]): void
 
@@ -425,8 +334,6 @@ export interface ElectronAPI {
   getRuntimeEnvironment(): 'electron' | 'web'
   getHomeDir(): Promise<string>
   isDebugMode(): Promise<boolean>
-  getGitReview(dirPath: string): Promise<GitReviewState>
-  getGitFileDiff(dirPath: string, filePath: string): Promise<GitFileDiffResult>
 
   // Transport connection status (preload-local, not RPC channels)
   getTransportConnectionState(): Promise<TransportConnectionState>
@@ -528,10 +435,10 @@ export interface ElectronAPI {
   writePreferences(content: string): Promise<{ success: boolean; error?: string }>
 
   // Session Drafts (persisted composer state — text + attachment refs)
-  getDraft(sessionId: string): Promise<import('@craft-agent/shared/config/draft-types').SessionDraft | null>
-  setDraft(sessionId: string, draft: import('@craft-agent/shared/config/draft-types').SessionDraft): Promise<void>
+  getDraft(sessionId: string): Promise<import('@craft-agent/shared/config').SessionDraft | null>
+  setDraft(sessionId: string, draft: import('@craft-agent/shared/config').SessionDraft): Promise<void>
   deleteDraft(sessionId: string): Promise<void>
-  getAllDrafts(): Promise<Record<string, import('@craft-agent/shared/config/draft-types').SessionDraft>>
+  getAllDrafts(): Promise<Record<string, import('@craft-agent/shared/config').SessionDraft>>
 
   // Session Info Panel
   getSessionFiles(sessionId: string): Promise<SessionFile[]>
@@ -945,15 +852,6 @@ export interface AutomationsNavigationState {
 }
 
 /**
- * Files navigation state
- */
-export interface FilesNavigationState {
-  navigator: 'files'
-  details: { type: 'file'; filePath: string } | null
-  rightSidebar?: RightSidebarPanel
-}
-
-/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -962,7 +860,6 @@ export type NavigationState =
   | SettingsNavigationState
   | SkillsNavigationState
   | AutomationsNavigationState
-  | FilesNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -983,10 +880,6 @@ export const isSkillsNavigation = (
 export const isAutomationsNavigation = (
   state: NavigationState
 ): state is AutomationsNavigationState => state.navigator === 'automations'
-
-export const isFilesNavigation = (
-  state: NavigationState
-): state is FilesNavigationState => state.navigator === 'files'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1012,12 +905,6 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `automations/automation/${state.details.automationId}`
     }
     return 'automations'
-  }
-  if (state.navigator === 'files') {
-    if (state.details?.type === 'file') {
-      return `files/file/${encodeURIComponent(state.details.filePath)}`
-    }
-    return 'files'
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -1065,16 +952,6 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return { navigator: 'automations', details: { type: 'automation', automationId } }
     }
     return { navigator: 'automations', details: null }
-  }
-
-  // Handle files
-  if (key === 'files') return { navigator: 'files', details: null }
-  if (key.startsWith('files/file/')) {
-    const filePath = decodeURIComponent(key.slice(11))
-    if (filePath) {
-      return { navigator: 'files', details: { type: 'file', filePath } }
-    }
-    return { navigator: 'files', details: null }
   }
 
   // Handle settings

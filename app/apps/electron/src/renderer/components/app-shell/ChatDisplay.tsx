@@ -43,11 +43,8 @@ import {
 import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
 import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill } from "../../../shared/types"
-import type { CliRuntimeDefinition, CliRuntimeModelState } from '@craft-agent/shared/protocol'
-import type { TeamProjection } from '@craft-agent/shared/protocol'
 import type { PermissionMode } from "@craft-agent/shared/agent/modes"
 import type { ThinkingLevel } from "@craft-agent/shared/agent/thinking-levels"
-import { flattenLabels, LEADER_LABEL_ID, type LabelConfig } from '@craft-agent/shared/labels'
 import {
   TurnCard,
   UserMessageBubble,
@@ -67,8 +64,6 @@ import {
   type AuthRequestTurn,
 } from "@craft-agent/ui"
 import { MemoizedAuthRequestCard } from "@/components/chat/AuthRequestCard"
-import { ModelRoutingEvent, type ModelRoutingEventView } from "@/components/chat/ModelRoutingEvent"
-import { CacheLedgerEvent, type CacheLedgerEventView } from "@/components/chat/CacheLedgerEvent"
 import { ChatInputZone, type StructuredInputState, type StructuredResponse, type PermissionResponse, type AdminApprovalResponse } from "./input"
 import type { RichTextInputHandle } from "@/components/ui/rich-text-input"
 import { useBackgroundTasks } from "@/hooks/useBackgroundTasks"
@@ -79,8 +74,6 @@ import { navigate, routes } from "@/lib/navigate"
 import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
-import { TeamRosterHeader } from "./TeamRosterHeader"
-import { EntityListLabelBadge } from '@/components/ui/entity-list-label-badge'
 import { handleErrorMessageAction } from "./error-message-actions"
 
 // ============================================================================
@@ -144,14 +137,6 @@ interface ChatDisplayProps {
   // Model selection
   currentModel: string
   onModelChange: (model: string, connection?: string) => void
-  /** Local CLI runtimes shown inside the existing model picker. */
-  cliRuntimes?: CliRuntimeDefinition[]
-  activeCliRuntimeId?: string | null
-  cliRuntimeModelState?: CliRuntimeModelState
-  onCliRuntimeChange?: (runtimeId: string | null) => void
-  onCliRuntimeModelChange?: (modelId: string | null) => void
-  /** D19 surface: 'chat' hides CLI picker; 'terminal' shows it. */
-  surface?: 'chat' | 'terminal'
   // Connection selection (locked after first message)
   /** Callback when LLM connection changes (only works when session is empty) */
   onConnectionChange?: (connectionSlug: string) => void
@@ -198,8 +183,8 @@ interface ChatDisplayProps {
   sources?: LoadedSource[]
   /** Callback when source selection changes */
   onSourcesChange?: (slugs: string[]) => void
-  // Skill selection (for slash menu)
-  /** Available skills for slash menu insertion */
+  // Skill selection (for @mentions)
+  /** Available skills for @mention autocomplete */
   skills?: LoadedSkill[]
   // Label selection (for #labels)
   /** Available label configs (tree) for label menu and badge display */
@@ -457,12 +442,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   onOpenUrl,
   currentModel,
   onModelChange,
-  cliRuntimes,
-  activeCliRuntimeId,
-  cliRuntimeModelState,
-  onCliRuntimeChange,
-  onCliRuntimeModelChange,
-  surface,
   onConnectionChange,
   textareaRef: externalTextareaRef,
   disabled = false,
@@ -485,7 +464,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Sources
   sources,
   onSourcesChange,
-  // Skills (for slash menu)
+  // Skills (for @mentions)
   skills,
   // Labels (for #labels)
   labels,
@@ -518,19 +497,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   connectionUnavailable = false,
 }, ref) {
   const { t } = useTranslation()
-
-  const [teamProjection, setTeamProjection] = useState<TeamProjection | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    if (!session?.workspaceId || !window.electronAPI?.getTeam) {
-      setTeamProjection(null)
-      return
-    }
-    void window.electronAPI.getTeam(session.workspaceId)
-      .then((projection) => { if (!cancelled) setTeamProjection(projection) })
-      .catch(() => { if (!cancelled) setTeamProjection(null) })
-    return () => { cancelled = true }
-  }, [session?.id, session?.workspaceId, session?.labels])
 
   // Panel focus state (for multi-panel auto-scroll behavior)
   const appShellContext = useAppShellContext()
@@ -1527,8 +1493,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         <div className="flex flex-1 flex-col min-h-0 min-w-0 relative">
           {/* Content layer */}
           <div className="flex flex-1 flex-col min-h-0 min-w-0 relative z-10">
-          {/* Team roster (docs/00A §4): only renders on the team group-chat session; self-guarded. */}
-          <TeamRosterHeader workspaceId={session.workspaceId} sessionId={session.id} />
           {/* === MESSAGES AREA: Scrollable list of message bubbles === */}
           <div className="relative flex-1 min-h-0">
             {/* Mask wrapper - fades content at top and bottom over transparent/image backgrounds */}
@@ -1666,8 +1630,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             onOpenUrl={onOpenUrl}
                             sessionId={session?.id}
                             compactMode={compactMode}
-                            teamProjection={teamProjection}
-                            labels={labels}
                           />
                         </div>
                       )
@@ -1690,8 +1652,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             onOpenFile={onOpenFile}
                             onOpenUrl={onOpenUrl}
                             sessionId={session?.id}
-                            teamProjection={teamProjection}
-                            labels={labels}
                             onRetry={turn.message.role === 'error' ? () => {
                               const msgs = session?.messages
                               if (!msgs) return
@@ -1969,7 +1929,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             currentSessionStatus={session.sessionStatus || 'todo'}
             onSessionStatusChange={onSessionStatusChange}
             inputProps={{
-              sessionId: session.id,
               placeholder,
               disabled: isInputDisabled,
               isProcessing: session.isProcessing,
@@ -1979,12 +1938,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               textareaRef,
               currentModel,
               onModelChange,
-              cliRuntimes,
-              activeCliRuntimeId,
-              cliRuntimeModelState,
-              onCliRuntimeChange,
-              onCliRuntimeModelChange,
-              surface,
               thinkingLevel,
               onThinkingLevelChange,
               enabledModes,
@@ -2187,96 +2140,6 @@ interface MessageBubbleProps {
   compactMode?: boolean
   /** Callback to resend the user message that preceded an error */
   onRetry?: () => void
-  /** Derived view of the current team. The session/label stores remain authoritative. */
-  teamProjection?: TeamProjection | null
-  labels?: LabelConfig[]
-}
-
-type TeamMessageEventView = {
-  type: 'team_message'
-  actor?: { kind?: string; agentId?: string; displayName?: string }
-}
-
-function getTeamMessageEvent(message: Message): TeamMessageEventView | null {
-  const customData = asRecord((message as Message & { customData?: unknown }).customData)
-  const event = asRecord(customData?.sessionEvent)
-  return event?.type === 'team_message' ? event as TeamMessageEventView : null
-}
-
-function getModelRoutingEvent(message: Message): ModelRoutingEventView | null {
-  const customData = asRecord((message as Message & { customData?: unknown }).customData)
-  const event = asRecord(customData?.sessionEvent)
-  return event?.type === 'model_routing_decision' ? event as unknown as ModelRoutingEventView : null
-}
-
-function getCacheLedgerEvent(message: Message): CacheLedgerEventView | null {
-  const customData = asRecord((message as Message & { customData?: unknown }).customData)
-  const event = asRecord(customData?.sessionEvent)
-  return event?.type === 'cache_ledger' ? event as unknown as CacheLedgerEventView : null
-}
-
-function TeamMessageBubble({
-  message,
-  event,
-  projection,
-  labels,
-  onOpenFile,
-  onOpenUrl,
-}: {
-  message: Message
-  event: TeamMessageEventView
-  projection: TeamProjection
-  labels: LabelConfig[]
-  onOpenFile: (path: string) => void
-  onOpenUrl: (url: string) => void
-}) {
-  const member = event.actor?.kind === 'agent'
-    ? projection.members.find(candidate => candidate.sessionId === event.actor?.agentId)
-    : undefined
-  if (!member) return null
-
-  const labelsById = new Map(flattenLabels(labels).map(label => [label.id, label]))
-  const identityIds = [...member.identityLabelIds].sort((left, right) => {
-    if (left === LEADER_LABEL_ID) return -1
-    if (right === LEADER_LABEL_ID) return 1
-    return 0
-  })
-
-  return (
-    <div className="flex justify-start">
-      <div className="min-w-0 max-w-[90%] overflow-hidden rounded-[8px] bg-background shadow-minimal">
-        <div className="flex min-h-8 min-w-0 items-center gap-1.5 overflow-hidden border-b border-border/50 px-3 py-1.5">
-          <span className="shrink-0 text-[10px] font-medium tabular-nums text-foreground/45">{member.sequence}</span>
-          {identityIds.map((labelId) => {
-            const label = labelsById.get(labelId)
-            return label ? (
-              <EntityListLabelBadge
-                key={labelId}
-                label={label}
-                sessionLabels={member.identityLabelIds}
-                readOnly
-              />
-            ) : null
-          })}
-          <span className="min-w-0 truncate text-[11px] text-foreground/55">{event.actor?.displayName}</span>
-        </div>
-        <div className="px-4 py-3 text-sm">
-          <CollapsibleMarkdownProvider>
-            <Markdown
-              mode="minimal"
-              onUrlClick={onOpenUrl}
-              onFileClick={onOpenFile}
-              id={message.id}
-              className="text-sm"
-              collapsible
-            >
-              {message.content}
-            </Markdown>
-          </CollapsibleMarkdownProvider>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 /**
@@ -2364,8 +2227,6 @@ function MessageBubble({
   onPopOut,
   compactMode,
   onRetry,
-  teamProjection,
-  labels,
 }: MessageBubbleProps) {
   const { t } = useTranslation()
 
@@ -2449,31 +2310,6 @@ function MessageBubble({
 
   // === INFO MESSAGE: Icon and color based on level ===
   if (message.role === 'info') {
-    const teamMessageEvent = getTeamMessageEvent(message)
-    const teamMember = teamMessageEvent?.actor?.kind === 'agent'
-      ? teamProjection?.members.find(candidate => candidate.sessionId === teamMessageEvent.actor?.agentId)
-      : undefined
-    if (teamMessageEvent && teamProjection && labels?.length && teamMember) {
-      return <TeamMessageBubble
-        message={message}
-        event={teamMessageEvent}
-        projection={teamProjection}
-        labels={labels}
-        onOpenFile={onOpenFile}
-        onOpenUrl={onOpenUrl}
-      />
-    }
-
-    const routingEvent = getModelRoutingEvent(message)
-    if (routingEvent) {
-      return <ModelRoutingEvent event={routingEvent} />
-    }
-
-    const ledgerEvent = getCacheLedgerEvent(message)
-    if (ledgerEvent) {
-      return <CacheLedgerEvent event={ledgerEvent} />
-    }
-
     // Compaction complete message - render as horizontal rule with centered label
     // This persists after reload to show where context was compacted
     if (message.statusType === 'compaction_complete') {
@@ -2542,8 +2378,6 @@ const MemoizedMessageBubble = React.memo(MessageBubble, (prev, next) => {
     prev.message.content === next.message.content &&
     prev.message.role === next.message.role &&
     prev.sessionId === next.sessionId &&
-    prev.compactMode === next.compactMode &&
-    prev.teamProjection === next.teamProjection &&
-    prev.labels === next.labels
+    prev.compactMode === next.compactMode
   )
 })

@@ -5,18 +5,15 @@
  */
 
 import { atom } from 'jotai'
-import type { Getter } from 'jotai/vanilla'
 import { parseRouteToNavigationState } from '../../shared/route-parser'
 import type { ViewRoute } from '../../shared/routes'
-import { isEmptySessionMeta } from '@/lib/session-navigation'
-import { sessionMetaMapAtom } from './sessions'
 
 let nextPanelId = 0
 function generatePanelId(): string {
   return `panel-${++nextPanelId}-${Date.now()}`
 }
 
-export type PanelType = 'session' | 'source' | 'settings' | 'skills' | 'files' | 'terminal' | 'other'
+export type PanelType = 'session' | 'source' | 'settings' | 'skills' | 'other'
 export type PanelLaneId = 'main'
 export type OpenIntent = 'implicit' | 'explicit'
 
@@ -32,7 +29,7 @@ export const PANEL_LANE_POLICIES: Record<PanelLaneId, PanelLanePolicy> = {
   main: {
     id: 'main',
     order: 0,
-    allowedTypes: ['session', 'source', 'settings', 'skills', 'files', 'other'],
+    allowedTypes: ['session', 'source', 'settings', 'skills', 'other'],
     locked: false,
     singleton: false,
   },
@@ -78,8 +75,6 @@ export function getPanelTypeFromRoute(route: ViewRoute): PanelType {
       return 'settings'
     case 'skills':
       return 'skills'
-    case 'files':
-      return 'files'
     default:
       return 'other'
   }
@@ -100,17 +95,12 @@ function createEntry(route: ViewRoute, proportion: number, id?: string): PanelSt
   }
 }
 
-function equalizeProportions(stack: PanelStackEntry[]): PanelStackEntry[] {
-  if (stack.length === 0) return stack
-  const share = 1 / stack.length
-  return stack.map(p => ({ ...p, proportion: share }))
-}
-
 function normalizeProportions(stack: PanelStackEntry[]): PanelStackEntry[] {
   if (stack.length === 0) return stack
   const total = stack.reduce((sum, p) => sum + p.proportion, 0)
   if (total <= 0) {
-    return equalizeProportions(stack)
+    const equal = 1 / stack.length
+    return stack.map(p => ({ ...p, proportion: equal }))
   }
   return stack.map(p => ({ ...p, proportion: p.proportion / total }))
 }
@@ -122,35 +112,6 @@ export function parseSessionIdFromRoute(route: ViewRoute): string | null {
     return segments[idx + 1]
   }
   return null
-}
-
-/** Registered by App — auto-delete empty sessions when their panel closes. */
-export type EmptySessionCleanupDeps = {
-  onAutoDelete: (sessionId: string) => void
-  getDraft?: (sessionId: string) => string | undefined
-}
-
-export const emptySessionCleanupDepsAtom = atom<EmptySessionCleanupDeps | null>(null)
-
-function purgeEmptySessionIfHidden(
-  get: Getter,
-  closedSessionId: string | null,
-  remainingStack: PanelStackEntry[],
-) {
-  if (!closedSessionId) return
-
-  const stillOpen = remainingStack.some(
-    (entry) => parseSessionIdFromRoute(entry.route) === closedSessionId,
-  )
-  if (stillOpen) return
-
-  const deps = get(emptySessionCleanupDepsAtom)
-  if (!deps) return
-
-  const meta = get(sessionMetaMapAtom).get(closedSessionId)
-  if (!isEmptySessionMeta(meta, deps.getDraft)) return
-
-  deps.onAutoDelete(closedSessionId)
 }
 
 export const focusedSessionIdAtom = atom((get) => {
@@ -180,7 +141,7 @@ export const pushPanelAtom = atom(
       ...stack.slice(insertAt),
     ]
 
-    const normalized = equalizeProportions(newStack)
+    const normalized = normalizeProportions(newStack)
     set(panelStackAtom, normalized)
     set(focusedPanelIdAtom, newEntry.id)
   }
@@ -192,19 +153,14 @@ export const closePanelAtom = atom(
     const stack = get(panelStackAtom)
     const idx = stack.findIndex(p => p.id === id)
     if (idx === -1) return
-
-    const closing = stack[idx]
-    const closedSessionId = parseSessionIdFromRoute(closing.route)
     const remaining = [...stack.slice(0, idx), ...stack.slice(idx + 1)]
 
-    set(panelStackAtom, equalizeProportions(remaining))
+    set(panelStackAtom, normalizeProportions(remaining))
 
     if (get(focusedPanelIdAtom) === id) {
       const newIdx = Math.min(idx, remaining.length - 1)
       set(focusedPanelIdAtom, remaining[newIdx]?.id ?? null)
     }
-
-    purgeEmptySessionIfHidden(get, closedSessionId, remaining)
   }
 )
 
@@ -247,7 +203,7 @@ export const reconcilePanelStackAtom = atom(
       return createEntry(target.route, target.proportion)
     })
 
-    const normalized = equalizeProportions(newStack)
+    const normalized = normalizeProportions(newStack)
 
     if (
       normalized.length === current.length &&

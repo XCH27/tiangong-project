@@ -91,20 +91,6 @@ export const RPC_CHANNELS = {
   fs: {
     SEARCH: 'fs:search',
     LIST_DIRECTORY: 'fs:listDirectory',
-    LIST_ENTRIES: 'fs:listEntries',
-  },
-  internalActions: {
-    LIST: 'internalActions:list',
-    INVOKE: 'internalActions:invoke',
-  },
-  externalJob: {
-    CREATE: 'externalJob:create',
-    GET: 'externalJob:get',
-    LIST: 'externalJob:list',
-    CONFIRM_PERMISSION: 'externalJob:confirmPermission',
-    RUN: 'externalJob:run',
-    POLL: 'externalJob:poll',
-    CANCEL: 'externalJob:cancel',
   },
   debug: {
     LOG: 'debug:log',
@@ -199,30 +185,6 @@ export const RPC_CHANNELS = {
     SET_WORKSPACE_DEFAULT: 'LLM_Connection:setWorkspaceDefault',
     REFRESH_MODELS: 'LLM_Connection:refreshModels',
     CHANGED: 'LLM_Connection:changed',
-  },
-  managerDecision: {
-    GET_SETTINGS: 'managerDecision:getSettings',
-    UPDATE_SETTINGS: 'managerDecision:updateSettings',
-  },
-  usage: {
-    GET_SESSION: 'usage:getSession',
-  },
-  memory: {
-    LIST: 'memory:list',
-    ADD: 'memory:add',
-    GET: 'memory:get',
-    UPDATE: 'memory:update',
-    DELETE: 'memory:delete',
-  },
-  cliRuntimes: {
-    LIST: 'cliRuntimes:list',
-    GET: 'cliRuntimes:get',
-    ADD_CUSTOM: 'cliRuntimes:addCustom',
-    UPDATE_CUSTOM: 'cliRuntimes:updateCustom',
-    SET_ENABLED: 'cliRuntimes:setEnabled',
-    DELETE: 'cliRuntimes:delete',
-    TEST: 'cliRuntimes:test',
-    CHANGED: 'cliRuntimes:changed',
   },
   chatgpt: {
     START_OAUTH: 'chatgpt:startOAuth',
@@ -373,8 +335,6 @@ export const RPC_CHANNELS = {
   },
   git: {
     GET_BRANCH: 'git:getBranch',
-    GET_REVIEW: 'git:getReview',
-    GET_FILE_DIFF: 'git:getFileDiff',
   },
   gitbash: {
     CHECK: 'gitbash:check',
@@ -468,40 +428,6 @@ export const RPC_CHANNELS = {
     DISMISS_PENDING_SENDER: 'messaging:access:dismissPending',
     ALLOW_PENDING_SENDER: 'messaging:access:allowPending',
     SET_BINDING_ACCESS: 'messaging:access:setBindingAccess',
-  },
-
-  // Fleet 工作台动作引擎（承重墙 · docs/31 §1）。LOCAL_ONLY：进程内账本 + 本地持久化。
-  // 人类 UI 和 AI 工具调用走的是同一组 channel —— 没有第二条写入路径。
-  design: {
-    SET_SELECTION: 'design:setSelection',
-    GET_SELECTION: 'design:getSelection',
-    PROPOSE_ACTION: 'design:proposeAction',
-    COMMIT_PATCH: 'design:commitPatch',
-    ROLLBACK_PATCH: 'design:rollbackPatch',
-  },
-
-  // Fleet 团队规则。读取和预校验可直接调用；写入必须走 SessionCommand + permission + timeline。
-  teamRules: {
-    GET: 'teamRules:get',
-    VALIDATE: 'teamRules:validate',
-  },
-
-  // Team orchestration read API（写动作走 sessions:command → TeamCoordinator）。
-  // 全部 LOCAL_ONLY：派生自本地 session/rules，不外发。
-  team: {
-    GET: 'team:get',
-    GET_REVIEW_QUEUE: 'team:getReviewQueue',
-    GET_INBOX: 'team:getInbox',
-  },
-  teamRun: {
-    GET_TEAM: 'teamRun:getTeam',
-    PROPOSE_RUN: 'teamRun:proposeRun',
-    START_RUN: 'teamRun:startRun',
-    GET_STATUS: 'teamRun:getStatus',
-    GET_REPORT: 'teamRun:getReport',
-    CANCEL_RUN: 'teamRun:cancelRun',
-    SEND_MESSAGE: 'teamRun:sendMessage',
-    INVOKE_ACTION: 'teamRun:invokeAction',
   },
 } as const
 

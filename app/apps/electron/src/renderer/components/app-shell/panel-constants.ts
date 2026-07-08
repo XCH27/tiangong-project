@@ -12,14 +12,8 @@ export const RADIUS_EDGE = isMac ? 14 : 8
 /** Corner radius for interior corners between panels */
 export const RADIUS_INNER = 10
 
-/** Minimum width for every content panel (single or multi-panel row). */
-export const PANEL_MIN_WIDTH = 300
-
-/** @deprecated Use PANEL_MIN_WIDTH — kept for import compatibility. */
-export const PANEL_MIN_WIDTH_COMPACT = PANEL_MIN_WIDTH
-
-/** @deprecated Use PANEL_MIN_WIDTH — kept for import compatibility. */
-export const PANEL_MIN_WIDTH_DUAL = PANEL_MIN_WIDTH
+/** Minimum width for any content panel */
+export const PANEL_MIN_WIDTH = 440
 
 /** Extra vertical space reserved in panel stack for box-shadows. */
 export const PANEL_STACK_VERTICAL_OVERFLOW = 8

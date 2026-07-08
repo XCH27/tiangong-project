@@ -41,33 +41,6 @@ export interface UserPreferences {
   uiLanguage?: LanguageCode;
   // When the preferences were last updated
   updatedAt?: number;
-  // 智能模型路由 + Fusion + 缓存偏好（docs/03 D5）
-  // 完整类型见 server-core/services/fusion-types.ts ModelRoutingPrefs
-  // 这里用内联避免跨包循环依赖；两者保持同步。
-  modelRouting?: {
-    mode: 'manual' | 'auto'
-    cascade: { enabled: boolean; respectLatencySensitive: boolean }
-    shaping: { rtk: boolean; codegraph: boolean; reasonixPrefix: boolean }
-    taskTypeRouting?: Record<string, { tier?: string; fusionMode?: string }>
-    agentPolicy: {
-      manager: { connectionSlug: string; modelId: string }
-      leader: { allowAuto: boolean; allowFusion: boolean; allowCli: boolean }
-      executor: { allowAuto: boolean; allowCli: boolean; surfaceByTaskType?: Record<string, 'api' | 'cli'> }
-    }
-    fusion: {
-      enabled: 'off' | 'on' | 'smart'
-      preset: 'quality' | 'budget' | 'custom'
-      panelSize: 2 | 3
-      panelModels: string[]
-      judgeModel: string
-      writerModel: string
-      formsByTaskType?: Record<string, 'synthesis' | 'plan'>
-      budgetCap: { maxTokens: number; maxPanelists: number; perWorkspaceDaily?: number }
-      scope: 'leader-only' | 'all-agents'
-      verification: { enabled: boolean; models?: string[] }
-    }
-    cache: { exact: boolean; semantic: boolean; panelIntermediate: boolean }
-  }
 }
 
 const PREFERENCES_FILE = join(CONFIG_DIR, 'preferences.json');

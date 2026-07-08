@@ -738,13 +738,6 @@ export default function AiSettingsPage() {
     existingSlugs,
   })
 
-  const handleAddConnection = useCallback(() => {
-    setIsDirectEdit(false)
-    setEditInitialValues(undefined)
-    apiSetupOnboarding.reset()
-    openApiSetup()
-  }, [apiSetupOnboarding, openApiSetup])
-
   const handleApiSetupFinish = useCallback(() => {
     closeApiSetup()
     refreshLlmConnections?.()
@@ -1149,7 +1142,7 @@ export default function AiSettingsPage() {
                 </SettingsCard>
                 <div className="pt-0">
                   <button
-                    onClick={handleAddConnection}
+                    onClick={() => openApiSetup()}
                     className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors"
                   >
                     {t("settings.ai.addConnection")}
