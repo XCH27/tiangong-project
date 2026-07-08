@@ -1,0 +1,31 @@
+name: Bug Report (异常报告)
+description: Report a bug or unintended behavior found by human or validation agent.
+title: "[Bug]: <Short description>"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened? (问题描述)
+      description: Describe the bug. What was the unexpected behavior?
+    validations:
+      required: true
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to Reproduce (复现步骤)
+      description: How can the Lead Agent or Human reproduce this bug?
+      value: |
+        1. Go to '...'
+        2. Click on '....'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs (相关日志)
+      description: Paste any crash logs or terminal output here.
+      render: shell
+    validations:
+      required: false

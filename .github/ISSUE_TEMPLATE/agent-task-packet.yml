@@ -1,0 +1,49 @@
+name: Agent Task Packet (工作令)
+description: Initiate a parallel work packet for a Sub-Agent to execute.
+title: "[Packet]: <Short description>"
+labels: ["agent-task", "wave-packet"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        *Agents must refer to `docs/34-多Agent协同开发规范.md` before executing this packet.*
+  - type: input
+    id: module_name
+    attributes:
+      label: Target Module (目标模块)
+      description: Enter the module name according to docs/WAVE-MODULE-MAP.md
+      placeholder: e.g., Internal Action Registry
+    validations:
+      required: true
+  - type: textarea
+    id: task_description
+    attributes:
+      label: Task Instructions (任务说明)
+      description: A clear, actionable task description. Avoid vague instructions.
+      placeholder: Implement the core logic for...
+    validations:
+      required: true
+  - type: textarea
+    id: ownership_boundaries
+    attributes:
+      label: Ownership Boundaries (所有权边界)
+      description: List the directories or files this agent is strictly allowed to modify.
+      value: |
+        Allowed:
+        - `app/packages/example/*`
+        
+        Forbidden:
+        - `app/packages/shared/*`
+    validations:
+      required: true
+  - type: textarea
+    id: validation_criteria
+    attributes:
+      label: Validation Criteria (验收标准)
+      description: What must pass for this packet to be considered complete?
+      value: |
+        1. `bun run typecheck:all` passes.
+        2. `./scripts/fleet-verify.sh` passes.
+        3. Feature status reaches `usable` or `wired but not visually checked`.
+    validations:
+      required: true
