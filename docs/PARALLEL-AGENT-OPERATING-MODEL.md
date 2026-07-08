@@ -6,6 +6,10 @@ This document defines how multiple agents can develop Fleet without corrupting s
 
 Parallelism begins after the Lead freezes contracts and file ownership.
 
+GitHub is the integration source of truth. Each agent works on a dedicated branch and opens
+a pull request into `work/fresh-base-spine`. Agents do not push directly to `main` or
+`work/fresh-base-spine`.
+
 No worker agent may independently modify shared protocol files, handler registration, channel maps, global i18n files, session storage contracts, or cross-module DTOs.
 
 ## Roles

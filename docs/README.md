@@ -7,9 +7,11 @@ Active documentation is now English-only.
 | File | Purpose |
 |---|---|
 | `START-HERE.md` | Entry point, read order, and working status labels |
+| `AGENT-ENTRY-MAP.md` | Exact repository, local path, app, docs, legacy, and reference locations |
 | `PROJECT-DIRECTION.md` | Product direction, non-goals, architecture direction, and development spine |
 | `DECISIONS-LEDGER.md` | Final promoted decisions from the legacy corpus |
 | `DEVELOPMENT-PROCESS.md` | How project work moves from direction to module specs to agent execution |
+| `CLOUD-LOCAL-WORKFLOW.md` | GitHub/local sync rules, branch flow, and documentation-agent prompts |
 | `PARALLEL-AGENT-OPERATING-MODEL.md` | Lead/worker rules for conflict-free multi-agent development |
 | `OWNERSHIP-MATRIX.md` | Module by package ownership and frozen contract boundaries |
 | `WAVE-MODULE-MAP.md` | Which modules are built in which waves and why |
@@ -36,4 +38,3 @@ To minimize token cost and prevent search/context pollution, all legacy Chinese 
 | `docs/legacy/LEGACY-LESSONS.md` | Extracted high-value architectural lessons and engineering guidelines from the legacy files |
 
 Legacy docs are historical material. If a legacy decision is still valid, promote it into a small English active document instead of editing the old files.
-

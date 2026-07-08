@@ -12,6 +12,7 @@ clean craft-agents-oss base, with verified assets extracted from the existing `a
 | `docs/PROJECT-DIRECTION.md` | Product direction, non-goals, and development spine |
 | `docs/DECISIONS-LEDGER.md` | Promoted decisions and reversals |
 | `docs/DEVELOPMENT-PROCESS.md` | How work moves from direction to agent execution |
+| `docs/CLOUD-LOCAL-WORKFLOW.md` | GitHub/local sync rules and documentation-agent prompts |
 | `docs/BOARD-SYNC.md` | Parallel-wave card format and sync points |
 | `docs/README.md` | Full documentation index |
 
@@ -34,7 +35,8 @@ This repository contains a large volume of third-party Markdown that is **not** 
 execution material:
 
 - **Active execution:** `AGENTS.md`, `docs/START-HERE.md`, `docs/README.md`,
-  `docs/PROJECT-DIRECTION.md`, `docs/DECISIONS-LEDGER.md`, `docs/BOARD-SYNC.md`.
+  `docs/PROJECT-DIRECTION.md`, `docs/DECISIONS-LEDGER.md`,
+  `docs/CLOUD-LOCAL-WORKFLOW.md`, `docs/BOARD-SYNC.md`.
 - **Own active docs:** files under `docs/` that are not in `docs/legacy/`.
 - **Third-party / reference:** Craft-bundled docs inside `app/`, `源码参考/`, and
   `node_modules/` are read as index references only and do not override current decisions.
@@ -45,5 +47,5 @@ execution material:
 ./scripts/craft.sh install
 ./scripts/craft.sh run typecheck:all
 ./scripts/craft.sh run electron:dev
-./scripts/fleet-verify.sh          # runs validate:fleet (= validate:dev)
+./scripts/fleet-verify.sh          # project verification entry point; report failures as blockers
 ```

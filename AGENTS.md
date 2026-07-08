@@ -11,16 +11,18 @@ Active project documentation is English-only. The old Chinese documents are arch
 Use this order before changing product code or project documentation:
 
 1. `docs/START-HERE.md`
-2. `docs/PROJECT-DIRECTION.md`
-3. `docs/DECISIONS-LEDGER.md`
-4. `docs/DEVELOPMENT-PROCESS.md`
-5. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
-6. `docs/OWNERSHIP-MATRIX.md`
-7. `docs/WAVE-MODULE-MAP.md`
-8. `docs/REFERENCE-PROJECT-POLICY.md`
-9. The relevant module spec in `docs/modules/`
-10. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
-11. The current Craft-based implementation under `app/`
+2. `docs/AGENT-ENTRY-MAP.md`
+3. `docs/PROJECT-DIRECTION.md`
+4. `docs/DECISIONS-LEDGER.md`
+5. `docs/DEVELOPMENT-PROCESS.md`
+6. `docs/CLOUD-LOCAL-WORKFLOW.md`
+7. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+8. `docs/OWNERSHIP-MATRIX.md`
+9. `docs/WAVE-MODULE-MAP.md`
+10. `docs/REFERENCE-PROJECT-POLICY.md`
+11. The relevant module spec in `docs/modules/`
+12. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
+13. The current Craft-based implementation under `app/`
 
 Read `docs/legacy/` only to verify historical rationale or recover a missing decision.
 If a legacy document conflicts with an active English document, follow the active English
@@ -75,6 +77,8 @@ timeline, Library, or settings truth.
 
 Parallel work is Lead-controlled.
 
+- GitHub is the integration source of truth. Agents work on task branches and open PRs into
+  `work/fresh-base-spine`; they do not push directly to integration branches.
 - Wave 0 freezes shared contracts before worker agents start.
 - Shared contract files are owned by the Lead and are read-only for parallel workers after freeze.
 - Each file has exactly one owner during a wave.
