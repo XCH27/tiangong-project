@@ -34,10 +34,10 @@
 | `app/apps/electron/src/main/` | M00 Lead |
 | `app/apps/electron/src/preload/` | M00 Lead |
 | `app/apps/electron/src/renderer/shell/` | M00 Lead |
-| `app/packages/shared/src/session/` | M00 Lead |
-| `app/packages/shared/src/workspace/` | M00 Lead |
-| `app/packages/shared/src/permission/` | M00 Lead |
-| `app/packages/shared/src/timeline/` | M00 Lead |
+| `app/packages/shared/src/sessions/` | M00 Lead |
+| `app/packages/shared/src/workspaces/` | M00 Lead |
+| `app/packages/shared/src/sessions/ (permissions namespace)` | M00 Lead |
+| `app/packages/shared/src/sessions/ (timeline namespace)` | M00 Lead |
 
 ### M01 — Clean Craft Baseline (W2)
 
@@ -56,22 +56,22 @@
 
 | Path pattern | Owner |
 |---|---|
-| `app/packages/shared/src/action-registry/` | M03 Worker |
+| `app/packages/shared/src/protocol/ (action registry namespace)` | M03 Worker |
 | `app/apps/electron/src/main/action-executor/` | M03 Worker |
 
 ### M04 — Runtime Lanes / TeamRun (W2)
 
 | Path pattern | Owner |
 |---|---|
-| `app/packages/shared/src/runtime-lanes/` | M04 Worker |
-| `app/packages/shared/src/teamrun/` | M04 Worker |
+| `app/packages/shared/src/sessions/ (runtime lanes namespace)` | M04 Worker |
+| `app/packages/shared/src/sessions/ (teamrun namespace)` | M04 Worker |
 
 ### M05 — Files Library Leases (W2)
 
 | Path pattern | Owner |
 |---|---|
-| `app/packages/shared/src/library/` | M05 Worker |
-| `app/packages/shared/src/lease/` | M05 Worker |
+| `app/packages/shared/src/workspaces/ (library namespace)` | M05 Worker |
+| `app/packages/shared/src/workspaces/ (lease namespace)` | M05 Worker |
 
 ### M06 — Browser Artifact Surface (W3)
 
