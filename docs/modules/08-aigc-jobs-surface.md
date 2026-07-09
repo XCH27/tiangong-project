@@ -91,7 +91,68 @@ When a job reaches `completed`:
 
 ---
 
-## 8. Agent-Native Actions
+## 8. Data Model
+
+ExternalJob, provider, input asset, output asset, cost source, status, evidence, provenance, license metadata.
+
+### Batch API Extension (Native Provider Batch Mode)
+
+Batch API is not a separate system. It is an execution mode on `ExternalJob`.
+
+```ts
+type ExternalJobProvider =
+  | 'local'
+  | 'api'                  // real-time single-request
+  | 'browser-mediated'
+  | 'anthropic-batch'      // native Anthropic Message Batches
+  | 'openai-batch'         // native OpenAI Batch API
+
+type ExternalJobBatchMode =
+  | 'sync-concurrent'      // concurrent Promise.all, no cost discount
+  | 'async-native'         // submit to provider Batch endpoint, ~50% cost
+
+interface ExternalJob {
+  // existing fields
+  id: string
+  type: 'review' | 'aigc' | 'memory-distill' | 'analysis' | 'export'
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  provider: ExternalJobProvider
+  costSource: 'BYOK_API' | 'LOCAL_COMPUTE' | 'EXTERNAL_JOB' | 'UNKNOWN'
+  inputAssets: string[]          // asset IDs or file refs
+  outputAssets: string[]         // Library asset IDs written on completion
+  evidenceRef: string            // SessionEvent reference
+  provenance: Record<string, string>
+  // batch-specific additions
+  batchMode?: ExternalJobBatchMode
+  batchId?: string               // provider-issued batch ID
+  batchInputFile?: string        // local JSONL file submitted to provider
+  batchResultFile?: string       // local JSONL result file after download
+  batchItemCount?: number        // total items submitted
+  batchItemsCompleted?: number   // items resolved so far
+}
+```
+
+**Eligible job types for `async-native` batch mode:**
+
+| Job Type | Reason |
+|---|---|
+| External AI review (multi-platform) | Offline, non-interactive, ~5–30 min latency acceptable |
+| Memory distillation (session-end Fact extraction) | Background, no user-blocking |
+| AIGC bulk generation | User can wait for batch to land in Library |
+| TeamRun non-real-time analysis tasks | Static analysis, doc generation, test report summaries |
+
+**Ineligible job types (must never use `async-native`):**
+
+| Job Type | Reason |
+|---|---|
+| Interactive chat response | Requires streaming, sub-second latency |
+| Gate 1.5 real-time supervision | Needs instant interception before damage |
+| Terminal PTY I/O | Real-time millisecond I/O, incompatible |
+| Model routing decisions | User-facing, latency-sensitive |
+
+---
+
+## 9. Agent-Native Actions
 
 | Action id | Description | Permission | Undo |
 |---|---|---|---|
@@ -103,7 +164,7 @@ When a job reaches `completed`:
 
 ---
 
-## 9. UI Placement
+## 10. UI Placement
 
 AIGC Jobs is an **auxiliary panel** — not a primary surface. It is accessible from:
 
@@ -114,7 +175,7 @@ The panel is a list view: each row shows job type, prompt preview, status, progr
 
 ---
 
-## 10. Session / Permission / Rollback
+## 11. Session / Permission / Rollback
 
 - `aigc.job_submit` is `L1_reversible`; the undo handle is an `aigc.job_cancel` invocation (valid only while job is `pending`).
 - Once a job is `running`, cancellation is best-effort and may incur provider costs.
@@ -123,7 +184,7 @@ The panel is a list view: each row shows job type, prompt preview, status, progr
 
 ---
 
-## 11. Validation Ladder
+## 12. Validation Ladder
 
 1. `pnpm typecheck` — zero errors.
 2. Unit test: job lifecycle state machine transitions (`pending → running → completed`, `pending → cancelled`).
@@ -131,13 +192,25 @@ The panel is a list view: each row shows job type, prompt preview, status, progr
 4. Smoke: submit a mock image_gen job; verify it appears in the queue panel with `pending` status.
 5. Smoke: mock job completion; verify output file saved to Library and canvas placeholder updates.
 6. Agent action smoke: call `aigc.job_submit` via action registry; verify Timeline event appears.
+7. For Batch jobs additionally: idempotency test (duplicate batchId submission rejected), error-isolation test (one failed item does not fail the batch), ID mapping test (all outputs correctly mapped to input task IDs).
 
 ---
 
-## 12. Done / Not Done
+## 13. Done / Not Done
 
 **`usable`**: human and agent can each submit a job; job progresses through its lifecycle; completed output appears in Library with provenance; Timeline has evidence for the full lifecycle.
 
 **`display-only`**: job list renders but no real provider, no Library write, no Timeline.
 
 **`blocked`**: `aigc.job_cancel` action id not yet frozen; or Library lease model (M05) not stable.
+
+
+---
+
+## 14. Risks And Blocked Decisions
+
+Risk: calling website/API without clear cost and data boundary. Unknown costs remain unknown, not free.
+
+Risk (Batch-specific): misclassifying interactive tasks as `async-native`. If a task requires real-time feedback, it must stay on `api` provider mode. Batch mode gate: task must have no UI blocking dependency before submitting.
+
+Risk (Batch-specific): never auto-retry a failed batch without re-checking `batchId` idempotency guard — double-submission would double billing.
