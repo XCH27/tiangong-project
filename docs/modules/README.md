@@ -135,7 +135,7 @@ _Space for Worker to fill in during handoff. Leave blank until handoff._
 | `01-clean-craft-baseline.md` | Clean Craft base and shell simplification. |
 | `02-terminal-cli-runtime/SPEC.md` | Terminal surface, CLI runtime, launcher, diagnostics. |
 | `03-internal-action-registry.md` | Agent-native action registry and first file/action loop. |
-| `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TeamRun, Craft Agents (二开补强) Bridge. |
+| `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TeamRun, Fleet Bridge. |
 | `05-files-library-leases.md` | Files, Library, file leases, write conflict control. |
 | `06-browser-artifact-surface/SPEC.md` | BrowserPane selection, annotation, artifact handoff. |
 | `07-canvas-design-surface/SPEC.md` | Native canvas/design surface. |

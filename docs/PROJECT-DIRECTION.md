@@ -346,9 +346,9 @@ The next useful work is:
 After that, implement the first complete loop: terminal/CLI runtime from UI to process to session timeline to visible output.
 ---
 
-## 13. Craft Agents (二开补强) 架构选择与拓扑设计
+## 13. Fleet 架构选择与拓扑设计
 
-对于 **Craft Agents (二开补强)** 的工程落地，通过保留并补强 Electron 原版 Shell 并基于 Bun Headless Server 运行的路线，是最高效且符合项目现状的技术选择。本决策的完整行业竞品对比选择矩阵请参见：👉 **[docs/ARCHITECTURAL-COMPARISON.md](file:///Users/lullwen/Documents/天工/docs/ARCHITECTURAL-COMPARISON.md)**。
+对于 **Fleet** 的工程落地，通过保留并补强 Electron 原版 Shell 并基于 Bun Headless Server 运行的路线，是最高效且符合项目现状的技术选择。本决策的完整行业竞品对比选择矩阵请参见：👉 **[docs/ARCHITECTURAL-COMPARISON.md](file:///Users/lullwen/Documents/天工/docs/ARCHITECTURAL-COMPARISON.md)**。
 
 ### 13.1 架构路线决策
 
@@ -377,3 +377,70 @@ After that, implement the first complete loop: terminal/CLI runtime from UI to p
 │ (apps/cli/src)│        │  (apps/electron/src)     │
 └───────────────┘        └──────────────────────────┘
 ```
+---
+
+## 13. Fleet 架构选择与拓扑设计
+
+对于 **Fleet** 的工程落地，通过保留并补强 Electron 原版 Shell 并基于 Bun Headless Server 运行的路线，是最高效且符合项目现状的技术选择。本决策的完整行业竞品对比选择矩阵请参见：👉 **[docs/ARCHITECTURAL-COMPARISON.md](file:///Users/lullwen/Documents/天工/docs/ARCHITECTURAL-COMPARISON.md)**。
+
+### 13.1 架构路线决策
+
+| 对比项 | 方案 A：从零重写 (Tauri 壳) | **方案 B：原版补强 (Electron 壳) [最终选型]** |
+|---|---|---|
+| **状态共享** | ❌ 需在 Rust 侧新造 IPC 共享层，CLI/GUI 数据同步极难 | ✅ **天然共享**：CLI 和 GUI 均为平等的 RPC 客户端连入同个 Bun Server |
+| **开发工作量** | ❌ 约 16 周（重写 Shell/Session/审批/时间线） | ✅ **约 8 周**：仅针对 CLI、Browser、Canvas 进行增量补强 |
+| **CDP 自动化** | ❌ 需在 Tauri 重写无头/可视化窗口控制 | ✅ **直接复用**：已有成熟的 `BrowserPaneManager` 原生操控 |
+| **内存/资源开销** | ✅ 极低 (50-100MB) | ⚠️ 稍大 (150-250MB) |
+| **选型结论** | ❌ 投入产出比极低，且严重违背全局决策 D27-R | ✅ **最优解：避免重复造轮子，实现核心业务功能快速收敛** |
+
+### 13.2 物理运行拓扑
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  Bun Headless Server (packages/server) ← 核心状态常驻             │
+│  - WebSocket RPC 协议支持 (MessageEnvelope 规范)                 │
+│  - SessionManager / SQLite 持久化 / 本地 API 路由                 │
+└─────────────────────────────────────────────────────────────────┘
+       ▲                          ▲
+       │ WebSocket (craft-cli)    │ WebSocket (Electron)
+       │                          │
+┌───────────────┐        ┌──────────────────────────┐
+│  craft-cli    │        │  Electron Desktop App    │
+│ 补强 CLI 客户端│        │  复用原版 + 补强 Surface   │
+│ (apps/cli/src)│        │  (apps/electron/src)     │
+└───────────────┘        └──────────────────────────┘
+```
+
+## 14. Current Delivery Spine
+
+To focus engineering efforts and prevent scope creep, the current wave limits delivery strictly to the core terminal/CLI interaction loop:
+1.  **M00 (Platform Spine)**: Core WS RPC handler, SQLite persistence, and graded L0-L3 permissions.
+2.  **M03 (Internal Action Registry)**: Structured action routing pipeline (PreInvoke / PostInvoke hooks).
+3.  **M02 (Terminal CLI Runtime)**: Local CLI `craft-cli` command line launcher connected to the Bun daemon.
+
+All other surfaces (Browser, Canvas, Video, AIGC) are currently marked as non-active downstream waves.
+
+## 15. Explicit Non-Goals for This Wave
+
+The following modules are locked and must not be touched during the current delivery wave:
+-   **Canvas/Design Surface (M07)**: No infinite canvas stubs or OpenPencil bindings.
+-   **AIGC Jobs Surface (M08)**: No external job executor loops or batch API routing.
+-   **Video Surface (M09)**: No FFmpeg rendering, timelines, or clipping components.
+-   **Complex Browser Editing (M06)**: No DOM mutation bindings, browser automation scripts, or external crawler hooks.
+-   **Secondary Systems**: No secondary session store, permission model, or memory database. All work must build directly on the platform spine.
+
+## 16. Surface Entry Conditions
+
+No worker agent may initiate work on downstream surfaces unless the following prerequisites are met and verified by the Lead:
+-   **Browser Surface (M06)**: Requires M00 (Spine), M03 (Registry), and M05 (Files) to be fully `usable`.
+-   **Canvas Surface (M07)**: Requires M00 (Spine), M03 (Registry), and M05 (Files Library) to be fully `usable`.
+-   **AIGC / Video Surfaces (M08/M09)**: Requires M00 (Spine), M03 (Registry), M05 (Library), and M11 (Cost Ledger) to be fully `usable`.
+
+## 17. What "usable" Means
+
+A module or capability is declared `usable` only when the following criteria are verified:
+1.  **State Persistence**: Session state and configuration persist correctly across daemon/electron restarts via SQLite.
+2.  **Permission Gating**: Graded L0-L3 authorization checks are enforced; L3 triggers blocking user approvals.
+3.  **Timeline Evidence**: Every user UI write and agent command writes a corresponding structured event to the session timeline.
+4.  **Agent-Callable**: Capabilities are fully exposed in the action registry and callable via agent RPC tools.
+5.  **Rollback / Evidence**: Non-destructive actions provide transactional undo points; destructive actions are explicitly marked.

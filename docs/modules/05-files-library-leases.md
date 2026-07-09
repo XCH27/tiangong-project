@@ -1,72 +1,39 @@
-# 05 Files Library Leases
+# 05 Files Library Leases Specification
 
-## 1. Mission
+## 1. Purpose
+Provide unified file access, leasing locks, and Library asset indexing to ensure human and agent writes do not conflict and all files remain strictly accounted for.
 
-Make workspace files and reusable Library assets visible, permissioned, and safe for human/agent collaboration.
+## 2. Non-Goals
+-   Do not allow file mutations without active leases.
+-   Do not automatically import raw files as Library assets without user authorization.
 
-## 2. User-Visible Loop
+## 3. Inputs
+-   File path strings and write lease requests.
+-   Asset registration metadata (hash, provenance, license).
 
-User or agent sees files, selects an item, performs a permissioned operation, sees timeline evidence, and can undo or inspect conflict state.
+## 4. Outputs
+-   `WorkspaceFileLease` tokens.
+-   File modification timeline events.
+-   Library indexing database records.
 
-## 3. Current App Reuse
+## 5. State Model
+-   Active leases map (`FilePath -> ActorRef`).
+-   Library asset database schema.
 
-Reuse Craft file viewer, right context/files panel, internal action registry, and existing filesystem RPC.
+## 6. Dependencies
+-   M00 Spine SQLite databases.
+-   Local workspace file system wrappers.
 
-## 4. Reference Projects
+## 7. Acceptance Criteria
+-   `usable`: Releasing a file lease triggers file log writes and timeline evidence updates. Write conflicts return active owner blocks.
 
-Codegraph for authorized indexing; Open Design for artifact/library ideas; RTK/Repomix for packaging boundaries. No unapproved file manager code.
+## 8. Failure & Rollback
+-   Write failures release the active lease and roll back file edits using git checkout/revert hooks.
 
-## 5. UI Placement
+## 9. Observability
+-   All lease requests, checkouts, and file write actions log metadata to the session timeline.
 
-Raw files belong to the workspace files area. Library belongs to asset/library surfaces and creative tools. Do not add another "all files" left-nav entry.
-
-## 6. Backend / RPC / Locality
-
-File operations are `LOCAL_ONLY`. Library indexing stores source, hash, license/provenance, usage refs, and deletion boundaries.
-
-## 7. Session / Timeline / Permission / Rollback
-
-Move/rename/delete/write actions use L2/L3 as appropriate, emit timeline, and hold file leases for writes/Git operations.
-
-## 8. Data Model
-
-File entry, Library asset, provenance, hash/version, license scope, `WorkspaceFileLease`, conflict state, undo handle.
-
-## 9. Agent-Native Actions
-
-Inspect files, select file, move/rename, register Library asset, release lease, undo file action.
-
-## 10. Files To Inspect First
-
-- `app/packages/shared/src/protocol/internal-action.ts`
-- `app/packages/server-core/src/services/*file*`
-- `app/apps/electron/src/renderer` files/context components
-
-## 11. Files Likely Touched
-
-File services, Library services, Files panel, action registry, session tools.
-
-## 12. Parallel Work Packages
-
-File read UI, file write actions, lease persistence, Library index can split after shared data fields freeze.
-
-## 13. File Ownership
-
-File/Library protocol changes are Lead-owned. Surface components owned by assigned module agents.
-
-## 14. Validation Ladder
-
-Path safety tests, lease conflict tests, typecheck, UI file operation smoke, undo conflict smoke.
-
-## 15. Done / Not Done
-
-`usable`: a write action is permissioned, leased, visible, and reversible. Read-only file browsing alone is not the full module.
-
-## 16. Risks And Blocked Decisions
-
-Risk: conflating raw files and Library assets. Keep them separate.
-
-## 17. Non-Goals & Prohibitions
-
-- **No Raw Promotion:** Raw workspace files must not be promoted or treated as Library assets without explicit user authorization, indexation, and license check.
-- **No Non-logged Writes:** Do not perform write or delete operations on workspace files without Timeline logging and rollback/reversal points.
+## 10. Agent Hooks
+-   `library:acquireLease`
+-   `library:releaseLease`
+-   `library:indexAsset`

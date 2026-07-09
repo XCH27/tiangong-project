@@ -2,11 +2,11 @@
 
 ## 1. Mission
 
-Keep Craft Agents as the working base while removing or quarantining Craft Agents (二开补强) experiments that fight the direction.
+Keep Craft Agents as the working base while removing or quarantining Fleet experiments that fight the direction.
 
 ## 2. User-Visible Loop
 
-User can open the default workbench, create/select sessions, send normal API chat, use existing BrowserPane/settings, and see no broken Craft Agents (二开补强) shell remnants.
+User can open the default workbench, create/select sessions, send normal API chat, use existing BrowserPane/settings, and see no broken Fleet shell remnants.
 
 ## 3. Current App Reuse
 

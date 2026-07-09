@@ -2,14 +2,14 @@
 
 ## 1. Mission
 
-Provide a native video player and lightweight clip editor inside Craft Agents (二开补强) — where both humans and agents can play, annotate, trim, and export video clips — with full action, permission, timeline, and rollback coverage.
+Provide a native video player and lightweight clip editor inside Fleet — where both humans and agents can play, annotate, trim, and export video clips — with full action, permission, timeline, and rollback coverage.
 
 ---
 
 ## 2. User-Visible Loop
 
 1. User opens a Video surface from a session or from a `video_frame` canvas node (M07).
-2. Craft Agents (二开补强) renders a native video player with timeline scrubber, playback controls, and clip markers.
+2. Fleet renders a native video player with timeline scrubber, playback controls, and clip markers.
 3. User can set in/out points to define a clip range.
 4. Agent can call `video.clip_create` or `video.clip_trim` to programmatically define clips.
 5. User or agent exports a clip; the output is saved to Library (M05) with full provenance.

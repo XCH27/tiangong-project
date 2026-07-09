@@ -1,4 +1,4 @@
-# Craft Agents (二开补强) / AI Work Workbench
+# Fleet / AI Work Workbench
 
 This is a local-first AI work creation platform built on the Craft Agents base.
 

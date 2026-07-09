@@ -168,7 +168,7 @@ interface ExternalJob {
 
 AIGC Jobs is an **auxiliary panel** — not a primary surface. It is accessible from:
 
-- The Craft Agents (二开补强) left sidebar (jobs icon, shows a badge count for running jobs).
+- The Fleet left sidebar (jobs icon, shows a badge count for running jobs).
 - A floating job status bar above the canvas when a job is running for a `aigc_placeholder` node.
 
 The panel is a list view: each row shows job type, prompt preview, status, progress bar (if running), and output thumbnail (if completed).

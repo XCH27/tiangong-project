@@ -12,7 +12,7 @@ Wave 2. Runs after Wave 1 backbone loops are stable enough to depend on.
 
 ## Goal
 
-Prove the core D19 loop: Craft Agents (二开补强) owns the team, CLI owns one run, API members execute bounded TeamRuns, and reports come back through Craft Agents (二开补强).
+Prove the core D19 loop: Fleet owns the team, CLI owns one run, API members execute bounded TeamRuns, and reports come back through Fleet.
 
 ## Allowed Files
 

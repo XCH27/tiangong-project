@@ -15,7 +15,7 @@ The following projects may be copied or adapted within the stated boundary, with
 | `codegraph` | MIT | Local code graph, indexing, structured queries, MCP installer experience. |
 | `DeepSeek-Reasonix` | MIT | ACP/stdio, stable prefix cache, planner/executor, permission/sandbox ideas. |
 | `deepcode-cli` | MIT | Skill paths, MCP, reasoning intensity, CLI/session management. |
-| `openpencil` | MIT, approved 2026-07-01 | Native design canvas engine source/patterns. Do not use it as Craft Agents (二开补强) permission/timeline. |
+| `openpencil` | MIT, approved 2026-07-01 | Native design canvas engine source/patterns. Do not use it as Fleet permission/timeline. |
 | `opencut-classic` | MIT, approved 2026-07-01 | Native video timeline/store/rendering source/patterns. Do not mix with the newer incomplete `opencut` rewrite. |
 
 ## Black-Box Or Candidate Sources
@@ -43,7 +43,7 @@ Black-box use forbids copying:
 
 ### Candidate & Black-Box Reference Catalog
 
-| Reference | License | Allowed Use in Craft Agents (二开补强) | Forbidden/Risk Boundary |
+| Reference | License | Allowed Use in Fleet | Forbidden/Risk Boundary |
 |---|---|---|---|
 | `Hermes Agent` | MIT | Study toolset packaging; reference dynamic skill template compilation and non-blocking multi-step RPC model. | Cannot copy Python execution module, codebase, or UI patterns. |
 | `OpenClaw` | MIT | Reference managed profile segmentation, gateway loopback routing, and ax-tree element selection logic. | Cannot copy browser routing, telemetry or profile automation scripts. |
@@ -80,7 +80,7 @@ Some products are behavior references only, not source-code sources.
 
 ## High-Risk Prohibitions
 
-Never build Craft Agents (二开补强) into:
+Never build Fleet into:
 
 - a stealth browser
 - a bot-detection bypass product

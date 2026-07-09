@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Keep Craft Agents (二开补强)'s shell and settings understandable by assigning every function one home and one representation.
+Keep Fleet's shell and settings understandable by assigning every function one home and one representation.
 
 ## 2. User-Visible Loop
 

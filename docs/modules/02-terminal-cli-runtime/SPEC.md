@@ -1,74 +1,37 @@
-# 02 Terminal CLI Runtime
+# 02 Terminal CLI Runtime Specification
 
-## 1. Mission
+## 1. Purpose
+Expose a local terminal CLI command launcher (`craft-cli`) that connects securely to the Bun App Server daemon, enabling workers and humans to execute shell runs and stream outputs to the shared session timeline.
 
-Make local CLI and terminal execution a first-class Craft Agents (二开补强) loop without turning normal chat into a CLI picker.
+## 2. Non-Goals
+-   Do not run unauthenticated WebSocket RPC ports.
+-   Do not allow raw shell executions that bypass permission checks.
 
-## 2. User-Visible Loop
+## 3. Inputs
+-   Command string and arguments from CLI client.
+-   Secure handshake authorization token.
 
-User opens terminal surface, selects or detects a runtime, runs/observes a process, sees output in the same Craft session timeline, can stop or inspect failure diagnostics.
+## 4. Outputs
+-   PTY stdout/stderr streamed log blocks.
+-   `cli:command_completed` status events.
 
-## 3. Current App Reuse
+## 5. State Model
+-   Active process descriptors (`Pid`, `Cwd`, `cliRuntimeId`).
+-   Local `.fleet/session.lock` socket configuration.
 
-Reuse Craft sessions, terminal surface route, RPC, permissions, timeline, settings, and existing CLI runtime protocol.
+## 6. Dependencies
+-   Bun backend WebSocket engine.
+-   Native `node-pty` bindings in Electron main/Bun layers.
 
-## 4. Reference Projects
+## 7. Acceptance Criteria
+-   `usable`: Shell executions stream logs directly to the UI terminal panel and log evidence to the DB timeline under the correct actor ref.
 
-AionUi for runtime catalog, custom runtime form, process lifecycle, ACP patterns. Warp only as terminal interaction reference. Do not copy unapproved CLI projects.
+## 8. Failure & Rollback
+-   PTY failures return status code >0. General shell modifications are marked irreversible. File system edits rollback via workspace Git checkouts.
 
-## 5. UI Placement
+## 9. Observability
+-   Every shell input, execution target, and output block is recorded as timeline evidence.
 
-Terminal is a first-class content panel/surface. Normal `surface='chat'` remains API-only target state. CLI runtime management belongs in settings.
-
-## 6. Backend / RPC / Locality
-
-Runtime detection, launching, PTY, ACP stdio, process registry, and PATH diagnostics are `LOCAL_ONLY`. Bridge injection is explicit and scoped.
-
-## 7. Session / Timeline / Permission / Rollback
-
-Launching CLI, running commands, writing files, Git mutation, and Bridge injection require permission by risk. Output is transcript/evidence, not hidden terminal buffer.
-
-## 8. Data Model
-
-`CliRuntimeDefinition`, detected/custom runtime, launcher diagnostics, `RuntimeLane`, transcript entries, process id/group, `bridgeStatus`.
-
-## 9. Agent-Native Actions
-
-Actions: inspect runtimes, test runtime, start terminal lane, stop runtime, append transcript, request Bridge capability.
-
-## 10. Files To Inspect First
-
-- `app/packages/shared/src/protocol/cli-runtime.ts`
-- `app/packages/server-core/src/services/cli-runtime-*`
-- `app/packages/server-core/src/services/acp`
-- `app/apps/electron/src/renderer`
-- `app/packages/session-mcp-server/src`
-
-## 11. Files Likely Touched
-
-Runtime services, launcher adapter, terminal renderer, runtime settings, session tools/MCP bridge.
-
-## 12. Parallel Work Packages
-
-Catalog/settings, launcher/process lifecycle, terminal transcript, ACP bridge smoke can split after protocol freeze.
-
-## 13. File Ownership
-
-Shared `cli-runtime.ts`, `team-run.ts`, transport channels, and i18n are Lead-owned.
-
-## 14. Validation Ladder
-
-Service tests for detection/classification, typecheck server/electron, terminal UI smoke, one opt-in real CLI smoke when available.
-
-## 15. Done / Not Done
-
-`usable`: one real runtime path from UI to process to visible timeline output. `wired but not visually checked`: services exist but terminal UI/runtime smoke not checked.
-
-## 16. Risks And Blocked Decisions
-
-Risk: claiming CLI team leadership before Bridge smoke. Bridge unavailable means CLI single-run only.
-
-## 17. Non-Goals & Prohibitions
-
-- **No Direct Shell Execution:** Do not spawn shell commands or execute files directly bypassing the L0-L3 permission gate and replayable timeline evidence.
-- **No Picker Collapsing:** Do not collapse human terminal UI, CLI Runtime identity, and Craft Agents Bridge/TeamRun into one ambiguous settings picker.
+## 10. Agent Hooks
+-   `terminal:executeCommand`
+-   `terminal:killProcess`

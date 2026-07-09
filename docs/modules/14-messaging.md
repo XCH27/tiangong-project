@@ -2,11 +2,11 @@
 
 ## 1. Mission
 
-Retain messaging gateways as governed integrations that feed Craft Agents (二开补强) sessions without creating another communication product.
+Retain messaging gateways as governed integrations that feed Fleet sessions without creating another communication product.
 
 ## 2. User-Visible Loop
 
-User configures a messaging bridge, receives or sends an authorized message through Craft Agents (二开补强), and the activity appears in session timeline with source and permission boundaries.
+User configures a messaging bridge, receives or sends an authorized message through Fleet, and the activity appears in session timeline with source and permission boundaries.
 
 ## 3. Current App Reuse
 
@@ -14,7 +14,7 @@ Reuse existing messaging packages, settings framework, session timeline, permiss
 
 ## 4. Reference Projects
 
-AstrBot and messaging platforms are product-boundary references only unless explicitly approved. Do not turn Craft Agents (二开补强) into an IM bot platform.
+AstrBot and messaging platforms are product-boundary references only unless explicitly approved. Do not turn Fleet into an IM bot platform.
 
 ## 5. UI Placement
 

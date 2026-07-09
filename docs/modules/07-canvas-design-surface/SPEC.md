@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Build a native **infinite canvas** connected to Craft Agents (二开补强)'s action, permission, Library, and timeline spine — where both humans and agents can create, edit, and inspect canvas objects with full undo, evidence, and rollback support.
+Build a native **infinite canvas** connected to Fleet's action, permission, Library, and timeline spine — where both humans and agents can create, edit, and inspect canvas objects with full undo, evidence, and rollback support.
 
 ---
 
@@ -35,7 +35,7 @@ Build a native **infinite canvas** connected to Craft Agents (二开补强)'s ac
 
 ## 4. Viewport Model (Infinite Canvas)
 
-The canvas coordinate system is unbounded in all four directions. Craft Agents (二开补强) does not impose a page boundary.
+The canvas coordinate system is unbounded in all four directions. Fleet does not impose a page boundary.
 
 ### 4.1 Coordinate Space
 
@@ -102,7 +102,7 @@ Reuse session / timeline / permission, Library assets, Internal Action Registry 
 
 ## 8. UI Placement
 
-Canvas is a professional surface, not the default workbench shell. It opens as a full-screen surface routed from the workspace sidebar (surface icon) or from a session action that creates a canvas document. It shares the Craft Agents (二开补强) top-bar spine but replaces the chat/editor main area.
+Canvas is a professional surface, not the default workbench shell. It opens as a full-screen surface routed from the workspace sidebar (surface icon) or from a session action that creates a canvas document. It shares the Fleet top-bar spine but replaces the chat/editor main area.
 
 The canvas surface is **not** embedded inside the chat panel. It is a peer surface.
 
@@ -119,7 +119,7 @@ Canvas document is persisted as a JSON snapshot in the workspace directory under
 ## 10. Session / Timeline / Permission / Rollback
 
 - High-frequency drag / resize is **coalesced** into meaningful events before entering the Timeline (see §18.1 batching rule).
-- Undo uses native OpenPencil history **and** inverse-patch `UndoHandle` entries in the Craft Agents (二开补强) Timeline.
+- Undo uses native OpenPencil history **and** inverse-patch `UndoHandle` entries in the Fleet Timeline.
 - All canvas mutations require at minimum `L1_reversible` permission (same as file writes).
 - `canvas.node_delete` is destructive — requires `L2_irreversible` and a `SupervisionRequest` unless the node has no downstream references.
 
@@ -216,7 +216,7 @@ All packages are gated on the canvas contract freeze (Lead creates `protocol/can
 | F-Track D: Viewport manager + minimap | F-Track A store bridge | After F-Track A stub |
 | F-Track E: Library `image_asset` integration | M05 lease model + F-Track A | After W2 gate |
 
-**F-Track A must produce the OpenPencil ↔ Craft Agents (二开补强) mapping table before any adapter code.** See §17.2.
+**F-Track A must produce the OpenPencil ↔ Fleet mapping table before any adapter code.** See §17.2.
 
 ---
 
@@ -270,31 +270,31 @@ All packages are gated on the canvas contract freeze (Lead creates `protocol/can
 
 ### 20.1 Decision: Integrate OpenPencil Directly
 
-Craft Agents (二开补强) integrates OpenPencil as the canvas renderer via a thin adapter layer. Self-building a document / command engine is off the table.
+Fleet integrates OpenPencil as the canvas renderer via a thin adapter layer. Self-building a document / command engine is off the table.
 
-Rationale: Craft Agents (二开补强)'s differentiation is in the human/agent shared path, Hook Pipeline, and Timeline evidence layer — not in the pixel renderer. Letting OpenPencil own pixels while Craft Agents (二开补强) owns semantics avoids a 5–10× self-build cost.
+Rationale: Fleet's differentiation is in the human/agent shared path, Hook Pipeline, and Timeline evidence layer — not in the pixel renderer. Letting OpenPencil own pixels while Fleet owns semantics avoids a 5–10× self-build cost.
 
 ### 20.2 F-Track Gate: Mapping Table Before Code
 
 The first deliverable of F-Track A is **not** code. It is a mapping table:
 
-> For each OpenPencil store action / command type, what is the corresponding Craft Agents (二开补强) `ActionInvocation` id, payload shape, and `ActionSurface` value?
+> For each OpenPencil store action / command type, what is the corresponding Fleet `ActionInvocation` id, payload shape, and `ActionSurface` value?
 
 This table must be reviewed and approved by the Lead before any adapter code begins.
 
 Required columns:
 
-| OpenPencil command | Craft Agents (二开补强) action id | ActionSurface | Payload delta | Undo strategy |
+| OpenPencil command | Fleet action id | ActionSurface | Payload delta | Undo strategy |
 |---|---|---|---|---|
 | (one row per command type) | | | | |
 
 ### 20.3 Adapter Layer Scope
 
-The adapter layer is the **only** place OpenPencil internals are referenced. All other Craft Agents (二开补强) code calls Craft Agents (二开补强) action ids. The adapter is owned by F-Track A lead and must not be touched by other module Workers.
+The adapter layer is the **only** place OpenPencil internals are referenced. All other Fleet code calls Fleet action ids. The adapter is owned by F-Track A lead and must not be touched by other module Workers.
 
 Adapter responsibilities:
-1. Translate a Craft Agents (二开补强) `ActionInvocation` into the correct OpenPencil command.
-2. Translate OpenPencil history events back into Craft Agents (二开补强) `SessionEvent` entries.
+1. Translate a Fleet `ActionInvocation` into the correct OpenPencil command.
+2. Translate OpenPencil history events back into Fleet `SessionEvent` entries.
 3. Coalesce high-frequency drag / resize events before they enter the Timeline.
 
 The adapter is **not** responsible for permission checks or timeline writes — those happen in the Hook Pipeline (M03 §9) before and after the adapter is called.
