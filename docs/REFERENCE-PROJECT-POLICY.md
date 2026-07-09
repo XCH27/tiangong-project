@@ -68,6 +68,7 @@ Black-box use forbids copying:
 | `MarkItDown` | MIT | Study multi-format files (PDF, EPub, docx) parser hooks, and context alignment markdown pipelines. | Cannot copy document readers, image extractors, or parser libs. |
 | `Zvec` | Apache-2.0 | Reference SQLite FTS5 + vector dense/sparse local RAG indexing integration. | Do not copy raw vector library or C++ binding files into Electron. |
 | `CloakBrowser` | Closed | Study antidetect fingerprint patch parameters and multi-browser profile configurations. | **High Risk.** Prohibited from integrating, bundling, or copying any stealth/captcha evasion systems. |
+| `orca` | MIT | Study parallel worker workspace sandbox orchestration, Git worktree isolation lifecycle, and visual agent session timelines. | Prohibited from copying desktop shell code, worktree execution scripts, or agent telemetry wrappers. |
 
 ## Product Behavior References
 
