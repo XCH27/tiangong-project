@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Make Fleet's internal capabilities discoverable, permissioned, versioned, callable by agents, and reusable by human UI.
+Make Craft Agents (二开补强)'s internal capabilities discoverable, permissioned, versioned, callable by agents, and reusable by human UI.
 
 ## 2. User-Visible Loop
 
@@ -32,9 +32,9 @@ Permission level comes from the registry, not caller input. Writes must define t
 
 `InternalActionDefinition`, `ActionSurface`, `ActionInvocation`, `ActionTargetRef`, contract version, payload migration, undo handle.
 
-### Schema Design Principles (Fleet-Wide)
+### Schema Design Principles (Craft Agents (二开补强)-Wide)
 
-These rules apply to every Zod schema used across Fleet — action payloads, memory entries, batch results, and structured model outputs.
+These rules apply to every Zod schema used across Craft Agents (二开补强) — action payloads, memory entries, batch results, and structured model outputs.
 
 #### 8.1 Field Hardness Classification
 
@@ -167,3 +167,8 @@ Typecheck shared/server/session-tools, registry unit tests, real human+agent sam
 Risk: action schemas mutate without versioning. All behavior/schema changes require contract version discipline.
 
 Risk: schema over-constraint causes model hallucination. Fields that require model judgment must be optional with `'uncertain'` fallback values, not hard-required enums. See §8.1–8.5.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Registry Bypassing:** Do not execute human UI or agent actions without routing them through the M03 Internal Action Registry.
+- **No Hidden Actions:** Do not let agent tools mutate workspace files or shell environment without writing to the user-visible timeline.

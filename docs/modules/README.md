@@ -133,12 +133,12 @@ _Space for Worker to fill in during handoff. Leave blank until handoff._
 |---|---|
 | `00-platform-spine.md` | Session, permission, timeline, actors, runtime identity. |
 | `01-clean-craft-baseline.md` | Clean Craft base and shell simplification. |
-| `02-terminal-cli-runtime.md` | Terminal surface, CLI runtime, launcher, diagnostics. |
+| `02-terminal-cli-runtime/SPEC.md` | Terminal surface, CLI runtime, launcher, diagnostics. |
 | `03-internal-action-registry.md` | Agent-native action registry and first file/action loop. |
-| `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TeamRun, Fleet Bridge. |
+| `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TeamRun, Craft Agents (二开补强) Bridge. |
 | `05-files-library-leases.md` | Files, Library, file leases, write conflict control. |
-| `06-browser-artifact-surface.md` | BrowserPane selection, annotation, artifact handoff. |
-| `07-canvas-design-surface.md` | Native canvas/design surface. |
+| `06-browser-artifact-surface/SPEC.md` | BrowserPane selection, annotation, artifact handoff. |
+| `07-canvas-design-surface/SPEC.md` | Native canvas/design surface. |
 | `08-aigc-jobs-surface.md` | AIGC and external job surfaces. |
 | `09-video-surface.md` | Native video timeline and render loop. |
 | `10-memory-context-review.md` | Memory, ProjectPack, context efficiency, external review. |

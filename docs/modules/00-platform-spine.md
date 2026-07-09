@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Keep Fleet on one Craft spine: session, timeline, permission, actor identity, runtime identity, settings, and evidence.
+Keep Craft Agents (二开补强) on one Craft spine: session, timeline, permission, actor identity, runtime identity, settings, and evidence.
 
 ## 2. User-Visible Loop
 
@@ -66,3 +66,8 @@ Typecheck shared/server/electron, targeted session/permission tests, then one re
 ## 16. Risks And Blocked Decisions
 
 Risk: workers silently add fields to shared protocols. Decision: all shared contracts go through Lead.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Second Store:** Do not create a second session store, permission system, memory store, team store, or settings database. All modules must reuse the single core platform spine.
+- **No Backdoors:** Do not bypass the L0-L3 graded permission approval flow or timeline evidence logging for any action.

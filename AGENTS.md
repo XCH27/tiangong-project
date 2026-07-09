@@ -29,7 +29,7 @@ Consult these files ONLY when dealing with specific tasks or encountering blocke
 
 ## Product Direction
 
-Fleet is a local-first AI work creation platform built on the Craft Agents base.
+Craft Agents (二开补强) is a local-first AI work creation platform built on the Craft Agents base.
 It is not a chat app, terminal wrapper, IDE clone, Figma clone, or account/subscription product.
 Humans own the top 10% of creative judgment and the bottom 10% of common-sense guardrails;
 agents execute the middle 80% of concrete production work.
@@ -57,9 +57,9 @@ timeline, Library, or settings truth.
 - Human UI and agent tools must use the same structured action path.
 - CLI, terminal, Git, desktop automation, local files, and browser operations must go through
   permission and replayable timeline evidence when they mutate state or launch real work.
-- Fleet owns the team; a CLI owns one run. Do not mix terminal UI, CLI Runtime identity,
-  Fleet Bridge, and TeamRun into one ambiguous concept. See `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
-  §Fleet Bridge Interface for the concrete boundary definition.
+- Craft Agents (二开补强) owns the team; a CLI owns one run. Do not mix terminal UI, CLI Runtime identity,
+  Craft Agents (二开补强) Bridge, and TeamRun into one ambiguous concept. See `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+  §Craft Agents (二开补强) Bridge Interface for the concrete boundary definition.
 - Manager Agent and project Agents are separate identities. Manager Agent is not a privileged
   backdoor and does not bypass permission.
 - `@` addresses people, agents, sessions, and roles. `/` addresses skills, commands, and templates.

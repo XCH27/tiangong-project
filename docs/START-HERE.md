@@ -6,7 +6,7 @@ This document is the entry point for any agent or human beginning work in this r
 
 ## What Is This Project?
 
-Fleet is a local-first AI work creation platform. It is not a chat app, terminal wrapper, or IDE.
+Craft Agents (二开补强) is a local-first AI work creation platform. It is not a chat app, terminal wrapper, or IDE.
 The core product concept is in `docs/PROJECT-DIRECTION.md`.
 
 ---
@@ -47,7 +47,8 @@ See `docs/WAVE-MODULE-MAP.md` for the live wave and module status table.
 
 | Need | File |
 |---|---|
-| What Fleet is and is not | `docs/PROJECT-DIRECTION.md` |
+| What Craft Agents (二开补强) is and is not | `docs/PROJECT-DIRECTION.md` |
+| Industry tools selection matrix | `docs/ARCHITECTURAL-COMPARISON.md` |
 | Final product decisions | `docs/DECISIONS-LEDGER.md` |
 | Who owns what file | `docs/OWNERSHIP-MATRIX.md` |
 | Wave and module status | `docs/WAVE-MODULE-MAP.md` |

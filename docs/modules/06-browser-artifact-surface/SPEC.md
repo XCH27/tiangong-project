@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Embed a real Chromium viewport inside Fleet so humans and agents can browse, test, inspect live
+Embed a real Chromium viewport inside Craft Agents (二开补强) so humans and agents can browse, test, inspect live
 web content, annotate elements, and hand off editable artifacts — with full action, permission,
 timeline, and rollback coverage.
 
@@ -11,7 +11,7 @@ timeline, and rollback coverage.
 ## 2. User-Visible Loop
 
 1. User opens a Browser surface from the workspace sidebar or via `browser.navigate` action.
-2. Fleet renders a live Chromium webview inside the surface panel.
+2. Craft Agents (二开补强) renders a live Chromium webview inside the surface panel.
 3. User browses normally; agent can also call `browser.navigate`, `browser.click`,
    `browser.screenshot` via the action registry.
 4. User selects an element or region, adds an annotation or Comment AI request; evidence
@@ -19,7 +19,7 @@ timeline, and rollback coverage.
 5. All meaningful navigations and agent-driven interactions appear in the Session Timeline.
 6. User or agent can take a snapshot (URL + screenshot) at any time and attach it to the
    session as evidence.
-7. Browser settings (Fleet control toggle, permissions, developer CDP mode) live in Settings
+7. Browser settings (Craft Agents (二开补强) control toggle, permissions, developer CDP mode) live in Settings
    under the integrations/capabilities area.
 
 ---
@@ -29,8 +29,8 @@ timeline, and rollback coverage.
 Use Electron's **`<webview>` tag** (Chromium guest process) as the browser viewport. Do **not**
 use `<iframe>` — cross-origin restrictions make it unworkable for general web content.
 
-`webview` is rendered inside the Browser surface component in the renderer process. Fleet's
-preload bridge controls the surface — the webview has no access to Fleet internals.
+`webview` is rendered inside the Browser surface component in the renderer process. Craft Agents (二开补强)'s
+preload bridge controls the surface — the webview has no access to Craft Agents (二开补强) internals.
 
 Reuse existing BrowserPane, CDP/browser_tool, screenshots, network/console evidence, session
 ownership, and existing renderer browser hooks from the Craft base.
@@ -40,8 +40,8 @@ ownership, and existing renderer browser hooks from the Craft base.
 - `nodeIntegration` is **false** inside the webview.
 - `contextIsolation` is **true**.
 - The webview is sandboxed: `sandbox` attribute is set.
-- The Fleet action executor communicates with the webview only via Electron's
-  `webview.executeJavaScript()` API — never by injecting Fleet internals.
+- The Craft Agents (二开补强) action executor communicates with the webview only via Electron's
+  `webview.executeJavaScript()` API — never by injecting Craft Agents (二开补强) internals.
 - Full CDP access is a **developer-mode only** capability, clearly marked high-risk,
   never enabled by default. It is not implied by ordinary browser enablement.
 - Cloak/stealth behavior is prohibited.
@@ -54,10 +54,10 @@ The Browser surface occupies the main content area. It is **not** embedded insid
 
 | Property | Value |
 |---|---|
-| Default size | Fills the Fleet main area minus the top-bar spine |
+| Default size | Fills the Craft Agents (二开补强) main area minus the top-bar spine |
 | Resize | User can drag a splitter to resize the panel; webview fills its container |
 | Dev Tools | Cmd+Option+I opens Electron detached DevTools for the webview |
-| Zoom | Separate from Fleet's canvas zoom; controlled inside the webview via `webview.setZoomFactor()` |
+| Zoom | Separate from Craft Agents (二开补强)'s canvas zoom; controlled inside the webview via `webview.setZoomFactor()` |
 
 ---
 
@@ -83,7 +83,7 @@ Codex's settings hierarchy. Do not create a separate browser settings screen out
 
 Required browser settings groups:
 
-- **Browser**: enable or disable Fleet control of the built-in browser.
+- **Browser**: enable or disable Craft Agents (二开补强) control of the built-in browser.
 - **General**: local URL open target, clear browser data, annotated screenshot policy.
 - **Permissions**: default approval behavior plus per-site permission overrides.
 - **Developer mode**: full CDP access — clearly marked high-risk, off by default.
@@ -233,3 +233,8 @@ do not affect browser behavior.
   + SupervisionRequest.
 - **Risk**: Browser UI inventing hidden renderer state outside the spine. **Decision**:
   all browser state must flow through the action registry and Session Timeline.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Stealth Browsing:** Do not build or inject stealth automation, quota bypass, cookie extraction, or terms-of-service evasion stacks.
+- **No DOM Mutators:** Do not modify the DOM of external/remote websites. External pages are read/annotate/evidence only.

@@ -26,7 +26,7 @@
 - **Tasks**:
   - [ ] Wire UI terminal panel to the local runtime launcher.
   - [ ] Implement streamed stdout/stderr log output pipe.
-  - [ ] Write the verification procedure in `docs/modules/02-terminal-cli-runtime.md`.
+  - [ ] Write the verification procedure in `docs/modules/02-terminal-cli-runtime/SPEC.md`.
 
 ### Worker Seat 2: M04 TeamRun & M05 Files Library
 - **Role**: `role:worker`
@@ -60,7 +60,7 @@
 
 ## Entry Points
 
-1. `docs/modules/02-terminal-cli-runtime.md`
+1. `docs/modules/02-terminal-cli-runtime/SPEC.md`
 2. `docs/modules/05-files-library-leases.md`
 3. `docs/modules/11-model-routing-cost-ledger.md`
 

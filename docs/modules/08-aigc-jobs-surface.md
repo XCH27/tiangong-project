@@ -168,7 +168,7 @@ interface ExternalJob {
 
 AIGC Jobs is an **auxiliary panel** — not a primary surface. It is accessible from:
 
-- The Fleet left sidebar (jobs icon, shows a badge count for running jobs).
+- The Craft Agents (二开补强) left sidebar (jobs icon, shows a badge count for running jobs).
 - A floating job status bar above the canvas when a job is running for a `aigc_placeholder` node.
 
 The panel is a list view: each row shows job type, prompt preview, status, progress bar (if running), and output thumbnail (if completed).
@@ -214,3 +214,7 @@ Risk: calling website/API without clear cost and data boundary. Unknown costs re
 Risk (Batch-specific): misclassifying interactive tasks as `async-native`. If a task requires real-time feedback, it must stay on `api` provider mode. Batch mode gate: task must have no UI blocking dependency before submitting.
 
 Risk (Batch-specific): never auto-retry a failed batch without re-checking `batchId` idempotency guard — double-submission would double billing.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Isolated Centers:** Do not create separate "generation centers" or "review centers" outside the shared external job registry. All AI execution must register as jobs.

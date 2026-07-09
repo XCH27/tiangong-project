@@ -65,3 +65,8 @@ Path safety tests, lease conflict tests, typecheck, UI file operation smoke, und
 ## 16. Risks And Blocked Decisions
 
 Risk: conflating raw files and Library assets. Keep them separate.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Raw Promotion:** Raw workspace files must not be promoted or treated as Library assets without explicit user authorization, indexation, and license check.
+- **No Non-logged Writes:** Do not perform write or delete operations on workspace files without Timeline logging and rollback/reversal points.

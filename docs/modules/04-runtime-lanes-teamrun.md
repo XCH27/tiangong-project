@@ -2,11 +2,11 @@
 
 ## 1. Mission
 
-Let Fleet own team identity and coordination while API, CLI, and terminal runtimes execute bounded lanes.
+Let Craft Agents (二开补强) own team identity and coordination while API, CLI, and terminal runtimes execute bounded lanes.
 
 ## 2. User-Visible Loop
 
-Leader requests a member run, Fleet creates TeamRun, target member receives task, reports back, and the leader sees compressed RunReport plus evidence.
+Leader requests a member run, Craft Agents (二开补强) creates TeamRun, target member receives task, reports back, and the leader sees compressed RunReport plus evidence.
 
 ## 3. Current App Reuse
 
@@ -26,7 +26,7 @@ TeamRun coordinator, Bridge MCP callbacks, launcher adapter, and workspace lease
 
 ## 7. Session / Timeline / Permission / Rollback
 
-Attribution chain must show user -> leader/lane -> Fleet Bridge -> member/lane -> action. L2/L3 never bypass permission.
+Attribution chain must show user -> leader/lane -> Craft Agents (二开补强) Bridge -> member/lane -> action. L2/L3 never bypass permission.
 
 ## 8. Data Model
 
@@ -49,7 +49,7 @@ Batch-eligible worker tasks are submitted as `ExternalJob` (type `'analysis'`). 
 
 ## 9. Agent-Native Actions
 
-Fleet Bridge tools: get team, propose/start member run, get status/report, cancel, send team message, invoke L0/L1 internal action.
+Craft Agents (二开补强) Bridge tools: get team, propose/start member run, get status/report, cancel, send team message, invoke L0/L1 internal action.
 
 ## 10. Files To Inspect First
 
@@ -124,3 +124,8 @@ of blocking on the Bridge — this decouples TeamRun survival from Bridge lifeti
 
 This section does not introduce a background daemon. The journal is a write-ahead log read only
 at app startup. Decision D22 (no daemon) is honoured.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Direct Coupling:** A CLI runtime must not directly call tools or own settings of an API runtime teammate. All orchestration must route through the Craft Agents Bridge.
+- **No Permission Bypass:** Under-the-hood teammate runs must not bypass the L0-L3 graded permissions or timeline evidence logging.

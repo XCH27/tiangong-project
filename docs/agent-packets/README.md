@@ -195,6 +195,6 @@ Worker Seat: seat-api-worker-001
 | `wave-0-contract-freeze.md` | Lead-owned shared contract freeze and dirty-tree cleanup. |
 | `wave-1-platform-action.md` | Session, registry skeleton, first file/action spine loop (M00/M03). |
 | `wave-2-runtime-files-quota.md` | Terminal/CLI, files/leases, quota/usage loops (M01/M02/M05/M11). |
-| `wave-2-teamrun-routing.md` | Fleet Bridge smoke, TeamRun report loop, route/cost decision closure. |
+| `wave-2-teamrun-routing.md` | Craft Agents (二开补强) Bridge smoke, TeamRun report loop, route/cost decision closure. |
 | `wave-3-browser-capability-review.md` | Browser/artifact, context/review, capability/loadout, messaging. |
 | `f-track-canvas-foundation.md` | Canvas root, store, SessionEvent bridge, first native nodes. |

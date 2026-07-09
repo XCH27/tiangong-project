@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Keep Fleet's shell and settings understandable by assigning every function one home and one representation.
+Keep Craft Agents (二开补强)'s shell and settings understandable by assigning every function one home and one representation.
 
 ## 2. User-Visible Loop
 
@@ -75,3 +75,7 @@ i18n parity/sorted checks, settings navigation smoke, browser settings smoke, vi
 ## 16. Risks And Blocked Decisions
 
 Risk: every backend module adds a settings page. Lead must place UI before implementation packets.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Subscriptions or Accounts:** Do not build or display subscription/upgrade prompts, user account login, or payment gateways. The software remains local and free.

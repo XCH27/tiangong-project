@@ -1,49 +1,9 @@
-# Fleet / AI Work Workbench
+# Craft Agents (二开补强) / AI Work Workbench
 
-The current mainline is **Fleet / AI Work Workbench**: a second-stage build on top of the
-clean craft-agents-oss base, with verified assets extracted from the existing `app/`.
+This is a local-first AI work creation platform built on the Craft Agents base.
 
-## Active Entry Points
+## Documentation Entry Point
 
-| File | Purpose |
-|---|---|
-| `AGENTS.md` | Forced-read execution summary for all agents |
-| `docs/START-HERE.md` | Read order and working status labels |
-| `docs/PROJECT-DIRECTION.md` | Product direction, non-goals, and development spine |
-| `docs/DECISIONS-LEDGER.md` | Promoted decisions and reversals |
-| `docs/DEVELOPMENT-PROCESS.md` | How work moves from direction to agent execution |
-| `docs/BOARD-SYNC.md` | Parallel-wave card format and sync points |
-| `docs/README.md` | Full documentation index |
+Please start reading at **[docs/START-HERE.md](file:///Users/lullwen/Documents/天工/docs/START-HERE.md)**. This is the single, unique entry point for both humans and developer agents. It defines the orientation, read order, and contains the complete index of all active documentation.
 
-> **Product thesis:** Fleet is a local-first AI work creation platform. Humans own the top
-> 10% of creative judgment and the bottom 10% of common-sense guardrails; agents execute the
-> middle 80% of concrete production work. All professional surfaces share one project,
-> Library, agents, permissions, session timeline, and cost ledger.
-
-## Restart Route
-
-1. Keep the current Craft base installable, typecheckable, and launchable; do not restore old forked UI.
-2. Complete actor-identity extension, team state/routing, and Manager Agent boundary first.
-3. Complete Files / Library to establish the shared local-asset foundation for all four professional surfaces.
-4. Infinite canvas, AIGC, web/document, and video each use a native engine; human and agent share structured tools.
-5. New UI grows only from Craft's existing mount points; only professional surfaces may add new pages.
-
-## Markdown Scope
-
-This repository contains a large volume of third-party Markdown that is **not** current
-execution material:
-
-- **Active execution:** `AGENTS.md`, `docs/START-HERE.md`, `docs/README.md`,
-  `docs/PROJECT-DIRECTION.md`, `docs/DECISIONS-LEDGER.md`, `docs/BOARD-SYNC.md`.
-- **Own active docs:** files under `docs/` that are not in `docs/legacy/`.
-- **Third-party / reference:** Craft-bundled docs inside `app/`, `源码参考/`, and
-  `node_modules/` are read as index references only and do not override current decisions.
-
-## Recommended Commands
-
-```bash
-./scripts/craft.sh install
-./scripts/craft.sh run typecheck:all
-./scripts/craft.sh run electron:dev
-./scripts/fleet-verify.sh          # runs validate:fleet (= validate:dev)
-```
+For active agent execution rules and logic restrictions, refer to the forced-read summary in **[AGENTS.md](file:///Users/lullwen/Documents/天工/AGENTS.md)**.

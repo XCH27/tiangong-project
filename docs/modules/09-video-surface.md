@@ -2,14 +2,14 @@
 
 ## 1. Mission
 
-Provide a native video player and lightweight clip editor inside Fleet — where both humans and agents can play, annotate, trim, and export video clips — with full action, permission, timeline, and rollback coverage.
+Provide a native video player and lightweight clip editor inside Craft Agents (二开补强) — where both humans and agents can play, annotate, trim, and export video clips — with full action, permission, timeline, and rollback coverage.
 
 ---
 
 ## 2. User-Visible Loop
 
 1. User opens a Video surface from a session or from a `video_frame` canvas node (M07).
-2. Fleet renders a native video player with timeline scrubber, playback controls, and clip markers.
+2. Craft Agents (二开补强) renders a native video player with timeline scrubber, playback controls, and clip markers.
 3. User can set in/out points to define a clip range.
 4. Agent can call `video.clip_create` or `video.clip_trim` to programmatically define clips.
 5. User or agent exports a clip; the output is saved to Library (M05) with full provenance.
@@ -130,7 +130,7 @@ FFmpeg must be present at a deterministic path. The main process is responsible 
 
 - `docs/contracts/action-ids.md` — video action ids (under discussion)
 - `docs/contracts/protocol-stubs.md` — `SessionEvent`, `ActionInvocation`
-- `docs/modules/07-canvas-design-surface.md` — canvas `video_frame` node type
+- `docs/modules/07-canvas-design-surface/SPEC.md` — canvas `video_frame` node type
 - `docs/modules/05-files-library-leases.md` — Library asset write path
 
 ---
@@ -142,3 +142,7 @@ FFmpeg must be present at a deterministic path. The main process is responsible 
 **`display-only`**: video player renders; clip markers draggable; no action/timeline/export path.
 
 **`blocked`**: video action ids not yet frozen; or FFmpeg binary not bundled; or Library lease model (M05) not stable.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Boundless Rendering:** Do not run concurrent local video render tasks. The local video rendering queue is strictly capped at 1 concurrent job.

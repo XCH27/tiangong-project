@@ -2,11 +2,11 @@
 
 ## 1. Mission
 
-Keep Craft Agents as the working base while removing or quarantining Fleet experiments that fight the direction.
+Keep Craft Agents as the working base while removing or quarantining Craft Agents (二开补强) experiments that fight the direction.
 
 ## 2. User-Visible Loop
 
-User can open the default workbench, create/select sessions, send normal API chat, use existing BrowserPane/settings, and see no broken Fleet shell remnants.
+User can open the default workbench, create/select sessions, send normal API chat, use existing BrowserPane/settings, and see no broken Craft Agents (二开补强) shell remnants.
 
 ## 3. Current App Reuse
 
@@ -66,3 +66,8 @@ Lead owns shell layout and upstream sync. No worker changes core shell placement
 ## 16. Risks And Blocked Decisions
 
 Risk: cleaning by deleting active hooks. Deletions require `rg` proof and Lead approval.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Shell Replacement:** Do not replace or bypass the default Craft Agents shell. All baseline improvements must simplify or align existing UI.
+- **No Dirty Syncs:** Do not perform upstream synchronization on a dirty git working tree.

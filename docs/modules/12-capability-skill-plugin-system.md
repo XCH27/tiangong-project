@@ -70,7 +70,7 @@ Risk: injecting orchestration skills into autonomous CLI harnesses. CLI passthro
 
 ### 17.1 Problem
 
-As Fleet grows, multiple plugins and surfaces will register actions into
+As Craft Agents (二开补强) grows, multiple plugins and surfaces will register actions into
 the Internal Action Registry (M03). Without namespacing, two plugins can
 claim the same `actionId` string, causing silent overwrites or
 non-deterministic dispatch.
@@ -96,7 +96,7 @@ The Internal Action Registry **must** reject registration of any id that:
 - Uses a `<surface>` prefix not declared in the plugin's manifest.
 - Conflicts with an already-registered id (no silent overwrite).
 
-Core Fleet action ids (registered by Lead-owned modules) use the
+Core Craft Agents (二开补强) action ids (registered by Lead-owned modules) use the
 `fleet.<surface>.<verb>` prefix and are reserved. Plugins may not
 register ids under the `fleet.*` namespace.
 
@@ -106,7 +106,7 @@ Plugins execute in an isolated context with the following constraints:
 
 - A plugin may only **call** actions in its own namespace or actions
   explicitly declared as `public` in the Internal Action Registry.
-- A plugin may not directly import or call internal Fleet service modules.
+- A plugin may not directly import or call internal Craft Agents (二开补强) service modules.
   All cross-boundary calls go through the Action Registry dispatch.
 - A plugin that throws an unhandled exception is automatically disabled
   for the current session and a `PLUGIN_FAULT` SessionEvent is emitted.
@@ -124,5 +124,9 @@ The plugin manifest must declare:
 ```
 
 During installation, the catalog service checks `fleetApiVersion` against
-the running Fleet version. Incompatible plugins are blocked at install time
+the running Craft Agents (二开补强) version. Incompatible plugins are blocked at install time
 with a clear user-visible error, not at runtime.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Tag Bypassing:** Workers must not load skills or run tools that violate their assigned `role:` and `domain:` identity tags. Bypassing ADR-0032 invariants throws errors.

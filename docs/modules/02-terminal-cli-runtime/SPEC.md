@@ -2,7 +2,7 @@
 
 ## 1. Mission
 
-Make local CLI and terminal execution a first-class Fleet loop without turning normal chat into a CLI picker.
+Make local CLI and terminal execution a first-class Craft Agents (二开补强) loop without turning normal chat into a CLI picker.
 
 ## 2. User-Visible Loop
 
@@ -67,3 +67,8 @@ Service tests for detection/classification, typecheck server/electron, terminal 
 ## 16. Risks And Blocked Decisions
 
 Risk: claiming CLI team leadership before Bridge smoke. Bridge unavailable means CLI single-run only.
+
+## 17. Non-Goals & Prohibitions
+
+- **No Direct Shell Execution:** Do not spawn shell commands or execute files directly bypassing the L0-L3 permission gate and replayable timeline evidence.
+- **No Picker Collapsing:** Do not collapse human terminal UI, CLI Runtime identity, and Craft Agents Bridge/TeamRun into one ambiguous settings picker.

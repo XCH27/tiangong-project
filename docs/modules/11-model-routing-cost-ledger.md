@@ -6,7 +6,7 @@ Route API tasks intelligently while keeping usage, quota, cache, and cost honest
 
 ## 2. User-Visible Loop
 
-User sends API task or creates TeamRun, Fleet records routing decision, usage/cost/cache data, and displays context/quota/cost without mixing unknowns into zeros.
+User sends API task or creates TeamRun, Craft Agents (二开补强) records routing decision, usage/cost/cache data, and displays context/quota/cost without mixing unknowns into zeros.
 
 ## 3. Current App Reuse
 
@@ -138,7 +138,7 @@ patterns inform this design. Reasonix work belongs here in M11, not in TeamRun.
 The assembler joins segments in this order, frozen after Wave 0 contract freeze:
 
 ```
-1. system_prompt          — global Fleet identity + tool list (never changes within a version)
+1. system_prompt          — global Craft Agents (二开补强) identity + tool list (never changes within a version)
 2. frozen_memory          — Core-tier facts from DistilledToolMemory (global_preference scope)
 3. project_outline        — AST skeleton of active project files (Layer 1 Retrieval output)
 4. dynamic_context        — Recall-tier memory + ProjectPack excerpts (session-scoped)
@@ -197,3 +197,7 @@ and writes it to the routing cost ledger alongside the turn’s usage sample. Th
   `prefixHash`.
 - Regression test: any new feature that injects content into a stable-prefix slot must
   pass a `prefixHash` stability check in CI before merge.
+
+## 17. Non-Goals & Prohibitions
+
+- **No CLI Routing:** Do not route local CLI runtime processes through the model routing, cache, or Fusion api pipelines. CLI lanes always use their own runtime model.

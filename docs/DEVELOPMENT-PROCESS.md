@@ -1,11 +1,11 @@
 # Development Process
 
-Fleet documentation is now treated as a project operating system for parallel development, not as a pile of planning notes.
+Craft Agents (二开补强) documentation is now treated as a project operating system for parallel development, not as a pile of planning notes.
 
 The process has five layers:
 
 1. **Direction**
-   `PROJECT-DIRECTION.md` defines what Fleet is and is not.
+   `PROJECT-DIRECTION.md` defines what Craft Agents (二开补强) is and is not.
 
 2. **Decisions**
    `DECISIONS-LEDGER.md` records final product decisions and reversals.

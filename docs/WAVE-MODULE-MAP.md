@@ -58,9 +58,8 @@ All three required files exist and are marked frozen. W0 gate confirmed passed o
 
 M00 and M03 are both W1 modules and depend only on W0 contracts. They may be worked in parallel **with the following constraint**:
 
-- **M00 must reach `backbone-merged` status** (session store, permission model, timeline event bus live) before M03's executor implementation begins, because M03's executor depends on the timeline event bus from M00.
-- M03's **skeleton** (action ID enum, registry interface, manifest builder) may be built in parallel with M00 immediately after W0 gate.
-- The Lead declares `M00 backbone-merged` explicitly. Workers must not self-declare this transition.
+- **M03 仅允许并行编写骨架 (Skeleton)，严禁在 M00 达到 `backbone-merged` 前开始执行器 (Executor) 实装**：M03 的 Skeleton（包括 Action ID 枚举、Registry 接口声明、Manifest Builder 结构）可在 W0 门禁通过后与 M00 同时启动；但任何 Executor 的逻辑实现因依赖 M00 的 Timeline 事件总线，必须等到 M00 完成平台骨架开发被 Lead 显式宣告为 `backbone-merged` 后方可启动。
+- **M00 backbone-merged 状态必须由 Lead 显式声明**：Worker Agent 严禁自行判定或在提交中自行转变此状态。
 
 ---
 
@@ -70,12 +69,12 @@ M00 and M03 are both W1 modules and depend only on W0 contracts. They may be wor
 |---|---|---|---|---|---|
 | M00 | platform-spine | W1 | W0 contracts | `modules/00-platform-spine.md` | 🔒 not started |
 | M01 | clean-craft-baseline | W2 | M00 | `modules/01-clean-craft-baseline.md` | 🔒 not started |
-| M02 | terminal-cli-runtime | W2 | M00 | `modules/02-terminal-cli-runtime.md` | 🔒 not started |
+| M02 | terminal-cli-runtime | W2 | M00 | `modules/02-terminal-cli-runtime/SPEC.md` | 🔒 not started |
 | M03 | internal-action-registry | W1 | W0 contracts; M00 backbone for executor | `modules/03-internal-action-registry.md` | 🔒 not started |
 | M04 | runtime-lanes-teamrun | W2 | M00, M03 | `modules/04-runtime-lanes-teamrun.md` | 🔒 not started |
 | M05 | files-library-leases | W2 | M00, M03 | `modules/05-files-library-leases.md` | 🔒 not started |
-| M06 | browser-artifact-surface | W3 | M03 usable, M05 usable | `modules/06-browser-artifact-surface.md` | 🔒 not started |
-| M07 | canvas-design-surface | W3 | M03 usable, M05 usable | `modules/07-canvas-design-surface.md` | 🔒 not started |
+| M06 | browser-artifact-surface | W3 | M03 usable, M05 usable | `modules/06-browser-artifact-surface/SPEC.md` | 🔒 not started |
+| M07 | canvas-design-surface | W3 | M03 usable, M05 usable | `modules/07-canvas-design-surface/SPEC.md` | 🔒 not started |
 | M08 | aigc-jobs-surface | W3 | M03 usable, M05 usable | `modules/08-aigc-jobs-surface.md` | 🔒 not started |
 | M09 | video-surface | W3 | M03 usable, M05 usable | `modules/09-video-surface.md` | 🔒 not started |
 | M10 | memory-context | W4 | M00, M05 | `modules/10-memory-context-review.md` | 🔒 not started |

@@ -90,33 +90,33 @@ The following are Lead-owned. Workers can read; they cannot modify:
 
 ---
 
-## Fleet Bridge Interface
+## Craft Agents (二开补强) Bridge Interface
 
-Fleet Bridge is the narrow IPC boundary through which a CLI run reports progress and receives team context from the Fleet session.
+Craft Agents (二开补强) Bridge is the narrow IPC boundary through which a CLI run reports progress and receives team context from the Craft Agents (二开补强) session.
 
-**Boundary rule:** Fleet owns the team state, member roster, and session timeline. A CLI run owns exactly one `RuntimeLane` entry. The CLI runtime does not call Fleet API methods directly; it sends lane events to Fleet Bridge, which translates them into `SessionEvent` entries on the Fleet side.
+**Boundary rule:** Craft Agents (二开补强) owns the team state, member roster, and session timeline. A CLI run owns exactly one `RuntimeLane` entry. The CLI runtime does not call Craft Agents (二开补强) API methods directly; it sends lane events to Craft Agents (二开补强) Bridge, which translates them into `SessionEvent` entries on the Craft Agents (二开补强) side.
 
 **Minimal interface (frozen at W0):**
 
 ```
-FleetBridge.reportLaneEvent(laneId: string, event: RuntimeLaneEvent): void
-FleetBridge.requestTeamContext(laneId: string): Promise<TeamContextSnapshot>
-FleetBridge.closeLane(laneId: string, outcome: LaneOutcome): void
+CraftAgentsBridge.reportLaneEvent(laneId: string, event: RuntimeLaneEvent): void
+CraftAgentsBridge.requestTeamContext(laneId: string): Promise<TeamContextSnapshot>
+CraftAgentsBridge.closeLane(laneId: string, outcome: LaneOutcome): void
 ```
 
 - `RuntimeLaneEvent`, `TeamContextSnapshot`, and `LaneOutcome` are defined in `docs/contracts/protocol-stubs.md`.
-- A CLI run must not call any Fleet method not listed here. If a new method is needed, the Worker files a contract change request with the Lead before proceeding.
-- Fleet Bridge does not own tools, does not hold session state, and does not proxy permission decisions. It is a one-way event pipe with one context-pull call.
+- A CLI run must not call any Craft Agents (二开补强) method not listed here. If a new method is needed, the Worker files a contract change request with the Lead before proceeding.
+- Craft Agents (二开补强) Bridge does not own tools, does not hold session state, and does not proxy permission decisions. It is a one-way event pipe with one context-pull call.
 
 **Concrete ownership boundary:**
 
-| Owned by Fleet | Owned by CLI Runtime |
+| Owned by Craft Agents (二开补强) | Owned by CLI Runtime |
 |---|---|
 | Team roster, role assignments | Process lifecycle, stdin/stdout |
 | Session timeline, replay log | Local model invocation |
 | Permission decisions | Lane-local tool calls |
 | Cost ledger entries | Lane-local file writes (reported back via event) |
-| Cross-agent message routing | None — routing requests go through Fleet Bridge |
+| Cross-agent message routing | None — routing requests go through Craft Agents (二开补强) Bridge |
 
 ---
 
@@ -247,7 +247,7 @@ The following patterns have caused coordination failures in past parallel builds
 | Worker starts W3 work before W2 gate is declared open | Depends on unstable contracts; guarantees rework | Check wave schedule. Wait for Lead's gate declaration. |
 | Worker fixes a spec ambiguity by choosing the most convenient interpretation | May contradict another Worker's equally valid interpretation | Report ambiguity to Lead before any implementation. |
 | Worker's PR has no Completion Report | Unanswerable at review time | Fill the Completion Report template. No exceptions. |
-| Worker calls a Fleet API method not in the Fleet Bridge interface | Violates lane ownership boundary; creates hidden coupling | Use only the three FleetBridge methods. File a change request for anything else. |
+| Worker calls a Craft Agents (二开补强) API method not in the Craft Agents (二开补强) Bridge interface | Violates lane ownership boundary; creates hidden coupling | Use only the three Craft Agents (二开补强) Bridge methods. File a change request for anything else. |
 | Worker self-promotes a slice to `usable` without Lead review | Status inflation; gate conditions may be silently broken | Propose promotion in PR. Lead confirms after review. |
 
 ---
