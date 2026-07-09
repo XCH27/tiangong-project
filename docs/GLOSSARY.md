@@ -41,3 +41,7 @@ The global, persistent agent coordinating software context, settings, and team o
 
 ### Project Agent
 A specialized agent seat spawned to execute tasks on a specific project workspace under strict role/domain restrictions.
+
+
+### Captain
+The interactive user approval interface in the desktop shell UI where L3 destructive commands and DestructiveHints are suspended awaiting human resolution.

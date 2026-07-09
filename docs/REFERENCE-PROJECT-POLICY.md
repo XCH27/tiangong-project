@@ -12,6 +12,7 @@ The following projects may be copied or adapted within the stated boundary, with
 | `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into Craft session/permission/timeline. |
 | `open-design` | Apache-2.0 | Runtime definitions, prompt transport, artifact/eval/design workflow patterns. Check subdirectory licenses before copying assets/templates. |
 | `rtk` | Apache-2.0 | Output compression, savings discovery, hook matrix ideas. Do not auto-install global hooks without permission. |
+| `fleet-old` | Internal Reference | Legacy implementation codebase patterns (M02/M04/M10/M11/M12). Allowed for porting/adapting. |
 | `codegraph` | MIT | Local code graph, indexing, structured queries, MCP installer experience. |
 | `DeepSeek-Reasonix` | MIT | ACP/stdio, stable prefix cache, planner/executor, permission/sandbox ideas. |
 | `deepcode-cli` | MIT | Skill paths, MCP, reasoning intensity, CLI/session management. |

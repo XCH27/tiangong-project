@@ -1,21 +1,13 @@
-# Protocol Stubs — FROZEN v1.0.0
+# Protocol Stubs — FROZEN v1.2.0
 
 > **Lead-owned.** These type stubs define the shared vocabulary that all module Workers depend on.
-> Workers **read** these stubs to know what types exist. They do **not** implement the types here —
-> the canonical implementation lives in `app/packages/shared/src/protocol/`.
->
-> When a stub is promoted to a real implementation, the Lead updates this file to say
-> `STATUS: implemented` and links to the source file.
+> The canonical implementation lives in `app/packages/shared/src/protocol/`.
 
 ---
 
 ## SessionEvent
 
-**STATUS: stub** — canonical implementation pending (Lead creates in W1)
-
 ```ts
-// app/packages/shared/src/protocol/session-event.ts (to be created by Lead)
-
 export type SessionEventKind =
   | 'action_invoked'
   | 'action_completed'
@@ -24,21 +16,21 @@ export type SessionEventKind =
   | 'supervision_resolved'
   | 'conflict_superseded'
   | 'undo_applied'
-  | 'timeline_note';            // human annotation
+  | 'timeline_note';
 
 export type SessionEvent = {
-  id: string;                   // uuid
+  id: string; // uuid
   sessionId: string;
-  teamRunId?: string;           // present if event occurred inside a TeamRun
+  teamRunId?: string;
   taskRunId?: string;
   kind: SessionEventKind;
-  actionId?: string;            // InternalActionId if kind is action_*
-  actorRef: ActorRef;           // who caused the event
+  actionId?: string;
+  actorRef: ActorRef;
   payload: Record<string, unknown>;
-  undoHandle?: UndoHandle;      // present when undo is supported
-  evidenceRefs: string[];       // paths to artefact evidence (files, screenshots)
-  occurredAt: string;           // ISO 8601
-  seq: number;                  // monotonically increasing within the session
+  undoHandle?: UndoHandle;
+  evidenceRefs: string[];
+  occurredAt: string; // ISO 8601
+  seq: number;
 };
 ```
 
@@ -46,16 +38,12 @@ export type SessionEvent = {
 
 ## ActorRef
 
-**STATUS: stub** — canonical implementation pending (Lead creates in W1)
-
 ```ts
-// app/packages/shared/src/protocol/actor.ts (to be created by Lead)
-
 export type ActorKind = 'human' | 'agent' | 'system';
 
 export type ActorRef = {
   kind: ActorKind;
-  id: string;                   // user id, agent seat id, or 'system'
+  id: string; // user id, agent seat id, or 'system'
   displayName: string;
 };
 ```
@@ -64,36 +52,29 @@ export type ActorRef = {
 
 ## ActionInvocation
 
-**STATUS: stub** — canonical implementation pending (Lead creates in W1)
-
 ```ts
-// app/packages/shared/src/protocol/internal-action.ts (partial — CONTRACT_VERSION field exists)
-// Full shape below is the target once the Lead promotes the stub.
-
 export type ActionPermissionLevel =
   | 'L0_read_only'
   | 'L1_reversible'
-  | 'L2_irreversible';
+  | 'L2_irreversible'
+  | 'L3_destructive';
 
 export type ActionSurface = 'human_ui' | 'agent' | 'both';
 
 export type ActionInvocation = {
-  id: string;                   // uuid for this specific invocation
-  actionId: InternalActionId;   // from the frozen action-ids table
-  surface: ActionSurface;
-  actorRef: ActorRef;
-  sessionId: string;
-  teamRunId?: string;
-  taskRunId?: string;
+  invocationId: string; // uuid
+  actionId: InternalActionId;
   payload: Record<string, unknown>;
-  seq: number;                  // assigned by Action Registry, monotonically increasing
-  invokedAt: string;            // ISO 8601
+  targets: ActionTargetRef[];
+  callerKind: 'agent' | 'human_ui';
+  sessionId: string;
+  createdAt: string; // ISO 8601;
 };
 
 export type UndoHandle = {
-  actionId: InternalActionId;
-  invocationId: string;
-  inversePayload: Record<string, unknown>;
+  undoId: string;
+  label: string;
+  snapshot: unknown;
 };
 ```
 
@@ -101,24 +82,15 @@ export type UndoHandle = {
 
 ## WorkspaceFileLease
 
-**STATUS: stub** — canonical implementation pending (Lead creates in W2 alongside M05)
-
 ```ts
-// app/packages/shared/src/protocol/lease.ts (to be created by Lead)
-
-export type LeaseMode = 'read' | 'write' | 'exclusive_write';
-
 export type WorkspaceFileLease = {
-  id: string;                   // uuid
-  workspacePath: string;        // absolute path
-  mode: LeaseMode;
-  holderRef: ActorRef;
-  sessionId: string;
-  teamRunId?: string;
-  taskRunId?: string;
-  acquiredAt: string;           // ISO 8601
-  expiresAt?: string;           // ISO 8601; absent = held until explicit release
-  releasedAt?: string;          // ISO 8601; set when released
+  leaseId: string;
+  workspaceId: string;
+  filePath: string;
+  heldBy: string; // ActorRef id
+  acquiredAt: string; // ISO 8601
+  expiresAt: string; // ISO 8601
+  active: boolean;
 };
 ```
 
@@ -126,11 +98,7 @@ export type WorkspaceFileLease = {
 
 ## CanvasDocument (M07)
 
-**STATUS: stub** — canonical implementation pending (Lead creates in W0 before W3 begins)
-
 ```ts
-// app/packages/shared/src/protocol/canvas.ts (to be created by Lead)
-
 export type NodeType =
   | 'text_frame'
   | 'image_asset'
@@ -178,13 +146,50 @@ export type CanvasDocument = {
 
 ---
 
-## Promotion Checklist
+## AgentSeat & TeamRun (M04 / Spine Core)
 
-When the Lead promotes a stub to a real implementation:
+```ts
+export interface AgentSeat {
+  seatId: string;
+  role: 'lead' | 'worker' | 'reviewer';
+  domainTags: ('media' | 'code' | 'ui' | 'data')[];
+  trustLevel: 'internal' | 'host' | 'external';
+}
 
-1. Create the file at the path shown in the stub comment.
-2. Copy the type definitions and extend as needed.
-3. Update `STATUS` in this file to `implemented` and add the source file path.
-4. Export the types from `app/packages/shared/src/protocol/index.ts`.
-5. Bump the relevant `CONTRACT_VERSION` in `internal-action.ts`.
-6. Notify Workers via a board card update.
+export interface RuntimeLane {
+  laneId: string;
+  seatId: string;
+  cwd: string;
+  allowedCommandsPattern: string;
+  status: 'idle' | 'running' | 'paused' | 'terminated';
+}
+
+export interface TeamRun {
+  teamRunId: string;
+  leaderSeatId: string;
+  objective: string;
+  status: 'pending' | 'active' | 'success' | 'failed';
+  activeLanes: string[];
+}
+
+export interface RuntimeLaneEvent {
+  type: 'lane_started' | 'lane_output' | 'lane_completed' | 'lane_error';
+  laneId: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+}
+
+export interface TeamContextSnapshot {
+  teamRunId: string;
+  snapshotId: string;
+  laneStates: Record<string, string>;
+  timelineSequence: number;
+}
+
+export interface LaneOutcome {
+  laneId: string;
+  exitCode: number;
+  stdoutHash: string;
+  generatedEvidenceRefs: string[];
+}
+```

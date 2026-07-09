@@ -90,7 +90,8 @@ M00 and M03 are both W1 modules and depend only on W0 contracts. They may be wor
 | M11 | model-routing-cost-ledger | W4 | M00, M03 | `modules/11-model-routing-cost-ledger.md` | 🔒 Locked |
 | M12 | skill-library | W4 | M05, M11 | `modules/12-capability-skill-plugin-system.md` | 🔒 Locked |
 | M13 | settings-preferences | W5 | M00 | `modules/13-settings-shell-ux.md` | 🔒 Locked |
-| M14 | onboarding-empty-states | W5 | M00 | `modules/14-messaging.md` | 🔒 Locked |
+| M14 | onboarding-empty-states | W5 | M00 | `modules/14-onboarding.md` | 🔒 Locked |
+| M15 | messaging-gateway | W5 | M00 | `modules/15-messaging.md` | 🔒 Locked |
 
 ---
 

@@ -3,7 +3,7 @@
 This file is the forced-read execution summary for agents working in this repository.
 It is not an independent roadmap and must not define a second source of truth.
 
-Active project documentation is English-only.
+Active project documentation is English-primary. Bilingual comments and technical explanations are fully allowed to clarify technical selections, preventing deadlocks.
 
 ## Read First (Context-Budget Oriented)
 
