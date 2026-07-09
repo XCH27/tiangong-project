@@ -20,6 +20,28 @@ This file maps every module to its wave, its gate conditions, and its current st
 
 ---
 
+## Phase Completion Overview
+
+| Phase | Name | Target Wave | Status | Exit Criteria Met? |
+|---|---|---|---|---|
+| Phase 0 | Clean Craft Baseline | W0 + U Track | ✅ Complete | Craft runs, repo baseline known |
+| Phase 1 | Terminal and CLI Runtime Loop | W2 | 🔵 In Progress | — |
+| Phase 2 | Internal Action Spine | W1 | 🔵 In Progress | — |
+| Phase 3 | Runtime Lanes and TeamRun | W2 | 🔲 Not Started | — |
+| Phase 4 | Files and Library | W2 | 🔲 Not Started | — |
+| Phase 5 | Browser and Artifact Workflow | W3 | 🔲 Not Started | — |
+| Phase 6 | Canvas, AIGC, and Video | F Track+W3 | 🔲 Not Started | — |
+
+---
+
+## Active Blockers
+
+| ID | Blocker | Owner | Since |
+|---|---|---|---|
+| BLK-001 | M00 interface exports not yet Lead-committed; M01/M02/M03 cannot start | Lead | 2026-07-09 |
+
+---
+
 ## W0 Gate Verification Record
 
 All three required files exist and are marked frozen. W0 gate confirmed passed on 2026-07-09 by Lead.
@@ -56,11 +78,11 @@ M00 and M03 are both W1 modules and depend only on W0 contracts. They may be wor
 | M07 | canvas-design-surface | W3 | M03 usable, M05 usable | `modules/07-canvas-design-surface.md` | 🔒 not started |
 | M08 | aigc-jobs-surface | W3 | M03 usable, M05 usable | `modules/08-aigc-jobs-surface.md` | 🔒 not started |
 | M09 | video-surface | W3 | M03 usable, M05 usable | `modules/09-video-surface.md` | 🔒 not started |
-| M10 | memory-context | W4 | M00, M05 | `modules/10-memory-context.md` | 🔒 not started |
+| M10 | memory-context | W4 | M00, M05 | `modules/10-memory-context-review.md` | 🔒 not started |
 | M11 | model-routing-cost-ledger | W4 | M00, M03 | `modules/11-model-routing-cost-ledger.md` | 🔒 not started |
-| M12 | skill-library | W4 | M05, M11 | `modules/12-skill-library.md` | 🔒 not started |
-| M13 | settings-preferences | W5 | M00 | `modules/13-settings-preferences.md` | 🔒 not started |
-| M14 | onboarding-empty-states | W5 | M00 | `modules/14-onboarding-empty-states.md` | 🔒 not started |
+| M12 | skill-library | W4 | M05, M11 | `modules/12-capability-skill-plugin-system.md` | 🔒 not started |
+| M13 | settings-preferences | W5 | M00 | `modules/13-settings-shell-ux.md` | 🔒 not started |
+| M14 | onboarding-empty-states | W5 | M00 | `modules/14-messaging.md` | 🔒 not started |
 
 ---
 

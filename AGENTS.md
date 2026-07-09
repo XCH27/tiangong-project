@@ -6,27 +6,26 @@ It is not an independent roadmap and must not define a second source of truth.
 Active project documentation is English-only. The old Chinese documents are archived under
 `docs/legacy/` and are historical evidence, not execution instructions.
 
-## Read First
+## Read First (Context-Budget Oriented)
 
-Use this order before changing product code or project documentation:
+To optimize token usage and avoid context truncation, do NOT load the entire document set into your primary context. Follow this structured two-layer orientation:
 
-1. `docs/START-HERE.md`
-2. `docs/PROJECT-DIRECTION.md`
-3. `docs/OWNER-VOICE.md`
-4. `docs/DECISIONS-LEDGER.md`
-5. `docs/DEVELOPMENT-PROCESS.md`
-6. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
-7. `docs/OWNERSHIP-MATRIX.md`
-8. `docs/WAVE-MODULE-MAP.md`
-9. `docs/BOARD-SYNC.md`
-10. `docs/REFERENCE-PROJECT-POLICY.md`
-11. The relevant module spec in `docs/modules/`
-12. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
-13. The current Craft-based implementation under `app/`
+### Layer 1: Mandatory Context (Always Load)
+Read these files first in this exact order to understand the entry orientation and current state:
+1. `docs/START-HERE.md` — Orientation & sequence entry points.
+2. `docs/DECISIONS-LEDGER.md` — Active binding decisions & logic restrictions.
+3. **Your Assigned spec** in `docs/modules/` — Behavior specification for your task.
+4. **Your Assigned wave packet** in `docs/agent-packets/` — Bounded work limits.
 
-Read `docs/legacy/` only to verify historical rationale or recover a missing decision.
-If a legacy document conflicts with an active English document, follow the active English
-document and update the active doc if it is incomplete.
+### Layer 2: On-Demand Context (Reference Only)
+Consult these files ONLY when dealing with specific tasks or encountering blockers:
+- `docs/DEVELOPMENT-PROCESS.md` — Status Decision Trees & promotion validation steps.
+- `docs/PARALLEL-AGENT-OPERATING-MODEL.md` — Worktree rules, Lead SLAs, and Verification Agent boundaries.
+- `docs/OWNERSHIP-MATRIX.md` & `docs/WAVE-MODULE-MAP.md` — File ownership mappings & Wave schedule details.
+- `docs/BOARD-SYNC.md` — Status card format.
+- `docs/PROJECT-DIRECTION.md` & `docs/OWNER-VOICE.md` — Architectural visions and raw user requests.
+- `docs/REFERENCE-PROJECT-POLICY.md` — Safe code reuse policies.
+- `docs/legacy/` — Historical context (read ONLY to recover missing context, never treat as active truth).
 
 ## Product Direction
 
@@ -91,6 +90,9 @@ self-declared and cannot be modified by the Worker or Reviewer.
   Tools outside the manifest are physically absent from the prompt; calling them returns
   `PERMISSION_DENIED` and writes to the audit log.
 - Workers cannot read other Seats' identity tags, manifests, or loaded skills.
+- **Lead Injection Interface**: The Lead injects tags using two primary channels:
+  1. **Packet Metadata Integration**: Injected from the `Required Domain Tags` and `Assigned Worker Role` fields of the Worker's assigned wave packet file configuration.
+  2. **Seat Creation API**: Statically passed to `AgentSession.create({ tags: ['role:worker', 'domain:code'] })` at bootstrap time.
 - `AgentSession.create()` throws `SeatCreationError` if any invariant in the permission matrix
   is violated. Do not attempt to work around these errors by modifying tag values.
 

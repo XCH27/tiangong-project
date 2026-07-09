@@ -132,7 +132,7 @@ Do not:
 
 Exit criteria: default Craft workbench is usable, and the repo has a known baseline state.
 
-### Phase 1: Terminal and CLI Runtime Loop `[Wave 1]`
+### Phase 1: Terminal and CLI Runtime Loop `[Wave 2]`
 
 Goal: one real local runtime loop works end to end.
 
@@ -142,7 +142,7 @@ user intent -> UI selection of runtime -> backend handler -> runtime process/PTY
 
 This is the first serious product loop because it turns Fleet from a chat surface into a local execution workbench.
 
-Exit criteria: at least one CLI/runtime path is `usable`, not merely detected or displayed.
+Exit criteria: both CLI and UI runtime path integrations are usable; output streams back to session timeline; at least one permission check is executed/logged; stop/error paths have user-visible feedback.
 
 ### Phase 2: Internal Action Spine `[Wave 0 → Wave 1]`
 
@@ -216,7 +216,7 @@ Exit criteria for the first canvas slice: a human edits one design object, an ag
 | Phase | Name | Wave / Track |
 |---|---|---|
 | Phase 0 | Clean Craft Baseline | Wave 0 + U Track |
-| Phase 1 | Terminal and CLI Runtime Loop | Wave 1 |
+| Phase 1 | Terminal and CLI Runtime Loop | Wave 2 |
 | Phase 2 | Internal Action Spine | Wave 0 → Wave 1 |
 | Phase 3 | Runtime Lanes and TeamRun | Wave 0 → Wave 2 |
 | Phase 4 | Files and Library | Wave 1 |

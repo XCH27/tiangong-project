@@ -159,7 +159,7 @@ export const ActionInvocationSchema = z.object({
   /** Action to execute */
   actionId: z.string() as z.ZodType<InternalActionId>,
   /** Input payload — validated against the action's payloadSchema */
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   /** Targets this invocation operates on (used by file-lease checker) */
   targets: z.array(ActionTargetRefSchema).default([]),
   /**

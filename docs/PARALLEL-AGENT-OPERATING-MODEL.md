@@ -31,13 +31,24 @@ Work is organised into sequential **waves**. Each wave has a gate condition. No 
 | Wave | Gate Condition | Typical Work |
 |---|---|---|
 | **W0 — Contract Freeze** | Lead commits `docs/contracts/protocol-stubs.md`, frozen `action-ids.md`, and frozen `identity-tags-permission-matrix.md`; all three marked frozen in header | Lead only — zero Workers |
-| **W1 — Spine** | W0 gate passed | M00 Platform Spine skeleton + M03 Action Registry skeleton (parallel); M03 executor begins only after Lead declares M00 backbone-merged |
+| **W1 — Spine** | W0 gate passed | M00 Platform Spine skeleton + M03 Action Registry skeleton (parallel); see W1 Execution Checkpoints below |
 | **W2 — Runtime Core** | M00 backbone merged, M03 executor at `usable`, `SessionEvent` types live | M01, M02, M04, M05 in parallel |
-| **W3 — Surfaces** | M03 at `usable` and M05 Library write path at `usable` | M06, M07, M08, M09 in parallel |
+| **W3 — Surfaces** | M03 at `usable` and M05 Library write path at `usable` | M06, M08, M09 in parallel |
+| **F Track — Foundation** | M00 backbone merged | M07 Canvas foundation + M09 Video core (parallel track; syncs with W3 surfaces) |
 | **W4 — Intelligence** | M05 lease model stable | M10, M11, M12 in parallel |
 | **W5 — Polish** | All prior modules at `usable` | M13, M14; cross-module integration; Verification Agent sweep |
 
 Workers declare their wave in the agent packet header. Starting work before the wave gate is a blocking violation.
+
+---
+
+## W1 Execution Checkpoints
+
+To resolve parallel development dependency issues between M00 and M03:
+
+1. **Checkpoint 1 (Skeleton Parallelism)**: M00 skeleton (TS type exports) and M03 skeleton (Action Registry schemas, action ID enum definition) can start in parallel immediately after W0 gate.
+2. **Checkpoint 2 (M00 backbone-merged)**: The Lead explicitly declares `M00 backbone-merged` (session store, permission model, event bus are implemented and stable). M03 executor implementation MUST wait for this checkpoint.
+3. **Checkpoint 3 (M03 executor usable)**: M03 executor completes implementation and is verified, unblocking the Wave 2 gate.
 
 ---
 
@@ -238,3 +249,31 @@ The following patterns have caused coordination failures in past parallel builds
 | Worker's PR has no Completion Report | Unanswerable at review time | Fill the Completion Report template. No exceptions. |
 | Worker calls a Fleet API method not in the Fleet Bridge interface | Violates lane ownership boundary; creates hidden coupling | Use only the three FleetBridge methods. File a change request for anything else. |
 | Worker self-promotes a slice to `usable` without Lead review | Status inflation; gate conditions may be silently broken | Propose promotion in PR. Lead confirms after review. |
+
+---
+
+## Lead Response SLA
+
+To prevent asynchronous Worker processes from entering infinite waits during coordination delays or spec ambiguities:
+
+1. **Response Time Limit**: The Lead should respond to blocker/status reports within **4 hours** during active development sessions.
+2. **Park & Pivot Protocol**: If the Lead does not respond within the SLA limit:
+   - The Worker commits its current progress in a draft PR.
+   - The Worker marks the packet card status as `blocked/parked` in `BOARD-SYNC.md`.
+   - The Worker pivots to non-blocking tasks or other assigned branches.
+3. **No-Constraint Progression**: The Worker is allowed to write temporary stub code to progress past blockers, provided:
+   - Stubs do not modify any shared contract file.
+   - Stubs are clearly annotated with `// TODO: Waiting for Lead Decision`.
+   - Stubbed work is marked `wired but not visually checked` and never self-promoted to `usable`.
+
+---
+
+## Verification Agent Boundaries
+
+The Verification Agent serves as an automated/semi-automated test sweep role and is governed by strict boundaries:
+
+1. **No Product Code Edits**: The Verification Agent must never edit product code in `app/`. It is restricted to editing `tests/`, `docs/`, and `Completion Report` fields.
+2. **Read-Only Inspection**: It performs static validation, typechecks, and behavior validation.
+3. **No Self-Usability Declarations**: The Verification Agent cannot self-promote a module to `usable`. It compiles validation results and logs an `Evidence Package` (e.g. CLI run scripts, logs, test outputs) for the Lead to review and make the promotion.
+4. **Lead Assignment**: The Verification Agent only triggers checks based on direct assignments in wave packets or Lead instructions.
+

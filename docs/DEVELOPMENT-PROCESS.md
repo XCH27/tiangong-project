@@ -111,3 +111,28 @@ Do not use a legacy document as a work packet.
 - Module behavior lives in `docs/modules/*.md`.
 
 Do not add new product rules only to `AGENTS.md`.
+
+---
+
+## Status Decision Tree (Self-Assessment)
+
+Workers must mechanically walk through the following decision tree to classify their slice status in Completion Reports, eliminating subjective interpretation:
+
+```
+Start
+  │
+  ├─► Is there a real, functional UI path or terminal entry?
+  │     ├── NO  ──► Is there a backend service/handler (not a mock/stub)?
+  │     │             ├── YES ──► Classify as: "wired but not visually checked"
+  │     │             └── NO  ──► Classify as: "not implemented"
+  │     │
+  │     └── YES ──► Is there a real backend handler/IPC path connected?
+  │                   ├── NO  ──► Classify as: "display-only"
+  │                   └── YES ──► Are all the following verified?
+  │                                 1. State persists across restarts
+  │                                 2. Permission blocks unauthorized calls
+  │                                 3. Timeline events are emitted properly
+  │                                 4. Callable via Agent tool path
+  │                                 ├── YES ──► Propose as: "usable" (Lead declares)
+  │                                 └── NO  ──► Classify as: "wired but not visually checked"
+```
