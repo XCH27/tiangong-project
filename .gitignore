@@ -10,3 +10,7 @@ __pycache__/
 # should be tracked by the Fleet repo.
 /源码参考/software/*/
 /源码参考/plugins/*/
+
+.cursor/
+.evolver/
+.opencode/
