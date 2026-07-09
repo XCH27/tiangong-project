@@ -1,41 +1,67 @@
 # Parallel Agent Operating Model
 
-This document defines how multiple agents can develop Fleet without corrupting shared contracts, duplicating UI, or creating second truth systems.
+This document defines how multiple agents can develop the project without corrupting shared contracts, duplicating UI, or creating second-truth systems.
+
+---
 
 ## Core Rule
 
-Parallelism begins after the Lead freezes contracts and file ownership.
+Parallelism begins **after** the Lead freezes contracts and file ownership.
 
-No worker agent may independently modify shared protocol files, handler registration, channel maps, global i18n files, session storage contracts, or cross-module DTOs.
+No Worker may independently modify shared protocol files, handler registration, channel maps, global i18n files, session storage contracts, or cross-module DTOs.
+
+---
 
 ## Roles
 
 | Role | Responsibility |
 |---|---|
-| Lead | Reads direction and decisions, freezes contracts, owns shared files, writes module specs and agent packets, reviews diffs. |
-| Module Agent | Implements a bounded module slice from an agent packet. |
-| UI Agent | Implements UI only after the Lead has fixed placement, interaction, and ownership. |
-| Backend Agent | Implements services/handlers only inside its assigned file domain. |
-| Verification Agent | Runs targeted checks and real behavior validation without changing product code unless assigned. |
+| **Lead** | Reads direction and decisions; freezes contracts; owns shared files; writes module specs and agent packets; reviews diffs; resolves conflict arbitration. |
+| **Module Agent** | Implements a bounded module slice from an agent packet. |
+| **UI Agent** | Implements UI only after Lead has fixed placement, interaction, and ownership. |
+| **Backend Agent** | Implements services/handlers only inside its assigned file domain. |
+| **Verification Agent** | Runs targeted checks and real-behavior validation without changing product code unless assigned. |
+
+---
+
+## Wave Schedule
+
+Work is organised into sequential **waves**. Each wave has a gate condition. No Worker may start work in wave N+1 until the Lead declares the gate passed.
+
+| Wave | Gate Condition | Typical Work |
+|---|---|---|
+| **W0 — Contract Freeze** | Lead commits `docs/contracts/protocol-stubs.md` and frozen `action-ids.md` rows | Lead only — zero Workers |
+| **W1 — Spine** | W0 gate passed | M00 Platform Spine, M03 Action Registry skeleton |
+| **W2 — Runtime Core** | M00 backbone merged, `SessionEvent` types live | M01, M02, M04, M05 in parallel |
+| **W3 — Surfaces** | M03 executor + registry merged | M06, M07, M08, M09 in parallel |
+| **W4 — Intelligence** | M05 lease model stable | M10, M11, M12 in parallel |
+| **W5 — Polish** | All prior modules at `usable` | M13, M14; cross-module integration; Verification Agent sweep |
+
+Workers declare their wave in the agent packet header. Starting work before the wave gate is a blocking violation.
+
+---
 
 ## Pre-Flight Gate
 
-Before any agent edits files, it must answer:
+Before any agent edits files it must answer **all** of the following:
 
 1. Which module spec owns this work?
 2. Which wave packet assigns this work?
 3. Which files may I edit?
-4. Which files are forbidden?
-5. Which shared contracts do I depend on?
+4. Which files are **forbidden**?
+5. Which shared contracts do I depend on? Are they frozen?
 6. Does the work create another session, permission, timeline, memory, skill, or UI truth?
 7. Which Internal Action or Agent callable path makes the UI agent-native?
-8. What exact behavior proves the slice is `usable`?
+8. What exact behaviour proves the slice is `usable`?
+9. Is the wave gate open for my wave?
 
-If any answer is missing, the agent stops and returns to the Lead.
+If any answer is missing or the gate is not yet open, the agent **stops and returns to the Lead**.
+
+---
 
 ## Frozen Contract Files
 
-The following are Lead-owned unless a packet explicitly says otherwise:
+The following are Lead-owned. Workers can read; they cannot modify:
 
 - `app/packages/shared/src/protocol/*.ts`
 - `app/packages/shared/src/protocol/index.ts`
@@ -43,79 +69,139 @@ The following are Lead-owned unless a packet explicitly says otherwise:
 - `app/packages/shared/src/protocol/channels.ts`
 - Electron channel maps and preload transport files
 - RPC handler registries
-- global i18n locale JSON files
-- session persistence fields
-- permission profile schema
-- shared settings registry structure
+- Global i18n locale JSON files
+- Session persistence fields
+- Permission profile schema
+- Shared settings registry structure
+- `docs/contracts/action-ids.md` (extend only via the Extension Process)
+- `docs/contracts/protocol-stubs.md`
 
-Workers can read these files. They cannot modify them.
+---
 
 ## Worktree Rule
 
-Each parallel agent works in an isolated branch or worktree. The final report must include:
+Each parallel agent works in an **isolated branch or worktree**.
 
-- worktree path
-- branch
-- commit
-- files changed
-- forbidden files not touched
-- validation commands
-- real behavior evidence or reason it remains unverified
-- final status label
+**Naming convention:** `agent/<wave>/<module-slug>/<short-description>`
 
-No report without these fields counts as complete.
+Examples:
+- `agent/w2/m01-clean-craft/remove-legacy-sidebar`
+- `agent/w3/m07-canvas/viewport-manager`
+
+**No two Workers may write to the same branch.** The Lead is the only agent who merges to `work/fresh-base-spine`.
+
+---
+
+## Completion Report (Required for Every PR)
+
+Every PR description must include the following report template verbatim. PRs without it are rejected without review.
+
+```
+## Completion Report
+
+- **Module:** M__
+- **Wave:** W_
+- **Worktree / branch:** agent/w_/m__-<slug>/<desc>
+- **Commit:** <sha>
+- **Files changed:** (list)
+- **Forbidden files touched:** none  <!-- or list with justification -->
+- **Frozen contracts depended on:** (list — version at time of work)
+- **Validation commands run:**
+  - [ ] `pnpm typecheck`
+  - [ ] `pnpm test --filter <package>`
+  - [ ] Manual smoke: (describe what you did)
+- **Real behaviour evidence:**
+  - (screenshot path / test run log excerpt / description)
+- **Final status label:** `usable` | `display-only` | `blocked`
+- **If blocked — what is needed:** (or "n/a")
+```
+
+---
+
+## Conflict Arbitration
+
+When two Workers produce contradictory implementations of the same contract field:
+
+1. **Both Workers stop touching the conflicting file.** Continuing is a blocking violation.
+2. Each Worker opens a short conflict report comment on the PR, stating:
+   - The exact field or type that conflicts.
+   - Their implementation choice and rationale.
+   - Which spec statement they were following.
+3. **The Lead resolves** by updating the relevant contract file and declaring which implementation wins.
+4. The losing Worker rebases and adapts. The winning Worker is responsible for helping the other rebase if needed.
+
+The Lead's word is final. Workers do not negotiate contracts between themselves.
+
+---
 
 ## Task Packet Shape
 
 Every `docs/agent-packets/*.md` file must include:
 
 1. Scope and module sections covered.
-2. Allowed files.
-3. Forbidden files.
-4. Frozen contracts used.
-5. Interfaces consumed.
-6. Interfaces produced.
-7. UI placement if any.
-8. Permission/timeline requirements.
-9. Validation ladder.
-10. Completion report template.
-11. Board Cards tracking section using `docs/BOARD-SYNC.md`.
+2. Wave assignment.
+3. Allowed files.
+4. Forbidden files.
+5. Frozen contracts used (with version).
+6. Interfaces consumed.
+7. Interfaces produced.
+8. UI placement if any (Lead-defined).
+9. Permission / timeline requirements.
+10. Validation ladder.
+11. Completion report template (pre-filled where possible).
+12. Board Cards tracking section using `docs/BOARD-SYNC.md`.
+
+---
 
 ## Board Sync Rule
 
-The board is a lightweight synchronization layer, not a second project-management truth.
-It tracks claim, blocker, handoff, and Lead close facts for a slice already defined by a module
-spec and wave packet.
+The board is a lightweight synchronisation layer, not a second project-management truth. It tracks claim, blocker, handoff, and Lead-close facts for a slice already defined by a module spec and wave packet.
 
-Before claiming work, a worker must read `docs/BOARD-SYNC.md` and append or update exactly one
-card in the relevant packet's `## Board Cards` section. The card must use the exact fields from
-that document. Missing fields, renamed fields, or a card claiming an entire module that spans
-multiple waves are invalid.
+Before claiming work, a Worker must read `docs/BOARD-SYNC.md` and append or update exactly one card in the relevant packet's `## Board Cards` section using the exact fields from that document.
 
-The Lead reviews board cards against `docs/OWNERSHIP-MATRIX.md` and
-`docs/WAVE-MODULE-MAP.md`. If the card conflicts with either document, the packet and ownership
-docs win.
+The Lead reviews board cards against `docs/OWNERSHIP-MATRIX.md` and `docs/WAVE-MODULE-MAP.md`. If the card conflicts with either document, the packet and ownership docs win.
+
+---
 
 ## UI Rule
 
-Parallel agents do not decide where new UI goes.
+Parallel agents do **not** decide where new UI goes.
 
 The Lead defines UI placement and interaction before backend work is split. This prevents every backend feature from adding its own settings page, toolbar, or panel.
 
+---
+
 ## Agent-Native Rule
 
-A writable feature is incomplete unless both paths exist:
+A writable feature is incomplete unless **both** paths exist:
 
 - Human UI path.
-- Agent/internal action path.
+- Agent / internal action path.
 
-Both must reach the same backend behavior, permission decision, timeline event, and rollback/evidence model.
+Both must reach the same backend behaviour, permission decision, timeline event, and rollback / evidence model.
+
+---
 
 ## Failure Rule
 
-If an implementation discovers the module spec is wrong, the worker does not improvise a new architecture. It reports:
+If an implementation discovers the module spec is wrong, the Worker does **not** improvise a new architecture. It reports:
 
-- the conflicting spec statement
-- the code fact
-- the smallest contract change needed
-- whether the current slice is blocked or can continue within existing contracts
+- The conflicting spec statement.
+- The code fact.
+- The smallest contract change needed.
+- Whether the current slice is blocked or can continue within existing contracts.
+
+---
+
+## Common Failure Modes (Anti-Patterns)
+
+The following patterns have caused coordination failures in past parallel builds. Every Worker must read this section before starting.
+
+| Pattern | Why It Fails | Correct Action |
+|---|---|---|
+| Worker silently adds a field to a shared protocol file | Breaks other Workers who didn't expect the field; causes merge conflicts at integration | Stop. File a contract change request with the Lead. |
+| Worker creates a second session or timeline store | Produces two sources of truth for the same data | Read M00 §16 risk register. Use the existing store. |
+| Worker adds a new left-nav entry without Lead approval | UI ownership conflict | Read UI Rule above. Ask Lead for placement decision. |
+| Worker starts W3 work before W2 gate is declared open | Depends on unstable contracts; guarantees rework | Check wave schedule. Wait for Lead's gate declaration. |
+| Worker fixes a spec ambiguity by choosing the most convenient interpretation | May contradict another Worker's equally valid interpretation | Report ambiguity to Lead before any implementation. |
+| Worker's PR has no Completion Report | Unanswerable at review time | Fill the Completion Report template. No exceptions. |
