@@ -65,3 +65,43 @@ Timeline unit tests, preview render smoke, human+agent same clip edit, undo, exp
 ## 16. Risks And Blocked Decisions
 
 Risk: GPL/commercial code leakage. Only OpenCut Classic is approved for source migration.
+
+## 17. Local Render Task Queue
+
+### 17.1 Problem
+
+Local video rendering (FFmpeg, WebCodecs) is CPU/GPU-intensive. If multiple
+agents submit render jobs concurrently, the host machine saturates and all
+jobs slow down together. A task queue is required.
+
+### 17.2 Queue Design
+
+All render jobs — whether triggered by a human action or an agent action —
+are submitted to a **single local render queue** managed by the Video
+Surface service layer.
+
+Rules:
+
+- **Max concurrent local renders: 1.** Only one FFmpeg/WebCodecs render
+  process runs at a time on the local machine. This is a hard cap, not
+  a soft limit.
+- **Queue discipline: FIFO with priority override.** Jobs submitted by a
+  human manual action carry `priority: 'user'` and skip ahead of
+  `priority: 'agent'` jobs already in the queue.
+- **Queue depth limit: 8.** If the queue holds 8 pending jobs, new
+  submissions are rejected with a `RENDER_QUEUE_FULL` error that the
+  agent must surface to the user for a decision (wait, cancel, or
+  delegate to external job).
+
+### 17.3 External Job Escape Hatch
+
+If the local render queue is full or the user opts out of local rendering,
+the job is handed off to M08 AIGC External Jobs as an external render job
+with cost and provenance recorded. This handoff must be explicit and
+permissioned (L2 minimum).
+
+### 17.4 Queue State in Timeline
+
+The render queue state (pending, running, failed, completed) is surfaced
+as `SessionEvent` entries so the Timeline reflects all render activity
+regardless of which agent submitted the job.

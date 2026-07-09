@@ -110,3 +110,53 @@ The adapter is responsible for:
 The adapter is **not** responsible for permission checks or timeline writes —
 those happen in the Hook Pipeline (Module 03 §9) before and after the adapter
 is called.
+
+## 18. Concurrent Agent Write Safety
+
+### 18.1 Batched Mutation (Required)
+
+When multiple agents issue canvas `mutate` actions within the same render
+frame, the adapter **must not** trigger a full re-render per action.
+Instead:
+
+- All `mutate` calls arriving within a single 16 ms render tick are
+  collected into a **mutation batch**.
+- The batch is applied to the OpenPencil document store once.
+- A single re-render pass is scheduled via `requestAnimationFrame`.
+
+This prevents frame-rate collapse under concurrent agent activity (e.g.
+3 agents simultaneously creating nodes).
+
+Implementation note: the batching window is the native render scheduler
+frame boundary — do not use an arbitrary `setTimeout` debounce.
+
+### 18.2 Mutation Ordering Within a Batch
+
+Mutations in the same batch are applied in `ActionInvocation.seq` order
+(the sequence number assigned by the Internal Action Registry). If two
+mutations conflict (e.g. two agents move the same node), the
+higher-seq mutation wins and the lower-seq mutation is recorded as a
+`CONFLICT_SUPERSEDED` SessionEvent so the Timeline stays honest.
+
+### 18.3 Lazy Render for Mixed-Content Nodes
+
+Nodes that embed live content (code execution output, browser preview,
+video frame thumbnail) carry the `contentType: 'live'` flag in the
+canvas data model.
+
+Rules for live-content nodes:
+
+1. **Off-viewport → immediately suspend rendering.** When a live node
+   scrolls or zooms out of the visible viewport, its embedded renderer
+   is unmounted. A static placeholder thumbnail (last captured frame)
+   is shown instead.
+2. **Re-entry → lazy resume.** When a live node re-enters the viewport,
+   rendering resumes after a 200 ms settle delay (avoids thrashing
+   during fast pan/zoom).
+3. **Zoom threshold.** If canvas zoom drops below 25 %, all live nodes
+   are replaced with static thumbnails regardless of viewport position.
+   This prevents simultaneous resume of dozens of embedded renderers
+   during a zoom-out gesture.
+
+The adapter is responsible for emitting viewport-change events to the
+canvas store so the lazy-render manager can respond.

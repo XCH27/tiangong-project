@@ -65,3 +65,64 @@ Catalog unit tests, loadout resolution tests, UI smoke, session tool table size 
 ## 16. Risks And Blocked Decisions
 
 Risk: injecting orchestration skills into autonomous CLI harnesses. CLI passthrough receives only minimal compatible descriptions.
+
+## 17. Plugin Action Namespace Safety
+
+### 17.1 Problem
+
+As Fleet grows, multiple plugins and surfaces will register actions into
+the Internal Action Registry (M03). Without namespacing, two plugins can
+claim the same `actionId` string, causing silent overwrites or
+non-deterministic dispatch.
+
+### 17.2 Namespace Contract
+
+Every action id registered by a plugin **must** be prefixed with the
+plugin's canonical namespace:
+
+```
+<surface>.<plugin-id>.<verb>
+```
+
+Examples:
+```
+canvas.my-plugin.insert-component
+video.my-plugin.add-caption
+browser.my-plugin.extract-table
+```
+
+The Internal Action Registry **must** reject registration of any id that:
+- Does not contain exactly two `.` separators.
+- Uses a `<surface>` prefix not declared in the plugin's manifest.
+- Conflicts with an already-registered id (no silent overwrite).
+
+Core Fleet action ids (registered by Lead-owned modules) use the
+`fleet.<surface>.<verb>` prefix and are reserved. Plugins may not
+register ids under the `fleet.*` namespace.
+
+### 17.3 Sandbox Isolation
+
+Plugins execute in an isolated context with the following constraints:
+
+- A plugin may only **call** actions in its own namespace or actions
+  explicitly declared as `public` in the Internal Action Registry.
+- A plugin may not directly import or call internal Fleet service modules.
+  All cross-boundary calls go through the Action Registry dispatch.
+- A plugin that throws an unhandled exception is automatically disabled
+  for the current session and a `PLUGIN_FAULT` SessionEvent is emitted.
+  The user is notified; the rest of the session continues.
+
+### 17.4 Version Compatibility Gate
+
+The plugin manifest must declare:
+
+```json
+{
+  "fleetApiVersion": "^1.0.0",
+  "actionNamespace": "canvas.my-plugin"
+}
+```
+
+During installation, the catalog service checks `fleetApiVersion` against
+the running Fleet version. Incompatible plugins are blocked at install time
+with a clear user-visible error, not at runtime.
