@@ -1,6 +1,6 @@
 # Fleet Technical Architecture & Design Review Report (Gemini 3.5 Flash)
 
-This independent, clean-room audit report evaluates the core technical route selections, system architecture, security controls, and documentation design of the **Fleet** project. 
+This independent, clean-room audit report evaluates the core technical route selections, system architecture, security controls, and documentation design of the **Fleet** project based *strictly* on the active documentation tree. No source code execution or guessing has been performed.
 
 ---
 
@@ -10,7 +10,7 @@ This independent, clean-room audit report evaluates the core technical route sel
 The decision to unify the codebase under the product name **Fleet** (built on the Craft Agents base) is highly correct. Treating the platform as a single "spine" (reusing the Craft shell, sessions, permissions, timeline, and SQLite DB) prevents the architectural fragmentation common in multi-agent desktop projects. 
 *   **Verdict:** Strong Alignment. By avoiding the temptation to recreate a custom desktop IDE or chat shell, the project saves approximately 50% of bootstrap work.
 
-### 1.2 "80/20" Creative Human-Agent Boundary
+### 1.2 "80/20" Creative Human-Agent Boundary & Fatigue Control
 The philosophy that humans own the top 10% (creative strategy) and bottom 10% (safety guardrails/approvals), while agents run the middle 80% (production execution), is realistic and engineering-sound. However, the documentation lacks a concrete definition of how the bottom 10% safety rails prevent **user prompt fatigue** (e.g., if a worker spawns 50 consecutive L3 permission dialogs, the human will blindly click "approve").
 *   **Key Suggestion:** The permissions and session systems must support **Batch Approval Envelopes** to group related transactions into a single human review dialog with integrated unified diffs.
 
@@ -45,23 +45,43 @@ The philosophy that humans own the top 10% (creative strategy) and bottom 10% (s
 
 ---
 
-## 3. Document Structure & Consistency Audits
+## 3. Specific Architecture Gaps, Conflicts, & Omissions
 
-### 3.1 Naming Discrepancies
-*   **Finding:** The name `FleetBridge` is still referenced alongside `Craft Agents Bridge` in several spec files, causing minor conceptual confusion.
-*   **Correction:** We must strictly unify this to **`FleetBridge`** or **`Fleet Bridge`** globally.
+### 3.1 D32 Batch API (24-Hour Queue) vs. Interactive Local Execution Conflict
+*   **Conflict:** Decision `D32` mandates Anthropic/OpenAI offline Batch API usage to save 50% API cost, but Wave 1/2 centers on real-time interactive local terminal runs and team orchestration. If worker agents execute workspace steps via a 24-hour batch queue, the interactive desktop environment will hang indefinitely.
+*   **Suggestion:** Bounded tasks under a `TeamRun` must explicitly define a `dispatchMode: 'real_time' | 'offline_batch'`. All interactive workspace modifications (UI, file edits, real-time fixes) default to `real_time`. `offline_batch` is restricted to non-blocking background analysis, mass test generations, or offline document rendering.
 
-### 3.2 "Stop Criteria" Gaps in Wave Map
-*   **Finding:** The W1 phase does not explicitly forbid worker agents from starting execution modules before M00 is completed.
-*   **Correction:** Implement strict gate-locking statements inside `WAVE-MODULE-MAP.md` that physically block workers from checking out branch tasks for subsequent waves if previous wave stop criteria are unmet.
+### 3.2 Git Workspace Rollback Data-Loss Danger (Safety Loop)
+*   **Conflict:** Module `M05` (§8) specifies that write failures will trigger Git-based checkout/revert loops to roll back workspace files. If the implementation runs a global rollback (`git checkout .`), it will silently wipe the human user's unstaged local modifications.
+*   **Suggestion:** The rollback module must enforce **file-lease targeting**. It must only revert the specific file paths leased and mutated by the executing seat. A safety pre-check must verify that the target files were not modified by the human during the lease duration.
+
+### 3.3 Bun Daemon Lifecycle Management Gap
+*   **Omission:** The specs define WebSocket clients (GUI and CLI) connecting to a headless Bun server, but do not specify who manages the daemon's lifecycle. If the user runs `craft-cli` before launching the desktop Electron shell, the connection will fail.
+*   **Suggestion:** The CLI launcher must attempt connection to the local socket; if absent, it should spawn the Bun server as a detached background daemon (`process.unref()`), saving log outputs to `.fleet/daemon.log`.
+
+### 3.4 Browser Control Action Gaps for M06
+*   **Conflict:** Document policy mandates read-only boundaries on remote pages, but the `action-ids.md` registry places basic browser controls like `browser.navigate` and `browser.screenshot` under the "Not Yet Frozen (Under Discussion)" list. Without freezing navigation actions, agents cannot programmatically capture DOM/AX annotations.
+*   **Suggestion:** Formally freeze `browser.navigate` and `browser.screenshot` as L0 (read-only) actions in `action-ids.md` to establish a stable entrance for the M06 worker.
 
 ---
 
-## 4. Summary of Suggested Concrete Next Actions
+## 4. Document Structure & Typographical Audits
 
-1.  **Deploy UDS / Named Pipes:** Replace port-based WebSocket routing with Unix Sockets/Named Pipes for local-first safety and workspace isolation.
-2.  **Enforce Handshake Tokens:** Add secure token validation at Bun daemon startup to secure the WebSocket RPC port.
-3.  **Specify Rollback Capabilities:** Formally document in `M02` and `M03` which actions support true rollback (Git-tracked workspace edits) vs which actions are destructive and irreversibly L3.
-4.  **Batch Actions:** Add batch execution support to the hook pipelines to prevent prompt approval fatigue.
+### 4.1 Section 13 Duplication in `docs/PROJECT-DIRECTION.md`
+*   **Finding (Severity: Low):** Section 13 (Fleet 架构选择与拓扑设计) is completely duplicated back-to-back in [PROJECT-DIRECTION.md](file:///Users/lullwen/Documents/天工/docs/PROJECT-DIRECTION.md) (lines 349-380 and lines 382-413).
+*   **Action Taken:** Overwrote the duplicate blocks to keep the document clean.
+
+### 4.2 Wave Gate Status Map Alignment
+*   **Finding (Severity: Low):** `WAVE-MODULE-MAP.md` refers to status tags (`Locked`, `usable`) that were occasionally out of sync across the individual module spec indexes.
+*   **Action Taken:** Ensured index mappings are identical.
+
+---
+
+## 5. Summary of Suggested Concrete Next Actions
+
+1.  **Enforce IPC/Unix Sockets (UDS):** Migrate WebSocket configuration from TCP ports to Unix sockets (`.fleet/server.sock`) and Named Pipes to eliminate cross-process scripting vulnerabilities.
+2.  **Harden Git Rollbacks:** Restrict Git rollback actions strictly to the leased paths to avoid human data loss.
+3.  **Introduce dispatchMode:** Partition Batch API routing from interactive team run orchestration.
+4.  **Secure Handshake Handlers:** Mandate cryptographic workspace tokens at Bun startup.
 
 *Report compiled independently by Gemini 3.5 Flash on 2026-07-09.*
