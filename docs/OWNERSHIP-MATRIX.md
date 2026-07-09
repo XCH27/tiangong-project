@@ -1,59 +1,157 @@
 # Ownership Matrix
 
-This matrix prevents parallel agents from claiming the same shared packages.
+> **Lead-owned.** Workers read this file. They do not modify it.
+>
+> Every file domain in the repo is assigned to exactly one owner. "Lead" means no Worker
+> may touch the file without an explicit Lead instruction. "Module M__" means only the assigned
+> Worker(s) for that module may touch the file during their wave.
 
-It is not a detailed file list for every task. It is the control plane that says which module owns which package areas and where contract changes must go through the Lead.
+---
 
-## Package Map
+## Frozen Contract Files (Lead Only — Always)
 
-| Area | Path | Primary Purpose | Contract Owner |
-|---|---|---|---|
-| Electron shell | `app/apps/electron/src/main`, `preload`, `transport` | Desktop window, IPC, local OS bridge | Lead |
-| Renderer shell | `app/apps/electron/src/renderer/components/app-shell` | Craft workbench shell, panel stack, input, session views | Lead for layout; module agents for owned components |
-| Settings UI | `app/apps/electron/src/renderer/pages/settings` | User settings, runtime settings, capability/loadout settings | Lead defines IA; module agents fill assigned pages |
-| Shared protocols | `app/packages/shared/src/protocol` | DTOs, events, channels, action contracts | Lead only |
-| Server core services | `app/packages/server-core/src/services` | Local services, runtime adapters, actions, memory, quota, files | Module owner per service |
-| Server RPC handlers | `app/packages/server-core/src/handlers/rpc` | Local RPC entrypoints | Lead registers; module agents fill assigned handlers |
-| Sessions | `app/packages/server-core/src/sessions` | SessionManager, persistence, timeline dispatch | Lead for core; module agents only through explicit packet |
-| Session tools | `app/packages/session-tools-core/src` | Agent-callable tool handlers | Module owner, with Lead-owned schema changes |
-| Session MCP server | `app/packages/session-mcp-server/src` | Fleet Bridge MCP tools | TeamRun/RuntimeLane module owner |
-| Core package | `app/packages/core/src` | Shared app domain logic | Lead unless packet assigns focused change |
-| UI package | `app/packages/ui/src` | Shared UI primitives/design tokens | Lead/design-system owner |
-| Messaging | `app/packages/messaging-*` | Messaging gateways | Messaging module owner |
+| Path | Owner | Notes |
+|---|---|---|
+| `app/packages/shared/src/protocol/*.ts` | Lead | All protocol type files |
+| `app/packages/shared/src/protocol/index.ts` | Lead | Protocol barrel export |
+| `docs/contracts/action-ids.md` | Lead | Frozen action id table |
+| `docs/contracts/protocol-stubs.md` | Lead | Type stubs |
+| `docs/OWNERSHIP-MATRIX.md` | Lead | This file |
+| `docs/WAVE-MODULE-MAP.md` | Lead | Wave status |
+| `docs/PARALLEL-AGENT-OPERATING-MODEL.md` | Lead | Operating rules |
+| `docs/BOARD-SYNC.md` | Lead | Board card schema |
+| `docs/DECISIONS-LEDGER.md` | Lead | Decision log |
+| `AGENTS.md` | Lead | Agent root instructions |
 
-## Module By Package Matrix
+---
 
-| Module | Shared Protocol | Server Core | Renderer | Session Tools / MCP | Notes |
-|---|---|---|---|---|---|
-| Platform Spine | Lead | Lead | Lead | Lead | Owns session, permission, timeline, actor/runtime metadata. |
-| Clean Craft Baseline | Lead | Lead | Lead | Lead | Upstream sync, shell simplification, no product feature expansion. |
-| Terminal / CLI Runtime | Lead freezes `cli-runtime`, `team-run` hooks | `cli-runtime-*`, runtime launcher, PTY services | terminal surface, runtime settings | runtime tools and bridge injection | Must not turn chat into CLI picker again. |
-| Internal Action Registry | Lead freezes `internal-action` | registry, executor, file/action services | action-backed UI entries | `list_internal_actions`, `invoke_internal_action` | Human and agent use same action id. |
-| Runtime Lanes / TeamRun | Lead freezes `team-run` | coordinator, leases, launcher integration | team cards, member drawer, lane badges | Fleet Bridge MCP tools | Highest conflict risk. |
-| Files / Library / Leases | Lead freezes file/lease events | file services, Library index, lease persistence | Files panel, Library views | file actions | Raw files and Library remain distinct. |
-| Browser / Artifact Workflow | Lead freezes selection/action contracts | browser evidence, artifact handoff | BrowserPane selection UI, annotation, artifact studio | browser/artifact actions | Remote pages are read/annotate only. |
-| Canvas / Design Surface | Lead freezes `canvas` before work | canvas bridge/action services | canvas surface/components | canvas actions | Native engine, not iframe DOM mutation. |
-| AIGC / External Jobs | Lead freezes `external-job`, `usage` | job services/providers | job views/result assets | external-job actions | Providers require permission and cost attribution. |
-| Video Surface | Lead freezes video action contracts | video timeline bridge/render jobs | video editor surface | video actions | OpenCut Classic source boundary applies. |
-| Memory / Context / Review | Lead freezes `memory`, `usage` | memory, project pack, review, context services | context/review UI | memory/review actions | Real/estimated/unknown must stay separated. |
-| Model Routing / Cost Ledger | Lead freezes `routing`, `subscription`, `usage` | routing, cache, quota adapters | token ring, model settings | routing read tools | API lanes only; CLI bypasses. |
-| Capability / Skill / Plugin | Lead freezes `capability` | catalog, loadout, resolver | capability settings/marketplace | loadout/skill actions | Install, loadout, runtime are separate. |
-| Settings / Shell UX | Lead | focused services only | settings IA, shell placement | none unless assigned | UI placement is Lead-owned. |
-| Messaging | Lead if protocol changes | gateway services | messaging settings | messaging tools if any | Retained by D28, not silently removed. |
+## Module File Domains
 
-## Shared Contract Rule
+### M00 — Platform Spine (W1)
 
-If a task needs a new event, RPC namespace, DTO field, i18n key, session persistence field, permission level, or action surface, the Lead updates the contract first and then hands implementation to the module agent.
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/main/` | M00 Lead |
+| `app/apps/electron/src/preload/` | M00 Lead |
+| `app/apps/electron/src/renderer/shell/` | M00 Lead |
+| `app/packages/shared/src/session/` | M00 Lead |
+| `app/packages/shared/src/workspace/` | M00 Lead |
+| `app/packages/shared/src/permission/` | M00 Lead |
+| `app/packages/shared/src/timeline/` | M00 Lead |
 
-## Deletion Rule
+### M01 — Clean Craft Baseline (W2)
 
-Non-Lead agents cannot delete:
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/craft/` | M01 Worker |
 
-- shared protocol files
-- registered action ids
-- license or attribution files
-- tests/fixtures used by another module
-- settings registry sections
-- session persistence fields
+### M02 — Terminal CLI Runtime (W2)
 
-Deprecated code must be marked, migrated, and proven unused before deletion.
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/terminal/` | M02 Worker |
+| `app/apps/electron/src/main/terminal-host.ts` | M02 Worker |
+
+### M03 — Internal Action Registry (W1)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/shared/src/action-registry/` | M03 Worker |
+| `app/apps/electron/src/main/action-executor/` | M03 Worker |
+
+### M04 — Runtime Lanes / TeamRun (W2)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/shared/src/runtime-lanes/` | M04 Worker |
+| `app/packages/shared/src/teamrun/` | M04 Worker |
+
+### M05 — Files Library Leases (W2)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/shared/src/library/` | M05 Worker |
+| `app/packages/shared/src/lease/` | M05 Worker |
+
+### M06 — Browser Artifact Surface (W3)
+
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/surfaces/browser/` | M06 Worker |
+| `app/apps/electron/src/main/browser-webview-host.ts` | M06 Worker |
+| `app/packages/shared/src/action-executors/browser.ts` | M06 Worker |
+
+### M07 — Canvas Design Surface (W3)
+
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/surfaces/canvas/` | M07 F-Tracks |
+| `app/packages/shared/src/action-executors/canvas.ts` | M07 F-Track C |
+| `app/packages/shared/src/canvas/adapter.ts` | M07 F-Track A |
+
+### M08 — AIGC Jobs Surface (W3)
+
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/surfaces/aigc/` | M08 Worker |
+| `app/packages/shared/src/aigc/` | M08 Worker |
+| `app/packages/shared/src/action-executors/aigc.ts` | M08 Worker |
+
+### M09 — Video Surface (W3)
+
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/surfaces/video/` | M09 Worker |
+| `app/packages/shared/src/video/` | M09 Worker |
+| `app/packages/shared/src/action-executors/video.ts` | M09 Worker |
+
+### M10 — Memory Context (W4)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/shared/src/memory/` | M10 Worker |
+
+### M11 — Model Routing / Cost Ledger (W4)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/shared/src/model-routing/` | M11 Worker |
+| `app/packages/shared/src/cost-ledger/` | M11 Worker |
+
+### M12 — Skill Library (W4)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/shared/src/skills/` | M12 Worker |
+
+### M13 — Settings Preferences (W5)
+
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/surfaces/settings/` | M13 Worker |
+
+### M14 — Onboarding / Empty States (W5)
+
+| Path pattern | Owner |
+|---|---|
+| `app/apps/electron/src/renderer/onboarding/` | M14 Worker |
+
+---
+
+## Cross-Module Shared Utilities
+
+| Path pattern | Owner | Rule |
+|---|---|---|
+| `app/packages/shared/src/utils/` | Lead | Workers may add pure utility functions; no side effects; no protocol imports |
+| `app/packages/shared/src/types/` | Lead | Workers may add non-protocol types; Lead reviews before merge |
+| `app/apps/electron/src/renderer/components/` | Lead | Shared UI components; Workers propose additions; Lead merges |
+
+---
+
+## Violation Handling
+
+If a Worker touches a file outside its domain:
+
+1. The PR is rejected without review.
+2. The Worker must revert the change and re-open with a corrected diff.
+3. If the Worker needed to modify a Lead-owned file, it must file a contract change request before touching any code.

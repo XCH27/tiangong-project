@@ -2,106 +2,143 @@
 
 ## 1. Mission
 
-Provide a native video timeline surface that shares Fleet assets, actions, permissions, and timeline.
+Provide a native video player and lightweight clip editor inside Fleet — where both humans and agents can play, annotate, trim, and export video clips — with full action, permission, timeline, and rollback coverage.
+
+---
 
 ## 2. User-Visible Loop
 
-User imports/selects media, trims or moves a clip, agent performs equivalent timeline edit, preview updates, action enters timeline, undo works.
+1. User opens a Video surface from a session or from a `video_frame` canvas node (M07).
+2. Fleet renders a native video player with timeline scrubber, playback controls, and clip markers.
+3. User can set in/out points to define a clip range.
+4. Agent can call `video.clip_create` or `video.clip_trim` to programmatically define clips.
+5. User or agent exports a clip; the output is saved to Library (M05) with full provenance.
+6. Timeline records all clip operations for auditability and undo.
 
-## 3. Current App Reuse
+---
 
-Reuse Library assets, External Jobs, Internal Action Registry, session/timeline/permission, and renderer surface shell.
+## 3. Player Model
 
-## 4. Reference Projects
+| Property | Value |
+|---|---|
+| Renderer | HTML5 `<video>` element (Electron renderer process) |
+| Formats | MP4 (H.264 / H.265), WebM (VP9), MOV; codec support depends on Chromium build |
+| Max local file size | No hard limit; files are streamed, not loaded into memory |
+| Subtitles / captions | WebVTT sidecar files supported |
+| Frame-accurate scrub | Seek to exact frame via `currentTime` with precision ± 1 frame |
 
-OpenCut Classic is approved source/reference for timeline/store/render concepts. Kdenlive/Remotion/SVGator/HyperFrames are black-box or candidate references unless promoted.
+---
 
-## 5. UI Placement
+## 4. Clip Model
 
-Video is a professional surface with preview, tracks, timeline, properties, and asset drawer. It is not a Tool Dock widget.
+A clip is a named in/out range over a source video file.
 
-## 6. Backend / RPC / Locality
+```ts
+// Canonical type — Lead-owned, defined in
+// app/packages/shared/src/protocol/video.ts (to be created by Lead)
 
-Timeline edits are local actions. Rendering may be local or external job with cost/provenance.
+export type VideoClip = {
+  id: string;                 // uuid
+  sourceFileRef: string;      // Library asset id or workspace file path
+  label: string;
+  inPoint: number;            // seconds (float)
+  outPoint: number;           // seconds (float)
+  notes: string;              // free-form annotation
+  createdAt: string;          // ISO 8601
+  updatedAt: string;
+  seq: number;                // last mutation sequence number
+};
+```
 
-## 7. Session / Timeline / Permission / Rollback
+Multiple clips can exist over the same source file. Clips are stored in `<workspace>/.fleet/video/clips.json`.
 
-Timeline edits emit semantic events and use native command/history. Export/render jobs require permission and evidence.
+---
 
-## 8. Data Model
+## 5. Timeline Scrubber
 
-Media asset, track, clip, time range, keyframe, transition/effect, render job, timeline history.
+The video surface shows:
 
-## 9. Agent-Native Actions
+- A waveform strip (audio amplitude) if the video has an audio track.
+- Clip marker handles (in / out points) on the scrubber.
+- A playhead that can be dragged or clicked.
+- Named clip ranges rendered as labelled regions on the scrubber.
 
-Read timeline, select clip/time range, trim, split, move, add media, add caption/effect, undo, render/export.
+---
 
-## 10. Files To Inspect First
+## 6. Canvas Integration (M07)
 
-- `app/packages/shared/src/protocol/internal-action.ts`
-- Library/external job protocols
-- future video protocol once frozen
+A `video_frame` canvas node displays:
 
-## 11. Files Likely Touched
+- A static thumbnail of the video (first frame or poster).
+- The clip label and duration.
+- A play icon — clicking it opens the full Video surface routed to that clip.
 
-Video protocol, renderer video surface, timeline store bridge, render job adapter, Library integration.
+The live video player is **not** rendered inside the canvas.
 
-## 12. Parallel Work Packages
+---
 
-Timeline contract/store, renderer surface, action handlers, render/export path after Library and job contracts.
+## 7. Agent-Native Actions
 
-## 13. File Ownership
+These action ids are **under discussion** — not yet frozen. Workers must not implement them until the Lead freezes them in `action-ids.md`.
 
-Video protocol and action ids are Lead-owned.
+| Candidate action id | Description | Permission | Undo |
+|---|---|---|---|
+| `video.clip_create` | Create a new clip (label, in/out points) over a source file | L1_reversible | supported |
+| `video.clip_trim` | Update in/out points of an existing clip | L1_reversible | supported |
+| `video.clip_delete` | Delete a clip definition (does not delete source file) | L2_irreversible | not_supported |
+| `video.export_clip` | Export a clip range to a new file via FFmpeg | L1_reversible | not_supported |
+| `video.screenshot_frame` | Capture the current frame as an image to Library | L0_read_only | n/a |
+| `video.seek` | Move the playhead to a specific time (view-state, no timeline) | L0_read_only | n/a |
 
-## 14. Validation Ladder
+---
 
-Timeline unit tests, preview render smoke, human+agent same clip edit, undo, export dry run.
+## 8. Export Pipeline
 
-## 15. Done / Not Done
+`video.export_clip` uses **FFmpeg** (bundled with the Electron app) to cut the clip range without re-encoding (stream copy when possible).
 
-`usable`: one real clip edit is visible, action-backed, and undoable. `display-only`: timeline UI with no native command path.
+1. Action executor calls FFmpeg via `child_process.execFile`.
+2. Output is saved to `<workspace>/.fleet/library/video/<clip-id>.<ext>`.
+3. A `LibraryAsset` entry is created with `provenance.clipId` set.
+4. The Timeline records a `action_completed` event with `evidenceRefs` pointing to the output file.
 
-## 16. Risks And Blocked Decisions
+FFmpeg must be present at a deterministic path. The main process is responsible for bundling and exposing the FFmpeg binary path via IPC.
 
-Risk: GPL/commercial code leakage. Only OpenCut Classic is approved for source migration.
+---
 
-## 17. Local Render Task Queue
+## 9. Session / Permission / Rollback
 
-### 17.1 Problem
+- `video.clip_create` and `video.clip_trim` are `L1_reversible`; undo handles store the previous in/out state.
+- `video.clip_delete` is `L2_irreversible`; requires a `SupervisionRequest` if the clip has downstream canvas references.
+- Exports are one-way; re-export requires a new `video.export_clip` invocation.
+- Playhead seek and playback state are **not** recorded in the Timeline.
 
-Local video rendering (FFmpeg, WebCodecs) is CPU/GPU-intensive. If multiple
-agents submit render jobs concurrently, the host machine saturates and all
-jobs slow down together. A task queue is required.
+---
 
-### 17.2 Queue Design
+## 10. Validation Ladder
 
-All render jobs — whether triggered by a human action or an agent action —
-are submitted to a **single local render queue** managed by the Video
-Surface service layer.
+1. `pnpm typecheck` — zero errors.
+2. Unit test: clip lifecycle (create, trim, delete) with correct `seq` ordering.
+3. Smoke: open a local video file in the Video surface; verify playback controls work.
+4. Smoke: set in/out points; verify clip appears in the scrubber.
+5. Agent action smoke: call `video.clip_create` via action registry; verify Timeline event.
+6. Export smoke: call `video.export_clip`; verify output file saved to Library.
+7. Canvas thumbnail smoke: add a `video_frame` node to a Canvas document; verify thumbnail appears.
 
-Rules:
+---
 
-- **Max concurrent local renders: 1.** Only one FFmpeg/WebCodecs render
-  process runs at a time on the local machine. This is a hard cap, not
-  a soft limit.
-- **Queue discipline: FIFO with priority override.** Jobs submitted by a
-  human manual action carry `priority: 'user'` and skip ahead of
-  `priority: 'agent'` jobs already in the queue.
-- **Queue depth limit: 8.** If the queue holds 8 pending jobs, new
-  submissions are rejected with a `RENDER_QUEUE_FULL` error that the
-  agent must surface to the user for a decision (wait, cancel, or
-  delegate to external job).
+## 11. Files To Inspect First
 
-### 17.3 External Job Escape Hatch
+- `docs/contracts/action-ids.md` — video action ids (under discussion)
+- `docs/contracts/protocol-stubs.md` — `SessionEvent`, `ActionInvocation`
+- `docs/modules/07-canvas-design-surface.md` — canvas `video_frame` node type
+- `docs/modules/05-files-library-leases.md` — Library asset write path
 
-If the local render queue is full or the user opts out of local rendering,
-the job is handed off to M08 AIGC External Jobs as an external render job
-with cost and provenance recorded. This handoff must be explicit and
-permissioned (L2 minimum).
+---
 
-### 17.4 Queue State in Timeline
+## 12. Done / Not Done
 
-The render queue state (pending, running, failed, completed) is surfaced
-as `SessionEvent` entries so the Timeline reflects all render activity
-regardless of which agent submitted the job.
+**`usable`**: human and agent can each create a clip with in/out points; export works; Library asset is created with provenance; Timeline has evidence for create and export.
+
+**`display-only`**: video player renders; clip markers draggable; no action/timeline/export path.
+
+**`blocked`**: video action ids not yet frozen; or FFmpeg binary not bundled; or Library lease model (M05) not stable.
