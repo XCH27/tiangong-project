@@ -1,5 +1,14 @@
 # Board Sync Model
 
+> **Audience and Usage:** This document is for human stakeholders (owner, collaborators,
+> external reviewers) to understand project status at a glance. Agent Workers do NOT need
+> to read this file as part of their execution flow. Agents should read `docs/START-HERE.md`
+> and the module-specific packet instead.
+>
+> **Update Responsibility:** Only the Lead updates this file. Updates should happen at the
+> end of each wave or when a significant decision changes the roadmap visible to stakeholders.
+> The Lead should sync this document within 24 hours of a wave completion.
+
 This document defines how parallel agents keep a shared, truthful view of wave and module
 progress without creating a second project-management system. It does not replace
 `docs/PARALLEL-AGENT-OPERATING-MODEL.md`, `docs/OWNERSHIP-MATRIX.md`, or

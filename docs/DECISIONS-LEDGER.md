@@ -1,5 +1,23 @@
 # Decisions Ledger
 
+> **Write Authority:** Only the **Lead** may append entries to this ledger.
+> Workers may propose a decision by including a `[DECISION NEEDED]` block in their handoff
+> report; the Lead promotes it here after resolution.
+>
+> **Update Frequency:** A new entry must be added any time a direction changes, a prior
+> decision is reversed, or a new architectural constraint is established.
+> No decision should be implemented before it appears here.
+>
+> **Relationship to HUMAN-FEEDBACK-LOG.md:** Human feedback is captured first in
+> `HUMAN-FEEDBACK-LOG.md`. If feedback results in a direction change, the Lead promotes it
+> to a DECISIONS-LEDGER entry and references the feedback entry ID.
+>
+> **Data Flow:**
+> `Human observation` → `HUMAN-FEEDBACK-LOG.md` (raw, timestamped)
+>                     → Lead review
+>                     → `DECISIONS-LEDGER.md` (promoted, binding)
+>                     → Module specs updated if needed
+
 This file is the promoted decision ledger for active development. It replaces scattered legacy decision tables as the first place to check whether a topic has been decided, reversed, or left pending.
 
 The ledger is deliberately plain. Add new decisions here only after the source is verified. Do not infer approval from a previous agent summary.

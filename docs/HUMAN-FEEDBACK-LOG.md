@@ -1,5 +1,15 @@
 # Human Feedback Log
 
+> **Write Authority:** The Lead writes entries here based on direct owner/stakeholder input.
+> Workers do NOT write to this file.
+>
+> **This file is a staging area, not a decision record.** Entries here represent raw
+> observations and feedback. They are NOT binding until promoted to `DECISIONS-LEDGER.md`.
+>
+> **Entry format:**
+> `[HFL-###] YYYY-MM-DD | Source: owner/stakeholder | Status: pending/promoted/dismissed`
+> Followed by the feedback content and, if promoted, a reference to the DECISIONS-LEDGER entry.
+
 ## Purpose
 Captures raw feedback from the human owner (non-engineer). Entries are natural language — fragments and conceptual descriptions are valid. Agents must interpret intent, select the best technical path, and record the interpretation.
 
