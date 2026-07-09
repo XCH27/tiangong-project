@@ -2,56 +2,58 @@
 
 ## 1. Mission
 
-统一本地记忆、上下文效率、ProjectPack、外部 AI 审查和报告，纳入一个有治理能力的中心。
+Unify local memory, context efficiency, ProjectPack, external AI reviews, and reports under a single governed center.
 
-**核心设计哲学：记忆系统的目标不是"记住更多"，而是"记得更准、隔离更好、成长更快"。**  
-好的记忆系统应该减少踩坑、提高输出效率、节省 token，而不是对工程开发造成负担。
+**Core Design Philosophy: The goal of the memory system is not to "remember more", but to "remember more accurately, isolate better, and grow faster."**  
+A good memory system should reduce pitfalls, increase output efficiency, and save tokens, rather than imposing a burden on engineering development.
 
 ---
 
 ## 2. User-Visible Loop
 
-用户打包项目或选定范围，查看文件 / token / 密钥风险，可选提交授权审查，收到带证据和成本标签的报告。
+1. The user packages a project or selects a scope to view file, token, and secret risks.
+2. The user optionally submits the pack for authorized review.
+3. The user receives a report complete with evidence refs and cost labels.
 
 ---
 
 ## 3. Current App Reuse
 
-复用 memory protocol/service、usage ledger、BrowserPane、External Job、session timeline、settings，以及现有 file/conversion 工具。
+Reuse memory protocol/service, usage ledger, BrowserPane, External Job, session timeline, settings, and existing file/conversion tools.
 
 ---
 
 ## 4. Reference Projects
 
-RTK/codegraph 是绿灯优化源。Repomix/MarkItDown/Headroom/Zvec 是候选/旁车参考，除非晋升为正式依赖。
+RTK/codegraph are green-light optimization sources. Repomix/MarkItDown/Headroom/Zvec are candidates/sidecars unless promoted to formal dependencies.
 
 ---
 
 ## 5. UI Placement
 
-Context/review 归属于单一中心或面板，而非为每个工具单独设置按钮。治理 UI 应保持紧凑。
+Context/review belongs to a single center or panel, rather than having individual buttons for each tool. Governance UI should remain compact.
 
 ---
 
 ## 6. Backend / RPC / Locality
 
-ProjectPack、文件转换、密钥扫描、记忆检索和本地索引均为 `LOCAL_ONLY`。外部审查需要明确的上传权限。
+ProjectPack, file conversion, secret scanning, memory retrieval, and local indexing are `LOCAL_ONLY`. External reviews require explicit upload permissions.
 
 ---
 
 ## 7. Session / Timeline / Permission / Rollback
 
-Bundle 记录哈希、文件列表、密钥扫描、目标平台、prompt 哈希、原始输出、报告，以及真实/估算/未知成本。
+Bundle records hash, file list, secret scan, target platform, prompt hash, raw output, report, and real/estimated/unknown costs.
 
 ---
 
 ## 8. Data Model
 
-记忆分区、ProjectPack、ReviewBundle、ReviewReport、用量样本、上下文片段、证据引用、外部平台记录。
+Memory partitions, ProjectPack, ReviewBundle, ReviewReport, usage sample, context segment, evidence reference, and external platform records.
 
 ### 8.1 Memory Distillation as Batch-Eligible Operation
 
-Session 结束时，将工具调用历史（Track A）蒸馏为结构化 Fact 条目（Track B）是后台、非交互操作。这是 Fleet 内部 `async-native` 批处理模式的典型用例：
+At session end, distilling tool invocation history (Track A) into structured Fact entries (Track B) is a background, non-interactive operation. This is a classic use case for Fleet's internal `async-native` batch mode:
 
 ```
 Session closes
@@ -62,60 +64,60 @@ Session closes
   → Write to memory.json partitions (project / agent / task)
 ```
 
-规则：
-- 蒸馏不得阻塞用户开启新 session。
-- 条目必须分块以保持在 provider 批处理大小限制内。
-- 失败的单个条目跳过并记录日志，不中止整个批次。
-- 敏感条目（`scope: 'sensitive' | 'raw_path'`）在写入前必须标记 `blockedTargets: ['cross_project']`。
+Rules:
+- Distillation must not block the user from starting a new session.
+- Entries must be batched to stay within the provider's batch size limits.
+- A failed single entry should be skipped and logged without aborting the entire batch.
+- Sensitive entries (`scope: 'sensitive' | 'raw_path'`) must be marked with `blockedTargets: ['cross_project']` before writing.
 
-### 8.2 DistilledToolMemory Schema（应用 Module 03 §8.1–8.5）
+### 8.2 DistilledToolMemory Schema (aligned with Module 03 §8.1–8.5)
 
 ```ts
 interface DistilledToolMemory {
-  // 身份字段 — 硬要求，模型不能填错
+  // Identity fields — hard requirement, model must not misfill
   id: string
   sourceEventId: string
   tool: 'grep' | 'read' | 'write' | 'shell' | 'browser' | 'mcp' | string
   timestamp: string
 
-  // 语义判断字段 — 可选 + 'uncertain' 逃生口
+  // Semantic evaluation fields — optional + 'uncertain' escape hatch
   scope?: 'global_preference' | 'transferable' | 'project_specific'
         | 'tool_pattern' | 'sensitive' | 'raw_path' | 'uncertain'
   scopeConfidence?: 'high' | 'medium' | 'low'
   outcome?: 'success' | 'failure' | 'retry-fixed' | 'blocked' | 'uncertain'
   risk?: 'low' | 'medium' | 'high' | 'uncertain'
 
-  // 核心内容 — 必填但自由格式
+  // Core content — required but free format
   content: string
 
-  // 证据 — 追溯性必填，空数组合法
+  // Evidence — retroactively required, empty array is legal
   evidenceRefs: Array<{ conversationNo: string; eventId?: string; fileHash?: string }>
 
-  // 安全边界字段 — 可选，缺省时使用最严格默认值
-  allowedTargets?: string[]   // 默认: ['same_project_only']
-  blockedTargets?: string[]   // 默认: ['cross_project']
+  // Security boundary fields — optional, defaults to strictest values if omitted
+  allowedTargets?: string[]   // Default: ['same_project_only']
+  blockedTargets?: string[]   // Default: ['cross_project']
 
-  // 可选语义细节字段
+  // Optional semantic detail fields
   errorSignature?: string
   expectedUseCases?: string[]
   expiresAt?: string
 
-  // 逃生口 — 模型说"我对 X 不确定"而非猜测
+  // Escape hatch — model says "I'm uncertain about X" instead of guessing
   notes?: string
 }
 ```
 
-**语义后验证规则**（Zod 结构检查后运行）：
-- `scope === 'sensitive'` → `blockedTargets` 必须包含 `'cross_project'`；缺失则自动添加。
-- `evidenceRefs.length === 0` → `scopeConfidence` 必须为 `'low'`；否则降级。
-- `errorSignature` 匹配通用模式（如 `'Error: undefined'`、`'null'`）→ 标记人工审查。
-- `risk === 'uncertain'` → 在所有下游访问检查中视为 `'high'`。
+**Semantic Post-Validation Rules** (running after Zod structure validation):
+- If `scope === 'sensitive'`, `blockedTargets` must contain `'cross_project'`; added automatically if missing.
+- If `evidenceRefs.length === 0`, `scopeConfidence` must be `'low'`; downgraded otherwise.
+- If `errorSignature` matches common patterns (e.g. `'Error: undefined'`, `'null'`), flag for manual review.
+- If `risk === 'uncertain'`, treat as `'high'` in all downstream access checks.
 
 ---
 
 ## 9. Agent-Native Actions
 
-检查记忆、检索有治理的上下文、构建包预览、提交审查、保存报告、创建后续任务。
+Check memory, retrieve governed context, build pack preview, submit review, save report, and create follow-up tasks.
 
 ---
 
@@ -123,326 +125,328 @@ interface DistilledToolMemory {
 
 - `app/packages/shared/src/protocol/memory.ts`
 - `app/packages/shared/src/protocol/usage.ts`
-- external review/job services
-- memory transfer eval scripts
+- External review/job services
+- Memory transfer evaluation scripts
 
 ---
 
 ## 11. Files Likely Touched
 
-Memory services、project pack services、review services、context UI、report UI。
+Memory services, project pack services, review services, context UI, and report UI.
 
 ---
 
 ## 12. Parallel Work Packages
 
-Memory governance、ProjectPack、review UI、sidecar adapters、report normalizer 可在共享 usage/report 类型冻结后拆分并行。
+Memory governance, ProjectPack, review UI, sidecar adapters, and report normalizer can split after shared usage/report types freeze.
 
 ---
 
 ## 13. File Ownership
 
-Memory/usage/review protocol 变更由 Lead 拥有。
+Memory/usage/review protocol changes are owned by the Lead.
 
 ---
 
 ## 14. Validation Ladder
 
-记忆泄漏测试、project pack 试运行、密钥扫描 fixture、review report 保存冒烟测试、UI 来源标签检查。
+Memory leak tests, project pack dry run, secret scan fixtures, review report persistence smoke test, and UI origin tag checking.
 
 ---
 
 ## 15. Done / Not Done
 
-`usable`：用户可以看到包风险并保存带证据的审查/报告。`display-only`：无真实 bundle 的 token/review dashboard。
+**`usable`**: User can see packet risks and save reviews/reports with evidence.
+
+**`display-only`**: Token/review dashboard with no real bundle.
 
 ---
 
 ## 16. Risks And Blocked Decisions
 
-风险：将外部 AI 网站调用视为"免费"。成本来源必须保持真实/估算/未知。
+**Risk**: Treating external AI website calls as "free". Cost sources must remain real/estimated/unknown.
 
 ---
 
 ## 17. Token & Context Optimisation Architecture
 
-本节定义 Fleet 如何在完整请求生命周期内减少 token 消耗。  
-本节取代所有关于 RTK、Repomix、Headroom 或 Reasonix 集成的非正式注释。
+This section defines how Fleet reduces token consumption across the request lifecycle.  
+It replaces all informal comments regarding RTK, Repomix, Headroom, or Reasonix integration.
 
 ### 17.1 Five-Layer Model
 
-每层只负责一个关注点。任何层都不得对另一层的输出进行压缩或重排。
+Each layer is responsible for exactly one concern. No layer may compress or reorder the output of another layer.
 
 | Layer | Name | Core concern | Primary reference | Owner module |
 |---|---|---|---|---|
-| 0 | Memory | 避免重复注入历史 | Mem0 (dedup/conflict ideas), Letta (3-tier model) | M10 |
-| 1 | Retrieval Assembly | 只发送相关上下文 | codegraph (Green-Light MCP), Zvec (FTS5+vector interface), Tree-sitter AST outline (self-impl) | M10 |
-| 2 | Prompt Assembly | 固定片段顺序以命中缓存 | DeepSeek-Reasonix (Green-Light stable-prefix) | **M11** |
-| 3 | Transport / Cache | 请求级 token 缓存 | Headroom (interface reference, self-impl backend) | M11 |
-| 4 | Execution Output | 防止终端/文件输出爆炸 | RTK (Green-Light, direct integration), Context-mode (ELv2 — fold criteria reference only) | M10 + UI |
+| 0 | Memory | Avoid redundant history injection | Mem0 (dedup/conflict ideas), Letta (3-tier model) | M10 |
+| 1 | Retrieval Assembly | Send only relevant context | codegraph (Green-Light MCP), Zvec (FTS5+vector interface), Tree-sitter AST outline (self-impl) | M10 |
+| 2 | Prompt Assembly | Fixed snippet ordering to hit cache | DeepSeek-Reasonix (Green-Light stable-prefix) | **M11** |
+| 3 | Transport / Cache | Request-level token caching | Headroom (interface reference, self-impl backend) | M11 |
+| 4 | Execution Output | Prevent terminal/file output bloat | RTK (Green-Light, direct integration), Context-mode (ELv2 — fold criteria reference only) | M10 + UI |
 
 ### 17.2 Layer Rules (Hard)
 
-1. **No stacked compression.** RTK（Layer 4）语义压缩工具返回值后，其他层在传给模型前不得进一步截断或改写。
-2. **Prompt Assembly（Layer 2）是唯一组装者。** 没有模块直接构造最终 Prompt 字符串；模块提交类型化 `ContextSegment` 对象给 M11 的组装器，由其拥有拼接顺序。
-3. **RTK 只处理非结构化流。** RTK 压缩仅适用于终端 `stderr`/`stdout` 日志流，不得用于 JSON payload、AST 结构或任何随后被代码解析的字段。
-4. **Context-mode（ELv2）代码绝对禁止。** 大输出折叠标准可研究并独立重实现于 Fleet UI 层，但 Context-mode 的任何源码、类型定义或配置不得进入仓库。
+1. **No stacked compression.** After RTK (Layer 4) semantically compresses tool return values, other layers must not further truncate or rewrite them before sending to the model.
+2. **Prompt Assembly (Layer 2) is the sole assembler.** No module constructs final Prompt strings directly; modules submit typed `ContextSegment` objects to M11's assembler, which owns the ordering.
+3. **RTK only processes unstructured streams.** RTK compression is only applicable to terminal `stderr`/`stdout` log streams and must not be used for JSON payloads, AST structures, or any field subsequently parsed by code.
+4. **Context-mode (ELv2) code is strictly forbidden.** Output folding criteria can be researched and independently re-implemented in the Fleet UI layer, but no source code, type definitions, or configuration from Context-mode may enter the repository.
 
 ### 17.3 Per-Tool Integration Decisions
 
-#### RTK（Layer 4 — Execution Output）
-- **操作**：直接集成，绿灯。
-- **范围**：Opt-in，沙箱化。仅拦截终端执行日志流。
-- **不得触碰**：任何结构化返回值（JSON、diff hunks、AST）。
+#### RTK (Layer 4 — Execution Output)
+- **Action**: Direct integration, green-light.
+- **Scope**: Opt-in, sandboxed. Only intercepts terminal execution log streams.
+- **Must Not Touch**: Any structured return value (JSON, diff hunks, AST).
 
-#### codegraph + Zvec（Layer 1 — Retrieval Assembly）
-- **操作**：独立 MCP Server。模型调用 `query_code_graph` 和 `query_vector_index` 工具。Fleet 不引入其内部实现。
-- **升级路径**：MCP 协议意味着引擎升级不需要修改 Fleet。
+#### codegraph + Zvec (Layer 1 — Retrieval Assembly)
+- **Action**: Independent MCP Server. Model calls `query_code_graph` and `query_vector_index` tools. Fleet does not introduce their internal implementations.
+- **Upgrade Path**: The MCP protocol ensures engine upgrades do not require Fleet modifications.
 
-#### AST Structural Outline — 替代 Repomix 副本（Layer 1）
-- **策略说明**：`Repomix` 是候选参考，其策略条目明确禁止复制 AST 解析器、行计数器或忽略文件读取器。提取其 Tree-sitter 算法并"二次开发"为 Fleet 包是**策略违规**。
-- **正确方式**：使用官方 `tree-sitter` Node.js 绑定和语法包实现轻量级 `@fleet/ast-outline` 包。Repomix 仅作为行为参考。
-- **`read_file` handler 触发规则**：文件行数 > 500 时，默认响应降级为 AST 骨架（顶层声明、导出符号）；完整内容需显式调用 `read_file({ fullContent: true })`。
+#### AST Structural Outline — Replacing Repomix Copies (Layer 1)
+- **Strategy**: `Repomix` is a candidate reference, and its policy rules explicitly prohibit copying AST parsers, line counters, or ignore-file readers. Extracting its Tree-sitter algorithm to develop a proprietary package for Fleet is a **policy violation**.
+- **Correct Way**: Use the official `tree-sitter` Node.js bindings and grammar packages to implement a lightweight `@fleet/ast-outline` package. Repomix serves as a behavioral reference only.
+- **`read_file` handler trigger rule**: When a file exceeds 500 lines, the default response downgrades to an AST outline (top-level declarations, exported symbols). The full content must be requested explicitly via `read_file({ fullContent: true })`.
 
-#### Headroom（Layer 3 — Transport / Cache）
-- **策略说明**：不得复制压缩层、MCP 代理服务器或本地驱动。
-- **正确方式**：参考其可逆哈希缓存接口规范，在 Fleet 现有 Cost Ledger（M11）内实现缓存后端。哈希键为 Layer 2 生成的稳定 Prompt 前缀哈希。
+#### Headroom (Layer 3 — Transport / Cache)
+- **Strategy**: Do not copy compression layers, MCP proxy servers, or local drivers.
+- **Correct Way**: Reference its reversible hash cache interface spec to implement a cache backend inside Fleet's existing Cost Ledger (M11). The hash key is a stable prompt prefix hash generated by Layer 2.
 
-#### Mem0 + Letta（Layer 0 — Memory）
-- **策略说明**：不得复制后端存储包装器或 Qdrant/Milvus 接口。
-- **正确方式**：在接口层采用三层记忆模型（Core / Recall / Archival）。存储后端为 Fleet 原生 SQLite + FTS5（利用 Zvec 的索引模式）。§8.2 的 `DistilledToolMemory` schema 是"Recall"层的具体实现。
+#### Mem0 + Letta (Layer 0 — Memory)
+- **Strategy**: Do not copy backend storage wrappers or Qdrant/Milvus interfaces.
+- **Correct Way**: Adopt a three-tier memory model (Core / Recall / Archival) at the interface layer. The storage backend is Fleet's native SQLite + FTS5 (utilizing Zvec's indexing patterns). The `DistilledToolMemory` schema in §8.2 is a concrete implementation of the "Recall" tier.
 
-#### Context-mode（Layer 4 UI — Big Output Fold）
-- **策略说明**：ELv2 — 严格禁止代码复制和二进制打包。
-- **正确方式**：研究折叠标准（最小输出长度阈值、diff hunk 检测、代码块检测），在 `app/packages/ui/src/components` 从头重实现折叠逻辑。
+#### Context-mode (Layer 4 UI — Big Output Fold)
+- **Strategy**: ELv2 — strictly prohibit code copying and binary packaging.
+- **Correct Way**: Research folding standards (minimum output length thresholds, diff hunk detection, code block detection) and implement the folding logic from scratch in `app/packages/ui/src/components`.
 
-#### DeepSeek-Reasonix（Layer 2 — Prompt Assembly）
-- **策略说明**：绿灯 MIT。可直接参考稳定前缀缓存和 planner/executor 模式。
-- **正确方式**：在 M11 的 Prompt Assembly 层（§18）实现稳定前缀 Prompt 排序。**这不是 TeamRun 的关注点**。
+#### DeepSeek-Reasonix (Layer 2 — Prompt Assembly)
+- **Strategy**: Green-light MIT. Directly reference the stable prefix caching and planner/executor patterns.
+- **Correct Way**: Implement stable prefix prompt ordering in the M11 Prompt Assembly layer (§18). **This is not TeamRun's concern**.
 
 ### 17.4 Anti-Patterns (Forbidden)
 
 | Anti-pattern | Why forbidden |
 |---|---|
-| 将 JSON 工具结果传给模型前先运行 RTK | 破坏模型需要解析的结构化数据 |
-| 在稳定前缀组装完成后向中间插入记忆片段 | 破坏前缀缓存，浪费约 50% 成本节省 |
-| 复制 Repomix 源码用于 AST outline | 策略违规：AST 解析器复制明确禁止 |
-| 任何形式的 Context-mode 代码进入仓库 | ELv2 高风险许可证 |
-| TeamRun 构建最终 Prompt 字符串 | Prompt Assembly 由 M11 拥有；TeamRun 只提交 ContextSegments |
-| 复制 Headroom MCP 代理或压缩层 | 策略：只可参考接口规范 |
+| Running RTK on JSON tool results before passing to model | Destroys structured data that the model needs to parse |
+| Inserting memory snippets in the middle of a stable prefix assembly | Breaks prefix cache, wasting ~50% cost savings |
+| Copying Repomix source code for AST outlines | Policy violation: AST parser duplication is explicitly forbidden |
+| Any Context-mode code entering the repository | ELv2 high-risk license |
+| TeamRun building the final Prompt string | Prompt Assembly is owned by M11; TeamRun only submits ContextSegments |
+| Copying Headroom MCP proxy or compression layer | Strategy: only reference interface specifications |
 
 ---
 
-## 18. Memory Scope Isolation — 项目隔离与乱召回防护
+## 18. Memory Scope Isolation — Project Isolation and Recall Protection
 
-> **核心问题**：乱召回（cross-project memory contamination）是现有 Agent 记忆系统最常见的工程故障。其根因不是"记忆不够强"，而是缺少严格的 scope 边界和门控逻辑。
+> **Core Issue**: Recall contamination (cross-project memory contamination) is the most common engineering failure of agent memory systems. Its root cause is not "weak memory" but the lack of strict scope boundaries and gating logic.
 
-### 18.1 记忆五层分区
+### 18.1 Five-Tier Memory Partition
 
-每一层有独立的生命周期、读写权限和跨项目访问策略：
+Each layer has an independent lifecycle, read/write permissions, and cross-project access policy:
 
-| 层级 | 名称 | 生命周期 | 跨项目共享 | 典型内容 |
+| Layer | Name | Lifecycle | Cross-Project Sharing | Typical Content |
 |---|---|---|---|---|
-| L0 | **Session Memory** | 当前 session，关闭即销毁 | ❌ 禁止 | 当前任务临时状态、对话上下文 |
-| L1 | **Project Memory** | 项目存续期 | ❌ 禁止 | 项目决策、架构模式、踩坑记录 |
-| L2 | **Tool Memory** | 持久，按工具 ID 分组 | ⚠️ 只读，需显式引用 | 工具使用经验、失败模式、参数模板 |
-| L3 | **User Memory** | 持久，用户级 | ✅ 允许 | 个人稳定偏好、语言习惯、风格偏好 |
-| L4 | **Policy Memory** | 持久，系统级 | ✅ 只读 | 安全规则、许可证约束、禁用模式 |
+| L0 | **Session Memory** | Current session, destroyed on close | ❌ Forbidden | Current task temporary state, conversation context |
+| L1 | **Project Memory** | Project duration | ❌ Forbidden | Project decisions, architectural patterns, pitfalls |
+| L2 | **Tool Memory** | Persistent, grouped by Tool ID | ⚠️ Read-only, explicit ref | Tool experience, failure modes, param templates |
+| L3 | **User Memory** | Persistent, user-level | ✅ Allowed | Personal preferences, language habits, styling |
+| L4 | **Policy Memory** | Persistent, system-level | ✅ Read-only | Safety rules, license constraints, forbidden patterns |
 
-**写入规则**：
-- L0 由 session runtime 自动管理，不经过蒸馏流程。
-- L1 只能由同项目内的 session 写入；蒸馏时 `scope === 'project_specific'` 的条目写入 L1。
-- L2 由工具调用蒸馏自动写入；`scope === 'tool_pattern'` 的条目写入 L2。
-- L3 需人工确认或置信度 `high` 的 `scope === 'global_preference'` 条目触发写入提案。
-- L4 由系统管理员或 Lead 写入，Agent 只读。
+**Write Rules**:
+- L0 is managed automatically by the session runtime and does not go through distillation.
+- L1 can only be written to by sessions within the same project; entries with `scope === 'project_specific'` during distillation write to L1.
+- L2 is automatically populated by tool invocation distillation; entries with `scope === 'tool_pattern'` write to L2.
+- L3 requires manual confirmation or is triggered by entries with high confidence and `scope === 'global_preference'`.
+- L4 is written by system administrators or the Lead and is read-only for agents.
 
-### 18.2 检索门控（Retrieval Gate）
+### 18.2 Retrieval Gate
 
-**检索不能只看语义相似度，必须先通过 scope 门控再计算相似度。**
-
-```
-召回请求
-  → Step 1: 确定当前 projectId + sessionId + agentRole
-  → Step 2: 按层级过滤候选池
-      - L0: 仅当前 sessionId
-      - L1: 仅当前 projectId
-      - L2: 任意项目，但标记来源项目
-      - L3/L4: 全局
-  → Step 3: 在过滤后的候选池内计算语义相似度
-  → Step 4: 对跨项目 L2 条目附加 [来源项目] 标签，注入上下文时明确标注
-  → Step 5: 返回结果，附带每条记忆的 scope、来源、置信度
-```
-
-**禁止行为**：
-- 在全局池上先做相似度检索，再做 scope 过滤（顺序颠倒会导致跨项目污染）。
-- 注入记忆时不标注来源（模型无法区分当前项目事实与外部项目经验）。
-
-### 18.3 冲突检测与覆盖规则
-
-当新蒸馏条目与已有条目在内容上冲突时：
+**Retrieval must not rely solely on semantic similarity; it must pass through a scope gate before similarity calculation.**
 
 ```
-新条目 vs 已有条目
-  → 同 scope + 同 projectId：新覆盖旧，旧条目移至 archive（保留 30 天）
-  → 同 scope + 不同 projectId：并存，检索时按 projectId 区分
-  → scope 降级（high → low 置信度）：保留两版本，标记 conflict=true，不自动覆盖
-  → errorSignature 重复出现：聚合为一条，incrementCount++，不重复写入
+Recall Request
+  → Step 1: Identify current projectId + sessionId + agentRole
+  → Step 2: Filter candidate pool by layer
+      - L0: Current sessionId only
+      - L1: Current projectId only
+      - L2: Any project, but flag origin project
+      - L3/L4: Global
+  → Step 3: Compute semantic similarity within the filtered candidate pool
+  → Step 4: Attach [Origin Project] tag to cross-project L2 entries and explicitly label them when injecting into context
+  → Step 5: Return results complete with scope, origin, and confidence for each memory entry
 ```
 
-### 18.4 失效与清理策略
+**Forbidden Actions**:
+- Performing similarity search on the global pool first, then filtering by scope (reversing the order leads to cross-project pollution).
+- Injecting memory without labeling the source (the model cannot distinguish current project facts from external experience).
 
-| 触发条件 | 操作 |
+### 18.3 Conflict Detection and Override Rules
+
+When a newly distilled entry conflicts with an existing entry:
+
+```
+New Entry vs Existing Entry
+  → Same scope + Same projectId: New overrides old, old entry moved to archive (retained for 30 days)
+  → Same scope + Different projectId: Coexist, differentiated by projectId during retrieval
+  → Scope downgrade (high → low confidence): Retain both versions, mark conflict=true, do not auto-override
+  → Repeating errorSignature: Aggregate into one, incrementCount++, do not write duplicate entries
+```
+
+### 18.4 Expiration and Cleanup Policies
+
+| Trigger | Action |
 |---|---|
-| `expiresAt` 到期 | 自动移至 archive，不立即删除 |
-| `outcome === 'failure'` 且 30 天内未被 `retry-fixed` 关联 | 标记为 stale，检索时降低权重 |
-| 项目被关闭/归档 | L1 条目整体迁移至 archive partition，不跨项目共享 |
-| 用户显式删除 | 硬删除，同步写入 audit log |
-| `errorSignature` 被标记为误报 | 从 L2 中移除该签名，更新匹配黑名单 |
+| `expiresAt` reached | Move to archive automatically, do not delete immediately |
+| `outcome === 'failure'` and not linked by `retry-fixed` within 30 days | Mark as stale, demote weight during retrieval |
+| Project closed/archived | Move L1 entries to archive partition, do not share across projects |
+| User explicit delete | Hard delete, write to audit log synchronously |
+| `errorSignature` marked as false positive | Remove signature from L2, update matching blacklist |
 
-**Archive 保留期**：默认 90 天，可在 Settings 调整。
+**Archive Retention Period**: Default 90 days, adjustable in Settings.
 
 ---
 
-## 19. Tool Memory Growth Flywheel — 工具调用成长飞轮
+## 19. Tool Memory Growth Flywheel — Tool Invocation Growth Flywheel
 
-> **设计哲学**：受《国富论》分工理论启发——工业社会的进步源于分工带来的专业积累。好的分工不只是"分配工作"，而是在不断工作中**积累经验、创造新技能或新工具**，实现正向循环的飞轮效应。
+> **Design Philosophy**: Inspired by Adam Smith's division of labor theory—industrial progress stems from specialization. Effective division of labor is not just "distributing tasks", but **accumulating experience and creating new skills or tools** during execution, closing a positive feedback loop.
 >
-> Agent 的成长逻辑应当相同：每次工具调用都是一次"工作经历"，系统应当从这些经历中自动提取可复用的知识，沉淀为 Tool Memory，并在未来同类任务中降低试错成本、提高首次成功率。
+> The agent growth logic should be identical: every tool invocation is "work experience." The system should automatically extract reusable knowledge, deposit it into Tool Memory, and lower future trial-and-error costs while improving first-pass success rates.
 
-### 19.1 飞轮结构
+### 19.1 Flywheel Structure
 
 ```
-工具调用（Tool Invocation）
+Tool Invocation
        ↓
-  执行 + 结果观察
+  Execution + Outcome Observation
        ↓
-  Session 结束 → 蒸馏（Distillation）
+  Session Closes → Distillation
        ↓
-  写入 Tool Memory（L2）
+  Write to Tool Memory (L2)
        ↓
-  下次同类调用 → 检索门控命中 L2
+  Next Similar Invocation → Retrieval Gate hits L2
        ↓
-  注入上下文（带来源标签）
+  Inject Context (with origin tags)
        ↓
-  模型用更少 token、更少试错完成任务
+  Model completes task with fewer tokens & less trial-and-error
        ↓
-  新的成功经验再次蒸馏 → L2 更新
+  New success experiences distilled → L2 updated
        ↑
-  ← ← ← ← ← ← ← 飞轮闭合 ← ← ← ← ← ←
+  ← ← ← ← ← ← ← Flywheel Closes ← ← ← ← ← ←
 ```
 
-### 19.2 Tool Memory 的结构化内容
+### 19.2 Tool Memory Structured Content
 
-L2 Tool Memory 条目不只是"这次工具调用成功了"，而是结构化地记录**可复用的操作知识**：
+L2 Tool Memory entries do not just record "this tool call succeeded," but structure **reusable operational knowledge**:
 
 ```ts
 interface ToolMemoryEntry extends DistilledToolMemory {
-  scope: 'tool_pattern'  // 固定为 tool_pattern
+  scope: 'tool_pattern'  // Fixed as tool_pattern
 
-  // 工具特定字段
+  // Tool-specific fields
   toolId: string                        // e.g. 'shell', 'mcp:github', 'read_file'
-  parameterPattern?: string             // 成功的参数模式摘要
-  preconditions?: string[]              // 调用此工具前需满足的条件
-  postconditions?: string[]             // 调用后的预期状态
-  antiPatterns?: string[]               // 已知会失败的用法
-  tokenCost?: { input: number; output: number }  // 历史平均成本参考
+  parameterPattern?: string             // Summary of successful parameter patterns
+  preconditions?: string[]              // Conditions that must be met before calling this tool
+  postconditions?: string[]             // Expected state after invocation
+  antiPatterns?: string[]               // Known usage patterns that fail
+  tokenCost?: { input: number; output: number }  // Historical average cost reference
 
-  // 成长计数
+  // Growth counters
   successCount: number
   failureCount: number
   lastUsed: string
 }
 ```
 
-### 19.3 身份标签 × 工具调用 × 记忆 的三角联动
+### 19.3 Identity Tags × Tool Invocation × Memory Triangle
 
-Fleet 中每个 Agent 有身份标签（AgentRole / AgentSeat），这个身份应当与 Tool Memory 形成绑定：
+In Fleet, every agent seat carries identity tags (AgentRole / AgentSeat), which bind with Tool Memory:
 
-| 身份标签维度 | 对 Tool Memory 的影响 |
+| Identity Tag Dimension | Impact on Tool Memory |
 |---|---|
-| `agentRole: 'lead'` | 可写入 L4 Policy Memory；L2 写入自动附加高可信标签 |
-| `agentRole: 'worker'` | 只读 L4；L2 写入经过 Lead 审核后才提升为 `scopeConfidence: 'high'` |
-| `toolAffinity: ['shell', 'grep']` | 检索时优先返回与该 Agent 工具亲和性匹配的 L2 条目 |
-| `projectId` | 决定 L1 写入归属；检索时 L1 严格隔离 |
+| `agentRole: 'lead'` | Can write to L4 Policy Memory; L2 writes automatically receive high-confidence flags |
+| `agentRole: 'worker'` | Read-only L4; L2 writes require Lead approval to promote to `scopeConfidence: 'high'` |
+| `toolAffinity: ['shell', 'grep']` | Retrieval prioritizes L2 entries matching the agent's tool affinity |
+| `projectId` | Governs L1 write placement; L1 is strictly isolated during retrieval |
 
-**关键规则**：Tool Memory 的成长是**角色分工的产物**。Lead 积累的是架构决策和边界判断；Worker 积累的是具体工具操作经验。两者共同构成系统的知识资产，但访问权限严格分层。
+**Key Rule**: Tool Memory growth is a **byproduct of role specialization**. The Lead accumulates architectural decisions and boundary judgments; Workers accumulate specific tool usage experience. Both form the system's knowledge assets, but access is strictly stratified.
 
-### 19.4 新技能涌现机制（Skill Emergence）
+### 19.4 Skill Emergence Mechanism
 
-当 L2 中某个 `toolId` 的 `successCount` 达到阈值，且 `parameterPattern` 具有足够高的复现率时，系统可以提议将其**提升为 M12 Capability**：
+When the `successCount` of a certain `toolId` in L2 reaches a threshold, and the `parameterPattern` has a high repetition rate, the system can propose to **promote it to an M12 Capability**:
 
 ```
-L2 Tool Memory 条目
+L2 Tool Memory Entry
   successCount >= 10
-  AND parameterPattern 复现率 >= 70%
-  AND 来自 >= 2 个不同 projectId
+  AND parameterPattern repetition rate >= 70%
+  AND from >= 2 different projectIds
        ↓
-  生成 SkillProposal { toolId, parameterPattern, suggestedCapabilityName }
+  Generate SkillProposal { toolId, parameterPattern, suggestedCapabilityName }
        ↓
-  提交人工审核（Lead 确认）
+  Submit for human audit (Lead confirmation)
        ↓
-  写入 M12 Capability Registry 作为新的可组合技能
+  Write to M12 Capability Registry as a new composable skill
        ↓
-  后续调用直接从 Capability 层复用，不再重复蒸馏
+  Subsequent invocations reuse directly from Capability layer, bypassing distillation
 ```
 
-这是系统**自动从经验中创造新技能**的核心路径，对应《国富论》中"工人在反复操作中发明工具"的逻辑。
+This is the system's path to **automatically creating new skills from experience**, matching the logic of "workers inventing tools through repetitive operation" from the division of labor.
 
-### 19.5 成长飞轮的 Token 节省效应
+### 19.5 Flywheel Token Saving Effect
 
-飞轮成熟后的可量化收益：
+Quantifiable benefits of a mature flywheel:
 
-| 阶段 | 机制 | 节省来源 |
+| Phase | Mechanism | Savings Source |
 |---|---|---|
-| 早期 | 无 Tool Memory | 每次调用需从头试错，token 消耗最高 |
-| 成长期 | L2 命中，注入参数模板 | 减少重试轮次，节省 20–40% |
-| 成熟期 | M12 Capability 复用 | 直接复用经过验证的调用序列，节省 50–70% |
-| 飞轮稳定 | 跨项目 L2 共享工具经验 | 新项目冷启动成本大幅降低 |
+| Early | No Tool Memory | Trial-and-error required, highest token consumption |
+| Growth | L2 hits, parameter template injected | Reduced retries, saving 20–40% |
+| Mature | M12 Capability reuse | Reuses verified invocation sequences, saving 50–70% |
+| Stable | Cross-project L2 tool sharing | Dramatically lowers cold-start costs for new projects |
 
 ---
 
-## 20. Memory Quality Gates — 记忆质量门控
+## 20. Memory Quality Gates
 
-> 写入记忆的质量比数量更重要。噪声记忆会降低整个系统的信噪比，最终导致比无记忆更差的决策质量。
+> The quality of memory written is far more important than quantity. Noisy memory degrades the system's signal-to-noise ratio, leading to worse decisions than having no memory at all.
 
-### 20.1 写入前检查（Pre-Write Gates）
+### 20.1 Pre-Write Gates
 
-所有蒸馏条目在写入任何分区前必须通过：
+All distilled entries must pass the following gates before writing to any partition:
 
-1. **Zod 结构校验**：字段类型和必填项。
-2. **语义后验证**（§8.2 规则）：scope/risk/evidenceRefs 一致性。
-3. **重复检测**：内容相似度 > 85% 且同 scope 的条目视为重复，不写入，改为增加 `successCount`。
-4. **敏感信息扫描**：与 M10 密钥扫描流程集成，检测到高风险内容自动标记 `scope: 'sensitive'`。
-5. **来源可信度评估**：来自 `outcome: 'failure'` 的蒸馏条目初始 `scopeConfidence` 强制降为 `'low'`。
+1. **Zod Schema Validation**: Field types and required items.
+2. **Semantic Post-Validation** (§8.2 rules): Alignment of scope/risk/evidenceRefs.
+3. **Deduplication Check**: Content similarity > 85% with an existing entry in the same scope is treated as duplicate. The write is skipped, and the existing entry's `successCount` is incremented.
+4. **Sensitive Information Scan**: Integrated with the M10 secret scanning pipeline; high-risk content automatically forces `scope: 'sensitive'`.
+5. **Origin Credibility Assessment**: Distilled entries from `outcome: 'failure'` start with `scopeConfidence` forced to `'low'`.
 
-### 20.2 读取时质量过滤（Read-Time Filters）
+### 20.2 Read-Time Filters
 
-检索返回前，自动过滤：
-- `expiresAt` 已过期的条目（移至候选但降权，不作为主要上下文）
-- `scopeConfidence: 'low'` 的条目在 token 预算紧张时优先丢弃
-- `conflict: true` 的条目附加警告标签，不直接作为事实注入
+Retrieved memory is filtered before return:
+- Entries that are past `expiresAt` (demoted in weight and moved to backup candidate).
+- `scopeConfidence: 'low'` entries are discarded first if the token budget is tight.
+- Entries marked with `conflict: true` receive warning tags and are not injected as absolute facts.
 
-### 20.3 人工审核队列
+### 20.3 Manual Review Queue
 
-以下情况触发人工审核提案（非阻断，异步通知）：
-- `errorSignature` 匹配通用模式
-- `risk: 'high'` + `scopeConfidence: 'low'` 同时出现
-- SkillProposal 生成（§19.4）
-- 跨项目 L2 条目被高频引用（可能应该提升为 L3/L4）
+The following cases trigger manual review proposals (asynchronous, non-blocking):
+- `errorSignature` matching common patterns.
+- `risk: 'high'` + `scopeConfidence: 'low'` occurring simultaneously.
+- SkillProposal generation (§19.4).
+- High-frequency references to cross-project L2 entries (candidates for L3/L4 promotion).
 
 ---
 
 ## 21. Implementation Checklist
 
-- [ ] `memory.ts` protocol 冻结：五层分区类型定义
-- [ ] 检索门控实现：scope 过滤先于相似度计算
-- [ ] 蒸馏 batch job：session 关闭触发，异步非阻断
-- [ ] DistilledToolMemory Zod schema + 语义后验证
-- [ ] ToolMemoryEntry schema + successCount/failureCount 追踪
-- [ ] SkillProposal 生成逻辑 + M12 接口对接
-- [ ] Archive 分区 + 90 天保留清理 cron
-- [ ] 冲突检测与覆盖规则实现
-- [ ] Pre-Write Gates 全部实现
-- [ ] 人工审核队列 UI（M13 Settings Shell 中的紧凑视图）
-- [ ] 记忆泄漏测试：跨项目召回的负向测试用例
-- [ ] Tool Memory 成本节省追踪（接入 M11 Cost Ledger）
+- [ ] `memory.ts` protocol freeze: Five-tier partition type definitions
+- [ ] Retrieval gating: Scope filtering precedes similarity calculation
+- [ ] Distilled batch job: Triggered on session close, asynchronous and non-blocking
+- [ ] DistilledToolMemory Zod schema + semantic post-validation
+- [ ] ToolMemoryEntry schema + successCount/failureCount tracking
+- [ ] SkillProposal generation logic + M12 integration
+- [ ] Archive partition + 90-day retention cleanup cron
+- [ ] Conflict detection and override rules implementation
+- [ ] All Pre-Write Gates implemented
+- [ ] Manual review queue UI (compact view in M13 Settings Shell)
+- [ ] Memory leak tests: Negative test cases for cross-project recall
+- [ ] Tool Memory cost tracking (integration with M11 Cost Ledger)
