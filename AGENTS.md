@@ -72,26 +72,6 @@ timeline, Library, or settings truth.
 - New source-code copying is allowed only from green-light sources listed in
   `docs/REFERENCE-PROJECT-POLICY.md`. Permissive licenses alone are not approval.
 
-### Identity Tag Rules (ADR-0032)
-
-Every AgentSeat must carry identity tags injected by the Lead. These tags are not
-self-declared and cannot be modified by the Worker or Reviewer.
-
-- Every Seat carries exactly **one** `role:` tag: `role:lead`, `role:worker`, or `role:reviewer`.
-- A `role:worker` Seat with no explicit `assigned_skills` must carry at least one `domain:` tag
-  (`domain:media`, `domain:code`, `domain:ui`, or `domain:data`).
-- A `role:reviewer` Seat's `loaded_skills` is forced to `[]` regardless of other tags.
-- Permission scope is the union of all tag grants defined in
-  `docs/contracts/identity-tags-permission-matrix.md`. No explicit grant means default deny.
-- The Worker LLM prompt contains **only** the ActionManifest derived from its permission scope.
-  Tools outside the manifest are physically absent from the prompt; calling them returns
-  `PERMISSION_DENIED` and writes to the audit log.
-- Workers cannot read other Seats' identity tags, manifests, or loaded skills.
-- `AgentSession.create()` throws `SeatCreationError` if any invariant in the permission matrix
-  is violated. Do not attempt to work around these errors by modifying tag values.
-
-Full rules: `docs/contracts/identity-tags-permission-matrix.md` and `docs/adr/0032-identity-tags-permissions-skill-loading.md`.
-
 ## Parallel Development
 
 Parallel work is Lead-controlled.
@@ -105,20 +85,6 @@ Parallel work is Lead-controlled.
   through the Lead.
 - A worker handoff must report worktree, branch, commit, changed files, forbidden files not touched,
   validation performed, and remaining `not implemented` items.
-
-### W0 Hard Blocking Conditions
-
-**No worker agent may start W1 or any subsequent wave work until all three of the following
-files are Lead-committed and explicitly marked frozen in their header:**
-
-1. `docs/contracts/action-ids.md` — all action IDs frozen; no new IDs during W1+.
-2. `docs/contracts/protocol-stubs.md` — `SessionEvent`, `ActionInvocation`, `AgentSeat`,
-   `RuntimeLane` type stubs frozen.
-3. `docs/contracts/identity-tags-permission-matrix.md` — identity tag system, permission
-   matrix, and Seat creation invariants frozen (ADR-0032).
-
-If any of the three is missing or not marked frozen, treat the W0 gate as **not passed**.
-Do not begin module work. Report the missing contract to the Lead.
 
 Use `docs/OWNERSHIP-MATRIX.md`, `docs/WAVE-MODULE-MAP.md`, and the packet under
 `docs/agent-packets/` as the binding ownership rules.
