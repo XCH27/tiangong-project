@@ -16,7 +16,7 @@ No Worker may independently modify shared protocol files, handler registration, 
 
 | Role | Responsibility |
 |---|---|
-| **Lead** | Reads direction and decisions; freezes contracts; owns shared files; writes module specs and agent packets; reviews diffs; resolves conflict arbitration. |
+| **Lead** | Reads direction and decisions; freezes contracts; owns shared files; writes module specs and agent packets; reviews diffs; resolves conflict arbitration; is the only agent who may declare wave gates open and promote modules to `usable`. |
 | **Module Agent** | Implements a bounded module slice from an agent packet. |
 | **UI Agent** | Implements UI only after Lead has fixed placement, interaction, and ownership. |
 | **Backend Agent** | Implements services/handlers only inside its assigned file domain. |
@@ -30,10 +30,10 @@ Work is organised into sequential **waves**. Each wave has a gate condition. No 
 
 | Wave | Gate Condition | Typical Work |
 |---|---|---|
-| **W0 — Contract Freeze** | Lead commits `docs/contracts/protocol-stubs.md` and frozen `action-ids.md` rows | Lead only — zero Workers |
-| **W1 — Spine** | W0 gate passed | M00 Platform Spine, M03 Action Registry skeleton |
-| **W2 — Runtime Core** | M00 backbone merged, `SessionEvent` types live | M01, M02, M04, M05 in parallel |
-| **W3 — Surfaces** | M03 executor + registry merged | M06, M07, M08, M09 in parallel |
+| **W0 — Contract Freeze** | Lead commits `docs/contracts/protocol-stubs.md`, frozen `action-ids.md`, and frozen `identity-tags-permission-matrix.md`; all three marked frozen in header | Lead only — zero Workers |
+| **W1 — Spine** | W0 gate passed | M00 Platform Spine skeleton + M03 Action Registry skeleton (parallel); M03 executor begins only after Lead declares M00 backbone-merged |
+| **W2 — Runtime Core** | M00 backbone merged, M03 executor at `usable`, `SessionEvent` types live | M01, M02, M04, M05 in parallel |
+| **W3 — Surfaces** | M03 at `usable` and M05 Library write path at `usable` | M06, M07, M08, M09 in parallel |
 | **W4 — Intelligence** | M05 lease model stable | M10, M11, M12 in parallel |
 | **W5 — Polish** | All prior modules at `usable` | M13, M14; cross-module integration; Verification Agent sweep |
 
@@ -75,6 +75,37 @@ The following are Lead-owned. Workers can read; they cannot modify:
 - Shared settings registry structure
 - `docs/contracts/action-ids.md` (extend only via the Extension Process)
 - `docs/contracts/protocol-stubs.md`
+- `docs/contracts/identity-tags-permission-matrix.md`
+
+---
+
+## Fleet Bridge Interface
+
+Fleet Bridge is the narrow IPC boundary through which a CLI run reports progress and receives team context from the Fleet session.
+
+**Boundary rule:** Fleet owns the team state, member roster, and session timeline. A CLI run owns exactly one `RuntimeLane` entry. The CLI runtime does not call Fleet API methods directly; it sends lane events to Fleet Bridge, which translates them into `SessionEvent` entries on the Fleet side.
+
+**Minimal interface (frozen at W0):**
+
+```
+FleetBridge.reportLaneEvent(laneId: string, event: RuntimeLaneEvent): void
+FleetBridge.requestTeamContext(laneId: string): Promise<TeamContextSnapshot>
+FleetBridge.closeLane(laneId: string, outcome: LaneOutcome): void
+```
+
+- `RuntimeLaneEvent`, `TeamContextSnapshot`, and `LaneOutcome` are defined in `docs/contracts/protocol-stubs.md`.
+- A CLI run must not call any Fleet method not listed here. If a new method is needed, the Worker files a contract change request with the Lead before proceeding.
+- Fleet Bridge does not own tools, does not hold session state, and does not proxy permission decisions. It is a one-way event pipe with one context-pull call.
+
+**Concrete ownership boundary:**
+
+| Owned by Fleet | Owned by CLI Runtime |
+|---|---|
+| Team roster, role assignments | Process lifecycle, stdin/stdout |
+| Session timeline, replay log | Local model invocation |
+| Permission decisions | Lane-local tool calls |
+| Cost ledger entries | Lane-local file writes (reported back via event) |
+| Cross-agent message routing | None — routing requests go through Fleet Bridge |
 
 ---
 
@@ -205,3 +236,5 @@ The following patterns have caused coordination failures in past parallel builds
 | Worker starts W3 work before W2 gate is declared open | Depends on unstable contracts; guarantees rework | Check wave schedule. Wait for Lead's gate declaration. |
 | Worker fixes a spec ambiguity by choosing the most convenient interpretation | May contradict another Worker's equally valid interpretation | Report ambiguity to Lead before any implementation. |
 | Worker's PR has no Completion Report | Unanswerable at review time | Fill the Completion Report template. No exceptions. |
+| Worker calls a Fleet API method not in the Fleet Bridge interface | Violates lane ownership boundary; creates hidden coupling | Use only the three FleetBridge methods. File a change request for anything else. |
+| Worker self-promotes a slice to `usable` without Lead review | Status inflation; gate conditions may be silently broken | Propose promotion in PR. Lead confirms after review. |

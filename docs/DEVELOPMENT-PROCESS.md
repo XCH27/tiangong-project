@@ -55,6 +55,20 @@ Use only these status labels:
 
 Passing typechecks or tests never upgrades a feature status by itself.
 
+## `usable` Promotion Rules
+
+Only the **Lead** may promote a module or slice to `usable`. Workers propose promotion by submitting a Completion Report; the Lead reviews and confirms.
+
+Minimum criteria before Lead may promote to `usable`:
+
+1. The human UI path and the agent/internal action path both reach the same backend, permission, and timeline behavior.
+2. At least one real-behavior smoke check has been performed (not just tests passing).
+3. Error handling and status wording are verified in the UI.
+4. The Completion Report in the PR is fully filled — no `TODO` or empty fields.
+5. No frozen contract was modified without a corresponding contract version bump.
+
+If any criterion is missing, the Lead returns the PR with a named gap. The Worker does not self-promote.
+
 ## Validation Ladder
 
 Validate a coherent feature slice, not every tiny edit:
@@ -75,6 +89,16 @@ If the same validation path fails twice, stop and identify the blocker instead o
 6. Implementation follows the agent packet and reports back using the packet's completion format.
 
 Do not use a legacy document as a work packet.
+
+## DECISIONS-LEDGER Write Authority
+
+- **Only the Lead** may write to `docs/DECISIONS-LEDGER.md`.
+- Entries must be added within one working session of the decision being made. Do not backfill.
+- Each entry must include: date, decision title, rationale, and reversibility flag.
+- `docs/HUMAN-FEEDBACK-LOG.md` is the staging area for unresolved feedback. Once the Lead
+  acts on a feedback item, the resulting decision is promoted to `DECISIONS-LEDGER.md` and
+  the feedback item is marked `→ promoted` with a cross-reference to the ledger entry.
+  The feedback log is never the authoritative source; the ledger is.
 
 ## `AGENTS.md` Migration Target
 

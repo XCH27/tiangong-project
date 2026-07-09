@@ -18,10 +18,11 @@ Use this order before changing product code or project documentation:
 6. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
 7. `docs/OWNERSHIP-MATRIX.md`
 8. `docs/WAVE-MODULE-MAP.md`
-9. `docs/REFERENCE-PROJECT-POLICY.md`
-10. The relevant module spec in `docs/modules/`
-11. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
-12. The current Craft-based implementation under `app/`
+9. `docs/BOARD-SYNC.md`
+10. `docs/REFERENCE-PROJECT-POLICY.md`
+11. The relevant module spec in `docs/modules/`
+12. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
+13. The current Craft-based implementation under `app/`
 
 Read `docs/legacy/` only to verify historical rationale or recover a missing decision.
 If a legacy document conflicts with an active English document, follow the active English
@@ -58,13 +59,16 @@ timeline, Library, or settings truth.
 - CLI, terminal, Git, desktop automation, local files, and browser operations must go through
   permission and replayable timeline evidence when they mutate state or launch real work.
 - Fleet owns the team; a CLI owns one run. Do not mix terminal UI, CLI Runtime identity,
-  Fleet Bridge, and TeamRun into one ambiguous concept.
+  Fleet Bridge, and TeamRun into one ambiguous concept. See `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+  §Fleet Bridge Interface for the concrete boundary definition.
 - Manager Agent and project Agents are separate identities. Manager Agent is not a privileged
   backdoor and does not bypass permission.
 - `@` addresses people, agents, sessions, and roles. `/` addresses skills, commands, and templates.
 - Browser automation extends the Craft BrowserPane, Electron CDP, and browser tool path.
   Do not add stealth, anti-detection, quota bypass, cookie extraction, or terms-of-service bypass
-  behavior.
+  behavior. Read-only operations (read/annotate/evidence) are permitted; DOM mutation on external
+  sites is not. The boundary: if the page is an editable artifact owned by the user, use the real
+  document model; if it is an external site, treat it as read-only.
 - External AI review, web profiles, and account handling must use user-authorized normal paths.
 - Model routing, cache, and Fusion apply only to API/OAuth lanes. CLI Runtime lanes use the CLI's
   own runtime and model behavior.
@@ -119,6 +123,9 @@ files are Lead-committed and explicitly marked frozen in their header:**
 
 If any of the three is missing or not marked frozen, treat the W0 gate as **not passed**.
 Do not begin module work. Report the missing contract to the Lead.
+
+**W0 Status (2026-07-09):** All three files confirmed present and frozen. W0 gate passed.
+See `docs/WAVE-MODULE-MAP.md` §W0 Gate Verification Record for SHA evidence.
 
 Use `docs/OWNERSHIP-MATRIX.md`, `docs/WAVE-MODULE-MAP.md`, and the packet under
 `docs/agent-packets/` as the binding ownership rules.
