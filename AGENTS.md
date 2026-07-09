@@ -12,15 +12,16 @@ Use this order before changing product code or project documentation:
 
 1. `docs/START-HERE.md`
 2. `docs/PROJECT-DIRECTION.md`
-3. `docs/DECISIONS-LEDGER.md`
-4. `docs/DEVELOPMENT-PROCESS.md`
-5. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
-6. `docs/OWNERSHIP-MATRIX.md`
-7. `docs/WAVE-MODULE-MAP.md`
-8. `docs/REFERENCE-PROJECT-POLICY.md`
-9. The relevant module spec in `docs/modules/`
-10. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
-11. The current Craft-based implementation under `app/`
+3. `docs/OWNER-VOICE.md`
+4. `docs/DECISIONS-LEDGER.md`
+5. `docs/DEVELOPMENT-PROCESS.md`
+6. `docs/PARALLEL-AGENT-OPERATING-MODEL.md`
+7. `docs/OWNERSHIP-MATRIX.md`
+8. `docs/WAVE-MODULE-MAP.md`
+9. `docs/REFERENCE-PROJECT-POLICY.md`
+10. The relevant module spec in `docs/modules/`
+11. The relevant wave packet in `docs/agent-packets/` when working as a parallel agent
+12. The current Craft-based implementation under `app/`
 
 Read `docs/legacy/` only to verify historical rationale or recover a missing decision.
 If a legacy document conflicts with an active English document, follow the active English

@@ -193,13 +193,15 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Validation:
   - none yet
 - Remaining Not Implemented:
-  - Session/permission/timeline DTO types
+  - Zod schema snapshot for SessionEvent, ActorRef, ActionInvocation under `app/packages/shared/src/protocol/`
+  - Action-id enum freeze (`docs/contracts/action-ids.md` or equivalent TS file)
   - Actor and runtime metadata types
   - Shared event channel contracts
   - Internal Action Registry interface
   - First module spec (Terminal / CLI Runtime)
   - Wave 0 agent packet
-- Blocker: none
+- Blocker:
+  - Spec states workers may not start until Wave 0 contracts are frozen / No protocol Zod schema or action-id file exists yet / Lead must commit `app/packages/shared/src/protocol/` stub types and `docs/contracts/action-ids.md` before any Worker branch is opened
 
 #### Card: Wave 0 / Clean Craft Baseline / Upstream sync and shell reset
 
