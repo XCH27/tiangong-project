@@ -20,16 +20,19 @@ Several shapes **conflict** with the composable-spine freezes and must **not** b
 
 ## 2. Inventory: what exists today
 
-| Artifact | Kind | Used by runtime? (rg under packages) |
-|---|---|---|
-| `actor.ts` | types | export only / stub surface |
-| `agent-session.ts` | types | stub surface |
-| `session-event.ts` (`AuditSessionEvent`) | types | stub surface |
-| `internal-action.ts` (Zod ActionInvocation, ids, **duplicate lease**, action events) | types+zod | stub surface; **no `action-executor/` tree found** |
-| `lease.ts` | types | duplicate of internal-action lease |
-| `canvas.ts` fixed `NodeType` union + `CanvasDocument` | types | **conflicts ADR-0033** |
-| `channels.ts` / `dto.ts` / `events.ts` / `routing.ts` | upstream-derived + drift | differ from clean v0.11 — merge carefully |
-| `messaging-gateway` | real package | M15 later; permission boundary required |
+| Artifact | Kind | External importers (2026-07-10 rg) | Used by runtime? |
+|---|---|---|---|
+| `actor.ts` | types | **none outside protocol/** | **Orphan stub** |
+| `agent-session.ts` | types | **none** | **Orphan stub** |
+| `session-event.ts` (`AuditSessionEvent`) | types | **none** | **Orphan stub** |
+| `internal-action.ts` | types+zod | **none**; **no action-executor/** | **Orphan stub** + B1–B3 |
+| `lease.ts` | types | **none** | **Orphan stub** + duplicate |
+| `canvas.ts` fixed nodes | types | **none** | **Orphan + drop** (B4) |
+| `channels/dto/events/routing` | upstream-derived | live Craft paths | merge carefully |
+| `messaging-gateway` | package | electron + server-core | real; defer M15 |
+| protocol tests for Fleet stubs | — | **no tests found** for seats/lease/actions/canvas | no safety net |
+
+See also `DEAD-CODE-SIDE-EFFECTS.md` and `MODULE-REACTION-MAP.md`.
 
 ## 3. Blocker conflicts (do not port as-is)
 
@@ -132,7 +135,21 @@ Also uses `seq` in a way that invites timeline-as-conflict-algorithm (FORBIDDEN)
 3. If similar to B1–B4, cite this file section and do not port as-is.  
 4. Update this file’s tables when a blocker is closed (date + commit).
 
-## 9. Closed blockers log
+## 9. Module reactions (summary)
+
+Full tables: `MODULE-REACTION-MAP.md`.
+
+| Port family | Highest-react modules | Do not land without |
+|---|---|---|
+| Invocation/actions | M00, M03, M12, M17, all writers | VNext caller + idempotency |
+| Leases | M05, M03, file writers | Single type definition |
+| SessionEvent | M00 + all emitters | One event family |
+| ArtifactRef | M05 + W3A/W3B fan-out | M05 authority |
+| ExternalJob/M11A | M08, M11A, M17, M00 | No second cost/job store |
+| canvas.ts fixed nodes | M07/M16 | **Do not port** |
+| messaging-gateway | M00, M15, SessionManager | Permission non-bypass |
+
+## 10. Closed blockers log
 
 | ID | Closed | Commit / note |
 |---|---|---|

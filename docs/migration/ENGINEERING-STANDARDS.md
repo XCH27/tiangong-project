@@ -3,7 +3,8 @@
 > **Authority:** Lead binding for all migration work (L00 and later ports)  
 > **Updated:** 2026-07-10  
 > **Audience:** Lead + every Agent that touches migration, protocol, or base replace  
-> **Goals:** readable layout, maintainable process, conflict-safe ports, full traceability  
+> **Goals:** readable layout, maintainable process, conflict-safe ports, full traceability,  
+> dead-code honesty, module reaction mapping, side-effect control  
 
 ## 1. Principles
 
@@ -12,7 +13,9 @@
 3. **No second authorities** — every port must name its single owner module and store (PERSISTENCE / FORBIDDEN).  
 4. **Text freeze before live code** — port from freeze + staging-protocol, not ad-hoc invention.  
 5. **Evidence over memory** — every adapt/drop/defer has a ledger row + audit record path.  
-6. **Fail closed** — if conflict review fails, classification stays **defer** or **drop**, never silent merge.
+6. **Fail closed** — if conflict review fails, classification stays **defer** or **drop**, never silent merge.  
+7. **Orphan ≠ proven** — type stubs with no importers/executor are not “battle-tested backend.”  
+8. **Name the blast radius** — every port lists modules that **react** (see MODULE-REACTION-MAP).
 
 ## 2. Folder layout (canonical)
 
@@ -22,6 +25,8 @@ docs/migration/
   ENGINEERING-STANDARDS.md       # this file
   BACKEND-VALUE-PORT.md          # D50 value filter
   BACKEND-CONFLICT-AUDIT.md      # living conflict findings vs spine
+  DEAD-CODE-SIDE-EFFECTS.md      # dead/orphan code, garbage tests, side effects
+  MODULE-REACTION-MAP.md         # which modules react to each port
   v0.11-MIGRATION-LEDGER.md      # retain/adapt/drop/defer rows
   v0.11-BASELINE-VALIDATION.md   # clean-tag install/typecheck evidence
   v0.11-PORT-CHECKLIST.md        # port sequence + gates
@@ -87,6 +92,19 @@ Copy into each audit file. All must be **PASS** or **N/A with reason**.
 | C8 | Permission/policy orthogonal | Risk conflated into one enum without approval/undo/cancel fields |
 | C9 | Restart/reconciling story | Completed claims without durable correlation |
 | C10 | License/green-light | Unapproved source copy |
+| C11 | Dead/orphan honesty | Port claims “production backend” when zero importers/executor |
+| C12 | No dual/dead-duplicate types | Same symbol in two files |
+| C13 | Garbage tests | Tests encode forbidden architecture or fake usable |
+| C14 | Side effects S1–S10 | See DEAD-CODE-SIDE-EFFECTS.md §3 |
+| C15 | Module reaction map filled | Missing blast radius → defer |
+
+## 5b. Dead code & side-effect gate (before adapt)
+
+1. Run importer search (`DEAD-CODE-SIDE-EFFECTS.md` §5). Label **orphan** if none.  
+2. Search tests; reject garbage tests; require new tests when first executor lands.  
+3. Fill **modules_reacting** from `MODULE-REACTION-MAP.md`.  
+4. List **side_effects_if_wrong** (one paragraph minimum).  
+5. If S1–S3 would fire → **FAIL** (do not port as-is).
 
 ## 6. Traceability matrix (every merge)
 
@@ -99,8 +117,12 @@ freeze_id: w0.1-doc-freeze-...
 source_path: ...
 source_revision: ...
 target_path: ...
-classification: adapt
+classification: adapt|drop|defer
+orphan_stub: yes|no
 conflict_review: PASS|FAIL
+dead_code_review: PASS|FAIL
+modules_reacting: M00,M03,...
+side_effects_if_wrong: <short>
 verification: <commands + results>
 ```
 

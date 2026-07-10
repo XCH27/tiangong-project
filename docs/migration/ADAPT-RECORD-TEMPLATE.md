@@ -53,36 +53,65 @@ What user-visible or system behaviour this backend enables (2–5 sentences).
 | C8 orthogonal policy | | |
 | C9 restart/reconcile | | |
 | C10 license | | |
+| C11 orphan honesty | | |
+| C12 no duplicate types | | |
+| C13 garbage tests | | |
+| C14 side effects S1–S10 | | |
+| C15 reaction map | | |
 
 **Conflict verdict:** PASS / FAIL  
 If FAIL: set ledger classification to defer/drop; stop.
 
-## 4. Known audit hits
+## 4. Dead code / tests / side effects
 
-Reference sections in `BACKEND-CONFLICT-AUDIT.md` (e.g. B1, M2) and how this unit avoids them.
+| Field | Value |
+|---|---|
+| External importers (command + count) | |
+| Orphan stub? | yes/no |
+| Executor/host exists? | yes/no/path |
+| Related tests | paths or “none” |
+| Garbage-test risk | none/describe |
+| Side effects if wrong (S1–S10) | |
 
-## 5. Port plan
+## 5. Module reactions (from MODULE-REACTION-MAP)
+
+| Module | Reaction | Wave | Note |
+|---|---|---|---|
+| M00 | | | |
+| M03 | | | |
+| … | | | |
+
+**Blast radius summary:** …
+
+## 6. Known audit hits
+
+Reference `BACKEND-CONFLICT-AUDIT.md` / `DEAD-CODE-SIDE-EFFECTS.md` sections and mitigations.
+
+## 7. Port plan
 
 - [ ] Types from staging-protocol or rewritten source  
 - [ ] Barrel export plan  
 - [ ] CONTRACT_VERSION / const bump  
-- [ ] Tests to add  
+- [ ] Tests to add (required if first executor)  
 - [ ] Forbidden files list  
+- [ ] Explicit “not usable” until executor+timeline wired  
 
-## 6. Verification
+## 8. Verification
 
 | Command | Result |
 |---|---|
+| importer rg | |
+| test rg | |
 | `bun run typecheck:shared` | |
 | other | |
 
-## 7. Trace
+## 9. Trace
 
 | Field | Value |
 |---|---|
 | PR / commit | |
 | follow-ups | |
 
-## 8. Regression (if any)
+## 10. Regression (if any)
 
 _Date, symptom, fix, link to new audit._
