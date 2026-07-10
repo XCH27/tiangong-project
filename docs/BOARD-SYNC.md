@@ -166,7 +166,11 @@ Board Cards section. Do not create a new file format for this; append the block 
 
 ---
 
-## Current Board
+## Historical Board Snapshot (pre-W0.1)
+
+> The cards below are retained as historical evidence only. They do not declare the current
+> wave state and must not be used for assignment. The current state is the W0.1 card at the end
+> of this file and `docs/WAVE-MODULE-MAP.md`.
 
 > This section holds the live card state.
 > **WRITE RULE: Each Worker Agent appends cards ONLY inside its own wave subsection below.**
@@ -242,32 +246,63 @@ Board Cards section. Do not create a new file format for this; append the block 
 
 ---
 
-### Wave 1 — Runtime, Files, Quota
+### Historical Wave 1 — Runtime, Files, Quota
 
 <!-- Workers assigned to wave-1-runtime-files-quota.md append cards here only. -->
 <!-- One card per slice. Do not claim the whole module. -->
 
 ---
 
-### Wave 2 — TeamRun, Routing
+### Historical Wave 2 — TeamRun, Routing
 
 <!-- Workers assigned to wave-2-teamrun-routing.md append cards here only. -->
 
 ---
 
-### Wave 3 — Browser Capability Review
+### Historical Wave 3 — Browser Capability Review
 
 <!-- Workers assigned to wave-3-browser-capability-review.md append cards here only. -->
 
 ---
 
-### F-Track — Canvas Foundation
+### Historical F-Track — Canvas Foundation
 
 <!-- Workers assigned to f-track-canvas-foundation.md append cards here only. -->
 
 ---
 
-### Future Waves
+### Historical Future Waves
 
 <!-- Lead adds new wave subsections here as waves are initialized. -->
 <!-- Workers must not create new wave subsections without Lead approval. -->
+
+---
+
+## Current Board
+
+### Wave 0.1 — Control-Plane Reconciliation (Lead-only)
+
+#### Card: W0.1 / Control Plane / Contract and packet re-freeze
+
+- Owner: Lead
+- Worktree: root
+- Branch: Lead-managed
+- Status: not implemented
+- UI State: not started
+- Backend State: not started
+- Contracts: action IDs v1.2 baseline; protocol stubs v1.2 baseline; identity matrix v1.2 baseline
+- Allowed Files:
+  - Lead-owned docs and canonical protocol implementation files
+- Forbidden Files:
+  - Worker feature implementation domains
+- Validation:
+  - Documentation consistency check after the reconciliation block
+- Remaining Not Implemented:
+  - Clean Craft Agents v0.11 migration ledger and baseline validation
+  - Canonical implementation parity evidence and a newly frozen contract version
+  - Caller/idempotency/revision/action-policy plus ArtifactRef/capability/job/workflow/spatial/view contract decisions
+  - Persistence authority and product/internal namespace decision
+  - Documentation Readiness promotion for the exact W1 slices
+  - Replacement W1/W2+ packets
+- Blocker:
+  - v0.11 migration and current contract text/canonical implementation parity are not yet re-frozen / W1 cannot be assigned / Lead must record the migration ledger, new contract baseline, and explicit W1 decision

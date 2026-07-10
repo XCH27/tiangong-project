@@ -1,5 +1,8 @@
 # Wave 2 Runtime Files Quota Packet
 
+> **Superseded 2026-07-09. Do not assign or implement from this packet.** It mixes W2 and W4
+> modules and grants Lead-owned protocol writes. A replacement is required after W1 promotion.
+
 > This packet defines the Wave 2 task assignments: M01, M02, M04, M05, and M11 (quota/usage ledger components).
 > Workers claim seats and work on their assigned branches in parallel once the Wave 2 gate is declared open.
 

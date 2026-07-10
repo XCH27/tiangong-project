@@ -1,5 +1,16 @@
 # Protocol Stubs — FROZEN v1.2.0
 
+> **W0.1 notice (2026-07-09):** v1.2.0 is retained as the last recorded frozen baseline.
+> It is not an authorization to start W1. The Lead must re-freeze canonical implementation
+> parity and resolve ActionInvocation versioning, event payload rules, and AgentSeat/tag shape.
+
+> **Composable-workspace notice (2026-07-09):** v1.2.0 cannot represent a workflow caller,
+> idempotency/correlation, document base/committed revisions, ArtifactRef, capability ports,
+> ExternalJob reconciliation, workflow definitions/runs, spatial entity bindings, or view/layout
+> contributions. The non-frozen change proposal is
+> `docs/contracts/composable-workspace-contracts.md`. Workers must not combine that proposal with
+> this recorded baseline as if two contracts were active.
+
 > **Lead-owned.** These type stubs define the shared vocabulary that all module Workers depend on.
 > The canonical implementation lives in `app/packages/shared/src/protocol/`.
 
@@ -193,3 +204,24 @@ export interface LaneOutcome {
   generatedEvidenceRefs: string[];
 }
 ```
+
+---
+
+## Required W0.1 Re-freeze Deltas
+
+The Lead must either promote or explicitly reject each item in the composable-workspace proposal:
+
+1. `callerKind: workflow_runtime` plus initiating/delegating ActorRefs;
+2. contract/action versions, idempotency key, correlation/causation, workflow/node run IDs;
+3. document `baseRevision` and outcome `committedRevision`;
+4. orthogonal action policy rather than deriving undo from risk level;
+5. typed generic SessionEvent payloads without module-specific event-kind forks;
+6. ArtifactRef/Library handoff;
+7. capability manifests and typed ports;
+8. ExternalJob durable/reconciling states;
+9. WorkflowDefinition/WorkflowRun/NodeRun;
+10. SpatialDocument entity bindings and visual-only connectors;
+11. discriminated view contributions and versioned layout snapshots.
+
+No downstream implementation begins until its consumed items exist in one canonical frozen
+version and implementation parity is recorded.

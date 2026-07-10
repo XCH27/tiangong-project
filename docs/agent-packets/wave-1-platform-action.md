@@ -1,5 +1,9 @@
 # Wave 1 Platform Action Packet
 
+> **Superseded 2026-07-09. Do not assign or implement from this packet.** It grants writes
+> to Lead-owned protocol files and predates W0.1. A replacement W1 implementation packet is
+> created only after the Lead re-freezes the canonical contract baseline.
+
 > This packet consolidates the Wave 1 spine tasks: M00 (Platform Spine) and M03 (Internal Action Registry).
 > Parallel worker seats are isolated through distinct assignments within this single packet.
 

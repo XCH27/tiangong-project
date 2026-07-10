@@ -1,150 +1,93 @@
-# Module Specs
+# Module Specifications
 
-Each file in this folder must define one closed product loop. A module spec is not a vision note and not a backend-only design.
+Module files define closed product loops. A module spec is not a vision note, a list of desired
+components, or proof that implementation may begin.
 
----
+Read `docs/DOCUMENT-READINESS.md` for documentation maturity and
+`docs/WAVE-MODULE-MAP.md` for execution permission.
 
-## Required Module Spec Template
+## 1. Required Metadata
 
-Every module spec file in the `docs/modules/` directory must strictly implement the following structure:
+Every active module spec begins with:
 
 ```markdown
-# M## — Module Name
-
-> **Status:** `not implemented` | `display-only` | `wired but not visually checked` | `usable`
-> **Wave:** W#
-> **Owner:** Lead / Worker (name or role)
-> **Spec version:** v1.0 — YYYY-MM-DD
-> **Depends on:** M## (interface level), M## (full implementation)
-
----
-
-## 1. Purpose
-
-_One paragraph. What user problem does this module solve?
-What is the first complete loop this module enables?_
-
-## 2. Scope
-
-### In Scope
-- _bullet list of what this module builds_
-
-### Out of Scope
-- _bullet list of what explicitly is NOT this module's job_
-
-## 3. User-Visible Loop
-
-_Describe the complete user-visible behavior:_
-
-```
-user action → UI path → backend handler → state change → timeline event → visible feedback
+> **Capability status:** `not implemented` | `display-only` |
+> `wired but not visually checked` | `usable`
+> **Execution gate:** Locked | Ready | In Progress | Blocked
+> **Spec maturity:** concept | contract draft | execution-ready
+> **Wave:** W# or explicit sub-wave
+> **Owner:** role/module
+> **Depends on:** exact modules and required maturity/status
 ```
 
-_Include the error path:_
+These are independent axes. Do not invent informal alternatives such as “almost usable.”
 
-```
-failure condition → error message → user-visible recovery option
-```
+## 2. Minimum Executable Spec Content
 
-## 4. Action Registry Entries
+An `execution-ready` spec must answer all of the following without requiring a Worker to invent
+product behaviour:
 
-| Action ID | Description | Permission Required | Produces SessionEvent? |
-|---|---|---|---|
-| `module.actionName` | What it does | `permission:level` | Yes / No |
+1. **Purpose and first closed loop** — real user outcome and complete happy/error path.
+2. **Scope/non-goals** — explicit ownership boundary.
+3. **State authority** — one owner for durable, native, derived, and view state.
+4. **Field-level contracts** — inputs, outputs, IDs, versions, revisions, and schemas.
+5. **Actions/callers** — human, Agent, and workflow use the same canonical operations.
+6. **Permissions and side effects** — risk, approval, undo, cancellation, retry, evidence.
+7. **Persistence/recovery** — restart, migration, idempotency, conflict, partial commit.
+8. **UI contribution** — exact M16 surface/panel/inspector/canvas projection.
+9. **Dependencies** — exact consumed/produced contracts and gate versions.
+10. **Error table** — user-visible result and permitted recovery.
+11. **Resource behaviour** — queue/back-pressure/cancellation/degradation where applicable.
+12. **Verification** — steps covering UI, backend, state, permission, evidence, Agent parity, error,
+    restart, and real rendered/runtime behaviour.
+13. **Open gates** — anything unresolved keeps the spec below `execution-ready`.
 
-## 5. Session Events Emitted
+## 3. Single-Source Rules
 
-| Event Type | When Emitted | Payload Shape |
+- Shared types/actions live in canonical contracts; a module may explain but not fork them.
+- `IMPLEMENTATION.md` may record adapter constraints but cannot add product behaviour that is
+  absent from `SPEC.md` or the module's canonical file.
+- Generic SessionEvent kinds plus typed payloads are used; modules do not create parallel event
+  catalogs.
+- Capability manifests generate UI/Agent/workflow projections; do not hand-maintain three APIs.
+- Panels/canvas cards are views; domain state stays with the owning module.
+- Exact file paths enter an execution packet only after the current v0.11 baseline is inspected.
+
+## 4. Planned Modules
+
+| Module | File | Responsibility |
 |---|---|---|
-| `MODULE_ACTION_DONE` | After successful action | `{ actionId, actorId, timestamp, ... }` |
+| M00 | `00-platform-spine.md` | identity, permission, session, event, durable control authority |
+| M01 | `01-clean-craft-baseline.md` | clean Craft Agents v0.11 base and retained shell |
+| M02 | `02-terminal-cli-runtime/SPEC.md` | terminal surface and bounded CLI/runtime host |
+| M03 | `03-internal-action-registry.md` | canonical action definition/invocation/executor path |
+| M04 | `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TaskRun/TeamRun coordination |
+| M05 | `05-files-library-leases.md` | files, Library, ArtifactRef, leases, provenance |
+| M06 | `06-browser-artifact-surface/SPEC.md` | browser selection, annotation, evidence, owned preview boundary |
+| M07 | `07-canvas-design-surface/SPEC.md` | infinite spatial canvas and workflow projection |
+| M08 | `08-aigc-jobs-surface.md` | ExternalJob core and generative operations |
+| M09 | `09-video-surface.md` | multi-asset media project, timeline, render |
+| M10 | `10-memory-context-review.md` | local memory/context/review under one model |
+| M11 | `11-model-routing-cost-ledger.md` | provider routing, usage, cost, native batch |
+| M12 | `12-capability-skill-plugin-system.md` | capability manifests/loadouts and later plugins |
+| M13 | `13-settings-shell-ux.md` | settings IA and preferences, not workbench layout host |
+| M14 | `14-onboarding.md` | onboarding and empty-state loop |
+| M15 | `15-messaging.md` | governed messaging gateway |
+| M16 | `16-workbench-panel-platform.md` | view registry, instances, docks, layout recovery |
+| M17 | `17-composable-workflows.md` | typed workflow definitions and run orchestration |
+| M18 | `18-web-artifact-surface.md` | editable local web project and governed preview/build |
+| M19 | `19-presentation-motion-surface.md` | native motion deck and honest export fidelity |
 
-## 6. Permission Rules
+## 5. Promotion Checklist
 
-| Operation | Who Can Perform | Denial Behavior |
-|---|---|---|
-| read | any authenticated actor | — |
-| write | role:lead or user with explicit grant | Returns PERMISSION_DENIED, logs to audit |
+Before changing `spec maturity` to `execution-ready`, the Lead records:
 
-## 7. Agent Tool Surface
+- canonical contract version and exact dependency status;
+- v0.11 implementation extension points;
+- selected engine/library version, license, and adapter spike where applicable;
+- finite packet with exact allowed/forbidden files;
+- no unresolved open gate that changes product behaviour;
+- a Reviewer-executable real-behaviour procedure.
 
-_Which actions are available as agent tools? Copy from §4 with notes on agent-specific behavior._
-
-## 8. UI Components
-
-_List UI components needed. Reference existing Craft components where possible._
-
-## 9. Backend / Package Changes
-
-| Package | File | Change Type | Notes |
-|---|---|---|---|
-| `app/packages/___` | `src/___.ts` | new / modify | |
-
-## 10. State and Persistence
-
-_Where is state stored? What survives a session restart? What is ephemeral?_
-
-## 11. Error Handling
-
-| Error Condition | User-Visible Message | Recovery Option |
-|---|---|---|
-| | | |
-
-## 12. Forbidden Patterns
-
-- Do not create a second session store
-- Do not self-declare identity tags
-
-## 13. Open Questions
-
-_Questions that need Lead resolution before or during implementation._
-
-| # | Question | Impact | Status |
-|---|---|---|---|
-| Q1 | | | open / resolved |
-
-## 14. Verification Procedure
-
-_Step-by-step manual verification that a Reviewer can follow to confirm `usable` status._
-
-1. Launch `./scripts/craft.sh run electron:dev`
-2. Navigate to [specific UI path]
-3. Perform [specific action]
-4. Expected result: [describe exactly what should happen]
-5. Check timeline: [what SessionEvent should appear]
-6. Trigger error case: [how] → Expected: [error message shown]
-7. Run as agent: [tool call] → Expected: [same result as UI]
-
-## 15. Handoff Notes
-
-_Space for Worker to fill in during handoff. Leave blank until handoff._
-
-## 16. Change Log
-
-| Date | Version | Author | Summary |
-|---|---|---|---|
-| YYYY-MM-DD | v1.0 | Lead | Initial spec |
-```
-
----
-
-## Planned Modules
-
-| File | Module |
-|---|---|
-| `00-platform-spine.md` | Session, permission, timeline, actors, runtime identity. |
-| `01-clean-craft-baseline.md` | Clean Craft base and shell simplification. |
-| `02-terminal-cli-runtime/SPEC.md` | Terminal surface, CLI runtime, launcher, diagnostics. |
-| `03-internal-action-registry.md` | Agent-native action registry and first file/action loop. |
-| `04-runtime-lanes-teamrun.md` | AgentSeat, RuntimeLane, TeamRun, Fleet Bridge. |
-| `05-files-library-leases.md` | Files, Library, file leases, write conflict control. |
-| `06-browser-artifact-surface/SPEC.md` | BrowserPane selection, annotation, artifact handoff. |
-| `07-canvas-design-surface/SPEC.md` | Native canvas/design surface. |
-| `08-aigc-jobs-surface.md` | AIGC and external job surfaces. |
-| `09-video-surface.md` | Native video timeline and render loop. |
-| `10-memory-context-review.md` | Memory, ProjectPack, context efficiency, external review. |
-| `11-model-routing-cost-ledger.md` | API routing, quota, usage, cost, Fusion boundaries. |
-| `12-capability-skill-plugin-system.md` | Capability catalog, loadout, skill/plugin management. |
-| `13-settings-shell-ux.md` | Settings IA, shell UX, dedupe rules. |
-| `14-messaging.md` | Messaging gateway retention and governance. |
-
-Do not create a module file until its control-plane dependencies are clear in `OWNERSHIP-MATRIX.md` and `WAVE-MODULE-MAP.md`.
+Before changing capability status to `usable`, follow `DEVELOPMENT-PROCESS.md`; documentation and
+tests alone never establish usability.

@@ -3,6 +3,10 @@
 This file records the product owner's spoken feedback, translated into structured design intent
 for Agent reference. It is **not** a decisions ledger and **not** a requirements spec.
 
+`HUMAN-FEEDBACK-LOG.md` is the raw staging source. New Owner Voice signals must cite the matching
+HFL entry; this file may translate and cross-reference but cannot maintain an independent feedback
+status truth.
+
 ## Purpose
 
 The product owner speaks in conceptual / non-engineering language, often in a
@@ -54,7 +58,7 @@ non-linear order, across multiple conversations. This file:
 
 **Date:** 2026-07-08
 **Status:** actioned
-**Actioned in:** M12 §17 (plugin namespace safety, docs commit c59b060)
+**Actioned in:** D35, D39-D42, ADR-0033, M12/M16/M17 specs (amended 2026-07-09)
 **Touches:** M03, M12
 
 **Original words:**
@@ -71,10 +75,10 @@ non-linear order, across multiple conversations. This file:
 **Engineering implication (Agent-selected route):**
 - M03 Internal Action Registry is the single extension point. New features register actions;
   they do not wire directly into UI or session state.
-- M12 plugin namespace contract (`<surface>.<plugin-id>.<verb>`) enforces isolation so new
-  capabilities cannot pollute existing action ids.
-- `fleetApiVersion` gate in plugin manifests ensures future-breaking changes are caught at
-  install time, not at runtime.
+- M12 defines one structured capability manifest; namespace syntax remains a W0.1 decision and is
+  not used alone as a security boundary.
+- M16 registers panels/surfaces/inspectors; M17 composes typed capability operations; M07 renders
+  module-contributed entity cards without becoming the owner of native state.
 
 ---
 
@@ -82,7 +86,7 @@ non-linear order, across multiple conversations. This file:
 
 **Date:** 2026-07-08
 **Status:** actioned
-**Actioned in:** M07 §18 + M09 §17 (docs commit c59b060)
+**Actioned in:** D36 amendment, M07 §12, M08 §5, M09 §11 (amended 2026-07-09)
 **Touches:** M04, M07, M08, M09
 
 **Original words:**
@@ -97,14 +101,13 @@ non-linear order, across multiple conversations. This file:
   to it at the same time.
 
 **Engineering implication (Agent-selected route):**
-- Generation tasks (image, video via API) are fire-and-forget External Jobs (M08); they impose
-  near-zero local CPU cost while waiting.
-- Local video rendering is serialized through a max-1 render queue with FIFO + user-priority;
-  overflow hands off to External Jobs (M09 §17).
-- Canvas concurrent writes are batched into a single `requestAnimationFrame` pass per 16 ms
-  tick; conflict ordering uses `ActionInvocation.seq` (M07 §18).
-- Live-content canvas nodes (code output, video preview) use lazy suspend/resume with a 25 %
-  zoom-out threshold to prevent simultaneous renderer activation (M07 §18.3).
+- M08 owns durable queue/back-pressure/reconciliation; waiting on an external provider does not
+  justify claiming zero local or financial cost.
+- M09 local final render begins at concurrency one until a benchmark permits more.
+- M07 batches renderer work but resolves document conflicts with explicit base/committed revisions,
+  not audit sequence ordering.
+- Live previews suspend under visibility/resource policy. Exact thresholds require a repeatable
+  benchmark and are not inferred from the earlier draft.
 
 ---
 
@@ -132,6 +135,52 @@ non-linear order, across multiple conversations. This file:
 - When a signal is ambiguous, the Agent infers the most conservative interpretation and
   documents the assumption in the actioned commit message. If the assumption is significant,
   it is escalated to DECISIONS-LEDGER.md as a new entry.
+
+---
+
+### OV-004 — Universal spatial work system must remain modular
+
+**Date:** 2026-07-09
+**Status:** actioned
+**Actioned in:** HFL-003, D39/D44/D45/D46, ADR-0033, M07/M09/M18/M19
+**Touches:** M05, M07, M08, M09, M16, M18, M19
+
+**Original words:**
+> “我选3，但是所有功能都是一个个的模块化组件，这样可以文字生成到生图，生的图片还可以选择做网页/视频/动态PPT等等，然后间距模组又能链接各种素材进行剪辑，你想想要怎么样才是能实现这个。”
+
+**Extracted intent:**
+- The selected product direction is a universal spatial workspace.
+- Every capability remains an independently composable module.
+- One generated artifact can feed several downstream output types.
+- Media editing must connect heterogeneous assets rather than support only a single-source clip.
+
+**Engineering implication (Agent-selected route):**
+- M07 owns spatial projection, M05 ArtifactRef handoff, M08 jobs, M09 native multi-asset timeline,
+  M18 web projects, and M19 MotionDeck documents.
+- Native editors open through M16; the canvas uses static/bounded previews rather than embedding
+  every full application.
+
+---
+
+### OV-005 — Agents call modules and create workflows
+
+**Date:** 2026-07-09
+**Status:** actioned
+**Actioned in:** HFL-003, D40/D41, M12/M17
+**Touches:** M00, M03, M12, M17
+
+**Original words:**
+> “Agent也能调用每个模块的能力完成工作，还能根据情况创建工作流。”
+
+**Extracted intent:**
+- Agents must use every permitted module as a first-class capability.
+- Agents may assemble reusable workflows according to the task.
+- Workflows must remain visible, understandable, and governable by the user.
+
+**Engineering implication (Agent-selected route):**
+- Capability manifests generate human, Agent, and workflow projections over one M03 executor.
+- M17 stores versioned finite DAGs; graph creation does not grant execution permission.
+- L0-L3, budget, evidence, cancellation, and restart reconciliation apply per real step.
 
 ---
 

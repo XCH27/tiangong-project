@@ -42,6 +42,23 @@ Every module document must cover the whole loop:
 
 For contract-only modules, section 2 becomes: "which other modules this contract enables to become user-visible."
 
+The authoritative current module template is `docs/modules/README.md`. A short interface card is
+not a substitute for field-level contracts, error/recovery, dependencies, and an executable real
+verification procedure.
+
+## Three-Axis Truth Model
+
+Track three independent facts:
+
+| Axis | Values | Owner |
+|---|---|---|
+| capability status | `not implemented`, `display-only`, `wired but not visually checked`, `usable` | Lead after evidence |
+| execution gate | `Locked`, `Ready`, `In Progress`, `Blocked` | `WAVE-MODULE-MAP.md` / Lead |
+| spec maturity | `concept`, `contract draft`, `execution-ready` | `DOCUMENT-READINESS.md` / Lead |
+
+`Blocked` is not a fifth capability status. `Locked` is not a product result. A module may receive
+an implementation packet only when its exact slice is Ready and its spec is execution-ready.
+
 ## Feature Status
 
 Use only these status labels:
@@ -85,8 +102,9 @@ If the same validation path fails twice, stop and identify the blocker instead o
 2. Update `OWNERSHIP-MATRIX.md` if a package/file boundary changes.
 3. Update `WAVE-MODULE-MAP.md` if execution order changes.
 4. Write or revise the relevant module spec.
-5. Only then write an agent packet.
-6. Implementation follows the agent packet and reports back using the packet's completion format.
+5. Promote the exact module slice to `execution-ready` in `DOCUMENT-READINESS.md`.
+6. Only then write an agent packet and change the Wave Map gate to Ready.
+7. Implementation follows the agent packet and reports back using the packet's completion format.
 
 Do not use a legacy document as a work packet.
 
@@ -94,7 +112,10 @@ Do not use a legacy document as a work packet.
 
 - **Only the Lead** may write to `docs/DECISIONS-LEDGER.md`.
 - Entries must be added within one working session of the decision being made. Do not backfill.
-- Each entry must include: date, decision title, rationale, and reversibility flag.
+- Each row must fill the Ledger's canonical columns: date, decision, status, development effect
+  (including rationale), affected modules, implementation/spec file, and effective wave. A
+  dependency/API/storage decision whose reversibility is not obvious also requires an ADR that
+  states reversibility; do not add unmatched columns to one row.
 - `docs/HUMAN-FEEDBACK-LOG.md` is the staging area for unresolved feedback. Once the Lead
   acts on a feedback item, the resulting decision is promoted to `DECISIONS-LEDGER.md` and
   the feedback item is marked `→ promoted` with a cross-reference to the ledger entry.

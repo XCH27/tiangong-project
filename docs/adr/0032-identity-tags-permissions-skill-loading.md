@@ -1,6 +1,6 @@
 # ADR 0032: Identity Tags, Permissions, and Skill Loading
 
-**Status:** Accepted
+**Status:** Amended 2026-07-09; canonical shape still pending W0.1 re-freeze
 **Date:** 2026-07-09
 
 ## Context
@@ -15,13 +15,21 @@ We introduce a Three-Layer Identity Tag system:
 2. **Domain (`domain:`)**: Defines knowledge/tool specialization (`media`, `code`, `ui`, `data`).
 3. **Trust (`trust:`)**: Defines data-access boundary (`internal`, `host`, `external`).
 
-Permissions and tools are granted through a strict union of these tags (default deny). 
-Skills are loaded statically at Seat creation time.
-Heavy plugins are hidden from the Worker LLM and mounted automatically by the CapabilityPlanner based on cost constraints.
+Role/domain grants are unioned, then intersected with trust, workspace, sensitivity, and explicit
+task ceilings; explicit deny wins. Trust never grants authority. The resulting Seat authority is
+canonical and identity tags are a deterministic projection, not separately mutable permission
+state.
+
+Installed capabilities, effective loadout, and runtime instances are distinct. M12 derives an
+effective manifest from the canonical Seat plus workspace/task/runtime constraints. Heavy
+capabilities are not mounted solely because a planner predicts usefulness or cost; the effective
+permission/loadout contract must allow them.
 
 ## Consequences
 
 - **Positive:** Clear, auditable permission boundaries. Eliminates hallucination risks of workers trying to use expensive or unauthorized tools. Clean separation of concerns.
 - **Negative:** Slightly more overhead when defining new Agent Seats.
 
-*Note: For the full technical matrix and constraints, see the W0 frozen contract at `docs/contracts/identity-tags-permission-matrix.md`.*
+*Note: The v1.2 matrix is a recorded baseline, not current implementation authorization. W0.1 must
+re-freeze one AgentSeat/tag/loadout contract consistent with M00/M12 and
+`docs/contracts/composable-workspace-contracts.md`.*

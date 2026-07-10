@@ -1,148 +1,236 @@
-# 09 Video Surface
+# M09 — Media Composition and Video Surface
 
-## 1. Mission
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft; media/render adapter requires spike
+> **Wave:** W3B
+> **Owner:** Lead for media protocol; M09 Worker after packet approval
+> **Depends on:** M00, M03, M05, M08 job core, M12 core, M16, M17
 
-Provide a native video player and lightweight clip editor inside Fleet — where both humans and agents can play, annotate, trim, and export video clips — with full action, permission, timeline, and rollback coverage.
+## 1. Purpose
 
----
+Compose images, video, audio, text, captions, rendered web/deck segments, and generated media in
+one native timeline project. Humans and Agents use the same structured edit operations; rendering
+runs through M08 and outputs return as versioned ArtifactRefs.
 
-## 2. User-Visible Loop
+The first closed loop is: bind one image, one video, and one audio asset -> arrange them on a
+finite timeline -> add text/caption -> preview -> render a real MP4 -> register provenance and
+show the result on the canvas.
 
-1. User opens a Video surface from a session or from a `video_frame` canvas node (M07).
-2. Fleet renders a native video player with timeline scrubber, playback controls, and clip markers.
-3. User can set in/out points to define a clip range.
-4. Agent can call `video.clip_create` or `video.clip_trim` to programmatically define clips.
-5. User or agent exports a clip; the output is saved to Library (M05) with full provenance.
-6. Timeline records all clip operations for auditability and undo.
+## 2. Scope
 
----
+### In Scope
 
-## 3. Player Model
+- native `MediaProject -> Track -> Clip` document;
+- image, video, audio, text, caption, colour, and nested rendered-segment clips;
+- add, trim, split, move, reorder, enable/disable, transition, and bounded transform/keyframe
+  edits;
+- human and Agent editing through M03;
+- preview with explicit best-effort versus render-accurate wording;
+- durable render jobs through M08;
+- ArtifactRef inputs/outputs and provenance through M05;
+- M07 cards and M16 surface/inspector/timeline contributions.
 
-| Property | Value |
-|---|---|
-| Renderer | HTML5 `<video>` element (Electron renderer process) |
-| Formats | MP4 (H.264 / H.265), WebM (VP9), MOV; codec support depends on Chromium build |
-| Max local file size | No hard limit; files are streamed, not loaded into memory |
-| Subtitles / captions | WebVTT sidecar files supported |
-| Frame-accurate scrub | Seek to exact frame via `currentTime` with precision ± 1 frame |
+### Out of Scope
 
----
+- a full professional NLE in the first slice;
+- unbounded effect/plugin graphs, live multi-user editing, a separate render queue, or using the
+  canvas as the media-project store;
+- claiming frame-accurate browser preview where the decoder cannot guarantee it.
 
-## 4. Clip Model
-
-A clip is a named in/out range over a source video file.
+## 3. Native Document Model
 
 ```ts
-// Canonical type — Lead-owned, defined in
-// app/packages/shared/src/protocol/video.ts (to be created by Lead)
+type MediaProject = {
+  schemaVersion: 1
+  projectId: string
+  workspaceId: string
+  revision: number
+  frameRate: { numerator: number; denominator: number }
+  canvas: { width: number; height: number; background: string }
+  durationFrames: number
+  tracks: MediaTrack[]
+  markers: Array<{ markerId: string; frame: number; label: string }>
+  createdAt: string
+  updatedAt: string
+}
 
-export type VideoClip = {
-  id: string;                 // uuid
-  sourceFileRef: string;      // Library asset id or workspace file path
-  label: string;
-  inPoint: number;            // seconds (float)
-  outPoint: number;           // seconds (float)
-  notes: string;              // free-form annotation
-  createdAt: string;          // ISO 8601
-  updatedAt: string;
-  seq: number;                // last mutation sequence number
-};
+type MediaTrack = {
+  trackId: string
+  kind: 'video' | 'image' | 'audio' | 'text' | 'caption'
+  order: number
+  muted: boolean
+  locked: boolean
+  clips: MediaClip[]
+}
+
+type MediaClip = {
+  clipId: string
+  sourceRef?: ArtifactRef
+  kind: MediaTrack['kind']
+  timelineStartFrame: number
+  timelineDurationFrames: number
+  sourceInFrame?: number
+  sourceDurationFrames?: number
+  transform?: { x: number; y: number; scaleX: number; scaleY: number; rotation: number; opacity: number }
+  text?: { content: string; styleRef?: string }
+  transitionIn?: TransitionRef
+  transitionOut?: TransitionRef
+  keyframes: Keyframe[]
+}
 ```
 
-Multiple clips can exist over the same source file. Clips are stored in `<workspace>/.fleet/video/clips.json`.
+Exact protocol types are not frozen by this document. They must be promoted into the canonical
+contract after the adapter spike. Time is stored as integer frames plus rational frame rate;
+floating seconds are view/transport values only.
 
----
+## 4. Artifact Inputs
 
-## 5. Timeline Scrubber
+| Artifact kind | Timeline use |
+|---|---|
+| image | still clip with bounded duration and transforms |
+| video | source range clip with audio optionally linked/separated |
+| audio | audio clip with gain/fade and waveform cache |
+| text | title/caption content or text clip |
+| web project | rendered video/image segment only, not live Chromium in renderer |
+| presentation | rendered slide/segment or exported media |
+| design document | exported image/sequence with exact source version |
 
-The video surface shows:
+All clips bind exact ArtifactRef versions. Replacing an upstream asset creates an explicit rebind
+or new project version; it never silently changes a finished edit.
 
-- A waveform strip (audio amplitude) if the video has an audio track.
-- Clip marker handles (in / out points) on the scrubber.
-- A playhead that can be dragged or clicked.
-- Named clip ranges rendered as labelled regions on the scrubber.
+## 5. Human and Agent Editing
 
----
+The timeline UI and Agent tools invoke the same atomic operations. Gestures may preview locally,
+but the final edit commits once with `baseRevision` and an undo snapshot/inverse.
 
-## 6. Canvas Integration (M07)
+Agent edits must be expressed in frames and stable IDs. Agents do not drag pixels by coordinate
+automation and do not call FFmpeg directly.
 
-A `video_frame` canvas node displays:
+## 6. Candidate Actions — Not Frozen
 
-- A static thumbnail of the video (first frame or poster).
-- The clip label and duration.
-- A play icon — clicking it opens the full Video surface routed to that clip.
+| Candidate | Purpose | Policy/undo intent |
+|---|---|---|
+| `media.project_create` | create native project from settings/assets | L1 snapshot undo |
+| `media.track_add` / `media.track_remove` | edit track structure | L1 snapshot undo |
+| `media.clip_add` | bind ArtifactRef at a frame | L1 inverse |
+| `media.clip_update` | move/trim/transform/text/keyframe patch | L1 inverse old values |
+| `media.clip_split` | atomically replace one clip with two | L1 snapshot undo |
+| `media.clip_remove` | remove project reference, not source artifact | L1 snapshot undo |
+| `media.preview_seek` | change local playhead | L0 view state |
+| `media.render_submit` | submit render job | dynamic L1/L2 based on output/compute/overwrite |
+| `media.frame_capture` | render frame in memory or write through M05 | split read/render from file write |
 
-The live video player is **not** rendered inside the canvas.
+The v1.2 `video.*` candidate IDs should not be implemented in parallel with these names. W0.1
+must choose one namespace and migrate/deprecate explicitly.
 
----
+## 7. Revision and Undo
 
-## 7. Agent-Native Actions
+- Every document mutation has `idempotencyKey`, `baseRevision`, and `committedRevision`.
+- Edits serialize per project; stale writes return explicit conflict.
+- Multi-clip edits commit atomically.
+- L1 edit undo restores project-document state only; it never deletes immutable source/output
+  artifacts.
+- Render submission cancellation is separate from undo and follows M08 semantics.
+- Removing a clip is ordinarily reversible. Deleting source files remains an M05 high-risk action.
 
-These action ids are **under discussion** — not yet frozen. Workers must not implement them until the Lead freezes them in `action-ids.md`.
+## 8. Preview Semantics
 
-| Candidate action id | Description | Permission | Undo |
-|---|---|---|---|
-| `video.clip_create` | Create a new clip (label, in/out points) over a source file | L1_reversible | supported |
-| `video.clip_trim` | Update in/out points of an existing clip | L1_reversible | supported |
-| `video.clip_delete` | Delete a clip definition (does not delete source file) | L2_irreversible | not_supported |
-| `video.export_clip` | Export a clip range to a new file via FFmpeg | L1_reversible | not_supported |
-| `video.screenshot_frame` | Capture the current frame as an image to Library | L0_read_only | n/a |
-| `video.seek` | Move the playhead to a specific time (view-state, no timeline) | L0_read_only | n/a |
+- Browser/Electron preview is best effort and may not be frame accurate.
+- UI shows actual project frame/time and whether preview is approximate.
+- Waveforms, thumbnails, proxies, and decoded frames are derived caches and rebuildable.
+- Unsupported media shows a transcode/proxy action, not a blank player.
+- Live preview quality may degrade under resource pressure; project state does not change.
 
----
+## 9. Render Pipeline
 
-## 8. Export Pipeline
+M09 compiles one immutable MediaProject revision into a render request; M08 executes/reconciles it.
 
-`video.export_clip` uses **FFmpeg** (bundled with the Electron app) to cut the clip range without re-encoding (stream copy when possible).
+```text
+validate project revision and assets
+-> estimate resource/cost and permission
+-> freeze render manifest
+-> M08 local/external render job
+-> validate output
+-> M05 atomic write + ArtifactRef/provenance
+-> M09/M17/M07 projection update
+```
 
-1. Action executor calls FFmpeg via `child_process.execFile`.
-2. Output is saved to `<workspace>/.fleet/library/video/<clip-id>.<ext>`.
-3. A `LibraryAsset` entry is created with `provenance.clipId` set.
-4. The Timeline records a `action_completed` event with `evidenceRefs` pointing to the output file.
+Two trim/export modes may exist:
 
-FFmpeg must be present at a deterministic path. The main process is responsible for bundling and exposing the FFmpeg binary path via IPC.
+- **fast copy:** keyframe-aligned, may shift actual boundaries and must record them;
+- **precise render:** decode/re-encode to requested frames, slower and resource-intensive.
 
----
+No document may promise “stream copy plus exact frame boundaries.”
 
-## 9. Session / Permission / Rollback
+FFmpeg or another renderer requires a separate build/license/platform decision. If FFmpeg is
+chosen, the bundled build, codecs, notices, source obligations, and platform matrix must be
+recorded before distribution. M09 never shells through an ungoverned generic command path.
 
-- `video.clip_create` and `video.clip_trim` are `L1_reversible`; undo handles store the previous in/out state.
-- `video.clip_delete` is `L2_irreversible`; requires a `SupervisionRequest` if the clip has downstream canvas references.
-- Exports are one-way; re-export requires a new `video.export_clip` invocation.
-- Playhead seek and playback state are **not** recorded in the Timeline.
+## 10. View Contributions
 
----
+- main surface: program preview and asset/project controls;
+- bottom panel: multi-track timeline, playhead, clips, markers, waveforms;
+- right inspector: selected clip/track/project properties;
+- canvas renderer: poster, duration, render state, version, and open action;
+- M17 node renderer/ports: ArtifactRef list in, media-project/render artifact out.
 
-## 10. Validation Ladder
+The live video editor is not embedded in every canvas node.
 
-1. `pnpm typecheck` — zero errors.
-2. Unit test: clip lifecycle (create, trim, delete) with correct `seq` ordering.
-3. Smoke: open a local video file in the Video surface; verify playback controls work.
-4. Smoke: set in/out points; verify clip appears in the scrubber.
-5. Agent action smoke: call `video.clip_create` via action registry; verify Timeline event.
-6. Export smoke: call `video.export_clip`; verify output file saved to Library.
-7. Canvas thumbnail smoke: add a `video_frame` node to a Canvas document; verify thumbnail appears.
+## 11. Resource Policy
 
----
+- Local final render concurrency starts at one until a recorded benchmark permits otherwise.
+- Preview decode, waveform, proxy, and final render use distinct concurrency classes.
+- Jobs queue instead of competing with canvas rendering.
+- Proxies/caches have bounded storage and visible cleanup.
+- Off-screen or hidden preview suspends while M08 render continues.
+- A missing accelerator degrades to slower/limited modes with explicit wording.
 
-## 11. Files To Inspect First
+## 12. Error Handling
 
-- `docs/contracts/action-ids.md` — video action ids (under discussion)
-- `docs/contracts/protocol-stubs.md` — `SessionEvent`, `ActionInvocation`
-- `docs/modules/07-canvas-design-surface/SPEC.md` — canvas `video_frame` node type
-- `docs/modules/05-files-library-leases.md` — Library asset write path
+| Condition | Result | Recovery |
+|---|---|---|
+| missing/stale asset version | clip shows missing source; render blocked | relink exact version or intentionally rebind |
+| unsupported codec | source readable-invalid for preview/render | create approved proxy/transcode |
+| revision conflict | edit rejected; no lost change | reload and reapply explicit patch |
+| approximate seek | UI labels preview accuracy | inspect rendered frame or proxy |
+| render process/provider unknown | M08 reconciling | observe/reconcile; no duplicate render |
+| output commit fails | job not completed | repair storage and commit once |
+| resource saturation | render queued; preview quality may reduce | wait/change profile/close heavy preview |
+| partial asset license problem | export blocked with exact asset | replace or resolve license metadata |
 
----
+## 13. First Usable Verification
 
-## 12. Done / Not Done
+1. Create a project with real image, video, audio, and text/caption ArtifactRefs.
+2. Perform add, move, trim, split, and remove once through UI and once through Agent actions.
+3. Verify revisions, conflicts, and undo without changing source artifacts.
+4. Restart and reopen exact project state; derived caches may rebuild.
+5. Submit a real precise render; verify M08 queue/reconciliation and M05 output provenance.
+6. Kill the app during render and reconcile without duplicate work.
+7. Open the result from M07 and as an M17 output.
+8. Compare a requested boundary with rendered output and record actual accuracy.
+9. Exercise unsupported codec/missing asset/resource saturation paths visibly.
 
-**`usable`**: human and agent can each create a clip with in/out points; export works; Library asset is created with provenance; Timeline has evidence for create and export.
+## 14. Later Slices
 
-**`display-only`**: video player renders; clip markers draggable; no action/timeline/export path.
+- bounded transitions and transform/keyframe presets;
+- narration/caption generation via M08 capabilities;
+- rendered M18 web segments and M19 slide ranges;
+- project templates and composed workflow capability;
+- proxy/background analysis after resource measurements.
 
-**`blocked`**: video action ids not yet frozen; or FFmpeg binary not bundled; or Library lease model (M05) not stable.
+## 15. Open Gates
 
-## 17. Non-Goals & Prohibitions
+- Freeze media document/action contracts and ArtifactRef semantics.
+- Select and verify media project/render engine under reference policy.
+- Freeze local render concurrency and degraded-state wording.
+- Complete FFmpeg/codec/license/platform ADR if applicable.
+- Produce a narrow packet; do not combine renderer, editor, actions, and all codecs in one slice.
 
-- **No Boundless Rendering:** Do not run concurrent local video render tasks. The local video rendering queue is strictly capped at 1 concurrent job.
+## 16. Non-Goals and Prohibitions
+
+- No single-source clip editor passed off as multi-asset composition.
+- No direct source-file mutation.
+- No second render queue or job store.
+- No raw FFmpeg command access from UI/Agent/workflow.
+- No frame-accuracy claim from browser preview alone.

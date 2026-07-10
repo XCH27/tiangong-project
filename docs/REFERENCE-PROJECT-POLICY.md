@@ -8,15 +8,14 @@ The following projects may be copied or adapted within the stated boundary, with
 
 | Source | License Boundary | Allowed Use |
 |---|---|---|
-| `craft-agents-oss` | Apache-2.0 | Main application base. |
+| `craft-agents-oss` | Apache-2.0 | Main application base. The verified target is v0.11.0; see `docs/UPSTREAM-BASELINE.md`. |
 | `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into Craft session/permission/timeline. |
 | `open-design` | Apache-2.0 | Runtime definitions, prompt transport, artifact/eval/design workflow patterns. Check subdirectory licenses before copying assets/templates. |
 | `rtk` | Apache-2.0 | Output compression, savings discovery, hook matrix ideas. Do not auto-install global hooks without permission. |
-| `fleet-old` | Internal Reference | Legacy implementation codebase patterns (M02/M04/M10/M11/M12). Allowed for porting/adapting. |
+| `fleet-old` | Internal Reference | Older Fleet-derived checkout. Selectively port documented Fleet-specific behaviour only through the v0.11 migration ledger; never merge or copy the old shell wholesale. |
 | `codegraph` | MIT | Local code graph, indexing, structured queries, MCP installer experience. |
 | `DeepSeek-Reasonix` | MIT | ACP/stdio, stable prefix cache, planner/executor, permission/sandbox ideas. |
 | `deepcode-cli` | MIT | Skill paths, MCP, reasoning intensity, CLI/session management. |
-| `openpencil` | MIT, approved 2026-07-01 | Native design canvas engine source/patterns. Do not use it as Fleet permission/timeline. |
 | `opencut-classic` | MIT, approved 2026-07-01 | Native video timeline/store/rendering source/patterns. Do not mix with the newer incomplete `opencut` rewrite. |
 
 ## Black-Box Or Candidate Sources
@@ -59,6 +58,10 @@ Black-box use forbids copying:
 | `Dockview` | MIT | Study layout state serialization, window division actions, and state-restoring layout replay. | Cannot copy Dockview panel wrappers or Electron window managers. |
 | `React-resizable-panels` / `React-rnd` | MIT | Reference panel sizing proportions and spatial coordinates state bindings. | Cannot copy layout calculations or drag-and-drop mouse trackers. |
 | `React-timeline-editor` | MIT | Reference keyframe tracks configuration and timeline clips layout structures. | Cannot copy time scaling, canvas rendering, or media decoder hooks. |
+| [`xyflow/xyflow`](https://github.com/xyflow/xyflow) | MIT | Preferred candidate for the M07 spatial/workflow renderer spike: React custom nodes, edges, pan/zoom, and minimap behaviour. | Not promoted for source inclusion. Exact version, performance, accessibility, persistence seam, and dependency impact require the spike and explicit promotion. |
+| [`tldraw/tldraw`](https://github.com/tldraw/tldraw) | tldraw SDK license; production use requires a license key | Behaviour reference for custom shapes, workflow/image-pipeline starter concepts, viewport/culling, and Agent-canvas interactions. | Do not bundle the production SDK or copy SDK source under the assumption it is MIT. Starter-kit licensing does not promote the SDK. |
+| [`ZSeven-W/openpencil`](https://github.com/ZSeven-W/openpencil) | MIT repository; exact dependency/submodule audit required | Study AI-native design-to-code, `.op` artifacts, CLI/MCP operations, and read-only viewer embedding for a professional design module. | Current official docs describe a Rust/CanvasKit product and read-only web viewer SDK. Do not treat it as the React editable M07 host; do not import its Agent runtime. |
+| [`open-pencil/open-pencil`](https://github.com/open-pencil/open-pencil) | MIT repository; candidate only | Study editable `.fig`/`.pen` native design documents, headless tools, and Vue SDK for a separate design surface. | Not promoted for source inclusion. Vue/React embedding, round-trip fidelity, performance, and disabling built-in Agent/MCP authority require a dedicated adapter spike. |
 | `Remotion` | Bespoke | Reference visual movement paths layout and frame-by-frame rendering output validations. | Bespoke license prevents commercial use. No source copy or direct inclusion. |
 | `Stitch-sdk` / `Stitch-skills` | Apache-2.0 | Study Stitch capability packaging, hot-plug skill loading, and ACL permissions profiles. | Cannot copy SDK package files, dependency managers, or script runtimes. |
 | `OpenUI` | MIT | Reference UI template specifications and streamable incremental UI rendering. | Cannot copy generation templates, parser routines, or styling systems. |

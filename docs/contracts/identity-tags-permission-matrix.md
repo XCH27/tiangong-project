@@ -1,5 +1,9 @@
 # Identity Tags -> Permission Matrix
 
+> **W0.1 notice (2026-07-09):** This baseline must be reconciled with the canonical
+> `AgentSeat` contract before W1 opens. The target model has one structured seat authority;
+> tags are a deterministic projection and may not be separately mutated.
+
 > **Status:** frozen (W0)
 > **Owner:** Lead
 
@@ -19,7 +23,7 @@ Every AgentSeat carries a set of **identity_tags: string[]** injected by the Lea
 
 ## 2 - Permission Scope Derivation
 
-Final permission scope is determined by **unioning role/domain grants**, then **intersecting them with the trust ceilings** (e.g. `trust:external` limits write and shell access), with **explicit denies taking absolute priority**.
+Final permission scope is determined by **unioning role/domain grants**, then **intersecting them with the trust ceilings** (e.g. `trust:external` limits write and shell access), with **explicit denies taking absolute priority**. Trust may only narrow grants; it is never an independent source of additional authority.
 
 ```text
 Grants = UNION( PERMISSION_MATRIX[tag] for tag in role/domain tags )
@@ -61,12 +65,10 @@ domain:data
   tools+:   [tool.read_file, tool.query_db]
 
 trust:internal
-  tools+:   [memory.write, session.inspect, audit_log.write]
-  assets+:  admin
+  ceiling:  permits the role/domain grants allowed for internal local data
 
 trust:host
-  tools+:   [host.call_mcp]
-  assets:   read
+  ceiling:  permits only explicitly granted host calls and read-scoped assets
 
 trust:external
   tools:    Deny shell/PTY write operations, restrict to public reads.

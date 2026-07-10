@@ -1,5 +1,8 @@
 # Wave 3 Browser Capability Review
 
+> **Superseded 2026-07-09. Do not assign or implement from this packet.** Its module/wave
+> assignments predate the M14/M15 split and the W3/W4 gates.
+
 ## Wave
 
 Wave 3. Runs after the spine, runtime, files, and TeamRun loops are stable.

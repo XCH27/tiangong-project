@@ -1,132 +1,228 @@
-# 12 Capability Skill Plugin System
+# M12 — Capability, Skill, and Plugin System
 
-## 1. Mission
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** capability-core contract draft; plugin distribution concept only
+> **Wave:** W1 contract / W2 built-in catalog core; W4 external plugin distribution
+> **Owner:** Lead for manifest/namespace; M12 Worker after packet approval
+> **Depends on:** M00 identity/permission, M03 registry, M05 artifact metadata
 
-Separate installed capabilities from loaded capabilities and runtime execution so agents can use the smallest safe toolset per workspace, role, and task.
+## 1. Purpose
 
-## 2. User-Visible Loop
+Define one discoverable capability model from which human controls, Agent tools, workflow ports,
+and optional UI contributions are derived. Keep installed capabilities, effective loadouts, and
+runtime instances separate so an Agent receives the smallest safe toolset for its task.
 
-User or Manager Agent sees available capabilities, composes or approves a loadout, an agent receives a scoped toolset, and changes are permissioned and reversible.
+M12 is not a marketplace-first feature. Its first closed loop is a built-in capability whose one
+operation appears in the human UI, an authorized Agent manifest, and M17's workflow palette and
+reaches the same M03 executor in all three cases.
 
-## 3. Current App Reuse
+## 2. Scope Split
 
-Reuse Craft skills/sources/MCP, Internal Action Registry, settings framework, session tools, and memory flywheel.
+### M12 Core — required before creative composition
 
-## 4. Reference Projects
+- versioned `CapabilityManifest` and `CapabilityOperation` definitions;
+- typed ports and ArtifactRef compatibility;
+- canonical action references plus projected risk/undo/evidence/cancellation/retry metadata,
+  execution mode, and resource metadata;
+- deterministic effective-manifest/loadout resolution;
+- built-in capability catalog and conflict handling;
+- optional view/canvas renderer contribution references;
+- human, Agent, and workflow discovery from one source.
 
-AionUi for skill injection boundaries. Open Design for skill/plugin artifacts. Deepcode CLI for skill paths. LobeHub is black-box product reference only.
+### M12 Distribution — deferred to W4
 
-## 5. UI Placement
+- install, uninstall, signing/trust, compatibility, network retrieval, updates, sandbox runtime,
+  localization bundles, and external plugin UI;
+- marketplace browsing or remote catalogs.
 
-Settings gets capability/catalog/loadout pages under the agreed IA. Do not scatter plugin buttons across the shell.
+External distribution must not block built-in modularity.
 
-## 6. Backend / RPC / Locality
+## 3. Capability Chain
 
-Catalog and loadout are local control plane services. Installing external tools may require network and explicit permission.
-
-## 7. Session / Timeline / Permission / Rollback
-
-Loadout changes are L2 unless read-only. Plugin install/enable may be L2/L3 depending on network/payment/external side effects. Timeline records basis.
-
-## 8. Data Model
-
-Capability descriptor, catalog item, loadout scope, runtime instance, conflict rule, profile directory, tool namespace, localization cache.
-
-## 9. Agent-Native Actions
-
-List capabilities, resolve loadout, propose loadout, compose loadout, assign team loadout, install/enable plugin with permission.
-
-## 10. Files To Inspect First
-
-- `app/packages/shared/src/protocol/capability.ts`
-- `app/packages/shared/src/protocol/internal-action.ts`
-- settings and skills sources
-
-## 11. Files Likely Touched
-
-Capability catalog service, loadout service, resolver, settings UI, session tools, localization.
-
-## 12. Parallel Work Packages
-
-Catalog, resolver, settings UI, localization, skill injection can split after `capability.ts` is frozen.
-
-## 13. File Ownership
-
-Capability protocol and i18n keys are Lead-owned.
-
-## 14. Validation Ladder
-
-Catalog unit tests, loadout resolution tests, UI smoke, session tool table size check, permission timeline check.
-
-## 15. Done / Not Done
-
-`usable`: an agent actually receives a scoped loadout. `display-only`: marketplace page lists items but tool table is unchanged.
-
-## 16. Risks And Blocked Decisions
-
-Risk: injecting orchestration skills into autonomous CLI harnesses. CLI passthrough receives only minimal compatible descriptions.
-
-## 17. Plugin Action Namespace Safety
-
-### 17.1 Problem
-
-As Fleet grows, multiple plugins and surfaces will register actions into
-the Internal Action Registry (M03). Without namespacing, two plugins can
-claim the same `actionId` string, causing silent overwrites or
-non-deterministic dispatch.
-
-### 17.2 Namespace Contract
-
-Every action id registered by a plugin **must** be prefixed with the
-plugin's canonical namespace:
-
-```
-<surface>.<plugin-id>.<verb>
+```text
+CapabilityManifest
+-> CapabilityOperation
+-> canonical ActionDefinition/actionId
+-> effective permission/loadout projection
+-> human control | Agent tool | M17 workflow step
+-> same M03 ActionInvocation and executor
 ```
 
-Examples:
+There is no manual `AgentHook -> Action ID` mapping table. Transport bindings are generated from
+the effective manifest and canonical action schemas.
+
+## 4. Data Contract
+
+M12 consumes the proposed contracts in
+`docs/contracts/composable-workspace-contracts.md`. Before M12 Core implementation they must be
+promoted into the canonical protocol.
+
+Each operation declares:
+
+- stable capability/operation version and a pinned canonical ActionDefinition reference;
+- input/output schemas and typed ports;
+- accepted/produced ArtifactRef kinds and media types;
+- whether it is composable;
+- execution mode (`inline_action`, `runtime_lane`, `local_job`, `external_job`);
+- execution mode and concurrency/resource class; risk, approval, undo, cancellation, retry, and
+  evidence are read from the referenced ActionDefinition rather than duplicated in the manifest;
+- optional finite concurrency/resource class;
+- optional M16 view and M07 renderer contribution IDs.
+
+Policy metadata describes behaviour; M00 remains the authority that decides a caller's effective
+permission.
+
+## 5. Effective Manifest Resolution
+
+Resolution is deterministic and auditable:
+
+```text
+installed built-in/approved capabilities
+intersect workspace-enabled capabilities
+intersect role/domain grants
+intersect trust and data-sensitivity ceilings
+intersect explicit task/TeamRun scope
+intersect runtime compatibility
+minus explicit denies/conflicts
+= effective capability manifest
 ```
-canvas.my-plugin.insert-component
-video.my-plugin.add-caption
-browser.my-plugin.extract-table
-```
 
-The Internal Action Registry **must** reject registration of any id that:
-- Does not contain exactly two `.` separators.
-- Uses a `<surface>` prefix not declared in the plugin's manifest.
-- Conflicts with an already-registered id (no silent overwrite).
+Priority and safety rules:
 
-Core Fleet action ids (registered by Lead-owned modules) use the
-`fleet.<surface>.<verb>` prefix and are reserved. Plugins may not
-register ids under the `fleet.*` namespace.
+1. explicit deny wins;
+2. trust ceilings only remove authority;
+3. task-assigned capabilities may narrow but never broaden the Seat authority;
+4. incompatible versions are absent with a visible explanation;
+5. a missing capability is not replaced automatically by a similarly named operation;
+6. the resolved manifest and reason hashes are attached to run/session evidence without exposing
+   secrets.
 
-### 17.3 Sandbox Isolation
+## 6. Installed, Loaded, and Running Are Different
 
-Plugins execute in an isolated context with the following constraints:
+| Layer | Meaning | Authority |
+|---|---|---|
+| installed | package/definition is available locally | M12 catalog |
+| workspace enabled | user permits discovery in this workspace | canonical preferences/M12 |
+| effective loadout | caller may see/use the operation for this task | M00 identity + M12 resolver |
+| runtime instance | operation is currently executing | M03, M04, or M08 owner |
 
-- A plugin may only **call** actions in its own namespace or actions
-  explicitly declared as `public` in the Internal Action Registry.
-- A plugin may not directly import or call internal Fleet service modules.
-  All cross-boundary calls go through the Action Registry dispatch.
-- A plugin that throws an unhandled exception is automatically disabled
-  for the current session and a `PLUGIN_FAULT` SessionEvent is emitted.
-  The user is notified; the rest of the session continues.
+Disabling a capability prevents new invocations. Existing durable jobs/runs reconcile through
+their owners; M12 does not delete them.
 
-### 17.4 Version Compatibility Gate
+## 7. Core and Plugin Namespace
 
-The plugin manifest must declare:
+The current core two-segment action IDs remain the recorded v1.2 baseline. Future namespace
+format is a W0.1 decision and must not rely on counting dots as a security mechanism.
 
-```json
-{
-  "fleetApiVersion": "^1.0.0",
-  "actionNamespace": "canvas.my-plugin"
+Every registry entry carries structured ownership:
+
+```ts
+type ActionOwner = {
+  ownerKind: 'core_module' | 'plugin'
+  ownerId: string
+  namespace: string
+  public: boolean
+  version: string
 }
 ```
 
-During installation, the catalog service checks `fleetApiVersion` against
-the running Fleet version. Incompatible plugins are blocked at install time
-with a clear user-visible error, not at runtime.
+The registry rejects duplicate IDs and unauthorized public exposure. The final product namespace,
+manifest API field name, and workspace storage prefix must be decided before external plugins are
+frozen.
 
-## 17. Non-Goals & Prohibitions
+## 8. UI Contributions
 
-- **No Tag Bypassing:** Workers must not load skills or run tools that violate their assigned `role:` and `domain:` identity tags. Bypassing ADR-0032 invariants throws errors.
+Capabilities may reference contributions owned by M16/M07:
+
+- surface;
+- dock panel;
+- contextual inspector;
+- canvas entity renderer;
+- command-palette entry.
+
+M12 validates the contribution declaration and compatibility; M16 owns mounting/layout, and M07
+owns spatial rendering. A plugin cannot directly patch the shell.
+
+## 9. Workflow Composition
+
+Only operations with `composable: true` and complete input/output ports appear in M17. A workflow
+definition pins their versions. Removing or upgrading a capability leaves old workflows readable
+but invalid for new runs until an explicit compatible version is selected.
+
+A saved workflow may itself be published locally as a composed capability after:
+
+- definition validation;
+- finite input/output schema declaration;
+- permission/budget policy derivation;
+- successful real run evidence;
+- explicit user approval.
+
+Publishing a workflow does not create a new executor: invocation expands into M17, which invokes
+M03 per step.
+
+## 10. Candidate Actions — Not Frozen
+
+| Candidate | Purpose | Policy intent |
+|---|---|---|
+| `capability.list` | list effective or installed manifests | L0 filtered read |
+| `capability.resolve` | explain why an operation is available/absent | L0 filtered read |
+| `capability.workspace_enable` | enable a built-in capability | L1/L2 preference depending on side effects |
+| `capability.workspace_disable` | block new uses | L1 preference, snapshot undo |
+| `capability.loadout_propose` | propose a scoped loadout | L0 proposal only |
+| `capability.workflow_publish` | expose validated workflow as local capability | L2 policy change |
+| `plugin.install` / `plugin.enable` | deferred distribution actions | L2/L3 after source/trust evaluation |
+
+No Worker may implement these until the W0.1 namespace/schema decision is frozen.
+
+## 11. External Plugin Isolation — W4
+
+- Plugins call only their own operations or explicitly public registry operations.
+- Direct imports of internal services are prohibited.
+- Secrets are provided by scoped handles, never manifest values.
+- Faulting plugin views are isolated by M16; faulting operations return typed M03 errors.
+- Plugin disablement affects new work; durable in-flight work follows owner cancellation/reconcile
+  policy.
+- Compatibility is checked before enablement and again before a pinned workflow run.
+- Signing/trust and distribution format require a separate ADR before implementation.
+
+## 12. Error Handling
+
+| Condition | Result | Recovery |
+|---|---|---|
+| duplicate action/capability ID | registration rejected | correct owner/namespace/version |
+| incompatible API version | capability remains installed but disabled | install compatible version |
+| missing dependency | operation absent from effective manifest | enable/install dependency |
+| trust ceiling removes action | reason visible; no tool generated | change task/Seat policy through M00 |
+| schema or port invalid | manifest rejected | fix and revalidate definition |
+| running plugin fault | operation/view isolated; generic action failure evidence | retry if allowed or disable plugin |
+| pinned workflow capability missing | workflow readable-invalid | restore version or explicit migration |
+
+## 13. First Usable Verification
+
+1. Register one built-in image-generation capability with one operation and typed ports.
+2. Resolve it for an authorized internal Agent and deny it for a restricted caller.
+3. Invoke from a human control, Agent tool, and M17 step; verify identical action ID/schema/executor
+   and only caller/correlation context differs.
+4. Disable it for the workspace; verify it disappears from new manifests and workflow palette but
+   an in-flight M08 job remains reconcilable.
+5. Persist/restart; verify workspace setting and effective resolution restore.
+6. Introduce a duplicate ID and invalid port schema; verify visible registration rejection.
+
+`usable` requires the real operation loop. A catalog page or generated tool list alone is
+`display-only` or `wired but not visually checked` as appropriate.
+
+## 14. Open Gates
+
+- W0.1 canonical manifest, caller, policy, namespace, and ArtifactRef contracts.
+- AgentSeat/tag projection and deterministic loadout algorithm.
+- v0.11 baseline mapping for retained skills/sources/MCP behaviour.
+- external plugin distribution ADR before W4.
+
+## 15. Non-Goals and Prohibitions
+
+- No always-on global tool pile.
+- No capability grant inferred only from installation.
+- No plugin shell patching or direct internal-service imports.
+- No separate workflow/action registry.
+- No external plugin marketplace in the first modular workflow slice.

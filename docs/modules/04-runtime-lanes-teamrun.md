@@ -1,4 +1,10 @@
-# 04 Runtime Lanes TeamRun
+# M04 — Runtime Lanes and TeamRun
+
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft; v0.11 task/session mapping unresolved
+> **Wave:** W2 core; optional native-batch member execution no earlier than W4
+> **Depends on:** M00, M03, M05 leases, M02 runtime host
 
 ## 1. Mission
 
@@ -32,9 +38,11 @@ Attribution chain must show user -> leader/lane -> Fleet Bridge -> member/lane -
 
 `AgentSeat`, `RuntimeLane`, `TeamRun`, `RunReport`, `AttributionChain`, `WorkspaceFileLease`, structured error codes.
 
-### Worker Task Batch Eligibility
+### Deferred Batch Eligibility
 
-Not all TeamRun worker tasks should execute as real-time API calls. Tasks with no interactive dependency may be submitted as `ExternalJob` with `batchMode: 'async-native'` to save ~50% API cost:
+W2 TeamRun core does not depend on M08 or M11. A later W4 slice may map an offline TaskRun to an
+M08 ExternalJob using a provider-native M11 adapter after those contracts are usable. No fixed
+savings percentage is assumed.
 
 | Task Type | Eligible for Batch? | Reason |
 |---|---|---|
@@ -45,7 +53,8 @@ Not all TeamRun worker tasks should execute as real-time API calls. Tasks with n
 | Gate 1.5 supervision | ❌ No | Instant interception required |
 | User-interactive clarification | ❌ No | Needs response before proceeding |
 
-Batch-eligible worker tasks are submitted as `ExternalJob` (type `'analysis'`). The `RunReport` for that task is assembled when the batch job completes and results are downloaded. The Captain does not block waiting for the result — it registers a completion callback on the `ExternalJob`.
+Until that slice exists, W2 tasks use bounded realtime/local RuntimeLanes only. The TeamRun
+coordinator, not the Captain approval UI, observes task completion.
 
 ## 9. Agent-Native Actions
 
@@ -90,42 +99,42 @@ TeamRun lifetime currently equals Electron app lifetime. If the Bridge disconnec
 crashes, all in-progress TaskRun state is lost and RunReport cannot be resumed. This section
 mandates a local persistence layer so TeamRuns survive restarts without introducing a daemon.
 
-### 17.2 Schema (SQLite-backed)
+### 17.2 Logical Schema
 
 ```
 TeamRun         { id, status, leaderId, createdAt, updatedAt }
 TaskRun         { id, teamRunId, assignee, status, inputHash, outputRef, errorLog, batchId? }
 AttributionChain { id, taskRunId, events: JSON }
-JournalManifest { teamRunId, gracefulShutdown: boolean, lastWrittenAt }
+RunRecoveryRecord { teamRunId, shutdownState, lastCommittedAt }
 ```
 
 `status` values for TaskRun: `queued | running | suspended | completed | failed`
 
 ### 17.3 Lifecycle Rules
 
-1. Every `TaskRun` status change is written to the journal **before** the in-memory state
-   changes (write-ahead).
+1. Every `TaskRun` status change is committed through M00's canonical run/event authority before
+   a completed state is exposed. The physical store is selected by W0.1; M04 does not create an
+   independent SQLite journal.
 2. `WorkspaceFileLease` for a TaskRun is released when the TaskRun enters `completed`,
    `failed`, or `suspended`. The lease release is written to the journal atomically with the
    status change.
-3. On graceful app exit, write `gracefulShutdown: true` to `JournalManifest`.
-4. On restart, if `gracefulShutdown` is absent for a TeamRun, treat all its `running` TaskRuns
+3. On graceful app exit, record a clean shutdown marker through the canonical authority.
+4. On restart, if a clean marker is absent for a TeamRun, treat all its `running` TaskRuns
    as `suspended` (dirty state). Prompt the user to resume or cancel each suspended TaskRun
    before proceeding.
 
-### 17.4 Batch TaskRun Integration
+### 17.4 Deferred Batch TaskRun Integration
 
-Batch-eligible TaskRuns (`batchMode: 'async-native'`) store their `batchId` in the journal's
-`TaskRun.batchId` field. Module 11's `BatchJobExecutor` polls and writes results back into
-`TaskRun.outputRef`. The Captain registers a journal-watch callback on the TaskRun row instead
-of blocking on the Bridge — this decouples TeamRun survival from Bridge lifetime.
+When the W4 extension is approved, TaskRun stores an M08 `externalJobId`; M08 remains the job
+authority and M11 the provider Batch adapter. M04 observes the result and assembles RunReport. It
+does not duplicate job polling/output state.
 
 ### 17.5 No Daemon
 
 This section does not introduce a background daemon. The journal is a write-ahead log read only
 at app startup. Decision D22 (no daemon) is honoured.
 
-## 17. Non-Goals & Prohibitions
+## 18. Non-Goals & Prohibitions
 
 - **No Direct Coupling:** A CLI runtime must not directly call tools or own settings of an API runtime teammate. All orchestration must route through the Fleet Bridge.
 - **No Permission Bypass:** Under-the-hood teammate runs must not bypass the L0-L3 graded permissions or timeline evidence logging.

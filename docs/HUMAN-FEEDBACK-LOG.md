@@ -10,6 +10,10 @@
 > `[HFL-###] YYYY-MM-DD | Source: owner/stakeholder | Status: pending/promoted/dismissed`
 > Followed by the feedback content and, if promoted, a reference to the DECISIONS-LEDGER entry.
 
+> **Legacy-format note:** FB-001/FB-002 below predate the HFL schema and are retained as historical
+> entries. New feedback uses only the `[HFL-###]` header/status vocabulary; do not create a second
+> numbering or status format.
+
 ## Purpose
 Captures raw feedback from the human owner (non-engineer). Entries are natural language — fragments and conceptual descriptions are valid. Agents must interpret intent, select the best technical path, and record the interpretation.
 
@@ -44,6 +48,41 @@ Source session: brief description
 ```
 
 ## Active Entries
+
+### [HFL-003] 2026-07-09 | Source: owner | Status: promoted
+
+#### Raw Human Input
+
+> “无线画布和多功能面板的方案都偏薄，而且不少项目方案还没有到可执行的程度。”
+>
+> “我选3，但是所有功能都是一个个的模块化组件，这样可以文字生成到生图，生的图片还可以选择做网页/视频/动态PPT等等，然后间距模组又能链接各种素材进行剪辑，你想想要怎么样才是能实现这个。”
+>
+> “Agent也能调用每个模块的能力完成工作，还能根据情况创建工作流。”
+
+#### Agent Interpretation
+
+- The owner selects the universal spatial-work-system direction, but requires strict modularity.
+- Canvas is a composition surface, not the implementation of every capability.
+- Human UI, Agents, and workflows must share module operations.
+- Generated artifacts must fan out by reference/version into web, media, and presentation work.
+- Multi-asset editing requires a real native media-project/timeline model.
+- Existing short interface cards must not be treated as executable specifications.
+
+#### Linked Decisions / Modules
+
+- Decisions: D39-D46; ADR-0033
+- Modules: M05, M07-M09, M12, M16-M19
+
+#### Agent Response
+
+Promoted into the composable workspace architecture, new module/contract drafts, revised wave
+map, and Documentation Readiness register on 2026-07-09. Implementation remains Locked because
+the v0.11 migration and W0.1 re-freeze are incomplete.
+
+#### Open Questions
+
+None at product-boundary level. Renderer, native editor, and export adapters require evidence
+spikes before implementation.
 
 ### FB-001 — 方案完善度与多Agent并行启动条件
 **Date:** 2026-07-08

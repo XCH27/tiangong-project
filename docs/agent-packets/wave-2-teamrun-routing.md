@@ -1,5 +1,8 @@
 # Wave 2 TeamRun Routing
 
+> **Superseded 2026-07-09. Do not assign or implement from this packet.** It must be rebuilt
+> from the re-frozen TeamRun/ExternalJob contracts after W1 promotion.
+
 ## Wave
 
 Wave 2. Runs after Wave 1 backbone loops are stable enough to depend on.

@@ -5,6 +5,14 @@
 > Every file domain in the repo is assigned to exactly one owner. "Lead" means no Worker
 > may touch the file without an explicit Lead instruction. "Module M__" means only the assigned
 > Worker(s) for that module may touch the file during their wave.
+>
+> **Precedence:** a narrow explicit path assignment overrides a broader parent-directory
+> assignment. If two entries are equally specific, or the current v0.11 path is not recorded,
+> ownership is unresolved and the Lead must update this matrix before issuing a packet. Workers
+> must not infer ownership from a broad parent glob.
+>
+> **Migration notice:** existing `app/` paths below are provisional historical mappings until the
+> M01 v0.11 migration ledger verifies them. They do not authorize a packet on the current tree.
 
 ---
 
@@ -21,6 +29,10 @@
 | `docs/PARALLEL-AGENT-OPERATING-MODEL.md` | Lead | Operating rules |
 | `docs/BOARD-SYNC.md` | Lead | Board card schema |
 | `docs/DECISIONS-LEDGER.md` | Lead | Decision log |
+| `docs/contracts/composable-workspace-contracts.md` | Lead | W0.1 proposal; not Worker-consumable until promoted |
+| `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md` | Lead | Product architecture boundary |
+| `docs/PERSISTENCE-AUTHORITY-MAP.md` | Lead | State authority map |
+| `docs/DOCUMENT-READINESS.md` | Lead | Spec maturity register |
 | `AGENTS.md` | Lead | Agent root instructions |
 
 ---
@@ -56,8 +68,10 @@
 
 | Path pattern | Owner |
 |---|---|
-| `app/packages/shared/src/protocol/ (action registry namespace)` | M03 Worker |
 | `app/apps/electron/src/main/action-executor/` | M03 Worker |
+
+> The canonical protocol files remain Lead-owned. M03 Workers consume the frozen action
+> contract and implement only the executor domain; any action-schema change is a Lead request.
 
 ### M04 — Runtime Lanes / TeamRun (W2)
 
@@ -77,33 +91,30 @@
 
 | Path pattern | Owner |
 |---|---|
-| `app/apps/electron/src/renderer/surfaces/browser/` | M06 Worker |
-| `app/apps/electron/src/main/browser-webview-host.ts` | M06 Worker |
-| `app/packages/shared/src/action-executors/browser.ts` | M06 Worker |
+| BrowserPane selection/evidence overlay paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+| Browser action executor path on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
 
-### M07 — Canvas Design Surface (W3)
-
-| Path pattern | Owner |
-|---|---|
-| `app/apps/electron/src/renderer/surfaces/canvas/` | M07 F-Tracks |
-| `app/packages/shared/src/action-executors/canvas.ts` | M07 F-Track C |
-| `app/packages/shared/src/canvas/adapter.ts` | M07 F-Track A |
-
-### M08 — AIGC Jobs Surface (W3)
+### M07 — Spatial Canvas (W3A)
 
 | Path pattern | Owner |
 |---|---|
-| `app/apps/electron/src/renderer/surfaces/aigc/` | M08 Worker |
-| `app/packages/shared/src/aigc/` | M08 Worker |
-| `app/packages/shared/src/action-executors/aigc.ts` | M08 Worker |
+| Spatial renderer/adapter paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+| Canvas action executor path on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
 
-### M09 — Video Surface (W3)
+> The former F Track assignments are superseded. No M07 implementation path is authorized until
+> the renderer spike and exact v0.11 mapping are recorded.
+
+### M08 — External Jobs and Generative Operations (W2/W3A)
 
 | Path pattern | Owner |
 |---|---|
-| `app/apps/electron/src/renderer/surfaces/video/` | M09 Worker |
-| `app/packages/shared/src/video/` | M09 Worker |
-| `app/packages/shared/src/action-executors/video.ts` | M09 Worker |
+| ExternalJob/provider/projection paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+
+### M09 — Media Composition Surface (W3B)
+
+| Path pattern | Owner |
+|---|---|
+| Media project/editor/render adapter paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
 
 ### M10 — Memory Context (W4)
 
@@ -135,6 +146,39 @@
 | Path pattern | Owner |
 |---|---|
 | `app/apps/electron/src/renderer/onboarding/` | M14 Worker |
+
+### M15 — Messaging Gateway (W5)
+
+| Path pattern | Owner |
+|---|---|
+| `app/packages/messaging-gateway/` | M15 Worker |
+| `app/apps/electron/src/renderer/surfaces/settings/ (messaging content only)` | M15 Worker |
+
+### M16 — Workbench Panel Platform (W2/W3A)
+
+| Path pattern | Owner |
+|---|---|
+| View registry/layout paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+| Shared shell primitives and route contracts | Lead |
+
+### M17 — Composable Workflows (W3A)
+
+| Path pattern | Owner |
+|---|---|
+| Workflow definition/run projection paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+| Workflow protocol/action IDs | Lead |
+
+### M18 — Web Artifact Surface (W3B)
+
+| Path pattern | Owner |
+|---|---|
+| Web-project capability/surface paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+
+### M19 — Presentation and Motion Surface (W3B)
+
+| Path pattern | Owner |
+|---|---|
+| MotionDeck capability/surface paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
 
 ---
 

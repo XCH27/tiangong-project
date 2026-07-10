@@ -1,73 +1,138 @@
-# 01 Clean Craft Baseline
+# M01 — Clean Craft Agents v0.11 Baseline
 
-## 1. Mission
+> **Capability status:** `not implemented` for the target baseline
+> **Execution gate:** W0.1 Lead-only; Worker implementation Locked
+> **Spec maturity:** contract draft; migration ledger incomplete
+> **Wave:** W0.1 migration gate
+> **Owner:** Lead
+> **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md`
 
-Keep Craft Agents as the working base while removing or quarantining Fleet experiments that fight the direction.
+## 1. Purpose
 
-## 2. User-Visible Loop
+Establish one clean, verifiable Craft Agents v0.11 base and selectively adapt valuable Fleet
+behaviour without merging unrelated histories, copying an old shell, or deleting evidence before
+it is absorbed.
 
-User can open the default workbench, create/select sessions, send normal API chat, use existing BrowserPane/settings, and see no broken Fleet shell remnants.
+The closed baseline loop is: launch clean v0.11 -> open/create project -> use upstream task/session
+workbench -> send a normal session turn -> open settings and BrowserPane -> restart and recover the
+same state. This is validated before any Fleet feature is ported.
 
-## 3. Current App Reuse
+## 2. Scope
 
-Keep the monorepo, Electron app, renderer shell, session list, chat input, permissions, sources, BrowserPane, settings framework, and upstream sync path.
+### In Scope
 
-## 4. Reference Projects
+- clean tagged upstream checkout and exact commit record;
+- path/behaviour migration ledger for current `app/` differences and useful `fleet-old` behaviour;
+- retain/adapt/drop/defer classification;
+- upstream Projects, Tasks, Kanban, background tasks, panel/layout, sessions, CLI, BrowserPane, and
+  settings mapping;
+- one reviewed migration branch and baseline real-behaviour evidence;
+- selective Fleet adapters only after the clean loop is usable.
 
-Craft is direct source. UI references are behavior-only unless already part of Craft or approved.
+### Out of Scope
 
-## 5. UI Placement
+- merging unrelated histories, directory replacement over the current tree, porting all old code,
+  feature work, shell redesign, or deletion of review/legacy evidence as a shortcut.
 
-Default workbench remains Craft shell. Simplify and dedupe; do not create `WorkbenchShell` or a marketing/console page.
+## 3. Migration Ledger
 
-## 6. Backend / RPC / Locality
+Every considered behaviour/path records:
 
-No new backend unless needed to keep the baseline running. Upstream sync is a maintenance operation, not product behavior.
+| Field | Meaning |
+|---|---|
+| source | current app, `fleet-old`, or upstream v0.11 |
+| source revision/path | exact evidence location |
+| target v0.11 extension point | exact target path/symbol after inspection |
+| behaviour | user-visible/data contract being preserved |
+| classification | retain / adapt / drop / defer |
+| reason | product direction, duplication, incompatibility, or evidence gap |
+| state authority impact | session/permission/task/panel/file/job/etc. |
+| license/attribution | required source boundary |
+| contract impact | W0.1 change required or none |
+| owner/wave | exact future module/slice |
+| verification | real check required after port |
 
-## 7. Session / Timeline / Permission / Rollback
+No row is “retain because code exists.” No row is “drop” without confirming its valuable behaviour
+has been preserved elsewhere or explicitly rejected.
 
-Baseline must preserve existing session/permission behavior. Any removal must keep timeline readable.
+## 4. Classification Rules
 
-## 8. Data Model
+- **retain:** upstream v0.11 behaviour used unchanged.
+- **adapt:** valuable Fleet/old behaviour reimplemented at a verified v0.11 extension point and
+  routed through the current spine.
+- **drop:** duplicated, unsafe, incompatible, display-only, or superseded behaviour with recorded
+  rationale and no unabsorbed value.
+- **defer:** useful idea lacking contract/evidence; remains documented and unimplemented.
 
-Use existing Craft session/settings/source schemas; add compatibility only when required.
+`fleet-old` is an internal behaviour reference, never the merge base. Reference projects remain
+subject to `REFERENCE-PROJECT-POLICY.md`.
 
-## 9. Agent-Native Actions
+## 5. Required Upstream Decisions
 
-No new action required. The goal is not to add features.
+Before M16/M17/M04 contracts or paths freeze, classify upstream:
 
-## 10. Files To Inspect First
+- project/workspace authority;
+- task and background-task models;
+- session/Agent relationships;
+- panel stack, main content routing, and layout/preferences;
+- CLI/server lifecycle;
+- BrowserPane/WebContentsView;
+- settings, secrets, sources/skills, permission UI, and timeline/evidence behaviour.
 
-- `app/package.json`
-- `app/apps/electron/src/renderer/components/app-shell`
-- `app/packages/server-core/src/sessions`
-- `app/scripts/oss-sync.ts`
+The goal is to reuse compatible upstream capability, not create a second Projects/Tasks/Kanban/
+panel system under Fleet names.
 
-## 11. Files Likely Touched
+## 6. Deletion Safety
 
-App shell cleanup, settings labels, docs, brand/config when assigned.
+- Do not delete another model's review folder.
+- Do not delete legacy/reference documentation until valuable decisions are migrated and an archive
+  record identifies the replacement.
+- Do not delete code based only on filename or visual inactivity; record imports/runtime entry and
+  behaviour evidence during the later code migration pass.
+- Deletion candidates remain reversible on a reviewed branch until the clean baseline and adapted
+  replacement are verified.
 
-## 12. Parallel Work Packages
+## 7. Contract Boundary
 
-Lead-only for shell architecture. Workers can handle isolated cleanup after file ownership is explicit.
+The clean upstream baseline is validated before Fleet contract additions. W0.1 then ports one
+canonical protocol/action implementation and re-freezes parity. M01 does not add a second session,
+task, settings, permission, panel, or browser authority to preserve an old feature.
 
-## 13. File Ownership
+## 8. Baseline Verification
 
-Lead owns shell layout and upstream sync. No worker changes core shell placement without packet.
+On the migration branch:
 
-## 14. Validation Ladder
+1. record upstream tag and resolved commit;
+2. install/build using the commands documented by that exact v0.11 baseline;
+3. launch the real desktop application;
+4. create/open a project and task/session;
+5. send one normal turn and exercise permission UI;
+6. open BrowserPane and settings;
+7. restart and verify persisted state;
+8. record actual paths/commands/results in the ledger;
+9. only then port the first approved Fleet adapter and repeat the affected loop.
 
-`git diff --check`, targeted typechecks, Electron launch, default chat smoke, settings open smoke.
+Typecheck alone does not establish baseline usability.
 
-## 15. Done / Not Done
+## 9. Error and Recovery
 
-`usable`: default Craft workflow works. `display-only`: visual shell exists but sessions/settings break.
+| Condition | Result | Recovery |
+|---|---|---|
+| unrelated-history merge fails | no forced merge | use clean base plus path ledger/adaptation |
+| current tree dirty | migration/sync stops | isolate/clean reviewed worktree without destroying user changes |
+| upstream behaviour unknown | ledger row `defer`/evidence gap | inspect/verify before decision |
+| port breaks baseline loop | port not accepted | revise/revert isolated adapter |
+| value not yet absorbed | deletion blocked | retain or archive with replacement reference |
 
-## 16. Risks And Blocked Decisions
+## 10. Exit Criteria
 
-Risk: cleaning by deleting active hooks. Deletions require `rg` proof and Lead approval.
+- clean v0.11 loop is `usable` on a recorded environment;
+- migration ledger covers every current app difference and selected `fleet-old` behaviour;
+- upstream project/task/panel/background/session/browser/settings reuse decisions are recorded;
+- W0.1 canonical contract parity is recorded on the target baseline;
+- no valuable evidence/review folder was deleted prematurely;
+- Wave Map explicitly changes W1 gate, or it remains Locked.
 
-## 17. Non-Goals & Prohibitions
+## 11. Non-Goals and Prohibitions
 
-- **No Shell Replacement:** Do not replace or bypass the default Craft Agents shell. All baseline improvements must simplify or align existing UI.
-- **No Dirty Syncs:** Do not perform upstream synchronization on a dirty git working tree.
+- No dirty sync, unrelated-history force merge, old-shell wholesale copy, or deletion-as-migration.

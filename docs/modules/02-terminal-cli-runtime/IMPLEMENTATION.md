@@ -1,51 +1,45 @@
-# Terminal CLI Runtime Implementation Plan
+# M02 Implementation Constraints
 
-## 18. App Server RPC Connection Design
-CLI 终端（`craft-cli`，位于 `app/apps/cli`）在源码中定义了 `CliRpcClient`，通过自定义的 `MessageEnvelope` 进行 RPC 长连接通信：
+> **Status:** planning constraint only; M02 is Locked.
+> **Canonical behaviour:** `SPEC.md`. This file does not prove any current source path or RPC
+> implementation.
 
-```typescript
-// 对接 apps/cli/src/client.ts (真实源码逻辑)
-import { PROTOCOL_VERSION, type MessageEnvelope } from '@craft-agent/shared/protocol';
+## 1. Required v0.11 Inspection
 
-export class CliRpcClient {
-  private ws: WebSocket | null = null;
-  private pending = new Map<string, any>();
+Before an implementation plan is issued, record on the clean v0.11 baseline:
 
-  constructor(private readonly url: string, private readonly token?: string) {}
+- actual CLI/session transport and authentication lifecycle;
+- Electron main-process terminal/PTY extension point;
+- runtime detection/configuration authority;
+- terminal panel contribution point in M16;
+- output/session evidence path;
+- stop/process-group/restart behaviour;
+- exact build/test/launch commands.
 
-  async connect(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.url);
-      this.ws.onopen = () => {
-        const handshake: MessageEnvelope = {
-          id: crypto.randomUUID(),
-          type: 'handshake',
-          protocolVersion: PROTOCOL_VERSION,
-          token: this.token,
-        };
-        this.ws!.send(JSON.stringify(handshake));
-      };
+The retired `CliRpcClient` code sample and assumed always-running App Server topology are not an
+implementation contract.
 
-      this.ws.onmessage = (event) => {
-        const envelope = JSON.parse(event.data);
-        if (envelope.type === 'handshake_ack') {
-          resolve(envelope.clientId);
-        }
-      };
-    });
-  }
+## 2. Fixed Boundaries
 
-  // 二开扩展：通过 sessions:sendMessage 管道发送消息
-  async sendPrompt(sessionId: string, message: string): Promise<void> {
-    await this.invoke('sessions:sendMessage', sessionId, message);
-  }
-
-  async invoke(channel: string, ...args: any[]): Promise<any> {
-    return new Promise((resolve) => {
-      const id = crypto.randomUUID();
-      this.pending.set(id, { resolve });
-      this.ws!.send(JSON.stringify({ id, type: 'request', channel, args }));
-    });
-  }
-}
+```text
+human or Agent request
+-> canonical M03 action
+-> M00 permission/approval
+-> Electron main terminal host
+-> one bounded RuntimeLane/process group
+-> streamed view plus durable redacted evidence
+-> explicit stop/exit/interrupted result
 ```
+
+- No physical daemon is required in W1/W2.
+- The terminal host does not own sessions, TeamRun, permissions, or file rollback.
+- M16 owns panel instance/layout; hiding the view does not stop the process.
+- A command's filesystem effects are not made authorized merely by recording terminal output.
+- CLI transport gets only the bounded Bridge/contract available on the verified baseline.
+
+## 3. Stop Conditions
+
+Do not implement if terminal action IDs, process host, authentication, output redaction/retention,
+stop escalation, or restart semantics are still unresolved. Do not bypass the gap with an
+unauthenticated socket, renderer child process, generic shell tool, or temporary second session
+store.

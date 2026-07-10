@@ -1,71 +1,134 @@
-# 14 Messaging
+# M15 — Governed Messaging Gateway
 
-## 1. Mission
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft; credential/bridge adapters require evidence
+> **Wave:** W5
+> **Depends on:** M00, M03, M05 ArtifactRef, M13 settings/secrets, M16 views
 
-Retain messaging gateways as governed integrations that feed Fleet sessions without creating another communication product.
+## 1. Purpose
 
-## 2. User-Visible Loop
+Retain messaging integrations as governed session inputs/outputs without turning Fleet into an
+autonomous mass-messaging or second chat platform.
 
-User configures a messaging bridge, receives or sends an authorized message through Fleet, and the activity appears in session timeline with source and permission boundaries.
+The first closed loop is: user configures one bridge through protected credentials, explicitly
+routes one inbound message to a session, sends one approved reply, and sees delivery/evidence and
+failure recovery without exposing the credential or messaging unrelated contacts.
 
-## 3. Current App Reuse
+## 2. Scope
 
-Reuse existing messaging packages, settings framework, session timeline, permission, and automation hooks.
+### In Scope
 
-## 4. Reference Projects
+- one configured bridge/profile, health state, allowlist, inbound routing, outbound send,
+  attachment ArtifactRefs, delivery status, idempotency, redaction, disable/revoke;
+- session/timeline correlation through M00/M03;
+- settings integration and compact status/triage projection.
 
-AstrBot and messaging platforms are product-boundary references only unless explicitly approved. Do not turn Fleet into an IM bot platform.
+### Out of Scope
 
-## 5. UI Placement
+- an independent contact/chat database, autonomous outreach, bulk campaigns, scraping, spam,
+  account rotation, or a gateway that executes tools from inbound text automatically.
 
-Messaging belongs in settings/integrations or capability area, not primary workbench navigation.
+## 3. Credential and Profile Authority
 
-## 6. Backend / RPC / Locality
+Credentials live only in the canonical protected secrets mechanism selected on the v0.11
+baseline. Documents, actions, events, logs, workflows, and settings snapshots hold an opaque
+credential reference and redacted profile label only.
 
-Gateway behavior may be networked. Credentials, tokens, and account state require explicit secure handling and permission.
+```ts
+type MessagingBridgeProfile = {
+  profileId: string
+  provider: string
+  credentialRef: string
+  displayLabel: string
+  inboundPolicy: 'disabled' | 'allowlist' | 'manual_triage'
+  allowedSenders: string[]
+  outboundPolicy: 'human_only' | 'agent_with_approval'
+  targetSessionPolicy: 'manual' | 'fixed_session' | 'triage_session'
+  redactionPolicyRef: string
+  enabled: boolean
+}
+```
 
-## 7. Session / Timeline / Permission / Rollback
+These fields are a proposal until canonical promotion.
 
-Inbound/outbound events record source platform, account/profile, target session, and whether user/agent initiated the action.
+## 4. Inbound Routing
 
-## 8. Data Model
+1. adapter authenticates provider event and deduplicates provider message ID;
+2. apply sender/profile allowlist before content enters a session;
+3. apply attachment size/type and redaction policy;
+4. route to fixed/triage/manual target without executing commands;
+5. append one generic SessionEvent typed payload with source/profile/message hash and safe summary;
+6. expose message to the session as untrusted external content.
 
-Gateway, account/profile, message event, target session, delivery status, permission record, redaction policy.
+An inbound message never grants tool, file, browser, workflow, or Agent authority.
 
-## 9. Agent-Native Actions
+## 5. Outbound Routing
 
-Read messaging status, send approved message, route inbound message to session, disable bridge.
+- Human send is explicit and shows recipient/profile/content/attachments.
+- Agent send requires an effective capability and the configured approval policy for every
+  recipient/message; draft creation alone does not send.
+- Attachments are exact ArtifactRefs whose sensitivity/license/size is rechecked.
+- Every send has an idempotency key and provider delivery correlation.
+- Unknown delivery reconciles before retry; no duplicate message is sent silently.
 
-## 10. Files To Inspect First
+## 6. Candidate Actions — Not Frozen
 
-- `app/packages/messaging-gateway`
-- `app/packages/messaging-whatsapp-worker`
-- settings integration pages
+| Candidate | Purpose | Policy intent |
+|---|---|---|
+| `messaging.profile_read` | filtered status/config read | L0, no credential value |
+| `messaging.profile_update` | change routing/allowlist/policy | L2 security/network setting |
+| `messaging.message_route` | route inbound message to permitted session | L1 local session mutation |
+| `messaging.message_send` | send one exact message/attachments | L2 external side effect by default |
+| `messaging.bridge_disable` | stop new provider traffic | L2 reversible setting |
+| `messaging.credential_revoke` | remove provider credential | L3/security-critical, explicit confirmation |
 
-## 11. Files Likely Touched
+## 7. UI Contributions
 
-Messaging services, settings UI, session routing, permission/timeline events.
+- M13 integration/settings page for profiles, policies, health, revoke;
+- M16 compact triage/status panel only when inbound routing is enabled;
+- session message/evidence view using retained session UI;
+- no permanent primary navigation unless a real product loop later justifies it.
 
-## 12. Parallel Work Packages
+## 8. State and Persistence
 
-Gateway audit, settings restoration, permission boundary, session routing can split after ownership is assigned.
+- credentials: canonical secret authority;
+- profile policies: canonical preferences/config;
+- provider message/delivery correlation: M00/M15 execution state;
+- attachment bytes/provenance: M05;
+- displayed messages: retained session authority;
+- adapter caches are derived and rebuildable.
 
-## 13. File Ownership
+M15 creates no second session or contact-message database.
 
-Messaging package owners can edit gateway code. Shared session/protocol changes go through Lead.
+## 9. Error Handling
 
-## 14. Validation Ladder
+| Condition | Result | Recovery |
+|---|---|---|
+| invalid/revoked credential | bridge disabled/unhealthy | reconfigure explicitly |
+| sender not allowed | content not routed; safe rejection evidence | update allowlist manually |
+| redaction/attachment validation fails | message/attachment held from session/send | inspect/remove/reconfigure |
+| delivery unknown | reconciling, no automatic duplicate | query provider then retry if safe |
+| target session missing | manual triage state | choose/create permitted session |
+| Agent send denied | draft retained, nothing sent | human reviews/sends or changes policy |
 
-Typecheck messaging packages, settings UI smoke, mock inbound/outbound event, permission/timeline verification.
+## 10. Verification
 
-## 15. Done / Not Done
+1. Configure one real or approved sandbox bridge without credential leakage.
+2. Route one allowlisted inbound message and reject one unlisted sender.
+3. Prove inbound content cannot execute a tool/workflow automatically.
+4. Send one human message and one Agent-proposed approved message through the same action.
+5. Attach a permitted ArtifactRef and block a restricted/oversized attachment.
+6. Simulate unknown delivery/restart and reconcile without duplicate send.
+7. Revoke credential and verify bridge stops while historical safe evidence remains.
 
-`usable`: one bridge path writes real session event. `display-only`: settings page exists without gateway path.
+## 11. Open Gates
 
-## 16. Risks And Blocked Decisions
+- Select canonical secrets integration and one bridge adapter under license/terms review.
+- Freeze profile/message/action/redaction schemas and provider retention rules.
+- Verify exact retained session routing path on v0.11.
 
-Risk: leaking credentials or creating automated spam behavior. Messaging is governed integration, not autonomous mass messaging.
+## 12. Non-Goals and Prohibitions
 
-## 17. Non-Goals & Prohibitions
-
-- **No Silent Messaging:** Do not allow background messaging adapters (e.g., SMS/WhatsApp gateway workers) to execute tasks or send data without user auditing and timeline logging.
+- No silent/background send, autonomous mass messaging, credential logging, inbound command
+  execution, or second messaging product.

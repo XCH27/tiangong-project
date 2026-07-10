@@ -26,19 +26,9 @@ No Worker may independently modify shared protocol files, handler registration, 
 
 ## Wave Schedule
 
-Work is organised into sequential **waves**. Each wave has a gate condition. No Worker may start work in wave N+1 until the Lead declares the gate passed.
-
-| Wave | Gate Condition | Typical Work |
-|---|---|---|
-| **W0 — Contract Freeze** | Lead commits `docs/contracts/protocol-stubs.md`, frozen `action-ids.md`, and frozen `identity-tags-permission-matrix.md`; all three marked frozen in header | Lead only — zero Workers |
-| **W1 — Spine** | W0 gate passed | M00 Platform Spine skeleton + M03 Action Registry skeleton (parallel); see W1 Execution Checkpoints below |
-| **W2 — Runtime Core** | M00 backbone merged, M03 executor at `usable`, `SessionEvent` types live | M01, M02, M04, M05 in parallel |
-| **W3 — Surfaces** | M03 at `usable` and M05 Library write path at `usable` | M06, M08, M09 in parallel |
-| **F Track — Foundation** | M00 backbone merged | M07 Canvas foundation + M09 Video core (parallel track; syncs with W3 surfaces) |
-| **W4 — Intelligence** | M05 lease model stable | M10, M11, M12 in parallel |
-| **W5 — Polish** | All prior modules at `usable` | M13, M14; cross-module integration; Verification Agent sweep |
-
-Workers declare their wave in the agent packet header. Starting work before the wave gate is a blocking violation.
+`docs/WAVE-MODULE-MAP.md` is the only active wave/dependency schedule. This document does not
+copy its module table or gate wording. Workers declare the exact wave/slice from their packet and
+confirm the map says Ready. Starting work while Locked is a blocking violation.
 
 ---
 
@@ -46,7 +36,7 @@ Workers declare their wave in the agent packet header. Starting work before the 
 
 To resolve parallel development dependency issues between M00 and M03:
 
-1. **Checkpoint 1 (Skeleton Parallelism)**: M00 skeleton (TS type exports) and M03 skeleton (Action Registry schemas, action ID enum definition) can start in parallel immediately after W0 gate.
+1. **Checkpoint 1 (Skeleton Parallelism)**: M00 skeleton and M03 executor-domain skeleton can start in parallel only after W0.1 passes. Frozen protocol type exports and action IDs remain Lead-owned.
 2. **Checkpoint 2 (M00 backbone-merged)**: The Lead explicitly declares `M00 backbone-merged` (session store, permission model, event bus are implemented and stable). M03 executor implementation MUST wait for this checkpoint.
 3. **Checkpoint 3 (M03 executor usable)**: M03 executor completes implementation and is verified, unblocking the Wave 2 gate.
 
@@ -65,6 +55,8 @@ Before any agent edits files it must answer **all** of the following:
 7. Which Internal Action or Agent callable path makes the UI agent-native?
 8. What exact behaviour proves the slice is `usable`?
 9. Is the wave gate open for my wave?
+10. Is the exact spec slice marked `execution-ready` in `DOCUMENT-READINESS.md`?
+11. Does the work create another task/run/job/artifact/workflow/panel/layout truth?
 
 If any answer is missing or the gate is not yet open, the agent **stops and returns to the Lead**.
 
@@ -149,12 +141,12 @@ Every PR description must include the following report template verbatim. PRs wi
 - **Forbidden files touched:** none  <!-- or list with justification -->
 - **Frozen contracts depended on:** (list — version at time of work)
 - **Validation commands run:**
-  - [ ] `pnpm typecheck`
-  - [ ] `pnpm test --filter <package>`
-  - [ ] Manual smoke: (describe what you did)
+  - [ ] Static check from the packet: `<exact verified command and result>`
+  - [ ] Targeted test from the packet: `<exact verified command and result>`
+  - [ ] Real behaviour check: `<exact UI/runtime/data path exercised>`
 - **Real behaviour evidence:**
   - (screenshot path / test run log excerpt / description)
-- **Final status label:** `usable` | `display-only` | `blocked`
+- **Final status label:** `usable` | `wired but not visually checked` | `display-only` | `not implemented`
 - **If blocked — what is needed:** (or "n/a")
 ```
 
@@ -199,7 +191,9 @@ Every `docs/agent-packets/*.md` file must include:
 
 The board is a lightweight synchronisation layer, not a second project-management truth. It tracks claim, blocker, handoff, and Lead-close facts for a slice already defined by a module spec and wave packet.
 
-Before claiming work, a Worker must read `docs/BOARD-SYNC.md` and append or update exactly one card in the relevant packet's `## Board Cards` section using the exact fields from that document.
+Before claiming work, a Worker reads the relevant packet's `## Board Cards` section. The Lead
+checks current stakeholder claims in `docs/BOARD-SYNC.md` and confirms no overlap. Workers never
+edit `BOARD-SYNC.md` itself.
 
 The Lead reviews board cards against `docs/OWNERSHIP-MATRIX.md` and `docs/WAVE-MODULE-MAP.md`. If the card conflicts with either document, the packet and ownership docs win.
 
@@ -209,18 +203,22 @@ The Lead reviews board cards against `docs/OWNERSHIP-MATRIX.md` and `docs/WAVE-M
 
 Parallel agents do **not** decide where new UI goes.
 
-The Lead defines UI placement and interaction before backend work is split. This prevents every backend feature from adding its own settings page, toolbar, or panel.
+The Lead defines each M16 view contribution, default placement, route state, and interaction before
+backend work is split. This prevents every backend feature from adding its own settings page,
+toolbar, panel, or route registry.
 
 ---
 
 ## Agent-Native Rule
 
-A writable feature is incomplete unless **both** paths exist:
+A writable/composable feature is incomplete unless its required projections exist:
 
 - Human UI path.
 - Agent / internal action path.
+- M17 workflow path when the operation is declared composable.
 
-Both must reach the same backend behaviour, permission decision, timeline event, and rollback / evidence model.
+All projections must reach the same ActionDefinition/executor, permission decision, evidence, and
+honest undo/cancellation model.
 
 ---
 
@@ -259,12 +257,12 @@ To prevent asynchronous Worker processes from entering infinite waits during coo
 1. **Response Time Limit**: The Lead should respond to blocker/status reports within **4 hours** during active development sessions.
 2. **Park & Pivot Protocol**: If the Lead does not respond within the SLA limit:
    - The Worker commits its current progress in a draft PR.
-   - The Worker marks the packet card status as `blocked/parked` in `BOARD-SYNC.md`.
+   - The Worker leaves capability status unchanged and records the issue in the card's `blocker`
+     field.
    - The Worker pivots to non-blocking tasks or other assigned branches.
-3. **No-Constraint Progression**: The Worker is allowed to write temporary stub code to progress past blockers, provided:
-   - Stubs do not modify any shared contract file.
-   - Stubs are clearly annotated with `// TODO: Waiting for Lead Decision`.
-   - Stubbed work is marked `wired but not visually checked` and never self-promoted to `usable`.
+3. **No Stub Bypass**: A Worker may pivot only to another already assigned, Ready, non-overlapping
+   slice. It may not write temporary feature stubs to cross a missing contract or Locked gate.
+   Display-only or wired status is never used to disguise blocked placeholder work.
 
 ---
 
@@ -276,4 +274,3 @@ The Verification Agent serves as an automated/semi-automated test sweep role and
 2. **Read-Only Inspection**: It performs static validation, typechecks, and behavior validation.
 3. **No Self-Usability Declarations**: The Verification Agent cannot self-promote a module to `usable`. It compiles validation results and logs an `Evidence Package` (e.g. CLI run scripts, logs, test outputs) for the Lead to review and make the promotion.
 4. **Lead Assignment**: The Verification Agent only triggers checks based on direct assignments in wave packets or Lead instructions.
-

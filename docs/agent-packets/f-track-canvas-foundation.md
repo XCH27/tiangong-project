@@ -1,5 +1,8 @@
 # F Track Canvas Foundation
 
+> **Superseded 2026-07-09. Do not assign or implement from this packet.** Canvas is governed
+> by the W3 gate; there is no separately open F Track in the current Wave Module Map.
+
 ## Wave
 
 F Track. Runs in its own worktree after canvas contract freeze.

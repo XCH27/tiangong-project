@@ -1,203 +1,234 @@
-# 11 Model Routing Cost Ledger
+# M11 — Model Routing, Usage, and Cost Ledger
 
-## 1. Mission
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft; provider facts/adapters require current primary-source checks
+> **Wave:** usage/cost core contract in W1/W2; routing/cache/native-batch adapters in W4
+> **Depends on:** M00, M03, M08, M10 context segments, provider settings/secrets
 
-Route API tasks intelligently while keeping usage, quota, cache, and cost honest and separate from CLI lanes.
+## 1. Purpose
 
-## 2. User-Visible Loop
+Keep model/provider routing, token/usage observations, cache attribution, quota snapshots, and cost
+honest while keeping CLI/runtime lanes outside API routing. Unknown values remain unknown.
 
-User sends API task or creates TeamRun, Fleet records routing decision, usage/cost/cache data, and displays context/quota/cost without mixing unknowns into zeros.
+The first closed loop is: one real API turn records why a provider/model was selected, the exact
+usage observation source, confirmed/estimated/unknown cost, and visible error/recovery without
+claiming unobserved cache or quota savings.
 
-## 3. Current App Reuse
+## 2. Scope Split
 
-Reuse routing protocol, model settings, token ring, session usage, subscription/quota protocol, and TeamRun cost source.
+### M11A Usage/Cost Core — needed before downstream paid jobs
 
-## 4. Reference Projects
+- cost-source and confidence vocabulary;
+- usage observation and provider receipt correlation;
+- estimate versus confirmed reconciliation;
+- finite budget preflight/actual accounting;
+- filtered UI/report projections.
 
-LobeHub is black-box product reference for service models/system tools. RTK/Reasonix/codegraph inform optimization. Do not copy unapproved code.
+### M11B Routing/Cache/Batch — W4
 
-## 5. UI Placement
+- API/OAuth provider/model selection and explanation;
+- provider-specific prompt/request assembly and cache observations;
+- provider-native Batch adapter as an M08 ExternalJob execution mode;
+- quota snapshots only through authorized official provider paths.
 
-Token/context view stays near model/input area and settings. No separate finance dashboard for active route.
+M11B does not block the first M08 real-time single-request image job if it records cost as unknown
+or provider-confirmed through the M11A vocabulary.
 
-## 6. Backend / RPC / Locality
+## 3. Lane Boundary
 
-API routing uses provider/OAuth paths. CLI runtime bypasses. Quota adapters are read-only and local/provider-authorized.
+- API/OAuth operations may use M11 routing, request assembly, cache, usage, and native Batch.
+- CLI, PTY, local tool, and external application lanes keep their selected runtime; M11 records
+  reported usage/cost source but does not swap their model or intercept their transport.
+- Workflow creation does not authorize a provider/model; each step uses its effective capability
+  and routing policy.
 
-## 7. Session / Timeline / Permission / Rollback
-
-Every route decision writes timeline. Costs split by `LOCAL_COMPUTE`, `SUBSCRIPTION_QUOTA`, `BYOK_API`, `FLEET_CLOUD`, `EXTERNAL_JOB`, `UNKNOWN`.
-
-## 8. Data Model
-
-Routing decision, task type, complexity tier, fusion mode, cache ledger, usage sample, quota snapshot, cost source.
-
-## 9. Agent-Native Actions
-
-Read usage, read quota, explain routing decision, propose lane choice for TeamRun. Agents do not auto-switch active lane without permission/rules.
-
-## 10. Files To Inspect First
-
-- `app/packages/shared/src/protocol/routing.ts`
-- `app/packages/shared/src/protocol/subscription.ts`
-- `app/packages/shared/src/protocol/usage.ts`
-- routing/cache/quota services
-
-## 11. Files Likely Touched
-
-Routing services, quota adapters, usage ledger, token ring UI, model/runtime settings.
-
-## 12. Parallel Work Packages
-
-Quota adapters, token view, routing decision logging, cache ledger can split after protocol freeze.
-
-## 13. File Ownership
-
-Routing/subscription/usage protocols and cost source enum are Lead-owned.
-
-## 14. Validation Ladder
-
-Routing unit tests, quota fixture tests, UI unknown/estimated/real display check, API send smoke.
-
-## 15. Done / Not Done
-
-`usable`: a real API turn records route and usage/cost source. `not implemented`: quota UI with no adapter/source.
-
-## 16. Risks And Blocked Decisions
-
-Risk: treating CLI subscriptions as API model choices. CLI/API choice is task-level lane selection.
-
-## 17. Batch API Core Specifications
-
-### 17.1 Tier Boundaries
-1. **Prompt-level Batching**: Sending multiple tasks in a single large prompt block. This does not save token costs and is only suitable for minor temporary tasks.
-2. **Engineering-level Batch API (Native Batch)**: Connecting to model providers' native Batch endpoints (e.g. OpenAI/Anthropic Batch). This executes asynchronously, saves ~50% of API token cost, and belongs to the model routing layer.
-
-### 17.2 Engineering Implementation Schemes
-1. **Synchronous Batching (Small Batch, Fast Response)**:
-   * Used when task batch sizes are small and quick to execute.
-   * Logic: Receive input array -> resolve concurrently -> await all -> return mapped array.
-   * Input format: `items: Array<{ id: string; content: any }>`
-2. **Asynchronous Batching (Production-Scale, Native Batch)**:
-   * Used for large-scale offline runs or heavy cost-saving batches.
-   * Logic:
-     1. Submit Batch: Receive items, generate batch request file, submit to native Batch API, get `batchId`, return immediately.
-     2. Status Polling: Poll batch execution status (processing/completed) using `batchId`.
-     3. Fetch & Map: Download results, map output elements back to original task IDs, and notify requester.
-   * Storage: Batch status, file references, and mapped results must be persisted locally in SQLite/db.
-
-### 17.3 Mandatory Design Guardrails
-1. **Error Isolation**: Individual item failures inside a batch must not fail the entire batch. Successful items return results, failed items return error details.
-2. **Idempotency**: Use `batchId` to prevent duplicate submissions on retries.
-3. **Chunking & Flow Control**: Large batches must be sliced to respect model context size and rate limits.
-4. **ID Mapping**: All outputs must be mapped back to the input task IDs.
-
-### 17.4 BatchJobExecutor Ownership
-
-Module 11 is the **sole owner** of the Batch execution engine. Other modules declare batch
-eligibility; they do not implement batch submission, polling, or result mapping.
-
-| Module | Role | Does NOT implement |
-|---|---|---|
-| 04 (TeamRun) | Declares `batchEligible: true` on TaskRun; stores `batchId` in Journal | Submit JSONL, poll status |
-| 08 (AIGC/ExternalJob) | Carries `batchMode` field on `ExternalJob` schema | Build batch file, download results |
-| 10 (Memory/Context) | Marks `DistilledToolMemory` entries `batchMode: 'async-native'` | Call Batch API |
-| **11 (this module)** | **Implements `BatchJobExecutor`** | — |
-
-`BatchJobExecutor` responsibilities:
-
-1. Accept `ExternalJob[]` from any module via a typed `submitBatch(jobs: ExternalJob[])` call.
-2. Build JSONL input file from job payloads.
-3. Submit to provider Batch API; store `batchId` in TeamRun Journal (`TaskRun.batchId`).
-4. Poll status; on completion download results and map back to job IDs.
-5. Write results into `ExternalJob.batchResultFile`; emit `BatchJobCompleted` event.
-6. **Idempotency guard**: if `batchId` already exists in the journal for this job set, skip
-   re-submission.
-
-Dependency direction: Modules 04, 08, 10 depend on `ExternalJob` schema (owned by Module 08).
-`BatchJobExecutor` (Module 11) consumes `ExternalJob`. No circular dependency.
-
-## 18. Prompt Assembly Layer (Stable Prefix)
-
-Module 11 is the **sole owner** of Prompt construction. No other module builds the final
-Prompt string sent to a model. Modules submit typed `ContextSegment` objects; the assembler
-joins them in fixed order.
-
-### 18.1 Why Ownership Matters
-
-Provider-native Prompt Caching (Anthropic, OpenAI, DeepSeek) saves ~50% token cost by
-caching a shared prefix. The prefix is only cacheable if its byte sequence is identical
-across turns. Any module that inserts content at an arbitrary position breaks the prefix
-and eliminates the saving. Centralising assembly in M11 is the only reliable fix.
-
-Reference: DeepSeek-Reasonix (Green-Light MIT) stable-prefix cache and planner/executor
-patterns inform this design. Reasonix work belongs here in M11, not in TeamRun.
-
-### 18.2 Fixed Segment Order
-
-The assembler joins segments in this order, frozen after Wave 0 contract freeze:
-
-```
-1. system_prompt          — global Fleet identity + tool list (never changes within a version)
-2. frozen_memory          — Core-tier facts from DistilledToolMemory (global_preference scope)
-3. project_outline        — AST skeleton of active project files (Layer 1 Retrieval output)
-4. dynamic_context        — Recall-tier memory + ProjectPack excerpts (session-scoped)
-5. tool_results_summary   — compressed RTK output (Layer 4), if any
-6. user_turn              — current human message (always last)
-```
-
-Segments 1–3 form the **stable prefix**. They must be byte-identical across turns within
-the same session version. Any change to segments 1–3 invalidates the cache and must be
-treated as a new session for billing purposes.
-
-Segment 4 and below are the **dynamic tail**. They change per turn; provider caching does
-not apply to them.
-
-### 18.3 ContextSegment Contract
+## 4. Data Contracts
 
 ```ts
-type SegmentSlot =
-  | 'system_prompt'
-  | 'frozen_memory'
-  | 'project_outline'
-  | 'dynamic_context'
-  | 'tool_results_summary'
-  | 'user_turn'
+type ValueConfidence = 'confirmed' | 'estimated' | 'unknown'
 
-interface ContextSegment {
-  slot: SegmentSlot
-  content: string          // plain text or XML-tagged block
-  tokenEstimate: number    // caller’s best estimate; assembler may recount
-  sourceModule: string     // e.g. 'M10', 'M03', 'terminal'
-  immutable: boolean       // true for stable-prefix slots (1–3)
+type UsageObservation = {
+  observationId: string
+  invocationId: string
+  workflowRunId?: string
+  externalJobId?: string
+  providerId?: string
+  modelId?: string
+  executionMode: 'realtime' | 'native_batch' | 'local' | 'cli' | 'external'
+  inputTokens?: number
+  outputTokens?: number
+  cachedInputTokens?: number
+  mediaUnits?: Record<string, number>
+  source: 'provider_response' | 'provider_invoice' | 'local_measurement' | 'estimate' | 'none'
+  confidence: ValueConfidence
+  observedAt: string
+}
+
+type CostRecord = {
+  costRecordId: string
+  usageObservationId: string
+  amount?: number
+  currency?: string
+  confidence: ValueConfidence
+  pricingRef?: string
+  reconciles?: string
+  createdAt: string
+}
+
+type RoutingDecision = {
+  decisionId: string
+  invocationId: string
+  eligibleRoutes: string[]
+  selectedRoute: string
+  reasonCodes: string[]
+  policySnapshotRef: string
+  estimate?: { amount?: number; currency?: string; confidence: ValueConfidence }
+  decidedAt: string
 }
 ```
 
-The assembler **rejects** any segment that:
-- Claims slot `system_prompt` / `frozen_memory` / `project_outline` with `immutable: false`.
-- Is submitted after the assembler has already serialised the stable prefix for this turn.
-- Exceeds the per-slot token budget defined in routing settings.
+Exact types must be promoted into canonical protocol. Pricing is versioned/effective-dated; local
+hashes or marketing claims never substitute for provider usage/price evidence.
 
-### 18.4 Prefix Hash & Cache Attribution
+## 5. Routing
 
-After joining segments 1–3, the assembler computes `prefixHash = sha256(prefix_string)`
-and writes it to the routing cost ledger alongside the turn’s usage sample. This enables:
+Routing considers only routes already permitted and configured for the operation:
 
-- Cache hit detection: if `prefixHash` matches the previous turn’s value, the provider
-  should return a `cache_read_input_tokens` discount. If no discount is observed despite
-  a matching hash, flag the turn `cacheStatus: 'miss_unexpected'` for diagnostics.
-- Cost attribution: `SUBSCRIPTION_QUOTA` turns with a confirmed cache hit are labelled
-  `cacheStatus: 'hit'` and their token cost is reduced accordingly in the ledger.
+- capability/model compatibility;
+- data/sensitivity and region/provider policy;
+- latency and execution mode requirement;
+- finite budget and known/unknown estimate;
+- reliability/availability observations;
+- explicit user route or pinned workflow version;
+- provider limits and M08 queue pressure.
 
-### 18.5 Validation
+The result includes reason codes. “Cheapest” is not claimed when prices/usage are unknown. Fusion
+or multi-model execution remains default off and requires a separately budgeted operation.
 
-- Unit test: same `system_prompt` + `frozen_memory` + `project_outline` across two turns
-  produces identical `prefixHash`.
-- Integration test: a turn that modifies only `dynamic_context` does not change
-  `prefixHash`.
-- Regression test: any new feature that injects content into a stable-prefix slot must
-  pass a `prefixHash` stability check in CI before merge.
+## 6. Prompt/Request Assembly
 
-## 17. Non-Goals & Prohibitions
+M10 provides typed ContextSegments with origin, sensitivity, and token estimates. The selected
+provider adapter assembles the final request according to that provider/model's current contract.
 
-- **No CLI Routing:** Do not route local CLI runtime processes through the model routing, cache, or Fusion api pipelines. CLI lanes always use their own runtime model.
+Rules:
+
+- system/tool/user/native-media structures remain typed where the provider supports them;
+- no universal fixed string order is assumed across all providers;
+- stable-prefix strategies are provider/model/version specific and measured;
+- structured data is never passed through unstructured output compression;
+- request hashes exclude secrets and are diagnostic, not proof of provider cache use;
+- a cache hit/saving is confirmed only from provider response/billing fields.
+
+## 7. Cache Attribution
+
+```ts
+type CacheObservation = {
+  providerId: string
+  modelId: string
+  requestPrefixHash?: string
+  status: 'confirmed_hit' | 'confirmed_miss' | 'not_supported' | 'unknown'
+  cachedInputTokens?: number
+  source: 'provider_response' | 'provider_invoice' | 'none'
+}
+```
+
+No cross-provider savings percentage is frozen. If a provider returns no cache fields, the status
+is unknown/not-supported rather than inferred from a matching local hash.
+
+## 8. Native Batch
+
+Native Batch is a later provider-specific adapter used by M08 ExternalJob. It is not prompt-level
+grouping or local concurrent `Promise.all`.
+
+M08 owns durable job/item lifecycle and reconciliation. M11 owns provider request formatting,
+submission/inspection/result parsing, usage/cost observation, and current provider constraints.
+
+Required before enabling one provider:
+
+- current official endpoint/model/size/retention/deadline/cancellation documentation;
+- batch and item idempotency/mapping;
+- partial failure and result retention;
+- protected input/output files and deletion policy;
+- confirmed pricing/cost-source handling;
+- restart reconciliation through M08;
+- no automatic resubmission while provider state is unknown.
+
+Interactive chat, approval interception, PTY, and real-time workflow gates are never native Batch.
+
+## 9. Quota and Subscription Honesty
+
+- Use only official, authorized provider APIs/receipts/settings.
+- Do not inspect cookies/tokens, automate account rotation, or infer hidden quotas.
+- A subscription allowance is not equivalent to zero cost.
+- Quota snapshots include source/time/confidence and may be stale/unknown.
+- Profiles are legal user configurations, not evasion/routing pools.
+
+## 10. Budget Behaviour
+
+- A workflow/job declares a finite budget or explicitly unknown-cost approval policy.
+- Estimated spend reserves budget; confirmed observations reconcile it.
+- Overshoot risk pauses unscheduled work rather than silently continuing.
+- Costs from cancelled/failed/late outputs remain recorded when charged.
+- No module writes an independent cost ledger; it submits observations to M11.
+
+## 11. UI Contributions
+
+- compact usage/context/budget status near the active model/job;
+- M13 provider/model/budget settings and current source labels;
+- M16 inspector for routing reason, estimate, actual, cache observation, and reconciliation;
+- M17 preflight/step cost status;
+- no finance dashboard unless a later real need is approved.
+
+## 12. Candidate Actions — Not Frozen
+
+| Candidate | Purpose | Policy intent |
+|---|---|---|
+| `usage.read` | filtered usage/cost records | L0 |
+| `routing.explain` | show decision/reason/policy snapshot | L0 |
+| `routing.preview` | estimate eligible routes without executing | L0, unknown allowed |
+| `routing.policy_update` | change provider/budget policy | L2 |
+| `batch.submit` | submit provider-native batch via M08 | dynamic L2 data/cost |
+| `batch.cancel` | best-effort provider cancellation | L1/L2 by side effect |
+
+## 13. Error Handling
+
+| Condition | Result | Recovery |
+|---|---|---|
+| no eligible route | no provider call | configure/permit a compatible route |
+| price/usage unknown | labelled unknown, not zero | explicit approval or wait for receipt |
+| provider response lacks usage | retain unknown observation | reconcile invoice/official receipt later |
+| budget exhausted | unscheduled work paused | finite increase or cancel |
+| provider batch unknown | M08 reconciling | inspect provider before retry |
+| stale quota snapshot | warning/source/time shown | refresh official source |
+| cache fields absent | unknown/not supported | no savings claim |
+
+## 14. Verification
+
+### M11A
+
+1. Record one real API/provider usage response and one unknown-cost operation.
+2. Show confirmed/estimated/unknown distinctly in UI and report.
+3. Reconcile an estimate with a later confirmed record without rewriting history.
+4. Fail/cancel one charged operation and retain truthful cost.
+5. Verify CLI lane bypasses routing while still allowing an honest source label.
+
+### M11B
+
+1. Preview and execute one real routing decision with reason codes.
+2. Verify sensitive/provider-incompatible routes are absent.
+3. Confirm cache status only from real provider fields.
+4. Run one approved native Batch with partial failure and restart reconciliation through M08.
+5. Attempt unknown-state retry and verify duplicate submission is blocked.
+
+## 15. Open Gates
+
+- Freeze usage/cost/routing/budget contracts and one physical ledger authority.
+- Verify each provider adapter against current official primary documentation.
+- Resolve protected request files and retention through M05/M08.
+- Split M11A/M11B packets and waves explicitly.
+
+## 16. Non-Goals and Prohibitions
+
+- No CLI model routing, cookie/token scraping, account rotation, invented cache savings, unknown-as-
+  zero cost, or second Batch/job/cost store.

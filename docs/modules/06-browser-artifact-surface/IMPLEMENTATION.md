@@ -1,33 +1,26 @@
-# Browser Artifact Surface Implementation Plan
+# M06 Implementation Constraints
 
-## 18. IPC Bridge & Jotai State Sync
-在渲染层，通过 Jotai 原子与 Electron 主进程的 `BrowserPaneManager` 建立 IPC 通道，以同步浏览器实例并回传 CDP 划选的 DOM 快照数据作为 Timeline 证据：
+> **Status:** `not implemented` — M06 is W3 Locked. This is a design constraint, not an implementation instruction.
 
-```typescript
-// 联动 apps/electron/src/renderer/atoms/browser-pane.ts (CDP 数据交互)
-import { atom } from 'jotai';
+## Required Path
 
-// 监听主进程同步的浏览器实例列表
-export const browserInstancesMapAtom = atom<Map<string, any>>(new Map());
-
-// 新增 Read/Annotate/Evidence CDP 证据捕获绑定
-export const captureEvidenceAtom = atom(
-  null,
-  async (get, set, instanceId: string, selectionGeometry: any) => {
-    // 经由 electronAPI 管道向主进程的 BrowserPaneManager 发送 CDP 节点快照提取命令
-    const snapshot = await window.electronAPI.invoke(
-      'browser-pane:captureSnapshot',
-      instanceId,
-      selectionGeometry
-    );
-    
-    // 捕获并生成结构化证据，自动注入 Session Timeline 数据库
-    await window.electronAPI.invoke('timeline:addEvidence', {
-      type: 'dom_selection',
-      instanceId,
-      content: snapshot.text,
-      timestamp: Date.now()
-    });
-  }
-);
 ```
+BrowserPane / WebContentsView selection
+→ browser artifact ActionInvocation
+→ M00 permission decision
+→ M06 capture/annotation handler
+→ M05 evidence asset registration when needed
+→ SessionEvent evidence reference and UI feedback
+```
+
+The renderer must not write directly to the timeline through ad-hoc IPC such as `timeline:addEvidence`. It may request an approved action only. The handler records a structured evidence bundle containing the selection geometry, capture hash, source metadata, and redaction result.
+
+## External-Site Boundary
+
+- External, untrusted pages are read/annotate/evidence only.
+- No click, type, form submit, DOM mutation, JavaScript evaluation, cookie/token extraction, or stealth behaviour.
+- Any future high-risk CDP mode needs a separately frozen action, visible setting, explicit approval, and audit trail.
+
+## Adapter Boundary
+
+M06 extends the existing BrowserPane/WebContentsView path. It does not introduce a `<webview>`, a second profile store, or a renderer-owned browser state authority.

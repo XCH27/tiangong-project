@@ -2,7 +2,7 @@
 
 ## 1. Product Thesis
 
-Fleet is a local-first AI workbench built on Craft Agents.
+Fleet is a local-first modular spatial work platform built on Craft Agents.
 
 It is not a chat client, not a terminal skin, not an IDE clone, not a Figma clone, and not a collection of disconnected AI utilities. The product direction is a single workbench where a human and multiple AI agents work on the same project through the same sessions, files, permissions, runtime lanes, assets, and timeline.
 
@@ -15,28 +15,40 @@ common-sense guardrails; agents execute the middle 80% of concrete production wo
 make that split operational through shared surfaces, permissions, evidence, and rollback rather
 than through a decorative chat layer.
 
-This means Fleet must optimize for complete production loops, not impressive panels. A feature is valuable only when it can move real work from intent to output with evidence, permissions, state, and rollback.
+This means Fleet must optimize for complete production loops, not impressive panels. A feature is
+valuable only when it can move real work from intent to output with evidence, permissions, state,
+and honest undo/cancellation. The infinite canvas is a spatial orchestration surface; native
+editors and modules keep their own document models.
 
 ## 2. The Product We Are Actually Building
 
-Fleet should grow from Craft Agents into an AI work creation platform with five connected surfaces:
+Fleet should grow from Craft Agents into one composable system with five connected layers:
 
-1. **Default Workbench**
-   The home surface for sessions, agents, workspace files, project progress, settings, permissions, and runtime selection. This stays close to the Craft Agents shell. We should simplify it, not replace it with a new app shell.
+1. **Retained Craft Workbench and View Host**
+   The home shell for sessions, projects, agents, settings, permissions, and runtime selection.
+   M16 adds registered panels, inspectors, and native surfaces inside the latest approved Craft
+   Agents base. It does not replace the shell.
 
-2. **Terminal and CLI Runtime**
+2. **Terminal and Execution Spine**
    The first serious product loop. Users can run local CLI agents and terminal sessions as first-class runtime lanes. Output, errors, permissions, cost attribution, and reports must flow back into the Craft session timeline.
 
-3. **Browser, Document, and Artifact Workflow**
-   The existing BrowserPane becomes the start of the design/review workflow: select, annotate, capture evidence, comment with AI, and hand off editable artifacts. Ordinary remote pages are read/annotate/evidence only. Editable artifacts must use a real document model.
+3. **Files, Browser Evidence, and Artifact Handoff**
+   M05 provides versioned ArtifactRefs over real files/native documents. The existing BrowserPane
+   selects, annotates, and captures evidence. Ordinary remote pages are read/annotate/evidence
+   only; editable outputs use real local/native document models.
 
-4. **Canvas and Design Surface**
-   A native creative surface for UI, layout, image composition, design nodes, and agent-controlled edits. This should not be iframe DOM mutation. The direction is a native design document engine, with OpenPencil as the approved reference/source.
+4. **Spatial Canvas and Composable Workflows**
+   M07 is the infinite spatial workspace; M17 owns executable typed workflows. People and Agents
+   arrange artifacts and capability steps together. Visual connectors are not automatically
+   executable, and the canvas never becomes a second job/document store.
 
-5. **AIGC and Video Surface**
-   Generation and editing are job-driven surfaces. Image/video generation, web animation rendering, and video editing use External Jobs plus a native timeline engine. OpenCut Classic is the approved reference/source for the video timeline direction.
+5. **Native Creative Modules**
+   M08 provides asynchronous/generative jobs; M09 owns multi-asset media composition; M18 owns
+   editable web projects; M19 owns presentation/motion decks; a design module may use a verified
+   OpenPencil adapter. Each registers capabilities and views instead of becoming a separate app.
 
-The key point: these are separate surfaces, but not separate products. They share the same project, local files, Library, agents, permissions, timeline, and cost ledger.
+The key point: these are native authorities and views, but not separate products. They share the
+same project, ArtifactRefs, agents, permissions, action path, jobs, timeline, and cost ledger.
 
 ## 3. Non-Goals
 
@@ -66,6 +78,10 @@ The shared layer is:
 - runtime identity: API / CLI / terminal / external job
 - Internal Action Registry
 - project files and Library assets
+- versioned ArtifactRef handoffs
+- capability manifests and typed operation ports
+- versioned workflow/run correlation
+- registered view contributions and layout projection
 - timeline, evidence, rollback, and reports
 - real / estimated / unknown usage and cost ledger
 
@@ -77,15 +93,20 @@ The surface-specific layer remains native:
 | Terminal | PTY/runtime lane state |
 | Browser | BrowserPane, CDP, screenshots, DOM/AX evidence |
 | Documents | document/block model |
-| Design canvas | design document tree, nodes, selection, history |
+| Spatial canvas | entity bindings, layout, visual references, workflow projections |
+| Design editor | design document tree, nodes, selection, native history |
 | AIGC | job inputs, outputs, provenance, cost |
 | Video | media assets, tracks, clips, keyframes, render jobs |
 
-The shared question is “who did what, was it allowed, where is the evidence, can it be undone?” The surface-specific question is “how does this surface edit its own native document?”
+The shared question is “who invoked which capability, was it allowed, where is the evidence, what
+can honestly be undone or cancelled?” The module-specific question is “which authority owns this
+document/job and how does it edit/recover it?”
 
 ## 5. Agent-Native Control Model
 
-Every serious capability must be usable by both the human UI and agents through the same structured action path.
+Every serious capability must be usable by the human UI and authorized Agents through the same
+structured action path. Composable operations may also be invoked by M17, but the workflow caller
+inherits the initiator's scope and receives no special permission.
 
 The common verb set is:
 
@@ -104,7 +125,9 @@ Examples:
 - video: read tracks/clips, trim/split/reorder clips, render
 - files: inspect, move, rename, delete with permission and undo
 
-Human controls and agent tools must call the same underlying action. A button-only feature is incomplete. An agent-only tool that bypasses UI evidence is also incomplete.
+Human controls, Agent tools, and workflow steps are generated from the same capability/action
+definition and call the same executor. A button-only feature is incomplete. An Agent/workflow-only
+tool that bypasses visible evidence is also incomplete.
 
 ## 6. First Development Spine
 
@@ -113,13 +136,16 @@ The first spine is not “build all surfaces.” It is the minimum product backb
 > **Phase → Wave cross-reference:** The phases below map to execution waves in
 > `docs/WAVE-MODULE-MAP.md`. See the table at the end of this section for the full mapping.
 
-### Phase 0: Clean Craft Baseline `[Wave 0 + U Track]`
+### Phase 0: Clean Craft Agents v0.11 Baseline `[W0.1 migration gate]`
 
 Goal: Craft runs cleanly and remains recognizable.
 
 Do:
 
-- keep the Craft monorepo, Electron shell, renderer flow, settings storage, session manager, permissions, and BrowserPane
+- start from the verified Craft Agents OSS v0.11.0 clean baseline and classify every local
+  difference as retain/adapt/drop/defer
+- keep the monorepo, Electron shell, project/task/session flow, settings authority, permissions,
+  BrowserPane, and compatible upstream panels after evidence-based inspection
 - remove or quarantine old experimental UI that does not support the new direction
 - keep upstream sync possible
 - verify install, typecheck, and basic Electron launch before feature migration
@@ -130,7 +156,8 @@ Do not:
 - replace the shell
 - add new top-level pages for every feature
 
-Exit criteria: default Craft workbench is usable, and the repo has a known baseline state.
+Exit criteria: the clean v0.11 workbench is usable, the migration ledger is complete, and the
+canonical contract implementation is re-frozen against that baseline.
 
 ### Phase 1: Terminal and CLI Runtime Loop `[Wave 2]`
 
@@ -167,22 +194,26 @@ Do not make “multi-agent” mean multiple chat bubbles. Use stable `AgentSeat`
 
 Exit criteria: one leader runtime can request a bounded member task, receive a compressed report, and leave evidence in the shared timeline.
 
-### Phase 4: Files and Library `[Wave 1]`
+### Phase 4: Files, Library, and ArtifactRef `[Wave 2]`
 
 Goal: make the user’s workspace real inside Fleet.
 
-There are two layers:
+There are three related layers:
 
 - **Files**: raw workspace files and folders
 - **Library**: selected, indexed, licensed, reusable project assets
+- **ArtifactRef**: exact versioned handoff references to files, Library assets, evidence, or native
+  documents
 
-Agents may organize files only through permissioned actions. Library assets must track source, hash/version, license/provenance, and where they are used.
+Agents may organize files only through permissioned actions. Library assets and ArtifactRefs must
+track exact source/version, hash where available, license/provenance, sensitivity, parents, and
+where they are used.
 
 Exit criteria: files are visible, selectable, usable by agents, and write operations are permissioned and reversible.
 
 ### Phase 5: Browser and Artifact Workflow `[Wave 3]`
 
-Goal: turn BrowserPane into the design/review entry point.
+Goal: turn BrowserPane into one governed evidence/artifact input for design and review.
 
 Build:
 
@@ -201,27 +232,40 @@ The browser settings model should be explicit and user-readable: browser enablem
 open target, clear browser data, annotated screenshot inclusion, approval behavior, site-specific
 permission overrides, and a separate high-risk developer toggle for full CDP access.
 
-Exit criteria: selected web evidence can become agent context, timeline evidence, and an editable artifact handoff, while browser permissions and data controls remain visible in settings.
+Exit criteria: selected web evidence becomes Agent context, timeline evidence, and an ArtifactRef
+that can feed M07/M17 or an owned M18 project, while browser permissions/data controls remain
+visible in settings.
 
-### Phase 6: Canvas, AIGC, and Video `[F Track + Wave 3]`
+### Phase 6A: Composable Spatial Loop `[Wave 3A]`
 
-Goal: add the creative surfaces only after the spine works.
+Goal: prove one modular creative loop only after the spine, files, job core, and view host work.
 
-Design canvas uses a native design document model. AIGC uses External Jobs. Video uses a native timeline model. All three connect back to Library, permissions, and timeline.
+The first loop is text -> one real image operation -> durable ExternalJob -> ArtifactRef -> canvas
+result. Human UI, Agent, and workflow callers share the same capability/action path, and restart
+reconciliation must not repeat the external job.
 
-Exit criteria for the first canvas slice: a human edits one design object, an agent edits one design object, both changes enter the same timeline, and both can be undone.
+Exit criteria: a human and Agent edit the same versioned workflow/spatial projection, an approval
+pause is exercised, a real image output is committed through M05, and the complete run is
+inspectable/recoverable.
+
+### Phase 6B: Web, Presentation, and Media Fan-out `[Wave 3B]`
+
+Goal: reuse one exact image/artifact version as input to M18 web, M19 motion deck, and M09
+multi-asset media composition. Each produces a real editable native project and/or export and
+returns versioned ArtifactRefs.
 
 ### Phase → Wave Reference Table
 
 | Phase | Name | Wave / Track |
 |---|---|---|
-| Phase 0 | Clean Craft Baseline | Wave 0 + U Track |
+| Phase 0 | Clean Craft Agents v0.11 Baseline | W0.1 migration gate |
 | Phase 1 | Terminal and CLI Runtime Loop | Wave 2 |
 | Phase 2 | Internal Action Spine | Wave 0 → Wave 1 |
 | Phase 3 | Runtime Lanes and TeamRun | Wave 0 → Wave 2 |
-| Phase 4 | Files and Library | Wave 1 |
+| Phase 4 | Files, Library, and ArtifactRef | Wave 2 |
 | Phase 5 | Browser and Artifact Workflow | Wave 3 |
-| Phase 6 | Canvas, AIGC, and Video | F Track + Wave 3 |
+| Phase 6A | Composable Spatial Loop | Wave 3A |
+| Phase 6B | Web, Presentation, and Media Fan-out | Wave 3B |
 
 ## 7. External Jobs
 
@@ -265,8 +309,11 @@ Approved direct-source references:
 - Codegraph: local code graph and structured code query
 - DeepSeek Reasonix: ACP/stdio and planner/executor ideas
 - Deepcode CLI: skill paths, MCP, CLI/session management
-- OpenPencil: design canvas/native design engine direction
+- OpenPencil candidates: professional design-document behaviour only until an exact repository,
+  SDK/version, license, and adapter boundary are promoted; not the assumed M07 spatial host
 - OpenCut Classic: video timeline/native video editing direction
+- xyflow: preferred M07 renderer spike candidate only; not a promoted dependency yet
+- tldraw: behaviour reference only under its current production SDK license
 
 Everything else remains black-box reference unless explicitly promoted.
 
@@ -318,70 +365,38 @@ The old corpus cannot remain as active execution material. It contains useful de
 
 Use this structure:
 
-1. `DECISIONS-LEDGER.md`: final promoted decisions and reversals.
-2. `OWNERSHIP-MATRIX.md`: package and contract ownership.
-3. `WAVE-MODULE-MAP.md`: which modules can run in which wave.
-4. `PARALLEL-AGENT-OPERATING-MODEL.md`: how Lead and workers coordinate.
-5. `docs/modules/*.md`: one complete product loop per module.
-6. `docs/agent-packets/*.md`: executable work packets for parallel agents.
+1. `COMPOSABLE-WORKSPACE-ARCHITECTURE.md`: approved product/state boundaries.
+2. `DECISIONS-LEDGER.md`: final promoted decisions and reversals.
+3. `PERSISTENCE-AUTHORITY-MAP.md`: one logical authority per state class.
+4. `OWNERSHIP-MATRIX.md`: package and contract ownership.
+5. `WAVE-MODULE-MAP.md`: the only execution-gate/module placement source.
+6. `DOCUMENT-READINESS.md`: spec maturity independent from product/gate status.
+7. `PARALLEL-AGENT-OPERATING-MODEL.md`: how Lead and Workers coordinate.
+8. `docs/modules/*.md`: one complete product loop per module.
+9. `docs/agent-packets/*.md`: executable work packets only after a slice is execution-ready.
 
 The key change from the old docs is that a module document is not just a plan. It must be a complete frontend/backend/Agent/permission/timeline/validation loop that can be safely divided among agents.
 
 ## 12. Immediate Next Move
 
-The next useful work is not another broad roadmap.
+The next move is W0.1 migration/document/contract reconciliation, not feature implementation:
 
-The next useful work is:
+1. Align the Decision Ledger, architecture boundary, contracts, wave map, ownership, Board, module index, and packets.
+2. Resolve AgentSeat/tag authority, ActionInvocation caller/idempotency/revision, orthogonal action
+   policy, typed SessionEvent payloads, ArtifactRef, capability, workflow, ExternalJob, and view
+   contribution contracts.
+3. Have the Lead verify canonical implementation parity and record one new frozen contract version.
+4. Only then open W1 skeleton work. Terminal/CLI remains the first execution-spine loop; the first
+   creative loop remains D45 and does not start until W3A gates pass.
 
-1. Finish the active English control-plane docs.
-2. Write the first module specs only after the ownership and wave map are stable.
-3. Create the Wave 0 agent packet for contract freeze and code classification.
-4. Perform a code classification pass against this document:
-
-   1. baseline Craft code
-   2. candidate Fleet spine code
-   3. legacy experiment code
-   4. code to delete or quarantine
-
-After that, implement the first complete loop: terminal/CLI runtime from UI to process to session timeline to visible output.
 ---
 
-## 13. Fleet 架构选择与拓扑设计
+## 13. Historical Architecture Draft (Superseded by §18 and ADR-0033)
 
-对于 **Fleet** 的工程落地，通过保留并补强 Electron 原版 Shell 并基于 Bun Headless Server 运行的路线，是最高效且符合项目现状的技术选择。本决策的完整行业竞品对比选择矩阵请参见：👉 **[docs/ARCHITECTURAL-COMPARISON.md](file:///Users/lullwen/Documents/天工/docs/ARCHITECTURAL-COMPARISON.md)**。
+> **Sections 13-17 are retained only as historical context. They are not a delivery contract and
+> their estimates, SQLite/daemon topology, and F Track references are unverified.**
 
-### 13.1 架构路线决策
-
-| 对比项 | 方案 A：从零重写 (Tauri 壳) | **方案 B：原版补强 (Electron 壳) [最终选型]** |
-|---|---|---|
-| **状态共享** | ❌ 需在 Rust 侧新造 IPC 共享层，CLI/GUI 数据同步极难 | ✅ **天然共享**：CLI 和 GUI 均为平等的 RPC 客户端连入同个 Bun Server |
-| **开发工作量** | ❌ 约 16 周（重写 Shell/Session/审批/时间线） | ✅ **约 8 周**：仅针对 CLI、Browser、Canvas 进行增量补强 |
-| **CDP 自动化** | ❌ 需在 Tauri 重写无头/可视化窗口控制 | ✅ **直接复用**：已有成熟的 `BrowserPaneManager` 原生操控 |
-| **内存/资源开销** | ✅ 极低 (50-100MB) | ⚠️ 稍大 (150-250MB) |
-| **选型结论** | ❌ 投入产出比极低，且严重违背全局决策 D27-R | ✅ **最优解：避免重复造轮子，实现核心业务功能快速收敛** |
-
-### 13.2 物理运行拓扑
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│  Bun Headless Server (packages/server) ← 核心状态常驻             │
-│  - WebSocket RPC 协议支持 (MessageEnvelope 规范)                 │
-│  - SessionManager / SQLite 持久化 / 本地 API 路由                 │
-└─────────────────────────────────────────────────────────────────┘
-       ▲                          ▲
-       │ WebSocket (craft-cli)    │ WebSocket (Electron)
-       │                          │
-┌───────────────┐        ┌──────────────────────────┐
-│  craft-cli    │        │  Electron Desktop App    │
-│ 补强 CLI 客户端│        │  复用原版 + 补强 Surface   │
-│ (apps/cli/src)│        │  (apps/electron/src)     │
-└───────────────┘        └──────────────────────────┘
-```
----
-
-## 13. Fleet 架构选择与拓扑设计
-
-对于 **Fleet** 的工程落地，通过保留并补强 Electron 原版 Shell 并基于 Bun Headless Server 运行的路线，是最高效且符合项目现状的技术选择。本决策的完整行业竞品对比选择矩阵请参见：👉 **[docs/ARCHITECTURAL-COMPARISON.md](file:///Users/lullwen/Documents/天工/docs/ARCHITECTURAL-COMPARISON.md)**。
+This historical draft is retained only to explain why Electron-shell reuse was considered. It has no current external-comparison dependency; the binding upstream baseline is `docs/UPSTREAM-BASELINE.md`.
 
 ### 13.1 架构路线决策
 
@@ -411,16 +426,17 @@ After that, implement the first complete loop: terminal/CLI runtime from UI to p
 └───────────────┘        └──────────────────────────┘
 ```
 
-## 14. Current Delivery Spine
+## 14. Historical Delivery Spine
 
-To focus engineering efforts and prevent scope creep, the current wave limits delivery strictly to the core terminal/CLI interaction loop:
-1.  **M00 (Platform Spine)**: Core WS RPC handler, SQLite persistence, and graded L0-L3 permissions.
+This historical draft limited delivery to the core terminal/CLI interaction loop:
+1.  **M00 (Platform Spine)**: one local state/permission/timeline authority; physical storage was
+    not yet verified.
 2.  **M03 (Internal Action Registry)**: Structured action routing pipeline (PreInvoke / PostInvoke hooks).
-3.  **M02 (Terminal CLI Runtime)**: Local CLI `craft-cli` command line launcher connected to the Bun daemon.
+3.  **M02 (Terminal CLI Runtime)**: Local CLI `craft-cli` command launcher using the bounded Fleet Bridge/local runtime path defined for the active wave.
 
 All other surfaces (Browser, Canvas, Video, AIGC) are currently marked as non-active downstream waves.
 
-## 15. Explicit Non-Goals for This Wave
+## 15. Historical Wave Non-Goals
 
 The following modules are locked and must not be touched during the current delivery wave:
 -   **Canvas/Design Surface (M07)**: No infinite canvas stubs or OpenPencil bindings.
@@ -429,18 +445,36 @@ The following modules are locked and must not be touched during the current deli
 -   **Complex Browser Editing (M06)**: No DOM mutation bindings, browser automation scripts, or external crawler hooks.
 -   **Secondary Systems**: No secondary session store, permission model, or memory database. All work must build directly on the platform spine.
 
-## 16. Surface Entry Conditions
+## 16. Historical Surface Entry Conditions
 
 No worker agent may initiate work on downstream surfaces unless the following prerequisites are met and verified by the Lead:
 -   **Browser Surface (M06)**: Requires M00 (Spine), M03 (Registry), and M05 (Files) to be fully `usable`.
 -   **Canvas Surface (M07)**: Requires M00 (Spine), M03 (Registry), and M05 (Files Library) to be fully `usable`.
--   **AIGC / Video Surfaces (M08/M09)**: Requires M00 (Spine), M03 (Registry), M05 (Library), and M11 (Cost Ledger) to be fully `usable`.
+-   **AIGC / Video Surfaces (M08/M09)**: Require M00 (Spine), M03 (Registry), and M05 (Library) to be fully `usable`. Until M11 is usable, any external-job cost must be recorded as `UNKNOWN` in the shared job record; M11 later enriches that record rather than creating a second job ledger.
 
-## 17. What "usable" Means
+## 17. Historical Usability Summary
 
 A module or capability is declared `usable` only when the following criteria are verified:
-1.  **State Persistence**: Session state and configuration persist correctly across daemon/electron restarts via SQLite.
+1.  **State Persistence**: Session state and configuration persist through the canonical selected
+    authority across application restarts.
 2.  **Permission Gating**: Graded L0-L3 authorization checks are enforced; L3 triggers blocking user approvals.
 3.  **Timeline Evidence**: Every user UI write and agent command writes a corresponding structured event to the session timeline.
 4.  **Agent-Callable**: Capabilities are fully exposed in the action registry and callable via agent RPC tools.
 5.  **Rollback / Evidence**: Non-destructive actions provide transactional undo points; destructive actions are explicitly marked.
+
+## 18. W0.1 Architecture Reconciliation — Binding for W1/W2
+
+This section supersedes the duplicated historical topology drafts in §13 for W1/W2 execution.
+
+Fleet keeps and simplifies the existing Electron desktop shell. The shared **logical Platform Spine** is the single in-product owner of session state, permissions, timeline evidence, and local persistence during W1/W2.
+
+| Term | W1/W2 meaning | Not implied |
+|---|---|---|
+| Logical Platform Spine | The one owner of session, permission, timeline, and canonical local state. Physical storage is selected through W0.1 and `PERSISTENCE-AUTHORITY-MAP.md`. | A separately installed or always-running service, or an assumption that SQLite is already canonical. |
+| Terminal host | The Electron main-process boundary that owns PTY lifecycle. | A second session or permission authority. |
+| Fleet Bridge | The narrow authenticated boundary through which one runtime lane reports evidence and receives bounded context. | A general Fleet API or permission bypass. |
+| Physical daemon | A later conditional deployment choice under D22. | A prerequisite for W1/W2. |
+
+No independently installed or long-lived daemon is part of the W1/W2 delivery contract. A future offline/background need may justify one only through a new Lead-approved ADR covering lifecycle, local authentication, single-instance behaviour, recovery, upgrade, and state-ownership migration.
+
+External architecture comparisons are nonbinding research; the verified upstream baseline and migration gate live in `docs/UPSTREAM-BASELINE.md`.

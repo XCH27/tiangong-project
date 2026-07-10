@@ -1,5 +1,16 @@
 # Action ID Registry — FROZEN v1.2.0
 
+> **W0.1 notice (2026-07-09):** v1.2.0 is the last recorded frozen baseline, but W1 is
+> locked until the Lead re-freezes its canonical implementation parity and the unresolved
+> invocation/event/identity contract decisions. Workers must not begin new implementation
+> from this file alone.
+
+> **Composable-workspace notice (2026-07-09):** v1.2.0 predates ArtifactRef, capability,
+> workflow-runtime, view-host, and document-revision contracts. It also couples risk wording and
+> undo inconsistently (`aigc.job_submit`, exports, screenshots, and binding deletion are known
+> examples). W0.1 must reclassify the table using independent risk, approval, undo, cancellation,
+> retry, and evidence policies before any listed downstream action is implemented.
+
 > **Lead-owned.** No Worker may add, rename, or remove rows without bumping
 > `CONTRACT_VERSION` in `shared/src/protocol/internal-action.ts` and updating
 > this table in the **same commit**.
@@ -52,3 +63,39 @@ These ids **must not** be used by Workers until they appear in the frozen table 
 | `video.clip_trim` | M09 | Under discussion |
 | `browser.navigate` | M06 | Under discussion |
 | `browser.screenshot` | M06 | Under discussion |
+| `workbench.view_open` | M16 | Contract draft only |
+| `workbench.entity_reveal` | M16 | Contract draft only |
+| `workbench.view_close` | M16 | Contract draft only |
+| `workbench.layout_save` | M16 | Contract draft only |
+| `workbench.layout_reset` | M16 | Contract draft only |
+| `workflow.create` | M17 | Contract draft only |
+| `workflow.node_add` | M17 | Contract draft only |
+| `workflow.node_remove` | M17 | Contract draft only |
+| `workflow.edge_connect` | M17 | Contract draft only |
+| `workflow.edge_disconnect` | M17 | Contract draft only |
+| `workflow.validate` | M17 | Contract draft only |
+| `workflow.run_start` | M17 | Dynamic policy required; contract draft only |
+| `workflow.run_cancel` | M17 | Contract draft only |
+| `job.inspect` | M08 | Contract draft only |
+| `job.cancel` | M08 | Contract draft only |
+| `job.retry` | M08 | Contract draft only |
+| `media.project_create` | M09 | Contract draft only |
+| `media.clip_add` | M09 | Contract draft only |
+| `media.clip_update` | M09 | Contract draft only |
+| `media.render_submit` | M09 | Dynamic policy required; contract draft only |
+
+## W0.1 Re-freeze Requirements
+
+The next frozen table must include structured owner/version metadata and separate columns for:
+
+- side-effect/risk class;
+- approval policy;
+- undo policy;
+- cancellation policy;
+- retry/idempotency policy;
+- evidence policy;
+- allowed callers, including workflow runtime without independent authority;
+- input/output schema versions and document revision requirements.
+
+Candidate names above are design vocabulary only. They may be renamed or consolidated during the
+single canonical re-freeze; no Worker may consume them beforehand.

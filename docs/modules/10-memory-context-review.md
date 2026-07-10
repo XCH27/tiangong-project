@@ -1,456 +1,251 @@
-# 10 Memory Context Review
+# M10 — Memory, Context Pack, and Review
 
-## 1. Mission
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft; physical memory/index adapter unresolved
+> **Wave:** W4
+> **Owner:** Lead for memory/context contracts; M10 Workers by separate slices
+> **Depends on:** M00, M03, M05, M08, M11 usage reporting, M13/M16 views
 
-Unify local memory, context efficiency, ProjectPack, external AI reviews, and reports under a single governed center.
+## 1. Purpose
 
-**Core Design Philosophy: The goal of the memory system is not to "remember more", but to "remember more accurately, isolate better, and grow faster."**  
-A good memory system should reduce pitfalls, increase output efficiency, and save tokens, rather than imposing a burden on engineering development.
+Keep local memory accurate, isolated, inspectable, and deletable; assemble bounded project context;
+and produce governed internal/external review reports with evidence and honest cost labels.
 
----
+M10 has two separately packeted loops that share governance and UI:
 
-## 2. User-Visible Loop
+- **M10A Memory/Retrieval:** propose -> review/accept -> retrieve under scope -> inspect/delete.
+- **M10B Context Pack/Review:** select scope -> preview/secret scan -> authorize external handoff if
+  any -> run review -> save evidence-backed report.
 
-1. The user packages a project or selects a scope to view file, token, and secret risks.
-2. The user optionally submits the pack for authorized review.
-3. The user receives a report complete with evidence refs and cost labels.
+No packet may attempt both loops at once.
 
----
+## 2. Memory Model: Orthogonal Dimensions
 
-## 3. Current App Reuse
+The previous L0-L4/five-tier model is superseded. The canonical draft uses three independent
+dimensions.
 
-Reuse memory protocol/service, usage ledger, BrowserPane, External Job, session timeline, settings, and existing file/conversion tools.
+### 2.1 Seven Partitions
 
----
-
-## 4. Reference Projects
-
-RTK/codegraph are green-light optimization sources. Repomix/MarkItDown/Headroom/Zvec are candidates/sidecars unless promoted to formal dependencies.
-
----
-
-## 5. UI Placement
-
-Context/review belongs to a single center or panel, rather than having individual buttons for each tool. Governance UI should remain compact.
-
----
-
-## 6. Backend / RPC / Locality
-
-ProjectPack, file conversion, secret scanning, memory retrieval, and local indexing are `LOCAL_ONLY`. External reviews require explicit upload permissions.
-
----
-
-## 7. Session / Timeline / Permission / Rollback
-
-Bundle records hash, file list, secret scan, target platform, prompt hash, raw output, report, and real/estimated/unknown costs.
-
----
-
-## 8. Data Model
-
-Memory partitions, ProjectPack, ReviewBundle, ReviewReport, usage sample, context segment, evidence reference, and external platform records.
-
-### 8.1 Memory Distillation as Batch-Eligible Operation
-
-At session end, distilling tool invocation history (Track A) into structured Fact entries (Track B) is a background, non-interactive operation. This is a classic use case for Fleet's internal `async-native` batch mode:
-
-```
-Session closes
-  → Collect N SessionEvents from Track A (tool calls, diffs, exit codes)
-  → Build batch JSONL: one item per event, each asks model to extract Fact
-  → Submit as ExternalJob { type: 'memory-distill', batchMode: 'async-native' }
-  → Result maps back to DistilledToolMemory entries by event ID
-  → Write to memory.json partitions (project / agent / task)
-```
-
-Rules:
-- Distillation must not block the user from starting a new session.
-- Entries must be batched to stay within the provider's batch size limits.
-- A failed single entry should be skipped and logged without aborting the entire batch.
-- Sensitive entries (`scope: 'sensitive' | 'raw_path'`) must be marked with `blockedTargets: ['cross_project']` before writing.
-
-### 8.2 DistilledToolMemory Schema (aligned with Module 03 §8.1–8.5)
-
-```ts
-interface DistilledToolMemory {
-  // Identity fields — hard requirement, model must not misfill
-  id: string
-  sourceEventId: string
-  tool: 'grep' | 'read' | 'write' | 'shell' | 'browser' | 'mcp' | string
-  timestamp: string
-
-  // Semantic evaluation fields — optional + 'uncertain' escape hatch
-  scope?: 'global_preference' | 'transferable' | 'project_specific'
-        | 'tool_pattern' | 'sensitive' | 'raw_path' | 'uncertain'
-  scopeConfidence?: 'high' | 'medium' | 'low'
-  outcome?: 'success' | 'failure' | 'retry-fixed' | 'blocked' | 'uncertain'
-  risk?: 'low' | 'medium' | 'high' | 'uncertain'
-
-  // Core content — required but free format
-  content: string
-
-  // Evidence — retroactively required, empty array is legal
-  evidenceRefs: Array<{ conversationNo: string; eventId?: string; fileHash?: string }>
-
-  // Security boundary fields — optional, defaults to strictest values if omitted
-  allowedTargets?: string[]   // Default: ['same_project_only']
-  blockedTargets?: string[]   // Default: ['cross_project']
-
-  // Optional semantic detail fields
-  errorSignature?: string
-  expectedUseCases?: string[]
-  expiresAt?: string
-
-  // Escape hatch — model says "I'm uncertain about X" instead of guessing
-  notes?: string
-}
-```
-
-**Semantic Post-Validation Rules** (running after Zod structure validation):
-- If `scope === 'sensitive'`, `blockedTargets` must contain `'cross_project'`; added automatically if missing.
-- If `evidenceRefs.length === 0`, `scopeConfidence` must be `'low'`; downgraded otherwise.
-- If `errorSignature` matches common patterns (e.g. `'Error: undefined'`, `'null'`), flag for manual review.
-- If `risk === 'uncertain'`, treat as `'high'` in all downstream access checks.
-
----
-
-## 9. Agent-Native Actions
-
-Check memory, retrieve governed context, build pack preview, submit review, save report, and create follow-up tasks.
-
----
-
-## 10. Files To Inspect First
-
-- `app/packages/shared/src/protocol/memory.ts`
-- `app/packages/shared/src/protocol/usage.ts`
-- External review/job services
-- Memory transfer evaluation scripts
-
----
-
-## 11. Files Likely Touched
-
-Memory services, project pack services, review services, context UI, and report UI.
-
----
-
-## 12. Parallel Work Packages
-
-Memory governance, ProjectPack, review UI, sidecar adapters, and report normalizer can split after shared usage/report types freeze.
-
----
-
-## 13. File Ownership
-
-Memory/usage/review protocol changes are owned by the Lead.
-
----
-
-## 14. Validation Ladder
-
-Memory leak tests, project pack dry run, secret scan fixtures, review report persistence smoke test, and UI origin tag checking.
-
----
-
-## 15. Done / Not Done
-
-**`usable`**: User can see packet risks and save reviews/reports with evidence.
-
-**`display-only`**: Token/review dashboard with no real bundle.
-
----
-
-## 16. Risks And Blocked Decisions
-
-**Risk**: Treating external AI website calls as "free". Cost sources must remain real/estimated/unknown.
-
----
-
-## 17. Token & Context Optimisation Architecture
-
-This section defines how Fleet reduces token consumption across the request lifecycle.  
-It replaces all informal comments regarding RTK, Repomix, Headroom, or Reasonix integration.
-
-### 17.1 Five-Layer Model
-
-Each layer is responsible for exactly one concern. No layer may compress or reorder the output of another layer.
-
-| Layer | Name | Core concern | Primary reference | Owner module |
-|---|---|---|---|---|
-| 0 | Memory | Avoid redundant history injection | Mem0 (dedup/conflict ideas), Letta (3-tier model) | M10 |
-| 1 | Retrieval Assembly | Send only relevant context | codegraph (Green-Light MCP), Zvec (FTS5+vector interface), Tree-sitter AST outline (self-impl) | M10 |
-| 2 | Prompt Assembly | Fixed snippet ordering to hit cache | DeepSeek-Reasonix (Green-Light stable-prefix) | **M11** |
-| 3 | Transport / Cache | Request-level token caching | Headroom (interface reference, self-impl backend) | M11 |
-| 4 | Execution Output | Prevent terminal/file output bloat | RTK (Green-Light, direct integration), Context-mode (ELv2 — fold criteria reference only) | M10 + UI |
-
-### 17.2 Layer Rules (Hard)
-
-1. **No stacked compression.** After RTK (Layer 4) semantically compresses tool return values, other layers must not further truncate or rewrite them before sending to the model.
-2. **Prompt Assembly (Layer 2) is the sole assembler.** No module constructs final Prompt strings directly; modules submit typed `ContextSegment` objects to M11's assembler, which owns the ordering.
-3. **RTK only processes unstructured streams.** RTK compression is only applicable to terminal `stderr`/`stdout` log streams and must not be used for JSON payloads, AST structures, or any field subsequently parsed by code.
-4. **Context-mode (ELv2) code is strictly forbidden.** Output folding criteria can be researched and independently re-implemented in the Fleet UI layer, but no source code, type definitions, or configuration from Context-mode may enter the repository.
-
-### 17.3 Per-Tool Integration Decisions
-
-#### RTK (Layer 4 — Execution Output)
-- **Action**: Direct integration, green-light.
-- **Scope**: Opt-in, sandboxed. Only intercepts terminal execution log streams.
-- **Must Not Touch**: Any structured return value (JSON, diff hunks, AST).
-
-#### codegraph + Zvec (Layer 1 — Retrieval Assembly)
-- **Action**: Independent MCP Server. Model calls `query_code_graph` and `query_vector_index` tools. Fleet does not introduce their internal implementations.
-- **Upgrade Path**: The MCP protocol ensures engine upgrades do not require Fleet modifications.
-
-#### AST Structural Outline — Replacing Repomix Copies (Layer 1)
-- **Strategy**: `Repomix` is a candidate reference, and its policy rules explicitly prohibit copying AST parsers, line counters, or ignore-file readers. Extracting its Tree-sitter algorithm to develop a proprietary package for Fleet is a **policy violation**.
-- **Correct Way**: Use the official `tree-sitter` Node.js bindings and grammar packages to implement a lightweight `@fleet/ast-outline` package. Repomix serves as a behavioral reference only.
-- **`read_file` handler trigger rule**: When a file exceeds 500 lines, the default response downgrades to an AST outline (top-level declarations, exported symbols). The full content must be requested explicitly via `read_file({ fullContent: true })`.
-
-#### Headroom (Layer 3 — Transport / Cache)
-- **Strategy**: Do not copy compression layers, MCP proxy servers, or local drivers.
-- **Correct Way**: Reference its reversible hash cache interface spec to implement a cache backend inside Fleet's existing Cost Ledger (M11). The hash key is a stable prompt prefix hash generated by Layer 2.
-
-#### Mem0 + Letta (Layer 0 — Memory)
-- **Strategy**: Do not copy backend storage wrappers or Qdrant/Milvus interfaces.
-- **Correct Way**: Adopt a three-tier memory model (Core / Recall / Archival) at the interface layer. The storage backend is Fleet's native SQLite + FTS5 (utilizing Zvec's indexing patterns). The `DistilledToolMemory` schema in §8.2 is a concrete implementation of the "Recall" tier.
-
-#### Context-mode (Layer 4 UI — Big Output Fold)
-- **Strategy**: ELv2 — strictly prohibit code copying and binary packaging.
-- **Correct Way**: Research folding standards (minimum output length thresholds, diff hunk detection, code block detection) and implement the folding logic from scratch in `app/packages/ui/src/components`.
-
-#### DeepSeek-Reasonix (Layer 2 — Prompt Assembly)
-- **Strategy**: Green-light MIT. Directly reference the stable prefix caching and planner/executor patterns.
-- **Correct Way**: Implement stable prefix prompt ordering in the M11 Prompt Assembly layer (§18). **This is not TeamRun's concern**.
-
-### 17.4 Anti-Patterns (Forbidden)
-
-| Anti-pattern | Why forbidden |
-|---|---|
-| Running RTK on JSON tool results before passing to model | Destroys structured data that the model needs to parse |
-| Inserting memory snippets in the middle of a stable prefix assembly | Breaks prefix cache, wasting ~50% cost savings |
-| Copying Repomix source code for AST outlines | Policy violation: AST parser duplication is explicitly forbidden |
-| Any Context-mode code entering the repository | ELv2 high-risk license |
-| TeamRun building the final Prompt string | Prompt Assembly is owned by M11; TeamRun only submits ContextSegments |
-| Copying Headroom MCP proxy or compression layer | Strategy: only reference interface specifications |
-
----
-
-## 18. Memory Scope Isolation — Project Isolation and Recall Protection
-
-> **Core Issue**: Recall contamination (cross-project memory contamination) is the most common engineering failure of agent memory systems. Its root cause is not "weak memory" but the lack of strict scope boundaries and gating logic.
-
-### 18.1 Five-Tier Memory Partition
-
-Each layer has an independent lifecycle, read/write permissions, and cross-project access policy:
-
-| Layer | Name | Lifecycle | Cross-Project Sharing | Typical Content |
-|---|---|---|---|---|
-| L0 | **Session Memory** | Current session, destroyed on close | ❌ Forbidden | Current task temporary state, conversation context |
-| L1 | **Project Memory** | Project duration | ❌ Forbidden | Project decisions, architectural patterns, pitfalls |
-| L2 | **Tool Memory** | Persistent, grouped by Tool ID | ⚠️ Read-only, explicit ref | Tool experience, failure modes, param templates |
-| L3 | **User Memory** | Persistent, user-level | ✅ Allowed | Personal preferences, language habits, styling |
-| L4 | **Policy Memory** | Persistent, system-level | ✅ Read-only | Safety rules, license constraints, forbidden patterns |
-
-**Write Rules**:
-- L0 is managed automatically by the session runtime and does not go through distillation.
-- L1 can only be written to by sessions within the same project; entries with `scope === 'project_specific'` during distillation write to L1.
-- L2 is automatically populated by tool invocation distillation; entries with `scope === 'tool_pattern'` write to L2.
-- L3 requires manual confirmation or is triggered by entries with high confidence and `scope === 'global_preference'`.
-- L4 is written by system administrators or the Lead and is read-only for agents.
-
-### 18.2 Retrieval Gate
-
-**Retrieval must not rely solely on semantic similarity; it must pass through a scope gate before similarity calculation.**
-
-```
-Recall Request
-  → Step 1: Identify current projectId + sessionId + agentRole
-  → Step 2: Filter candidate pool by layer
-      - L0: Current sessionId only
-      - L1: Current projectId only
-      - L2: Any project, but flag origin project
-      - L3/L4: Global
-  → Step 3: Compute semantic similarity within the filtered candidate pool
-  → Step 4: Attach [Origin Project] tag to cross-project L2 entries and explicitly label them when injecting into context
-  → Step 5: Return results complete with scope, origin, and confidence for each memory entry
-```
-
-**Forbidden Actions**:
-- Performing similarity search on the global pool first, then filtering by scope (reversing the order leads to cross-project pollution).
-- Injecting memory without labeling the source (the model cannot distinguish current project facts from external experience).
-
-### 18.3 Conflict Detection and Override Rules
-
-When a newly distilled entry conflicts with an existing entry:
-
-```
-New Entry vs Existing Entry
-  → Same scope + Same projectId: New overrides old, old entry moved to archive (retained for 30 days)
-  → Same scope + Different projectId: Coexist, differentiated by projectId during retrieval
-  → Scope downgrade (high → low confidence): Retain both versions, mark conflict=true, do not auto-override
-  → Repeating errorSignature: Aggregate into one, incrementCount++, do not write duplicate entries
-```
-
-### 18.4 Expiration and Cleanup Policies
-
-| Trigger | Action |
-|---|---|
-| `expiresAt` reached | Move to archive automatically, do not delete immediately |
-| `outcome === 'failure'` and not linked by `retry-fixed` within 30 days | Mark as stale, demote weight during retrieval |
-| Project closed/archived | Move L1 entries to archive partition, do not share across projects |
-| User explicit delete | Hard delete, write to audit log synchronously |
-| `errorSignature` marked as false positive | Remove signature from L2, update matching blacklist |
-
-**Archive Retention Period**: Default 90 days, adjustable in Settings.
-
----
-
-## 19. Tool Memory Growth Flywheel — Tool Invocation Growth Flywheel
-
-> **Design Philosophy**: Inspired by Adam Smith's division of labor theory—industrial progress stems from specialization. Effective division of labor is not just "distributing tasks", but **accumulating experience and creating new skills or tools** during execution, closing a positive feedback loop.
->
-> The agent growth logic should be identical: every tool invocation is "work experience." The system should automatically extract reusable knowledge, deposit it into Tool Memory, and lower future trial-and-error costs while improving first-pass success rates.
-
-### 19.1 Flywheel Structure
-
-```
-Tool Invocation
-       ↓
-  Execution + Outcome Observation
-       ↓
-  Session Closes → Distillation
-       ↓
-  Write to Tool Memory (L2)
-       ↓
-  Next Similar Invocation → Retrieval Gate hits L2
-       ↓
-  Inject Context (with origin tags)
-       ↓
-  Model completes task with fewer tokens & less trial-and-error
-       ↓
-  New success experiences distilled → L2 updated
-       ↑
-  ← ← ← ← ← ← ← Flywheel Closes ← ← ← ← ← ←
-```
-
-### 19.2 Tool Memory Structured Content
-
-L2 Tool Memory entries do not just record "this tool call succeeded," but structure **reusable operational knowledge**:
-
-```ts
-interface ToolMemoryEntry extends DistilledToolMemory {
-  scope: 'tool_pattern'  // Fixed as tool_pattern
-
-  // Tool-specific fields
-  toolId: string                        // e.g. 'shell', 'mcp:github', 'read_file'
-  parameterPattern?: string             // Summary of successful parameter patterns
-  preconditions?: string[]              // Conditions that must be met before calling this tool
-  postconditions?: string[]             // Expected state after invocation
-  antiPatterns?: string[]               // Known usage patterns that fail
-  tokenCost?: { input: number; output: number }  // Historical average cost reference
-
-  // Growth counters
-  successCount: number
-  failureCount: number
-  lastUsed: string
-}
-```
-
-### 19.3 Identity Tags × Tool Invocation × Memory Triangle
-
-In Fleet, every agent seat carries identity tags (AgentRole / AgentSeat), which bind with Tool Memory:
-
-| Identity Tag Dimension | Impact on Tool Memory |
-|---|---|
-| `agentRole: 'lead'` | Can write to L4 Policy Memory; L2 writes automatically receive high-confidence flags |
-| `agentRole: 'worker'` | Read-only L4; L2 writes require Lead approval to promote to `scopeConfidence: 'high'` |
-| `toolAffinity: ['shell', 'grep']` | Retrieval prioritizes L2 entries matching the agent's tool affinity |
-| `projectId` | Governs L1 write placement; L1 is strictly isolated during retrieval |
-
-**Key Rule**: Tool Memory growth is a **byproduct of role specialization**. The Lead accumulates architectural decisions and boundary judgments; Workers accumulate specific tool usage experience. Both form the system's knowledge assets, but access is strictly stratified.
-
-### 19.4 Skill Emergence Mechanism
-
-When the `successCount` of a certain `toolId` in L2 reaches a threshold, and the `parameterPattern` has a high repetition rate, the system can propose to **promote it to an M12 Capability**:
-
-```
-L2 Tool Memory Entry
-  successCount >= 10
-  AND parameterPattern repetition rate >= 70%
-  AND from >= 2 different projectIds
-       ↓
-  Generate SkillProposal { toolId, parameterPattern, suggestedCapabilityName }
-       ↓
-  Submit for human audit (Lead confirmation)
-       ↓
-  Write to M12 Capability Registry as a new composable skill
-       ↓
-  Subsequent invocations reuse directly from Capability layer, bypassing distillation
-```
-
-This is the system's path to **automatically creating new skills from experience**, matching the logic of "workers inventing tools through repetitive operation" from the division of labor.
-
-### 19.5 Flywheel Token Saving Effect
-
-Quantifiable benefits of a mature flywheel:
-
-| Phase | Mechanism | Savings Source |
+| Partition | Owner/scope | Cross-project rule |
 |---|---|---|
-| Early | No Tool Memory | Trial-and-error required, highest token consumption |
-| Growth | L2 hits, parameter template injected | Reduced retries, saving 20–40% |
-| Mature | M12 Capability reuse | Reuses verified invocation sequences, saving 50–70% |
-| Stable | Cross-project L2 tool sharing | Dramatically lowers cold-start costs for new projects |
+| session | one session's temporary working facts | forbidden |
+| project | one project's decisions/facts | forbidden |
+| tool | reusable, evidence-backed operation lessons | explicit read-only transfer with origin |
+| user-preference | confirmed user preferences | user scope, still filtered by sensitivity |
+| policy | Lead/system governance rules | read-only to Agents |
+| sensitive-quarantine | entries requiring review/redaction | never injected automatically |
+| archive | superseded/expired records retained by policy | not recalled by default |
 
----
+### 2.2 Four Lifecycle States
 
-## 20. Memory Quality Gates
+`transient -> active -> retained -> archived`
 
-> The quality of memory written is far more important than quantity. Noisy memory degrades the system's signal-to-noise ratio, leading to worse decisions than having no memory at all.
+- transient is not eligible for broad retrieval;
+- active is valid in its owning session/project;
+- retained has passed quality/review policy;
+- archived is excluded from ordinary recall but remains governed until deletion/retention expiry.
 
-### 20.1 Pre-Write Gates
+### 2.3 Sensitivity
 
-All distilled entries must pass the following gates before writing to any partition:
+`normal | sensitive | raw_path | uncertain`
 
-1. **Zod Schema Validation**: Field types and required items.
-2. **Semantic Post-Validation** (§8.2 rules): Alignment of scope/risk/evidenceRefs.
-3. **Deduplication Check**: Content similarity > 85% with an existing entry in the same scope is treated as duplicate. The write is skipped, and the existing entry's `successCount` is incremented.
-4. **Sensitive Information Scan**: Integrated with the M10 secret scanning pipeline; high-risk content automatically forces `scope: 'sensitive'`.
-5. **Origin Credibility Assessment**: Distilled entries from `outcome: 'failure'` start with `scopeConfidence` forced to `'low'`.
+Unknown/omitted sensitivity defaults to `uncertain`, which uses the most restrictive routing and
+redaction. Partition and sensitivity filtering always occurs before similarity/scoring.
 
-### 20.2 Read-Time Filters
+## 3. Memory Entry Contract
 
-Retrieved memory is filtered before return:
-- Entries that are past `expiresAt` (demoted in weight and moved to backup candidate).
-- `scopeConfidence: 'low'` entries are discarded first if the token budget is tight.
-- Entries marked with `conflict: true` receive warning tags and are not injected as absolute facts.
+```ts
+type MemoryEntry = {
+  memoryId: string
+  schemaVersion: 1
+  partition: 'session' | 'project' | 'tool' | 'user_preference' |
+    'policy' | 'sensitive_quarantine' | 'archive'
+  lifecycle: 'transient' | 'active' | 'retained' | 'archived'
+  sensitivity: 'normal' | 'sensitive' | 'raw_path' | 'uncertain'
+  ownerScope: { sessionId?: string; projectId?: string; userId?: string; toolId?: string }
+  content: string
+  confidence: 'high' | 'medium' | 'low' | 'uncertain'
+  sourceRefs: string[]
+  originProjectId?: string
+  validFrom: string
+  expiresAt?: string
+  supersedes?: string[]
+  conflictRefs?: string[]
+  allowedTargets: string[]
+  blockedTargets: string[]
+  createdBy: ActorRef
+  createdAt: string
+  updatedAt: string
+}
+```
 
-### 20.3 Manual Review Queue
+Identity/source/security fields are hard requirements. Semantic confidence may be uncertain. An
+entry without evidence/source cannot be high confidence or automatically retained.
 
-The following cases trigger manual review proposals (asynchronous, non-blocking):
-- `errorSignature` matching common patterns.
-- `risk: 'high'` + `scopeConfidence: 'low'` occurring simultaneously.
-- SkillProposal generation (§19.4).
-- High-frequency references to cross-project L2 entries (candidates for L3/L4 promotion).
+## 4. Write and Distillation Rules
 
----
+- Session events remain evidence, not automatically memory.
+- A human or Agent may propose an entry; M03/M00 permission and M10 semantic validation apply.
+- Background distillation is an M08 job and returns proposals, not silent retained facts.
+- Project facts remain project-scoped.
+- Tool lessons may be retained/cross-project only after evidence, sensitivity scan, origin label,
+  and configured review policy.
+- User preferences require explicit confirmation.
+- Policy memory is Lead/system owned and read-only to project Agents.
+- Sensitive/raw-path/uncertain proposals enter quarantine and are never auto-injected.
+- Conflicting entries coexist with explicit conflict/supersession until reviewed; no silent
+  similarity-based overwrite.
+- Fixed claims such as “10 successes/70% repetition creates a skill” are removed. M12 skill
+  proposals require real evidence and human approval; any future threshold is measured/configured.
 
-## 21. Implementation Checklist
+## 5. Retrieval Gate
 
-- [ ] `memory.ts` protocol freeze: Five-tier partition type definitions
-- [ ] Retrieval gating: Scope filtering precedes similarity calculation
-- [ ] Distilled batch job: Triggered on session close, asynchronous and non-blocking
-- [ ] DistilledToolMemory Zod schema + semantic post-validation
-- [ ] ToolMemoryEntry schema + successCount/failureCount tracking
-- [ ] SkillProposal generation logic + M12 integration
-- [ ] Archive partition + 90-day retention cleanup cron
-- [ ] Conflict detection and override rules implementation
-- [ ] All Pre-Write Gates implemented
-- [ ] Manual review queue UI (compact view in M13 Settings Shell)
-- [ ] Memory leak tests: Negative test cases for cross-project recall
-- [ ] Tool Memory cost tracking (integration with M11 Cost Ledger)
+```text
+request with caller/project/session/purpose/token budget
+-> M00 permission and effective sensitivity ceiling
+-> partition + owner-scope filter
+-> sensitivity/blocked-target filter
+-> lifecycle/expiry/conflict filter
+-> exact/lexical/semantic scoring inside allowed pool
+-> finite budget/ranking
+-> return entries with origin/confidence/source labels
+```
 
-## 17. Non-Goals & Prohibitions
+Forbidden:
 
-- **No Unpermissioned Sync:** Memory is strictly local and partitioned. Do not upload memory databases or local context packages to external/cloud databases without explicit authorization.
+- global similarity search before scope filtering;
+- unlabelled cross-project tool memory;
+- quarantine/archive injection by default;
+- treating recalled memory as an authoritative project fact without source/confidence;
+- hidden memory injection that the user cannot inspect.
+
+## 6. Deletion and Retention
+
+- User-requested authoritative memory deletion is L3 under D2.
+- Delete removes the authoritative entry and schedules removal from all derived indexes/caches.
+- Evidence that an entry existed may retain a redacted tombstone only if the audit policy requires
+  it; the content is not retained in the tombstone.
+- Expiry moves entries to archive unless policy requires hard deletion.
+- Project archive never makes project memory cross-project.
+- Retention values live in M13 settings/policy and must not be duplicated in code/spec constants.
+
+## 7. Physical Persistence
+
+M10 owns one logical memory authority. W0.1/v0.11 inspection must select the physical store and
+index strategy. There is no simultaneous `memory.json` and SQLite authority. Search indexes,
+vectors, summaries, and caches are derived/rebuildable and must honour delete/tombstone policy.
+
+See `PERSISTENCE-AUTHORITY-MAP.md`. No external/cloud memory database is permitted without a new
+explicit decision and upload consent model.
+
+## 8. Context Segment and Prompt Boundary
+
+M10 returns typed, source-labelled `ContextSegment` objects. It does not assemble final provider
+prompts or claim provider cache hits; M11 owns final prompt/routing/cache policy.
+
+Rules retained from earlier analysis:
+
+- structured JSON/diffs/AST are not semantically truncated by unstructured output compression;
+- terminal/output compression applies only to declared unstructured streams;
+- file outlines/full-content decisions are explicit and reversible at retrieval time;
+- every segment carries origin, scope, sensitivity, token estimate, and evidence refs;
+- a token budget drops low-confidence/low-priority segments first and reports omissions.
+
+## 9. ProjectPack Contract
+
+```ts
+type ProjectPack = {
+  packId: string
+  schemaVersion: 1
+  workspaceId: string
+  selection: string[]
+  fileManifest: Array<{ pathRef: string; hash: string; bytes: number; mediaType?: string }>
+  secretScan: { status: 'clean' | 'findings' | 'failed'; findingRefs: string[] }
+  contextSegments: string[]
+  excluded: Array<{ ref: string; reason: string }>
+  createdBy: ActorRef
+  createdAt: string
+}
+```
+
+Pack preview is local-only. A pack is immutable once authorized for external review; changes create
+a new version/hash. Raw secrets are never added to the pack report/timeline.
+
+## 10. Review Loop
+
+1. select project/artifact scope and build a local preview;
+2. show file/byte/token estimate, exclusions, secret findings, provider/target, and cost source;
+3. require explicit upload/provider approval when data leaves the machine;
+4. submit through M08 with idempotency and provider reconciliation;
+5. normalize response into `ReviewReport` claims, severity, confidence, and evidence refs;
+6. save raw protected output and user-visible report as governed artifacts;
+7. let the user accept, dismiss, or turn findings into explicit tasks/workflows.
+
+An external AI opinion is not automatically memory, policy, or a code change.
+
+## 11. UI Contributions
+
+- one M16 context/review panel with tabs for memory, pack preview, reviews, and provenance;
+- M13 preferences for retention/retrieval/external-review policy;
+- per-entry inspect/source/conflict/delete controls;
+- M17 operations for pack/review only when caller permission and finite upload policy permit;
+- no separate button/center per external review provider.
+
+## 12. Candidate Actions — Not Frozen
+
+| Candidate | Purpose | Policy intent |
+|---|---|---|
+| `memory.search` | scoped filtered retrieval | L0 filtered read |
+| `memory.propose` | create reviewable entry proposal | L1 local write |
+| `memory.retain` | promote validated entry | L2 policy/context effect |
+| `memory.delete` | delete content/indexes | L3 explicit confirmation |
+| `context.pack_preview` | local finite pack preview/secret scan | L0/L1 local artifacts |
+| `review.submit` | send exact approved pack to provider | L2 external/data/cost side effect |
+| `review.report_save` | commit normalized report artifact | L1 local write |
+
+## 13. Error Handling
+
+| Condition | Result | Recovery |
+|---|---|---|
+| scope/sensitivity denied | entry absent; no metadata leak | narrow request or permitted policy change |
+| index unavailable | exact/lexical fallback or visible unavailable | rebuild derived index |
+| conflicting memory | warning and sources, not silent winner | human resolve/supersede |
+| distillation uncertain | quarantine/low-confidence proposal | inspect/edit/reject |
+| secret scan fails | external submission blocked | repair scan/exclude files |
+| provider status unknown | review job reconciling | M08 inspect; no duplicate upload |
+| report evidence missing | finding downgraded/rejected | attach evidence or mark opinion |
+| delete/index cleanup partial | deletion reconciling; entry not retrievable | complete derived cleanup |
+
+## 14. Verification
+
+### M10A Memory
+
+1. Propose project/tool/user/sensitive entries through human and Agent paths.
+2. Verify partition/lifecycle/sensitivity, evidence, scope-before-similarity, and origin labels.
+3. Attempt cross-project leakage and quarantine injection; verify refusal.
+4. Create conflict/supersession and inspect both sources.
+5. Delete an entry; verify authoritative and derived-index removal after restart.
+6. Rebuild indexes and verify no deleted content returns.
+
+### M10B Context/Review
+
+1. Build a real ProjectPack preview with files, hashes, exclusions, token estimate, and secret scan.
+2. Block external submission on secret-scan failure; approve an exact safe version.
+3. Submit through a real approved provider/M08 job and reconcile across restart.
+4. Save a report with evidence/cost labels and keep unsupported claims marked as opinion.
+5. Verify report findings do not automatically become memory/tasks/changes.
+
+## 15. Open Gates
+
+- Freeze memory entry, retrieval, deletion/tombstone, ContextSegment, ProjectPack, and ReviewReport
+  contracts.
+- Select one physical store/index adapter and prove deletion/rebuild/isolation.
+- Resolve M11 prompt/cache ownership and real provider review/cost fields.
+- Issue separate M10A/M10B packets.
+
+## 16. Non-Goals and Prohibitions
+
+- No global unfiltered recall, silent cross-project facts, cloud memory sync, double store, or
+  automatic skill/policy promotion.
+- No review upload without exact scope, secret scan, permission, target, and honest cost source.

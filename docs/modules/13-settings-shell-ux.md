@@ -1,8 +1,15 @@
-# 13 Settings Shell UX
+# M13 — Settings and Preferences UX
+
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** concept; exact IA/preference keys require v0.11 mapping
+> **Wave:** W5
+> **Depends on:** M00 preference authority, M16 view/layout contract, owning module schemas
 
 ## 1. Mission
 
-Keep Fleet's shell and settings understandable by assigning every function one home and one representation.
+Keep Fleet's settings understandable by assigning every preference one home and one representation.
+M13 does not own the workbench panel registry or layout engine; M16 does.
 
 ## 2. User-Visible Loop
 
@@ -18,7 +25,20 @@ TRAE-style structure is visual/interaction reference only. Codex browser setting
 
 ## 5. UI Placement
 
-Default workbench remains Craft shell. Settings are grouped by user intent: usage, models/runtime, memory, capabilities/plugins, browser, appearance, about, plus explicitly retained messaging where assigned.
+Default workbench remains the Craft shell. Settings are grouped by user intent:
+
+| Section | Owning contract |
+|---|---|
+| General / workspace | M00/M05 |
+| Runtime and terminal | M02/M04 |
+| Models, providers, and usage | M11 plus protected secrets authority |
+| Memory/context | M10 |
+| Capabilities/loadouts/plugins | M12 |
+| Browser control | M06 |
+| Workbench layout and Agent reveal policy | M16 |
+| Appearance/accessibility | retained shell/M13 |
+| Messaging integrations | M15 |
+| About, licenses, diagnostics | M01/M13 |
 
 The Browser settings page should be a compact Codex-style settings surface:
 
@@ -28,6 +48,9 @@ The Browser settings page should be a compact Codex-style settings surface:
 - Developer mode rows for high-risk full CDP access
 
 Do not scatter browser switches across BrowserPane, capability settings, and developer settings.
+
+M16's settings include only preference projections such as default layout, reset, and whether an
+Agent may reveal/focus views. M13 must not duplicate live panel registration or layout state.
 
 ## 6. Backend / RPC / Locality
 
@@ -39,7 +62,10 @@ Ordinary display settings are low risk. Settings that affect permissions, extern
 
 ## 8. Data Model
 
-Settings section, setting item, preference key, i18n key, runtime/system tool status, visibility/feature state, browser permission policy, site override, browser data clearing scope.
+Settings section, setting item, canonical preference key, schema/version, default, sensitivity,
+risk/approval policy, i18n key, restart requirement, owning module, and optional migration. Browser
+permission policy, site override, data clearing scope, and M16 layout/reveal policy are typed owner
+subschemas.
 
 ## 9. Agent-Native Actions
 
@@ -66,7 +92,9 @@ Settings grouping and shell layout are Lead-owned. Individual settings content b
 
 ## 14. Validation Ladder
 
-i18n parity/sorted checks, settings navigation smoke, browser settings smoke, visual overlap check, preference persistence check.
+IA/schema validation, duplicate-key check, migration/persistence check, human/Agent permission
+check, real settings navigation and visual verification, and proof that the setting changes owner
+behaviour rather than renderer-only state.
 
 ## 15. Done / Not Done
 
