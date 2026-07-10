@@ -1,6 +1,6 @@
 # M06 Implementation Constraints
 
-> **Status:** `not implemented` — M06 is W3 Locked. This is a design constraint, not an implementation instruction.
+> **Status:** `not implemented` — M06 is W3A Locked. This is a design constraint, not an implementation instruction.
 
 ## Required Path
 

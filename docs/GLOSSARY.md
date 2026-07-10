@@ -92,3 +92,19 @@ The interactive user approval interface in the desktop shell UI where L3 destruc
 ### Spec Maturity
 Documentation quality independent of capability status: `concept`, `contract draft`, or
 `execution-ready`. See `docs/DOCUMENT-READINESS.md`.
+
+### Capability Status
+What the product actually does: `not implemented`, `display-only`,
+`wired but not visually checked`, or `usable`. Not an execution gate.
+
+### Execution Gate
+Whether a Worker may start or continue a slice: `Locked`, `Ready`, `In Progress`, or `Blocked`.
+Owned only by `docs/WAVE-MODULE-MAP.md`. Do not report `Locked` as capability status.
+
+### Implementation Authorized
+`yes` only when the exact slice is Ready (or assigned In Progress), `execution-ready`, and has an
+active non-superseded packet with exact allowed files. Otherwise `no`. See `AGENTS.md`.
+
+### Delivery Loop (L00–L05)
+A numbered closed product/engineering loop under `docs/loops/`. Ordering is dependency-first so
+agents know where to start. Loop folders do not override `WAVE-MODULE-MAP.md` gates.

@@ -4,6 +4,7 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; media/render adapter requires spike
 > **Wave:** W3B
+> **Delivery loop:** L03B — `docs/loops/L03B-creative-fanout/`
 > **Owner:** Lead for media protocol; M09 Worker after packet approval
 > **Depends on:** M00, M03, M05, M08 job core, M12 core, M16, M17
 

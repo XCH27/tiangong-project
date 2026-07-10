@@ -4,6 +4,7 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft
 > **Wave:** W2
+> **Delivery loop:** L02 — `docs/loops/L02-local-workbench/`
 > **Owner:** Lead for file/ArtifactRef contract; M05 Worker after packet approval
 > **Depends on:** M00 usable, M03 usable, canonical workspace authority on v0.11 baseline
 

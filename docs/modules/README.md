@@ -1,9 +1,11 @@
 # Module Specifications
 
-Module files define closed product loops. A module spec is not a vision note, a list of desired
-components, or proof that implementation may begin.
+Module files define **module** behaviour. Delivery order is **not** the M00–M19 number alone.
 
-Read `docs/DOCUMENT-READINESS.md` for documentation maturity and
+**Start with the numbered loop map:** [`docs/loops/README.md`](../loops/README.md).
+
+A module spec is not a vision note, a list of desired components, or proof that implementation may
+begin. Read `docs/DOCUMENT-READINESS.md` for documentation maturity and
 `docs/WAVE-MODULE-MAP.md` for execution permission.
 
 ## 1. Required Metadata
@@ -53,7 +55,21 @@ product behaviour:
 - Panels/canvas cards are views; domain state stays with the owning module.
 - Exact file paths enter an execution packet only after the current v0.11 baseline is inspected.
 
-## 4. Planned Modules
+## 4. Modules by Delivery Loop
+
+Stable module IDs (M00–M19) remain the filename keys. **Work order** follows loop IDs.
+
+| Loop | Modules | Spec files |
+|---|---|---|
+| [L00](../loops/L00-control-plane/) | M01 | `01-clean-craft-baseline.md` |
+| [L01](../loops/L01-platform-action/) | M00, M03, M12-core | `00-platform-spine.md`, `03-internal-action-registry.md`, `12-capability-skill-plugin-system.md` |
+| [L02](../loops/L02-local-workbench/) | M02, M04, M05, M08-core, **M11A**, M16-host | `02-…`, `04-…`, `05-…`, `08-…`, `11-…` §2, `16-…` |
+| [L03A](../loops/L03A-composable-creative/) | M06, M07, M08-providers, M16-composition, M17 | `06-browser-artifact-surface/SPEC.md`, `07-canvas-design-surface/SPEC.md`, `08-…`, `16-…`, `17-composable-workflows.md` |
+| [L03B](../loops/L03B-creative-fanout/) | M09, M18, M19 | `09-video-surface.md`, `18-web-artifact-surface.md`, `19-presentation-motion-surface.md` |
+| [L04](../loops/L04-intelligence/) | M10, M11B, M12-distribution | `10-memory-context-review.md`, `11-…` (M11B only), `12-…` |
+| [L05](../loops/L05-polish/) | M13, M14, M15 | `13-settings-shell-ux.md`, `14-onboarding.md`, `15-messaging.md` |
+
+## 5. Planned Modules (ID index)
 
 | Module | File | Responsibility |
 |---|---|---|
@@ -78,7 +94,7 @@ product behaviour:
 | M18 | `18-web-artifact-surface.md` | editable local web project and governed preview/build |
 | M19 | `19-presentation-motion-surface.md` | native motion deck and honest export fidelity |
 
-## 5. Promotion Checklist
+## 6. Promotion Checklist
 
 Before changing `spec maturity` to `execution-ready`, the Lead records:
 

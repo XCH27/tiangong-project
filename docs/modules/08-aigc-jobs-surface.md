@@ -3,9 +3,10 @@
 > **Capability status:** `not implemented`
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft
-> **Wave:** W2 job-core contract; W3 providers and generative operations
+> **Wave:** W2 job-core + M11A usage/cost vocabulary; W3A generative providers
+> **Delivery loop:** L02/L03A — see `docs/loops/README.md` (primary folders: L02-local-workbench, L03A-composable-creative)
 > **Owner:** Lead for ExternalJob protocol; M08 Worker after packet approval
-> **Depends on:** M00, M03, M05; M11 enriches routing/cost later
+> **Depends on:** M00, M03, M05; M11A usage/cost core (W2) for paid/unknown cost fields; M11B routing later
 
 ## 1. Purpose
 
@@ -25,7 +26,8 @@ as an ArtifactRef, shown on the canvas, and safely reconciled after restart.
 - local and external providers behind explicit adapters;
 - generative capability operations for image generation/editing first;
 - job projections for workbench, workflow, timeline, and canvas;
-- cost/usage source classification as confirmed, estimated, or unknown.
+- cost/usage fields using **M11A** vocabulary only (confirmed | estimated | unknown), including
+  budget preflight references and provider receipt correlation; no second cost ledger.
 
 ### Out of Scope
 

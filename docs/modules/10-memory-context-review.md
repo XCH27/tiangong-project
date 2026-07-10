@@ -4,6 +4,7 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; physical memory/index adapter unresolved
 > **Wave:** W4
+> **Delivery loop:** L04 — `docs/loops/L04-intelligence/`
 > **Owner:** Lead for memory/context contracts; M10 Workers by separate slices
 > **Depends on:** M00, M03, M05, M08, M11 usage reporting, M13/M16 views
 

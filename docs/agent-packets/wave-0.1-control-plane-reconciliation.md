@@ -1,7 +1,10 @@
 # W0.1 Control-Plane Reconciliation
 
-> **Wave:** W0.1 — Lead only.  
-> **Status:** `not implemented` until the Lead records canonical protocol implementation parity.  
+> **Delivery loop:** [L00 — Control plane](../loops/L00-control-plane/)
+> **Wave:** W0.1 — Lead only.
+> **Execution gate:** `In Progress` (Lead); Worker `Locked`
+> **blocked_by:** `BLK-001`
+> **Capability status:** `not implemented` until the Lead records canonical protocol implementation parity.
 > **Purpose:** Make the documentation and frozen implementation contract one coherent baseline before W1 worker implementation.
 
 ## Required Outcomes
@@ -14,10 +17,12 @@
    event payloads, and orthogonal risk/approval/undo/cancel/retry/evidence policy.
 5. Promote or reject the proposed ArtifactRef, capability, ExternalJob, workflow, spatial, and view
    contracts needed by the first consumer waves.
-6. Decide the product/internal namespace before freezing plugin/storage API identifiers.
-7. Align canonical implementation with the approved contract text; record version/evidence in the
+6. Freeze **M11A** minimum `UsageObservation` / `CostRecord` / budget-preflight vocabulary (or
+   explicitly version-gate it) so W2 job-core and W3A paid/unknown jobs share one cost path.
+7. Decide the product/internal namespace before freezing plugin/storage API identifiers.
+8. Align canonical implementation with the approved contract text; record version/evidence in the
    Wave Map.
-8. Generate replacement packets with one Worker per worktree and no Lead-owned protocol writes.
+9. Generate replacement packets with one Worker per worktree and no Lead-owned protocol writes.
 
 ## Allowed Files
 
@@ -33,6 +38,16 @@
 - `docs/PERSISTENCE-AUTHORITY-MAP.md`
 - `docs/DOCUMENT-READINESS.md`
 - `docs/UPSTREAM-BASELINE.md`
+- `docs/FORBIDDEN-ANTIPATTERNS.md`
+- `docs/loops/**`
+- `docs/DOCUMENT-REGISTRY.md`
+- `docs/verification/**`
+- `docs/PROJECT-DIRECTION.md`
+- `docs/START-HERE.md`
+- `docs/README.md`
+- `docs/ARCHIVE-LOG.md`
+- `docs/agent-packets/*` (active only; do not resurrect superseded packets without Lead rewrite)
+- `AGENTS.md`
 - canonical protocol implementation files, Lead-owned only
 
 ## Forbidden Work

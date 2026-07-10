@@ -86,7 +86,7 @@ spikes before implementation.
 
 ### FB-001 — 方案完善度与多Agent并行启动条件
 **Date:** 2026-07-08
-**Status:** In Progress
+**Status:** Superseded (gate replaced by W0.1)
 **Source session:** Pre-parallel-launch review
 
 #### Raw Human Input
@@ -98,17 +98,23 @@ Q1: Are shared contracts (schemas, action IDs) frozen enough for workers to code
 Q2: Are module boundaries clear enough to prevent worker collision?
 
 #### Linked Decisions / Modules
-- Decision: D7, D11, D19
+- Decision: D7, D11, D19; later superseded in scope by D38–D46 and W0.1
 - Module: M00 Platform Spine, M03 Internal Action Registry
 
 #### Agent Response
-Two hard blockers identified:
-1. M00 protocol/ snapshot not frozen — SessionEvent, ActorRef, ActionInvocation Zod schemas must exist as stubs.
-2. M03 action-id table not published — needs docs/contracts/action-ids.md before surfaces + executor workers can run in parallel.
-Day-0 Lead task: commit these two artifacts, then unlock 3-way parallel. See PARALLEL-AGENT-OPERATING-MODEL.md.
+**Historical (2026-07-08):** Two hard blockers identified — protocol stubs and action-id table.
+Those artifacts were recorded as v1.2 evidence, but they are **not** sufficient to open Worker
+implementation.
+
+**Superseding gate (2026-07-09):** Parallel Worker implementation is blocked by the full W0.1
+exit checklist in `WAVE-MODULE-MAP.md`: clean v0.11 migration ledger, canonical contract
+re-freeze, persistence authority, ownership/path parity, namespace decision, and Lead declaration
+that W1 is Ready. No module is `execution-ready`. Active packet is Lead-only
+`wave-0.1-control-plane-reconciliation.md`. Do not treat this FB as permission to start
+3-way parallel coding.
 
 #### Open Questions
-None.
+None at feedback level. Remaining work is W0.1 evidence, not a second readiness debate.
 
 ### FB-002 — 人类反馈记录机制 + Agent解读规则
 **Date:** 2026-07-08

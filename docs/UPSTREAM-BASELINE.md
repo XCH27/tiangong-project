@@ -1,7 +1,7 @@
 # Upstream Baseline and Migration Gate
 
-> **Status:** blocking implementation migration  
-> **Owner:** Lead  
+> **Status:** blocking implementation migration
+> **Owner:** Lead
 > **Verified:** 2026-07-09
 
 ## Canonical Upstream

@@ -4,6 +4,8 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; canonical v0.11 preference keys/entry routes unresolved
 > **Wave:** W5
+> **Delivery loop:** L05 — `docs/loops/L05-polish/`
+> **Owner:** Lead for onboarding routes; M14 Worker after packet approval
 > **Depends on:** M00/M05/M13/M16 and real provider/runtime diagnostics
 
 ## 1. Purpose

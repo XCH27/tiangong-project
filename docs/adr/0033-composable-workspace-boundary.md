@@ -1,7 +1,7 @@
 # ADR-0033 — Composable Spatial Workspace Boundary
 
-> **Status:** Accepted product boundary; contract details pending W0.1 re-freeze  
-> **Date:** 2026-07-09  
+> **Status:** Accepted product boundary; contract details pending W0.1 re-freeze
+> **Date:** 2026-07-09
 > **Decision source:** Owner selection of the modular universal-space route
 
 ## Context

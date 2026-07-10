@@ -3,6 +3,7 @@
 > **Capability status:** `not implemented`
 > **Execution gate:** Locked pending W0.1 contract re-freeze
 > **Wave:** W1
+> **Delivery loop:** L01 — `docs/loops/L01-platform-action/`
 > **Owner:** Lead
 > **Spec version:** draft v1.1 — 2026-07-09
 > **Spec maturity:** contract draft; physical storage adapter unresolved on v0.11 baseline

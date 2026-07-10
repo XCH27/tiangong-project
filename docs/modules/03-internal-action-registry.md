@@ -4,6 +4,7 @@
 > **Execution gate:** Locked pending W0.1
 > **Spec maturity:** contract draft
 > **Wave:** W1 skeleton after re-freeze; executor after M00 backbone
+> **Delivery loop:** L01 — `docs/loops/L01-platform-action/`
 > **Owner:** Lead for contracts; M03 Worker for registry/executor domain
 > **Depends on:** M00 and W0.1 canonical action/event/identity/caller contracts
 

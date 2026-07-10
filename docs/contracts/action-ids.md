@@ -1,5 +1,8 @@
-# Action ID Registry — FROZEN v1.2.0
+# Action ID Registry — RECORDED v1.2.0 (historical baseline)
 
+> **Authority note:** "Recorded" means a last-known baseline with SHA evidence in
+> `WAVE-MODULE-MAP.md`. It is **not** a Ready gate and **not** alone sufficient to implement.
+>
 > **W0.1 notice (2026-07-09):** v1.2.0 is the last recorded frozen baseline, but W1 is
 > locked until the Lead re-freezes its canonical implementation parity and the unresolved
 > invocation/event/identity contract decisions. Workers must not begin new implementation

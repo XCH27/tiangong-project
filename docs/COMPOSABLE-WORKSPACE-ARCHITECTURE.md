@@ -1,8 +1,8 @@
 # Composable Workspace Architecture
 
-> **Authority:** binding product architecture; field-level contracts remain proposed until W0.1 re-freeze.  
-> **Product status:** `not implemented`  
-> **Spec maturity:** architecture approved; contracts in draft  
+> **Authority:** binding product architecture; field-level contracts remain proposed until W0.1 re-freeze.
+> **Product status:** `not implemented`
+> **Spec maturity:** architecture approved; contracts in draft
 > **Updated:** 2026-07-09
 
 ## 1. Product Decision
@@ -236,6 +236,10 @@ Numeric node/FPS thresholds are not frozen in this document. They require a repe
 baseline and adapter spike before becoming acceptance criteria.
 
 ## 13. Non-Goals for v1
+
+Binding checklist (do not weaken): `docs/FORBIDDEN-ANTIPATTERNS.md`.
+
+Summary only:
 
 - arbitrary cycles, unbounded loops, or a general programming language in workflows;
 - embedding full Chromium, design, video, and presentation editors in every canvas node;

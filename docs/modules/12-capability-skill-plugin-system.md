@@ -4,6 +4,7 @@
 > **Execution gate:** Locked
 > **Spec maturity:** capability-core contract draft; plugin distribution concept only
 > **Wave:** W1 contract / W2 built-in catalog core; W4 external plugin distribution
+> **Delivery loop:** L01/L02/L04 — see `docs/loops/README.md` (L01-platform-action, L02-local-workbench, L04-intelligence)
 > **Owner:** Lead for manifest/namespace; M12 Worker after packet approval
 > **Depends on:** M00 identity/permission, M03 registry, M05 artifact metadata
 

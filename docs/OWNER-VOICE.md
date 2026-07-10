@@ -34,9 +34,9 @@ non-linear order, across multiple conversations. This file:
 ```
 ### OV-NNN — Short title
 
-**Date:** YYYY-MM-DD  
-**Status:** pending | actioned | superseded  
-**Actioned in:** (commit / PR / ledger entry when actioned)  
+**Date:** YYYY-MM-DD
+**Status:** pending | actioned | superseded
+**Actioned in:** (commit / PR / ledger entry when actioned)
 **Touches:** M07, M09, M12 ... (module ids)
 
 **Original words (verbatim or paraphrased):**

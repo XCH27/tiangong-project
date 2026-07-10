@@ -4,6 +4,8 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; v0.11 task/session mapping unresolved
 > **Wave:** W2 core; optional native-batch member execution no earlier than W4
+> **Delivery loop:** L02 — `docs/loops/L02-local-workbench/`
+> **Owner:** Lead for run contracts; M04 Worker after packet approval
 > **Depends on:** M00, M03, M05 leases, M02 runtime host
 
 ## 1. Mission

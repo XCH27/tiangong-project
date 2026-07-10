@@ -1,5 +1,8 @@
 # AI 编程工具/桌面客户端深度对比分析 (2026年最新版)
 
+> **Archived 2026-07-09:** moved from `docs/ARCHITECTURAL-COMPARISON.md` to `docs/legacy/`.
+> Active indexes must not treat this file as binding orientation.
+>
 > **非绑定研究警告（2026-07-09）：** 本文中的产品版本、日期、功能、资源估算和架构
 > 断言尚未形成一套经一手资料逐项核验的当前数据集。不得用本文选择运行拓扑、打开
 > Wave，或覆盖 `UPSTREAM-BASELINE.md`、`DECISIONS-LEDGER.md`、ADR-0033 与模块规格。
@@ -43,11 +46,11 @@ graph TD
     subgraph A["模式 1: 镜像/附属模式 (状态隔离)"]
         CLI1["cursor-agent (CLI)"] <--> |状态不互通| GUI1["Cursor IDE (桌面端)"]
     end
-    
+
     subgraph B["模式 2: CLI 核心 + 桌面外壳模式 (命令行主导)"]
         CLI2["Claude Code (CLI 主体)"] <--> |桌面 Shell Out / 反向控制| GUI2["Claude Desktop (壳容器)"]
     end
-    
+
     subgraph C["模式 3: App Server 架构 (状态共享 - 架构上限最高)"]
         Daemon["长驻后台 Daemon / Go Core Server"]
         CLI3["TUI / CLI 客户端"] <--> |平等客户端连接| Daemon

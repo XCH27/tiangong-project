@@ -4,6 +4,8 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; credential/bridge adapters require evidence
 > **Wave:** W5
+> **Delivery loop:** L05 — `docs/loops/L05-polish/`
+> **Owner:** Lead for gateway boundary; M15 Worker after packet approval
 > **Depends on:** M00, M03, M05 ArtifactRef, M13 settings/secrets, M16 views
 
 ## 1. Purpose

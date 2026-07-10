@@ -1,10 +1,11 @@
 # M17 — Composable Workflows
 
-> **Capability status:** `not implemented`  
-> **Execution gate:** Locked  
-> **Spec maturity:** contract draft  
-> **Wave:** W3A  
-> **Owner:** Lead for workflow protocol; M17 Worker after W0.1/W2 gates  
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft
+> **Wave:** W3A
+> **Delivery loop:** L03A — `docs/loops/L03A-composable-creative/`
+> **Owner:** Lead for workflow protocol; M17 Worker after W0.1/W2 gates
 > **Depends on:** M00, M03, M05, M08 job core, M12 capability core, M16 view host
 
 ## 1. Purpose

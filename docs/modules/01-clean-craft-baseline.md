@@ -1,9 +1,12 @@
 # M01 — Clean Craft Agents v0.11 Baseline
 
 > **Capability status:** `not implemented` for the target baseline
-> **Execution gate:** W0.1 Lead-only; Worker implementation Locked
-> **Spec maturity:** contract draft; migration ledger incomplete
+> **Execution gate:** `In Progress` (Lead slice only)
+> **Worker gate:** `Locked` (no Worker implementation packet)
+> **blocked_by:** `BLK-001` (migration ledger incomplete)
+> **Spec maturity:** `contract draft`; migration ledger incomplete
 > **Wave:** W0.1 migration gate
+> **Delivery loop:** L00 — `docs/loops/L00-control-plane/`
 > **Owner:** Lead
 > **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md`
 

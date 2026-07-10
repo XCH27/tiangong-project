@@ -1,10 +1,12 @@
 # M11 — Model Routing, Usage, and Cost Ledger
 
 > **Capability status:** `not implemented`
-> **Execution gate:** Locked
+> **Execution gate:** Locked (both slices until Ready packets)
 > **Spec maturity:** contract draft; provider facts/adapters require current primary-source checks
-> **Wave:** usage/cost core contract in W1/W2; routing/cache/native-batch adapters in W4
-> **Depends on:** M00, M03, M08, M10 context segments, provider settings/secrets
+> **Wave:** **M11A** usage/cost core = **W2 / L02** (required before paid M08/W3A jobs); **M11B** routing/cache/batch = **W4 / L04**
+> **Delivery loop:** M11A → `docs/loops/L02-local-workbench/`; M11B → `docs/loops/L04-intelligence/`
+> **Owner:** Lead for contracts; M11 Worker only after the exact slice packet
+> **Depends on:** M00, M03; M11A before M08 paid/unknown job claims; M11B after M08 core
 
 ## 1. Purpose
 
@@ -17,23 +19,32 @@ claiming unobserved cache or quota savings.
 
 ## 2. Scope Split
 
-### M11A Usage/Cost Core — needed before downstream paid jobs
+### M11A Usage/Cost Core — W2 / L02 (before paid jobs and D45)
 
-- cost-source and confidence vocabulary;
-- usage observation and provider receipt correlation;
+**Schedule:** contract frozen in **W0.1**; implementation slice in **W2** with M08 job core.
+**Not** deferred to W4. Without M11A, W3A text→image cannot honestly record budget preflight,
+unknown cost, or provider receipts.
+
+M11A owns:
+
+- cost-source and confidence vocabulary (`confirmed` | `estimated` | `unknown`);
+- `UsageObservation` and provider receipt correlation;
 - estimate versus confirmed reconciliation;
-- finite budget preflight/actual accounting;
-- filtered UI/report projections.
+- finite budget preflight / actual accounting;
+- filtered UI/report projections of the above.
 
-### M11B Routing/Cache/Batch — W4
+**Runtime placement:** M08 job records **embed** M11A fields on every ExternalJob; M11A is the
+vocabulary and persistence owner for usage/cost rows. M08 must not invent a second cost ledger.
+
+### M11B Routing/Cache/Batch — W4 / L04
 
 - API/OAuth provider/model selection and explanation;
 - provider-specific prompt/request assembly and cache observations;
 - provider-native Batch adapter as an M08 ExternalJob execution mode;
 - quota snapshots only through authorized official provider paths.
 
-M11B does not block the first M08 real-time single-request image job if it records cost as unknown
-or provider-confirmed through the M11A vocabulary.
+M11B does **not** block the first M08 real-time single-request image job **if** M11A is usable and
+the job records cost as unknown or provider-confirmed through the M11A vocabulary.
 
 ## 3. Lane Boundary
 

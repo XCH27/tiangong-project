@@ -87,7 +87,7 @@ Avoid complex file conflict merges after parallel execution. Instead, manage con
 Rather than relying on human selection or naive defaults, Fleet optimizes runtime cost and latency via intelligent routing and cache layering.
 
 ### Guidelines
-1. **Two-Axis Routing (Task Type × Complexity)**: 
+1. **Two-Axis Routing (Task Type × Complexity)**:
    * **Task Types**: Segment intent into `chat-text`, `code-tools`, `review-analysis`, `design-canvas`, `animation`, `video-edit`, `prompt-opt`, `automation`, or `memory-op`.
    * **Complexity**: Assess task difficulty (scale 1 to 4) using lightweight heuristics (input size, presence of code, presence of specific tool tags, session depth).
 2. **CLI Runtime Exclusion**: Bypass all model routing, caching, and Fusion mechanisms for local CLI/TUI executions (`cliRuntimeId != null`).

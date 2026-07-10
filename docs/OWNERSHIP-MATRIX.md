@@ -13,6 +13,10 @@
 >
 > **Migration notice:** existing `app/` paths below are provisional historical mappings until the
 > M01 v0.11 migration ledger verifies them. They do not authorize a packet on the current tree.
+>
+> **Wave labels:** module wave placement and gates are owned by `docs/WAVE-MODULE-MAP.md`.
+> Headings here must match that map. Paths marked `currently unassigned` are not Worker-editable
+> until exact clean-v0.11 paths enter an active packet and this matrix.
 
 ---
 
@@ -33,6 +37,11 @@
 | `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md` | Lead | Product architecture boundary |
 | `docs/PERSISTENCE-AUTHORITY-MAP.md` | Lead | State authority map |
 | `docs/DOCUMENT-READINESS.md` | Lead | Spec maturity register |
+| `docs/FORBIDDEN-ANTIPATTERNS.md` | Lead | Binding non-goals checklist |
+| `docs/UPSTREAM-BASELINE.md` | Lead | Upstream migration gate |
+| `docs/loops/**` | Lead | Numbered delivery-loop orientation (not a second gate) |
+| `docs/DOCUMENT-REGISTRY.md` | Lead | Active document inventory / authority map |
+| `docs/verification/**` | Lead | Documentation verification reports |
 | `AGENTS.md` | Lead | Agent root instructions |
 
 ---
@@ -51,11 +60,12 @@
 | `app/packages/shared/src/sessions/ (permissions namespace)` | M00 Lead |
 | `app/packages/shared/src/sessions/ (timeline namespace)` | M00 Lead |
 
-### M01 — Clean Craft Baseline (W2)
+### M01 — Clean Craft Baseline (W0.1 Lead-only)
 
 | Path pattern | Owner |
 |---|---|
-| `app/apps/electron/src/renderer/craft/` | M01 Worker |
+| Clean v0.11 baseline tree and migration ledger (exact paths recorded by Lead during W0.1) | Lead only until W0.1 exit |
+| Provisional historical mapping: `app/apps/electron/src/renderer/craft/` | Lead only until migration ledger reassigns verified paths |
 
 ### M02 — Terminal CLI Runtime (W2)
 
@@ -87,12 +97,14 @@
 | `app/packages/shared/src/workspaces/ (library namespace)` | M05 Worker |
 | `app/packages/shared/src/workspaces/ (lease namespace)` | M05 Worker |
 
-### M06 — Browser Artifact Surface (W3)
+### M06 — Browser Artifact Surface (W3A)
 
 | Path pattern | Owner |
 |---|---|
 | BrowserPane selection/evidence overlay paths on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
 | Browser action executor path on clean v0.11 baseline (currently unassigned) | Lead until exact paths enter a packet |
+
+> No M06 Worker implementation until W3A gate opens, paths are exact, and the slice is execution-ready.
 
 ### M07 — Spatial Canvas (W3A)
 
@@ -104,7 +116,7 @@
 > The former F Track assignments are superseded. No M07 implementation path is authorized until
 > the renderer spike and exact v0.11 mapping are recorded.
 
-### M08 — External Jobs and Generative Operations (W2/W3A)
+### M08 — External Jobs and Generative Operations (W2 core / W3A providers)
 
 | Path pattern | Owner |
 |---|---|
@@ -129,11 +141,12 @@
 | `app/packages/shared/src/model-routing/` | M11 Worker |
 | `app/packages/shared/src/cost-ledger/` | M11 Worker |
 
-### M12 — Skill Library (W4)
+### M12 — Capability / Skill System (W1 capability-core contract / W2 catalog / W4 distribution)
 
 | Path pattern | Owner |
 |---|---|
-| `app/packages/shared/src/skills/` | M12 Worker |
+| Capability manifest / registry projection paths on clean v0.11 baseline (currently unassigned for core) | Lead until exact paths enter a W1/W2 packet |
+| Provisional historical mapping: `app/packages/shared/src/skills/` | M12 Worker only after an active packet lists this path for a Ready slice |
 
 ### M13 — Settings Preferences (W5)
 

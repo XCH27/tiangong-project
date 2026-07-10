@@ -4,6 +4,7 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; renderer adapter not selected
 > **Wave:** W3A foundation, W3B native-module projections
+> **Delivery loop:** L03A — `docs/loops/L03A-composable-creative/`
 > **Owner:** Lead for spatial contract; M07 Worker after packet approval
 > **Depends on:** M00, M03, M05, M12 capability core, M16 view host, M17 workflow contract
 

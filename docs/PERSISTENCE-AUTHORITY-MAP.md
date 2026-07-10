@@ -1,7 +1,7 @@
 # Persistence Authority Map
 
 > **Status:** binding ownership rules; physical storage adapters remain pending v0.11 migration
-> evidence and W0.1 re-freeze.  
+> evidence and W0.1 re-freeze.
 > **Updated:** 2026-07-09
 
 ## Rule

@@ -7,9 +7,24 @@ A PR missing any section will be sent back without review.
 
 ## Packet
 
-> Which `docs/agent-packets/*.md` file owns this work?
+> Which **active** `docs/agent-packets/*.md` file owns this work?
+> (Never use paths under `docs/legacy/agent-packets/`.)
 
-Packet: <!-- e.g. wave-1-runtime-files-quota.md -->
+Packet: <!-- e.g. only a Lead-issued post-W0.1 packet -->
+
+---
+
+## Three-Axis Status
+
+```text
+module_or_slice:
+capability_status: not implemented | display-only | wired but not visually checked | usable
+execution_gate: Locked | Ready | In Progress | Blocked
+spec_maturity: concept | contract draft | execution-ready
+implementation_authorized: yes | no
+```
+
+If `implementation_authorized` is `no`, do not open this PR for feature work.
 
 ---
 
@@ -29,16 +44,19 @@ Answer each question in one sentence. If any answer is "unknown", stop and retur
 4. **Which files are forbidden?**
    >
 
-5. **Which shared/frozen contracts do I depend on?**
+5. **Which shared/frozen contracts do I depend on (exact version)?**
    >
 
-6. **Does this work create another session, permission, timeline, memory, skill, or UI truth?**
-   > (must be "no" — if "yes", stop and escalate to Lead)
+6. **Does this work create another session, permission, timeline, memory, skill, job, artifact, or UI truth?**
+   > (must be "no" — if "yes", stop and escalate to Lead; see `FORBIDDEN-ANTIPATTERNS.md`)
 
 7. **Which Internal Action or Agent callable path makes this UI agent-native?**
    >
 
-8. **What exact behavior proves this slice is `usable`?**
+8. **Is the wave gate Ready and the slice execution-ready?**
+   >
+
+9. **What exact behavior proves this slice is `usable`?**
    >
 
 ---

@@ -20,11 +20,13 @@ reports against.
 Multiple agents working in parallel need a shared answer to three questions at any time:
 
 - Who owns this file or slice right now?
-- What is the real status of this slice, using the same four labels everywhere?
+- What is the real status of this slice, using the **three independent axes** everywhere
+  (capability status, execution gate, spec maturity — see `AGENTS.md`)?
 - Is there a blocker, and what is the smallest decision needed to clear it?
 
-A board that drifts out of sync with `AGENTS.md` status wording or with the ownership rules
-in `OWNERSHIP-MATRIX.md` is worse than no board. This file exists to prevent that drift.
+A board that drifts out of sync with `AGENTS.md` three-axis wording, `WAVE-MODULE-MAP.md`
+gates, or the ownership rules in `OWNERSHIP-MATRIX.md` is worse than no board. This file
+exists to prevent that drift. Cards never override WAVE-MAP or DOCUMENT-READINESS.
 
 ## Non-Goals
 
@@ -259,7 +261,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 
 ---
 
-### Historical Wave 3 — Browser Capability Review
+### Historical W3A — Browser Capability Review (superseded packet)
 
 <!-- Workers assigned to wave-3-browser-capability-review.md append cards here only. -->
 
@@ -267,7 +269,7 @@ Board Cards section. Do not create a new file format for this; append the block 
 
 ### Historical F-Track — Canvas Foundation
 
-<!-- Workers assigned to f-track-canvas-foundation.md append cards here only. -->
+<!-- F Track packet archived under docs/legacy/agent-packets/. No Worker cards from that packet. -->
 
 ---
 

@@ -2,22 +2,31 @@
 
 Fleet documentation is now treated as a project operating system for parallel development, not as a pile of planning notes.
 
-The process has five layers:
+The process has seven layers:
 
 1. **Direction**
    `PROJECT-DIRECTION.md` defines what Fleet is and is not.
+   `FORBIDDEN-ANTIPATTERNS.md` is the single hard non-goals checklist.
 
 2. **Decisions**
    `DECISIONS-LEDGER.md` records final product decisions and reversals.
 
-3. **Control Plane**
+3. **Delivery loops (entry order)**
+   `docs/loops/README.md` numbers closed loops **L00→L05**. Always start at the lowest unfinished loop.
+   Loop folders assemble modules and reading order; they do not replace wave gates.
+
+4. **Control Plane**
    `PARALLEL-AGENT-OPERATING-MODEL.md`, `OWNERSHIP-MATRIX.md`, and `WAVE-MODULE-MAP.md` define who may change what and in what order.
+   `DOCUMENT-READINESS.md` tracks spec maturity independently of gates.
 
-4. **Module Specs**
-   `docs/modules/*.md` defines one closed product loop per module.
+5. **Module Specs**
+   `docs/modules/*.md` defines module behaviour; membership in a delivery loop is listed under `docs/loops/`.
 
-5. **Agent Packets**
-   `docs/agent-packets/*.md` turns one or more module sections into isolated work packages for parallel agents.
+6. **Agent Packets**
+   Active packets under `docs/agent-packets/` only (never `docs/legacy/agent-packets/`).
+
+7. **Upstream / persistence gates**
+   `UPSTREAM-BASELINE.md` and `PERSISTENCE-AUTHORITY-MAP.md` block invention of base and stores.
 
 ## Closed-Loop Requirement
 

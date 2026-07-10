@@ -1,7 +1,7 @@
 # Composable Workspace Contract Change Proposal
 
-> **Status:** proposed v0.1; not frozen; Workers must not implement from this file  
-> **Owner:** Lead  
+> **Status:** proposed v0.1; not frozen; Workers must not implement from this file
+> **Owner:** Lead
 > **Purpose:** one W0.1 change proposal to be merged into canonical protocol/action contracts,
 > then archived; it is not a second runtime contract.
 

@@ -4,6 +4,8 @@
 > **Execution gate:** Locked
 > **Spec maturity:** concept; exact IA/preference keys require v0.11 mapping
 > **Wave:** W5
+> **Delivery loop:** L05 — `docs/loops/L05-polish/`
+> **Owner:** Lead for preference authority; M13 Worker after packet approval
 > **Depends on:** M00 preference authority, M16 view/layout contract, owning module schemas
 
 ## 1. Mission

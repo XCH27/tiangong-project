@@ -4,6 +4,7 @@
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; runtime discovery/process/output contracts require v0.11 inspection
 > **Wave:** W2
+> **Delivery loop:** L02 — `docs/loops/L02-local-workbench/`
 > **Owner:** M02 Worker after the W2 gate opens.
 > **Spec version:** draft v1.1 — 2026-07-09
 > **Depends on:** M00/M03 usable, M16 host slice, approved terminal-host boundary.

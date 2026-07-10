@@ -1,7 +1,7 @@
 # Documentation Readiness
 
-> **Authority:** current documentation-maturity register  
-> **Updated:** 2026-07-09  
+> **Authority:** current documentation-maturity register
+> **Updated:** 2026-07-09
 > **Scope:** documentation only; no capability status is promoted by this file
 
 ## 1. Three Independent Axes
@@ -62,7 +62,8 @@ canonical re-freeze are incomplete.
 | M08 External Jobs | contract draft | ExternalJob/provider/idempotency/protected-input contract and real provider missing |
 | M09 Media Composition | contract draft | native media/render adapter, codec/license/platform decision and benchmark missing |
 | M10 Memory/Context | contract draft | physical store/index adapter, delete/isolation proof, and canonical schemas missing |
-| M11 Routing/Cost | contract draft | W2 usage core versus W4 routing split, provider facts, and persistence boundary unresolved |
+| M11A usage/cost core | contract draft | W0.1 must freeze UsageObservation/CostRecord/budget preflight; W2 implements with M08 job core before W3A paid jobs |
+| M11B routing/cache/batch | contract draft | Provider facts/adapters and persistence boundary for routing/cache/native-batch unresolved (W4) |
 | M12 Capability System | contract draft | capability core must be promoted in W0.1; external distribution remains concept |
 | M13 Settings/Preferences | concept | full IA, canonical preference keys/migrations, and risk classes missing; M16 boundary is now defined |
 | M14 Onboarding | contract draft | canonical v0.11 startup routes/preference keys and real diagnostics missing |
@@ -86,20 +87,43 @@ canonical re-freeze are incomplete.
 
 ## 5. First Documentation-to-Product Promotion Order
 
+Prefer the numbered delivery loops in `docs/loops/README.md`:
+
 ```text
-W0.1 contracts and v0.11 migration
--> M00 + M03 + M12 capability core
--> M16 host + M02 + M05
--> M08 job core + M17 workflow core + M07 spatial slice
--> real text-to-image loop
--> M18/M19/M09 fan-out and multi-asset editing
--> intelligence/polish modules after their own spec gates
+L00  W0.1 contracts and v0.11 migration
+L01  M00 + M03 + M12 capability core
+L02  M16 host + M02 + M05 + M08 job core (+ M04)
+L03A M17 + M07 + providers → real text-to-image loop (D45)
+L03B M18 / M19 / M09 fan-out
+L04  intelligence modules
+L05  polish modules
 ```
 
 This order does not authorize implementation. The live execution gate remains
 `WAVE-MODULE-MAP.md`.
 
-## 6. Fable-5 Evidence Boundary
+## 6. How to Read With WAVE-MODULE-MAP (required)
+
+Every status report must keep the three axes separate. Example for 2026-07-09:
+
+```text
+module_or_slice: M00 Platform Spine
+capability_status: not implemented          # product truth
+execution_gate: Locked                      # WAVE-MODULE-MAP only
+spec_maturity: contract draft               # this file only
+implementation_authorized: no              # needs Ready + execution-ready + active packet
+```
+
+| If you need… | Read… | Do not… |
+|---|---|---|
+| May I start coding? | `WAVE-MODULE-MAP.md` gate + active packet | Treat `contract draft` as Ready |
+| Is the spec thick enough? | this file's maturity column | Treat Locked as “spec incomplete” only |
+| Did the product actually work? | capability status after Lead evidence | Self-promote to `usable` |
+| What must never be built? | `FORBIDDEN-ANTIPATTERNS.md` | Re-derive non-goals from memory |
+
+`Blocked` is not a capability status. `Locked` is not proof that a spec is complete.
+
+## 7. Fable-5 Evidence Boundary
 
 Fable-5's recommendations were used as review input, not copied as authority. This round confirmed
 from documentation that its strongest criticism is valid: many files are interface summaries,

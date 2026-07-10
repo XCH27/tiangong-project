@@ -1,10 +1,11 @@
 # M16 — Workbench Panel Platform
 
-> **Capability status:** `not implemented`  
-> **Execution gate:** Locked  
-> **Spec maturity:** contract draft; implementation paths require v0.11 baseline inspection  
-> **Wave:** W2 host slice, W3 composition slice  
-> **Owner:** Lead for layout contract; M16 Worker after packet approval  
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft; implementation paths require v0.11 baseline inspection
+> **Wave:** W2 host slice, W3A composition slice
+> **Delivery loop:** L02/L03A — see `docs/loops/README.md` (primary folders: L02-local-workbench, L03A-composable-creative)
+> **Owner:** Lead for layout contract; M16 Worker after packet approval
 > **Depends on:** M00 preferences/identity boundary, M03 actions, clean Craft Agents v0.11 shell
 
 ## 1. Purpose

@@ -88,7 +88,7 @@ Fleet Bridge is the narrow IPC boundary through which a CLI run reports progress
 
 **Boundary rule:** Fleet owns the team state, member roster, and session timeline. A CLI run owns exactly one `RuntimeLane` entry. The CLI runtime does not call Fleet API methods directly; it sends lane events to Fleet Bridge, which translates them into `SessionEvent` entries on the Fleet side.
 
-**Minimal interface (frozen at W0):**
+**Minimal interface (shape recorded at W0; not authorization to implement):**
 
 ```
 Fleet Bridge.reportLaneEvent(laneId: string, event: RuntimeLaneEvent): void
@@ -96,9 +96,14 @@ Fleet Bridge.requestTeamContext(laneId: string): Promise<TeamContextSnapshot>
 Fleet Bridge.closeLane(laneId: string, outcome: LaneOutcome): void
 ```
 
-- `RuntimeLaneEvent`, `TeamContextSnapshot`, and `LaneOutcome` are defined in `docs/contracts/protocol-stubs.md`.
-- A CLI run must not call any Fleet method not listed here. If a new method is needed, the Worker files a contract change request with the Lead before proceeding.
-- Fleet Bridge does not own tools, does not hold session state, and does not proxy permission decisions. It is a one-way event pipe with one context-pull call.
+- `RuntimeLaneEvent`, `TeamContextSnapshot`, and `LaneOutcome` last recorded shapes live in
+  `docs/contracts/protocol-stubs.md`. WAVE-MODULE-MAP treats the v1.2 contract set as
+  **historical evidence** until W0.1 re-freezes canonical parity. Workers implement only against
+  the contract version the active packet names.
+- A CLI run must not call any Fleet method not listed in the active frozen contract. If a new
+  method is needed, the Worker files a contract change request with the Lead before proceeding.
+- Fleet Bridge does not own tools, does not hold session state, and does not proxy permission
+  decisions. It is a one-way event pipe with one context-pull call.
 
 **Concrete ownership boundary:**
 
@@ -119,8 +124,9 @@ Each parallel agent works in an **isolated branch or worktree**.
 **Naming convention:** `agent/<wave>/<module-slug>/<short-description>`
 
 Examples:
-- `agent/w2/m01-clean-craft/remove-legacy-sidebar`
-- `agent/w3/m07-canvas/viewport-manager`
+- `agent/w0.1/lead/migration-ledger` (Lead-only while W0.1 is open)
+- `agent/w1/m00-platform-spine/backbone` (only after W1 Ready + execution-ready + active packet)
+- `agent/w2/m02-terminal/host-loop`
 
 **No two Workers may write to the same branch.** The Lead is the only agent who merges to `work/fresh-base-spine`.
 
@@ -133,22 +139,29 @@ Every PR description must include the following report template verbatim. PRs wi
 ```
 ## Completion Report
 
-- **Module:** M__
+- **Module / slice:** M__ / <slice>
 - **Wave:** W_
 - **Worktree / branch:** agent/w_/m__-<slug>/<desc>
 - **Commit:** <sha>
+- **Three-axis status (required):**
+  - capability_status: `not implemented` | `display-only` | `wired but not visually checked` | `usable`
+  - execution_gate: `Locked` | `Ready` | `In Progress` | `Blocked`  (from WAVE-MODULE-MAP)
+  - spec_maturity: `concept` | `contract draft` | `execution-ready`  (from DOCUMENT-READINESS)
+  - implementation_authorized: `yes` | `no`
 - **Files changed:** (list)
 - **Forbidden files touched:** none  <!-- or list with justification -->
-- **Frozen contracts depended on:** (list — version at time of work)
+- **Frozen contracts depended on:** (list — exact version named by the active packet)
 - **Validation commands run:**
   - [ ] Static check from the packet: `<exact verified command and result>`
   - [ ] Targeted test from the packet: `<exact verified command and result>`
   - [ ] Real behaviour check: `<exact UI/runtime/data path exercised>`
 - **Real behaviour evidence:**
   - (screenshot path / test run log excerpt / description)
-- **Final status label:** `usable` | `wired but not visually checked` | `display-only` | `not implemented`
 - **If blocked — what is needed:** (or "n/a")
 ```
+
+Do not put `Locked` in `capability_status`. Do not claim `implementation_authorized: yes` unless
+the packet is active, the gate is Ready/In Progress for that slice, and maturity is execution-ready.
 
 ---
 
@@ -242,7 +255,9 @@ The following patterns have caused coordination failures in past parallel builds
 | Worker silently adds a field to a shared protocol file | Breaks other Workers who didn't expect the field; causes merge conflicts at integration | Stop. File a contract change request with the Lead. |
 | Worker creates a second session or timeline store | Produces two sources of truth for the same data | Read M00 §16 risk register. Use the existing store. |
 | Worker adds a new left-nav entry without Lead approval | UI ownership conflict | Read UI Rule above. Ask Lead for placement decision. |
-| Worker starts W3 work before W2 gate is declared open | Depends on unstable contracts; guarantees rework | Check wave schedule. Wait for Lead's gate declaration. |
+| Worker starts W3A/W3B work before W2 gate is declared open | Depends on unstable contracts; guarantees rework | Check wave schedule. Wait for Lead's gate declaration. |
+| Worker reports one informal status (`Locked` / `wired`) for everything | Collapses capability, gate, and maturity | Use the three-axis Completion Report block |
+| Worker follows a packet under `docs/legacy/agent-packets/` | Superseded authorization | Active packets only under `docs/agent-packets/` |
 | Worker fixes a spec ambiguity by choosing the most convenient interpretation | May contradict another Worker's equally valid interpretation | Report ambiguity to Lead before any implementation. |
 | Worker's PR has no Completion Report | Unanswerable at review time | Fill the Completion Report template. No exceptions. |
 | Worker calls a Fleet API method not in the Fleet Bridge interface | Violates lane ownership boundary; creates hidden coupling | Use only the three Fleet Bridge methods. File a change request for anything else. |

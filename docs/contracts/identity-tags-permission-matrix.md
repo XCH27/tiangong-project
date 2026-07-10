@@ -4,7 +4,8 @@
 > `AgentSeat` contract before W1 opens. The target model has one structured seat authority;
 > tags are a deterministic projection and may not be separately mutated.
 
-> **Status:** frozen (W0)
+> **Record status:** recorded W0 / v1.2-era baseline — **not** authorization to implement.
+> **Implement only after:** W0.1 re-freeze + active packet names this version.
 > **Owner:** Lead
 
 ---

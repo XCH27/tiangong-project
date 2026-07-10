@@ -3,7 +3,9 @@
 > **Capability status:** `not implemented`
 > **Execution gate:** Locked
 > **Spec maturity:** contract draft; selection-overlay adapter requires v0.11 inspection/spike
-> **Wave:** W3
+> **Wave:** W3A
+> **Delivery loop:** L03A — `docs/loops/L03A-composable-creative/`
+> **Owner:** Lead until exact v0.11 paths enter a packet; M06 Worker after Ready
 > **Depends on:** M00, M03, M05, M13 browser settings, M16 view host
 
 ## 1. Purpose

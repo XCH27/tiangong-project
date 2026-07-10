@@ -1,9 +1,11 @@
 # M19 — Presentation and Motion Deck Surface
 
-> **Capability status:** `not implemented`  
-> **Execution gate:** Locked  
-> **Spec maturity:** contract draft  
-> **Wave:** W3B  
+> **Capability status:** `not implemented`
+> **Execution gate:** Locked
+> **Spec maturity:** contract draft
+> **Wave:** W3B
+> **Delivery loop:** L03B — `docs/loops/L03B-creative-fanout/`
+> **Owner:** Lead for motion-deck protocol; M19 Worker after packet approval
 > **Depends on:** M03, M05, M08, M12 core, M16, M17
 
 ## 1. Purpose

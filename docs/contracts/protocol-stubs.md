@@ -1,5 +1,8 @@
-# Protocol Stubs — FROZEN v1.2.0
+# Protocol Stubs — RECORDED v1.2.0 (historical baseline)
 
+> **Authority note:** "Recorded" means a last-known baseline with SHA evidence in
+> `WAVE-MODULE-MAP.md`. It is **not** a Ready gate and **not** alone sufficient to implement.
+>
 > **W0.1 notice (2026-07-09):** v1.2.0 is retained as the last recorded frozen baseline.
 > It is not an authorization to start W1. The Lead must re-freeze canonical implementation
 > parity and resolve ActionInvocation versioning, event payload rules, and AgentSeat/tag shape.
