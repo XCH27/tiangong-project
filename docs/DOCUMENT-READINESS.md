@@ -75,15 +75,15 @@ canonical re-freeze are incomplete.
 
 ## 4. Immediate P0 Documentation Work
 
-1. Complete the clean Craft Agents v0.11 migration ledger and record retained extension points.
-2. Re-freeze one canonical W0.1 contract covering caller provenance, idempotency, document
-   revisions, typed event payloads, orthogonal action policy, ArtifactRef, capability manifest,
-   workflow, ExternalJob, and view contribution.
-3. Resolve physical persistence from `PERSISTENCE-AUTHORITY-MAP.md`; remove active claims that
-   assume unverified SQLite/JSON authorities.
-4. Align wave gates, phase mapping, ownership precedence, and the hidden upstream gate.
+1. **Continue** clean v0.11 monorepo replace + launch evidence (`migration/v0.11-MIGRATION-LEDGER.md` §5).
+2. Port TypeScript protocol parity to clean base per `contracts/w0.1-freeze-record.md` §5.
+3. Expand fleet-old behaviour rows in the migration ledger as ports are selected.
+4. Exact OWNERSHIP paths after clean base inspection for first W1 packet.
 5. Rewrite M10, M13, M14, and M15 before their waves; do not treat file presence as readiness.
 6. Complete required engine/adapter spikes before promoting M06/M07/M09/M16/M18/M19.
+
+**Already advanced (2026-07-09):** M11A text freeze; persistence ADR-0034; namespace ADR-0035;
+composable contracts text freeze; migration ledger started.
 
 ## 5. First Documentation-to-Product Promotion Order
 

@@ -98,8 +98,9 @@ To orient yourself, read documents in this sequence:
 See `docs/WAVE-MODULE-MAP.md` for the live wave and module status table.
 
 - **W0** ✅ Recorded frozen baseline (2026-07-09).
-- **W0.1** In Progress — Lead-only v0.11 migration and contract/document parity re-freeze.
-- **W1–W5**, including W3A/W3B: Locked.
+- **W0.1** In Progress — ledger + text freezes advanced; clean `app/` replace + launch evidence still open.
+  See `docs/migration/v0.11-MIGRATION-LEDGER.md` and `docs/contracts/w0.1-freeze-record.md`.
+- **W1–W5**, including W3A/W3B: Locked (no W1 Ready declaration).
 
 ---
 

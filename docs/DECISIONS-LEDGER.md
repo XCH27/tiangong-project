@@ -77,6 +77,9 @@ The ledger is deliberately plain. Add new decisions here only after the source i
 | D44 | Cross-module handoff uses versioned ArtifactRef envelopes; native owners retain content authority. | Final | M05 resolves exact versions/provenance/sensitivity without a third content store. Fan-out reuses the same version rather than copying bytes silently. | 2026-07-09 | M05, M07-M09, M17-M19 | `docs/modules/05-files-library-leases.md` | W2/W3A/W3B |
 | D45 | The first modular creative loop is text -> real image job -> ArtifactRef -> canvas result, not all creative editors at once. | Final | This loop must prove human/Agent/workflow parity, approval, durable job reconciliation, file/provenance commit, and restart before web/deck/media fan-out. | 2026-07-09 | M05, M07, M08, M12, M16, M17 | `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md` §11 | W3A |
 | D46 | Dynamic presentation uses a native MotionDeck document; PPTX/HTML/video are explicit exports with honest fidelity. | Final | Do not promise complete PowerPoint animation compatibility. Unsupported constructs and viewer verification must be visible. | 2026-07-09 | M19 | `docs/modules/19-presentation-motion-surface.md` | W3B |
+| D47 | Product/internal namespace: retain Craft upstream identifiers; Fleet-owned keys use `fleet.` prefix; capabilities use `fleet.<module>.<name>` / `plugin.<vendor>.<name>`; action ids stay `domain.verb`. Dot count is not permission. | Final | Plugin/storage/API freezes must follow ADR-0035. No mass rename of Craft packages in W0.1. | 2026-07-09 | All | `docs/adr/0035-product-internal-namespace.md` | W0.1 |
+| D48 | W1/W2 physical persistence retains Craft v0.11 filesystem session/workspace/views stores under M00 logical authority. No second control-plane DB and no product-wide SQLite in W1/W2 without a superseding ADR. | Final | Specs must not invent independent jobs/memory/clips JSON authorities. See ADR-0034. | 2026-07-09 | M00, M03, M05, M08, M11A | `docs/adr/0034-physical-persistence-w1-w2.md` | W0.1/W1/W2 |
+| D49 | M11A usage/cost vocabulary is W0.1 text-frozen (`w0.1-m11a-1`) and W2-implemented; required before W3A paid/unknown jobs. M11B routing remains W4. | Final | M08 embeds M11A fields only; no second cost ledger. | 2026-07-09 | M08, M11 | `docs/contracts/m11a-usage-cost-core.md` | W0.1/W2/W3A |
 
 ## Still Pending Or Conditional
 
@@ -86,7 +89,7 @@ The ledger is deliberately plain. Add new decisions here only after the source i
 | Ghost/shadow workspace | Conditional enhancement | File leases and permission come first. Shadow worktrees are later conflict-management tooling. |
 | Additional source-code green lights | Requires explicit user approval | MIT/Apache alone is not enough. Update this ledger, `REFERENCE-PROJECT-POLICY.md`, and attribution docs when approved. |
 | Spatial renderer dependency | Adapter spike + explicit promotion | `@xyflow/react` is the preferred candidate; tldraw production licensing is not accepted by default. No dependency is frozen yet. |
-| Product/internal namespace | W0.1 decision | Do not freeze plugin API keys, storage prefixes, or action namespace rules until the final namespace is recorded. |
+| Clean v0.11 `app/` replacement + launch evidence | W0.1 open | Migration ledger started; install/typecheck/Electron evidence and monorepo base replace still required before W1 Ready. |
 
 ## Maintenance
 

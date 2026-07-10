@@ -42,6 +42,11 @@
 | `docs/loops/**` | Lead | Numbered delivery-loop orientation (not a second gate) |
 | `docs/DOCUMENT-REGISTRY.md` | Lead | Active document inventory / authority map |
 | `docs/verification/**` | Lead | Documentation verification reports |
+| `docs/migration/**` | Lead | v0.11 migration ledger and evidence |
+| `docs/adr/0034-physical-persistence-w1-w2.md` | Lead | W1/W2 persistence ADR |
+| `docs/adr/0035-product-internal-namespace.md` | Lead | Namespace ADR |
+| `docs/contracts/w0.1-freeze-record.md` | Lead | W0.1 freeze record |
+| `docs/contracts/m11a-usage-cost-core.md` | Lead | M11A text freeze |
 | `AGENTS.md` | Lead | Agent root instructions |
 
 ---

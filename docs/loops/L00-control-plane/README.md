@@ -26,6 +26,17 @@ clean Craft v0.11.0 baseline recorded
 
 This is a **documentation + migration** loop, not a user-facing product feature.
 
+## Progress (2026-07-09)
+
+| Exit product | Path | Status |
+|---|---|---|
+| Migration ledger | [`docs/migration/v0.11-MIGRATION-LEDGER.md`](../../migration/v0.11-MIGRATION-LEDGER.md) | **Partial** |
+| Contract freeze record | [`docs/contracts/w0.1-freeze-record.md`](../../contracts/w0.1-freeze-record.md) | **Partial** (text) |
+| M11A freeze | [`docs/contracts/m11a-usage-cost-core.md`](../../contracts/m11a-usage-cost-core.md) | **Text frozen** |
+| Persistence ADR | [`docs/adr/0034-physical-persistence-w1-w2.md`](../../adr/0034-physical-persistence-w1-w2.md) | **Accepted** |
+| Namespace ADR | [`docs/adr/0035-product-internal-namespace.md`](../../adr/0035-product-internal-namespace.md) | **Accepted** |
+| Clean `app/` replace + launch | ledger §5 | **Open** → W1 stays Locked |
+
 ## Why this is #00
 
 Without L00, every path assignment, contract SHA, and “usable” claim is on an unverified base. Difficulty is high on purpose; skipping it creates second systems later.

@@ -10,6 +10,10 @@ Full inventory of active documents and authority classes:
 Verification of the control-plane cleanup (what improved, what is still open):
 **[verification/CONTROL-PLANE-VERIFICATION.md](verification/CONTROL-PLANE-VERIFICATION.md)**.
 
+L00 migration evidence:
+**[migration/v0.11-MIGRATION-LEDGER.md](migration/v0.11-MIGRATION-LEDGER.md)** ·
+**[contracts/w0.1-freeze-record.md](contracts/w0.1-freeze-record.md)**.
+
 No module implementation is currently authorized; only **L00 / W0.1** Lead work is active while
 the clean Craft Agents v0.11 baseline and canonical contracts are reconciled.
 

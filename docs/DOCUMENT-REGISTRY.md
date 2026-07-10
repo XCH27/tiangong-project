@@ -32,6 +32,11 @@
 | `FORBIDDEN-ANTIPATTERNS.md` | Binding | Non-goals checklist | Second systems, redlines, rejected routes |
 | `PERSISTENCE-AUTHORITY-MAP.md` | Binding | State ownership | One logical authority per state class |
 | `UPSTREAM-BASELINE.md` | Binding | Migration gate | Craft v0.11.0 clean base |
+| `migration/v0.11-MIGRATION-LEDGER.md` | Execution | Migration evidence | retain/adapt/drop/defer + verification |
+| `contracts/w0.1-freeze-record.md` | Binding (text) | Contract freeze status | Partial W0.1 freeze |
+| `contracts/m11a-usage-cost-core.md` | Binding (text) | M11A freeze | `w0.1-m11a-1` |
+| `adr/0034-physical-persistence-w1-w2.md` | Binding ADR | Persistence | Filesystem W1/W2 |
+| `adr/0035-product-internal-namespace.md` | Binding ADR | Namespace | `fleet.` rules |
 | `REFERENCE-PROJECT-POLICY.md` | Binding | Reuse policy | Green-light / black-box |
 | `adr/0032-…` | Binding ADR | Identity/tags/skills | Accepted ADR |
 | `adr/0033-…` | Binding ADR | Composable workspace | Accepted ADR |

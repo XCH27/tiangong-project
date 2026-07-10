@@ -42,6 +42,11 @@
 - `docs/loops/**`
 - `docs/DOCUMENT-REGISTRY.md`
 - `docs/verification/**`
+- `docs/migration/**`
+- `docs/adr/0034-physical-persistence-w1-w2.md`
+- `docs/adr/0035-product-internal-namespace.md`
+- `docs/contracts/w0.1-freeze-record.md`
+- `docs/contracts/m11a-usage-cost-core.md`
 - `docs/PROJECT-DIRECTION.md`
 - `docs/START-HERE.md`
 - `docs/README.md`

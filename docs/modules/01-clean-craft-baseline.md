@@ -3,8 +3,8 @@
 > **Capability status:** `not implemented` for the target baseline
 > **Execution gate:** `In Progress` (Lead slice only)
 > **Worker gate:** `Locked` (no Worker implementation packet)
-> **blocked_by:** `BLK-001` (migration ledger incomplete)
-> **Spec maturity:** `contract draft`; migration ledger incomplete
+> **blocked_by:** `BLK-001` (clean base replace + launch evidence open; ledger started)
+> **Spec maturity:** `contract draft`; see `docs/migration/v0.11-MIGRATION-LEDGER.md`
 > **Wave:** W0.1 migration gate
 > **Delivery loop:** L00 — `docs/loops/L00-control-plane/`
 > **Owner:** Lead

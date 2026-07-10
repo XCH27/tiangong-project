@@ -32,9 +32,14 @@ must not invent a second project/task/panel system while this evidence is missin
 
 ## W0.1 Exit Evidence
 
-- The Lead records the v0.11.0 migration branch and clean baseline validation.
-- A Fleet migration ledger classifies every current `app/` difference as retain/adapt/drop/defer.
-- The same ledger records which upstream project/task/background/panel behaviours are reused by
-  M04/M16/M17 and which are intentionally excluded.
-- The contract re-freeze records the version implemented on that new baseline.
-- Only then may W1 implementation packets be issued.
+| Evidence | Location | Status |
+|---|---|---|
+| Upstream tag + SHA recorded | this file + migration ledger §1 | **Done** |
+| Clean checkout inspection worktree | `/private/tmp/craft-v011-upstream` @ `f4e172bf…` | **Present** (not monorepo `app/`) |
+| Path/behaviour retain-adapt-drop-defer ledger | `docs/migration/v0.11-MIGRATION-LEDGER.md` | **Started** |
+| install/typecheck/Electron launch on clean base | ledger §5 | **Open** |
+| Reviewed branch replacing monorepo `app/` | — | **Open** |
+| Contract text freeze | `docs/contracts/w0.1-freeze-record.md` | **Partial** (text only) |
+| TS implementation parity on clean base | freeze record §5 | **Open** |
+
+Only when ledger §5 and freeze record §5 are complete may W1 implementation packets be issued.

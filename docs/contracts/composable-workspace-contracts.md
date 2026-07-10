@@ -1,9 +1,11 @@
 # Composable Workspace Contract Change Proposal
 
-> **Status:** proposed v0.1; not frozen; Workers must not implement from this file
+> **Status:** **W0.1 text-frozen** (see `docs/contracts/w0.1-freeze-record.md` F-01); TypeScript
+> implementation on clean v0.11 base still open. Workers must not implement until an active packet
+> names the freeze id and base SHA.
 > **Owner:** Lead
-> **Purpose:** one W0.1 change proposal to be merged into canonical protocol/action contracts,
-> then archived; it is not a second runtime contract.
+> **Purpose:** canonical text shapes for ArtifactRef, capability, invocation VNext, workflow,
+> jobs, and view contributions — not a second runtime store.
 
 ## 1. Contract Invariants
 

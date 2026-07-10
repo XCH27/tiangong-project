@@ -34,22 +34,21 @@ usable. A wave label never overrides the dependency DAG.
 
 ## 3. W0.1 Exit Checklist
 
-All items are required; there is no hidden secondary gate:
+All items are required; there is no hidden secondary gate.
+Status legend: **Done** | **Partial** | **Open**.
 
-1. clean Craft Agents OSS v0.11.0 baseline and migration branch are recorded;
-2. a retain/adapt/drop/defer ledger covers current Fleet-only behaviour and useful `fleet-old`
-   behaviour;
-3. canonical implementation/text parity is recorded for AgentSeat/identity, actions, caller
-   provenance, idempotency, revisions, typed events, and action policy;
-4. ArtifactRef, capability manifest, ExternalJob, workflow, spatial, and view contracts are either
-   frozen now or explicitly version-gated before their first consumer wave;
-5. **M11A** minimum `UsageObservation` / `CostRecord` / budget-preflight vocabulary is frozen
-   (or explicitly version-gated) so W2 job-core and W3A paid/unknown jobs share one cost path;
-6. physical persistence authority and recovery are recorded from `PERSISTENCE-AUTHORITY-MAP.md`;
-7. product/internal namespace is decided before plugin/storage API freeze;
-8. ownership precedence and exact narrow domains are non-overlapping;
-9. all active packets agree with this map and grant no Worker frozen-protocol writes;
-10. the Lead explicitly changes W1 to Ready. Absence of that declaration means Locked.
+| # | Requirement | Status | Evidence |
+|---|---|---|---|
+| 1 | clean Craft Agents OSS v0.11.0 baseline and migration branch recorded | **Partial** | SHA + inspection worktree recorded; monorepo `app/` replace **Open** — `docs/migration/v0.11-MIGRATION-LEDGER.md` |
+| 2 | retain/adapt/drop/defer ledger for Fleet + fleet-old | **Partial** | Ledger started with protocol/tree diffs; fleet-old rows still expand-on-demand |
+| 3 | canonical text/implementation parity for seat/actions/caller/idempotency/revision/events/policy | **Partial** | Text requirements in `docs/contracts/w0.1-freeze-record.md`; TS parity **Open** |
+| 4 | ArtifactRef, capability, ExternalJob, workflow, spatial, view contracts frozen or version-gated | **Partial** | Text freeze via composable contracts + freeze record; spatial spike still version-gated |
+| 5 | M11A UsageObservation/CostRecord/budget preflight frozen | **Done** (text) | `docs/contracts/m11a-usage-cost-core.md` (`w0.1-m11a-1`) |
+| 6 | physical persistence authority recorded | **Done** (W1/W2 policy) | ADR-0034 + PERSISTENCE map |
+| 7 | product/internal namespace decided | **Done** | ADR-0035 / D47 |
+| 8 | ownership precedence non-overlapping for first packets | **Partial** | Matrix rules OK; many paths still unassigned until clean base |
+| 9 | active packets grant no Worker frozen-protocol writes | **Done** | Only W0.1 Lead packet active |
+| 10 | Lead explicitly sets W1 Ready | **Open** | **W1 remains Locked** |
 
 ## 4. Module Table
 
@@ -101,7 +100,8 @@ All items are required; there is no hidden secondary gate:
 
 | ID | Blocker | Owner | Affects |
 |---|---|---|---|
-| BLK-001 | Clean v0.11 migration ledger and canonical contract parity/re-freeze (incl. M11A usage/cost vocabulary) are incomplete. | Lead | W0.1/M01 Lead work In Progress; W1 and every Worker wave Locked |
+| BLK-001 | Clean v0.11 monorepo replace + launch evidence + TS contract parity still open (ledger/text freezes started). | Lead | W0.1/M01 Lead In Progress; W1 and every Worker wave Locked |
+| BLK-001a | M11A text freeze complete (`w0.1-m11a-1`); implementation still W2. | Lead | Informational reduction of cost-vocabulary uncertainty |
 | BLK-002 | Product/internal namespace is unresolved; plugin/storage API identifiers cannot freeze. | Lead/Owner | M05/M12/M16 and external compatibility |
 | BLK-003 | Required Browser/Spatial/Media/Panel/Web/Deck adapter spikes have no recorded result. | Lead by consumer wave | M06/M07/M09/M16/M18/M19 readiness |
 

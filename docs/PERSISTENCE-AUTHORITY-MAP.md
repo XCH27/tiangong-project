@@ -1,15 +1,14 @@
 # Persistence Authority Map
 
-> **Status:** binding ownership rules; physical storage adapters remain pending v0.11 migration
-> evidence and W0.1 re-freeze.
+> **Status:** binding ownership rules; W1/W2 physical policy accepted in ADR-0034 (filesystem Craft
+> stores). Clean-base replace + exact ExternalJob on-disk encoding still open.
 > **Updated:** 2026-07-09
 
 ## Rule
 
 Every state class has one logical authority. A JSON/SQLite/native file format is an implementation
-choice of that authority, not permission to create a second product store. Current documents must
-not assume SQLite, a daemon, or a workspace-local control directory is present until the clean
-Craft Agents v0.11 baseline is inspected and a persistence ADR records the decision.
+choice of that authority, not permission to create a second product store. Do not assume a product-wide SQLite control plane or a physical daemon. W1/W2 use retained Craft
+v0.11 filesystem stores (ADR-0034). A later SQLite introduction requires a superseding ADR.
 
 ## Authority Table
 
@@ -38,18 +37,18 @@ Craft Agents v0.11 baseline is inspected and a persistence ADR records the decis
 
 ## Physical Store Decision Gate
 
-Before W1 opens, the Lead must record:
+| Item | Status | Record |
+|---|---|---|
+| 1. which v0.11 storage APIs are retained | **Recorded** | ADR-0034 — sessions JSONL, workspaces under `~/.craft-agent`, views.json |
+| 2. SQLite for control plane in W1/W2 | **Decided: no** | ADR-0034; superseding ADR required to change |
+| 3. preferences / secrets | **Retain Craft** + Fleet keys `fleet.*` | ADR-0035 |
+| 4. native documents | **References via M05**, bodies native | Authority table |
+| 5. derived caches | **Rebuildable** | ADR-0034 |
+| 6. restart reconciliation | **Logical rule fixed**; job encoding at W2 | Completion invariant below |
 
-1. which v0.11 storage APIs are retained;
-2. whether any SQLite database is introduced and, if so, its single owner, schema migration,
-   transaction boundary, backup, corruption, and upgrade behaviour;
-3. where canonical preferences and protected secrets live;
-4. how native project documents are referenced without becoming control databases;
-5. which derived caches may be deleted/rebuilt;
-6. how application restart reconciles non-final invocations, leases, jobs, and workflow runs.
-
-Until that record exists, module specs describe logical state and recovery invariants only. They
-must not prescribe independent `jobs.json`, `clips.json`, `memory.json`, or similar authorities.
+Remaining before W1 Ready: clean v0.11 monorepo replace + launch evidence
+(`docs/migration/v0.11-MIGRATION-LEDGER.md` §5). Module specs still must not invent independent
+`jobs.json` / `clips.json` / `memory.json` authorities.
 
 ## Completion Invariant
 
