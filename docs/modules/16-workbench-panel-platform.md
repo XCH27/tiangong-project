@@ -8,6 +8,18 @@
 > **Owner:** Lead for layout contract; M16 Worker after packet approval
 > **Depends on:** M00 preferences/identity boundary, M03 actions, clean Craft Agents v0.11 shell
 
+## Frontend Exposure
+
+> Matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M16
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| Open/close views | required | workbench | Panel/surface switcher | per-module private shells |
+| Layout save/reset | required | workbench, settings | Reset layout | domain state in layout |
+| Agent reveal | optional | workbench | Open relevant view | permanent layout thrash by Agent |
+
+**Designer note when usable:** this module **is** the placement host — other modules declare surface *class*; M16 implements docks/routes inside Craft shell.
+
 ## 1. Purpose
 
 Provide the only registration, instance, routing, docking, focus, and layout-restoration system

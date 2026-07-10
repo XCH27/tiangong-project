@@ -8,6 +8,20 @@
 > **Owner:** Lead for file/ArtifactRef contract; M05 Worker after packet approval
 > **Depends on:** M00 usable, M03 usable, canonical workspace authority on v0.11 baseline
 
+## Frontend Exposure
+
+> Matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M05
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| File browse/ops | required | workbench, panel | Tree; open; rename/move/delete | OS path escape |
+| Library | required | workbench, panel | Promote; provenance | auto-library everything |
+| ArtifactRef preview | required | inspector, canvas | Version/preview card | editable storageRef |
+| Leases/conflicts | required | status, modal | Conflict UX | silent LWW |
+| Destructive ops | required | approval | Confirm delete | L0 delete |
+
+**Designer note when usable:** files/Library panel; conflict modals; inspector provenance. Not a second Finder app outside Craft shell.
+
 ## 1. Purpose
 
 Let humans, Agents, and workflows read and mutate real workspace files without silent conflicts,

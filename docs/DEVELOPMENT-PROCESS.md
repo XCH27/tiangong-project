@@ -21,6 +21,8 @@ The process has seven layers:
 
 5. **Module Specs**
    `docs/modules/*.md` defines module behaviour; membership in a delivery loop is listed under `docs/loops/`.
+   Every module declares **Frontend Exposure** (`FRONTEND-EXPOSURE-MATRIX.md`): UI needed?,
+   surface class (settings vs workbench vs approval vs none), and what to expose — not pixels.
 
 6. **Agent Packets**
    Active packets under `docs/agent-packets/` only (never `docs/legacy/agent-packets/`).

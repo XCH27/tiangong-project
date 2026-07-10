@@ -9,6 +9,19 @@
 > **Spec version:** draft v1.1 — 2026-07-09
 > **Depends on:** M00/M03 usable, M16 host slice, approved terminal-host boundary.
 
+## Frontend Exposure
+
+> Matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../../FRONTEND-EXPOSURE-MATRIX.md) § M02
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| Runtime select | required | workbench, panel | Pick runtime/lane | protocol internals |
+| PTY start/stop/stream | required | workbench, panel | Terminal surface; stop | raw FDs |
+| Timeline evidence | required | timeline | Run summary | buffer-only UX |
+| Risky host commands | required | approval | L2/L3 confirm | bypass host |
+
+**Designer note when usable:** terminal panel + runtime picker + stop; approvals for risky cmds. Placement via M16 dock class (typically bottom/work).
+
 ## 1. Purpose
 
 Make one local terminal/CLI execution loop visible and governable: a human chooses a runtime and command, the terminal host runs one bounded RuntimeLane, output returns to the session timeline, and the user can stop, diagnose, or recover without bypassing permission.

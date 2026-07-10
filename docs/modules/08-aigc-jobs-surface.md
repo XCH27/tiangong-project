@@ -8,6 +8,19 @@
 > **Owner:** Lead for ExternalJob protocol; M08 Worker after packet approval
 > **Depends on:** M00, M03, M05; M11A usage/cost core (W2) for paid/unknown cost fields; M11B routing later
 
+## Frontend Exposure
+
+> Matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M08
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| Submit job | required | workbench, panel | Start job with inputs | paid auto-submit without budget |
+| Progress/cancel | required | panel, status | Jobs dock | UI-owned job store |
+| Cost (M11A) | required | inspector, panel | cost + confidence | invent tokens |
+| Reconcile | required | status, timeline | reconciling/failed | silent resubmit |
+
+**Designer note when usable:** jobs dock + submit entry points on creative surfaces; budget/unknown cost visible. Provider keys live under **settings** (M13), not the jobs dock.
+
 ## 1. Purpose
 
 Provide one durable asynchronous job facility for image/audio/video generation, render/export,
