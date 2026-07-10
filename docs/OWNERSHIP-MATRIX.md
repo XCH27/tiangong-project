@@ -11,8 +11,9 @@
 > ownership is unresolved and the Lead must update this matrix before issuing a packet. Workers
 > must not infer ownership from a broad parent glob.
 >
-> **Migration notice:** existing `app/` paths below are provisional historical mappings until the
-> M01 v0.11 migration ledger verifies them. They do not authorize a packet on the current tree.
+> **Migration notice (2026-07-10):** monorepo `app/` is clean Craft **v0.11.0** + Lead protocol ports.
+> Path patterns below apply to that tree. Protocol files remain Lead-only. Workers still need an
+> active packet before editing feature domains.
 >
 > **Wave labels:** module wave placement and gates are owned by `docs/WAVE-MODULE-MAP.md`.
 > Headings here must match that map. Paths marked `currently unassigned` are not Worker-editable
@@ -43,7 +44,11 @@
 | `docs/DOCUMENT-REGISTRY.md` | Lead | Active document inventory / authority map |
 | `docs/verification/**` | Lead | Documentation verification reports |
 | `docs/migration/**` | Lead | migration standards, ledger, evidence, audits, staging-protocol |
-| `docs/migration/staging-protocol/**` | Lead | Text-frozen TS port sources (not live app imports) |
+| `docs/migration/staging-protocol/**` | Lead | Historical port sources (mirrors live protocol after L00 port) |
+| `docs/contracts/subagent-context-handoff.md` | Lead | TaskBrief / RunReport behaviour |
+| `docs/contracts/git-pr-delivery.md` | Lead | Agent-first PR protocol |
+| `docs/contracts/markdown-document-surface.md` | Lead | Craft TipTap 文稿 behaviour |
+| `docs/UI-COMPONENT-PACKAGE-CATALOG.md` | Lead | Research catalog only |
 | `docs/migration/audits/**` | Lead (or assigned auditor) | Per-unit adapt records; append regression notes |
 | `docs/adr/0034-physical-persistence-w1-w2.md` | Lead | W1/W2 persistence ADR |
 | `docs/adr/0035-product-internal-namespace.md` | Lead | Namespace ADR |

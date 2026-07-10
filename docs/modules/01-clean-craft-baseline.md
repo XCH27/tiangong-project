@@ -1,6 +1,6 @@
 # M01 — Clean Craft Agents v0.11 Baseline
 
-> **Capability status:** `not implemented` for the target baseline
+> **Capability status:** `wired but not visually checked` (clean v0.11 `app/` + typecheck + Electron main smoke 2026-07-10; full product QA loop not scripted) for the target baseline
 > **Execution gate:** `In Progress` (Lead slice only)
 > **Worker gate:** `Locked` (no Worker implementation packet)
 > **blocked_by:** `BLK-001` (clean base replace + launch evidence open; ledger started)

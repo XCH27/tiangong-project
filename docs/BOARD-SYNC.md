@@ -289,21 +289,16 @@ Board Cards section. Do not create a new file format for this; append the block 
 - Owner: Lead
 - Worktree: root
 - Branch: `work/fresh-base-spine`
-- Status: **partial** (docs control plane advanced; clean base code replace open)
-- UI State: not started (product)
-- Backend State: not started (on clean v0.11)
-- Contracts: M11A text freeze; composable contracts text; **TaskBrief/RunReport**, **git-PR delivery**, **markdown document surface**; D50–D53
-- Allowed Files:
-  - Lead-owned docs and canonical protocol implementation files
-- Forbidden Files:
-  - Worker feature implementation domains
+- Status: **partial** (clean **v0.11.0 `app/` + protocol port Done**; W1 Ready Open)
+- UI State: Electron main smoke only (not full product QA script)
+- Backend State: freeze protocol types live on base; feature modules not implemented
+- Contracts: freeze `w0.1-doc-freeze-2026-07-09` live; TaskBrief/PR/文稿 behaviour contracts; D50–D53
 - Validation:
-  - `docs/verification/CONTROL-PLANE-VERIFICATION.md` — governance **PASS**; L00 code residual explicit
-  - `docs/verification/DOC-SET-STATUS-2026-07-10.md` — control plane ready; implementation no
+  - `docs/migration/evidence/v0.11-monorepo-replace-2026-07-10.md`
+  - typecheck shared/electron green; Electron main launch smoke PASS
 - Remaining Not Implemented:
-  - Replace monorepo `app/` with clean Craft **v0.11.0** + GUI launch evidence
-  - Protocol TS parity on clean base (staging exists; live import not done)
-  - Ownership path assignment after clean base
-  - W1 Ready declaration + Worker packets
+  - Lead **W1 Ready** flip + Worker packets
+  - fleet-old ledger expand; first surface ownership packets
+  - Module execution-ready promotion
 - Blocker:
-  - **BLK-001**: clean base replace + GUI still open; W1 stays Locked
+  - **BLK-001 reduced** — base replace done; W1 still Locked until item 10

@@ -16,6 +16,9 @@
 
 import { z } from 'zod'
 
+// Prefer canonical lease type from lease.ts (avoid dual export ambiguity).
+export type { WorkspaceFileLease } from './lease'
+
 // ---------------------------------------------------------------------------
 // Contract version sentinel
 // ---------------------------------------------------------------------------
@@ -191,20 +194,6 @@ export interface SupervisionResolution {
   decision: 'approve' | 'reject'
   decidedBy: string // actorId or 'captain'
   timestamp: string // ISO 8601
-}
-
-// ---------------------------------------------------------------------------
-// WorkspaceFileLease
-// ---------------------------------------------------------------------------
-
-export interface WorkspaceFileLease {
-  leaseId: string
-  workspaceId: string
-  filePath: string
-  heldBy: string
-  acquiredAt: string
-  expiresAt: string
-  active: boolean
 }
 
 // ---------------------------------------------------------------------------

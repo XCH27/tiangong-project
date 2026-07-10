@@ -39,7 +39,18 @@
 | Future UI packages | `UI-COMPONENT-PACKAGE-CATALOG.md` (research only) |
 | Multica / LobeHub product trees | Absorbed then **retired** from active clone catalog |
 
-## 4. Still open (code / L00 — do not mark Done)
+## 3b. L00 mechanical progress (2026-07-10)
+
+| Item | Status |
+|---|---|
+| `app/` = Craft v0.11.0 | **Done** |
+| Protocol freeze TS ported | **Done** |
+| typecheck shared/electron | **Done** |
+| Electron main smoke | **Done** |
+| W1 Ready | **Open** |
+
+## 4. Still open (do not mark W1 Ready)
+
 
 1. Monorepo `app/` still **Craft 0.10.5** tree; clean **v0.11.0** replace **Open**.  
 2. GUI launch on clean base **Open**.  

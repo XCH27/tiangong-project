@@ -39,16 +39,16 @@ Status legend: **Done** | **Partial** | **Open**.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| 1 | clean Craft Agents OSS v0.11.0 baseline and migration branch recorded | **Partial** | SHA + worktree; **install + typecheck:shared/electron green** (`docs/migration/v0.11-BASELINE-VALIDATION.md`); monorepo `app/` replace + GUI **Open** |
-| 2 | retain/adapt/drop/defer ledger for Fleet + fleet-old | **Partial** | Ledger started with protocol/tree diffs; fleet-old rows still expand-on-demand |
-| 3 | canonical text/implementation parity for seat/actions/caller/idempotency/revision/events/policy | **Partial** | Text requirements in `docs/contracts/w0.1-freeze-record.md`; TS parity **Open** |
-| 4 | ArtifactRef, capability, ExternalJob, workflow, spatial, view contracts frozen or version-gated | **Partial** | Text freeze via composable contracts + freeze record; spatial spike still version-gated |
-| 5 | M11A UsageObservation/CostRecord/budget preflight frozen | **Done** (text) | `docs/contracts/m11a-usage-cost-core.md` (`w0.1-m11a-1`) |
+| 1 | clean Craft Agents OSS v0.11.0 baseline and monorepo `app/` on that base | **Done** | SHA `f4e172bf…`; `app/` **0.11.0**; install + typecheck shared/electron; Electron main smoke — `docs/migration/evidence/v0.11-monorepo-replace-2026-07-10.md` |
+| 2 | retain/adapt/drop/defer ledger for Fleet + fleet-old | **Partial** | Protocol/tree ledger + ports done; fleet-old expand-on-demand remains |
+| 3 | canonical text/implementation parity for seat/actions/caller/idempotency/revision/events/policy | **Done** (protocol TS) | Freeze `w0.1-doc-freeze-2026-07-09` live under `app/packages/shared/src/protocol/`; VNext + adapt files typecheck green |
+| 4 | ArtifactRef, capability, ExternalJob, workflow, spatial, view contracts frozen or version-gated | **Partial** | ArtifactRef/ExternalJob/workflow/view **ported**; spatial still version-gated (BLK-003) |
+| 5 | M11A UsageObservation/CostRecord/budget preflight frozen | **Done** | text + `m11a-usage-cost.ts` on base |
 | 6 | physical persistence authority recorded | **Done** (W1/W2 policy) | ADR-0034 + PERSISTENCE map |
 | 7 | product/internal namespace decided | **Done** | ADR-0035 / D47 |
-| 8 | ownership precedence non-overlapping for first packets | **Partial** | Matrix rules OK; many paths still unassigned until clean base |
+| 8 | ownership precedence non-overlapping for first packets | **Partial** | Protocol paths Lead-owned; first W1 surface paths still need packet-level assignment |
 | 9 | active packets grant no Worker frozen-protocol writes | **Done** | Only W0.1 Lead packet active |
-| 10 | Lead explicitly sets W1 Ready | **Open** | **W1 remains Locked** |
+| 10 | Lead explicitly sets W1 Ready | **Open** | **W1 remains Locked** until Lead Ready after residual §2/§8/packets |
 
 ## 4. Module Table
 
@@ -100,9 +100,9 @@ Status legend: **Done** | **Partial** | **Open**.
 
 | ID | Blocker | Owner | Affects |
 |---|---|---|---|
-| BLK-001 | Clean v0.11 monorepo replace + launch evidence + TS contract parity still open (ledger/text freezes started). | Lead | W0.1/M01 Lead In Progress; W1 and every Worker wave Locked |
-| BLK-001a | M11A text freeze complete (`w0.1-m11a-1`); implementation still W2. | Lead | Informational reduction of cost-vocabulary uncertainty |
-| BLK-002 | Product/internal namespace is unresolved; plugin/storage API identifiers cannot freeze. | Lead/Owner | M05/M12/M16 and external compatibility |
+| BLK-001 | W0.1 residual: Lead **W1 Ready** not set; first Worker packets/ownership surface paths incomplete (base replace + protocol port + typecheck + Electron main smoke **Done** 2026-07-10). | Lead | W1 and every Worker wave stay Locked until Ready |
+| BLK-001a | M11A text freeze complete (`w0.1-m11a-1`); implementation still W2. | Lead | Informational |
+| BLK-002 | **Resolved** by ADR-0035 / D47 (namespace). | — | — |
 | BLK-003 | Required Browser/Spatial/Media/Panel/Web/Deck adapter spikes have no recorded result. | Lead by consumer wave | M06/M07/M09/M16/M18/M19 readiness |
 
 ## 7. Historical W0 Record

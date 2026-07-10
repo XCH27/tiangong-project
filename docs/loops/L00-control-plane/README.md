@@ -40,7 +40,8 @@ This is a **documentation + migration** loop, not a user-facing product feature.
 | Behaviour contracts (文稿 / TaskBrief / git-PR) | `contracts/markdown-document-surface.md`, `subagent-context-handoff.md`, `git-pr-delivery.md` | **Text ready** (not code) |
 | D53 TaskRun visibility | M04 + DECISIONS | **Text ready** (W2 implement later) |
 | Control-plane verification | [`docs/verification/CONTROL-PLANE-VERIFICATION.md`](../../verification/CONTROL-PLANE-VERIFICATION.md) | **Governance PASS** |
-| Clean `app/` replace + GUI launch | ledger | **Open** → W1 stays Locked |
+| Clean `app/` replace + Electron main smoke | ledger + `evidence/v0.11-monorepo-replace-2026-07-10.md` | **Done** (2026-07-10) |
+| W1 Ready | WAVE-MAP §3 item 10 | **Open** → W1 stays Locked until Lead Ready |
 
 ## Why this is #00
 
