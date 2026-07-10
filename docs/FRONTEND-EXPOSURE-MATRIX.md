@@ -118,6 +118,9 @@ When a row says `required`, Agents must be able to point to **R3(a–d)**. Rows 
 | Run terminal/CLI + stop + output | required | workbench **or** one panel | One run surface; stop | multi-dock IDE chrome | R3(c) |
 | Runtime pick | required | workbench | Simple runtime/lane choice | protocol internals | R3(c) |
 | Risky host commands | required | approval | L2/L3 confirm | bypass | R3(a) |
+| Git / PR **actions** (Agent-first) | later when multi-repo delivery ships | timeline + approval | Result/summary; L2 for push/merge | Human PR-review SPA / second Git client | R3(a)(c) when used |
+
+**Git/PR behaviour:** Agent-operated delivery protocol only — `docs/contracts/git-pr-delivery.md`.
 
 ### M03 — Action registry
 
@@ -133,22 +136,33 @@ When a row says `required`, Agents must be able to point to **R3(a–d)**. Rows 
 | Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
 | Request bounded member run | required | workbench | One “run with teammate/lane” entry | remote-control console | R3(c) |
+| Codex-style task preview | required when TeamRun ships | existing task entry / Popover | title, status, short summary, up to three refs + overflow | permanent duplicate chat card; invented % progress | R3(c) |
+| Parent/child TaskRun board | required when concurrent members exist | contextual panel | assignee, assignment, truthful state, blocker/approval, finite child count | global ops center; second task database | R3(c) |
+| Child activity and conversation | required on selected permitted task | inspector → existing session | TaskBrief, redacted event trail, route to original child session, artifacts | copied raw transcript or cross-seat data leak | R3(c), R3(a) |
+| Member RunReport / status | required when runs ship | timeline, inspector | Compact report card | full child transcript dump by default | R3(c) |
 | Roster / status | optional | inspector | Compact status | full ops center | — |
 | Bridge internals | none | none | — | method debugger UI | — |
+| TaskBrief authoring for humans | optional/later | workbench | Only if human must edit brief | Form factory for every field | — |
+
+**Subagent context:** spawn injects TaskBrief automatically; bare spawn forbidden —
+`docs/contracts/subagent-context-handoff.md`.
 
 ### M05 — Files / Library / ArtifactRef / leases
 
 | Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
 | Open/use project files | required | workbench | Browse/open needed files | second Finder product | R3(c) |
-| **Document / 文稿 edit surface** (Craft TipTap/ProseMirror on Craft shell) | required when editing docs | workbench | Edit Markdown-oriented docs in Craft | LobeHub shell/components copy; second doc app | R3(c) |
-| **Markdown 模块式拖拽** (block reorder) | required when 文稿 ships as product loop | workbench | Drag **blocks/modules** to reorder (handles, drop targets); outline sync if present | Free-drag canvas for prose; LobeHub DnD source copy | R3(c) |
+| **Document / 文稿 edit surface** (Craft TipTap/ProseMirror on Craft shell) | required when editing docs | workbench | Edit Markdown-oriented docs in Craft | Second doc app; third-party editor package | R3(c) |
+| **Markdown 模块式拖拽** (block reorder) | required when 文稿 ships as product loop | workbench | Drag **blocks/modules** to reorder (handles, drop targets) | Free-drag canvas for prose | R3(c) |
 | Library promote | later/optional | workbench | Promote when Library ships | auto-library everything | — |
 | Artifact preview | required | inspector | Preview/version when selected | editable storageRef | R3(c) |
-| Lease conflict | required | status, modal | Conflict when it happens | always-on lease dashboard | R3(c) |
+| Lease conflict | required | status, modal | Conflict when it happens; keep draft | always-on lease dashboard | R3(c) |
 | Destructive file ops | required | approval | Confirm delete | L0 delete | R3(a) |
 
-**LobeHub note (owner intent):** 参考重点是 **Markdown 文稿的模块式拖拽**（块级重排），不是整站 UI。实现 = 在 **Craft 文档编辑器**上做简化/优化（D52）；黑盒学交互，禁止拷组件库/壳。策略：`REFERENCE-PROJECT-POLICY` LobeHub 行。
+**Markdown 文稿 behaviour (absorbed):** modular block reorder, slash/block unity, Agent mutation gate,
+dirty/leave/conflict draft, scroll stability — all frozen in
+[`docs/contracts/markdown-document-surface.md`](contracts/markdown-document-surface.md).
+External 文稿 product trees are **not** required for implementation (retired after absorb).
 
 ### M06 — Browser evidence
 

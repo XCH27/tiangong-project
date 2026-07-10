@@ -18,6 +18,30 @@ An execution pipeline assigned to a specific seat, defining its boundary (API ru
 ### TeamRun
 A multi-agent, cross-lane execution task coordinated by the Fleet Bridge, grouping work across teammates.
 
+### TaskRun
+One bounded work unit under a TeamRun: assignee seat, TaskBrief, lifecycle status, optional
+parent/child link, optional `childSessionId`, artifacts, and RunReport ref. M04 owns TaskRun truth;
+it is not a second chat or task database (D53).
+
+### TaskBrief
+The required structured packet injected when starting a member run or subagent: goal, path scope,
+known facts, constraints, deliverable, and optional budget/isolation. Prevents amnesiac children
+from re-reading the whole project. See `docs/contracts/subagent-context-handoff.md`.
+
+### TaskPreview
+Derived projection of a TaskRun for compact UI (title, status, short summary, reference chips,
+finite child counts only). Never a second persisted truth. See M04 and D53.
+
+### RunReport
+The structured completion packet a member run returns to the lead (status, short summary, changed
+paths / ArtifactRefs, open questions, evidence, optional usage). The lead synthesizes from
+RunReports, not full child transcripts.
+
+### Pull Request (PR) delivery
+A remote Git host protocol for proposing branch merges (optional CI/review policy). In Fleet it is
+an **Agent-first delivery envelope** under M02/M03, not a human review shell and not the
+multi-agent orchestrator. See `docs/contracts/git-pr-delivery.md`.
+
 ### PermissionDecision
 The formal output of the L0-L3 authorization evaluator, deciding if an action invocation is allowed, blocked, or paused.
 
@@ -78,6 +102,12 @@ preferences. It contains no domain business state.
 ### NativeDocument
 A module-owned editable document such as a media project, web project, MotionDeck, or design file.
 The canvas and panels show references/projections; the native owner controls schema and recovery.
+
+### Markdown Document Surface
+The Craft TipTap/ProseMirror editor used for Markdown-oriented workspace files. Product bar includes
+**modular block reorder** (drag top-level blocks) when 文稿 ships as a product loop. Behaviour is
+specified in `docs/contracts/markdown-document-surface.md`. File authority remains M05; this is not
+a second document module or third-party editor product.
 
 ### Manager Agent
 The global, persistent agent coordinating software context, settings, and team orchestrations.

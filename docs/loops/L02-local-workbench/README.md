@@ -8,7 +8,7 @@
 | **Difficulty** | Medium–Hard (PTY/process, files, jobs, shell host) |
 | **Gate** | Locked |
 | **Start when** | L01 exit (M00/M03 usable); W2 Ready; exact slice packets |
-| **Exit when** | M02 terminal loop, M05 file/ArtifactRef loop, M16 host slice, M08 durable job core `usable`; M04 bounded run core verified |
+| **Exit when** | M02 terminal loop, M05 file/ArtifactRef loop, M16 host slice, M08 durable job core `usable`; M04 bounded run core plus parent/child task inspection verified |
 
 ## Closed loops in this folder (several slices, one wave)
 
@@ -39,10 +39,11 @@ long work request → ExternalJob record → provider/local execution
 module registers view → M16 layout/instance → open/close without owning domain state
 ```
 
-### Loop E — TeamRun core (bounded)
+### Loop E — TeamRun core and task visibility (bounded)
 
 ```text
-leader lane → Fleet Bridge → member task request → compressed report → timeline
+leader lane → Fleet Bridge → child TaskRuns → compact preview / task tree
+  → authorized child conversation + compressed report → timeline
 ```
 
 ## Modules in this loop

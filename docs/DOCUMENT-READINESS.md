@@ -57,7 +57,7 @@ canonical re-freeze are incomplete.
 | M01 Clean Baseline | contract draft | retain/adapt/drop ledger and exact clean-v0.11 classification missing |
 | M02 Terminal/CLI | contract draft | runtime discovery, host/process/PTY paths and real commands unverified on v0.11 |
 | M03 Action Registry | contract draft | W0.1 caller/idempotency/revision/policy/event contracts not frozen |
-| M04 Runtime Lanes/TeamRun | contract draft | TaskRun/TeamRun authority and W2-only dependency boundary need reconciliation |
+| M04 Runtime Lanes/TeamRun | contract draft | TaskRun/TeamRun authority, M16 task-view route, child-session authorization, and W2 dependency boundary need reconciliation |
 | M05 Files/Library/ArtifactRef | contract draft | canonical workspace store, ArtifactRef/lease schema and limits not frozen |
 | M06 Browser Evidence | contract draft | WebContentsView selection-overlay/lifecycle spike and setting/action contracts missing |
 | M07 Spatial Canvas | contract draft | spatial renderer/license spike and new SpatialDocument contract missing |

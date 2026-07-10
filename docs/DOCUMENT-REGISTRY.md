@@ -1,7 +1,7 @@
 # Document Registry
 
 > **Purpose:** single map of every **active** project document: class, authority, and how to use it.
-> **Updated:** 2026-07-09
+> **Updated:** 2026-07-10 (subagent handoff + git/PR delivery contracts)
 > **Not a gate:** does not replace `WAVE-MODULE-MAP.md` or `DOCUMENT-READINESS.md`.
 > **Legacy:** files under `docs/legacy/` are listed only as historical; never execution authority.
 
@@ -21,6 +21,9 @@
 | `README.md` | Navigation | Index | Docs folder index |
 | `GLOSSARY.md` | Navigation | Definitions | Shared terms |
 | `FRONTEND-EXPOSURE-MATRIX.md` | Execution (UI contract) | Backend→UI exposure | settings vs workbench vs none |
+| `UI-COMPONENT-PACKAGE-CATALOG.md` | Research catalog | Non-binding until promoted | Future UI overhaul package shortlist |
+| `verification/DOC-SET-STATUS-2026-07-10.md` | Verification | Status snapshot | Control plane vs L00 residual |
+| `verification/CONTROL-PLANE-VERIFICATION.md` | Verification | Doc audit | Governance PASS; code residual explicit |
 | `DOCUMENT-REGISTRY.md` | Navigation | This map | Full active inventory |
 
 ## B. Binding product & architecture
@@ -42,9 +45,12 @@
 | `migration/audits/**` | Execution | Adapt records | per-unit traceability |
 | `contracts/w0.1-freeze-record.md` | Binding (text) | Contract freeze status | Partial W0.1 freeze |
 | `contracts/m11a-usage-cost-core.md` | Binding (text) | M11A freeze | `w0.1-m11a-1` |
+| `contracts/markdown-document-surface.md` | Binding (behaviour text) | Craft TipTap 文稿 | Modular block reorder + Agent gate; external checkout retired |
+| `contracts/subagent-context-handoff.md` | Binding (behaviour text) | M04×M10 handoff | TaskBrief required; RunReport; no bare spawn |
+| `contracts/git-pr-delivery.md` | Binding (behaviour text) | Code remote delivery | Agent-first PR protocol; not PR UI product |
 | `adr/0034-physical-persistence-w1-w2.md` | Binding ADR | Persistence | Filesystem W1/W2 |
 | `adr/0035-product-internal-namespace.md` | Binding ADR | Namespace | `fleet.` rules |
-| `REFERENCE-PROJECT-POLICY.md` | Binding | Reuse policy | Green-light / black-box |
+| `REFERENCE-PROJECT-POLICY.md` | Binding | Reuse policy | Green-light / black-box / absorb loop; points at UI package catalog |
 | `adr/0032-…` | Binding ADR | Identity/tags/skills | Accepted ADR |
 | `adr/0033-…` | Binding ADR | Composable workspace | Accepted ADR |
 

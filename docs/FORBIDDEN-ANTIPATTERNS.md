@@ -1,7 +1,7 @@
 # Forbidden Anti-Patterns
 
 > **Authority:** binding non-goals and second-system bans for active development.
-> **Updated:** 2026-07-09
+> **Updated:** 2026-07-10
 > **Write authority:** Lead only.
 > **Sources:** `DECISIONS-LEDGER.md`, `PROJECT-DIRECTION.md`, `COMPOSABLE-WORKSPACE-ARCHITECTURE.md`,
 > `PERSISTENCE-AUTHORITY-MAP.md`, ADR-0033. This file is the single checklist Agents must scan
@@ -27,6 +27,12 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Treating “optimize” as license to replace Craft nav/settings architecture wholesale | D52-R2/R3 | Prefer incremental simplify/optimize on v0.11 shell |
 | Second timeline / audit stream | D7, M00 | Ordered `SessionEvent` only |
 | Canvas or panel as authoritative job/document store | D39, D42, ADR-0033 | Projection only; native owners keep content |
+| Second Markdown document editor (Lexical / third-party page shell / component-library fork) beside Craft TipTap | D52; `contracts/markdown-document-surface.md` | Extend Craft TipTap block model only |
+| Free-drag prose modules on M07 canvas as substitute for in-document block reorder | ADR-0033; markdown surface B1 | Block handles inside the Markdown surface |
+| Bare subagent / member-run spawn without TaskBrief (children re-scan whole monorepo) | `contracts/subagent-context-handoff.md`; D9 | Require TaskBrief + scope; RunReport return |
+| Dumping full parent transcript into every child as “context” | same | Brief + bounded M10 segments + path pointers |
+| Human PR-review **product shell** or using PR graphs as TeamRun/orchestration | `contracts/git-pr-delivery.md`; D51/D52; not an IDE | Agent-first git/PR actions + timeline; host deep links if needed |
+| Using PR alone to coordinate concurrent local file writes | M05 leases | Leases + path isolation first |
 
 ## 2. Product and Compliance Redlines
 
@@ -36,6 +42,7 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Fleet account / login / subscription business in the active route | D26 |
 | Fake completed features that are display-only or stub-only presented as usable | PROJECT-DIRECTION quality bar |
 | Copying unapproved or black-box reference source as if green-lit | D20, D24, `REFERENCE-PROJECT-POLICY.md` |
+| Keeping closed-source / restricted product clones after behaviour is absorbed, or treating “there is an MIT sibling package” as auto green-light | Compliant reference loop in `REFERENCE-PROJECT-POLICY.md`; D52 |
 | Universal `DesignPatch` that edits code, design, browser DOM, and video with one internal model | D14, D18 |
 | Treating remote web pages as editable design documents via DOM mutation | D6, D10 |
 

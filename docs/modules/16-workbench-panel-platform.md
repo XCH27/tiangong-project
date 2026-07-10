@@ -138,6 +138,8 @@ manual action list.
 | terminal | panel | bottom | M02 |
 | timeline/evidence | panel | right | M00 |
 | jobs | panel | right | M08 |
+| TeamRun board | contextual panel | right when a TeamRun exists | M04 |
+| TaskRun inspector | inspector | right for selected task | M04 |
 | spatial canvas | surface | main | M07 |
 | browser | surface | main | M06 |
 | media editor | surface plus bottom timeline | M09 |
@@ -207,4 +209,3 @@ sufficient.
 - No Agent-controlled persistent layout by default.
 - No free-floating OS windows in v1.
 - No third-party panel library until reference policy promotion and license review.
-

@@ -88,7 +88,7 @@ The surface-specific layer remains native:
 
 | Surface | Native model |
 |---|---|
-| Code | files, diffs, commands, tests, git state |
+| Code | files, diffs, commands, tests, git state; **PR is a remote delivery protocol**, not the product shell |
 | Terminal | PTY/runtime lane state |
 | Browser | BrowserPane, CDP, screenshots, DOM/AX evidence |
 | Documents | document/block model |
@@ -100,6 +100,23 @@ The surface-specific layer remains native:
 The shared question is “who invoked which capability, was it allowed, where is the evidence, what
 can honestly be undone or cancelled?” The module-specific question is “which authority owns this
 document/job and how does it edit/recover it?”
+
+### Multi-agent context and code delivery (owner-aligned)
+
+Multi-agent parallel work and multi-project delivery are first-class intents. They do **not**
+imply an IDE or a human PR-review workstation.
+
+| Concern | Fleet approach | Canonical text |
+|---|---|---|
+| Orchestration (who runs what) | TeamRun / Workflow—not PR boards | M04, M17 |
+| Concurrent local edits | M05 leases (+ optional branch/worktree) | M05 |
+| Child Agents re-reading whole repos | **TaskBrief required on spawn**; RunReport back; no bare spawn | `contracts/subagent-context-handoff.md` |
+| Land code on remote main with CI | **Agent-first** git/PR actions; timeline evidence; L2 for risk | `contracts/git-pr-delivery.md` |
+| Context efficiency | One M10 centre (D9); bounded packs, not N full chats | M10 |
+
+Industry pattern absorbed (black-box): orchestrator–worker isolation, structured delegation,
+summary/artifact return (e.g. Anthropic multi-agent research, Claude Code subagents)—implemented
+as Fleet protocol fields, not third-party product clones.
 
 ## 5. Agent-Native Control Model
 
@@ -200,7 +217,9 @@ Goal: Fleet owns the team; a CLI owns one run.
 
 Do not make “multi-agent” mean multiple chat bubbles. Use stable `AgentSeat`, runtime-specific `RuntimeLane`, and bounded `TeamRun` requests. A CLI leader may request a member run through Fleet Bridge, but it must not directly own the API teammate’s tools or bypass permissions.
 
-Exit criteria: one leader runtime can request a bounded member task, receive a compressed report, and leave evidence in the shared timeline.
+Exit criteria: one leader runtime can request a bounded member task, receive a compressed report,
+leave evidence in the shared timeline, and inspect a truthful parent/child task view that routes to
+an authorized child conversation without copying it into a second chat system.
 
 ### Phase 4: Files, Library, and ArtifactRef `[Wave 2]`
 

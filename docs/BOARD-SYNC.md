@@ -288,23 +288,22 @@ Board Cards section. Do not create a new file format for this; append the block 
 
 - Owner: Lead
 - Worktree: root
-- Branch: Lead-managed
-- Status: not implemented
-- UI State: not started
-- Backend State: not started
-- Contracts: action IDs v1.2 baseline; protocol stubs v1.2 baseline; identity matrix v1.2 baseline
+- Branch: `work/fresh-base-spine`
+- Status: **partial** (docs control plane advanced; clean base code replace open)
+- UI State: not started (product)
+- Backend State: not started (on clean v0.11)
+- Contracts: M11A text freeze; composable contracts text; **TaskBrief/RunReport**, **git-PR delivery**, **markdown document surface**; D50–D53
 - Allowed Files:
   - Lead-owned docs and canonical protocol implementation files
 - Forbidden Files:
   - Worker feature implementation domains
 - Validation:
-  - Documentation consistency check after the reconciliation block
+  - `docs/verification/CONTROL-PLANE-VERIFICATION.md` — governance **PASS**; L00 code residual explicit
+  - `docs/verification/DOC-SET-STATUS-2026-07-10.md` — control plane ready; implementation no
 - Remaining Not Implemented:
-  - Clean Craft Agents v0.11 migration ledger and baseline validation
-  - Canonical implementation parity evidence and a newly frozen contract version
-  - Caller/idempotency/revision/action-policy plus ArtifactRef/capability/job/workflow/spatial/view contract decisions
-  - Persistence authority and product/internal namespace decision
-  - Documentation Readiness promotion for the exact W1 slices
-  - Replacement W1/W2+ packets
+  - Replace monorepo `app/` with clean Craft **v0.11.0** + GUI launch evidence
+  - Protocol TS parity on clean base (staging exists; live import not done)
+  - Ownership path assignment after clean base
+  - W1 Ready declaration + Worker packets
 - Blocker:
-  - v0.11 migration and current contract text/canonical implementation parity are not yet re-frozen / W1 cannot be assigned / Lead must record the migration ledger, new contract baseline, and explicit W1 decision
+  - **BLK-001**: clean base replace + GUI still open; W1 stays Locked

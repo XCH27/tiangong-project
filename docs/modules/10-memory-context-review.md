@@ -164,6 +164,21 @@ Rules retained from earlier analysis:
 - every segment carries origin, scope, sensitivity, token estimate, and evidence refs;
 - a token budget drops low-confidence/low-priority segments first and reports omissions.
 
+### 8.1 Subagent / member-run handoff (with M04)
+
+Spawning a child Agent **must not** mean “re-load the whole project into a new chat.”
+
+| Packet | Owner | Role |
+|---|---|---|
+| **TaskBrief** | M04 spawn path | Required job contract: goal, `scopePaths`, knownFacts, deliverable, budget |
+| **ContextSegment / ProjectPack** | M10 | Optional bounded, filtered segments under token budget |
+| **RunReport** | M04 completion | Child returns summary + refs; parent does not re-ingest full child traces |
+
+Binding behaviour: [`docs/contracts/subagent-context-handoff.md`](../contracts/subagent-context-handoff.md).
+
+Forbidden: auto-injecting full parent transcripts; unbounded pack on every spawn; quarantine memory
+into children.
+
 ## 9. ProjectPack Contract
 
 ```ts

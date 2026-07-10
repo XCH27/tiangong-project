@@ -49,7 +49,78 @@ Source session: brief description
 
 ## Active Entries
 
-### [HFL-005] 2026-07-10 | Source: owner | Status: promoted
+### [HFL-009] 2026-07-10 | Source: owner | Status: promoted → **D53**
+
+#### Raw Human Input
+
+(Owner-supplied Codex-style task preview / durable multi-agent task visibility direction; visual
+reference only — not a claim about private Codex implementation.)
+
+#### Agent Interpretation
+
+- Compact task preview + parent/child TaskRun board inside Craft shell.
+- Child conversation = authorized original session route; no second chat DB.
+- M04 owns TaskRun truth; M16 hosts projection (D53).
+
+#### Linked Decisions / Modules
+
+- **D53**; `modules/04-runtime-lanes-teamrun.md`; M16 contributions; FRONTEND matrix M04
+
+#### Agent Response
+
+Promoted to D53; M04/M16/WAVE L02 exit criteria updated (2026-07-10, parallel Lead work).
+
+---
+
+### [HFL-008] 2026-07-10 | Source: owner | Status: promoted → **absorbed (2026-07-10)**
+
+#### Raw Human Input
+
+> 子智能体好像不会有上下文…多个子智能体要全量的或者大量的读我的整个项目，token 消耗特别快…有没有办法…自动给它注入一些上下文  
+> 业界最顶尖的软件是怎么解决…论文或者成功案例  
+> 想清楚了的话…梳理一下，然后更新进文档
+
+#### Agent Interpretation
+
+- Subagent isolation is correct; **missing TaskBrief** causes monorepo re-scans.
+- Platform must **reject bare spawn**, auto-inject TaskBrief + optional M10 segments, require RunReport.
+- Industry: Anthropic multi-agent research, Claude Code subagents, Magentic-One, ADK context tiers; repo map/index for code.
+
+#### Linked Decisions / Modules
+
+- `contracts/subagent-context-handoff.md`; M04 §9.1; M10 §8.1; D9; FORBIDDEN bare spawn
+
+#### Agent Response
+
+Absorbed into contracts + module cross-links (2026-07-10).
+
+---
+
+### [HFL-007] 2026-07-10 | Source: owner | Status: promoted → **absorbed (2026-07-10)**
+
+#### Raw Human Input
+
+> 多 Agent 并行、多项目、有编排…是不是有 PR 会更好  
+> PR 是干嘛的…能不能实现让 Agent 来操作或者自动化…不要给人类搞  
+> Multica 怎么内置 GitHub…有 PR 审查吗
+
+#### Agent Interpretation
+
+- PR = remote delivery protocol; useful with multi-agent/multi-project **alongside** TeamRun/leases—not as orchestrator.
+- **Agent-first** git/PR actions; no human PR-review product shell (D51).
+- Multica: GitHub **App + webhook** PR mirror; not IdP; not full PR review UI.
+
+#### Linked Decisions / Modules
+
+- `contracts/git-pr-delivery.md`; M02/M03/M04; FRONTEND matrix; Multica retired absorb row
+
+#### Agent Response
+
+Absorbed into git-pr-delivery contract + REFERENCE Multica row (2026-07-10).
+
+---
+
+### [HFL-005] 2026-07-10 | Source: owner | Status: promoted → **absorbed (2026-07-10)**
 
 #### Raw Human Input
 
@@ -62,20 +133,23 @@ Source session: brief description
 - LobeHub is **not** a product shell baseline (D52 still Craft).
 - **Primary behaviour target:** Markdown document as **modular blocks** with **drag-to-reorder** (not free-canvas prose).
 - Component library is **not** green-light; Community License blocks casual copy of `@lobehub/*`.
-- Implement by optimizing Craft TipTap/ProseMirror **block** model + drag handles; black-box LobeHub for interaction only.
+- Implement by optimizing Craft TipTap/ProseMirror **block** model + drag handles.
 
 #### Linked Decisions / Modules
 
 - D50, D51, D52; Craft document editor; M05/M16 as host surfaces
-- `REFERENCE-PROJECT-POLICY` LobeHub row; `FRONTEND-EXPOSURE-MATRIX` M05 模块式拖拽
+- **Canonical absorb:** `docs/contracts/markdown-document-surface.md`
+- `FRONTEND-EXPOSURE-MATRIX` M05 文稿 rows; `FORBIDDEN-ANTIPATTERNS` second Markdown editor ban
 
 #### Agent Response
 
-Narrowed LobeHub reference to Markdown modular drag; matrix + policy updated (2026-07-10).
+1. (2026-07-10) Narrowed reference to Markdown modular drag; matrix + policy updated.  
+2. (2026-07-10) Black-box study completed against Craft baseline: only incremental targets kept (block reorder, Agent mutation gate, dirty/conflict draft, scroll stability). Slash/rich-block stack already on Craft. LobeHub **product** retired; local product checkout deleted.  
+3. (2026-07-10) Clarified: **open packages** `@lobehub/ui` / `@lobehub/editor` are MIT on GitHub but **not** green-light (D52 Craft TipTap; no second editor). General **closed-source / restricted-product absorb loop** written into `REFERENCE-PROJECT-POLICY`.
 
 #### Open Questions
 
-None unless owner approves commercial license for component code (not required for behaviour reimplementation).
+None.
 
 ### [HFL-004] 2026-07-10 | Source: owner | Status: promoted
 

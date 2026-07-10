@@ -1,93 +1,52 @@
 # Control-Plane Verification Report
 
-> **Date:** 2026-07-09 (revised after external P0/P1 review)  
-> **Scope:** documentation only (no code behaviour verification)  
-> **Verdict:** **PARTIAL PASS** — navigation/governance improved; not “fully self-consistent for open coding.”
+> **Date:** 2026-07-10  
+> **Scope:** documentation only (no product code behaviour verification)  
+> **Verdict:** **PASS for governance / control-plane docs.**  
+> **Not claimed:** W0.1 closed, clean `app/` replace, or Worker coding authorization.
 
-## 1. Verdict (honest)
+## 1. Verdict
 
 | Question | Answer |
 |---|---|
 | Navigable entry (L00→L05)? | **Yes** |
 | Single gate authority (WAVE-MAP)? | **Yes** |
-| Ready for parallel Worker coding? | **No** — correct; L00 open; zero execution-ready |
-| Prior report over-claimed “Pass”? | **Yes** — this revision demotes to **PARTIAL PASS** |
-| Residual P0/P1 from external review fixed? | **Addressed in-repo this pass** (see §4); re-check commands below |
+| Product UI rules (D50–D52) + exposure matrix? | **Yes** |
+| Multi-agent TaskBrief / task visibility (D53)? | **Yes** (contract draft text) |
+| Ready for parallel Worker coding? | **No** — L00 open; zero execution-ready modules |
+| Docs falsely claim migration complete? | **No** — residual L00 list explicit |
 
-## 2. Commands re-run (this revision)
-
-```text
-# trailing whitespace
-git diff --check
-# expected: no output / exit 0
-
-# bare W3 outside legacy (must not match active docs)
-rg -n '\bW3\b' docs --glob '*.md' | rg -v 'legacy/|W3A|W3B|wave-3-browser|historical packet|Historical W3A|packet name kept'
-
-# archive moves staged as renames (not delete-only)
-git status -s | rg 'R  docs/(ARCHITECTURAL|agent-packets)'
-```
-
-Recorded results for this revision:
+## 2. Checks (2026-07-10)
 
 | Check | Result |
 |---|---|
-| `git diff --check` | **Clean** after trailing-space strip |
-| Bare `W3` in active docs | **None** (only legacy/historical packet names) |
-| Archive git safety | **Staged as `R` renames** for comparison + 6 packets |
-| Relative links active `docs/` | **0 broken** (prior scripted check; not re-proving every absolute path) |
-| M18 full body + Owner | **Restored from HEAD + Owner/loop headers** |
-| M11A schedule | **Documented W0.1 freeze + W2 implement; not W4-only** |
-| M01 status axes | **In Progress (Lead) / Worker Locked / blocked_by BLK-001** |
+| Bare `W3` in active docs | **None** |
+| Active `docs/**/*.md` relative links | **0 broken** |
+| DECISIONS D50–D53 present | **Yes** |
+| Contracts: markdown surface, subagent handoff, git-PR delivery | **Present + registered** |
+| FORBIDDEN covers bare spawn / PR shell / second editor | **Yes** |
+| W0.1 checklist | **Partial** (honest; app replace Open) |
+| Active packet | W0.1 Lead only |
 
-## 3. What improved (still true)
+## 3. Integrated absorb (this doc cycle)
 
-| Area | Status |
+| Topic | Canonical |
 |---|---|
-| loops L00→L05 navigation | Present |
-| WAVE sole gate; loops non-override | Present |
-| Three-axis status in AGENTS/PARALLEL | Present |
-| FORBIDDEN + REGISTRY | Present |
-| legacy demotion of research + superseded packets | Present + **git rename staged** |
-| Contract RECORDED wording | Present |
+| Markdown modular block drag | `contracts/markdown-document-surface.md` |
+| Subagent context / TaskBrief / RunReport | `contracts/subagent-context-handoff.md` |
+| Agent-first git/PR | `contracts/git-pr-delivery.md` |
+| TeamRun task preview / tree / authorized child session | M04 + **D53** |
+| Future UI packages | `UI-COMPONENT-PACKAGE-CATALOG.md` (research only) |
+| Multica / LobeHub product trees | Absorbed then **retired** from active clone catalog |
 
-## 4. External review items → disposition
+## 4. Still open (code / L00 — do not mark Done)
 
-| ID | Issue | Disposition this pass |
-|---|---|---|
-| P0 | Archive deletes untracked in git | **Fixed for staging:** `R` renames for comparison + 6 packets; historical topology `A` |
-| P1 | Bare `W3` vs W3A/W3B | **Fixed in active docs** (DECISIONS, DIRECTION, modules, PARALLEL, BOARD, ARCHIVE reason text) |
-| P1 | M11A before D45 unpaid schedule | **Fixed:** W0.1 freeze item; WAVE row M11A@W2; M08/L02/L03A/L00/packet updated |
-| P1 | M01/W0.1 status vocabulary | **Fixed:** In Progress + Worker Locked + blocked_by BLK-001 |
-| P2 | Verification over-claim | **This file revised to PARTIAL PASS** |
-| P2 | M18 missing Owner | **Fixed** (full file restored; Owner present) |
-| P2 | trailing spaces | **Stripped**; `git diff --check` clean |
-| P2 | Phase vs execute order | **DIRECTION** marked narrative-only; execute L00→L01→L02 |
-| P2 | L00 scope incomplete | **L00** lists contract slices M00/M03/M05/M08/M11A/M12/M16/M17 |
+1. Monorepo `app/` still **Craft 0.10.5** tree; clean **v0.11.0** replace **Open**.  
+2. GUI launch on clean base **Open**.  
+3. Protocol implementation TS parity **Open**.  
+4. Ownership paths largely unassigned until clean base.  
+5. Zero modules `execution-ready`; W1 **Locked**.
 
-## 5. Still open (do not declare “docs done”)
+## 5. Commit note
 
-1. L00 **evidence products** (migration ledger, re-freeze SHAs, persistence ADR) not created.  
-2. OWNERSHIP still has many `currently unassigned` paths (honest).  
-3. Zero modules `execution-ready`.  
-4. BOARD-SYNC full card inventory vs WAVE not exhaustively row-diffed.  
-5. Uncommitted working tree: Lead must commit with **staged renames included** (`git add` legacy targets; never `git commit -am` alone).  
-6. Module bodies remain contract-draft depth — not field-complete for coding.
-
-## 6. Commit safety note (P0)
-
-**Do not** run `git commit -am` alone. That can commit deletes and skip untracked legacy files.
-
-Safe pattern:
-
-```bash
-git add docs/legacy/
-git add -u docs/
-git add docs/DOCUMENT-REGISTRY.md docs/FORBIDDEN-ANTIPATTERNS.md docs/loops docs/verification AGENTS.md
-git status   # confirm R renames, no missing legacy files
-git commit   # only when Lead intentionally records the pass
-```
-
-## 7. Final one-liner
-
-Governance direction remains correct; this revision fixes the reviewer’s P0/P1 gaps and **withdraws** the earlier “PASS” overclaim. **Not** ready to announce “fully self-consistent and ready to implement.”
+Commit docs with explicit message that **control plane is updated** and **W0.1 code migration remains open**. Do not use commit text that claims “migration complete.”

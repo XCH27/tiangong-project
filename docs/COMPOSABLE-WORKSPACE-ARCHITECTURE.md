@@ -137,6 +137,16 @@ Live editors are not mounted in every node. Nodes use static previews by default
 the native editor in the main stage or work panel; narrowly scoped live previews may activate
 only while visible and within a measured resource budget.
 
+**Markdown workspace files** are not a separate native-document module number: they open in the
+**Craft TipTap/ProseMirror** surface on the retained shell. Product behaviour for 文稿 (modular
+block reorder, Agent mutation gate, dirty/conflict draft) is frozen in
+`docs/contracts/markdown-document-surface.md`. Bytes and leases remain M05; free-drag of prose onto
+the canvas is not a substitute for in-document block reorder.
+
+**Multi-agent handoff:** member/subagent runs use **TaskBrief → scoped work → RunReport**
+(`docs/contracts/subagent-context-handoff.md`). **Git/PR** is optional remote **delivery** for
+code (`docs/contracts/git-pr-delivery.md`), not a second orchestrator beside TeamRun/M17.
+
 ## 7. Workbench View Model
 
 M16 is the only view contribution and layout host inside the existing Craft shell. The default

@@ -1,8 +1,8 @@
 # Wave and Module Map
 
 > **Lead-owned.** This is the only active source for execution gates and module placement.
-> **Updated:** 2026-07-09
-> **Current state:** W0.1 reconciliation is active; every Worker implementation wave is Locked.
+> **Updated:** 2026-07-10
+> **Current state:** W0.1 reconciliation is active (docs control plane advanced; clean `app/` replace open); every Worker implementation wave is Locked.
 >
 > **Delivery orientation:** numbered closed loops live in `docs/loops/README.md` (L00→L05).
 > Loop folders explain entry order and assemble modules; they do **not** override this map.
@@ -23,7 +23,7 @@ See `DOCUMENT-READINESS.md`. A spec file does not make a module Ready.
 | W0 — recorded baseline | (historical) | initial contract documents recorded | historical v1.2 record only | Done (historical) |
 | W0.1 — v0.11 migration and contract reconciliation | **[L00](loops/L00-control-plane/)** | Lead-only documentation/migration work | clean v0.11 migration ledger; one canonical contract implementation/text version; ownership/wave/packet parity | In Progress; blocking all Workers |
 | W1 — control spine | **[L01](loops/L01-platform-action/)** | W0.1 explicitly closed | M00 backbone and M03 executor `usable`; M12 capability-core contract frozen and registry projection seam defined | Locked |
-| W2 — local workbench runtime | **[L02](loops/L02-local-workbench/)** | W1 exit | M02 terminal loop, M05 file/ArtifactRef loop, M16 host slice, and M08 durable job core `usable`; M04 bounded run core verified | Locked |
+| W2 — local workbench runtime | **[L02](loops/L02-local-workbench/)** | W1 exit | M02 terminal loop, M05 file/ArtifactRef loop, M16 host slice, and M08 durable job core `usable`; M04 bounded run core plus task-tree/authorized-trace inspection verified | Locked |
 | W3A — composable spatial loop | **[L03A](loops/L03A-composable-creative/)** | W2 exit | D45 real text-to-image workflow loop `usable`, including M07/M08/M12/M16/M17 and restart reconciliation | Locked |
 | W3B — native creative outputs | **[L03B](loops/L03B-creative-fanout/)** | W3A contract/core available | one real M18 web, M19 deck, and M09 multi-asset media fan-out path; each may promote independently | Locked |
 | W4 — intelligence/distribution | **[L04](loops/L04-intelligence/)** | W3A exit and stable M05/M08 contracts | M10/M11 and M12 distribution slices reach their packet criteria | Locked |
@@ -59,7 +59,7 @@ Status legend: **Done** | **Partial** | **Open**.
 | M01 Worker coding | — | M01 Lead exit | same | contract draft | not implemented | Locked | BLK-001 |
 | M02 Terminal/CLI Runtime | W2 | M00/M03 usable; M16 host | `modules/02-terminal-cli-runtime/SPEC.md` | contract draft | not implemented | Locked | BLK-001 |
 | M03 Action Registry | W1 | W0.1; M00 backbone for executor | `modules/03-internal-action-registry.md` | contract draft | not implemented | Locked | BLK-001 |
-| M04 Runtime Lanes/TeamRun core | W2 | M00/M03 usable | `modules/04-runtime-lanes-teamrun.md` | contract draft | not implemented | Locked | BLK-001 |
+| M04 Runtime Lanes/TeamRun core | W2 | M00/M03 usable; M16 host for task visibility | `modules/04-runtime-lanes-teamrun.md` | contract draft | not implemented | Locked | BLK-001 |
 | M05 Files/Library/ArtifactRef | W2 | M00/M03 usable | `modules/05-files-library-leases.md` | contract draft | not implemented | Locked | BLK-001 |
 | M06 Browser Evidence | W3A | M03/M05/M16 usable | `modules/06-browser-artifact-surface/SPEC.md` | contract draft | not implemented | Locked | BLK-001 |
 | M07 Spatial Canvas | W3A | M03/M05/M12-core/M16/M17 contracts | `modules/07-canvas-design-surface/SPEC.md` | contract draft | not implemented | Locked | BLK-001 |

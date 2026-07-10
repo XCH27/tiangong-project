@@ -15,12 +15,17 @@
 | Backend capability | UI needed? | Surfaces | Expose what | Not expose |
 |---|---|---|---|---|
 | File browse/ops | required | workbench, panel | Tree; open; rename/move/delete | OS path escape |
+| **Markdown 文稿 surface** (Craft TipTap) | required when editing `.md` / Markdown-oriented docs | workbench main stage | Edit + **modular block reorder**; dirty/leave/conflict draft | Second doc app; third-party editor package |
 | Library | required | workbench, panel | Promote; provenance | auto-library everything |
 | ArtifactRef preview | required | inspector, canvas | Version/preview card | editable storageRef |
-| Leases/conflicts | required | status, modal | Conflict UX | silent LWW |
+| Leases/conflicts | required | status, modal | Conflict UX; keep in-editor draft | silent LWW |
 | Destructive ops | required | approval | Confirm delete | L0 delete |
 
 **Designer note when usable:** files/Library panel; conflict modals; inspector provenance. Not a second Finder app outside Craft shell.
+
+**Markdown document behaviour** (block drag, slash alignment, Agent mutation gate, dirty/conflict): frozen in
+[`docs/contracts/markdown-document-surface.md`](../contracts/markdown-document-surface.md). Editor chrome stays
+Craft TipTap (D52); file authority stays M05.
 
 ## 1. Purpose
 
@@ -61,7 +66,9 @@ an explicit import/copy action creates one and records it.
 - implicit Git rollback or a hidden shadow workspace;
 - a lease granting authorization;
 - exposing unrestricted local paths to untrusted callers;
-- native document edit semantics owned by other modules.
+- native document edit semantics owned by other modules (design, media, deck, web);
+- **except** workspace **Markdown 文稿** opened in Craft TipTap: interaction behaviour is specified in
+  `docs/contracts/markdown-document-surface.md` (not a separate module number; not a third-party editor).
 
 ## 4. User-Visible Mutation Loop
 
@@ -212,7 +219,9 @@ quarantined/reconciled. It is not reported as a finished untracked artifact.
 - project/file explorer and Library tabs contributed to M16 left panel;
 - conflict card showing holder, expiry, affected paths, wait/retry/reclaim options;
 - artifact inspector showing exact version, parents, hash, sensitivity, license, and usage;
-- missing-reference and stale-version states reusable by M07/M09/M18/M19.
+- missing-reference and stale-version states reusable by M07/M09/M18/M19;
+- Markdown workspace files open on the Craft TipTap surface (modular block reorder when 文稿 ships);
+  see `docs/contracts/markdown-document-surface.md`.
 
 ## 12. Error Handling
 
@@ -253,3 +262,5 @@ quarantined/reconciled. It is not reported as a finished untracked artifact.
 - No silent last-write-wins.
 - No generic Git rollback.
 - No third artifact content store.
+- No second Markdown editor stack (Lexical / third-party page shell) beside Craft TipTap.
+- No free-drag of prose modules onto the spatial canvas as a substitute for in-document block reorder.

@@ -30,7 +30,9 @@
 - `cline` — 模式/技能想法（黑盒）  
 - `penpot` — FOSS 设计产品行为（黑盒）  
 - `agents-cli` — CLI 形态  
-- `lobehub`（lobe-chat checkout）— **仅黑盒借鉴「Markdown 文稿 · 模块式拖拽」**（块级重排交互）；实现落在 Craft 文档编辑器上简化/优化。LobeHub Community License **禁止**把组件库/源码当绿灯拷进 Fleet；**禁止**当第二壳。详见 `docs/REFERENCE-PROJECT-POLICY.md`。
+
+**不要**保留 `lobehub`：文稿模块式拖拽等行为已吸收进  
+`docs/contracts/markdown-document-surface.md`（Craft TipTap）。见策略文 Retired。
 
 ### plugins（示例）
 
@@ -38,10 +40,13 @@
 - `dockview` / `react-resizable-panels` / `react-rnd` / `react-timeline-editor` — 布局/时间线想法  
 - `letta-code` / `mem0` / `supermemory` / `context-mode` / `markitdown` / `repomix` — 记忆/上下文想法  
 
-## 已删除的无价值/负价值本机克隆（2026-07-10）
+## 已删除的无价值/负价值本机克隆
 
 见策略文 **Retired** 表。已从本机移除例如：`nezha`、`kdenlive`、`warp`、`zed`、`cherry-studio`、`cc-switch`、`ego-lite`、以及一批无模块挂钩的竞品壳；plugins 侧移除 `remotion`、`openui`、`stitch-*`、`memanto`/`mempalace`、`headroom`、`zvec`、各类 UI kit 打包等。
 
-**例外恢复：** `software/lobehub`（lobe-chat）— **仅黑盒借鉴文稿/文档编辑体验**；不可拷组件库/源码入 Fleet（LobeHub Community License）；不可当第二壳。
+**2026-07-10：** `software/lobehub`（产品 monorepo）删除 — 文稿行为已写入 `docs/contracts/markdown-document-surface.md`。  
+说明：生态包 `lobe-ui` / `lobe-editor` 在 GitHub 上为 **MIT**，但 **不是** Fleet 绿灯（D52 用 Craft TipTap；禁止第二编辑器栈）。无特别 Lead 晋升前不要为它们单独克隆进 `源码参考`。
+
+**通用策略：** 闭源 / 仅产品 / 受限许可项目 → 学行为 → 与 Craft 做差集 → 吸收进 docs → 删本地克隆。见 `docs/REFERENCE-PROJECT-POLICY.md` § Compliant reference loop。
 
 **不要**为 jaaz / basketikun infinite-canvas / hero8152 Infinite-Canvas 建正式参考克隆（策略文已写明）。

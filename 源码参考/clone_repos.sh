@@ -23,7 +23,6 @@ SOFTWARE_REPOS=(
     "https://github.com/CherryHQ/cherry-studio"
     "https://github.com/citrolabs/ego-lite"
     "https://github.com/KDE/kdenlive"
-    "https://github.com/lobehub/lobehub"
     "https://github.com/cosmicstack-labs/mercury-agent"
     "https://github.com/open-pencil/open-pencil"
     "https://github.com/anomalyco/opencode"

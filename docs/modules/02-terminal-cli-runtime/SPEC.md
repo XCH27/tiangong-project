@@ -38,6 +38,8 @@ Make one local terminal/CLI execution loop visible and governable: a human choos
 
 - A physical daemon, unauthenticated WebSocket port, remote shell, arbitrary command bypass, or TeamRun orchestration UI.
 - Generic Git checkout/revert as a rollback mechanism for arbitrary workspace writes.
+- A human GitHub/GitLab **PR review product shell** (Agent-first git/PR actions only when delivery ships;
+  see `docs/contracts/git-pr-delivery.md`).
 
 ## 3. User-Visible Loop
 

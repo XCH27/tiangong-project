@@ -5,6 +5,44 @@ Reference projects are evidence and source material. They are **not** the roadma
 **UI baseline (D52):** Craft Agents original chrome — simplify/optimize, do not greenfield.  
 **Old Fleet UI (D50):** not a design reference. Backend-value only via migration ledger.
 
+## Compliant reference loop (closed-source, product-only, or restricted-license)
+
+Use this loop for **any** material that is closed-source, SaaS-only, Community/ELv2/AGPL-style
+restricted, or a competing full product shell—not only for “black-box OSS.”
+
+```text
+1. Hook      → name the Fleet module / loop and the one behaviour gap
+2. Study     → public product behaviour only (UI/docs/API surface); no source copy
+3. Diff      → subtract what Craft / green-light already owns
+4. Absorb    → write residual targets into active docs (contract / module SPEC / matrix)
+5. Gate      → D51 necessity + D52 Craft host; license + Promotion Process if any code path
+6. Retire    → move reference to Retired (or Product-behaviour-only); delete local checkout
+```
+
+| Step | Rule |
+|---|---|
+| **Study ≠ import** | Watching a closed or restricted product never authorizes copying code, assets, styles, prompts, or package layout. |
+| **Absorb is the landing** | Implementation authority is **Fleet docs + Craft/green-light code**, not the reference tree. |
+| **Diff against Craft first** | Do not re-spec capabilities already present on the clean base (e.g. TipTap slash, existing panels). |
+| **Checkout is optional** | Prefer docs/demos; keep a clone only while actively studying a hook; delete after absorb. |
+| **Separate product vs packages** | A product monorepo may be restricted while sibling libraries are MIT/Apache—**audit each package’s LICENSE**. MIT/Apache still does **not** auto green-light (Promotion Process + D52). |
+| **Stack fit still wins** | Even a permissive package is refused if it forces a second shell, second editor stack, or second session store. |
+
+**Applies equally to:** closed commercial tools, free SaaS UX, “open core” products with Community
+licenses, and black-box FOSS that we choose not to promote.
+
+**Canonical absorb examples:** Markdown 文稿 behaviour → `docs/contracts/markdown-document-surface.md`
+(former LobeHub product study; no product checkout required thereafter).
+
+### Future UI overhaul — package catalog (not green-light)
+
+Component **packages** and kits for a possible later redesign are collected in
+[`docs/UI-COMPONENT-PACKAGE-CATALOG.md`](UI-COMPONENT-PACKAGE-CATALOG.md).
+
+- That file is a **candidate inventory** only. It does **not** change D52 (Craft shell now).  
+- Prefer package-level evaluation (MIT/Apache kits) over cloning competing **product** apps.  
+- Promotion still requires the process below + owner scope for “大改造.”
+
 ## Green-Light Sources
 
 The following projects may be copied or adapted within the stated boundary, with license and
@@ -59,7 +97,6 @@ Only projects with a **clear Fleet module hook** remain listed. Others were reti
 | `orca` | MIT | Parallel agents | Worktree isolation / multi-worker **ideas** | Copy desktop shell/telemetry |
 | `Cline` / `Roo Code` | Apache-2.0 | M12 modes | Multi-role / scheduled automation / mode presets **ideas** | Copy IDE extension packages |
 | `penpot` | MPL/local FOSS | Design product behaviour | FOSS design-app behaviour (black-box) | Not M07 host; do not replace Craft shell |
-| **`LobeHub` / `lobe-chat`** | **LobeHub Community License** (Apache-2.0 **plus** commercial/derivative restrictions) | **Markdown 文稿 · 模块式拖拽**（primary） | **Black-box only — owner intent:** Markdown documents as **reorderable modules/blocks** (drag blocks/sections, not only free text). Study interaction: block handle, drop targets, outline↔body, multi-block select/move, AI insert/replace a block. **Implement on Craft’s existing document stack** (TipTap/ProseMirror block model or equivalent) via **simplify/optimize** (D52)—not by shipping LobeHub UI. Secondary: overall 文稿 chrome density only as supporting context. | **Do not copy** LobeChat/LobeHub source, package layout, styles, assets, or `@lobehub/*` components without **commercial/derivative license + green-light promotion**. **Do not** use LobeHub as shell or second workbench (D50–D52). **Do not** invent a second document editor beside Craft’s doc surface. Block-drag is a **behaviour target**, not a license to import their DnD code. |
 
 ### Product behaviour only (no source)
 
@@ -110,7 +147,15 @@ dead-ends, or compliance risk without a clear Fleet module hook.
 | `cherry-studio` | Competing AI desktop shell; UI not a baseline (D50/D52) |
 | `cc-switch` | Multi-provider account switcher surface → quota/account-evasion product risk (D23) |
 | `ego-lite` | Separate “agent browser” product; browser path is Craft BrowserPane (D10) |
-| `cmux` / `cockpit-tools` / `oh-my-pi` / `OpenCLI` / `golutra` / `mercury-agent` / `palmier-pro` / `OpenMontage` / `multica` / `Kun` / `AstrBat` / `CowAgent` / `CoreCoder` / `OpenCLI` | Competing agent/video/terminal products or toys without a unique green-light hook; prefer listed green/black-box set |
+| `cmux` / `cockpit-tools` / `oh-my-pi` / `OpenCLI` / `golutra` / `mercury-agent` / `palmier-pro` / `OpenMontage` / `Kun` / `AstrBat` / `CowAgent` / `CoreCoder` | Competing agent/video/terminal products or toys without a unique green-light hook; prefer listed green/black-box set |
+| **`multica` / Multica** | **Value absorbed (2026-07-10) for Git/PR delivery only.** GitHub **App + webhook** mirrors PR metadata onto work items; **not** GitHub IdP login; **not** in-app PR review UI; Agent/task orchestration stays primary. Frozen in `docs/contracts/git-pr-delivery.md`. Product monorepo has commercial-hosting license friction—**do not re-clone** as shell or tracker. |
+| **`LobeHub` product monorepo** (`lobehub/lobehub`, lobe-chat) | **Value absorbed (2026-07-10).** 文稿 behaviour frozen in `docs/contracts/markdown-document-surface.md` on **Craft TipTap**. Product is **LobeHub Community License** (derivative commercial restrictions). **Do not re-clone** the product app for implementation. |
+| **`@lobehub/ui` / `lobe-ui` (MIT)** | **Open package, not green-light.** GitHub: [lobehub/lobe-ui](https://github.com/lobehub/lobe-ui). MIT allows reuse *in principle*, but Fleet UI baseline is **Craft** (D52)—do not adopt as shell/component system. Use only if Lead runs Promotion Process for a **narrow** widget gap (unlikely while Craft covers the surface). |
+| **`@lobehub/editor` / `lobe-editor` (MIT, Lexical)** | **Open package, not green-light.** GitHub: [lobehub/lobe-editor](https://github.com/lobehub/lobe-editor). MIT + Lexical; modular block UX lives largely here. Fleet 文稿 path is **Craft TipTap/ProseMirror**—importing this package would be a **second editor stack** (forbidden). Study behaviour only if needed; implement on TipTap. |
+
+**Correction note:** “LobeHub has open-source component packages” is **true** for `lobe-ui` / `lobe-editor`
+(MIT). That does **not** make the **product monorepo** Apache-clean, and does **not** override D52 or
+the absorbed TipTap 文稿 contract. Do not treat “MIT package exists” as permission to replace Craft.
 
 Re-add only via Promotion Process below.
 
@@ -118,11 +163,11 @@ Re-add only via Promotion Process below.
 
 | Keep locally (examples) | Do not keep |
 |---|---|
-| Green-light: craft-agents-oss, AionUi, fleet-old, DeepSeek-Reasonix, open-design, rtk, codegraph, deepcode-cli, opencut-classic | Retired table rows |
-| Thin black-box: hermes-agent, orca, OpenHands, omnigent, openpencil, tldraw, cline, penpot | Full clones of warp/zed/cherry-studio/kdenlive/nezha/… |
-| `software/lobehub` | **Allowed again** as black-box for **文稿/document edit UX only** (see catalog). Not green-light; no source copy. |
+| Green-light: craft-agents-oss, AionUi, fleet-old, DeepSeek-Reasonix, open-design, rtk, codegraph, deepcode-cli, opencut-classic | Retired table rows (including **lobehub**) |
+| Thin black-box: hermes-agent, orca, OpenHands, omnigent, openpencil, tldraw, cline, penpot | Full clones of warp/zed/cherry-studio/kdenlive/nezha/…; **no** `software/lobehub` |
 
 `源码参考` is **gitignored** local material; Fleet repo tracks policy + scripts, not third-party trees.
+Markdown 文稿 behaviour does **not** require any external editor checkout — use `docs/contracts/markdown-document-surface.md`.
 
 ## Promotion Process
 

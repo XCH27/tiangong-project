@@ -26,7 +26,7 @@ clean Craft v0.11.0 baseline recorded
 
 This is a **documentation + migration** loop, not a user-facing product feature.
 
-## Progress (2026-07-09)
+## Progress (2026-07-10)
 
 | Exit product | Path | Status |
 |---|---|---|
@@ -37,7 +37,10 @@ This is a **documentation + migration** loop, not a user-facing product feature.
 | M11A freeze | [`docs/contracts/m11a-usage-cost-core.md`](../../contracts/m11a-usage-cost-core.md) | **Text frozen** |
 | Persistence ADR | [`docs/adr/0034-physical-persistence-w1-w2.md`](../../adr/0034-physical-persistence-w1-w2.md) | **Accepted** |
 | Namespace ADR | [`docs/adr/0035-product-internal-namespace.md`](../../adr/0035-product-internal-namespace.md) | **Accepted** |
-| Clean `app/` replace + GUI launch | ledger §5 | **Open** → W1 stays Locked |
+| Behaviour contracts (文稿 / TaskBrief / git-PR) | `contracts/markdown-document-surface.md`, `subagent-context-handoff.md`, `git-pr-delivery.md` | **Text ready** (not code) |
+| D53 TaskRun visibility | M04 + DECISIONS | **Text ready** (W2 implement later) |
+| Control-plane verification | [`docs/verification/CONTROL-PLANE-VERIFICATION.md`](../../verification/CONTROL-PLANE-VERIFICATION.md) | **Governance PASS** |
+| Clean `app/` replace + GUI launch | ledger | **Open** → W1 stays Locked |
 
 ## Why this is #00
 
