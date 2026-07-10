@@ -45,9 +45,9 @@ Every module SPEC (and every new backend capability in a PR) must include:
 `UI needed?` and `Surfaces` vocabulary are defined in the matrix §0–§2.  
 Backend-only infrastructure uses `none` so designers do not invent fake settings pages.
 
-**D51 — 如无必要，勿增实体:** default to `none` / in-loop controls. Mark `required` only if a
-normal user cannot complete or safely consent without that control. Prefer one work surface over
-many settings.
+**D51 (owner wording, binding):**  
+「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
+Mark `required` only under D51-R3(a–d) in `FRONTEND-EXPOSURE-MATRIX.md` §0. Do not invent other “minimal UI” definitions.
 
 ## 2. Minimum Executable Spec Content
 

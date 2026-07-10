@@ -3,272 +3,241 @@
 > **Purpose:** For every backend capability, state whether humans need **visible controls**,  
 > **what** those controls are (not pixel layout), and **which surface class** they belong to  
 > (settings vs workbench vs approval vs none).  
-> **Authority:** Lead; must stay aligned with module specs, D7/D40 (parity), and **D51** (minimal UI).  
+> **Authority:** Lead; aligned with D7/D40 and **D51**.  
 > **Updated:** 2026-07-10  
-> **Not a gate:** WAVE-MAP still owns Ready/Locked. This guides UI design after a slice is Ready.
+> **Not a gate:** WAVE-MAP still owns Ready/Locked.
 
-## 0. Minimal UI law (D51) — 如无必要，勿增实体
+## 0. Binding owner wording (D51) — quote only
 
-Mainstream Agent apps stay **sparse**: one clear work surface, short settings, progressive disclosure.
-Fleet follows that bar so most users are not forced through power-user chrome.
+Agents **must not** replace the following with their own slogans (“sparse”, “clean”, “zen”, etc.).
+If text conflicts with this quote, **this quote wins**.
 
-| Rule | Meaning |
+> **Owner (verbatim):**  
+> 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」
+
+### 0.1 Operational rules derived only from that wording
+
+| Rule ID | Rule (operational — not a new philosophy) |
 |---|---|
-| **Default = none** | Backend exists first; UI is added only when a human must see/decide something. |
-| **Prefer in-loop** | Put controls next to the work (chat/composer/result/timeline) before inventing a new panel. |
-| **Settings are rare** | Settings only for credentials, safety policy, retention, and rare preferences—not every flag. |
-| **One home** | Each concern has at most one primary place (M13 IA). No duplicate toggles. |
-| **No empty furniture** | Do not reserve docks, tabs, or menus “for later.” Add when the loop needs them. |
-| **Progressive disclosure** | Advanced/dev options stay collapsed or behind a single Advanced area—not top-level. |
-| **Justify `required`** | Every `required` row must answer: *what breaks for a normal user if this control is missing?* |
-| **Agent-first is OK** | If Agent/workflow can complete the loop and humans only need results + approval, UI stays thin. |
+| D51-R1 | **如无必要，勿增实体:** Do not add a new UI entity (settings page, panel, dock, tab, menu group, toolbar cluster) unless a listed necessity in D51-R3 holds. |
+| D51-R2 | **简约:** Prefer completing work in the existing Craft main work surface (session/chat + the one surface the loop needs). Do not add parallel “homes” for the same job. |
+| D51-R3 | **A control may be `required` only if** at least one is true: (a) safety/consent (L2/L3 or legal), (b) credentials/secrets the user must provide, (c) the user cannot complete the loop or understand failure without it, (d) retention/delete of user data. Otherwise use `none`, `optional`, or `later`. |
+| D51-R4 | **没必要的设置:** Do not add a Settings entry for pure backend plumbing, developer convenience, or “might need later.” Settings are for credentials, safety policy, retention, and rare preferences only. |
+| D51-R5 | **适配大多数用户:** Design the default path for ordinary users. Advanced/dev controls, if any, go under one “Advanced” group—not top-level. |
+| D51-R6 | **Quote discipline:** Docs and PRs that restate D51 must include the owner quote or link to D51; paraphrases are not authority. |
 
-**Anti-goals:** settings forests, per-module mini-apps, always-visible multi-dock dashboards,  
-“enterprise console” density for default users.
+### 0.2 Forbidden misreadings (control vague language)
+
+| Misreading | Not allowed |
+|---|---|
+| “Minimal” = remove Craft shell / remove timeline / remove approvals | No — keep spine UX; remove **unnecessary** chrome and settings |
+| “简约” = no UI for a complete loop | No — if the loop needs one terminal/jobs surface, add that one, not five |
+| “Agent-like” = copy some other product’s layout | No — only the owner quote + R1–R6 |
+| “Progressive disclosure” as license for many hidden panels | No — do not create the panels at all if not necessary |
+| Adding empty docks “for modularity” | No — 勿增实体 |
 
 ## 1. How UI designers / Agents should use this
 
-1. Read **§0** — if a control is not necessary for most users, mark `none` / `later` / `optional`.  
-2. Open the **module row** for the slice you just finished or are designing.  
-3. Implement only exposures marked **required** for that wave; **later** waits for its wave.  
-4. **None** means backend-only / infrastructure — do **not** invent a settings page for it.  
-5. Exact dock/position is owned by **M16** at implementation time; this file only names the **class**.  
-6. Every **required** human control must share the same `actionId` as the Agent tool (D7/D40).  
-7. When unsure between `settings` and `workbench`, choose **workbench/in-loop** unless it is  
-   credentials, legal/safety policy, or rare preference (D51).
+1. Read **§0** (owner quote + R1–R6).  
+2. Open the **module row** for the slice.  
+3. Implement only **`required`** for that wave; `later` waits.  
+4. **`none`** = no dedicated control; do not invent a settings page.  
+5. Placement class only — **M16** chooses dock/route; no pixel specs here.  
+6. Every **`required`** human control shares the same `actionId` as the Agent tool (D7/D40).  
+7. Settings vs workbench: use **workbench / in-loop** unless D51-R3 (b) or (d) or rare preference applies.
 
 ## 2. Surface classes (not pixel positions)
 
-| Class | Meaning | Typical home |
+| Class | Meaning | When allowed under D51 |
 |---|---|---|
-| `none` | No dedicated human control; backend/internal only | — |
-| `approval` | Blocking human decision (L2/L3) | Captain / modal / inline approve |
-| `timeline` | Read-only or lightly interactive evidence | Craft session timeline |
-| `workbench` | Day-to-day work surface | Main stage / chat / dock |
-| `inspector` | Context for current selection | Right inspector |
-| `panel` | Persistent tool panel | Left/right/bottom dock via M16 |
-| `settings` | Infrequent preference / policy / credentials | Settings IA (M13) |
-| `onboarding` | First-run / empty state | M14 flows |
-| `canvas` | Spatial projection / open-native | M07 cards (not document store) |
-| `status` | Non-blocking health/progress chip | Shell status / jobs bar |
-
-A feature may list **multiple** classes (e.g. workbench + settings).
+| `none` | No dedicated human control | Default for plumbing |
+| `approval` | Blocking L2/L3 decision | R3(a) |
+| `timeline` | Evidence stream (existing Craft) | Prefer reusing existing timeline over new panels |
+| `workbench` | Day-to-day work surface | Only if the loop needs that one surface |
+| `inspector` | Selection context | Prefer over new pages |
+| `panel` | Persistent dock tool | Only if R3 requires ongoing visibility |
+| `settings` | Infrequent preference / policy / credentials | R3(b)(d) or rare preference only |
+| `onboarding` | First-run / empty state | Short; dismissible |
+| `canvas` | Spatial projection / open-native | When M07 loop needs it |
+| `status` | Non-blocking progress chip | Prefer chip over new page |
 
 ## 3. Exposure columns
 
 | Column | Values |
 |---|---|
 | **UI needed?** | `required` · `optional` · `later` · `none` |
-| **Surfaces** | one or more classes from §2 |
-| **Expose what** | controls / info humans need (verbs + objects) |
-| **Not expose** | must stay out of UI or stay Agent-only if marked |
-| **Parity** | human control must call same action as Agent? `yes` / `n/a` |
+| **Surfaces** | classes from §2 |
+| **Expose what** | controls/info (verbs + objects) |
+| **Not expose** | must not become UI |
+| **Necessity (if required)** | one line: which of R3(a–d) applies |
+| **Parity** | same `actionId` as Agent? `yes` / `n/a` |
 
 ## 4. Matrix by module
 
-### M00 — Platform spine (identity, permission, timeline)
+When a row says `required`, Agents must be able to point to **R3(a–d)**. Rows without necessity are candidates to demote to `none`/`later` in a Lead pass.
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+### M00 — Platform spine
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Session create/list/open | required | workbench | Open/switch sessions; session list | raw store paths | yes (read actions) |
-| Actor / AgentSeat display | required | workbench, inspector | Who is acting; seat/role labels | raw seat mutation API for users | partial |
-| Permission decision engine | required | approval, timeline | Allow / deny / always-ask outcomes | internal policy evaluator UI | yes |
-| L2/L3 supervision | required | approval | Explicit confirm/reject with summary + targets | silent auto-approve L3 | yes |
-| SessionEvent append/read | required | timeline | Readable event stream; filter by kind | raw JSON dump as only UX | n/a read |
-| Persistence / recovery | optional | status | “Reconnecting / recovering” when store issues | DB file pickers | n/a |
-| Fleet Bridge (wire) | none | none | — | Bridge methods as settings | n/a |
+| Session create/list/open | required | workbench | Open/switch sessions (use Craft session UI) | raw store paths | R3(c) |
+| Permission / L2–L3 | required | approval, timeline | Confirm/deny with summary | silent L3 | R3(a) |
+| Timeline events | required | timeline | Readable stream (existing) | JSON-only UX | R3(c) |
+| Persistence recovery | optional | status | Recovering chip | DB picker | — |
+| Fleet Bridge wire | none | none | — | Bridge as settings | — |
 
 ### M01 — Clean baseline
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Clean Craft shell itself | required | workbench, settings | Upstream chat/settings/browser hosts | fleet-old skins | n/a |
-| Migration ledger | none | none | — | user-facing migration debug | n/a |
+| Craft v0.11 shell | required | workbench, settings | Upstream shell as baseline | fleet-old skins | R3(c) host |
+| Migration ledger | none | none | — | user migration debug UI | — |
 
-### M02 — Terminal / CLI runtime
+### M02 — Terminal / CLI
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Runtime catalog / select lane | required | workbench, panel | Pick CLI/runtime; show active lane | edit protocol internals | yes |
-| Start/stop/stream PTY | required | workbench, panel | Terminal surface; stop; clear | raw PTY FDs | yes |
-| Stream to timeline | required | timeline | Collapsed run summary + expand | duplicate full buffer only in UI | n/a |
-| Permissioned host commands | required | approval | L2/L3 prompts for risky cmds | bypass host | yes |
+| Run terminal/CLI + stop + output | required | workbench **or** one panel | One run surface; stop | multi-dock IDE chrome | R3(c) |
+| Runtime pick | required | workbench | Simple runtime/lane choice | protocol internals | R3(c) |
+| Risky host commands | required | approval | L2/L3 confirm | bypass | R3(a) |
 
-### M03 — Internal action registry
+### M03 — Action registry
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Action dispatch executor | none | none | — | “raw action console” for end users | n/a |
-| Registry as product feature | later | settings (dev) | Optional developer action inspector | editing frozen action ids in UI | n/a |
-| Undo handles | required | workbench, timeline | Undo when `undoSupport` allows | fake undo for non-invertible | yes |
-| Action blocked / error events | required | timeline, status | Human-readable block/error | stack traces as only copy | n/a |
+| Executor | none | none | — | raw action console for end users | — |
+| Undo when supported | required | workbench, timeline | Undo | fake undo | R3(c) |
+| Blocked/error | required | timeline, status | Readable reason | stack-only | R3(c) |
+| Dev registry inspector | later | settings (Advanced only) | optional | edit frozen action ids | — |
 
-### M04 — Runtime lanes / TeamRun
+### M04 — TeamRun / lanes
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Team roster / seats | required | workbench, inspector | Members, roles, active lanes | direct tool ownership of teammates | yes |
-| Request member run | required | workbench | “Ask teammate / run lane” with bound scope | unrestricted remote control | yes |
-| Compressed run report | required | timeline, inspector | Summary + evidence links | hide failures | n/a |
-| Bridge internals | none | none | — | low-level Bridge method UI | n/a |
+| Request bounded member run | required | workbench | One “run with teammate/lane” entry | remote-control console | R3(c) |
+| Roster / status | optional | inspector | Compact status | full ops center | — |
+| Bridge internals | none | none | — | method debugger UI | — |
 
 ### M05 — Files / Library / ArtifactRef / leases
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Browse workspace files | required | workbench, panel | Tree/list; open; basic ops | unrestricted OS path escape | yes |
-| Library promote/index | required | workbench, panel | Add to Library; provenance badge | silent auto-library all files | yes |
-| ArtifactRef resolve/preview | required | inspector, canvas | Preview card; version; parents | raw storageRef as editable path | yes |
-| File leases / conflicts | required | status, modal | Conflict / wait / take-over per policy | silent last-write-wins | yes |
-| Destructive file ops | required | approval | Confirm delete/overwrite | L0 delete | yes |
+| Open/use project files | required | workbench | Browse/open needed files | second Finder product | R3(c) |
+| Library promote | later/optional | workbench | Promote when Library ships | auto-library everything | — |
+| Artifact preview | required | inspector | Preview/version when selected | editable storageRef | R3(c) |
+| Lease conflict | required | status, modal | Conflict when it happens | always-on lease dashboard | R3(c) |
+| Destructive file ops | required | approval | Confirm delete | L0 delete | R3(a) |
 
 ### M06 — Browser evidence
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| BrowserPane host | required | workbench | Open/navigate browser surface | second browser stack | yes |
-| Selection / annotate / capture | required | workbench | Select, box, annotate, screenshot | stealth/automation hidden toggles | yes |
-| Evidence → ArtifactRef | required | inspector, timeline | “Use as evidence” | DOM-edit remote pages | yes |
-| Browser policy | required | settings | Enable, open-target, clear data, screenshot policy, site overrides, full-CDP **dev** toggle | anti-detect, profile farm | yes |
+| Browse + capture evidence | required | workbench | Navigate; select; capture | stealth toggles | R3(c) |
+| Browser policy / data | required | settings | Enable, clear data, approval, site overrides; full-CDP under Advanced | anti-detect, profile farm | R3(a)(b) |
 
 ### M07 — Spatial canvas
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Spatial document layout | required | canvas, workbench | Pan/zoom; place cards; groups | owning job/document bytes | yes |
-| Open native editor | required | canvas, workbench | Open design/media/web/deck host | embed all live editors in every node | yes |
-| Workflow projection layout | required | canvas | Layout of M17 steps (not executable Space lines) | Space connector as executable edge | yes |
-| Performance degrade | required | status | Queue / static preview notice | silent freeze | n/a |
+| Arrange/open projections | required | canvas **when loop needs it** | Place cards; open native | always-on multi-tool studio | R3(c) |
+| Workflow layout only | required with M17 | canvas | Layout of steps | Space line as executable | R3(c) |
 
-### M08 — ExternalJob core + providers
+### M08 — ExternalJob
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Submit job | required | workbench, panel | Start generation/render with inputs | auto-submit paid without budget path | yes |
-| Job list / progress / cancel | required | panel, status | Jobs dock; progress; cancel | UI-owned job store | yes |
-| Restart reconcile | required | status, timeline | Reconciling / failed / completed | silent resubmit paid | n/a |
-| Provider credentials | later/required by provider | settings | Provider keys per M13 risk class | quota bypass | yes |
-| Cost fields (M11A) | required | inspector, panel | estimated/confirmed/unknown cost | invent token counts | n/a |
+| Submit + see progress/cancel | required | workbench + compact status/panel | Start; progress; cancel | job ops console | R3(c) |
+| Cost confidence (M11A) | required | inspector or inline | estimated/confirmed/unknown | invent tokens | R3(c) |
+| Provider credentials | required when used | settings | Keys only | quota bypass | R3(b) |
 
-### M09 — Media composition
+### M09 / M18 / M19 — native creative surfaces
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Media project editor | required | workbench | Timeline/clips editor surface | canvas-as-editor | yes |
-| Import ArtifactRefs | required | workbench, inspector | Add image/video/audio/text | silent byte copy without ref | yes |
-| Render via M08 | required | panel, approval | Render; show cost/risk | background unbounded render | yes |
+| Edit native project | required when module ships | workbench | One editor surface | all editors always mounted | R3(c) |
+| Export | required | workbench or approval if risky | Export + fidelity honesty | silent lossy export | R3(c)(a) |
 
-### M10 — Memory / context / review
+### M10 — Memory / review
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Inspect partitions | required | settings, panel | Browse partitions/layers | hidden always-on memory | yes |
-| Delete memory (L3) | required | approval, settings | Explicit delete | soft-delete without confirm | yes |
-| ProjectPack / review pipeline | required | workbench, panel | Run review; show report | scattered one-off buttons only | yes |
+| Inspect/delete memory | required | settings or one panel | Browse; **delete = approval** | hidden always-on memory | R3(a)(d) |
+| Review run | required when shipped | workbench | Run review; show report | many scattered review buttons | R3(c) |
 
-### M11A — Usage / cost core
+### M11A — Usage / cost
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Budget preflight | required | approval, workbench | Approve estimated/unknown cost | hide unknown as free | yes |
-| Usage/cost records | required | inspector, panel, settings (summary) | Per-run cost; confidence badge | fake precision | n/a |
-| Ledger internals | none | none | — | raw DB browser for users | n/a |
+| Budget preflight | required | approval or inline confirm | Approve estimated/unknown | hide unknown as free | R3(a) |
+| Cost on a run | required | inspector or inline | Amount + confidence | raw ledger browser | R3(c) |
 
-### M11B — Routing / cache / batch
+### M11B — Routing
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Model/provider pick | required | settings, workbench | Route policy; explain selection | stealth multi-account | yes |
-| Cache indicators | optional | status, inspector | Cache hit/miss if known | invent savings | n/a |
-| Native batch jobs | required | panel | Batch queue status | concurrent fake batch loops | yes |
+| Model/provider choice | required when routing ships | settings **or** simple in-loop pick | One clear choice | multi-account stealth | R3(c) |
 
-### M12 — Capability / skills
+### M12 — Capabilities / skills
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Effective loadout | required | settings, inspector | What tools are on for this seat | global always-on pile | yes |
-| Install/enable skill (built-in) | required | settings | Enable/disable built-ins | unsigned plugin free-for-all early | yes |
-| Plugin distribution | later | settings | W4 marketplace later | early external plugins | yes |
-| Manifest → tools | none | none | Generated, not hand-edited maps | manual Agent-hook map UI | n/a |
+| See/enable built-in loadout | required | settings (short list) | What is on for this seat | marketplace early; global pile | R3(c) |
+| Plugin marketplace | later | settings | W4 only | early external plugins | — |
 
-### M13 — Settings / preferences
+### M13 — Settings host
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Preference IA host | required | settings | One home per preference class | second settings app | n/a |
-| Risk-classed prefs | required | settings, approval | High-risk prefs confirm | Fleet account/subscription (D26) | yes |
+| Settings IA | required | settings | **Short** list only | dumping ground for module flags | R3 — host for R3(b)(d) only |
+| Fleet account/subscription | none | none | — | login/upgrade walls (D26) | — |
 
 ### M14 — Onboarding
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| First-run / empty project | required | onboarding | Guided path into Craft workbench | separate product tour app | n/a |
-| Diagnostics | optional | onboarding, settings | Health checks | fake green checks | n/a |
+| First-run | required | onboarding | Short path into Craft workbench | long product tour app | R3(c) |
 
-### M15 — Messaging gateway
+### M15 — Messaging
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Connect/disconnect channel | required | settings | Provider connect; retention/terms | silent always-on gateway | yes |
-| Pairing / allowlist | required | settings, approval | Approve senders | open relay | yes |
-| Gateway process internals | none | none | — | raw socket UI | n/a |
+| Connect channel | required when shipped | settings | Connect + terms/retention | always-on silent gateway | R3(b)(d) |
+| Pairing allow | required | approval, settings | Approve senders | open relay | R3(a) |
 
-### M16 — Workbench / panels
+### M16 — View host
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Register views | required | workbench | Open/close panels/surfaces | Agent permanent layout thrash | yes (reveal) |
-| Layout preferences | required | workbench, settings | Reset layout; save layout version | domain state in layout | n/a |
-| View contribution API | none | none | — | per-module private shells | n/a |
+| Open the surfaces loops need | required | workbench | Open/close only what exists | empty docks; per-module shells | R3(c) |
+| Layout thrash by Agent | none (default off) | — | — | Agent permanently rearranging layout | — |
 
-### M17 — Composable workflows
+### M17 — Workflows
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
-| Edit workflow definition | required | canvas, inspector | Steps, ports, validate | Space lines as code | yes |
-| Run / pause / approve step | required | workbench, approval, panel | Run; step status; L2/L3 pauses | workflow-only permission path | yes |
-| Version / immutability | required | inspector | Version badge; repair → new version | silent mutate running def | yes |
+| Edit/run workflow when shipped | required | workbench/canvas as needed | Edit steps; run; pause on L2/L3 | workflow-only permission path | R3(a)(c) |
 
-### M18 — Web artifact
+## 5. Per-loop minimum UI (do not pre-build more)
 
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
-|---|---|---|---|---|---|
-| Web project surface | required | workbench | Files + preview | mutate external sites | yes |
-| Build/export | required | panel, approval | Build; export ArtifactRef | hide build failures | yes |
-
-### M19 — Presentation / motion
-
-| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Parity |
-|---|---|---|---|---|---|
-| Motion deck editor | required | workbench | Deck edit surface | promise full PPT parity | yes |
-| Export PPTX/HTML/video | required | panel, approval | Export with fidelity warnings | silent lossy export | yes |
-
-## 5. Per-loop UI add checklist (for designers) — keep thin (D51)
-
-After a loop’s backend is **usable**, add **only** the minimum affordances below.
-Do **not** pre-build the whole row if the loop works with less.
-
-| Loop | Minimum human UI (prefer these first) | Avoid adding yet |
+| Loop | Minimum to complete the loop | Do not add “just in case” |
 |---|---|---|
-| L01 | Approval for L2/L3; readable timeline; session list already in Craft | Extra spine dashboards, policy editors for every flag |
-| L02 | One way to run terminal/CLI; see output; stop; basic file open; job progress if async | Multi-dock “IDE”; Library as a second product; deep layout chrome |
-| L03A | Submit one generation; see result; open canvas **when needed**; one approval pause | Full creative studio chrome; many node palettes |
-| L03B | Open one native surface; export with honesty | All editors always visible |
-| L04 | Memory delete path; simple loadout; model pick if routing ships | Memory “OS”; marketplace UI early |
-| L05 | Short settings; light onboarding; messaging connect if retained | Account/upgrade walls (D26); settings sprawl |
+| L01 | Craft sessions + approval + timeline | Spine dashboards, flag editors |
+| L02 | One run surface (terminal/CLI) + output + stop; file open as needed; job progress only if async | Multi-dock IDE; Library product; layout toys |
+| L03A | Submit one generation; see result; approval if needed; canvas only if needed for the loop | Full studio chrome; large palettes |
+| L03B | One native editor when that module ships; export | All editors always visible |
+| L04 | Delete/consent paths; simple model/loadout if shipped | Memory “OS”; early marketplace |
+| L05 | Short settings; short onboarding; messaging connect if retained | Settings sprawl; account walls |
 
-**Bias:** complete the **loop in chat + one surface**, not a control panel for every subsystem.
+## 6. Module SPEC requirement
 
-## 6. Rules for module specs
+Every module SPEC needs `## Frontend Exposure` with the table columns in §3, plus:
 
-Every module SPEC must include a **## Frontend Exposure** section (see `modules/README.md`) that:
-
-- states UI needed / surfaces / expose what / not expose;  
-- links to this matrix for the module;  
-- does **not** invent pixel coordinates (M16 owns placement).
+- link to this file;  
+- **Necessity** column for each `required` row (R3 letter);  
+- no pixel layout.
 
 ## 7. Maintenance
 
-- When adding an action or backend capability, update **this matrix in the same PR** as the module/contract change.  
-- UI-only controls without matrix rows are incomplete (D7).  
-- Matrix rows without backend owner are incomplete.
+- Same PR as new backend capability: update this matrix.  
+- UI control without a matrix row: incomplete (D7).  
+- Paraphrase of D51 without owner quote: not authority (D51-R6).

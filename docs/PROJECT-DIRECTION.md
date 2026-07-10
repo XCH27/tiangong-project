@@ -59,9 +59,9 @@ presented as usable.
 
 The fastest way to ruin this product is to add broad-looking UI before the spine is real.
 
-**UI density (D51):** Follow mainstream Agent products—simple chrome, few settings, progressive
-disclosure. 如无必要，勿增实体. Prefer completing work in the main loop over building control
-panels for every backend capability. See `docs/FRONTEND-EXPOSURE-MATRIX.md` §0.
+**界面安排（D51，业主原文，勿改写为别的口号）:**  
+「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
+操作细则只认 `docs/FRONTEND-EXPOSURE-MATRIX.md` §0（D51-R1…R6），禁止 Agent 自行发明“极简”定义。
 
 ## 4. The Correct Unification Layer
 

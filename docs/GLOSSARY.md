@@ -114,6 +114,6 @@ Whether a backend capability needs human UI, **what** to expose (controls/info),
 **surface class** (settings, workbench, panel, approval, timeline, …) — not pixel layout.
 Canonical matrix: `docs/FRONTEND-EXPOSURE-MATRIX.md`. Required in every module SPEC.
 
-### UI Minimalism (D51)
-如无必要，勿增实体. Default exposure is none or in-loop; avoid settings forests and empty docks.
-Sparse Agent-like UX for most users.
+### D51 UI rule (owner wording)
+Verbatim: 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
+Operational rules: `FRONTEND-EXPOSURE-MATRIX.md` §0. Paraphrases are not authority.

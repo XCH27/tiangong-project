@@ -13,9 +13,9 @@
 Keep Fleet's settings understandable by assigning every preference one home and one representation.
 M13 does not own the workbench panel registry or layout engine; M16 does.
 
-**D51:** Settings stay **short**. Prefer in-loop controls for daily work. Do not become a dumping
-ground for every module flag—only credentials, safety/policy, retention, and rare preferences.
-See `docs/FRONTEND-EXPOSURE-MATRIX.md` §0 and § M13.
+**D51 owner wording applies:** 「…也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
+Settings only for credentials, safety/policy, retention, rare preferences (D51-R4). Daily work
+controls stay in-loop, not here. See `FRONTEND-EXPOSURE-MATRIX.md` §0 and § M13.
 
 ## 2. User-Visible Loop
 

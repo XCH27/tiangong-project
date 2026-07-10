@@ -20,8 +20,9 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Second artifact / file content store that duplicates M05 bytes | D15, D44 | `ArtifactRef` + native owners |
 | Second UI shell or workbench that replaces Craft shell | D27-R, D42 | M16 registration inside retained shell |
 | Porting old Fleet / fleet-old **UI design** (skins, experimental pages, display-only panels) as the product look | D50 | Clean Craft v0.11 shell + new surfaces; backend-only ports from old trees |
-| Settings forests, empty docks, per-module mini-apps, or power-user chrome for default users | D51 | Sparse Agent-like UX; expose only what most users must see/decide; progressive disclosure |
-| Adding a settings page or panel for pure backend plumbing (`none` in exposure matrix) | D51 | Keep infrastructure invisible; surface results + approvals only |
+| Adding UI entities that are not necessary under D51-R3 (new settings pages, empty docks, panels “for later”, per-module mini-apps) | D51 owner quote | 如无必要，勿增实体；见 `FRONTEND-EXPOSURE-MATRIX.md` §0 |
+| Adding settings for pure backend plumbing (`none` in exposure matrix) or “过多的没必要的设置” | D51 owner quote | Credentials/safety/retention only; not every flag |
+| Replacing D51 owner quote with Agent-invented slogans (“sparse/zen/clean UI”) as authority | D51-R6 | Quote or link D51 only |
 | Second timeline / audit stream | D7, M00 | Ordered `SessionEvent` only |
 | Canvas or panel as authoritative job/document store | D39, D42, ADR-0033 | Projection only; native owners keep content |
 
@@ -53,7 +54,14 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Full-fidelity animated PowerPoint compatibility promises | D46 |
 | External plugin distribution before built-in capability manifests work | COMPOSABLE §13 |
 
-## 4. Process Anti-Patterns (coordination)
+## 4. Documentation language (coordination)
+
+| Forbidden | Correct action |
+|---|---|
+| Using vague slogans as binding rules when they diverge Agent behaviour (e.g. free-form “minimal/clean/pro UI” without D51 quote) | Quote owner wording or link the decision; operational rules only in named docs |
+| Leaving broad optional language that invites scope creep (“add settings as needed”, “rich panels for power users”) on default path | Delete or replace with D51-R3 necessity test |
+
+## 5. Process Anti-Patterns (coordination)
 
 | Forbidden | Correct action |
 |---|---|
@@ -65,10 +73,10 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Use research drafts (including archived architectural comparison) to open a wave or choose topology | `UPSTREAM-BASELINE.md`, DECISIONS, ADRs only |
 | Collapse capability / gate / maturity into one informal status word | Three-axis block in `AGENTS.md` |
 
-## 5. How to Use
+## 6. How to Use
 
-1. Before proposing architecture, scan §1–§3.
-2. Before editing files, scan §4 and `OWNERSHIP-MATRIX.md`.
+1. Before proposing architecture, scan §1–§3 and §4 (language discipline).
+2. Before editing files, scan §5 and `OWNERSHIP-MATRIX.md`.
 3. If a module spec appears to require a forbidden item, **do not implement**. Escalate with a `[DECISION NEEDED]` note; Lead updates DECISIONS-LEDGER if the ban changes.
 
 Positive product direction, delivery phases, and state matrices stay in:

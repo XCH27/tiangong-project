@@ -59,9 +59,10 @@ Answer each question in one sentence. If any answer is "unknown", stop and retur
 9. **What exact behavior proves this slice is `usable`?**
    >
 
-10. **Frontend exposure (from matrix / module SPEC; D51 minimal):**
-   > UI needed? surfaces? what was added—or explicitly `none`?  
-   > If you added settings/panels: why can't a normal user complete the loop without them?
+10. **Frontend exposure (matrix + D51 owner quote):**
+   > UI needed? surfaces? what was added—or `none`?  
+   > If you added any new settings/panel/dock: state which D51-R3(a–d) necessity applies.  
+   > Do not justify with vague words (“cleaner”, “more pro”) — only R3 or `none`.
 
 
 ---
