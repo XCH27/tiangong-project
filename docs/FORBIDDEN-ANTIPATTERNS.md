@@ -20,6 +20,8 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Second artifact / file content store that duplicates M05 bytes | D15, D44 | `ArtifactRef` + native owners |
 | Second UI shell or workbench that replaces Craft shell | D27-R, D42 | M16 registration inside retained shell |
 | Porting old Fleet / fleet-old **UI design** (skins, experimental pages, display-only panels) as the product look | D50 | Clean Craft v0.11 shell + new surfaces; backend-only ports from old trees |
+| Settings forests, empty docks, per-module mini-apps, or power-user chrome for default users | D51 | Sparse Agent-like UX; expose only what most users must see/decide; progressive disclosure |
+| Adding a settings page or panel for pure backend plumbing (`none` in exposure matrix) | D51 | Keep infrastructure invisible; surface results + approvals only |
 | Second timeline / audit stream | D7, M00 | Ordered `SessionEvent` only |
 | Canvas or panel as authoritative job/document store | D39, D42, ADR-0033 | Projection only; native owners keep content |
 

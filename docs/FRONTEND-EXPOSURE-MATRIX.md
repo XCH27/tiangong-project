@@ -3,17 +3,39 @@
 > **Purpose:** For every backend capability, state whether humans need **visible controls**,  
 > **what** those controls are (not pixel layout), and **which surface class** they belong to  
 > (settings vs workbench vs approval vs none).  
-> **Authority:** Lead; must stay aligned with module specs and D7/D40 (human/Agent parity).  
+> **Authority:** Lead; must stay aligned with module specs, D7/D40 (parity), and **D51** (minimal UI).  
 > **Updated:** 2026-07-10  
 > **Not a gate:** WAVE-MAP still owns Ready/Locked. This guides UI design after a slice is Ready.
 
+## 0. Minimal UI law (D51) — 如无必要，勿增实体
+
+Mainstream Agent apps stay **sparse**: one clear work surface, short settings, progressive disclosure.
+Fleet follows that bar so most users are not forced through power-user chrome.
+
+| Rule | Meaning |
+|---|---|
+| **Default = none** | Backend exists first; UI is added only when a human must see/decide something. |
+| **Prefer in-loop** | Put controls next to the work (chat/composer/result/timeline) before inventing a new panel. |
+| **Settings are rare** | Settings only for credentials, safety policy, retention, and rare preferences—not every flag. |
+| **One home** | Each concern has at most one primary place (M13 IA). No duplicate toggles. |
+| **No empty furniture** | Do not reserve docks, tabs, or menus “for later.” Add when the loop needs them. |
+| **Progressive disclosure** | Advanced/dev options stay collapsed or behind a single Advanced area—not top-level. |
+| **Justify `required`** | Every `required` row must answer: *what breaks for a normal user if this control is missing?* |
+| **Agent-first is OK** | If Agent/workflow can complete the loop and humans only need results + approval, UI stays thin. |
+
+**Anti-goals:** settings forests, per-module mini-apps, always-visible multi-dock dashboards,  
+“enterprise console” density for default users.
+
 ## 1. How UI designers / Agents should use this
 
-1. Open the **module row** for the slice you just finished or are designing.  
-2. Implement only exposures marked **Required** for that wave; **Later** waits for its wave.  
-3. **None** means backend-only / infrastructure — do **not** invent a settings page for it.  
-4. Exact dock/position is owned by **M16** at implementation time; this file only names the **class**.  
-5. Every **Required** human control must share the same `actionId` as the Agent tool (D7/D40).
+1. Read **§0** — if a control is not necessary for most users, mark `none` / `later` / `optional`.  
+2. Open the **module row** for the slice you just finished or are designing.  
+3. Implement only exposures marked **required** for that wave; **later** waits for its wave.  
+4. **None** means backend-only / infrastructure — do **not** invent a settings page for it.  
+5. Exact dock/position is owned by **M16** at implementation time; this file only names the **class**.  
+6. Every **required** human control must share the same `actionId` as the Agent tool (D7/D40).  
+7. When unsure between `settings` and `workbench`, choose **workbench/in-loop** unless it is  
+   credentials, legal/safety policy, or rare preference (D51).
 
 ## 2. Surface classes (not pixel positions)
 
@@ -221,18 +243,21 @@ A feature may list **multiple** classes (e.g. workbench + settings).
 | Motion deck editor | required | workbench | Deck edit surface | promise full PPT parity | yes |
 | Export PPTX/HTML/video | required | panel, approval | Export with fidelity warnings | silent lossy export | yes |
 
-## 5. Per-loop UI add checklist (for designers)
+## 5. Per-loop UI add checklist (for designers) — keep thin (D51)
 
-After a loop’s backend slice is **usable**, designers should expect **new** human affordances:
+After a loop’s backend is **usable**, add **only** the minimum affordances below.
+Do **not** pre-build the whole row if the loop works with less.
 
-| Loop | When backend usable, UI typically gains |
-|---|---|
-| L01 | Permission/approval UX, timeline evidence, session identity clarity (via Craft shell + spine) |
-| L02 | Terminal panel; file/Library browser; jobs dock; layout open/close; budget badges on jobs |
-| L03A | Canvas stage; workflow run controls; browser evidence tools; generation submit |
-| L03B | Web/media/deck **main surfaces**; export actions |
-| L04 | Memory inspect/delete; routing settings; skill loadout |
-| L05 | Settings IA completion; onboarding; messaging connect |
+| Loop | Minimum human UI (prefer these first) | Avoid adding yet |
+|---|---|---|
+| L01 | Approval for L2/L3; readable timeline; session list already in Craft | Extra spine dashboards, policy editors for every flag |
+| L02 | One way to run terminal/CLI; see output; stop; basic file open; job progress if async | Multi-dock “IDE”; Library as a second product; deep layout chrome |
+| L03A | Submit one generation; see result; open canvas **when needed**; one approval pause | Full creative studio chrome; many node palettes |
+| L03B | Open one native surface; export with honesty | All editors always visible |
+| L04 | Memory delete path; simple loadout; model pick if routing ships | Memory “OS”; marketplace UI early |
+| L05 | Short settings; light onboarding; messaging connect if retained | Account/upgrade walls (D26); settings sprawl |
+
+**Bias:** complete the **loop in chat + one surface**, not a control panel for every subsystem.
 
 ## 6. Rules for module specs
 

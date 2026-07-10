@@ -42,8 +42,12 @@ Every module SPEC (and every new backend capability in a PR) must include:
 **Placement:** M16 owns docks/routes; do not hard-code pixel positions here.
 ```
 
-`UI needed?` and `Surfaces` vocabulary are defined in the matrix §1–§2.  
+`UI needed?` and `Surfaces` vocabulary are defined in the matrix §0–§2.  
 Backend-only infrastructure uses `none` so designers do not invent fake settings pages.
+
+**D51 — 如无必要，勿增实体:** default to `none` / in-loop controls. Mark `required` only if a
+normal user cannot complete or safely consent without that control. Prefer one work surface over
+many settings.
 
 ## 2. Minimum Executable Spec Content
 

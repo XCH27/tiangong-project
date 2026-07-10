@@ -112,7 +112,7 @@ See `docs/WAVE-MODULE-MAP.md` for the live wave and module status table.
 | What Fleet is and is not | `docs/PROJECT-DIRECTION.md` |
 | Modular spatial/workflow architecture | `docs/COMPOSABLE-WORKSPACE-ARCHITECTURE.md` |
 | Hard non-goals / second-system bans | `docs/FORBIDDEN-ANTIPATTERNS.md` |
-| Backend → UI exposure (buttons/settings class) | `docs/FRONTEND-EXPOSURE-MATRIX.md` |
+| Backend → UI exposure (buttons/settings class; D51 minimal) | `docs/FRONTEND-EXPOSURE-MATRIX.md` |
 | Verified upstream base and migration gate | `docs/UPSTREAM-BASELINE.md` |
 | Persistence/state authority | `docs/PERSISTENCE-AUTHORITY-MAP.md` |
 | Documentation maturity | `docs/DOCUMENT-READINESS.md` |

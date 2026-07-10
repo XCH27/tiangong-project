@@ -59,6 +59,10 @@ presented as usable.
 
 The fastest way to ruin this product is to add broad-looking UI before the spine is real.
 
+**UI density (D51):** Follow mainstream Agent products—simple chrome, few settings, progressive
+disclosure. 如无必要，勿增实体. Prefer completing work in the main loop over building control
+panels for every backend capability. See `docs/FRONTEND-EXPOSURE-MATRIX.md` §0.
+
 ## 4. The Correct Unification Layer
 
 Fleet should not unify every work surface through one universal `DesignPatch`.

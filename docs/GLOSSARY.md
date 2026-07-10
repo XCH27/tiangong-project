@@ -113,3 +113,7 @@ agents know where to start. Loop folders do not override `WAVE-MODULE-MAP.md` ga
 Whether a backend capability needs human UI, **what** to expose (controls/info), and which
 **surface class** (settings, workbench, panel, approval, timeline, …) — not pixel layout.
 Canonical matrix: `docs/FRONTEND-EXPOSURE-MATRIX.md`. Required in every module SPEC.
+
+### UI Minimalism (D51)
+如无必要，勿增实体. Default exposure is none or in-loop; avoid settings forests and empty docks.
+Sparse Agent-like UX for most users.

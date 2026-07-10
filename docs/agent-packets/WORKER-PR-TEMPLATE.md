@@ -59,8 +59,9 @@ Answer each question in one sentence. If any answer is "unknown", stop and retur
 9. **What exact behavior proves this slice is `usable`?**
    >
 
-10. **Frontend exposure (from matrix / module SPEC):**
-   > UI needed? surfaces? what buttons/settings/info were added or explicitly `none`?
+10. **Frontend exposure (from matrix / module SPEC; D51 minimal):**
+   > UI needed? surfaces? what was added—or explicitly `none`?  
+   > If you added settings/panels: why can't a normal user complete the loop without them?
 
 
 ---
