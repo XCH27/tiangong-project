@@ -117,3 +117,7 @@ Canonical matrix: `docs/FRONTEND-EXPOSURE-MATRIX.md`. Required in every module S
 ### D51 UI rule (owner wording)
 Verbatim: 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
 Operational rules: `FRONTEND-EXPOSURE-MATRIX.md` §0. Paraphrases are not authority.
+
+### D52 UI baseline (owner wording)
+Verbatim: 「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」  
+Baseline = clean Craft Agents v0.11 UI; change by simplify/optimize, not greenfield shells.

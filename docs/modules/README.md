@@ -47,7 +47,11 @@ Backend-only infrastructure uses `none` so designers do not invent fake settings
 
 **D51 (owner wording, binding):**  
 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
-Mark `required` only under D51-R3(a–d) in `FRONTEND-EXPOSURE-MATRIX.md` §0. Do not invent other “minimal UI” definitions.
+
+**D52 (owner wording, binding):**  
+「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」  
+
+Mark `required` only under D51-R3(a–d). UI work defaults to simplify/optimize Craft v0.11, not greenfield. See `FRONTEND-EXPOSURE-MATRIX.md` §0.
 
 ## 2. Minimum Executable Spec Content
 

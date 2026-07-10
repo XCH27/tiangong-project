@@ -3,19 +3,22 @@
 > **Purpose:** For every backend capability, state whether humans need **visible controls**,  
 > **what** those controls are (not pixel layout), and **which surface class** they belong to  
 > (settings vs workbench vs approval vs none).  
-> **Authority:** Lead; aligned with D7/D40 and **D51**.  
+> **Authority:** Lead; aligned with D7/D40, **D51**, **D52**.  
 > **Updated:** 2026-07-10  
 > **Not a gate:** WAVE-MAP still owns Ready/Locked.
 
-## 0. Binding owner wording (D51) — quote only
+## 0. Binding owner wording — quote only
 
-Agents **must not** replace the following with their own slogans (“sparse”, “clean”, “zen”, etc.).
-If text conflicts with this quote, **this quote wins**.
+Agents **must not** replace these quotes with their own slogans (“sparse”, “clean”, “zen”, “redesign from zero”, etc.).
+If other prose conflicts with these quotes, **the quotes win**.
 
-> **Owner (verbatim):**  
+> **Owner (D51, verbatim):**  
 > 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」
 
-### 0.1 Operational rules derived only from that wording
+> **Owner (D52, verbatim):**  
+> 「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」
+
+### 0.1 Operational rules for D51 (derived only from that wording)
 
 | Rule ID | Rule (operational — not a new philosophy) |
 |---|---|
@@ -26,25 +29,40 @@ If text conflicts with this quote, **this quote wins**.
 | D51-R5 | **适配大多数用户:** Design the default path for ordinary users. Advanced/dev controls, if any, go under one “Advanced” group—not top-level. |
 | D51-R6 | **Quote discipline:** Docs and PRs that restate D51 must include the owner quote or link to D51; paraphrases are not authority. |
 
-### 0.2 Forbidden misreadings (control vague language)
+### 0.3 Operational rules for D52 (Craft base, not greenfield UI)
+
+| Rule ID | Rule |
+|---|---|
+| D52-R1 | **Baseline UI** = clean Craft Agents **v0.11** shell (session/chat, settings host, browser host, panel primitives). Start design work there. |
+| D52-R2 | **Default change type** = **simplify** (remove/merge chrome) or **optimize** (clearer copy, fewer steps, better defaults) on that baseline. |
+| D52-R3 | **凭空增加 is forbidden as default:** Do not invent a second shell, second nav, second settings home, or parallel “Fleet home” page. |
+| D52-R4 | **When something new is truly needed** (D51-R3): add the **smallest** control hosted **inside** Craft via M16 (panel/surface/inspector), not a new product frame. |
+| D52-R5 | **Old Fleet / fleet-old UI** is not a design baseline (D50). Craft v0.11 is. |
+| D52-R6 | **Quote discipline:** Restate D52 with the owner quote or link; do not replace with “redesign / modernize / rebrand.” |
+
+### 0.4 Forbidden misreadings (control vague language)
 
 | Misreading | Not allowed |
 |---|---|
-| “Minimal” = remove Craft shell / remove timeline / remove approvals | No — keep spine UX; remove **unnecessary** chrome and settings |
+| “Minimal” = remove Craft shell / remove timeline / remove approvals | No — keep Craft spine UX; remove **unnecessary** chrome and settings |
 | “简约” = no UI for a complete loop | No — if the loop needs one terminal/jobs surface, add that one, not five |
-| “Agent-like” = copy some other product’s layout | No — only the owner quote + R1–R6 |
+| “在原版基础上” = freeze every Craft pixel forever | No — simplify/optimize is allowed and expected |
+| “优化” = rebuild a different product shell | No — 不是凭空增加；stay on Craft host |
+| “Agent-like” = copy some other product’s layout | No — only owner quotes + R rules |
 | “Progressive disclosure” as license for many hidden panels | No — do not create the panels at all if not necessary |
 | Adding empty docks “for modularity” | No — 勿增实体 |
+| Porting fleet-old screens as “optimization” | No — D50/D52-R5 |
 
 ## 1. How UI designers / Agents should use this
 
-1. Read **§0** (owner quote + R1–R6).  
-2. Open the **module row** for the slice.  
-3. Implement only **`required`** for that wave; `later` waits.  
-4. **`none`** = no dedicated control; do not invent a settings page.  
-5. Placement class only — **M16** chooses dock/route; no pixel specs here.  
-6. Every **`required`** human control shares the same `actionId` as the Agent tool (D7/D40).  
-7. Settings vs workbench: use **workbench / in-loop** unless D51-R3 (b) or (d) or rare preference applies.
+1. Read **§0** (D51 + D52 owner quotes and R rules).  
+2. Start from **Craft v0.11** surface that already hosts the job; simplify/optimize first (D52).  
+3. Open the **module row** for the slice.  
+4. Implement only **`required`** for that wave; `later` waits.  
+5. **`none`** = no dedicated control; do not invent a settings page.  
+6. Placement class only — **M16** chooses dock/route inside Craft; no pixel specs here.  
+7. Every **`required`** human control shares the same `actionId` as the Agent tool (D7/D40).  
+8. Settings vs workbench: use **workbench / in-loop** unless D51-R3 (b) or (d) or rare preference applies.
 
 ## 2. Surface classes (not pixel positions)
 

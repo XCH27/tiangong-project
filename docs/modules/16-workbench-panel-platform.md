@@ -20,6 +20,8 @@
 
 **Designer note when usable:** this module **is** the placement host — other modules declare surface *class*; M16 implements docks/routes inside Craft shell.
 
+**D52:** Host contributions on **original Craft Agents** chrome; simplify/optimize that host. Do not invent a second workbench frame.
+
 ## 1. Purpose
 
 Provide the only registration, instance, routing, docking, focus, and layout-restoration system

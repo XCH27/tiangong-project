@@ -22,7 +22,9 @@ Use this list to refuse work. Do not re-derive a parallel non-goals section that
 | Porting old Fleet / fleet-old **UI design** (skins, experimental pages, display-only panels) as the product look | D50 | Clean Craft v0.11 shell + new surfaces; backend-only ports from old trees |
 | Adding UI entities that are not necessary under D51-R3 (new settings pages, empty docks, panels “for later”, per-module mini-apps) | D51 owner quote | 如无必要，勿增实体；见 `FRONTEND-EXPOSURE-MATRIX.md` §0 |
 | Adding settings for pure backend plumbing (`none` in exposure matrix) or “过多的没必要的设置” | D51 owner quote | Credentials/safety/retention only; not every flag |
-| Replacing D51 owner quote with Agent-invented slogans (“sparse/zen/clean UI”) as authority | D51-R6 | Quote or link D51 only |
+| Replacing D51/D52 owner quotes with Agent-invented slogans (“sparse/zen/clean/redesign”) as authority | D51-R6, D52-R6 | Quote or link D51/D52 only |
+| Greenfield UI / second shell / “Fleet home” instead of simplifying or optimizing Craft Agents original UI | D52 owner quote | 在原版 Craft 上简化或优化，而不是凭空增加 |
+| Treating “optimize” as license to replace Craft nav/settings architecture wholesale | D52-R2/R3 | Prefer incremental simplify/optimize on v0.11 shell |
 | Second timeline / audit stream | D7, M00 | Ordered `SessionEvent` only |
 | Canvas or panel as authoritative job/document store | D39, D42, ADR-0033 | Projection only; native owners keep content |
 

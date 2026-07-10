@@ -59,9 +59,11 @@ presented as usable.
 
 The fastest way to ruin this product is to add broad-looking UI before the spine is real.
 
-**界面安排（D51，业主原文，勿改写为别的口号）:**  
-「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
-操作细则只认 `docs/FRONTEND-EXPOSURE-MATRIX.md` §0（D51-R1…R6），禁止 Agent 自行发明“极简”定义。
+**界面安排（业主原文，勿改写为别的口号）:**  
+- **D51:** 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
+- **D52:** 「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」  
+
+操作细则只认 `docs/FRONTEND-EXPOSURE-MATRIX.md` §0（D51-R* / D52-R*）。禁止 Agent 自行发明“极简/重做”定义。视觉与交互默认在 **Craft Agents 原版（clean v0.11）** 上做简化或优化，不另起一套壳。
 
 ## 4. The Correct Unification Layer
 

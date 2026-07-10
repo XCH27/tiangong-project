@@ -38,6 +38,8 @@ same state. This is validated before any Fleet feature is ported.
   feature work, shell redesign, or deletion of review/legacy evidence as a shortcut.
 - porting old Fleet / fleet-old **UI design** (D50); only backend-value adapt rows may be ported —
   see `docs/migration/BACKEND-VALUE-PORT.md`.
+- greenfield UI replacing Craft Agents chrome (D52); product UI starts from original Craft and is
+  simplified or optimized, not invented as a parallel shell.
 
 ## 3. Migration Ledger
 

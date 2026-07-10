@@ -56,21 +56,24 @@ Source session: brief description
 > 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」
 >
 > 「你直接把我这句话写进去，不同的Agent会有不同的理解，这样是不对的。而且你也要仔细检查项目文档中有没有过于笼统泛化的话，有时候如果它会对项目产生负面影响，就要注意控制或删除。」
+>
+> 「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」
 
 #### Agent Interpretation
 
 - D51 must cite the first paragraph **verbatim**; paraphrases are not authority.
-- Vague UI slogans in docs (“sparse”, “Agent-like”, “progressive disclosure” as free license) are controlled or removed when they cause divergent Agent behavior.
-- Operational detail lives only in `FRONTEND-EXPOSURE-MATRIX.md` §0 R1–R6.
+- D52: UI baseline is original Craft Agents; change mode is simplify/optimize, not greenfield add.
+- Vague UI slogans in docs are controlled or removed when they cause divergent Agent behavior.
+- Operational detail lives only in `FRONTEND-EXPOSURE-MATRIX.md` §0 (D51-R* / D52-R*).
 
 #### Linked Decisions / Modules
 
-- Decision: D51
-- Modules: M13, M16, All UI-facing
+- Decisions: D51, D52 (with D27-R, D50)
+- Modules: M01, M13, M16, All UI-facing
 
 #### Agent Response
 
-Promoted to D51 rewrite + matrix §0 quote block + FORBIDDEN misreading table (2026-07-10).
+Promoted to D51/D52 + matrix §0 quote blocks + FORBIDDEN misreading table (2026-07-10).
 
 #### Open Questions
 

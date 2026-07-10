@@ -9,10 +9,12 @@
 
 | Source | UI policy |
 |---|---|
-| Clean Craft Agents **v0.11.0** shell | **retain** as the only starting UI chrome (then simplify via M16) |
+| Clean Craft Agents **v0.11.0** shell | **retain** as the only starting UI chrome; **simplify or optimize** (D52) — not greenfield |
 | Current monorepo `app/` experimental UI / playground productization | **drop** as design reference |
 | `源码参考/software/fleet-old` renderer/pages/skins | **drop** — never copy layout, tokens, nav, or “almost product” panels |
-| Future modular surfaces (terminal, canvas, jobs…) | **new** UI against Craft shell + M16 contributions; not resurrected old screens |
+| Future modular surfaces (terminal, canvas, jobs…) | Prefer **extend Craft + M16** with the smallest needed surface; not a second product UI; not old Fleet screens |
+
+**D52 owner wording:** 「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」
 
 ## 2. What “backend-valuable” means
 
