@@ -1,99 +1,44 @@
 # 源码参考目录
 
-本目录只存第三方参考项目，不是 Fleet 主工程。当前按使用方式分两类：
+本目录只存**本机**第三方参考 checkout，**不是** Fleet 主工程，且被根 `.gitignore` 忽略。  
+权威策略：`docs/REFERENCE-PROJECT-POLICY.md`（绿灯 / 黑盒 / **已退役**）。
 
-| 目录 | 类型 | 用法 |
-|---|---|---|
-| `software/` | 软件型参考 | 完整应用、客户端、Agent 平台、编辑器、桌面软件。主要参考产品形态、交互、架构边界和端到端流程。 |
-| `plugins/` | 插件/能力型参考 | 可被 Fleet 吸收成能力模块、sidecar、CLI、库、引擎或协议适配的项目。主要参考局部能力、接口、算法、工具链。 |
+| 目录 | 用途 |
+|---|---|
+| `software/` | 完整应用/客户端/Agent 平台等 |
+| `plugins/` | 可局部参考的库、CLI、能力模块 |
 
-分类只解决“去哪看”的问题，不改变许可证红绿灯：
+## 规则
 
-- 绿灯项目仍需按 `docs/26-源码参考使用规则与索引.md` 和 `docs/27-源码迁移清单.md` 记录迁移来源、commit、许可证和归因。
-- 红灯/黄灯/候选项目即使放在 `plugins/`，也只能黑盒学习行为，不能复制源码、类型、测试、配置、样式或资源。
-- 任何新克隆项目先放入对应分类，再更新 `docs/14-源码参考目录专项审计.md`。
-- `software/*` 与 `plugins/*` 是本机参考源码 checkout，按根 `.gitignore` 忽略；Fleet 仓库只跟踪本 README 与 `clone_repos.sh` / `update_repos.sh` 等索引脚本，不再把第三方目录作为 gitlink/submodule 跟踪。更新参考源码不得污染 Fleet 主仓 `git status`。
+1. **UI：** 以 Craft Agents 原版为基线做简化/优化（D52）；禁止把其它产品壳当 Fleet UI 蓝本（D50/D51）。  
+2. **旧 Fleet UI：** 不参考；`fleet-old` 仅后端行为 + 迁移账本。  
+3. **许可：** 绿灯才可在边界内改编；黑盒不可拷源码；退役项不要重新克隆。  
+4. **更新：** 用 `clone_repos.sh` / `update_repos.sh`；勿把第三方树提交进 Fleet git。  
+5. **新增参考：** 先写入 `REFERENCE-PROJECT-POLICY.md` 并说明模块挂钩，再克隆。
 
-当前分类：
+## 建议保留（与策略对齐）
 
-## software
+### software（示例）
 
-- `AionUi`
-- `agents-cli`
-- `AstrBot`
-- `CowAgent`
-- `CoreCoder`
-- `DeepSeek-Reasonix`
-- `Kun`
-- `OpenHands`
-- `OpenMontage`
-- `cc-switch`
-- `cherry-studio`
-- `cline`
-- `cmux`
-- `cockpit-tools`
-- `craft-agents-oss`
-- `golutra`
-- `hermes-agent`
-- `kdenlive`
-- `lobehub`
-- `multica`
-- `nezha`
-- `omnigent`
-- `open-pencil`
-- `opencut`
-- `opencut-classic`
-- `openpencil`
-- `orca`
-- `palmier-pro`
-- `penpot`
-- `tldraw`
-- `warp`
-- `zed`
+- `craft-agents-oss` — 主基线（请同步 **v0.11.0** 认知，见 UPSTREAM-BASELINE）  
+- `AionUi` — CLI/ACP/runtime（绿灯）  
+- `fleet-old` — 后端行为参考 only  
+- `DeepSeek-Reasonix` — ACP/planner（绿灯）  
+- `hermes-agent` / `orca` / `OpenHands` / `omnigent` — 黑盒/候选  
+- `openpencil` / `open-pencil` / `tldraw` — 设计/画布行为（非 M07 宿主默认）  
+- `opencut-classic`（及必要时 `opencut` 对照）— 视频时间线  
+- `cline` — 模式/技能想法（黑盒）  
+- `penpot` — FOSS 设计产品行为（黑盒）  
+- `agents-cli` — CLI 形态  
 
-## plugins
+### plugins（示例）
 
-- `awesome-design-md`
-- `codegraph`
-- `context-mode`
-- `Cowart`
-- `deepcode-cli`
-- `dockview`
-- `doubao-ui-assets` (unzipped from Desktop, containing 700+ icons and dashboard ui kits)
-- `headroom`
-- `hyperframes`
-- `letta-code`
-- `markitdown`
-- `mem0`
-- `memanto`
-- `mempalace`
-- `moveable`
-- `open-design`
-- `openui`
-- `react-moveable` (see `moveable`)
-- `react-resizable-panels`
-- `react-rnd`
-- `react-timeline-editor`
-- `remotion`
-- `repomix`
-- `rtk`
-- `stitch-sdk`
-- `stitch-skills`
-- `supermemory`
-- `tapnow-reverse-config` (unzipped from Desktop, containing reverse engineered Electron client codebase & contracts)
-- `trae-ui-kits` (unzipped from Desktop, containing Trae dashboard and dev-explorer UI designs)
-- `trae-work-kits` (unzipped from Desktop, containing settings, landing, pricing, and keyframe designs)
-- `zvec`
+- `codegraph` / `deepcode-cli` / `open-design` / `rtk` — 绿灯相关  
+- `dockview` / `react-resizable-panels` / `react-rnd` / `react-timeline-editor` — 布局/时间线想法  
+- `letta-code` / `mem0` / `supermemory` / `context-mode` / `markitdown` / `repomix` — 记忆/上下文想法  
 
-## assets (静态资产)
+## 已删除的无价值/负价值本机克隆（2026-07-10）
 
-- `assets/ui-screenshots/` (包含从用户上传的原始图片中归档的 UI 参考截图，涵盖 TapNow, Lovart, Stitch 及当前工作台原型)
+见策略文 **Retired** 表。已从本机移除例如：`nezha`、`kdenlive`、`warp`、`zed`、`lobehub`、`cherry-studio`、`cc-switch`、`ego-lite`、以及一批无模块挂钩的竞品壳；plugins 侧移除 `remotion`、`openui`、`stitch-*`、`memanto`/`mempalace`、`headroom`、`zvec`、各类 UI kit 打包等。
 
-`clone_repos.sh` 暂留在根目录；后续如果继续批量克隆，应让脚本按 `software/` 和 `plugins/` 自动落位。
-
-
-
-## 完整性警告
-
-- `software/opencode/` 当前为空且没有独立 `.git`，不算已克隆源码；从父仓库读到的 HEAD 不能作为它的版本。
-- 新增参考必须同时核对：独立 Git remote/HEAD、工作区状态、LICENSE、关键源码目录和 README 所描述功能是否真实存在。
+**不要**为 jaaz / basketikun infinite-canvas / hero8152 Infinite-Canvas 建正式参考克隆（策略文已写明）。

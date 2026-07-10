@@ -308,22 +308,15 @@ This prevents “review center,” “generation center,” and “publish cente
 
 Reference projects are not the roadmap. They are source material for specific decisions.
 
-Approved direct-source references:
+Approved direct-source references and the short black-box list live only in
+`docs/REFERENCE-PROJECT-POLICY.md` (single source). Summary:
 
-- Craft Agents OSS: base application
-- AionUi: ACP, CLI runtime, process lifecycle, team/agent patterns
-- Open Design: design workflow, runtime definitions, prompt transport, artifact/eval patterns
-- RTK: output compression and savings measurement
-- Codegraph: local code graph and structured code query
-- DeepSeek Reasonix: ACP/stdio and planner/executor ideas
-- Deepcode CLI: skill paths, MCP, CLI/session management
-- OpenPencil candidates: professional design-document behaviour only until an exact repository,
-  SDK/version, license, and adapter boundary are promoted; not the assumed M07 spatial host
-- OpenCut Classic: video timeline/native video editing direction
-- xyflow: preferred M07 renderer spike candidate only; not a promoted dependency yet
-- tldraw: behaviour reference only under its current production SDK license
+- Craft Agents OSS v0.11: base application  
+- AionUi, open-design, rtk, codegraph, DeepSeek-Reasonix, deepcode-cli, opencut-classic: green-light with boundaries  
+- OpenPencil candidates / xyflow / tldraw: design or M07 spike — not automatic deps  
+- **Not** product baselines: jaaz, AGPL infinite-canvas products, stealth browsers, competing AI shells  
 
-Everything else remains black-box reference unless explicitly promoted.
+Retired zero-value clones are listed in that policy’s **Retired** section; do not re-clone.
 
 ## 9. Current App Reuse Policy
 

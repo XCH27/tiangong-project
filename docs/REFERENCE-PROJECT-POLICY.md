@@ -1,106 +1,137 @@
 # Reference Project Policy
 
-Reference projects are evidence and source material. They are not the roadmap.
+Reference projects are evidence and source material. They are **not** the roadmap.
+
+**UI baseline (D52):** Craft Agents original chrome — simplify/optimize, do not greenfield.  
+**Old Fleet UI (D50):** not a design reference. Backend-value only via migration ledger.
 
 ## Green-Light Sources
 
-The following projects may be copied or adapted within the stated boundary, with license and attribution preserved:
+The following projects may be copied or adapted within the stated boundary, with license and
+attribution preserved:
 
 | Source | License Boundary | Allowed Use |
 |---|---|---|
-| `craft-agents-oss` | Apache-2.0 | Main application base. The verified target is v0.11.0; see `docs/UPSTREAM-BASELINE.md`. |
+| `craft-agents-oss` | Apache-2.0 | Main application base. Target **v0.11.0**; see `docs/UPSTREAM-BASELINE.md`. |
 | `AionUi` | Apache-2.0 | CLI runtime catalog, custom agents, ACP, process lifecycle, team/skill patterns. Must adapt into Craft session/permission/timeline. |
 | `open-design` | Apache-2.0 | Runtime definitions, prompt transport, artifact/eval/design workflow patterns. Check subdirectory licenses before copying assets/templates. |
 | `rtk` | Apache-2.0 | Output compression, savings discovery, hook matrix ideas. Do not auto-install global hooks without permission. |
-| `fleet-old` | Internal Reference | Older Fleet-derived checkout. Selectively port documented Fleet-specific behaviour only through the v0.11 migration ledger; never merge or copy the old shell wholesale. |
+| `fleet-old` | Internal Reference | Selective **backend** Fleet behaviour only via migration ledger (D50). Never merge or copy old shell/UI. |
 | `codegraph` | MIT | Local code graph, indexing, structured queries, MCP installer experience. |
 | `DeepSeek-Reasonix` | MIT | ACP/stdio, stable prefix cache, planner/executor, permission/sandbox ideas. |
 | `deepcode-cli` | MIT | Skill paths, MCP, reasoning intensity, CLI/session management. |
-| `opencut-classic` | MIT, approved 2026-07-01 | Native video timeline/store/rendering source/patterns. Do not mix with the newer incomplete `opencut` rewrite. |
+| `opencut-classic` | MIT, approved 2026-07-01 | Native video timeline/store/rendering patterns (M09). Do not mix with incomplete `opencut` rewrite. |
 
 ## Black-Box Or Candidate Sources
 
-Projects not listed above are black-box references unless explicitly promoted. That includes permissively licensed projects if they have not been approved.
+Projects not listed as green-light are black-box unless explicitly promoted (D20).
 
-Black-box use allows:
+**Black-box allows:** public behaviour study, boundary comparison, command-output observation,
+independent reimplementation of ideas.
 
-- public behavior study
-- product boundary comparison
-- command output observation
-- protocol idea extraction when reimplemented independently
+**Black-box forbids:** copying source, tests, types, configs, styles, assets, prompts, folder
+layout as implementation, private/branded resources.
 
-Black-box use forbids copying:
+### Active candidate / black-box catalog (keep short)
 
-- source code
-- tests
-- type definitions
-- configs
-- styles
-- assets
-- prompts
-- folder structure as implementation
-- private or branded resources
+Only projects with a **clear Fleet module hook** remain listed. Others were retired (see § Retired).
 
-### Candidate & Black-Box Reference Catalog
+| Reference | License | Fleet hook | Allowed study | Forbidden |
+|---|---|---|---|---|
+| `Hermes Agent` | MIT | M12 packaging | Toolset packaging, dynamic skill templates, multi-step RPC ideas | Copy Python runtime/UI |
+| `OpenClaw` | MIT | M06/M15 | Profile segmentation, gateway loopback, ax-tree selection ideas | Copy browser routing, telemetry, automation scripts |
+| `browser-harness` | MIT | M06 | CDP websocket fallback, replay ideas | Copy loaders/tests/types |
+| `Omnigent` | Apache-2.0 | M04 | Supervisor routing specs, multi-agent YAML, attach/fork session ideas | Copy compiler/orchestrator packages |
+| `Letta-code` / `MemGPT` | BSD-3-Clause | M10 | Memory tiering, background agent lifecycle, compression ideas | Copy memory managers/DB configs |
+| `mem0` | Apache-2.0 | M10 | Dedup/conflict/profile fact ideas | Copy storage wrappers / vector DB APIs |
+| `Supermemory` | MIT | M10 | Entity graph / pruning / hybrid search **ideas** only | Copy indexers/scrapers/connectors |
+| `Context-mode` | ELv2 | M10 | FTS/context-health **ideas** only | **ELv2 high-risk** — no copy/bundle |
+| `Dockview` | MIT | M16 | Layout serialization / restore **ideas** (prefer Craft panels first, D52) | Copy Dockview wrappers into shell |
+| `React-resizable-panels` / `React-rnd` | MIT | M16/M07 | Panel proportion / drag **ideas** | Copy calc/mouse trackers wholesale |
+| `React-timeline-editor` | MIT | M09 | Timeline/clip layout **ideas** | Copy decoder/render hooks |
+| [`xyflow/xyflow`](https://github.com/xyflow/xyflow) | MIT | **M07 preferred spike** | Custom nodes/edges, pan/zoom, minimap | Not frozen dependency until spike + Lead promotion |
+| [`tldraw/tldraw`](https://github.com/tldraw/tldraw) | tldraw SDK license | M07 behaviour only | Custom shapes, viewport/culling, agent-canvas interaction **ideas** | Do not bundle production SDK as if MIT |
+| [`ZSeven-W/openpencil`](https://github.com/ZSeven-W/openpencil) | MIT + audit | Design module (not M07 host) | `.op` artifacts, CLI/MCP, read-only viewer (D43) | Not React universal canvas host; no Agent runtime import |
+| [`open-pencil/open-pencil`](https://github.com/open-pencil/open-pencil) | MIT + audit | Design module candidate | Editable design docs / headless tools | Not promoted; needs adapter spike |
+| `OpenHands` | BSD-3-Clause | Later sandbox | Remote workspace / sandbox boundary **ideas** | Copy Docker orchestrators (daemon is D22 conditional) |
+| `Repomix` | MIT | M10/M05 context | Repo-to-markdown / outline / secret-scan **ideas** | Copy parsers wholesale |
+| `MarkItDown` | MIT | M05 file ingest | Multi-format → markdown **ideas** | Copy parser libs wholesale |
+| `orca` | MIT | Parallel agents | Worktree isolation / multi-worker **ideas** | Copy desktop shell/telemetry |
+| `Cline` / `Roo Code` | Apache-2.0 | M12 modes | Multi-role / scheduled automation / mode presets **ideas** | Copy IDE extension packages |
+| `penpot` | MPL/local FOSS | Design product behaviour | FOSS design-app behaviour (black-box) | Not M07 host; do not replace Craft shell |
 
-| Reference | License | Allowed Use in Fleet | Forbidden/Risk Boundary |
-|---|---|---|---|
-| `Hermes Agent` | MIT | Study toolset packaging; reference dynamic skill template compilation and non-blocking multi-step RPC model. | Cannot copy Python execution module, codebase, or UI patterns. |
-| `OpenClaw` | MIT | Reference managed profile segmentation, gateway loopback routing, and ax-tree element selection logic. | Cannot copy browser routing, telemetry or profile automation scripts. |
-| `browser-harness` | MIT | Study low-level CDP websocket channel fallback, execution replay, and self-healing selector registers. | Cannot copy script loaders, browser automation tests, or types. |
-| `LobeHub` | LobeHub Community License | Study Chief Agent Operator layout, Personal Memory UI, dynamic capabilities marketplace, and settings health panel. | **LobeHub Community License is high-risk.** Strictly prohibited from copying any codebase, package layout, folder structure, or component styles. |
-| `Omnigent` | Apache-2.0 | Study tech-lead supervisor routing specs, multi-agent YAML definitions, and attach/fork co-driving session sync protocols. | Cannot copy compiler, engine orchestrator code, or packages. |
-| `Letta-code` / `MemGPT` | BSD-3-Clause | Study core/recall/archival memory tiering, background agent lifecycle, and long-context session compression. | Cannot copy memory managers, system drivers, or database configurations. |
-| `mem0` | Apache-2.0 | Reference smart deduplication, conflict resolution, and long-term user profile facts aggregation. | Cannot copy backend storage wrappers or Qdrant/Milvus API interfaces. |
-| `Supermemory` | MIT | Study entity relation graphing, graph entity pruning, and semantic hybrid search structures. | Cannot copy indexing algorithms, scrapers, or database connectors. |
-| `Memanto` (Palace) | MIT | Reference palace spatial mapping and spatial nodes visual editing. | Cannot copy visual canvas code, layout algorithms, or icons. |
-| `Context-mode` | ELv2 | Reference FTS5/BM25 local indexing, context health diagnosis indicators, and big output fold criteria. | **ELv2 is high-risk.** No code copying or direct binary bundling allowed. |
-| `Dockview` | MIT | Study layout state serialization, window division actions, and state-restoring layout replay. | Cannot copy Dockview panel wrappers or Electron window managers. |
-| `React-resizable-panels` / `React-rnd` | MIT | Reference panel sizing proportions and spatial coordinates state bindings. | Cannot copy layout calculations or drag-and-drop mouse trackers. |
-| `React-timeline-editor` | MIT | Reference keyframe tracks configuration and timeline clips layout structures. | Cannot copy time scaling, canvas rendering, or media decoder hooks. |
-| [`xyflow/xyflow`](https://github.com/xyflow/xyflow) | MIT | Preferred candidate for the M07 spatial/workflow renderer spike: React custom nodes, edges, pan/zoom, and minimap behaviour. | Not promoted for source inclusion. Exact version, performance, accessibility, persistence seam, and dependency impact require the spike and explicit promotion. |
-| [`tldraw/tldraw`](https://github.com/tldraw/tldraw) | tldraw SDK license; production use requires a license key | Behaviour reference for custom shapes, workflow/image-pipeline starter concepts, viewport/culling, and Agent-canvas interactions. | Do not bundle the production SDK or copy SDK source under the assumption it is MIT. Starter-kit licensing does not promote the SDK. |
-| [`ZSeven-W/openpencil`](https://github.com/ZSeven-W/openpencil) | MIT repository; exact dependency/submodule audit required | Study AI-native design-to-code, `.op` artifacts, CLI/MCP operations, and read-only viewer embedding for a professional design module. | Current official docs describe a Rust/CanvasKit product and read-only web viewer SDK. Do not treat it as the React editable M07 host; do not import its Agent runtime. |
-| [`open-pencil/open-pencil`](https://github.com/open-pencil/open-pencil) | MIT repository; candidate only | Study editable `.fig`/`.pen` native design documents, headless tools, and Vue SDK for a separate design surface. | Not promoted for source inclusion. Vue/React embedding, round-trip fidelity, performance, and disabling built-in Agent/MCP authority require a dedicated adapter spike. |
-| `Remotion` | Bespoke | Reference visual movement paths layout and frame-by-frame rendering output validations. | Bespoke license prevents commercial use. No source copy or direct inclusion. |
-| `Stitch-sdk` / `Stitch-skills` | Apache-2.0 | Study Stitch capability packaging, hot-plug skill loading, and ACL permissions profiles. | Cannot copy SDK package files, dependency managers, or script runtimes. |
-| `OpenUI` | MIT | Reference UI template specifications and streamable incremental UI rendering. | Cannot copy generation templates, parser routines, or styling systems. |
-| `Cline` / `Roo Code` | Apache-2.0 | Study multi-role workspaces, scheduled automations, and Custom Modes settings presets. | Cannot copy IDE extension packages or workspace control wrappers. |
-| `OpenHands` | BSD-3-Clause | Reference remote workspace container boundaries, security sandbox limits, and multihost environment management. | Cannot copy Docker orchestrators, sandbox script executors, or servers. |
-| `Headroom` | Apache-2.0 | Reference symbolic prefix compression, reversible hash caching, and token shaping limits. | Cannot copy compression layers, MCP proxy servers, or local drivers. |
-| `Repomix` | MIT | Reference repo-to-markdown packers, tree-sitter AST structural outline extraction, and security/secret scans. | Cannot copy AST parsers, line counters, or ignore file readers. |
-| `MarkItDown` | MIT | Study multi-format files (PDF, EPub, docx) parser hooks, and context alignment markdown pipelines. | Cannot copy document readers, image extractors, or parser libs. |
-| `Zvec` | Apache-2.0 | Reference SQLite FTS5 + vector dense/sparse local RAG indexing integration. | Do not copy raw vector library or C++ binding files into Electron. |
-| `CloakBrowser` | Closed | Study antidetect fingerprint patch parameters and multi-browser profile configurations. | **High Risk.** Prohibited from integrating, bundling, or copying any stealth/captcha evasion systems. |
-| `orca` | MIT | Study parallel worker workspace sandbox orchestration, Git worktree isolation lifecycle, and visual agent session timelines. | Prohibited from copying desktop shell code, worktree execution scripts, or agent telemetry wrappers. |
+### Product behaviour only (no source)
 
-## Product Behavior References
-
-Some products are behavior references only, not source-code sources.
-
-| Product | Allowed Use | Forbidden Use |
+| Product | Allowed | Forbidden |
 |---|---|---|
-| Codex browser settings | Browser control IA, permission vocabulary, data/screenshot/CDP setting categories. | Source code, private assets, branding, or copying UI implementation details. |
+| Codex browser settings | Browser control IA, permission vocabulary, data/screenshot/CDP categories (D30) | Source, branding, pixel UI copy |
+
+### Explicitly not reference material for Fleet canvas/product shells
+
+Do **not** treat as stack candidates or clone into `源码参考` for implementation:
+
+| Project | Why not |
+|---|---|
+| `11cafe/jaaz` | Full AI-canvas **product shell**; not Craft surface; license needs audit; conflicts D39/D52 |
+| `basketikun/infinite-canvas` | Full canvas workbench; **AGPL-3.0** high risk; not Craft-hosted |
+| `hero8152/Infinite-Canvas` | Comfy/API wrapper product; not spatial OS in Craft |
+
+Black-box browser demos only if needed; **no monorepo clone required** for stack choice (xyflow spike is the path).
 
 ## High-Risk Prohibitions
 
 Never build Fleet into:
 
-- a stealth browser
-- a bot-detection bypass product
-- an automatic account rotation or quota evasion tool
-- a product that reads cookies/tokens to infer account state
-- a second agent/session platform beside Craft
+- a stealth browser / bot-detection bypass / captcha evasion product  
+- automatic account rotation or quota evasion  
+- cookie/token harvesting for account state  
+- a second agent/session platform beside Craft  
+
+**Retired from any “study antidetect parameters” list:** CloakBrowser and similar closed anti-detect stacks — **zero positive product value** under D23.
+
+## Retired — no active reference value (do not clone / remove local checkouts)
+
+These were removed from the active catalog because they add noise, wrong product gravity, license
+dead-ends, or compliance risk without a clear Fleet module hook.
+
+| Retired | Reason |
+|---|---|
+| `CloakBrowser` | Closed anti-detect; only enables forbidden product (D23) |
+| `LobeHub` | Restrictive community license; UI patterns forbidden to copy (D52); huge clone cost |
+| `OpenUI` | Generic generative UI templates; not Craft simplify/optimize path |
+| `Stitch-sdk` / `Stitch-skills` | External design-tool packaging; not Fleet spine |
+| `Memanto` / `mempalace` | Memory-palace canvas metaphor ≠ M07 work canvas (ADR-0033) |
+| `Remotion` | Bespoke license blocks commercial bundling; M19 uses native deck + honest export, not Remotion app |
+| `Headroom` | Overlaps green-light `rtk` compression themes; no unique Fleet need |
+| `Zvec` | Premature vector/SQLite stack vs ADR-0034 W1/W2 filesystem spine |
+| `nezha` (三头六臂 concurrency kit) | Unrelated concurrency framework; no module hook |
+| `kdenlive` | Full NLE app; video direction is `opencut-classic` patterns only |
+| `warp` / `zed` | Commercial/product UX only; no adapt path into Craft Electron (D52) |
+| `cherry-studio` | Competing AI desktop shell; UI not a baseline (D50/D52) |
+| `cc-switch` | Multi-provider account switcher surface → quota/account-evasion product risk (D23) |
+| `ego-lite` | Separate “agent browser” product; browser path is Craft BrowserPane (D10) |
+| `cmux` / `cockpit-tools` / `oh-my-pi` / `OpenCLI` / `golutra` / `mercury-agent` / `palmier-pro` / `OpenMontage` / `multica` / `Kun` / `AstrBat` / `CowAgent` / `CoreCoder` / `OpenCLI` | Competing agent/video/terminal products or toys without a unique green-light hook; prefer listed green/black-box set |
+
+Re-add only via Promotion Process below.
+
+## Local checkout policy (`源码参考/`)
+
+| Keep locally (examples) | Do not keep |
+|---|---|
+| Green-light: craft-agents-oss, AionUi, fleet-old, DeepSeek-Reasonix, open-design, rtk, codegraph, deepcode-cli, opencut-classic | Retired table rows |
+| Thin black-box for active catalog when studying: hermes-agent, orca, OpenHands, omnigent, openpencil, tldraw, cline, penpot | Full clones of warp/zed/lobehub/cherry-studio/kdenlive/nezha/… |
+
+`源码参考` is **gitignored** local material; Fleet repo tracks policy + scripts, not third-party trees.
 
 ## Promotion Process
 
 To promote a candidate to green-light:
 
-1. Verify license and subdirectory licenses.
-2. Verify the exact capability needed.
-3. Ask for explicit user approval if not already approved.
-4. Update `DECISIONS-LEDGER.md`.
-5. Update this file.
-6. Update attribution records before copying code.
+1. Verify license and subdirectory licenses.  
+2. Verify the exact capability needed and module owner.  
+3. Explicit user approval if not already approved.  
+4. Update `DECISIONS-LEDGER.md`.  
+5. Update this file.  
+6. Attribution before any code copy.  
 
 MIT or Apache-2.0 alone does not promote a project.
