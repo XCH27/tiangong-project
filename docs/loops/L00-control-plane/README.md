@@ -92,8 +92,9 @@ shared contracts before L01/L02 packets exist. Track exit evidence against WAVE-
 5. `WAVE-MODULE-MAP.md` §3 checklist
 6. `OWNERSHIP-MATRIX.md` (note unassigned + provisional)
 7. Contract proposals under `docs/contracts/`
-8. `docs/migration/BACKEND-VALUE-PORT.md` (D50 — no old UI)
-9. M01 module file
+8. `docs/migration/ENGINEERING-STANDARDS.md` + `BACKEND-CONFLICT-AUDIT.md`
+9. `docs/migration/BACKEND-VALUE-PORT.md` (D50 — no old UI)
+10. M01 module file
 
 ## Do not
 

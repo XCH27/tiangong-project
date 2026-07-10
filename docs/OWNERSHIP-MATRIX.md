@@ -42,8 +42,9 @@
 | `docs/loops/**` | Lead | Numbered delivery-loop orientation (not a second gate) |
 | `docs/DOCUMENT-REGISTRY.md` | Lead | Active document inventory / authority map |
 | `docs/verification/**` | Lead | Documentation verification reports |
-| `docs/migration/**` | Lead | v0.11 migration ledger, evidence, staging-protocol |
+| `docs/migration/**` | Lead | migration standards, ledger, evidence, audits, staging-protocol |
 | `docs/migration/staging-protocol/**` | Lead | Text-frozen TS port sources (not live app imports) |
+| `docs/migration/audits/**` | Lead (or assigned auditor) | Per-unit adapt records; append regression notes |
 | `docs/adr/0034-physical-persistence-w1-w2.md` | Lead | W1/W2 persistence ADR |
 | `docs/adr/0035-product-internal-namespace.md` | Lead | Namespace ADR |
 | `docs/contracts/w0.1-freeze-record.md` | Lead | W0.1 freeze record |

@@ -32,9 +32,13 @@
 | `FORBIDDEN-ANTIPATTERNS.md` | Binding | Non-goals checklist | Second systems, redlines, rejected routes |
 | `PERSISTENCE-AUTHORITY-MAP.md` | Binding | State ownership | One logical authority per state class |
 | `UPSTREAM-BASELINE.md` | Binding | Migration gate | Craft v0.11.0 clean base |
+| `migration/ENGINEERING-STANDARDS.md` | Execution | Migration engineering norms | folders, C1–C10, trace |
+| `migration/BACKEND-CONFLICT-AUDIT.md` | Execution | Conflict audit | stub vs spine blockers |
+| `migration/BACKEND-VALUE-PORT.md` | Binding (D50) | Value filter | no old UI |
 | `migration/v0.11-MIGRATION-LEDGER.md` | Execution | Migration evidence | retain/adapt/drop/defer + verification |
 | `migration/v0.11-BASELINE-VALIDATION.md` | Execution | Baseline evidence | install/typecheck results |
 | `migration/v0.11-PORT-CHECKLIST.md` | Execution | Port plan | Fleet protocol onto clean base |
+| `migration/audits/**` | Execution | Adapt records | per-unit traceability |
 | `contracts/w0.1-freeze-record.md` | Binding (text) | Contract freeze status | Partial W0.1 freeze |
 | `contracts/m11a-usage-cost-core.md` | Binding (text) | M11A freeze | `w0.1-m11a-1` |
 | `adr/0034-physical-persistence-w1-w2.md` | Binding ADR | Persistence | Filesystem W1/W2 |
