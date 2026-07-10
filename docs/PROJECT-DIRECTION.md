@@ -146,6 +146,8 @@ Do:
 - keep the monorepo, Electron shell, project/task/session flow, settings authority, permissions,
   BrowserPane, and compatible upstream panels after evidence-based inspection
 - remove or quarantine old experimental UI that does not support the new direction
+- **do not port old Fleet / fleet-old interface design** (D50); visual baseline is clean Craft v0.11
+- from old trees, bring only **backend-valuable** spine-aligned behaviour (protocol, runtime, leases, jobs, provenance)
 - keep upstream sync possible
 - verify install, typecheck, and basic Electron launch before feature migration
 
@@ -154,6 +156,7 @@ Do not:
 - sync upstream on a dirty tree
 - replace the shell
 - add new top-level pages for every feature
+- resurrect fleet-old or experimental Fleet screens to “save design time”
 
 Exit criteria: the clean v0.11 workbench is usable, the migration ledger is complete, and the
 canonical contract implementation is re-frozen against that baseline.
