@@ -49,6 +49,32 @@ Source session: brief description
 
 ## Active Entries
 
+### [HFL-005] 2026-07-10 | Source: owner | Status: promoted
+
+#### Raw Human Input
+
+> LobeHub 好像有开源自己的组件库。主要是想借鉴它的**文稿模式**，它在文稿编辑方面做得非常好。
+
+#### Agent Interpretation
+
+- LobeHub is **not** a product shell baseline (D52 still Craft).
+- Primary reference value: **document / 文稿 editing UX** (structure, density, AI-around-doc).
+- Component library (e.g. `@lobehub/*`) is **not** auto green-light: LobeHub Community License restricts derivative distribution; Fleet must not copy packages without license + promotion.
+- Optimize Craft’s existing document/TipTap path using black-box study, not fork LobeChat.
+
+#### Linked Decisions / Modules
+
+- D50, D51, D52; M05 document surface; Craft editor
+- `REFERENCE-PROJECT-POLICY` LobeHub black-box row
+
+#### Agent Response
+
+Restored LobeHub to active black-box catalog with 文稿-only scope; re-cloned local checkout; matrix M05 note (2026-07-10).
+
+#### Open Questions
+
+None unless owner later approves commercial derivative license for component code.
+
 ### [HFL-004] 2026-07-10 | Source: owner | Status: promoted
 
 #### Raw Human Input

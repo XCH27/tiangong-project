@@ -30,6 +30,7 @@
 - `cline` — 模式/技能想法（黑盒）  
 - `penpot` — FOSS 设计产品行为（黑盒）  
 - `agents-cli` — CLI 形态  
+- `lobehub`（lobe-chat checkout）— **仅黑盒借鉴「文稿/文档编辑」体验**；LobeHub Community License **禁止**把组件库/源码当绿灯拷进 Fleet；**禁止**当第二壳。详见 `docs/REFERENCE-PROJECT-POLICY.md`。
 
 ### plugins（示例）
 

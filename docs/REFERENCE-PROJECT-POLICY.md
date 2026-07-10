@@ -59,6 +59,7 @@ Only projects with a **clear Fleet module hook** remain listed. Others were reti
 | `orca` | MIT | Parallel agents | Worktree isolation / multi-worker **ideas** | Copy desktop shell/telemetry |
 | `Cline` / `Roo Code` | Apache-2.0 | M12 modes | Multi-role / scheduled automation / mode presets **ideas** | Copy IDE extension packages |
 | `penpot` | MPL/local FOSS | Design product behaviour | FOSS design-app behaviour (black-box) | Not M07 host; do not replace Craft shell |
+| **`LobeHub` / `lobe-chat`** | **LobeHub Community License** (Apache-2.0 **plus** commercial/derivative restrictions) | **文稿 / document editing UX** (primary); secondary: notebook/document tools IA | **Black-box only:** how “文稿模式” structures long-form edit, outline, AI-assist around a document, density of chrome, and progressive tools. Use to **inform optimize Craft TipTap/doc surfaces** (D52), not to replace Craft. Optional public docs of `@lobehub/*` component **ideas** (spacing, composition) without copying packages. | **Do not copy** LobeChat/LobeHub app source, package layout, styles, assets, or component library code into Fleet without a **separate commercial/derivative license + green-light promotion** (license §1b). **Do not** adopt LobeHub as product shell or second workbench (D50/D51/D52). **Do not** re-license Fleet as a LobeChat derivative. |
 
 ### Product behaviour only (no source)
 
@@ -97,7 +98,6 @@ dead-ends, or compliance risk without a clear Fleet module hook.
 | Retired | Reason |
 |---|---|
 | `CloakBrowser` | Closed anti-detect; only enables forbidden product (D23) |
-| `LobeHub` | Restrictive community license; UI patterns forbidden to copy (D52); huge clone cost |
 | `OpenUI` | Generic generative UI templates; not Craft simplify/optimize path |
 | `Stitch-sdk` / `Stitch-skills` | External design-tool packaging; not Fleet spine |
 | `Memanto` / `mempalace` | Memory-palace canvas metaphor ≠ M07 work canvas (ADR-0033) |
@@ -119,7 +119,8 @@ Re-add only via Promotion Process below.
 | Keep locally (examples) | Do not keep |
 |---|---|
 | Green-light: craft-agents-oss, AionUi, fleet-old, DeepSeek-Reasonix, open-design, rtk, codegraph, deepcode-cli, opencut-classic | Retired table rows |
-| Thin black-box for active catalog when studying: hermes-agent, orca, OpenHands, omnigent, openpencil, tldraw, cline, penpot | Full clones of warp/zed/lobehub/cherry-studio/kdenlive/nezha/… |
+| Thin black-box: hermes-agent, orca, OpenHands, omnigent, openpencil, tldraw, cline, penpot | Full clones of warp/zed/cherry-studio/kdenlive/nezha/… |
+| `software/lobehub` | **Allowed again** as black-box for **文稿/document edit UX only** (see catalog). Not green-light; no source copy. |
 
 `源码参考` is **gitignored** local material; Fleet repo tracks policy + scripts, not third-party trees.
 
