@@ -40,6 +40,8 @@
 
 ## 已删除的无价值/负价值本机克隆（2026-07-10）
 
-见策略文 **Retired** 表。已从本机移除例如：`nezha`、`kdenlive`、`warp`、`zed`、`lobehub`、`cherry-studio`、`cc-switch`、`ego-lite`、以及一批无模块挂钩的竞品壳；plugins 侧移除 `remotion`、`openui`、`stitch-*`、`memanto`/`mempalace`、`headroom`、`zvec`、各类 UI kit 打包等。
+见策略文 **Retired** 表。已从本机移除例如：`nezha`、`kdenlive`、`warp`、`zed`、`cherry-studio`、`cc-switch`、`ego-lite`、以及一批无模块挂钩的竞品壳；plugins 侧移除 `remotion`、`openui`、`stitch-*`、`memanto`/`mempalace`、`headroom`、`zvec`、各类 UI kit 打包等。
+
+**例外恢复：** `software/lobehub`（lobe-chat）— **仅黑盒借鉴文稿/文档编辑体验**；不可拷组件库/源码入 Fleet（LobeHub Community License）；不可当第二壳。
 
 **不要**为 jaaz / basketikun infinite-canvas / hero8152 Infinite-Canvas 建正式参考克隆（策略文已写明）。
