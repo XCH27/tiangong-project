@@ -8,6 +8,17 @@
 > **Owner:** Lead for media protocol; M09 Worker after packet approval
 > **Depends on:** M00, M03, M05, M08 job core, M12 core, M16, M17
 
+## Frontend Exposure
+
+> **Canonical detail:** [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M09  
+> **D51/D52 owner quotes apply** (verbatim in matrix §0). Do not invent other “minimal UI” rules.
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
+|---|---|---|---|---|---|
+| (see matrix for full M09 rows) | see matrix | see matrix | see matrix | see matrix | D51-R3(a–d) only |
+
+**Designer note:** Start from Craft v0.11 chrome (D52); simplify/optimize; add the smallest in-loop control only when the matrix marks `required`. Placement class only — M16 owns docks/routes.
+
 ## 1. Purpose
 
 Compose images, video, audio, text, captions, rendered web/deck segments, and generated media in

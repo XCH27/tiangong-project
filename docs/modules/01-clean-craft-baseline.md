@@ -10,6 +10,17 @@
 > **Owner:** Lead
 > **Depends on:** verified upstream `v0.11.0` in `UPSTREAM-BASELINE.md`
 
+## Frontend Exposure
+
+> **Canonical detail:** [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M01  
+> **D51/D52 owner quotes apply** (verbatim in matrix §0). Do not invent other “minimal UI” rules.
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
+|---|---|---|---|---|---|
+| (see matrix for full M01 rows) | see matrix | see matrix | see matrix | see matrix | D51-R3(a–d) only |
+
+**Designer note:** Start from Craft v0.11 chrome (D52); simplify/optimize; add the smallest in-loop control only when the matrix marks `required`. Placement class only — M16 owns docks/routes.
+
 ## 1. Purpose
 
 Establish one clean, verifiable Craft Agents v0.11 base and selectively adapt valuable Fleet

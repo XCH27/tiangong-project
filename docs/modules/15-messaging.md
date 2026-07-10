@@ -8,6 +8,17 @@
 > **Owner:** Lead for gateway boundary; M15 Worker after packet approval
 > **Depends on:** M00, M03, M05 ArtifactRef, M13 settings/secrets, M16 views
 
+## Frontend Exposure
+
+> **Canonical detail:** [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M15  
+> **D51/D52 owner quotes apply** (verbatim in matrix §0). Do not invent other “minimal UI” rules.
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
+|---|---|---|---|---|---|
+| (see matrix for full M15 rows) | see matrix | see matrix | see matrix | see matrix | D51-R3(a–d) only |
+
+**Designer note:** Start from Craft v0.11 chrome (D52); simplify/optimize; add the smallest in-loop control only when the matrix marks `required`. Placement class only — M16 owns docks/routes.
+
 ## 1. Purpose
 
 Retain messaging integrations as governed session inputs/outputs without turning Fleet into an

@@ -8,6 +8,17 @@
 > **Owner:** Lead for web-project protocol; M18 Worker after packet approval
 > **Depends on:** M03, M05, M06 preview, M08 render jobs, M12 core, M16, M17
 
+## Frontend Exposure
+
+> **Canonical detail:** [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M18  
+> **D51/D52 owner quotes apply** (verbatim in matrix §0). Do not invent other “minimal UI” rules.
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
+|---|---|---|---|---|---|
+| (see matrix for full M18 rows) | see matrix | see matrix | see matrix | see matrix | D51-R3(a–d) only |
+
+**Designer note:** Start from Craft v0.11 chrome (D52); simplify/optimize; add the smallest in-loop control only when the matrix marks `required`. Placement class only — M16 owns docks/routes.
+
 ## 1. Purpose
 
 Turn text, images, design artifacts, and structured content into an editable local web project,
