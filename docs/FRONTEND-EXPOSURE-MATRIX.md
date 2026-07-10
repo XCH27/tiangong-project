@@ -141,13 +141,14 @@ When a row says `required`, Agents must be able to point to **R3(a–d)**. Rows 
 | Backend capability | UI needed? | Surfaces | Expose what | Not expose | Necessity if required |
 |---|---|---|---|---|---|
 | Open/use project files | required | workbench | Browse/open needed files | second Finder product | R3(c) |
-| **Document / 文稿 edit surface** (Craft TipTap or equivalent on Craft shell) | required when editing docs | workbench | Long-form edit in Craft; **optimize** density/IA using black-box study of LobeHub 文稿模式 (D52) | LobeHub shell/components copy; second doc app | R3(c) |
+| **Document / 文稿 edit surface** (Craft TipTap/ProseMirror on Craft shell) | required when editing docs | workbench | Edit Markdown-oriented docs in Craft | LobeHub shell/components copy; second doc app | R3(c) |
+| **Markdown 模块式拖拽** (block reorder) | required when 文稿 ships as product loop | workbench | Drag **blocks/modules** to reorder (handles, drop targets); outline sync if present | Free-drag canvas for prose; LobeHub DnD source copy | R3(c) |
 | Library promote | later/optional | workbench | Promote when Library ships | auto-library everything | — |
 | Artifact preview | required | inspector | Preview/version when selected | editable storageRef | R3(c) |
 | Lease conflict | required | status, modal | Conflict when it happens | always-on lease dashboard | R3(c) |
 | Destructive file ops | required | approval | Confirm delete | L0 delete | R3(a) |
 
-**LobeHub note:** 文稿体验 = **interaction reference only** (how document mode feels). Implementation stays on Craft document stack + M00/M03; see `REFERENCE-PROJECT-POLICY` LobeHub row.
+**LobeHub note (owner intent):** 参考重点是 **Markdown 文稿的模块式拖拽**（块级重排），不是整站 UI。实现 = 在 **Craft 文档编辑器**上做简化/优化（D52）；黑盒学交互，禁止拷组件库/壳。策略：`REFERENCE-PROJECT-POLICY` LobeHub 行。
 
 ### M06 — Browser evidence
 

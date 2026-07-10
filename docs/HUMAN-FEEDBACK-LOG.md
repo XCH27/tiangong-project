@@ -54,26 +54,28 @@ Source session: brief description
 #### Raw Human Input
 
 > LobeHub 好像有开源自己的组件库。主要是想借鉴它的**文稿模式**，它在文稿编辑方面做得非常好。
+>
+> 主要是它对 **Markdown 格式的文稿，可以进行模块式的拖拽**。
 
 #### Agent Interpretation
 
 - LobeHub is **not** a product shell baseline (D52 still Craft).
-- Primary reference value: **document / 文稿 editing UX** (structure, density, AI-around-doc).
-- Component library (e.g. `@lobehub/*`) is **not** auto green-light: LobeHub Community License restricts derivative distribution; Fleet must not copy packages without license + promotion.
-- Optimize Craft’s existing document/TipTap path using black-box study, not fork LobeChat.
+- **Primary behaviour target:** Markdown document as **modular blocks** with **drag-to-reorder** (not free-canvas prose).
+- Component library is **not** green-light; Community License blocks casual copy of `@lobehub/*`.
+- Implement by optimizing Craft TipTap/ProseMirror **block** model + drag handles; black-box LobeHub for interaction only.
 
 #### Linked Decisions / Modules
 
-- D50, D51, D52; M05 document surface; Craft editor
-- `REFERENCE-PROJECT-POLICY` LobeHub black-box row
+- D50, D51, D52; Craft document editor; M05/M16 as host surfaces
+- `REFERENCE-PROJECT-POLICY` LobeHub row; `FRONTEND-EXPOSURE-MATRIX` M05 模块式拖拽
 
 #### Agent Response
 
-Restored LobeHub to active black-box catalog with 文稿-only scope; re-cloned local checkout; matrix M05 note (2026-07-10).
+Narrowed LobeHub reference to Markdown modular drag; matrix + policy updated (2026-07-10).
 
 #### Open Questions
 
-None unless owner later approves commercial derivative license for component code.
+None unless owner approves commercial license for component code (not required for behaviour reimplementation).
 
 ### [HFL-004] 2026-07-10 | Source: owner | Status: promoted
 
