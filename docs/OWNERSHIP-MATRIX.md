@@ -55,6 +55,9 @@
 
 ### M00 — Platform Spine (W1)
 
+> **v0.11 note:** After clean base replace, also retain upstream  
+> `packages/shared/src/projects/` and coordinate task paths with M04 — do not invent a second project store.
+
 | Path pattern | Owner |
 |---|---|
 | `app/apps/electron/src/main/` | M00 Lead |
@@ -62,6 +65,10 @@
 | `app/apps/electron/src/renderer/shell/` | M00 Lead |
 | `app/packages/shared/src/sessions/` | M00 Lead |
 | `app/packages/shared/src/workspaces/` | M00 Lead |
+| `app/packages/shared/src/projects/` | M00 Lead (after v0.11 base present) |
+| `app/packages/shared/src/protocol/actor.ts` | Lead (protocol) / consumed by M00 |
+| `app/packages/shared/src/protocol/session-event.ts` | Lead (protocol) / consumed by M00 |
+| `app/packages/shared/src/protocol/agent-session.ts` | Lead (protocol) / M00–M04 consume |
 | `app/packages/shared/src/sessions/ (permissions namespace)` | M00 Lead |
 | `app/packages/shared/src/sessions/ (timeline namespace)` | M00 Lead |
 
@@ -84,6 +91,7 @@
 | Path pattern | Owner |
 |---|---|
 | `app/apps/electron/src/main/action-executor/` | M03 Worker |
+| `app/packages/shared/src/protocol/internal-action.ts` | **Lead only** (Workers consume; never edit) |
 
 > The canonical protocol files remain Lead-owned. M03 Workers consume the frozen action
 > contract and implement only the executor domain; any action-schema change is a Lead request.

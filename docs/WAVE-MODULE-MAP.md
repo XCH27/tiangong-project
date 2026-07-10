@@ -39,7 +39,7 @@ Status legend: **Done** | **Partial** | **Open**.
 
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
-| 1 | clean Craft Agents OSS v0.11.0 baseline and migration branch recorded | **Partial** | SHA + inspection worktree recorded; monorepo `app/` replace **Open** — `docs/migration/v0.11-MIGRATION-LEDGER.md` |
+| 1 | clean Craft Agents OSS v0.11.0 baseline and migration branch recorded | **Partial** | SHA + worktree; **install + typecheck:shared/electron green** (`docs/migration/v0.11-BASELINE-VALIDATION.md`); monorepo `app/` replace + GUI **Open** |
 | 2 | retain/adapt/drop/defer ledger for Fleet + fleet-old | **Partial** | Ledger started with protocol/tree diffs; fleet-old rows still expand-on-demand |
 | 3 | canonical text/implementation parity for seat/actions/caller/idempotency/revision/events/policy | **Partial** | Text requirements in `docs/contracts/w0.1-freeze-record.md`; TS parity **Open** |
 | 4 | ArtifactRef, capability, ExternalJob, workflow, spatial, view contracts frozen or version-gated | **Partial** | Text freeze via composable contracts + freeze record; spatial spike still version-gated |

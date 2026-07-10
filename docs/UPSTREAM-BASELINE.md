@@ -36,9 +36,10 @@ must not invent a second project/task/panel system while this evidence is missin
 |---|---|---|
 | Upstream tag + SHA recorded | this file + migration ledger §1 | **Done** |
 | Clean checkout inspection worktree | `/private/tmp/craft-v011-upstream` @ `f4e172bf…` | **Present** (not monorepo `app/`) |
-| Path/behaviour retain-adapt-drop-defer ledger | `docs/migration/v0.11-MIGRATION-LEDGER.md` | **Started** |
-| install/typecheck/Electron launch on clean base | ledger §5 | **Open** |
-| Reviewed branch replacing monorepo `app/` | — | **Open** |
+| Path/behaviour retain-adapt-drop-defer ledger | `docs/migration/v0.11-MIGRATION-LEDGER.md` | **Partial** |
+| `bun install` + typecheck:shared/electron | `migration/v0.11-BASELINE-VALIDATION.md` + evidence log | **Done** (2026-07-10) |
+| Electron GUI launch / session loop | validation §2 | **Open** |
+| Reviewed branch replacing monorepo `app/` | port checklist | **Open** |
 | Contract text freeze | `docs/contracts/w0.1-freeze-record.md` | **Partial** (text only) |
 | TS implementation parity on clean base | freeze record §5 | **Open** |
 

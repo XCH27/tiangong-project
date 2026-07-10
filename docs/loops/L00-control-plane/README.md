@@ -31,11 +31,13 @@ This is a **documentation + migration** loop, not a user-facing product feature.
 | Exit product | Path | Status |
 |---|---|---|
 | Migration ledger | [`docs/migration/v0.11-MIGRATION-LEDGER.md`](../../migration/v0.11-MIGRATION-LEDGER.md) | **Partial** |
+| Baseline validation | [`docs/migration/v0.11-BASELINE-VALIDATION.md`](../../migration/v0.11-BASELINE-VALIDATION.md) | **Partial** (install + typecheck shared/electron **Done**) |
+| Port checklist | [`docs/migration/v0.11-PORT-CHECKLIST.md`](../../migration/v0.11-PORT-CHECKLIST.md) | Ready for base replace |
 | Contract freeze record | [`docs/contracts/w0.1-freeze-record.md`](../../contracts/w0.1-freeze-record.md) | **Partial** (text) |
 | M11A freeze | [`docs/contracts/m11a-usage-cost-core.md`](../../contracts/m11a-usage-cost-core.md) | **Text frozen** |
 | Persistence ADR | [`docs/adr/0034-physical-persistence-w1-w2.md`](../../adr/0034-physical-persistence-w1-w2.md) | **Accepted** |
 | Namespace ADR | [`docs/adr/0035-product-internal-namespace.md`](../../adr/0035-product-internal-namespace.md) | **Accepted** |
-| Clean `app/` replace + launch | ledger §5 | **Open** → W1 stays Locked |
+| Clean `app/` replace + GUI launch | ledger §5 | **Open** → W1 stays Locked |
 
 ## Why this is #00
 
