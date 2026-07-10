@@ -92,7 +92,8 @@ shared contracts before L01/L02 packets exist. Track exit evidence against WAVE-
 5. `WAVE-MODULE-MAP.md` §3 checklist
 6. `OWNERSHIP-MATRIX.md` (note unassigned + provisional)
 7. Contract proposals under `docs/contracts/`
-8. M01 module file
+8. `docs/migration/BACKEND-VALUE-PORT.md` (D50 — no old UI)
+9. M01 module file
 
 ## Do not
 
@@ -100,6 +101,7 @@ shared contracts before L01/L02 packets exist. Track exit evidence against WAVE-
 - Assume SQLite / long-lived daemon is already decided
 - Treat historical v1.2 contract SHAs as implementable authorization
 - Start terminal/canvas/creative code “to save time”
+- Port old Fleet / fleet-old **UI design** (D50) — backend-value only (`docs/migration/BACKEND-VALUE-PORT.md`)
 
 ## Next loop
 
