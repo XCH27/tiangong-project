@@ -42,7 +42,9 @@ All of the following are true:
 5. the current v0.11 implementation paths/extension points have been inspected and recorded;
 6. selected external engine/library version and license are verified;
 7. a finite packet names exact allowed files and one complete user-visible loop;
-8. acceptance can be performed on real behaviour without guessing.
+8. **Frontend exposure** is declared (UI needed? / surfaces / expose what) in the module SPEC and
+   aligned with `docs/FRONTEND-EXPOSURE-MATRIX.md`;
+9. acceptance can be performed on real behaviour without guessing.
 
 No active module is `execution-ready` on 2026-07-09 because the v0.11 migration ledger and W0.1
 canonical re-freeze are incomplete.

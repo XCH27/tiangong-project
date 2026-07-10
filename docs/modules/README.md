@@ -18,11 +18,32 @@ Every active module spec begins with:
 > **Execution gate:** Locked | Ready | In Progress | Blocked
 > **Spec maturity:** concept | contract draft | execution-ready
 > **Wave:** W# or explicit sub-wave
+> **Delivery loop:** Lxx
 > **Owner:** role/module
 > **Depends on:** exact modules and required maturity/status
 ```
 
 These are independent axes. Do not invent informal alternatives such as “almost usable.”
+
+## 1b. Required section — Frontend Exposure
+
+Every module SPEC (and every new backend capability in a PR) must include:
+
+```markdown
+## Frontend Exposure
+
+> Full matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) (module Mxx)
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| … | required / optional / later / none | settings / workbench / … | … | … |
+
+**Designer note:** After this module is `usable`, the human UI should gain: <bullets>.
+**Placement:** M16 owns docks/routes; do not hard-code pixel positions here.
+```
+
+`UI needed?` and `Surfaces` vocabulary are defined in the matrix §1–§2.  
+Backend-only infrastructure uses `none` so designers do not invent fake settings pages.
 
 ## 2. Minimum Executable Spec Content
 
@@ -36,13 +57,14 @@ product behaviour:
 5. **Actions/callers** — human, Agent, and workflow use the same canonical operations.
 6. **Permissions and side effects** — risk, approval, undo, cancellation, retry, evidence.
 7. **Persistence/recovery** — restart, migration, idempotency, conflict, partial commit.
-8. **UI contribution** — exact M16 surface/panel/inspector/canvas projection.
-9. **Dependencies** — exact consumed/produced contracts and gate versions.
-10. **Error table** — user-visible result and permitted recovery.
-11. **Resource behaviour** — queue/back-pressure/cancellation/degradation where applicable.
-12. **Verification** — steps covering UI, backend, state, permission, evidence, Agent parity, error,
+8. **Frontend exposure** — matrix row: UI needed?, surfaces, expose what / not expose (see §1b).
+9. **UI contribution** — M16 surface/panel/inspector/canvas **class** (placement by M16).
+10. **Dependencies** — exact consumed/produced contracts and gate versions.
+11. **Error table** — user-visible result and permitted recovery.
+12. **Resource behaviour** — queue/back-pressure/cancellation/degradation where applicable.
+13. **Verification** — steps covering UI, backend, state, permission, evidence, Agent parity, error,
     restart, and real rendered/runtime behaviour.
-13. **Open gates** — anything unresolved keeps the spec below `execution-ready`.
+14. **Open gates** — anything unresolved keeps the spec below `execution-ready`.
 
 ## 3. Single-Source Rules
 

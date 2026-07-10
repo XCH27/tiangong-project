@@ -108,3 +108,8 @@ active non-superseded packet with exact allowed files. Otherwise `no`. See `AGEN
 ### Delivery Loop (L00–L05)
 A numbered closed product/engineering loop under `docs/loops/`. Ordering is dependency-first so
 agents know where to start. Loop folders do not override `WAVE-MODULE-MAP.md` gates.
+
+### Frontend Exposure
+Whether a backend capability needs human UI, **what** to expose (controls/info), and which
+**surface class** (settings, workbench, panel, approval, timeline, …) — not pixel layout.
+Canonical matrix: `docs/FRONTEND-EXPOSURE-MATRIX.md`. Required in every module SPEC.

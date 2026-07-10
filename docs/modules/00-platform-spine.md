@@ -13,6 +13,21 @@
 
 Provide the one local authority for Fleet sessions, actor identity, permission decisions, timeline evidence, and durable state. M00 does not introduce a physical daemon in W1/W2; it enables later user-visible modules to write one auditable timeline through one permission authority.
 
+## 1b. Frontend Exposure
+
+> Matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M00
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| Sessions open/list | required | workbench | Session switcher/list | raw store paths |
+| Permission / L2–L3 | required | approval, timeline | Confirm/deny with summary | silent L3 |
+| Timeline events | required | timeline | Readable event stream | JSON-only UX |
+| Persistence recovery | optional | status | Recovering/error chip | DB file picker |
+| Fleet Bridge wire | none | none | — | Bridge as settings |
+
+**Designer note when M00 is usable:** approval UX + timeline evidence must be trustworthy; session identity visible.  
+**Placement:** Craft shell + M16; no second shell.
+
 ## 2. Scope
 
 ### In Scope

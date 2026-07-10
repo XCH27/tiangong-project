@@ -35,6 +35,8 @@ the clean Craft Agents v0.11 baseline and canonical contracts are reconciled.
 - [COMPOSABLE-WORKSPACE-ARCHITECTURE.md](COMPOSABLE-WORKSPACE-ARCHITECTURE.md) — approved modular
   spatial/workflow/native-editor boundary.
 - [FORBIDDEN-ANTIPATTERNS.md](FORBIDDEN-ANTIPATTERNS.md) — hard non-goals and second-system bans.
+- [FRONTEND-EXPOSURE-MATRIX.md](FRONTEND-EXPOSURE-MATRIX.md) — each backend capability: UI needed?
+  settings vs workbench vs none (for design after a slice is usable).
 - [DECISIONS-LEDGER.md](DECISIONS-LEDGER.md) — promoted decisions.
 - [WAVE-MODULE-MAP.md](WAVE-MODULE-MAP.md) — only execution-gate/module placement source.
 - [DOCUMENT-READINESS.md](DOCUMENT-READINESS.md) — spec maturity and blockers.

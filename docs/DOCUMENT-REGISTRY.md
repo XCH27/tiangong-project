@@ -20,6 +20,7 @@
 | `loops/L00-…` … `L05-…` | Navigation | Loop orientation | Assemble modules + packets for one loop |
 | `README.md` | Navigation | Index | Docs folder index |
 | `GLOSSARY.md` | Navigation | Definitions | Shared terms |
+| `FRONTEND-EXPOSURE-MATRIX.md` | Execution (UI contract) | Backend→UI exposure | settings vs workbench vs none |
 | `DOCUMENT-REGISTRY.md` | Navigation | This map | Full active inventory |
 
 ## B. Binding product & architecture

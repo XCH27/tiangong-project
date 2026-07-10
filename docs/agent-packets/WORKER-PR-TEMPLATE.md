@@ -59,6 +59,10 @@ Answer each question in one sentence. If any answer is "unknown", stop and retur
 9. **What exact behavior proves this slice is `usable`?**
    >
 
+10. **Frontend exposure (from matrix / module SPEC):**
+   > UI needed? surfaces? what buttons/settings/info were added or explicitly `none`?
+
+
 ---
 
 ## Forbidden Files Check

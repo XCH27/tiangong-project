@@ -8,6 +8,19 @@
 > **Owner:** Lead for contracts; M03 Worker for registry/executor domain
 > **Depends on:** M00 and W0.1 canonical action/event/identity/caller contracts
 
+## Frontend Exposure
+
+> Matrix: [`docs/FRONTEND-EXPOSURE-MATRIX.md`](../FRONTEND-EXPOSURE-MATRIX.md) § M03
+
+| Backend capability | UI needed? | Surfaces | Expose what | Not expose |
+|---|---|---|---|---|
+| Action executor | none | none | — | end-user “raw action console” |
+| Undo | required | workbench, timeline | Undo when supported | fake undo |
+| Blocked/error | required | timeline, status | Human-readable reasons | stack-only errors |
+| Dev registry inspector | later | settings | optional developer view | edit frozen action ids in UI |
+
+**Designer note:** M03 is mostly invisible plumbing; humans see **consequences** (undo, blocks) and product buttons elsewhere that call the same `actionId`s.
+
 ## 1. Purpose
 
 Give human UI, Agent, and workflow runtime one structured path for every governed capability:
