@@ -13,7 +13,7 @@ Before feature work begins, the current v0.11.1 alignment, speculative protocol 
 reset must be separated into an auditable baseline and verified. That is baseline stabilization, not a
 Fleet capability milestone.
 
-## Baseline stabilization — status (updated 2026-07-11, after the separation commits)
+## Baseline stabilization — verified 2026-07-11
 
 Done, in auditable slices on branch `work/fresh-base-spine`:
 
@@ -26,15 +26,16 @@ Done, in auditable slices on branch `work/fresh-base-spine`:
 3. **Residue cleaned:** legacy corpus deleted from the tree (it remains recoverable from Git history
    at the pre-reset commits); `_trash/`, agent-tool state, and stale git lock files removed;
    `.gitignore` hardened against re-committing any of it.
+4. **Upstream config omission fixed:** Craft v0.11.1 package configs extend `tsconfig.base.json`, but
+   the upstream tag omits that file. Commit `c7fd6dea0` restores the last known-good base config and
+   updates the preserved source checkout to upstream tag `v0.11.1` (`4289b160`).
+5. **Development gate passed:** from `app/`, `bun run validate:dev` completed successfully, including
+   all package typechecks, the shared configuration/model tests, and 19 document-tool smoke tests.
+6. **Real Electron path passed:** `bun run electron:dev` opened the app, Settings showed `0.11.1`, a
+   real DeepSeek-backed turn completed, and after a clean stop/restart the same session title, messages,
+   workspace, and Explore permission mode were restored.
 
-**Remaining before the baseline counts as verified** (needs the real development machine — Bun and a
-GUI are required, which the review sandbox lacks):
-
-4. From `app/`: `bun run validate:dev` (typecheck:all + shared tests + doc-tools tests) must pass.
-5. Launch `bun run electron:dev`; exercise one session turn, settings, and restart-persistence as a
-   smoke check.
-6. On success, record the verified commit in `06-CODE-MAP.md` ("Baseline facts") and start
-   Milestone 1. If validation fails, fix forward on this branch before any feature work.
+The baseline is verified. Start Milestone 1; do not add more baseline-planning work.
 
 ## Development model
 
@@ -63,7 +64,7 @@ A milestone is complete only when the applicable parts are real:
 Run targeted checks during development. Run `validate:dev` at the integration gate when shared packages
 or contracts changed; do not use a broad suite as a substitute for the real behavior check.
 
-## Milestone 1 — Caller-aware action invocation `← BUILD THIS AFTER BASELINE`
+## Milestone 1 — Caller-aware action invocation `← BUILD THIS NEXT`
 
 **Goal:** use the existing `set_session_labels` operation to prove that human UI and Agent calls share
 one canonical invocation record, caller-aware policy evaluation, one executor/state authority, and one

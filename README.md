@@ -25,9 +25,9 @@ For agent execution rules, see [docs/07-AGENT-RULES.md](docs/07-AGENT-RULES.md).
 
 ## Current state (honest)
 
-The runnable application is Craft v0.11-derived, but the current working tree is **not yet a clean
-verified baseline**: it contains the v0.11.1 alignment, removal of speculative Fleet protocol staging,
-and this document reset as uncommitted work. No Fleet feature loop is currently implemented. Stabilize
-and verify that baseline before beginning Milestone 1; then the next action is code, not more planning — see
+The runnable application is a **verified Craft v0.11.1 baseline**. The independent source reference is
+pinned to upstream tag `v0.11.1`; `bun run validate:dev` and a real Electron session/settings/restart
+smoke check passed on 2026-07-11. No Fleet feature loop is currently implemented. The next action is
+Milestone 1 code, not more planning — see
 [docs/04-MILESTONES.md](docs/04-MILESTONES.md) and
 [docs/05-MILESTONE-1-ACTION-SPINE.md](docs/05-MILESTONE-1-ACTION-SPINE.md).

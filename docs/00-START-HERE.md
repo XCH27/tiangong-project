@@ -49,9 +49,11 @@ overlap. Big in-flight work registers only its boundaries in
 - **Code:** the runnable application is Craft v0.11.1-derived. The baseline was separated into
   auditable commits on 2026-07-11 (`616eff59e` upstream alignment — including the E9 thinking-level
   saturation fix that restored `typecheck:shared` to green; `7aff1c7da` speculative protocol-staging
-  removal; then the document reset). **Remaining before the baseline counts as verified:** run
-  `bun run validate:dev` and an Electron smoke check on the development machine — see the checklist in
-  [`04-MILESTONES.md`](04-MILESTONES.md).
+  removal; then the document reset). Commit `c7fd6dea0` restored the upstream-required
+  `tsconfig.base.json` omitted from the v0.11.1 tag and advanced the preserved source reference to the
+  exact upstream tag. The baseline is **verified**: `bun run validate:dev` passed, and the real Electron
+  app completed a model-backed session turn, opened Settings at version 0.11.1, restarted, and restored
+  the same session and messages.
 - **Fleet capability:** no Fleet-specific user-visible loop is currently implemented. Do not assume a
   Fleet module, invocation contract, ArtifactRef contract, or other "frozen contract" exists in code.
 - **This document set:** a **fresh rewrite** (2026-07-11) that replaced ~100 legacy planning

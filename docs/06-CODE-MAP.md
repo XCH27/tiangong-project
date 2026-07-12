@@ -9,11 +9,12 @@
 - **Historical replacement commit:** `48bbed08` (Craft v0.11 base plus speculative Fleet staging).
 - **Baseline commits (2026-07-11, branch `work/fresh-base-spine`):** `616eff59e` v0.11.1 alignment
   (incl. the E9 thinking-level saturation fix; `typecheck:shared` green), `7aff1c7da` protocol-staging
-  removal, plus the document-reset commit. **Machine verification still pending:** `bun run
-  validate:dev` + an Electron smoke check must pass on the development machine before this baseline is
-  recorded as verified (see `04-MILESTONES.md`).
+  removal, the document-reset commit, and `c7fd6dea0` restoring the upstream-required
+  `tsconfig.base.json` and updating the source reference. **Verified on the development machine:**
+  `bun run validate:dev` passed; an Electron model-backed turn, Settings/version check, and
+  restart-persistence check were observed.
 - **Preserved reference (do not merge/copy wholesale):** `源码参考/software/craft-agents-oss/`
-  (Craft v0.10.5), behavior/design reference only.
+  at Craft tag `v0.11.1` / commit `4289b160`; behavior/design reference only.
 
 ## Monorepo layout
 

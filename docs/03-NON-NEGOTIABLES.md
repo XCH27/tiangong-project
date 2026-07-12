@@ -45,7 +45,8 @@ is the number-one rule because violating it is how the product fragments into di
   and a deliberate migration.
 - No silent last-write-wins for concurrent document mutation.
 - No external plugin distribution path before built-in capability loading and permissions are real.
-- No wholesale source-tree copy from v0.10.5 over the v0.11 app.
+- No wholesale copy from the preserved upstream source checkout over the working app; compare and
+  integrate intentional upstream changes instead.
 - No fixed node-type union treated as the entire canvas/product model.
 - No visual canvas connector treated as an executable workflow edge without an explicit workflow
   definition and executor.

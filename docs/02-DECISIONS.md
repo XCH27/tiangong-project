@@ -15,8 +15,9 @@
 
 - **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and the
   bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
-- **P2 — Build on and simplify Craft v0.11; never fork a second app.** The preserved v0.10.5 tree is a
-  behavior/design *reference* only, never a second base to merge or copy wholesale. (2026-07-08)
+- **P2 — Build on and simplify Craft v0.11; never fork a second app.** The preserved upstream checkout
+  is a behavior/design *reference* only, never a second base to merge or copy wholesale. It is pinned
+  to tag v0.11.1 as of 2026-07-11. (2026-07-08; reference updated 2026-07-11)
 - **P3 — Retain the Craft shell.** The spatial canvas is a first-class *project surface* hosted inside
   the shell, not a replacement shell. (2026-07-09)
 - **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription in the active
