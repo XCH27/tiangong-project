@@ -368,7 +368,7 @@ function StatusPicker({
           onClick={e => e.stopPropagation()}
           onKeyDown={e => e.stopPropagation()}
           aria-label={t('kanban.changeStatus')}
-          className="rounded-full transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
+          className="inline-flex h-6 items-center rounded-full p-0 transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
         >
           <StatusBadge status={status} live={live} />
         </button>
