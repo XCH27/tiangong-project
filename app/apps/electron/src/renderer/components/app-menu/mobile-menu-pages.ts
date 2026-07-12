@@ -86,12 +86,6 @@ export function buildMobileMenuPages({ hasNewWindow, isDebugMode }: BuildOptions
       labelKey: 'menu.help',
       action: { kind: 'navigate', to: 'help' },
     },
-    {
-      id: 'whats-new',
-      iconName: 'Cake',
-      labelKey: 'sidebar.whatsNew',
-      action: { kind: 'callback', key: 'openWhatsNew' },
-    },
   )
   if (isDebugMode) {
     rootRows.push({
@@ -143,6 +137,14 @@ export function buildMobileMenuPages({ hasNewWindow, isDebugMode }: BuildOptions
         },
       }
     })
+
+  const installUpdateIndex = debugRows.findIndex(row => row.id === 'installUpdate')
+  debugRows.splice(installUpdateIndex + 1, 0, {
+    id: 'whats-new',
+    iconName: 'Cake',
+    labelKey: 'sidebar.whatsNew',
+    action: { kind: 'callback', key: 'openWhatsNew' },
+  })
 
   return [
     { id: 'root', titleKey: 'menu.craftMenu', rows: rootRows },

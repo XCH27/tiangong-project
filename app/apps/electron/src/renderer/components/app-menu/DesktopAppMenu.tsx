@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { Fragment, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import * as Icons from "lucide-react"
 import { isMac } from "@/lib/platform"
@@ -249,17 +249,7 @@ export function DesktopAppMenu({
           </StyledDropdownMenuSubContent>
         </DropdownMenuSub>
 
-        <StyledDropdownMenuItem onClick={onOpenWhatsNew}>
-          <span className="relative">
-            <Icons.Cake className="h-3.5 w-3.5" />
-            {hasUnseenReleaseNotes && (
-              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
-            )}
-          </span>
-          {t('sidebar.whatsNew')}
-        </StyledDropdownMenuItem>
-
-        {isDebugMode && renderDebugSubmenu(t)}
+        {isDebugMode && renderDebugSubmenu(t, onOpenWhatsNew, hasUnseenReleaseNotes)}
 
         <StyledDropdownMenuSeparator />
 
@@ -278,7 +268,11 @@ export function DesktopAppMenu({
  * that drive it (`checkForUpdates`, `installUpdate`, `toggleDevTools`) all live on
  * `window.electronAPI` directly and never traverse the menu IPC channels.
  */
-function renderDebugSubmenu(t: (key: string) => string): React.ReactNode {
+function renderDebugSubmenu(
+  t: (key: string) => string,
+  onOpenWhatsNew: () => void,
+  hasUnseenReleaseNotes?: boolean,
+): React.ReactNode {
   const SectionIcon = getIcon(DEBUG_MENU.icon)
   return (
     <DropdownMenuSub>
@@ -299,12 +293,27 @@ function renderDebugSubmenu(t: (key: string) => string): React.ReactNode {
             console.warn(`[DesktopAppMenu] No debug handler for id: ${item.id}`)
             return null
           }
-          return (
+          const menuItem = (
             <StyledDropdownMenuItem key={item.id} onClick={handler}>
               {Icon && <Icon className="h-3.5 w-3.5" />}
               {t(item.labelKey)}
               {shortcut && <DropdownMenuShortcut className="pl-6">{shortcut}</DropdownMenuShortcut>}
             </StyledDropdownMenuItem>
+          )
+          if (item.id !== 'installUpdate') return menuItem
+          return (
+            <Fragment key={`${item.id}-with-whats-new`}>
+              {menuItem}
+              <StyledDropdownMenuItem onClick={onOpenWhatsNew}>
+                <span className="relative">
+                  <Icons.Cake className="h-3.5 w-3.5" />
+                  {hasUnseenReleaseNotes && (
+                    <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
+                  )}
+                </span>
+                {t('sidebar.whatsNew')}
+              </StyledDropdownMenuItem>
+            </Fragment>
           )
         })}
       </StyledDropdownMenuSubContent>
