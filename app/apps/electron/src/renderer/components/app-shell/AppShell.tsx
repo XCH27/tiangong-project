@@ -72,7 +72,7 @@ import {
 } from "@/components/ui/collapsible"
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
-import { BoardListToggle } from "./kanban/BoardListToggle"
+import { createBoardSidebarItem } from "./kanban/sidebar-navigation"
 import { PanelStackContainer } from "./PanelStackContainer"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
@@ -1767,6 +1767,10 @@ function AppShellContent({
     navigate(routes.view.allSessions())
   }, [])
 
+  const handleBoardClick = useCallback(() => {
+    navigate(routes.view.board())
+  }, [])
+
   const handleFlaggedClick = useCallback(() => {
     navigate(routes.view.flagged())
   }, [])
@@ -2119,6 +2123,7 @@ function AppShellContent({
     }
     result.push({ id: 'nav:flagged', type: 'nav', action: handleFlaggedClick })
     result.push({ id: 'nav:archived', type: 'nav', action: handleArchivedClick })
+    result.push({ id: 'nav:board', type: 'nav', action: handleBoardClick })
 
     // 2. Labels section header + regular label tree for keyboard nav
     result.push({ id: 'nav:labels', type: 'nav', action: () => handleLabelClick('__all__') })
@@ -2141,7 +2146,7 @@ function AppShellContent({
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleBoardClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2435,7 +2440,7 @@ function AppShellContent({
                     <TooltipContent side="right">{newChatHotkey}</TooltipContent>
                   </Tooltip>
                 </div>
-                {/* Primary Nav: All Sessions (▸ Statuses, Flagged, Archived), Labels | Sources, Skills | Settings */}
+                {/* Primary Nav: All Sessions (▸ Statuses, Flagged, Archived), Board, Labels | Sources, Skills | Settings */}
                 {/* pb-4 provides clearance so the last item scrolls above the mask-fade-bottom gradient */}
                 <div className="flex-1 overflow-y-auto min-h-0 mask-fade-bottom pb-4">
                 <LeftSidebar
@@ -2450,7 +2455,7 @@ function AppShellContent({
                       title: t("sidebar.allSessions"),
                       label: String(workspaceSessionMetas.length),
                       icon: Inbox,
-                      variant: sessionFilter?.kind === 'allSessions' ? "default" : "ghost",
+                      variant: sessionFilter?.kind === 'allSessions' && !isBoardView ? "default" : "ghost",
                       onClick: handleAllSessionsClick,
                       expandable: true,
                       expanded: isExpanded('nav:allSessions'),
@@ -2514,6 +2519,11 @@ function AppShellContent({
                         },
                       ],
                     },
+                    createBoardSidebarItem({
+                      title: t('kanban.board'),
+                      active: isBoardView,
+                      onClick: handleBoardClick,
+                    }),
                     // Labels: navigable header (shows all labeled sessions) + hierarchical tree (drag-and-drop reorder + re-parent)
                     {
                       id: "nav:labels",
@@ -2729,16 +2739,6 @@ function AppShellContent({
               ) : undefined}
               actions={
                 <>
-                  {/* List ⇄ Board view switch (sessions mode, desktop widths only).
-                      In board view the navigator is collapsed, so the board hosts its own copy. */}
-                  {!isAutoCompact && isSessionsNavigation(navState) && (
-                    <BoardListToggle
-                      value="list"
-                      onChange={view => {
-                        if (view === 'board') navigate(routes.view.board())
-                      }}
-                    />
-                  )}
                   {/* Filter dropdown - available in ALL chat views.
                       Shows user-added filters (removable) and pinned filters (non-removable, derived from route).
                       Pinned filters: state views pin a status, label views pin a label, flagged pins the flag. */}
