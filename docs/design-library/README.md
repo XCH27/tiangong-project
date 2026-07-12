@@ -79,5 +79,9 @@ replacement or `_trash/` recovery path. Do not "repair" deferred internal detail
 capability becomes the next real milestone.
 
 [`OWNER-VOICE.md`](OWNER-VOICE.md) preserves the owner's recovered verbatim product signals (OV-001…
-OV-005) with their current dispositions — read it before interpreting any recovered design's product
+OV-006) with their current dispositions — read it before interpreting any recovered design's product
 intent, and never paraphrase those quotes into your own gloss (Decision P5 sets the precedent).
+
+[`PROJECT-REVIEW-2026-07-11.md`](PROJECT-REVIEW-2026-07-11.md) is the archived pre-reset audit (in
+Chinese) that motivated the 2026-07-11 reset — kept because it is the only record of *why* the
+previous corpus was retired and which of its recommendations the current document set adopted.
