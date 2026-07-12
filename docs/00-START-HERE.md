@@ -55,8 +55,9 @@ overlap. Big in-flight work registers only its boundaries in
 - **Fleet capability:** no Fleet-specific user-visible loop is currently implemented. Do not assume a
   Fleet module, invocation contract, ArtifactRef contract, or other "frozen contract" exists in code.
 - **This document set:** a **fresh rewrite** (2026-07-11) that replaced ~100 legacy planning
-  documents. The old corpus was moved out of the active tree into `_trash/2026-07-11/` (recoverable,
-  and also in Git history) — not permanently deleted.
+  documents. The old corpus was deleted from the tree and is recoverable from pre-reset Git history
+  (e.g. `git show 616eff59e:docs/<file>`); the pre-reset audit that motivated the reset is archived at
+  [`design-library/PROJECT-REVIEW-2026-07-11.md`](design-library/PROJECT-REVIEW-2026-07-11.md).
 
 The gap between "elaborate plan" and "zero implementation" was the reason for the reset. First make
 the baseline auditable and verified; after that, **the next action is code, not more planning.**

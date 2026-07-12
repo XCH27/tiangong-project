@@ -47,8 +47,7 @@ an explicit import/copy action creates one and records it.
 - exposing unrestricted local paths to untrusted callers;
 - native document edit semantics owned by other modules (design, media, deck, web);
 - **except** workspace **Markdown 文稿** opened in Craft TipTap: interaction behaviour was specified in
-  `docs/contracts/markdown-document-surface.md` *(deleted; recoverable under
-  `_trash/2026-07-11/docs-legacy/contracts/`)* (not a separate module number; not a third-party editor).
+  `docs/contracts/markdown-document-surface.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)* (not a separate module number; not a third-party editor).
 
 ## 4. User-Visible Mutation Loop
 
@@ -166,8 +165,7 @@ operations may block on missing or restricted license metadata.
 ## 9. ArtifactRef Handoff
 
 M05 implements the accepted ArtifactRef contract from
-`docs/contracts/composable-workspace-contracts.md` *(deleted; recoverable under
-`_trash/2026-07-11/docs-legacy/contracts/`)* after W0.1 promotion. **Current rule instead:** the
+`docs/contracts/composable-workspace-contracts.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)* after W0.1 promotion. **Current rule instead:** the
 envelope is *derived from a real producer/consumer* and versioned before Milestone-3 cross-surface
 use — see `../02-DECISIONS.md` D6; do not revive the frozen draft.
 
@@ -204,8 +202,7 @@ quarantined/reconciled. It is not reported as a finished untracked artifact.
 - artifact inspector showing exact version, parents, hash, sensitivity, license, and usage;
 - missing-reference and stale-version states reusable by M07/M09/M18/M19;
 - Markdown workspace files open on the Craft TipTap surface (modular block reorder when 文稿 ships);
-  see `docs/contracts/markdown-document-surface.md` *(deleted; recoverable under
-  `_trash/2026-07-11/docs-legacy/contracts/`)*.
+  see `docs/contracts/markdown-document-surface.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)*.
 
 ## 12. Error Handling
 

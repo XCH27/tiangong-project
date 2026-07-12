@@ -72,8 +72,8 @@ M00 consumes the frozen `SessionEvent`, `ActorRef`, `AgentSeat`, and permission 
 - A state-changing transaction either commits its corresponding evidence or reports failure; no caller may claim success before both are durable.
 - Restart recovery reopens the same local store and marks interrupted work for its owning module to reconcile; it never creates a replacement session database.
 - ~~`docs/PERSISTENCE-AUTHORITY-MAP.md` is the binding cross-module ownership map.~~ *(retired; the
-  current authority map is the table in `../03-NON-NEGOTIABLES.md` §4. The old map is recoverable under
-  `_trash/2026-07-11/docs-legacy/`.)*
+  current authority map is the table in `../03-NON-NEGOTIABLES.md` §4. The old map is recoverable from
+  pre-reset Git history: `git show 616eff59e:docs/PERSISTENCE-AUTHORITY-MAP.md`.)*
 
 ## 6. Permission and Identity Rules
 

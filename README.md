@@ -14,7 +14,8 @@ short code-grounded design delta at a location natural to the existing monorepo;
 copies recovered material from `docs/design-library/`. Those recovered designs are historical source
 material, not active plans. There is
 no Wave system, no packet system, and no readiness gate; the previous planning corpus was reset on
-2026-07-11 and moved to `_trash/` (recoverable) because the plan had outrun the code.
+2026-07-11 because the plan had outrun the code (recoverable from pre-reset Git history, e.g.
+`git show 616eff59e:docs/<file>`).
 
 This is a product fork of Craft Agents v0.11. Before building anything, agents must check
 [docs/08-CRAFT-CAPABILITY-MAP.md](docs/08-CRAFT-CAPABILITY-MAP.md) — most needed capability already

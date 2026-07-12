@@ -178,7 +178,8 @@
 
 A few durable legacy judgments were deliberately **not** carried as active entries because no near-term
 milestone touches them. They are parked, not overturned; their substance lives in the matching
-`design-library/` file and the original ledger (recoverable under `_trash/2026-07-11/docs-legacy/`):
+`design-library/` file and the original ledger (pre-reset Git history:
+`git show 616eff59e:docs/DECISIONS-LEDGER.md`):
 the `@`/`/` addressing model and session-as-Agent idea (old D16); "Messaging is retained and governed,
 not silently deleted" (old D28 — the messaging packages in the tree stay until a real decision removes
 them); the terminal-surface / CLI-lane / TeamRun three-concept separation (old D21); and

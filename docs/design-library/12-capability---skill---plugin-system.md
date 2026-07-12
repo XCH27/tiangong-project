@@ -54,8 +54,7 @@ the effective manifest and canonical action schemas.
 ## 4. Data Contract
 
 M12 consumes the proposed contracts in
-`docs/contracts/composable-workspace-contracts.md` *(deleted; recoverable under
-`_trash/2026-07-11/docs-legacy/contracts/`)*. Before M12 Core implementation they must be
+`docs/contracts/composable-workspace-contracts.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)*. Before M12 Core implementation they must be
 re-derived from current code and promoted into the canonical protocol.
 
 Each operation declares:

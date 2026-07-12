@@ -50,8 +50,7 @@ surfaces have not yet been benchmarked together.
 ## 4. View Contract
 
 M16 consumes the proposed `ViewContribution`, `ViewInstance`, and `LayoutSnapshot` contracts in
-`docs/contracts/composable-workspace-contracts.md` *(deleted; recoverable under
-`_trash/2026-07-11/docs-legacy/contracts/`)*. Before implementation, the accepted forms must be
+`docs/contracts/composable-workspace-contracts.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)*. Before implementation, the accepted forms must be
 re-derived from current code and promoted into the canonical protocol.
 
 Rules:

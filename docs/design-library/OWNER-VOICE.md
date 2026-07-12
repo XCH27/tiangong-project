@@ -4,8 +4,8 @@
 > in the retired corpus, and Decision P5 already establishes the rule for handling them: **quote
 > verbatim; never paraphrase them into your own gloss.** The two UI statements live in
 > `../01-PRODUCT.md` §4. The remaining product-defining signals are preserved here with their current
-> disposition. Full original context: `_trash/2026-07-11/docs-legacy/OWNER-VOICE.md` (also in Git
-> history).
+> disposition. Full original context: pre-reset Git history —
+> `git show 616eff59e:docs/OWNER-VOICE.md`.
 
 ## OV-001 — Software must keep growing without becoming a mess (2026-07-08)
 

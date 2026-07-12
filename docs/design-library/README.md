@@ -75,8 +75,8 @@ promoted until a representative Electron media/concurrency spike proves it.
 The numbered files retain their historical M00–M19 mapping. Their filenames are intentionally stable
 for traceability. They may contain dead links or obsolete vocabulary; the review identifies the known
 classes of conflict, and references to deleted planning docs are annotated inline with their current
-replacement or `_trash/` recovery path. Do not "repair" deferred internal details until that
-capability becomes the next real milestone.
+replacement or a pre-reset Git-history recovery command. Do not "repair" deferred internal details
+until that capability becomes the next real milestone.
 
 [`OWNER-VOICE.md`](OWNER-VOICE.md) preserves the owner's recovered verbatim product signals (OV-001…
 OV-006) with their current dispositions — read it before interpreting any recovered design's product
