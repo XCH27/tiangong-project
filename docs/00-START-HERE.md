@@ -81,7 +81,7 @@ recovered detailed designs used as source material when a branch starts:
 | 08 | [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md) | **Before building anything:** what Craft already provides, and REUSE/EXTEND/NEW per capability |
 | — | [`OWNER-CHECKPOINTS.md`](OWNER-CHECKPOINTS.md) (owner-facing) | The moments an agent **must stop and ask the owner** (money, irreversible/public effects, production runtime commitments, new authorities/safety boundaries, product forks) |
 | — | [`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md) (live state, not a plan) | Before starting a **big feature**: read it to avoid duplicating one already in progress, and register your own |
-| — | [`design-library/`](design-library/README.md) (source material, not a plan) | Historical M00–M19 design material; use only to write a short current delta when justified, never copy wholesale |
+| — | [`design-library/`](design-library/README.md) (source material, not a plan) | Historical M00–M19 design material, the recovered verbatim owner-voice signals, and the archived pre-reset audit; use designs only to write a short current delta when justified, never copy wholesale |
 
 There are no other required reads. There is no Wave system, no packet system, no readiness gate, no
 maturity label, no status block. If an **active** document (the numbered set, the two helper files,
