@@ -17,7 +17,7 @@ export type MobileMenuPageId = 'root' | 'settings' | 'help' | 'debug'
  */
 export type MobileMenuAction =
   | { kind: 'navigate'; to: MobileMenuPageId }
-  | { kind: 'callback'; key: 'newChat' | 'newWindow' | 'openSettings' }
+  | { kind: 'callback'; key: 'newChat' | 'newWindow' | 'openSettings' | 'openWhatsNew' }
   | { kind: 'settingsSubpage'; subpage: SettingsMenuItem['id'] }
   | { kind: 'url'; url: string }
   | { kind: 'electronApi'; method: 'checkForUpdates' | 'installUpdate' | 'menuToggleDevTools' }
@@ -85,6 +85,12 @@ export function buildMobileMenuPages({ hasNewWindow, isDebugMode }: BuildOptions
       iconName: 'HelpCircle',
       labelKey: 'menu.help',
       action: { kind: 'navigate', to: 'help' },
+    },
+    {
+      id: 'whats-new',
+      iconName: 'Cake',
+      labelKey: 'sidebar.whatsNew',
+      action: { kind: 'callback', key: 'openWhatsNew' },
     },
   )
   if (isDebugMode) {

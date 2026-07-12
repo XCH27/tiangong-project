@@ -152,6 +152,7 @@ export function MobileAppMenu(props: AppMenuProps) {
           case 'newChat': props.onNewChat(); break
           case 'newWindow': props.onNewWindow?.(); break
           case 'openSettings': props.onOpenSettings(); break
+          case 'openWhatsNew': props.onOpenWhatsNew(); break
         }
         close()
         return

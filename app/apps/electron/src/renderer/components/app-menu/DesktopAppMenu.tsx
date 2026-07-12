@@ -143,6 +143,8 @@ export function DesktopAppMenu({
   onOpenSettings,
   onOpenSettingsSubpage,
   onOpenKeyboardShortcuts,
+  onOpenWhatsNew,
+  hasUnseenReleaseNotes,
   onToggleSidebar,
   onToggleFocusMode,
 }: AppMenuProps) {
@@ -246,6 +248,16 @@ export function DesktopAppMenu({
             </StyledDropdownMenuItem>
           </StyledDropdownMenuSubContent>
         </DropdownMenuSub>
+
+        <StyledDropdownMenuItem onClick={onOpenWhatsNew}>
+          <span className="relative">
+            <Icons.Cake className="h-3.5 w-3.5" />
+            {hasUnseenReleaseNotes && (
+              <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
+            )}
+          </span>
+          {t('sidebar.whatsNew')}
+        </StyledDropdownMenuItem>
 
         {isDebugMode && renderDebugSubmenu(t)}
 

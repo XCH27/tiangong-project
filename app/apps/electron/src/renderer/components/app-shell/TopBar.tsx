@@ -49,6 +49,8 @@ interface TopBarProps {
   onOpenSettingsSubpage: (subpage: SettingsMenuItem['id']) => void
   onOpenKeyboardShortcuts: () => void
   onOpenStoredUserPreferences: () => void
+  onOpenWhatsNew: () => void
+  hasUnseenReleaseNotes?: boolean
   onBack: () => void
   onForward: () => void
   canGoBack: boolean
@@ -75,6 +77,8 @@ export function TopBar({
   onOpenSettingsSubpage,
   onOpenKeyboardShortcuts,
   onOpenStoredUserPreferences,
+  onOpenWhatsNew,
+  hasUnseenReleaseNotes,
   onBack,
   onForward,
   canGoBack,
@@ -163,6 +167,8 @@ export function TopBar({
           onOpenSettingsSubpage={onOpenSettingsSubpage}
           onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
           onOpenStoredUserPreferences={onOpenStoredUserPreferences}
+          onOpenWhatsNew={onOpenWhatsNew}
+          hasUnseenReleaseNotes={hasUnseenReleaseNotes}
           onToggleSidebar={onToggleSidebar}
           onToggleFocusMode={onToggleFocusMode}
         />

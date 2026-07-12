@@ -14,6 +14,8 @@ export interface AppMenuProps {
   onOpenSettingsSubpage: (subpage: SettingsMenuItem['id']) => void
   onOpenKeyboardShortcuts: () => void
   onOpenStoredUserPreferences: () => void
+  onOpenWhatsNew: () => void
+  hasUnseenReleaseNotes?: boolean
   onToggleSidebar?: () => void
   onToggleFocusMode?: () => void
 }
