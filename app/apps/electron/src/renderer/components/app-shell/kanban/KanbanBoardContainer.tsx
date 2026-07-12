@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
@@ -17,8 +16,9 @@ import { getDefaultModelsForConnection, type LlmConnectionWithStatus } from '@co
 import type { SessionStatus } from '@/config/session-status-config'
 import type { KanbanColumnDef } from '@craft-agent/shared/projects/types'
 import { KanbanBoard } from './KanbanBoard'
+import { KanbanBoardHeader } from './KanbanBoardHeader'
 import { KANBAN_COLUMNS, statusToColumn } from './status-column'
-import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
+import type { KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
 import { mergeSubtaskRows, type SpecNodeSummary, type SubtaskChildRow } from './subtask-merge'
 import type { SpecNode } from './task-spec-form'
@@ -556,29 +556,18 @@ export function KanbanBoardContainer() {
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="text-sm font-medium">{t('kanban.allTasks')}</span>
-          {projectOptions.length > 0 && (
-            <KanbanProjectFilter projects={projectOptions} value={projectFilter} onChange={setProjectFilter} />
-          )}
-          {usingProjectColumns && editingProject && (
-            <span className="truncate text-[11px] text-foreground/45">
-              {t('kanban.column.columnsFrom', { project: editingProject.config.name })}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setEditorTarget({ mode: 'create', initialProjectId: projectFilter[0] })}
-            disabled={!activeWorkspaceId}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-foreground/[0.03] disabled:opacity-50"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.newTask')}
-          </button>
-        </div>
-      </div>
+      <KanbanBoardHeader
+        allTasksLabel={t('kanban.allTasks')}
+        newTaskLabel={t('kanban.newTask')}
+        projects={projectOptions}
+        selectedProjectIds={projectFilter}
+        onProjectFilterChange={setProjectFilter}
+        columnsFromLabel={usingProjectColumns && editingProject
+          ? t('kanban.column.columnsFrom', { project: editingProject.config.name })
+          : undefined}
+        onCreateTask={() => setEditorTarget({ mode: 'create', initialProjectId: projectFilter[0] })}
+        createDisabled={!activeWorkspaceId}
+      />
       <div className="min-h-0 flex-1">
         <KanbanBoard
           columns={activeColumns}
