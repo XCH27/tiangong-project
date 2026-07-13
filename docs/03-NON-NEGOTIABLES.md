@@ -83,11 +83,12 @@ code before changing it; extend the authority rather than creating a neighbor.
 
 | State | Current authority | Fleet rule |
 |---|---|---|
-| sessions, projects, tasks | Craft session/project/task stores | reuse |
+| sessions and tasks | Craft SessionManager and task stores | reuse |
+| user-facing projects | **Current:** Craft Workspace + nested Project. **Target:** Workspace config/root/session scope | implement Decision P6 only through an explicit migration slice; do not pretend the target model already exists or create a second project authority |
 | permission modes and Agent gating | Craft mode-manager, PreToolUse, SessionManager approval flow | extend caller-aware policy; no second engine |
 | session evidence | Craft SessionEvent stream | extend attribution only when a real caller requires it |
 | session-scoped Agent tools | `SESSION_TOOL_DEFS` and handlers | tool registry, not the complete cross-caller invocation layer |
-| workspace bytes | Craft workspace/filesystem paths | preserve; later add conflict coordination without duplicating bytes |
+| project/workspace bytes and permissions | Craft Workspace filesystem paths and `permissions.json` | preserve; the chosen Project folder is the Workspace root, with no second permission tree |
 | settings, credentials, sources, skills | existing Craft stores and managers | reuse |
 | future jobs, artifacts, workflows, memory | no Fleet authority exists yet | define only in the milestone that proves a real loop |
 

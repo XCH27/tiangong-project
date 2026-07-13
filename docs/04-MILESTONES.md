@@ -13,7 +13,7 @@ Before feature work begins, the current v0.11.1 alignment, speculative protocol 
 reset must be separated into an auditable baseline and verified. That is baseline stabilization, not a
 Fleet capability milestone.
 
-## Baseline stabilization — verified 2026-07-11
+## Baseline stabilization — verified 2026-07-11, re-verified 2026-07-12
 
 Done, in auditable slices on branch `work/fresh-base-spine`:
 
@@ -34,8 +34,17 @@ Done, in auditable slices on branch `work/fresh-base-spine`:
 6. **Real Electron path passed:** `bun run electron:dev` opened the app, Settings showed `0.11.1`, a
    real DeepSeek-backed turn completed, and after a clean stop/restart the same session title, messages,
    workspace, and Explore permission mode were restored.
+7. **Post-baseline delta audited:** current HEAD `cdc387e1d` differs from the pinned upstream app in
+   13 common files, one removed list/board toggle, and eight intentional additions. The functional
+   differences are limited to the Pi `max → xhigh` compatibility fix and five narrow Board/menu UI
+   commits. Their five targeted tests and `bun run validate:dev` passed on 2026-07-12. The broader UI
+   delta is `wired but not visually checked` across every theme and window width, so future UI work
+   must still perform slice-specific Electron review.
 
-The baseline is verified. Start Milestone 1; do not add more baseline-planning work.
+The application baseline is verified. Start only one owner-selected coherent slice at a time. The
+planned Milestone 1 remains the next architecture milestone, but a bounded UI correction may proceed
+first when the owner selects it; do not combine that correction with Project=Workspace, remote access,
+labels, settings, or other information-architecture rewrites.
 
 ## Development model
 

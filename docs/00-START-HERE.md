@@ -51,10 +51,15 @@ overlap. Big in-flight work registers only its boundaries in
   saturation fix that restored `typecheck:shared` to green; `7aff1c7da` speculative protocol-staging
   removal; then the document reset). Commit `c7fd6dea0` restored the upstream-required
   `tsconfig.base.json` omitted from the v0.11.1 tag and advanced the preserved source reference to the
-  exact upstream tag. The baseline is **verified**: `bun run validate:dev` passed, and the real Electron
-  app completed a model-backed session turn, opened Settings at version 0.11.1, restarted, and restored
-  the same session and messages.
-- **Fleet capability:** no Fleet-specific user-visible loop is currently implemented. Do not assume a
+  exact upstream tag. Current HEAD `cdc387e1d` adds five narrow UI deltas: a primary Board entry,
+  persistent Board project filter, aligned Board status controls, and What's New moved from the
+  sidebar into the Debug menu. Against the pinned upstream checkout, application source differs in
+  only those UI files, the verified `max → xhigh` Pi adapter fix, `tsconfig.base.json`, tests, and
+  local agent instructions. On 2026-07-12 the relevant five UI tests and `bun run validate:dev`
+  passed; the correct Electron development process was also running from `app/`.
+- **Fleet capability:** the five UI deltas above are wired, but no Fleet action-spine or other new
+  end-to-end product capability is implemented. Project=Workspace, remote access, label redesign,
+  archived-task management, and file-management proposals remain **not implemented**. Do not assume a
   Fleet module, invocation contract, ArtifactRef contract, or other "frozen contract" exists in code.
 - **This document set:** a **fresh rewrite** (2026-07-11) that replaced ~100 legacy planning
   documents. The old corpus was deleted from the tree and is recoverable from pre-reset Git history
@@ -83,6 +88,7 @@ recovered detailed designs used as source material when a branch starts:
 | 08 | [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md) | **Before building anything:** what Craft already provides, and REUSE/EXTEND/NEW per capability |
 | — | [`OWNER-CHECKPOINTS.md`](OWNER-CHECKPOINTS.md) (owner-facing) | The moments an agent **must stop and ask the owner** (money, irreversible/public effects, production runtime commitments, new authorities/safety boundaries, product forks) |
 | — | [`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md) (live state, not a plan) | Before starting a **big feature**: read it to avoid duplicating one already in progress, and register your own |
+| — | [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) | Before changing UI structure, components, icons, spacing, colors, typography, or interactions |
 | — | [`design-library/`](design-library/README.md) (source material, not a plan) | Historical M00–M19 design material, the recovered verbatim owner-voice signals, and the archived pre-reset audit; use designs only to write a short current delta when justified, never copy wholesale |
 
 There are no other required reads. There is no Wave system, no packet system, no readiness gate, no

@@ -85,3 +85,9 @@ intent, and never paraphrase those quotes into your own gloss (Decision P5 sets 
 [`PROJECT-REVIEW-2026-07-11.md`](PROJECT-REVIEW-2026-07-11.md) is the archived pre-reset audit (in
 Chinese) that motivated the 2026-07-11 reset — kept because it is the only record of *why* the
 previous corpus was retired and which of its recommendations the current document set adopted.
+
+[`20-workspace-project-session-remote-connections.md`](20-workspace-project-session-remote-connections.md)
+is **current code-grounded design source material**, not recovered M20 material and not current UI.
+Its binding core is the owner decision that user-facing Project should equal the backend Workspace.
+Its exact navigation, migration, and remote-connection screens are proposals that must be extracted
+into small verified slices; do not apply the document wholesale.

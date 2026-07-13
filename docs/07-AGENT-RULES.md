@@ -31,6 +31,9 @@ the cost/risk, and 2–3 options with a recommendation.
    Most of what you need already exists — the recurring failure on this project has been ignoring that.
 3. **Find the real code.** Use `06-CODE-MAP.md` and `08-CRAFT-CAPABILITY-MAP.md`, then confirm with
    `rg`. Never trust a path or a capability claim without reading the code.
+   For any UI change, also read `CRAFT-UI-BASELINE.md` and compare the exact upstream v0.11.1
+   component before editing. Craft components and tokens are the visual authority; screenshots and
+   unrelated design systems are secondary references only.
 4. **Define a coherent slice** before editing: the concrete user/system outcome; **the existing Craft
    code path and authority you will reuse or extend** (state the REUSE/EXTEND/NEW classification
    explicitly); the smallest set of UI + logic + state + recovery changes; what must stay unchanged; the

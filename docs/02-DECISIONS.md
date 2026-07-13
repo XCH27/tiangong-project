@@ -25,6 +25,24 @@
 - **P5 — UI baseline is clean Craft v0.11; default work is simplify/optimize, not invent.** New
   surfaces only when a capability must be visible and no Craft surface can host it. (owner, binding,
   2026-07-10) — see `01-PRODUCT.md` §4 for the verbatim owner wording.
+- **P6 — User-facing Project equals backend Workspace.** Fleet exposes one work boundary, not Craft's
+  nested `Workspace → Project` hierarchy. Workspace remains the storage/config/session/remote-routing
+  implementation authority. The **one-boundary model** is binding; exact sidebar placement, list/board
+  navigation, legacy-data migration, and remote-project presentation are not yet implemented and must
+  be decided and verified in their own small slices. The detailed document is design source material,
+  not an authorization for a full-shell rewrite. (owner, binding core decision, 2026-07-11) —
+  `design-library/20-workspace-project-session-remote-connections.md`.
+- **P7 — Remote Projects connect directly to another Fleet instance; no Fleet account or central
+  coordinator.** The controller supplies only server URL + connection token. A remote access grant is
+  hashed, revocable, and scoped to explicit Workspace/Project IDs; it is separate from the embedded
+  server's private internal token. Reuse Craft's bidirectional Workspace-routed RPC and connection
+  lifecycle rather than introducing a Multica-style PostgreSQL control server, polling daemon, or
+  Fleet-hosted relay. Desktop hosting extends the existing Electron main-process server lifecycle;
+  VPS hosting reuses the existing headless/systemd path. Remote standby uses an independent
+  `prevent-app-suspension` reason so the host may keep running while its display sleeps; it does not
+  repurpose the active-session “keep screen awake” preference. User-managed port mapping, private
+  networking, or frp may make the URL reachable but remains outside Fleet's data model. (owner
+  direction, technical route selected 2026-07-11) — design delta §9.
 
 ## B. The spine (agent-native execution)
 

@@ -67,12 +67,13 @@ Paths are under `app/`. Classifications are **for Fleet's planned work against e
 | Interactive PTY lane / CLI runtime | — (no `node-pty`; no runtime-lane concept) | `craft-cli` (CLI client) | **NEW** | A first-class interactive PTY + selectable runtime lane would be Fleet's addition — but it is **conditional**: Milestone 2 starts with the existing non-interactive Bash/background-shell path, and `node-pty` is added only if that real loop proves an interactive PTY necessary (see `04-MILESTONES.md` M2; adding it is an owner checkpoint as a shipped runtime dependency). Reuse spine + terminal UI + shell validation. |
 | MCP client / external providers | `packages/shared/src/mcp/` (`client.ts`, `mcp-pool.ts`, `pool-server.ts`) | `sources` | **REUSE** | Craft already integrates MCP servers as capability providers. Fleet "external software = replaceable adapter" builds on this. |
 | CLI client | `apps/cli/`, `app/docs/cli.md`, bundled `craft-cli` doc | `craft-cli` | **REUSE/EXTEND** | A CLI over WebSocket exists. Fleet's "CLI as a runtime method" extends it. |
+| Remote Project transport | `server-core/src/transport/`; `electron/src/transport/routed-client.ts`; `preload/bootstrap.ts`; workspace remote config; `electron/src/main/power-manager.ts`; headless bootstrap/systemd build | — | **REUSE/EXTEND** | Reuse direct bidirectional Workspace RPC, Electron main-process hosting, and headless service. Add independent Remote Connections UI, hashed/revocable Workspace-scoped grants, and a remote-standby `prevent-app-suspension` reason; do not add a central server or polling daemon (Decision P7). |
 
 ### Files, sources, skills, capabilities
 
 | Capability | Craft code entry | Bundled doc | Fleet class | Note |
 |---|---|---|---|---|
-| Workspace file authority/storage | `packages/shared/src/workspaces/storage.ts`, `types.ts`; `apps/electron/src/main/handlers/workspace.ts` | — | **REUSE** | Workspace roots and storage exist. This does **not** imply a complete user-facing file browser or governed cross-caller file-action surface. |
+| Project/Workspace authority and storage | `packages/shared/src/workspaces/storage.ts`, `types.ts`; `apps/electron/src/main/handlers/workspace.ts`; `agent/permissions-config.ts` | — | **REUSE/EXTEND** | Per owner Decision P6, user-facing Project equals backend Workspace. Reuse Workspace root, settings, permissions, Sources/Skills and Session scope; extend it only with useful nested-Project metadata. |
 | Governed file UI/actions | SDK built-in Read/Write/Edit/Bash plus existing preview/file affordances | — | **EXTEND** | Agent file tools exist, but human/Agent parity, leases, provenance, and a complete file-management surface do not. Milestone 3 owns the proven gap. |
 | File leases (concurrent-write) | — | — | **NEW** | Lease/reservation for concurrent agent edits is Fleet's addition (Milestone 3). Build on workspace storage + permission. |
 | Library assets & ArtifactRef | — | — | **NEW** | Versioned handoff is Fleet-owned, but the envelope is derived from a real producer/consumer and versioned before M3 cross-surface use—not frozen in M1. It identifies the native bytes/version and provenance so one result can be referenced by several later Agents/surfaces without copying. It is not a second byte store. Library management remains later. |
@@ -84,7 +85,8 @@ Paths are under `app/`. Classifications are **for Fleet's planned work against e
 
 | Capability | Craft code entry | Bundled doc | Fleet class | Note |
 |---|---|---|---|---|
-| Projects & tasks & Kanban | `packages/shared/src/projects/`, `tasks/`; `server-core/src/tasks/` | `statuses`, `labels` | **REUSE** | Project/task/Kanban authority exists (upstream v0.11). Don't create a second task system. |
+| Legacy nested Projects | `packages/shared/src/projects/`; `server-core/src/handlers/rpc/projects.ts` | — | **EXTEND → COMPATIBILITY** | Craft v0.11 nested Projects are not Fleet's long-term entity. Keep non-destructive compatibility/migration only; new Projects are Workspaces. |
+| Tasks & Kanban | `packages/shared/src/tasks/`; `server-core/src/tasks/`; Session status/labels/kanban placement | `statuses`, `labels` | **REUSE/EXTEND** | Reuse task and Session authorities. Remove nested `projectId` scope as Project becomes Workspace; do not create another board/task store. |
 | Views (dynamic filters) | `packages/shared/src/views/` (Filtrex, `views.json`) | — | **REUSE/EXTEND** | Runtime session filters exist. Fleet workbench view/layout host extends this + Craft preferences. |
 | Automations | `packages/shared/src/automations/`; `server-core` automation handlers | `automations` | **REUSE** | Rule/automation engine exists. |
 | Scheduler | `packages/shared/src/scheduler/scheduler-service.ts` | — | **REUSE** | Scheduling exists — reuse for any timed behavior. |

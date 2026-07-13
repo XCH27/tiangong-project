@@ -45,9 +45,17 @@ decision.
 
 | Big feature | Branch | Occupies (folder / scope) | Status | Notes |
 |---|---|---|---|---|
-| _(none yet — stabilize the current baseline before Milestone 1)_ | — | — | — | See `04-MILESTONES.md`. |
+| _(none — application baseline recovered; no big feature in flight)_ | `work/fresh-base-spine` | — | — | Start one owner-selected coherent slice. Do not start parallel UI/IA rewrites. |
 
 ## Notes / resolved overlaps
 
-_(Record here any overlap the main agent resolved, and any dropped/superseded areas, so the history is
-visible without cluttering the live table.)_
+- **2026-07-12 recovery:** Uncommitted thrash (half-finished Project=Workspace UI + agent UI patches)
+  was cleared from the working tree. `app/apps/electron` and `app/packages` match branch **HEAD**
+  (`cdc387e1d` family). Recoverable WIP lives only in git stash
+  `stash@{0}: recovery: unfinished packages WIP before clean restore 20260712` — **do not
+  `stash apply` wholesale.** Re-introduce only as tiny reviewed slices, never as a bulk restore.
+- **Hard rules for the next work:** Craft shell is authority (`CRAFT-UI-BASELINE`); one primary
+  home per capability; no empty future-feature surfaces; M1 does not add panels (see
+  `05-MILESTONE-1-ACTION-SPINE.md`). Project=Workspace (Decision P6 / design-library/20) is a
+  **later** vertical slice, not a full-shell rewrite. The detailed navigation in design-library/20 is
+  not current behavior and does not override the five small Board/menu commits already at HEAD.

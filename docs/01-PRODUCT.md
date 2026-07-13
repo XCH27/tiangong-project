@@ -104,6 +104,17 @@ session + permission + identity + action registry + timeline + files + cost. The
 whatever document/job model each surface genuinely needs. There is no universal "edit everything with
 one patch format" model — that is a known trap.
 
+### 3a. One user-visible project boundary
+
+Fleet's target user model has one work boundary: **Project equals the backend Workspace**. Workspace
+remains the code-level storage, configuration, session, permission, and remote-routing authority; a
+future migration may present that authority as Project and retire Craft's nested Project entity.
+This is a target decision, not current behavior: today the clean v0.11.1-derived shell still exposes
+Craft's Workspace and Project structures. Exact navigation, migration, and remote-project placement
+must be delivered and verified as separate vertical slices. Decision P6 records the durable model;
+[`design-library/20-workspace-project-session-remote-connections.md`](design-library/20-workspace-project-session-remote-connections.md)
+is source material for those slices, not a screen contract to apply wholesale.
+
 ## 4. UI philosophy (owner-set, binding)
 
 Two owner statements govern all UI work. Quoted verbatim; do not paraphrase them into your own
