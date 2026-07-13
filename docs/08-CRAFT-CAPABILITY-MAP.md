@@ -32,6 +32,11 @@ row below names a bundled doc, read it — it is Craft's own explanation of that
 behavior. Craft also ships `app/apps/electron/resources/AGENTS.md` (how bundled assets sync),
 `app/packages/core/CLAUDE.md`, and `app/packages/shared/CLAUDE.md`.
 
+The pinned source documentation and the current official hosted documentation are indexed locally at
+`源码参考/documentation/craft-agents-official/README.md`. The hosted mirror is useful for later
+upstream behavior, deployment and configuration, but it does not prove that the pinned v0.11.1 code
+implements the same behavior.
+
 Bundled docs: `automations`, `browser-tools`, `craft-cli`, `data-tables`, `html-preview`,
 `image-preview`, `labels`, `llm-tool`, `markdown-preview`, `mermaid`, `pdf-preview`, `permissions`,
 `skills`, `sources`, `statuses`, `themes`, `tool-icons`.
@@ -93,6 +98,19 @@ Paths are under `app/`. Classifications are **for Fleet's planned work against e
 | Search | `packages/shared/src/search/` (fuzzy) | — | **REUSE** | — |
 | Settings / preferences | `apps/electron/src/renderer/pages/settings/`; settings handlers | `themes`, `tool-icons` | **REUSE** | One settings home. Do not add a parallel settings surface (Decision P5). |
 | Labels / statuses | `packages/shared/src/labels/`, `statuses/` | `labels`, `statuses` | **REUSE** | — |
+
+### Distribution, sharing, hosted docs, and external relays
+
+| Capability | Craft code entry | Official doc | Fleet class | Note |
+|---|---|---|---|---|
+| Upstream Craft intake | official source tags; `resources/release-notes/`; `packages/shared/src/version/manifest.ts` | mirror index + installation docs | **REUSE** | Keep version awareness and selectively port upstream fixes/features. This does not authorize installing an official Craft binary over Fleet. |
+| Fleet application updates | `apps/electron/src/main/auto-update.ts`; `apps/electron/electron-builder.yml` | installation | **EXTEND/REPLACE** | Inherited binary channel is Craft-operated. Fleet needs its own signed or user-configured channel, or an honestly disabled installer. |
+| Online session sharing | `packages/shared/src/branding.ts`; `server-core/src/sessions/SessionManager.ts`; renderer share actions; `apps/viewer/` | sharing | **EXTEND/REPLACE** | Current path uploads full session data to Craft's viewer API. Reuse session bundle/viewer code for local export and optional self-hosted/configurable sharing. |
+| Help and Docs MCP | `packages/shared/src/docs/`; `packages/session-mcp-server/src/index.ts`; Electron help actions | hosted mirror; bundled docs | **REUSE/EXTEND** | Prefer bundled/local documentation. Keep official web docs only as an explicit external upstream reference. |
+| Desktop OAuth callback | shared auth modules and local callback server | MCP authentication/config docs | **REUSE** | Existing local desktop callback is independent of Craft cloud and remains the default desktop path. |
+| Remote WebUI OAuth relay | `packages/shared/src/auth/oauth-relay.ts`; `server-core/src/webui/` | server/headless + auth docs | **EXTEND** | Make relay origin configurable/self-hosted; do not hide a mandatory Craft relay. |
+| Slack OAuth relay | `packages/shared/src/auth/slack-oauth.ts` | messaging docs | **EXTEND** | User-controlled app/callback or explicit unavailable state when unconfigured. |
+| Craft-hosted sources/MCP | `packages/shared/src/sources/`; builtin source definitions; MCP client | sources docs | **REUSE as optional connector** | User may intentionally connect to Craft services, but core Fleet startup/data/remote access must not require them. |
 
 ### Browser, previews, LLM tool, diagrams
 

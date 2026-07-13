@@ -12,9 +12,12 @@
 4. This document set (00–08).
 5. Nothing else. There is no other rule system. Retired Waves/packets/gates do not exist anymore.
 
-A direct owner request authorizes ordinary in-scope work. You do not need permission to do the obvious
-thing. Ask only when a missing decision would materially change the product or cause an external /
-high-risk / irreversible effect — the exact list of those moments is [`OWNER-CHECKPOINTS.md`](OWNER-CHECKPOINTS.md)
+A direct owner request authorizes inspection and other ordinary in-scope preparation. **Before every
+new or modified product feature, however, the owner requires one explicit slice confirmation covering
+the frontend and backend together.** This is a short product-alignment checkpoint, not permission to
+split the feature into two implementations. Additional questions are needed only when a missing
+decision would materially change the product or cause an external / high-risk / irreversible effect —
+the exact list of those moments is [`OWNER-CHECKPOINTS.md`](OWNER-CHECKPOINTS.md)
 (money, irreversible actions, production runtime dependencies, new state/security authorities,
 public effects, and product forks). The owner is
 not a programmer, so when you stop at a checkpoint, present the decision in plain language: what, why,
@@ -22,30 +25,50 @@ the cost/risk, and 2–3 options with a recommendation.
 
 ## The method (every task)
 
-1. **Orient minimally.** Read `00-START-HERE.md`. Read *one* more doc only if the task touches it
-   (a decision, a non-negotiable, or the current milestone spec). Do **not** preload everything.
+1. **Orient minimally.** Read `00-START-HERE.md` and this execution contract. Read the mandatory
+   capability map in step 2, then only the capability-specific source/docs it points to. Add one
+   decision, non-negotiable, milestone spec, or UI baseline only when the slice touches it. Do **not**
+   preload the whole corpus or design library.
 2. **Check Craft first — MANDATORY.** This is a product fork of Craft Agents v0.11. Before writing
-   any code, open `08-CRAFT-CAPABILITY-MAP.md`, find the capability you are about to touch, and read the
-   Craft code (and its bundled `~/.craft-agent/docs/` doc) it points to. Classify your work as **REUSE /
-   EXTEND / NEW**. You are **forbidden** from building a parallel version of anything Craft already has.
-   Most of what you need already exists — the recurring failure on this project has been ignoring that.
+   any code, open `08-CRAFT-CAPABILITY-MAP.md`, find the capability, and compare three things: the
+   pinned v0.11.1 implementation under `源码参考/software/craft-agents-oss/`; its bundled/versioned
+   documentation; and the matching current hosted-document mirror under
+   `源码参考/documentation/craft-agents-official/`. Classify the remaining Fleet gap as **REUSE /
+   EXTEND / NEW**. Hosted docs may be newer than the pinned code and never override observed code.
+   You are **forbidden** from building a parallel version of anything Craft already has. Most of what
+   you need already exists — the recurring failure on this project has been ignoring that.
 3. **Find the real code.** Use `06-CODE-MAP.md` and `08-CRAFT-CAPABILITY-MAP.md`, then confirm with
    `rg`. Never trust a path or a capability claim without reading the code.
    For any UI change, also read `CRAFT-UI-BASELINE.md` and compare the exact upstream v0.11.1
    component before editing. Craft components and tokens are the visual authority; screenshots and
    unrelated design systems are secondary references only.
-4. **Define a coherent slice** before editing: the concrete user/system outcome; **the existing Craft
+4. **Define and confirm one coherent slice** before editing: the concrete user/system outcome; **the existing Craft
    code path and authority you will reuse or extend** (state the REUSE/EXTEND/NEW classification
    explicitly); the smallest set of UI + logic + state + recovery changes; what must stay unchanged; the
-   observable evidence that will prove it.
+   observable evidence that will prove it; and the user-facing/bundled documentation that will be
+   updated after implementation. Present this briefly to the owner as:
+
+   ```text
+   Frontend: entry, interaction, visible states
+   Backend: authority, request → handler → persistence/state → caller-visible result
+   Unchanged: adjacent behavior explicitly kept
+   Docs after implementation: exact user-facing/bundled doc
+   Classification: REUSE | EXTEND | NEW
+   ```
+
+   Wait for confirmation. One confirmation covers one coherent feature slice only; do not combine
+   unrelated pages, data migrations, or service boundaries.
 5. **Build the smallest coherent change** that delivers real, verifiable behavior and leaves the app
    working. Reuse existing Craft primitives and authorities. Preserve unrelated dirty changes and user
    data.
 6. **Verify in reality.** Run the cheapest sufficient ladder (below). For user-visible work, launch the
    real Electron app and observe it.
-7. **Report honestly** (capability vocabulary below). Update only the docs that actually changed — and
+7. **Update documentation after the behavior is real, then report honestly** (capability vocabulary
+   below). Update only the docs that actually changed — and
    if you touched a capability not yet in `08-CRAFT-CAPABILITY-MAP.md`, add it there with its real code
-   path.
+   path. When user-visible behavior or configuration changes, update the matching bundled/user-facing
+   Craft-derived documentation in the same slice; do not leave code and help text describing different
+   products.
 
 ## A coherent slice normally covers
 
@@ -208,6 +231,17 @@ current, code-grounded delta. The code and observed behavior remain the truth.
   facts; do not append a diary.
 - Update `06-CODE-MAP.md` only when an entry point or authority moves.
 - Amend a decision in `02-DECISIONS.md` in place when a durable direction changes; note the date.
+- Treat the three documentation layers separately: numbered Fleet authority; pinned upstream source
+  and bundled docs; mutable hosted-doc mirror. Copy neither upstream wording nor historical designs
+  into Fleet authority without reconciling it with current code.
+- Refresh the hosted mirror only when upstream intake or an external-service/configuration slice needs
+  current evidence. Review the diff and manifest; a refresh alone changes no Fleet capability.
+- A behavior-changing slice updates its actual user-facing/bundled documentation and capability-map
+  row before handoff. A code-path move updates `06-CODE-MAP.md`. Ordinary implementation details do
+  not earn a new planning document.
+- Do not update usage documentation from a proposal. First confirm the frontend/backend slice with the
+  owner, implement and verify it, then change instructions/status wording to match observed behavior.
+  A rejected or unimplemented proposal remains absent from user documentation.
 - Collapse a finished milestone to one "done" line and promote the next.
 - **Do not grow documentation faster than implementation.** This project was reset because the plan
   outran the code. If you are about to write a new architecture document instead of code, stop and ask

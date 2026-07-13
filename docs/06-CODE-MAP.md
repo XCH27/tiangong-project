@@ -15,6 +15,25 @@
   restart-persistence check were observed.
 - **Preserved reference (do not merge/copy wholesale):** `源码参考/software/craft-agents-oss/`
   at Craft tag `v0.11.1` / commit `4289b160`; behavior/design reference only.
+- **Last application-source delta:** `cdc387e1d`. Commits after it through `e46ee07e2` remove an
+  unrelated agent toolkit or change audits/documentation/reference material; they do not add a Fleet
+  product capability.
+- **Pre-redesign recovery point:** `refs/snapshots/pre-final-ui-20260712-191011` (`20e32a2f8`) and
+  `/Users/lullwen/Documents/天工-snapshots/pre-final-ui-20260712-191011.bundle`.
+
+## Reference roots (do not mix their authority)
+
+| Reference | Location | Use |
+|---|---|---|
+| Fleet product authority | `docs/00-START-HERE.md` through `docs/08-CRAFT-CAPABILITY-MAP.md` | Current decisions, boundaries, milestone and code entry points. |
+| Pinned upstream implementation | `源码参考/software/craft-agents-oss/` | Exact Craft v0.11.1 behavior and versioned documentation. Compare files; never merge the tree wholesale. |
+| Current official hosted docs mirror | `源码参考/documentation/craft-agents-official/online-current/` | Later/current upstream behavior, deployment and configuration clues. It may not match v0.11.1. |
+| Official mirror index and provenance | `源码参考/documentation/craft-agents-official/README.md`, `SYNC-MANIFEST.txt`, `source-v0.11.1-document-files.txt` | Locate source docs, verify downloaded bytes, and see known Craft-operated service dependencies. |
+| Historical Fleet design material | `docs/design-library/` | Ideas and owner intent only; extract a small current delta after checking code. |
+| Unlicensed UI reference kits | `源码参考/ui-kits/` | Study hierarchy/state coverage only; do not copy assets or code into production. |
+
+Refresh the hosted mirror with `scripts/sync-craft-official-docs.sh`, then review its diff. A mirror
+refresh is upstream intake, not a Fleet feature and not permission to change application behavior.
 
 ## Monorepo layout
 
@@ -69,6 +88,23 @@
   caller-aware invocation/policy/executor/evidence seam. UI does not simulate PreToolUse.
 - **Feature behavior generally:** renderer → atom/hook → RPC → server handler → existing Craft
   store/service. Search all callers before touching a shared type.
+
+## Craft-operated service boundaries
+
+These are inherited entry points, not all Fleet-approved capabilities. Decision P8 requires each to
+be handled as its own coherent slice; do not remove a URL without tracing UI → handler → persistence →
+recovery and do not replace several services in one patch.
+
+| Concern | Current code entry | Fleet direction |
+|---|---|---|
+| Session sharing/viewer upload | `packages/shared/src/branding.ts`; `packages/server-core/src/sessions/SessionManager.ts`; `apps/electron/src/renderer/pages/ChatPage.tsx`; `apps/viewer/` | **EXTEND/REPLACE:** local export plus optional configurable/self-hosted viewer; never silently upload as a Fleet-native path. |
+| Upstream version awareness | `packages/shared/src/version/manifest.ts`; official tags/release notes/docs | **REUSE:** detect and review upstream Craft releases for selective porting. |
+| Fleet binary updater | `apps/electron/src/main/auto-update.ts`; `apps/electron/electron-builder.yml` | **EXTEND/REPLACE:** Fleet-controlled or user-configured signed channel; disable install honestly until it exists. Never install Craft binaries over Fleet. |
+| Help and Docs MCP | `packages/shared/src/docs/`; `packages/session-mcp-server/src/index.ts`; Electron menu/top-bar help links | **EXTEND:** bundled/local mirror first; an online Craft link may remain only when visibly external. |
+| WebUI OAuth relay | `packages/shared/src/auth/oauth-relay.ts`; `packages/server-core/src/webui/` | **EXTEND:** configurable self-hosted relay for remote WebUI; preserve the existing desktop local callback. |
+| Slack OAuth relay | `packages/shared/src/auth/slack-oauth.ts` | **EXTEND:** user-configured app/callback or explicitly unavailable without configuration. |
+| Craft sources/connectors | `packages/shared/src/sources/`; `packages/shared/src/mcp/`; builtin source definitions | **REUSE as optional connector:** never required for startup or core local data. |
+| Branding/support/co-author text | `packages/shared/src/branding.ts`; package metadata; `packages/shared/src/prompts/system.ts`; Electron menus | **REPLACE deliberately:** rename with compatibility and license/trademark review, not global search-and-replace. |
 
 ## Verification commands
 

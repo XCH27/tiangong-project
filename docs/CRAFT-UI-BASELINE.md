@@ -13,14 +13,18 @@ Fleet extends Craft Agents v0.11.1. UI work starts from the matching upstream im
 - `源码参考/software/craft-agents-oss/apps/electron/README.md` — Electron architecture and playground
 - `源码参考/software/craft-agents-oss/apps/electron/src/renderer/playground/` — component examples
 - `app/apps/electron/resources/docs/` — the bundled feature documentation shipped with the app
+- `源码参考/documentation/craft-agents-official/online-current/customisation/` — mirrored official
+  Colors, Icons, and Themes guidance; current-hosted reference that may be newer than v0.11.1
 
-The official repository does not publish a separate visual style guide. For visual decisions, the
-authority is therefore the v0.11.1 code itself, in this order:
+Official documentation explains customization, semantic colors, icon overrides, and theme structure,
+but it is not a complete component/layout specification. For visual decisions, authority remains the
+v0.11.1 code first, in this order:
 
 1. The same upstream component or flow.
 2. An existing shared component under `apps/electron/src/renderer/components/ui/` or `packages/ui/`.
 3. Tokens and semantic colors in `apps/electron/src/renderer/index.css` and `packages/ui/src/styles/index.css`.
-4. A new local component only when the first three cannot express the required behavior.
+4. The mirrored official Colors, Icons, and Themes guidance for supported customization semantics.
+5. A new local component only when the first four cannot express the required behavior.
 
 Generic web design systems, screenshot approximations, and unrelated reference apps may explain a
 behavior, but they do not override Craft's component language.

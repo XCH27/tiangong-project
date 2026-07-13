@@ -34,6 +34,22 @@ For each coherent feature slice, compare all three authorities before editing:
 Then classify the Fleet work as REUSE, EXTEND, or NEW and update Fleet's user-facing documentation in
 the same slice when behavior or wording changes.
 
+Use this compact record for the owner confirmation before a feature is edited; do not create a
+permanent document for a small slice:
+
+```text
+Frontend: entry, interaction, visible states
+Backend: existing authority and request → handler → state/persistence → visible result
+Unchanged: adjacent behavior explicitly kept
+Docs after implementation: exact user-facing/bundled doc
+Evidence consulted: pinned code/doc + hosted clue when relevant
+Classification: REUSE | EXTEND | NEW
+```
+
+If the hosted docs and v0.11.1 code disagree, record the difference and trust the code for current
+behavior. If Fleet intentionally changes behavior, update the applicable bundled/user-facing docs;
+do not edit this mirror to make upstream appear to agree.
+
 ## Craft-operated cloud dependencies found in the code
 
 This is an inventory, not permission to remove a capability without tracing its complete data path.

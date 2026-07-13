@@ -34,12 +34,16 @@ Done, in auditable slices on branch `work/fresh-base-spine`:
 6. **Real Electron path passed:** `bun run electron:dev` opened the app, Settings showed `0.11.1`, a
    real DeepSeek-backed turn completed, and after a clean stop/restart the same session title, messages,
    workspace, and Explore permission mode were restored.
-7. **Post-baseline delta audited:** current HEAD `cdc387e1d` differs from the pinned upstream app in
+7. **Post-baseline application delta audited:** application commit `cdc387e1d` differs from the pinned upstream app in
    13 common files, one removed list/board toggle, and eight intentional additions. The functional
    differences are limited to the Pi `max → xhigh` compatibility fix and five narrow Board/menu UI
    commits. Their five targeted tests and `bun run validate:dev` passed on 2026-07-12. The broader UI
    delta is `wired but not visually checked` across every theme and window width, so future UI work
    must still perform slice-specific Electron review.
+8. **Upstream reference set made local and auditable:** commit `e46ee07e2` added the official hosted
+   documentation mirror, pinned-source documentation index, checksums, refresh script, and the first
+   code-grounded inventory of Craft-operated service dependencies. This is development reference
+   material, not a new application capability.
 
 The application baseline is verified. Start only one owner-selected coherent slice at a time. The
 planned Milestone 1 remains the next architecture milestone, but a bounded UI correction may proceed
@@ -48,6 +52,9 @@ labels, settings, or other information-architecture rewrites.
 
 ## Development model
 
+- Before each feature slice, present its frontend interaction, backend authority/data path, unchanged
+  adjacent behavior, and post-implementation documentation target to the owner and receive
+  confirmation. Keep the confirmation small enough that one feature can be built and judged alone.
 - Use small vertical slices that cross the existing renderer, RPC, server, and shared packages when
   the real behavior requires it.
 - Bound work by explicit existing monorepo paths. Do not create a parallel `modules/<feature>/`

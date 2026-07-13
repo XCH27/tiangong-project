@@ -51,12 +51,17 @@ overlap. Big in-flight work registers only its boundaries in
   saturation fix that restored `typecheck:shared` to green; `7aff1c7da` speculative protocol-staging
   removal; then the document reset). Commit `c7fd6dea0` restored the upstream-required
   `tsconfig.base.json` omitted from the v0.11.1 tag and advanced the preserved source reference to the
-  exact upstream tag. Current HEAD `cdc387e1d` adds five narrow UI deltas: a primary Board entry,
+  exact upstream tag. The last application-source commit, `cdc387e1d`, contains five narrow UI deltas:
+  a primary Board entry,
   persistent Board project filter, aligned Board status controls, and What's New moved from the
   sidebar into the Debug menu. Against the pinned upstream checkout, application source differs in
   only those UI files, the verified `max → xhigh` Pi adapter fix, `tsconfig.base.json`, tests, and
-  local agent instructions. On 2026-07-12 the relevant five UI tests and `bun run validate:dev`
-  passed; the correct Electron development process was also running from `app/`.
+  local agent instructions. Later commits remove an unrelated bundled design-agent toolkit and change
+  documentation/reference material only. On 2026-07-12 the relevant five UI tests and
+  `bun run validate:dev` passed; the correct Electron development process was also running from
+  `app/`. The auditable pre-redesign snapshot is ref
+  `refs/snapshots/pre-final-ui-20260712-191011` (`20e32a2f8`) with an external bundle at
+  `/Users/lullwen/Documents/天工-snapshots/pre-final-ui-20260712-191011.bundle`.
 - **Fleet capability:** the five UI deltas above are wired, but no Fleet action-spine or other new
   end-to-end product capability is implemented. Project=Workspace, remote access, label redesign,
   archived-task management, and file-management proposals remain **not implemented**. Do not assume a
@@ -64,16 +69,20 @@ overlap. Big in-flight work registers only its boundaries in
 - **This document set:** a **fresh rewrite** (2026-07-11) that replaced ~100 legacy planning
   documents. The old corpus was deleted from the tree and is recoverable from pre-reset Git history
   (e.g. `git show 616eff59e:docs/<file>`); the pre-reset audit that motivated the reset is archived at
-  [`design-library/PROJECT-REVIEW-2026-07-11.md`](design-library/PROJECT-REVIEW-2026-07-11.md).
+  [`design-library/PROJECT-REVIEW-2026-07-11.md`](design-library/PROJECT-REVIEW-2026-07-11.md). Official
+  source-side and hosted Craft documentation is mirrored under
+  [`源码参考/documentation/craft-agents-official/`](../源码参考/documentation/craft-agents-official/README.md)
+  and indexed for feature-by-feature comparison; it is reference evidence, not Fleet authority.
 
 The gap between "elaborate plan" and "zero implementation" was the reason for the reset. First make
 the baseline auditable and verified; after that, **the next action is code, not more planning.**
 
 ## The document set (this is all of it)
 
-Nine numbered plan documents (stable — the "how/what/why", meant to be read), plus two short helper
-files (an owner-facing checkpoint list and a live feature-registry), plus a `design-library/` of
-recovered detailed designs used as source material when a branch starts:
+Nine numbered plan documents (stable — the "how/what/why", meant to be read), two short helper files
+(an owner-facing checkpoint list and a live feature-registry), one UI baseline, an upstream-reference
+mirror, and a `design-library/` of recovered detailed designs used as source material when a branch
+starts:
 
 | # | File | Read when |
 |---|---|---|
@@ -89,10 +98,12 @@ recovered detailed designs used as source material when a branch starts:
 | — | [`OWNER-CHECKPOINTS.md`](OWNER-CHECKPOINTS.md) (owner-facing) | The moments an agent **must stop and ask the owner** (money, irreversible/public effects, production runtime commitments, new authorities/safety boundaries, product forks) |
 | — | [`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md) (live state, not a plan) | Before starting a **big feature**: read it to avoid duplicating one already in progress, and register your own |
 | — | [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) | Before changing UI structure, components, icons, spacing, colors, typography, or interactions |
+| — | [`源码参考/documentation/craft-agents-official/`](../源码参考/documentation/craft-agents-official/README.md) (upstream reference) | Before changing a Craft-derived feature, external-service dependency, updater, deployment, or user-facing feature documentation |
 | — | [`design-library/`](design-library/README.md) (source material, not a plan) | Historical M00–M19 design material, the recovered verbatim owner-voice signals, and the archived pre-reset audit; use designs only to write a short current delta when justified, never copy wholesale |
 
-There are no other required reads. There is no Wave system, no packet system, no readiness gate, no
-maturity label, no status block. If an **active** document (the numbered set, the two helper files,
+There are no other **Fleet authority** documents. Capability-specific upstream code/docs and the UI
+baseline are read only when that slice touches them. There is no Wave system, packet system, readiness
+gate, maturity label, or status block. If an **active** document (the numbered set, helper files,
 `README.md`, `AGENTS.md`) references those, it is stale — ignore it and tell the owner. The
 `design-library/` files are the known exception: they are quarantined historical material and still
 contain retired vocabulary (Waves, `W0.1`, `L0–L3`, "Lead") by design; read them only through the
@@ -103,12 +114,18 @@ wording as a defect.
 
 1. Read this file and [`07-AGENT-RULES.md`](07-AGENT-RULES.md).
 2. **Check Craft first (mandatory):** open [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md),
-   find the capability you're about to touch, read the Craft code/doc it points to, and decide
-   REUSE / EXTEND / NEW. Do not reinvent what Craft already has.
+   find the capability you're about to touch, then compare the pinned v0.11.1 code, its versioned or
+   bundled documentation, and the matching hosted-document mirror. Decide REUSE / EXTEND / NEW. Do
+   not reinvent what Craft already has, and do not confuse current hosted behavior with the pinned
+   code baseline.
 3. Find the real code via [`06-CODE-MAP.md`](06-CODE-MAP.md), then confirm with `rg`.
 4. Read **one** other document only if the task actually touches it (a decision, a non-negotiable,
    or the milestone-1 spec).
-5. Make the smallest coherent change that delivers real, verifiable behavior. Verify it in the real
-   Electron app. Report honestly.
+5. Before editing a feature, give the owner one short **slice confirmation**: the user-visible
+   frontend change, the existing backend/state authority and data path to extend, what stays
+   unchanged, and which user documentation will be updated after the behavior is real. Wait for the
+   owner's confirmation; do not bundle unrelated features into that confirmation.
+6. Make that smallest coherent change, verify it in the real Electron app/data path, then update the
+   named user-facing documentation and report honestly.
 
 That is the whole method.
