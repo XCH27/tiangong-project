@@ -1,0 +1,138 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://agents.craft.do/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Local Folders
+
+> Bookmark folders on your machine for quick access and documentation
+
+Local folders are bookmarks to directories on your machine. They provide a named reference that appears in your sources list, with optional documentation via `guide.md`.
+
+<Note>
+  **No special setup required.** Local folders use the same Read, Write, Glob, and Grep tools that work on any path. The value is organization and documentation.
+</Note>
+
+## When to Use Local Folders
+
+| Need                                     | Solution                                                  |
+| ---------------------------------------- | --------------------------------------------------------- |
+| Work in a single project directory       | Use [Working Directory](/core-concepts/working-directory) |
+| Bookmark multiple folders                | Use Local Folders                                         |
+| Document folder contents and conventions | Use Local Folders with guide.md                           |
+
+## Configuration
+
+Create a source folder with a `config.json`:
+
+```json theme={null}
+{
+  "type": "local",
+  "name": "My Notes",
+  "slug": "my-notes",
+  "enabled": true,
+  "provider": "local",
+  "local": {
+    "path": "/Users/me/Documents/Notes"
+  }
+}
+```
+
+### Fields
+
+| Field        | Description                               |
+| ------------ | ----------------------------------------- |
+| `type`       | Must be `"local"`                         |
+| `name`       | Display name in sources list              |
+| `slug`       | URL-safe identifier (used as folder name) |
+| `enabled`    | Whether the source is active              |
+| `provider`   | Service identifier, use `"local"`         |
+| `local.path` | Absolute path to the folder               |
+
+### Optional: Format Hint
+
+You can add a format hint to help your agent understand the folder contents:
+
+```json theme={null}
+{
+  "type": "local",
+  "name": "Obsidian Vault",
+  "slug": "my-vault",
+  "provider": "obsidian",
+  "local": {
+    "path": "/Users/me/Documents/ObsidianVault",
+    "format": "obsidian"
+  }
+}
+```
+
+## Adding a Local Folder
+
+The easiest way is to ask your agent:
+
+> "Add my Desktop folder as a source"
+
+Or create manually:
+
+1. Create the source folder:
+   ```
+   ~/.craft-agent/workspaces/{workspace-id}/sources/my-folder/
+   ```
+
+2. Add `config.json` with the configuration above
+
+3. Optionally add `guide.md` with context about the folder
+
+## guide.md Example
+
+The guide helps your agent understand what's in the folder and how to use it:
+
+```markdown theme={null}
+# Desktop
+
+Temporary files and downloads. Check here for recent screenshots and exports.
+
+## Contents
+- Screenshots from CMD+Shift+4
+- Downloaded PDFs and documents
+- Temporary exports from apps
+
+## Conventions
+- Screenshots go in /Screenshots subfolder
+- Delete files older than 1 week
+- Don't commit anything from here to git
+```
+
+## Explore Mode Permissions
+
+By default, local folders work in Explore mode with the standard read-only bash commands (ls, cat, head, tail, etc.).
+
+To customize, add `permissions.json`:
+
+```json theme={null}
+{
+  "allowedBashPatterns": [
+    { "pattern": "^ls\\s", "comment": "List contents" },
+    { "pattern": "^tree\\s", "comment": "Show directory tree" }
+  ]
+}
+```
+
+## Local Folders vs Working Directory
+
+Choose the right approach for your use case:
+
+<CardGroup cols={2}>
+  <Card title="Working Directory" icon="folder-open">
+    Your **active project**. Set once per session. Full tool access for coding, building, and testing.
+
+    Use for: The project you're currently working on
+  </Card>
+
+  <Card title="Local Folders" icon="bookmark">
+    **Bookmarks** to folders you reference occasionally. Named sources with documentation.
+
+    Use for: Notes, downloads, reference materials
+  </Card>
+</CardGroup>
+
+**Rule of thumb:** Use Working Directory for coding. Use Local Folders for everything else.

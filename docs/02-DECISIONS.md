@@ -43,6 +43,21 @@
   repurpose the active-session “keep screen awake” preference. User-managed port mapping, private
   networking, or frp may make the URL reachable but remains outside Fleet's data model. (owner
   direction, technical route selected 2026-07-11) — design delta §9.
+- **P8 — Fleet's core product does not depend on Craft-operated cloud services.** Startup, local
+  Projects/Workspaces, sessions, files, permissions, labels/statuses, tasks/boards, automations, and
+  direct remote access must remain usable without `agents.craft.do`, `mcp.craft.do`, or another Craft
+  account/server. Existing upstream cloud hooks are migrated capability by capability: prefer local
+  behavior; otherwise use a user-controlled/self-hosted or configurable endpoint; retain Craft
+  services only as explicit optional connectors; remove an entry when no honest independent behavior
+  exists. In particular, upstream online sharing currently uploads full session data to Craft's viewer
+  API and must not be presented as a Fleet-native sharing path. **Craft upstream updates remain an
+  explicit input:** Fleet tracks official tags, release notes, documentation, and source changes so
+  fixes/features can be selectively ported instead of reimplemented. This upstream-intake channel is
+  distinct from Fleet binary updates: installing an official Craft binary over Fleet would erase the
+  fork, so Fleet's application updater must use a Fleet-controlled/user-configured release channel or
+  disable installation cleanly until one exists. OAuth relay dependencies must become local or
+  self-host configurable. The code-grounded inventory and official documentation mirror live at
+  `源码参考/documentation/craft-agents-official/`. (owner direction, amended 2026-07-12)
 
 ## B. The spine (agent-native execution)
 

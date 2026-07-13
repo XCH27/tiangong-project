@@ -1,0 +1,54 @@
+# Craft Agents
+
+## Docs
+
+- [Automations](https://agents.craft.do/docs/automations/overview.md): Automate workflows by triggering actions on app and agent events
+- [API Discovery](https://agents.craft.do/docs/browser/api-discovery.md): How the agent discovers internal APIs through network inspection for 100x faster data extraction
+- [Examples & Recipes](https://agents.craft.do/docs/browser/examples.md): Practical browser automation recipes — login flows, form filling, data extraction, and more
+- [Browser](https://agents.craft.do/docs/browser/overview.md): Control a built-in Chromium browser to automate web tasks, extract data, and interact with any website
+- [Conversations](https://agents.craft.do/docs/core-concepts/conversations.md): How conversation history and sessions work
+- [Interactions](https://agents.craft.do/docs/core-concepts/interactions.md): Mentions, file attachments, session management, and keyboard shortcuts
+- [Permissions](https://agents.craft.do/docs/core-concepts/permissions.md): How Craft Agents handles sensitive operations
+- [Working Directory](https://agents.craft.do/docs/core-concepts/working-directory.md): The current working directory (cwd) where your agent executes commands
+- [Colors](https://agents.craft.do/docs/customisation/colors.md): Configure colors for labels, statuses, and smart labels using the EntityColor system
+- [Icons](https://agents.craft.do/docs/customisation/icons.md): Configure icons for sources, skills, and statuses
+- [Themes](https://agents.craft.do/docs/customisation/themes.md): Customize the visual appearance with a 6-color theme system
+- [Installation](https://agents.craft.do/docs/getting-started/installation.md): Install the Craft Agents desktop app on macOS, Windows, or Linux
+- [Introduction](https://agents.craft.do/docs/getting-started/introduction.md): AI Agent's coding and computer use capabilities, extended for your entire digital workflow
+- [Connect to Anything](https://agents.craft.do/docs/go-further/connect-to-anything.md): Use API aggregators to connect 10,000+ services—just ask the agent to set it up
+- [Deep Links](https://agents.craft.do/docs/go-further/deeplinks.md): Launch Craft Agents from anywhere using the craftagents:// URL scheme
+- [Document Tools](https://agents.craft.do/docs/go-further/document-tools.md): Convert, process, and create documents — Word, Excel, PDF, PowerPoint, images, and more
+- [Performance and Token Optimization](https://agents.craft.do/docs/go-further/performance.md): Use RTK to reduce token usage from verbose development commands
+- [Rich Output](https://agents.craft.do/docs/go-further/rich-output.md): Interactive tables, diagrams, HTML previews, PDFs, and code diffs — rendered natively in your conversations
+- [Sharing Conversations](https://agents.craft.do/docs/go-further/sharing.md): Share your conversations online with a single click
+- [Workspaces](https://agents.craft.do/docs/go-further/workspaces.md): Organize your configurations with multiple workspaces
+- [Auto-Apply Rules](https://agents.craft.do/docs/labels/auto-rules.md): Automatically tag sessions with labels using regex patterns
+- [Labels](https://agents.craft.do/docs/labels/overview.md): Organize sessions with colored tags and structured metadata
+- [Lark / Feishu](https://agents.craft.do/docs/messaging/lark.md): Connect a Lark or Feishu bot to Craft Agent — long-connection mode, rich-text replies, interactive cards, attachments
+- [Messaging](https://agents.craft.do/docs/messaging/overview.md): Drive Craft Agent sessions from Telegram, WhatsApp, or Lark/Feishu — send messages from any device and get agent replies back in the chat
+- [Telegram](https://agents.craft.do/docs/messaging/telegram.md): Connect a Telegram bot to Craft Agent — bot-token pairing, attachments, inline buttons
+- [WhatsApp](https://agents.craft.do/docs/messaging/whatsapp.md): Connect WhatsApp to Craft Agent via QR pairing — self-chat mode, Baileys worker architecture, attachment support
+- [CLI Reference](https://agents.craft.do/docs/reference/cli.md): Complete command reference for the Craft Agents CLI client
+- [Configuration File](https://agents.craft.do/docs/reference/config/config-file.md): Reference for ~/.craft-agent/config.json
+- [Credentials](https://agents.craft.do/docs/reference/config/credentials.md): How Craft Agents stores sensitive data securely
+- [API Providers](https://agents.craft.do/docs/reference/config/custom-endpoint.md): Connect to Anthropic, OpenRouter, Ollama, Vercel AI Gateway, or any compatible endpoint
+- [Environment Variables](https://agents.craft.do/docs/reference/config/environment-variables.md): Configure Craft Agents through environment variables
+- [LLM Connections](https://agents.craft.do/docs/reference/config/llm-connections.md): Configure multiple AI provider connections (Anthropic, AWS Bedrock, Codex/OpenAI, OpenRouter, and more)
+- [Network Proxy](https://agents.craft.do/docs/reference/config/network-proxy.md): Route traffic through an HTTP/HTTPS proxy for corporate networks and firewalls
+- [Preferences](https://agents.craft.do/docs/reference/config/preferences.md): Reference for ~/.craft-agent/preferences.json
+- [CLI Client](https://agents.craft.do/docs/server/cli.md): Use the Craft Agents CLI to interact with the server from your terminal
+- [Remote Server](https://agents.craft.do/docs/server/headless.md): Run Craft Agents as a remote server with browser, desktop, and CLI access
+- [Skills](https://agents.craft.do/docs/skills/overview.md): Extend what Craft Agents can do
+- [Practical Examples](https://agents.craft.do/docs/sources/apis/curl-examples.md): Real-world API source configurations and usage patterns
+- [Overview](https://agents.craft.do/docs/sources/apis/overview.md): Connect to any REST API with flexible HTTP tools
+- [Local Folders](https://agents.craft.do/docs/sources/local-filesystems.md): Bookmark folders on your machine for quick access and documentation
+- [MCP Authentication](https://agents.craft.do/docs/sources/mcp-servers/authentication.md): Configure authentication for MCP server connections
+- [Connecting MCP Servers](https://agents.craft.do/docs/sources/mcp-servers/connecting-servers.md): Add MCP server connections as sources
+- [Overview](https://agents.craft.do/docs/sources/mcp-servers/overview.md): Connect your agents to services via MCP
+- [Overview](https://agents.craft.do/docs/sources/overview.md): Connect your agents to external data through MCP servers, REST APIs, and local filesystems
+- [Customizing Statuses](https://agents.craft.do/docs/statuses/customizing.md): Add custom statuses and modify existing ones
+- [Statuses](https://agents.craft.do/docs/statuses/overview.md): Organize conversations into workflow states
+
+## OpenAPI Specs
+
+- [openapi](https://agents.craft.do/docs/api-reference/openapi.json)

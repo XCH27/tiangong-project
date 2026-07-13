@@ -1,0 +1,225 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://agents.craft.do/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# API Providers
+
+> Connect to Anthropic, OpenRouter, Ollama, Vercel AI Gateway, or any compatible endpoint
+
+Craft Agents supports multiple API providers through a built-in preset system. You can connect to Anthropic directly, use aggregators like OpenRouter, run local models via Ollama, or point to any API endpoint compatible with the Anthropic Messages format.
+
+<Note>
+  This page covers **Anthropic-compatible** providers. For Codex/OpenAI connections and multi‑connection setup, see [LLM Connections](/reference/config/llm-connections).
+</Note>
+
+## Supported Providers
+
+| Provider              | Base URL                       | API Key Required    | Notes                                         |
+| --------------------- | ------------------------------ | ------------------- | --------------------------------------------- |
+| **Anthropic**         | `https://api.anthropic.com`    | Yes                 | Default provider. No model override needed.   |
+| **OpenRouter**        | `https://openrouter.ai/api`    | Yes                 | Access multiple AI providers through one API. |
+| **Vercel AI Gateway** | `https://ai-gateway.vercel.sh` | Yes                 | Unified gateway for AI model routing.         |
+| **Ollama**            | `http://localhost:11434`       | No                  | Run models locally. Requires Ollama 0.14+.    |
+| **Custom**            | Any URL                        | Depends on provider | Any Anthropic-compatible endpoint.            |
+
+## Setting Up a Provider
+
+### During First Launch
+
+1. In the setup wizard, select **API Key**
+2. Enter your API key
+3. Select a **Base URL** preset from the dropdown (Anthropic, OpenRouter, Vercel AI Gateway, or Custom)
+4. Optionally specify a **Model** name (required for non-Anthropic providers)
+5. The connection is tested automatically before saving
+
+### In Settings
+
+1. Open **Settings** (gear icon or `Cmd+,`)
+2. Click on the **API Connection** section
+3. Change your API key, base URL, or model as needed
+
+## Model Names
+
+For **Anthropic**, no model override is needed — Craft Agents uses its built-in model routing (Sonnet, Opus, Haiku) automatically.
+
+For **OpenRouter** and **Vercel AI Gateway**, models use the `provider/model-name` format:
+
+```
+anthropic/claude-sonnet-4
+anthropic/claude-opus-4
+openai/gpt-4o
+google/gemini-2.5-pro
+meta-llama/llama-4-maverick
+```
+
+For **Ollama**, use the local model name directly:
+
+```
+llama3.2
+qwen3-coder
+deepseek-r1
+```
+
+<Note>
+  When the Model field is left empty for non-Anthropic providers, Craft Agents defaults to Anthropic model name formatting. This works for providers that support Anthropic model names natively but may not work for all providers.
+</Note>
+
+## Provider Details
+
+### OpenRouter
+
+[OpenRouter](https://openrouter.ai) gives you access to hundreds of AI models through a single API key. It handles billing, rate limiting, and fallbacks across providers.
+
+1. Get your API key at [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Select the **OpenRouter** preset in the Base URL dropdown
+3. Set your model (e.g. `anthropic/claude-sonnet-4`)
+
+Browse available models at [openrouter.ai/models](https://openrouter.ai/models).
+
+### Ollama (Local Models)
+
+[Ollama](https://ollama.ai) runs open-source models locally on your machine. No API key is required, and data never leaves your computer.
+
+**Requirements:**
+
+* Ollama 0.14 or newer (for Anthropic-compatible API format)
+* A model pulled locally
+
+```bash theme={null}
+# Install and pull a model
+ollama pull llama3.2
+```
+
+To connect:
+
+1. Select the **Custom** preset in the Base URL dropdown
+2. Enter `http://localhost:11434` as the URL
+3. Leave the API key empty
+4. Set the model name (e.g. `llama3.2`)
+
+<Note>
+  Ollama requires version 0.14+ for compatibility with Craft Agents. Earlier versions do not support the Anthropic Messages API format. Update with `ollama update` if needed.
+</Note>
+
+### Vercel AI Gateway
+
+[Vercel AI Gateway](https://vercel.com/docs/ai-gateway) provides a unified endpoint for routing requests to multiple AI providers with built-in observability and caching.
+
+1. Get your API key from your Vercel dashboard
+2. Select the **Vercel AI Gateway** preset
+3. Set your model using `provider/model-name` format
+
+See [supported models](https://vercel.com/docs/ai-gateway) in the Vercel documentation.
+
+### Custom Endpoint
+
+For any API that implements the Anthropic Messages format:
+
+1. Select the **Custom** preset
+2. Enter the full base URL of your endpoint
+3. Enter your API key (if required)
+4. Specify the model name your endpoint expects
+
+This works with self-hosted proxies, enterprise gateways, or any service that implements the `/v1/messages` endpoint.
+
+## Image Input for Custom Endpoints
+
+Custom endpoints are **text-only by default**. If your endpoint serves a multimodal model — for example **Gemma 4** via Ollama or another OpenAI-compatible proxy — you must opt it into image support explicitly. There is no automatic capability detection: a model that silently strips images would otherwise produce confusing answers (the user sees the image in their bubble, but the model never receives it).
+
+### Toggle from the chat input (recommended)
+
+For everyday use, enable image input directly from the chat input model picker:
+
+1. Open the model dropdown above the chat input.
+2. Each model row on a custom-endpoint (`pi_compat`) connection shows a small image icon on the right. The icon is **dim** when image input is off, **bright** when on.
+3. Click the icon to flip the per-model `supportsImages` override. The change persists immediately to your config.
+
+If you attach an image while the active model is still text-only, an inline pre-flight banner appears above the chat input with a one-click **Enable image support** action. Clicking it flips the same override and dismisses the banner — no need to re-attach the image.
+
+<Note>
+  The picker toggle and the pre-flight banner write to **per-model** overrides only (`models[i].supportsImages`). The endpoint-wide default (`customEndpoint.supportsImages`) is set via JSON config — see below.
+</Note>
+
+### JSON config (automation / advanced)
+
+For headless setups, automation scripts, or when you want every model on an endpoint multimodal at once, write the connection config directly. These examples use the low-level **LLM connection** schema from [LLM Connections](/reference/config/llm-connections), where `customEndpoint.api` selects the endpoint wire format.
+
+#### Per-model opt-in
+
+```json theme={null}
+{
+  "customEndpoint": { "api": "openai-completions" },
+  "models": [
+    { "id": "gemma4", "supportsImages": true }
+  ]
+}
+```
+
+#### Whole-endpoint opt-in
+
+```json theme={null}
+{
+  "customEndpoint": {
+    "api": "openai-completions",
+    "supportsImages": true
+  }
+}
+```
+
+<Note>
+  Per-model overrides take precedence over the endpoint-wide default, so you can opt one specific model out of vision (`supportsImages: false`) even if the endpoint default is `true`.
+</Note>
+
+For the full config schema, see [LLM Connections](/reference/config/llm-connections#custom-endpoint-capabilities).
+
+## How It Works
+
+When you configure a non-default provider, Craft Agents stores:
+
+* The **API key** in the encrypted credentials file (`~/.craft-agent/credentials.enc`)
+* The **base URL** and **default model** in the LLM connection configuration
+
+At session launch, the base URL is passed via the `ANTHROPIC_BASE_URL` environment variable to the underlying Claude Code SDK.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection test fails">
+    Verify:
+
+    * The base URL is correct and accessible from your machine
+    * Your API key is valid and has sufficient permissions
+    * The endpoint supports the Anthropic Messages API format (`/v1/messages`)
+  </Accordion>
+
+  <Accordion title="Model not found errors">
+    Check that the model name matches exactly what your provider expects:
+
+    * **OpenRouter/Vercel**: Use `provider/model-name` format (e.g. `anthropic/claude-sonnet-4`)
+    * **Ollama**: Use the local model name (e.g. `llama3.2`)
+    * **Custom**: Check your provider's documentation for valid model identifiers
+  </Accordion>
+
+  <Accordion title="Authentication errors">
+    * Ensure your API key is correct and hasn't expired
+    * For Ollama: no API key should be set (leave it empty)
+    * Check if your key has available credits/quota
+  </Accordion>
+
+  <Accordion title="Ollama not connecting">
+    * Verify Ollama is running: `ollama list`
+    * Check you're on version 0.14+: `ollama --version`
+    * Ensure the model is pulled: `ollama pull llama3.2`
+    * Verify the URL is `http://localhost:11434` (note: HTTP, not HTTPS)
+  </Accordion>
+
+  <Accordion title="Rate limiting">
+    If you hit rate limits, check your provider's usage limits and consider upgrading your plan or using a different provider.
+  </Accordion>
+</AccordionGroup>
+
+## Security
+
+Your API key is stored securely in the encrypted credentials file. See [Credentials](/reference/config/credentials) for details on how credentials are protected.
+
+The base URL and model name are stored in the LLM connection configuration (not encrypted, as they are not sensitive).
