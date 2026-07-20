@@ -33,10 +33,12 @@ the same sessions, files, permissions, and timeline. Built as a product fork of
 
 ## Current state (honest)
 
-The committed application is a verified **Craft v0.11.1-derived baseline** plus narrow Board/menu
-improvements. A large in-flight working tree (Project=Workspace presentation, zh-Hans localization,
-identity labels, settings, service-independence work, plus doc restructures) is **not yet audited
-or landed** — auditing it is release **R0**. Fleet's differentiating loops (governed action seam,
+The committed application is a **Craft v0.11.1-derived baseline** plus the R0 landing commits of
+2026-07-20: doc restructure, reference-tree reorganization, and six app groups (TE1 accounting,
+zh-Hans/labels, Project=Workspace presentation, Board, settings, MCP) — all typechecked and
+targeted-tested in the audit sandbox, status `wired but not visually checked`. **R0 remains open**
+until the doc-tools gate and dev-launch smoke run on a full machine and the owner accepts the
+visible surfaces (then `fleet-baseline-r0` is tagged). Fleet's differentiating loops (governed action seam,
 artifact handoff, delegation, canvas, experience) are **not implemented**; the roadmap orders their
 *integration* behind user-visible value. Every product domain remains registered and described at
 breadth in [`docs/11-PRODUCT-MATRIX.md`](docs/11-PRODUCT-MATRIX.md) and

@@ -101,13 +101,18 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
 
 ## Current honest state
 
-- **Code:** the committed baseline is Craft v0.11.1-derived and verified (see
-  [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) for the exact intentional delta). A large
-  uncommitted working tree (count drifts — inventory it fresh; contents include Project=Workspace
-  presentation, zh-Hans localization, identity labels, settings, service-independence tests, the
-  2026-07 doc restructure, and reference/document tree changes) awaits the **R0 audit**
-  ([`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md)). Nothing in that tree is `usable`
-  merely because it exists.
+- **Code:** the committed baseline is Craft v0.11.1-derived (see
+  [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md)). The former dirty working tree (247 entries) was
+  inventoried and landed on `work/fresh-base-spine` as grouped commits on 2026-07-20 (G-docs,
+  G-refs, and six app groups: agent-core/TE1 accounting, labels-i18n, workspace-project presentation,
+  board, settings-chat, mcp, plus tooling scripts); full pre-audit snapshot preserved at
+  `backup/pre-r0-audit`. Verified in the audit sandbox: all 8 package typechecks, targeted tests
+  (120), the shared suite (83), and every i18n lint — green. **R0 is not complete:** the
+  `test:doc-tools` gate needs a networked machine (sandbox tunnel blocked — environment failure,
+  not product code), the non-interactive dev-launch smoke needs a GUI machine, owner visual
+  acceptance (R0-C7) is pending, and the `fleet-baseline-r0` tag is not created. App groups are
+  `wired but not visually checked`; nothing is `usable` before owner acceptance
+  ([`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md)).
 - **Fleet capability:** every differentiating Fleet loop — governed cross-caller actions, versioned
   artifact handoff, bounded delegation, adaptive organization, canvas/workflows, layered agent
   memory — is `not implemented`. Craft's inherited capabilities are real and listed in

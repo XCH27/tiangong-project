@@ -24,7 +24,7 @@ Status values: `in-progress` · `merged` · `dropped` · `competing`.
 
 | Primary feature | Suite | Branch / worktree | Occupies (scope) | Integration owner | Depends on (unmerged) | Status | Notes |
 |---|---|---|---|---|---|---|
-| R0 baseline audit of the legacy working tree | SYS-01 | `work/fresh-base-spine` | the entire uncommitted diff (app code: shell/workspace/label/status/settings/Board, i18n, scripts; the doc restructure; reference/document tree changes — inventory fresh at execution) | `/root` | none | in-progress | Spec: [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md). The former mega-row ("Desktop terminology, navigation and identity-label presentation") is superseded: its surviving features re-register individually as R0 lands them. |
+| R0 baseline audit of the legacy working tree | SYS-01 | `work/fresh-base-spine` | landed 2026-07-20 as grouped commits (G-docs, G-refs, six app groups + scripts); backup at `backup/pre-r0-audit` | `/root` | none | in-progress | Spec: [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md). Remaining: `test:doc-tools` on a networked machine (sandbox tunnel blocked), non-interactive dev-launch smoke, owner visual acceptance (R0-C7), `fleet-baseline-r0` tag. |
 
 ## Durable integration rules
 
