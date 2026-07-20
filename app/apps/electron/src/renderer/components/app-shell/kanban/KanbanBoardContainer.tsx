@@ -359,24 +359,6 @@ export function KanbanBoardContainer() {
     [metaMap, statusesById, onSendMessage, updateSessionMeta, activeWorkspaceId, t]
   )
 
-  // Create a parent task tile in place — no navigation. It lands in ToDo (no
-  // kanbanColumn + todo status → todo column). While a project filter is active,
-  // bind the new task to the first selected project so it stays visible under the
-  // filter (an unbound task would be hidden the moment it's created).
-  const handleCreateTask = React.useCallback(
-    async (title: string) => {
-      if (!activeWorkspaceId) return
-      const boundProjectId = projectFilter[0]
-      await onCreateSession(activeWorkspaceId, {
-        name: title,
-        sessionStatus: 'todo',
-        ...(boundProjectId ? { projectId: boundProjectId } : {}),
-        applyTaskLabel: true,
-      })
-    },
-    [activeWorkspaceId, onCreateSession, projectFilter]
-  )
-
   // Change a task's status badge directly (independent from its column). Mirrors
   // the move handler's optimistic-then-persist shape so the badge reflows before
   // the RPC lands.
@@ -559,6 +541,7 @@ export function KanbanBoardContainer() {
       <KanbanBoardHeader
         allTasksLabel={t('kanban.allTasks')}
         newTaskLabel={t('kanban.newTask')}
+        addColumnLabel={t('kanban.column.add')}
         projects={projectOptions}
         selectedProjectIds={projectFilter}
         onProjectFilterChange={setProjectFilter}
@@ -566,6 +549,7 @@ export function KanbanBoardContainer() {
           ? t('kanban.column.columnsFrom', { project: editingProject.config.name })
           : undefined}
         onCreateTask={() => setEditorTarget({ mode: 'create', initialProjectId: projectFilter[0] })}
+        onAddColumn={editingProject ? handleAddColumn : undefined}
         createDisabled={!activeWorkspaceId}
       />
       <div className="min-h-0 flex-1">
@@ -586,7 +570,6 @@ export function KanbanBoardContainer() {
           onRunSubtasks={handleRunSubtasks}
           subtaskModelGroups={subtaskModelGroups}
           defaultSubtaskModel={defaultSubtaskModel}
-          onCreateTask={handleCreateTask}
           onMoveTask={handleMoveTask}
           columnDropStatus={columnStatus}
           onSelectDropStatus={handleSelectDropStatus}
@@ -594,7 +577,6 @@ export function KanbanBoardContainer() {
             ? {
                 onUpdateColumn: handleUpdateColumn,
                 onRemoveColumn: handleRemoveColumn,
-                onAddColumn: handleAddColumn,
               }
             : {})}
         />

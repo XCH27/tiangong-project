@@ -8,7 +8,6 @@ import type { KanbanColumnColor } from '@/hooks/useKanbanColumnColors'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { SessionStatusMenu } from '@/components/ui/session-status-menu'
 import { TaskTile } from './TaskTile'
-import { NewTaskComposer } from './NewTaskComposer'
 import type {
   KanbanColumnMeta,
   KanbanModelProviderGroup,
@@ -41,8 +40,6 @@ interface KanbanColumnProps {
   subtaskModelGroups?: KanbanModelProviderGroup[]
   /** Model id pre-selected in the composer. */
   defaultSubtaskModel?: string
-  /** When present, renders the inline "New Task" composer at the top of the column. */
-  onCreateTask?: (title: string) => void
   /** Status auto-applied to a task dropped into this column (empty/undefined = leave untouched). */
   dropStatusId?: string
   /** Set this column's drop-status. Enables the header status picker when provided ('' clears). */
@@ -73,7 +70,6 @@ export function KanbanColumn({
   onRunSubtasks,
   subtaskModelGroups,
   defaultSubtaskModel,
-  onCreateTask,
   dropStatusId,
   onSelectDropStatus,
   onRename,
@@ -116,8 +112,6 @@ export function KanbanColumn({
           boxShadow: isOver && color ? `inset 0 0 0 2px ${color.solid}` : undefined,
         }}
       >
-        {onCreateTask && <NewTaskComposer onCreate={onCreateTask} />}
-
         {tasks.map(task => (
           <DraggableTile key={task.id} taskId={task.id}>
             <TaskTile

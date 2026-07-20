@@ -317,14 +317,6 @@ function KanbanViewPreview({
     )
   }
 
-  // Create a named task tile in the ToDo column (the inline "New Task" composer path).
-  const createTask = (title: string) => {
-    setTasks(prev => [
-      ...prev,
-      { id: `task-new-${Date.now()}`, title, column: 'todo', statusId: 'todo', model: DEFAULT_SUBTASK_MODEL, subtasks: [] },
-    ])
-  }
-
   const changeStatus = (taskId: string, statusId: string) => {
     setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, statusId } : t)))
   }
@@ -377,7 +369,6 @@ function KanbanViewPreview({
             onRunSubtasks={runSubtasks}
             subtaskModelGroups={SUBTASK_MODEL_GROUPS}
             defaultSubtaskModel={DEFAULT_SUBTASK_MODEL}
-            onCreateTask={createTask}
             onMoveTask={moveTask}
           />
         </div>
