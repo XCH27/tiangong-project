@@ -10,7 +10,10 @@ __pycache__/
 # should be tracked by the Fleet repo.
 /源码参考/software/*/
 /源码参考/plugins/*/
-/源码参考/ui-kits/
+
+# Optional local visual-reference library. Product docs may point to it as
+# auxiliary material, but it is not a Fleet build input or tracked source.
+/UI参考/
 
 .cursor/
 .evolver/
@@ -18,8 +21,10 @@ __pycache__/
 
 # Local agent-tooling state; never part of the product tree.
 .agents/
-.superpowers/
 
-# Reset-day safety copy of the retired planning corpus. The same content is in
-# Git history; never commit this directory.
+# Local disposal directory; never commit it.
 /_trash/
+
+# Local agent-tool state (never product tree)
+/.workbuddy/
+/assets/

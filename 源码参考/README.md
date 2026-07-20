@@ -1,52 +1,46 @@
-# 源码参考目录
+# Source References
 
-本目录只存**本机**第三方参考 checkout，**不是** Fleet 主工程，且被根 `.gitignore` 忽略。  
-权威策略：`docs/REFERENCE-PROJECT-POLICY.md`（绿灯 / 黑盒 / **已退役**）。
+Read-only, reproducible open-source **code evidence**. This directory is not Fleet product code.
 
-| 目录 | 用途 |
+- UI component and visual samples → local `UI参考/`
+- Owner-intent design notes → [`../docs/design-library/`](../docs/design-library/README.md)
+
+## Layout
+
+| Path | Contents |
 |---|---|
-| `software/` | 完整应用/客户端/Agent 平台等 |
-| `plugins/` | 可局部参考的库、CLI、能力模块 |
+| `software/` | Large product/runtime/design/media reference checkouts |
+| `plugins/` | Focused token, layout, ingestion and tooling checkouts |
+| `meta/` | Capability map, retention policy, reviewed HEADs and operating rules |
+| `scripts/` | Clone, refresh and review helpers |
+| `craft-docs/` | Craft official-document mirror; comparison evidence, not Fleet authority |
 
-## 规则
+## Development lookup order
 
-1. **UI：** 以 Craft Agents 原版为基线做简化/优化（D52）；禁止把其它产品壳当 Fleet UI 蓝本（D50/D51）。  
-2. **旧 Fleet UI：** 不参考；`fleet-old` 仅后端行为 + 迁移账本。  
-3. **许可：** 绿灯才可在边界内改编；黑盒不可拷源码；退役项不要重新克隆。  
-4. **更新：** 用 `clone_repos.sh` / `update_repos.sh`；勿把第三方树提交进 Fleet git。  
-5. **新增参考：** 先写入 `REFERENCE-PROJECT-POLICY.md` 并说明模块挂钩，再克隆。
+1. [`../docs/08-CRAFT-CAPABILITY-MAP.md`](../docs/08-CRAFT-CAPABILITY-MAP.md) — classify REUSE / EXTEND / NEW.
+2. [`../docs/05-ROADMAP.md`](../docs/05-ROADMAP.md) — confirm the current development-order row.
+3. [`meta/CAPABILITY-REFERENCE-MAP.md`](meta/CAPABILITY-REFERENCE-MAP.md) — map the gap to bounded references.
+4. [`meta/RETENTION.md`](meta/RETENTION.md) — understand FULL / SPARSE / TEMP cache policy.
+5. [`meta/REVIEWED-HEADS.tsv`](meta/REVIEWED-HEADS.tsv) — check machine-review state.
+6. Inspect only the required files under `software/` or `plugins/`; delete `_tmp-*` after intake.
 
-## 建议保留（与策略对齐）
+Rules: [`meta/PLAYBOOK.md`](meta/PLAYBOOK.md). Only top-tier implementations or official open
+standards for a proven narrow seam receive standing retention. Do not retain star rankings,
+candidate dumps, single-repository reports or completion memorials.
 
-### software（示例）
+## Boundaries
 
-- `craft-agents-oss` — 主基线（请同步 **v0.11.0** 认知，见 UPSTREAM-BASELINE）  
-- `AionUi` — CLI/ACP/runtime（绿灯）  
-- `fleet-old` — 后端行为参考 only  
-- `DeepSeek-Reasonix` — ACP/planner（绿灯）  
-- `hermes-agent` / `orca` / `OpenHands` / `omnigent` — 黑盒/候选  
-- `openpencil` / `open-pencil` / `tldraw` — 设计/画布行为（非 M07 宿主默认）  
-- `opencut-classic`（及必要时 `opencut` 对照）— 视频时间线  
-- `cline` — 模式/技能想法（黑盒）  
-- `penpot` — FOSS 设计产品行为（黑盒）  
-- `agents-cli` — CLI 形态  
+- Never develop, commit or stash Fleet changes inside a reference checkout.
+- Never introduce a second Session, Permission, Timeline, Task, Memory or Job authority.
+- Default to no clone when no `docs/08` capability row and real Craft gap exist.
+- External source answers one concrete Craft capability question. It never supplies Fleet's shell,
+  roadmap or product authority.
 
-**不要**保留 `lobehub`：文稿模块式拖拽等行为已吸收进  
-`docs/contracts/markdown-document-surface.md`（Craft TipTap）。见策略文 Retired。
+## Commands
 
-### plugins（示例）
-
-- `codegraph` / `deepcode-cli` / `open-design` / `rtk` — 绿灯相关  
-- `dockview` / `react-resizable-panels` / `react-rnd` / `react-timeline-editor` — 布局/时间线想法  
-- `letta-code` / `mem0` / `supermemory` / `context-mode` / `markitdown` / `repomix` — 记忆/上下文想法  
-
-## 已删除的无价值/负价值本机克隆
-
-见策略文 **Retired** 表。已从本机移除例如：`nezha`、`kdenlive`、`warp`、`zed`、`cherry-studio`、`cc-switch`、`ego-lite`、以及一批无模块挂钩的竞品壳；plugins 侧移除 `remotion`、`openui`、`stitch-*`、`memanto`/`mempalace`、`headroom`、`zvec`、各类 UI kit 打包等。
-
-**2026-07-10：** `software/lobehub`（产品 monorepo）删除 — 文稿行为已写入 `docs/contracts/markdown-document-surface.md`。  
-说明：生态包 `lobe-ui` / `lobe-editor` 在 GitHub 上为 **MIT**，但 **不是** Fleet 绿灯（D52 用 Craft TipTap；禁止第二编辑器栈）。无特别 Lead 晋升前不要为它们单独克隆进 `源码参考`。
-
-**通用策略：** 闭源 / 仅产品 / 受限许可项目 → 学行为 → 与 Craft 做差集 → 吸收进 docs → 删本地克隆。见 `docs/REFERENCE-PROJECT-POLICY.md` § Compliant reference loop。
-
-**不要**为 jaaz / basketikun infinite-canvas / hero8152 Infinite-Canvas 建正式参考克隆（策略文已写明）。
+```bash
+./源码参考/scripts/compare_with_grok.sh list
+./源码参考/scripts/compare_with_grok.sh mark plugins/hyperframes
+./源码参考/scripts/clone_repos.sh
+./源码参考/scripts/update_repos.sh
+```

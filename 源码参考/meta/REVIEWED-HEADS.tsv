@@ -1,0 +1,25 @@
+# repository	last-reviewed-head
+plugins/dockview	0eef758ef3bc
+plugins/markitdown	e144e0a2be95
+plugins/react-resizable-panels	a1eeb7aefdb0
+plugins/react-rnd	fec7303134ab
+plugins/repomix	a5577d5718b1
+plugins/xyflow	dd308ab401d4	fleet-reference-admission-v2
+plugins/agentskills	38a2ff82958a	top-tier-source-intake
+plugins/hyperframes	6ad738b580ad	top-tier-source-intake
+plugins/mem0	ddaa655edf41	top-tier-source-intake
+plugins/playwright-mcp	55679f5f3d4b	top-tier-source-intake
+software/OpenHands	613406ca2bca
+software/codex	38b064c31b1f
+software/craft-agents-oss	4289b1609732
+software/hermes-agent	2ea39daeb1f6
+software/openclaw	9f5609382b54
+software/opencode	c69abee0c732
+software/opencut-classic	cf5e79e91914
+software/penpot	bdc078d5ea0c
+software/pi-mono	13437ca82889	fleet-reference-admission-v2
+software/tldraw	c26735e45258
+software/browser-use	950eb03617e6	top-tier-source-intake
+software/flowgram.ai	5afd287a989a	top-tier-source-intake
+software/mcp-registry	29e32c39dcb5	top-tier-source-intake
+software/opencut	5e0696bc9b92	top-tier-source-intake
