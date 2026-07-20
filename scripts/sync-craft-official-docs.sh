@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGET_DIR="$ROOT_DIR/源码参考/documentation/craft-agents-official"
+TARGET_DIR="$ROOT_DIR/源码参考/craft-docs"
 ONLINE_DIR="$TARGET_DIR/online-current"
 INDEX_URL="https://agents.craft.do/docs/llms.txt"
 SITEMAP_URL="https://agents.craft.do/docs/sitemap.xml"
