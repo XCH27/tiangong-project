@@ -21,6 +21,7 @@ import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../sha
 import { Spinner, FullscreenOverlayBase, Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import { useSetAtom } from 'jotai'
 import { fullscreenOverlayOpenAtom } from '@/atoms/overlay'
+import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 import { motion, AnimatePresence } from 'motion/react'
 import type { LlmConnectionWithStatus, ThinkingLevel, WorkspaceSettings, Workspace } from '../../../shared/types'
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVELS } from '@craft-agent/shared/agent/thinking-levels'
@@ -530,12 +531,12 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
               <img src={iconUrl} alt="" className="w-full h-full object-cover" />
             ) : (
               <span className="text-xs font-medium text-muted-foreground">
-                {workspace.name?.charAt(0)?.toUpperCase() || 'W'}
+                {getWorkspaceDisplayName(workspace.name, t).charAt(0).toUpperCase()}
               </span>
             )}
           </div>
           <div className="text-left">
-            <div className="text-sm font-medium">{workspace.name}</div>
+            <div className="text-sm font-medium">{getWorkspaceDisplayName(workspace.name, t)}</div>
             <div className="text-xs text-muted-foreground">
               {isLoading ? t("common.loading") : getSummary()}
             </div>

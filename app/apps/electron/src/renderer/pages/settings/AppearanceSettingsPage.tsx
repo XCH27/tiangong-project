@@ -32,6 +32,7 @@ import { useAtom } from 'jotai'
 import * as storage from '@/lib/local-storage'
 import { useWorkspaceIcons } from '@/hooks/useWorkspaceIcon'
 import { WorkspaceAvatar } from '@/components/ui/workspace-avatar'
+import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 import { ColorPicker } from '@/components/ui/color-picker'
 import { workspaceAvatarColorsAtom } from '@/atoms/workspace-avatar-colors'
 import { kanbanColumnColorsAtom, kanbanColumnStatusAtom, kanbanLivePulseAtom } from '@/atoms/kanban'
@@ -39,6 +40,7 @@ import { showBackgroundFinishedChipAtom } from '@/atoms/background-finished'
 import { KANBAN_COLUMNS } from '@/components/app-shell/kanban/status-column'
 import { DEFAULT_KANBAN_COLUMN_COLORS } from '@/components/app-shell/kanban/kanban-colors'
 import type { KanbanColumnId } from '@/components/app-shell/kanban/types'
+import { getLocalizedStatusLabel } from '@/config/session-status-config'
 import { setProjectColorTreatment, useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
 import { PROJECT_COLOR_PALETTE, type ProjectColorTreatment } from '@/utils/project-colors'
 import { Info_DataTable, SortableHeader } from '@/components/info/Info_DataTable'
@@ -194,7 +196,7 @@ export default function AppearanceSettingsPage() {
   const columnStatusOptions = useMemo(
     () => [
       { value: '', label: t("settings.appearance.kanbanColumnStatusNone") },
-      ...(sessionStatuses ?? []).map(s => ({ value: s.id, label: s.label })),
+      ...(sessionStatuses ?? []).map(s => ({ value: s.id, label: getLocalizedStatusLabel(t, s) })),
     ],
     [sessionStatuses, t]
   )
@@ -402,14 +404,14 @@ export default function AppearanceSettingsPage() {
                                   >
                                     <WorkspaceAvatar
                                       workspaceId={workspace.id}
-                                      workspaceName={workspace.name}
+                                      workspaceName={getWorkspaceDisplayName(workspace.name, t)}
                                       src={workspaceIconMap.get(workspace.id)}
                                       className="w-4 h-4 rounded"
                                     />
                                   </button>
                                 }
                               />
-                              <span>{workspace.name}</span>
+                              <span>{getWorkspaceDisplayName(workspace.name, t)}</span>
                             </div>
                           }
                         >
