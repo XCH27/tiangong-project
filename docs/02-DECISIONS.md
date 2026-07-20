@@ -1,221 +1,358 @@
 # 02 — Decisions
 
-> The promoted product/architecture decisions that still hold. This is the first place to check
-> whether a design question is already answered.
+> The promoted product/architecture decisions that still hold. First place to check whether a design
+> question is already answered.
 >
-> **Provenance:** these are carried forward as *substance* from the previous project's decision
-> ledger (the durable judgments that survived review), re-expressed without the retired Wave / Loop /
-> Gate machinery. Reversed, stale, or purely-process entries were dropped. A current owner request
-> always outranks any entry here.
->
-> **Write rule:** add an entry only when a durable direction is decided, with a date. When a decision
-> changes, edit the entry in place and note the change — do not keep a diary of dead states.
+> **Write rule:** add an entry only when a durable direction is decided, with a date. When a
+> decision changes, edit the entry in place and note the change — do not keep a diary of dead
+> states. A current owner request always outranks any entry here.
 
 ## A. Product shape
 
-- **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and the
-  bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
-- **P2 — Build on and simplify Craft v0.11; never fork a second app.** The preserved upstream checkout
-  is a behavior/design *reference* only, never a second base to merge or copy wholesale. It is pinned
-  to tag v0.11.1 as of 2026-07-11. (2026-07-08; reference updated 2026-07-11)
-- **P3 — Retain the Craft shell.** The spatial canvas is a first-class *project surface* hosted inside
-  the shell, not a replacement shell. (2026-07-09)
-- **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription in the active
-  product. Remove/avoid account/upgrade flows for Fleet itself. (2026-07-08)
+- **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and
+  the bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
+- **P2 — Build on and simplify Craft v0.11; never fork a second app.** The preserved upstream
+  checkout (pinned tag v0.11.1) is behavior/design *reference* only — never a second base to merge
+  wholesale. (2026-07-08)
+- **P3 — Retain the Craft shell.** The spatial canvas is a first-class *project surface* hosted
+  inside the shell, not a replacement shell. (2026-07-09)
+- **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription. (2026-07-08)
 - **P5 — UI baseline is clean Craft v0.11; default work is simplify/optimize, not invent.** New
-  surfaces only when a capability must be visible and no Craft surface can host it. (owner, binding,
-  2026-07-10) — see `01-PRODUCT.md` §4 for the verbatim owner wording.
-- **P6 — User-facing Project equals backend Workspace.** Fleet exposes one work boundary, not Craft's
-  nested `Workspace → Project` hierarchy. Workspace remains the storage/config/session/remote-routing
-  implementation authority. The **one-boundary model** is binding; exact sidebar placement, list/board
-  navigation, legacy-data migration, and remote-project presentation are not yet implemented and must
-  be decided and verified in their own small slices. The detailed document is design source material,
-  not an authorization for a full-shell rewrite. (owner, binding core decision, 2026-07-11) —
-  `design-library/20-workspace-project-session-remote-connections.md`.
+  surfaces only when a capability must be visible and no Craft surface can host it. Verbatim owner
+  wording: [`01-WHITEPAPER.md`](01-WHITEPAPER.md) §5. (owner, binding, 2026-07-10)
+- **P6 — One user concept: Project = Workspace = one folder.** The user meets exactly one work
+  boundary — **Project**, which is a chosen folder on disk. Creating a project is picking or
+  creating that folder; opening a folder is opening a project. Workspace remains the invisible
+  storage/config/session/remote-routing implementation authority. No default surface may present
+  "workspace", "local folder" and "project" as parallel concepts; pickers, switchers and
+  "send to…" dialogs converge on the single Project vocabulary and one switcher control. The
+  one-boundary model is binding;
+  navigation, migration, and remote-project presentation are delivered as coherent verified slices
+  (spec: [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md); design source:
+  [`design-library/20-workspace-project-session-remote-connections.md`](design-library/20-workspace-project-session-remote-connections.md),
+  which is source material, not authorization for a shell rewrite). (owner, binding, 2026-07-11;
+  folder collapse + single-switcher rule, owner direction 2026-07-20)
 - **P7 — Remote Projects connect directly to another Fleet instance; no Fleet account or central
-  coordinator.** The controller supplies only server URL + connection token. A remote access grant is
-  hashed, revocable, and scoped to explicit Workspace/Project IDs; it is separate from the embedded
-  server's private internal token. Reuse Craft's bidirectional Workspace-routed RPC and connection
-  lifecycle rather than introducing a Multica-style PostgreSQL control server, polling daemon, or
-  Fleet-hosted relay. Desktop hosting extends the existing Electron main-process server lifecycle;
-  VPS hosting reuses the existing headless/systemd path. Remote standby uses an independent
-  `prevent-app-suspension` reason so the host may keep running while its display sleeps; it does not
-  repurpose the active-session “keep screen awake” preference. User-managed port mapping, private
-  networking, or frp may make the URL reachable but remains outside Fleet's data model. (owner
-  direction, technical route selected 2026-07-11) — design delta §9.
-- **P8 — Fleet's core product does not depend on Craft-operated cloud services.** Startup, local
+  coordinator.** Controller supplies only server URL + connection token. A remote access grant is
+  hashed, revocable, and scoped to explicit Workspace/Project IDs, separate from the embedded
+  server's internal token. Reuse Craft's bidirectional Workspace-routed RPC and connection
+  lifecycle — no PostgreSQL control server, polling daemon, or Fleet-hosted relay. Desktop hosting
+  extends the Electron main-process server lifecycle; VPS hosting reuses the headless/systemd path.
+  Remote standby uses an independent `prevent-app-suspension` reason. Port mapping/frp/private
+  networking stay outside Fleet's data model. UI says "user-hosted workspace service / another
+  device", never "Craft Agent server". (owner direction 2026-07-11; terminology 2026-07-13)
+- **P8 — Fleet's core does not depend on Craft-operated cloud services.** Startup, local
   Projects/Workspaces, sessions, files, permissions, labels/statuses, tasks/boards, automations, and
-  direct remote access must remain usable without `agents.craft.do`, `mcp.craft.do`, or another Craft
-  account/server. Existing upstream cloud hooks are migrated capability by capability: prefer local
-  behavior; otherwise use a user-controlled/self-hosted or configurable endpoint; retain Craft
-  services only as explicit optional connectors; remove an entry when no honest independent behavior
-  exists. In particular, upstream online sharing currently uploads full session data to Craft's viewer
-  API and must not be presented as a Fleet-native sharing path. **Craft upstream updates remain an
-  explicit input:** Fleet tracks official tags, release notes, documentation, and source changes so
-  fixes/features can be selectively ported instead of reimplemented. This upstream-intake channel is
-  distinct from Fleet binary updates: installing an official Craft binary over Fleet would erase the
-  fork, so Fleet's application updater must use a Fleet-controlled/user-configured release channel or
-  disable installation cleanly until one exists. OAuth relay dependencies must become local or
-  self-host configurable. The code-grounded inventory and official documentation mirror live at
-  `源码参考/documentation/craft-agents-official/`. (owner direction, amended 2026-07-12)
+  direct remote access must work without `agents.craft.do`, `mcp.craft.do`, or any Craft
+  account/server. Each inherited cloud hook migrates capability-by-capability: prefer local;
+  otherwise user-configured/self-hosted endpoint; retain Craft services only as explicit optional
+  connectors; otherwise honestly disabled. Upstream sharing currently uploads full sessions to
+  Craft's viewer API — never present it as Fleet-native. **Upstream intake stays open:** track
+  official tags/release notes/source to port fixes selectively; but Fleet's binary updater must use
+  a Fleet-controlled/user-configured channel (installing an official Craft binary over Fleet would
+  erase the fork) or disable cleanly. Spec: [`specs/R2-independence.md`](specs/R2-independence.md).
+  (owner direction, amended 2026-07-12)
+- **P9 — "Cloud mode" is a user-owned remote execution profile, not a Fleet cloud service.** A cloud
+  target is the same Fleet runtime on user/team-controlled hardware, reached via P7 transport.
+  Execution location (`this device / self-hosted cloud`) and workspace isolation
+  (`current checkout / isolated worktree`) are independent choices. A Git provider is an optional
+  connector, never a prerequisite. A session pins to one execution target; the controller receives
+  routed events and explicit artifacts, not an invisible full replica. **Presentation rule:** the user
+  chooses only the execution location beside the project selector — `本地 local` (this device) ·
+  `云端 cloud` (user-owned remote target; a Git provider such as GitHub stays an optional
+  connector). **Worktree isolation is never a user preset:** the agent/kernel decides per task when
+  an isolated worktree is required (parallel writers, risky changes — C4/C11), creates and cleans
+  it automatically, and surfaces it as visible task status/evidence, not as a choice. The cloud
+  preset ships only when R14 lands — no disabled placeholder control before that (G6). (owner
+  direction 2026-07-13; location presets + agent-managed worktrees, owner direction 2026-07-20)
+
+- **P10 — Task-first command surface.** The primary create action everywhere is **New Task**
+  (「新建任务」), never "new chat": it creates one Craft Task with its Session inside the current
+  Project, so every conversation is attached to a task and the sidebar organizes **Project →
+  task list** (with Skills and Automations as their own entries). Chat is a task's conversation
+  surface, not a separate product concept; a quick throwaway exchange is a task with no
+  deliverable. Implementation is an EXTEND over the existing Task store + SessionManager
+  (default 1 task : 1 primary session; delegation children hang off the same tree) — no new
+  store, no second task authority, and the Board remains the same Task data. Mainstream
+  task-first desktops (TRAE, Codex, Cursor) are presentation evidence only, never shell imports.
+  (owner direction, 2026-07-20)
 
 ## B. The spine (agent-native execution)
 
-- **S1 — Human UI, agent tools, and (later) workflow steps share one canonical invocation model.**
-  They share the action definition, caller-aware policy evaluation, executor, state authority, and
-  attributed evidence. `PreToolUse` remains an Agent adapter; UI callers do not simulate an Agent SDK
-  lifecycle. Different caller identities may receive different policy decisions. (amended 2026-07-11)
-- **S2 — Manual editing is an escape hatch, not the primary path.** Manual UI edits write through the
-  same action + timeline path agents use. (2026-07-08)
-- **S3 — Automatic decisions are risk-graded and replayable.** Low risk may be rule-automated; medium
-  risk needs a rule or pre-authorization; high risk (destructive, credentials, external side effects)
-  always needs explicit confirmation. Reuse Craft's existing permission modes rather than inventing a
-  parallel scheme — see `05-MILESTONE-1-ACTION-SPINE.md`. (2026-07-08)
-- **S4 — Structured-output validation is two-stage.** Structural validation (schema/types) first, then
-  a semantic check that catches structurally-valid-but-wrong outputs (e.g. wrong permission scope,
-  empty evidence without a low-confidence flag). Over-constraining a schema forces models to
+- **S1 — Human UI, agent tools, and (later) workflow steps share one canonical invocation model:**
+  action definition, caller-aware policy evaluation, executor, state authority, attributed evidence.
+  `PreToolUse` remains the Agent adapter; UI callers do not simulate an Agent SDK lifecycle;
+  different caller identities may receive different policy decisions. (amended 2026-07-11)
+- **S2 — Manual editing is an escape hatch, not the primary path.** Manual UI edits write through
+  the same action + timeline path agents use. (2026-07-08)
+- **S3 — Automatic decisions are risk-graded and replayable.** Low risk may be rule-automated;
+  medium risk needs a rule or pre-authorization; high risk (destructive, credentials, external side
+  effects) always needs explicit confirmation. Reuse Craft's permission modes — no parallel scheme.
+  When command rules become configurable, each rule carries a plain-language justification plus
+  positive/negative examples checked at load time, extending Craft's Bash/PowerShell validators and
+  `PreToolUse`. (2026-07-08; rule shape clarified 2026-07-15)
+- **S4 — Structured-output validation is two-stage.** Structural (schema/types) first, then semantic
+  (catches structurally-valid-but-wrong outputs). Over-constraining a schema forces models to
   hallucinate compliant values; make judgment fields optional with an explicit `uncertain` value and
-  default security fields to the most restrictive. (2026-07-08)
+  default security fields to most-restrictive. (2026-07-08)
 - **S5 — Risk, approval, and recovery are separate dimensions.** Risk describes the side effect;
-  approval records `allow / ask / deny / owner_checkpoint`; recovery records `inverse /
-  conditional_restore / snapshot_restore / none`. A low-risk label must never imply an undo path that
-  does not exist. Historical `L0–L3` labels express intent only and are not a code-level permission
-  engine. (2026-07-11)
+  approval records `allow / ask / deny / owner_checkpoint`; recovery records
+  `inverse / conditional_restore / snapshot_restore / none`. A low-risk label never implies an undo
+  path that does not exist. Rolling back conversation history does not revert workspace files; any
+  UI offering file recovery must invoke a real inverse/snapshot/VCS path and state its scope.
+  (2026-07-11; rollback boundary clarified 2026-07-15)
 
 ## C. Identity, teams, and delegation
 
-- **C1 — Two-layer agent identity.** A global low-context Manager Agent (coordinates software/memory/
-  settings) and per-project Agents (execute project work) are separate identities. No privileged
-  backdoor; the Manager never bypasses permission. (2026-07-08)
+- **C1 — Two-layer agent identity.** A global low-context Manager Agent and per-project Agents are
+  separate identities. No privileged backdoor; the Manager never bypasses permission. (2026-07-08)
 - **C2 — Fleet owns the team; a CLI owns one run.** Cross-runtime orchestration uses stable agent
   seats, runtime-specific lanes, and bounded team-run requests. A CLI leader may *request* a member
-  run through a narrow authenticated bridge, but never directly owns another runtime's tools or
-  bypasses permission. "Multi-agent" must not mean "multiple chat bubbles." (2026-07-08)
-- **C3 — No bare subagent spawn.** Spawning a member run/subagent requires a **TaskBrief** (goal,
-  scope paths, known facts, constraints, deliverable, budget). The child returns a **RunReport**
-  (summary + artifact/evidence refs), not a raw transcript dump. Large outputs are passed as pointers,
-  not re-embedded. Unscoped "explore the whole repo" is denied by default. Budgets are not merely
-  visible — they **halt**: when a child or a team-run crosses its declared budget, execution pauses and
-  requires explicit confirmation to continue; it does not burn on until someone notices. This is what
-  keeps multi-agent from costing 15× a single agent. (2026-07-10; budget circuit-breaker added
-  2026-07-11)
-- **C4 — Land code via an agent-first Git/PR protocol.** A PR is a *remote delivery protocol*, not the
-  product's task board and not an IDE. Agents run `git`/`gh` under permission. Concurrent local writes
-  are protected by file leases (or branch/worktree), never by "git alone." **Merge to remote main is
-  high-risk and requires explicit confirmation by default.** (2026-07-10, merge-risk level set here.)
+  run through a narrow authenticated bridge, never directly owning another runtime's tools.
+  "Multi-agent" must not mean "multiple chat bubbles." (2026-07-08)
+- **C3 — No bare subagent spawn.** Spawning requires a **TaskBrief** (goal, scope paths, known
+  facts, constraints, deliverable, budget); the child returns a **RunReport** (summary +
+  artifact/evidence refs), not a transcript dump. Large outputs pass as pointers. Unscoped "explore
+  the whole repo" is denied by default. **Budgets halt:** crossing a declared budget pauses
+  execution and requires explicit confirmation — it never burns on unnoticed. Every child has a
+  stable hierarchical task path; spawn explicitly selects no parent history, full history, or last N
+  turns. Lifecycle recovers from the existing Session store, not a second team store.
+  (2026-07-10; budget circuit-breaker 2026-07-11; context-fork boundary 2026-07-15)
+- **C4 — Land code via an agent-first Git/PR protocol; branches are never a user surface.** A PR
+  is a *remote delivery protocol*, not the task board and not an IDE. Concurrent local writes are
+  protected by leases or branch/worktree isolation, never "git alone." **Presentation rule (owner
+  direction 2026-07-20; Claude/Codex desktop pattern as evidence only):** the user never creates,
+  names, switches or cleans branches in default surfaces. The agent/kernel manages branch/worktree
+  mechanics; the user meets only task-level verbs — **查看改动 (diff) · 应用 (apply) · 放弃
+  (discard) · 创建 PR** — plus visible status ("ran in an isolated worktree"). Landing ladder:
+  read-only task-changes diff joins the basic surfaces first (R3-era, over plain `git status`/
+  diff of the project folder); apply/discard become real with agent-managed worktrees (R6);
+  PR/remote verbs land with R14. **Merge to remote main stays high-risk and requires explicit
+  confirmation.** (2026-07-10; branch presentation + ladder, 2026-07-20)
+- **C5 — Use the lightest sufficient organization.** Direct execution, bounded delegation/parallel,
+  independent verification, and measured hierarchy are policies over the same task/Session/
+  permission/artifact/evidence authorities — not separate products. The router selects from task
+  independence, write overlap, verification risk, context size, runtime capability, budget,
+  deadline; the user may override. Added hierarchy requires measured evidence. (2026-07-15)
+- **C6 — Deterministic coordination; bounded Agent judgment.** Code owns dependency readiness,
+  scheduling, capacity, retries, timeouts, budgets, permissions, leases, cancellation, status
+  transitions, report validation. Agents own judgment-bearing work. ProjectDigest and RunReport are
+  projections linked to authoritative events/artifacts, not a second history. Members communicate to
+  deliver artifacts, request authority/information, report blockers, or resolve declared
+  dependencies — not to generate recursive review conversations. Optimize total outcome-adjusted
+  cost across all members. (2026-07-15)
+- **C7 — Lock a versioned task contract per execution attempt.** Extend the existing Craft
+  Task/Session authority with a `TaskContract` projection: stable criterion IDs, primary outcome,
+  preconditions, allowed/reserved paths, non-goals, evidence requirements, budgets, contract
+  version. An executing Agent cannot silently change the request, acceptance criteria, evaluator,
+  tests, or harness; a necessary revision becomes a `ContractChangeRequest` and a new contract
+  version. Metadata + SessionEvents on the existing authority — never a second task store.
+  (2026-07-16)
+- **C8 — Diagnose reality before product code.** Cheapest deterministic checks first (existence,
+  installation, process/window, permission, input/path, connectivity, tool availability). Classify
+  failures as product / environment / input / authority / evidence. Optional evidence failure never
+  blocks the main output or authorizes capture/preview infrastructure work. (2026-07-16)
+- **C9 — Execution and acceptance are separate authorities.** The executor cannot certify its own
+  success by inventing or weakening acceptance. Verification returns `PASS` /
+  `IMPLEMENTATION_FAILURE` / `ENVIRONMENT_FAILURE` / `EVIDENCE_UNAVAILABLE` / `CONTRACT_AMBIGUOUS`.
+  A verifier is read-only by default; repair is a new bounded task. Tests/fixtures/harnesses are
+  reserved paths unless the task explicitly owns them. (2026-07-16)
+- **C10 — Progress must be monotonic; incidental findings stay incidental.** Every state-changing
+  action maps to an unmet criterion or declared recovery edge. After two non-progressing
+  state-changing attempts, execution halts (tool/hypothesis switches don't reset the count). An
+  incidental defect is queued with evidence, never silently replacing the active task. (2026-07-16)
+- **C11 — Multi-Agent trust comes from contracts and evidence, not conversation.** One accountable
+  owner per criterion; at most one writer per occupied path; one integrator per shared contract.
+  Members receive read-only contract projections and return artifact/evidence references; no
+  recursive review assignment without a declared disagreement or risk trigger. Budget, cancellation,
+  and failure propagate through the existing Task/Session tree. Provider adapters normalize
+  capability/permission/lifecycle/usage/failure semantics without owning Fleet state. (2026-07-16)
 
 ## D. State and persistence
 
-- **D1 — One logical authority per state class.** A JSON/SQLite/native file format is an
-  implementation detail of that authority, never license to create a second product store. (2026-07-08)
-- **D2 — Near-term persistence retains Craft v0.11 filesystem stores.** No product-wide SQLite control
-  plane and no independent `jobs.json` / `memory.json` / `clips.json` authority in the near term.
-  Introducing SQLite later requires a written decision with a concrete trigger — see the persistence
-  rule in `03-NON-NEGOTIABLES.md`. (2026-07-09)
-- **D3 — No long-lived background daemon in the near term.** The Electron main process owns the
-  terminal/PTY lifecycle and the local spine. A future offline/background daemon requires its own
-  decision covering lifecycle, local auth, single-instance, recovery, and upgrade. (2026-07-09)
-- **D4 — Files and Library are separate layers.** Raw workspace files are not Library assets until
-  selected, authorized, indexed, and provenance-tracked. Cross-surface handoff uses versioned
+- **D1 — One logical authority per state class.** File format (JSON/SQLite/native) is an
+  implementation detail of that authority, never license for a second product store. (2026-07-08)
+- **D2 — Persistence retains Craft v0.11 filesystem authorities** unless a measured requirement
+  changes the implementation. No product-wide SQLite control plane; no independent `jobs.json` /
+  `memory.json` / `clips.json`. SQLite requires a written decision with a concrete trigger — see
+  [`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md) §4. (2026-07-09)
+- **D3 — No second long-lived background authority without a demonstrated lifecycle requirement.**
+  The Electron main process owns the terminal/PTY lifecycle and the local spine. (2026-07-09)
+- **D4 — Files and Library are separate layers.** Raw workspace files become Library assets only
+  when selected, authorized, indexed, provenance-tracked. Cross-surface handoff uses versioned
   artifact references; native owners keep content authority; fan-out reuses the same version rather
-  than silently copying bytes. The same artifact version may be consumed by several later Agents or
-  native surfaces (for example, a generated image used as a website reference and a video first frame),
-  and every actual consumption records its purpose and provenance. (amended 2026-07-11)
-- **D5 — Memory is local, partitioned, inspectable, and deletable.** Deletion is a high-risk action.
-  Context efficiency + external review is *one* pipeline and ledger, not scattered buttons. The raw
-  timeline never auto-promotes to long-term memory: experience is *proposed* by an agent, then retained
-  only after human/rule review (see `01-PRODUCT.md` §8). This is the intended "experience distillation"
-  moat and is scheduled deliberately late — its landing point is **Milestone 6** in `04-MILESTONES.md`,
-  after a complete single-Agent chain and one real delegation loop. (amended 2026-07-11)
-- **D6 — ArtifactRef is derived from real handoffs, not frozen speculatively.** Milestone 1 reserves no
-  complete artifact protocol. The first runtime output may expose a minimal candidate envelope; it is
-  versioned before the first cross-feature consumer, after at least one real producer and consumer have
-  validated the fields. (2026-07-11)
+  than silently copying bytes; every actual consumption records purpose and provenance. (2026-07-11)
+- **D5 — Memory is layered, agent-maintained, local, partitioned, inspectable, deletable.** Agents
+  accumulate memory autonomously as permissioned Workspace files in explicit layers: working/daily
+  notes (never injected wholesale; indexed for scoped retrieval), curated long-term memory and a
+  user profile (injected under per-file budgets with visible truncation), plus optional per-domain
+  files scoped by loadout. Idle-time consolidation on an auxiliary lane promotes working notes into
+  curated layers, archives stale entries, and writes a human-readable consolidation log; it never
+  rewrites the main session's cached prefix mid-span. Human review is **optional curation**
+  (pin / correct / delete at any time), not a retention gate. Hard floors autonomy never crosses:
+  credentials/secrets never enter memory files (F2); partition and sensitivity filters precede
+  similarity retrieval; Project memory never leaks across Projects — cross-project promotion is an
+  explicit origin-marked transfer; durable entries carry source pointers into Session evidence;
+  consolidation archives rather than hard-deletes; user deletion is honored end-to-end including
+  derived index entries; the raw timeline stays the evidence authority and is never rewritten;
+  memory stays under the single Workspace file authority (no memory database before the D2
+  trigger); and verbatim transcript dumps are not memory. (amended 2026-07-15; agent-autonomous
+  layering per owner direction, 2026-07-20)
+- **D6 — ArtifactRef is derived from real handoffs, not frozen speculatively.** Versioned before the
+  first cross-feature consumer, after at least one real producer and consumer validate the fields.
+  (2026-07-11)
 
 ## E. Capabilities, cost, and modules
 
 - **E1 — Continuous extensibility without restructuring the spine.** New capabilities and views
-  *register*; they do not rewire the core. One capability manifest, one canonical action owner, one
-  view-contribution host. (2026-07-09)
-- **E2 — Capability management separates install / loadout / runtime.** Agent attention is protected by
-  scoped loadouts, not one global always-on tool pile. (2026-07-08)
-- **E3 — One usage/cost ledger.** Real / estimated / unknown cost is tracked in one ledger; modules
-  embed its fields rather than starting a second cost store. Auto-routing/cache/fusion apply only to
-  API/OAuth lanes and are default-off; any CLI-runtime lane bypasses them. Batch/offline API work uses
-  native batch endpoints, not platform-level concurrent loops. (2026-07-08)
-- **E4 — Native engine per surface, one shared spine.** Any "design action/patch" is an *envelope* for
-  handoff, never a universal internal document model that pretends to natively edit DOM, code, design,
+  *register*; they do not rewire the core. (2026-07-09)
+- **E2 — Capability management separates install / loadout / runtime.** Agent attention is protected
+  by scoped loadouts, not one global always-on tool pile. (2026-07-08)
+- **E3 — One usage/cost ledger.** Real / estimated / unknown cost in one ledger; modules embed its
+  fields. Auto-routing/cache/fusion apply only to API/OAuth lanes and default off; CLI-runtime lanes
+  bypass them. Batch API work uses native batch endpoints. (2026-07-08)
+- **E4 — Native engine per surface, one shared spine.** A "design action/patch" is an *envelope* for
+  handoff — never a universal internal document model pretending to natively edit DOM, code, design,
   video, and decks at once. (2026-07-08)
-- **E5 — The canvas projects the artifact relationship graph; it does not own domain truth.** Agent,
-  session, file, job, artifact, workflow, and leadership truth remain in their native authorities. The
-  canvas owns only spatial/layout presentation and invokes governed actions to change anything else.
-  `spatial`, `reference`, actual execution `input`, immutable `derived-from` provenance, leadership, and
-  executable `workflow` are distinct relationship classes with different owners. A visual connector is
-  never automatically an executable edge or a provenance fact. v1 workflows remain finite DAGs of typed
-  steps, stored as immutable versioned project documents when run. Full vision in
-  `design-library/07-canvas-spatial-orchestration-VISION.md`. (amended 2026-07-11)
-- **E5a — Spatial rendering is adapter-bound and benchmark-selected; React Flow is the leading first
-  spike, not a committed dependency.** The durable contract is a renderer-independent projection/layout
-  model plus governed canvas actions. React Flow has the strongest evidence for Fleet's first workload:
-  rich React Agent cards and tens-to-hundreds of media/workflow nodes (also seen in TapNow, TRAEWork, and the
-  owner-provided MiniMax Hub analysis). tldraw remains the strongest free-spatial behavior comparison;
-  its store may be a derived renderer store rather than a second domain authority, but production
-  licensing is an owner checkpoint. PixiJS/GPU or CanvasKit is introduced only if a representative
-  Electron benchmark proves DOM rendering insufficient; FlowGram is a workflow-editor candidate, not the
-  spatial host, because its form/variable/runtime layers would otherwise duplicate Fleet authorities.
-  No renderer dependency is promoted before the canvas milestone's adapter spike and media/concurrency
-  benchmark. (replaced 2026-07-11) | Affected: M07, M16, M17 (design-library module numbering, **not**
-  the Milestone 1–6 sequence in `04-MILESTONES.md`) |
-  `design-library/07-canvas-spatial-orchestration-VISION.md` §§6–9
-- **E6 — The BrowserPane is a governed evidence input, not a stealth browser and not an editable-doc
-  surface.** It follows an explicit control model (enablement, open-target, data clearing, screenshot
-  policy, approval policy, site overrides, and a separate high-risk full-CDP developer toggle). Remote
-  pages are evidence-only; no editing via silent DOM mutation. (2026-07-08)
-- **E7 — Exports are honest.** A motion/deck surface uses a native document; PPTX/HTML/video are
-  explicit exports with visible fidelity limits. Never promise full animated-PowerPoint compatibility
-  the export path can't prove. (2026-07-09)
-- **E8 — Local resource limits are product behavior, not exceptional failure.** When concurrent work
-  saturates the machine (jobs, previews, media, renders), the product visibly queues, suspends,
-  degrades, or hands off — it does not freeze, silently drop work, or pretend nothing happened. Exact
-  thresholds are benchmark outputs, never frozen from drafts. (Carried from the owner's concurrency
-  concern — see the owner-voice record in `design-library/OWNER-VOICE.md`; 2026-07-08, re-promoted
-  2026-07-11)
-- **E9 — Thinking-intensity levels adapt per model; ungradable models are handled honestly.** Owner
-  wording (binding, quote verbatim): 「我们软件应该要能根据不同的模型自动适配不同的思考强度分级策略，
-  有些模型思考强大不能分级」. Operationally: the product keeps **one** thinking-level vocabulary
-  (Craft's `off…max`); each backend/model adapter maps it onto what that provider **actually
-  supports** — saturating at the provider's ceiling, collapsing to on/off, or hiding the selector for
-  models that cannot be graded — and never claims a level was applied when it wasn't. Never emit a
-  level the installed SDK's type does not accept; passing a new level through 1:1 requires a published
-  SDK that supports it plus an owner-approved dependency bump (a shipped runtime-dependency change,
-  per `OWNER-CHECKPOINTS.md` #2). First application: `THINKING_TO_PI` saturates `max → 'xhigh'` on
-  pi SDK 0.80.6. (owner, 2026-07-11) — see `design-library/OWNER-VOICE.md` OV-006.
+- **E5 — The canvas projects the artifact relationship graph; it does not own domain truth.**
+  `spatial`, `reference`, execution `input`, immutable `derived-from` provenance, leadership, and
+  executable `workflow` are distinct relationship classes with different owners. A visual connector
+  is never automatically an executable edge or a provenance fact. v1 workflows are finite DAGs of
+  typed steps, stored as immutable versioned project documents when run. Full vision:
+  [`design-library/07-canvas-spatial-orchestration-VISION.md`](design-library/07-canvas-spatial-orchestration-VISION.md).
+  (amended 2026-07-11)
+- **E5a — The canvas commits to the DOM-family rendering approach; React Flow v12 is the default
+  first implementation and custom DOM+SVG is the named in-family fallback; the domain model stays
+  renderer-independent.** What is **committed now** (product decision, owner-delegated): Fleet
+  cards are live React components, so the primary renderer is DOM/React-based — GPU engines
+  (Pixi/CanvasKit) may appear only as a *media layer* under the DOM viewport, never as the primary
+  scene graph, and no canvas-engine store (tldraw/Fabric/Konva/Leafer) becomes a domain authority.
+  Grounds: four independent shipping products with Fleet-shaped workloads are all DOM-family —
+  TapNow, MiniMax Hub/Hilo, TRAEWork on React Flow (owner-provided analyses), and Mayi Canvas on fully
+  custom DOM + `translate3d` + SVG bezier with rich media/agent nodes
+  (`references/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md`). What the **E5a spike decides** (may run
+  any time from R5; must pass before deep R7 investment): React Flow vs custom DOM+SVG *within the
+  family*, by named criteria — representative rich cards, concurrent agent updates, media proxies,
+  ≥500-node viewport culling, memory recovery in the real Electron app. Implementation constraints
+  either way: custom edge overlay for the six edge classes; visible-node virtualization + thumbnail
+  workers + object pools (Mayi Canvas performance-mode evidence); iframe/webview previews stay outside the graph
+  layer; resource budgets per E8. tldraw stays behavior-comparison only (license = owner
+  checkpoint); FlowGram is workflow-editor UX reference only. `plugins/xyflow` completes its
+  admission record at the spike. **Anti-oscillation clause:** this entry supersedes both prior
+  wordings ("committed default" and "leading candidate"); do not re-litigate the renderer without
+  new spike evidence or an owner request. (replaced 2026-07-15; family committed + in-family spike
+  defined 2026-07-17 — see `13-ORCHESTRATION.md` §4.5)
+- **E6 — The BrowserPane is a governed evidence input, not a stealth browser or editable-doc
+  surface.** Explicit control model (enablement, open-target, data clearing, screenshot policy,
+  approval policy, site overrides, separate high-risk full-CDP developer toggle). Remote pages are
+  evidence-only. (2026-07-08)
+- **E7 — Exports are honest.** Motion/deck surfaces use native documents; PPTX/HTML/video are
+  explicit exports with visible fidelity limits. (2026-07-09)
+- **E8 — Local resource limits are product behavior, not exceptional failure.** Under saturation the
+  product visibly queues, suspends, degrades, or hands off — it does not freeze or silently drop
+  work. Exact thresholds are benchmark outputs. (owner concern; see
+  [`design-library/OWNER-VOICE.md`](design-library/OWNER-VOICE.md) OV-002; 2026-07-11)
+- **E9 — Thinking-intensity levels adapt per model; ungradable models are handled honestly.** The
+  owner requires automatic per-model adaptation and honest handling of models that expose no
+  gradable reasoning control (exact quote: `OWNER-VOICE.md` OV-006). One thinking-level vocabulary
+  (Craft's `off…max`); each backend/model adapter maps it
+  to what the provider actually supports — saturating, collapsing to on/off, or hiding the selector
+  — and never claims a level was applied when it wasn't. Never emit a level the installed SDK's type
+  does not accept. First application: `THINKING_TO_PI` saturates `max → 'xhigh'` (pi SDK 0.80.6).
+  (owner, 2026-07-11)
+- **E10 — Identity labels are a built-in product concept; display language is not identity.** The
+  existing Craft label store is the single authority. Untouched starter labels localize at
+  render/search time; user-created or renamed labels stay verbatim. Future Skill/Source/permission
+  bindings use stable persisted identifiers, extend existing stores, and select references — the
+  label itself never enforces access. Session startup/resume must expose the effective profile and
+  actual instruction/capability source paths. A browser-safe built-in metadata catalog may map
+  stable IDs to localization keys; it is not a second label store. Binding/provenance UI:
+  `not implemented`. (owner 2026-07-13; boundaries clarified 2026-07-14/15)
+- **E11 — A native design surface uses inspectable, transactional design data; it is not the spatial
+  canvas model.** When Fleet gains a real design editor: schema-validated objects, one mutation path
+  committing ordered change batches (may carry inverse changes, selection metadata, grouping,
+  attribution; recovery still follows S5 and the owning Timeline). Tokens are references with stable
+  identity; components keep explicit main/instance identity. Agents, human UI, and built-in
+  extensions invoke the same governed mutation boundary. Not a Figma/Penpot clone; no second
+  authority. (Penpot source intake, 2026-07-15)
 
-## F. Compliance (hard product requirements, not policy notes)
+- **E12 — Token economy is a first-class capability: intelligence per token, never saving for
+  saving's sake.** Owner-set product bet: vendors won't reduce user token spend; Fleet does.
+  Design authority: [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md) — a layered pipeline (structural
+  L0 → cache alignment L1 → deterministic input compression L2 → agent-directed compaction L3 →
+  gated model-assisted compression L4 → opt-in output economy L5 → reviewed cross-session
+  injection L6). Integration is three-tier: core-fused mechanisms at Fleet seams; optional
+  connectors (repomix/context7/codegraph-class via Sources/MCP; optional local binaries with
+  passthrough, like the shipped rtk path); rejected-as-product (relay proxies, universal semantic
+  caches, auto-memory, default output-crippling). Hard rules: every optimizer is measured on a
+  fixed trace (ROI = cost per accepted outcome), switchable, never silently semantic-changing,
+  and pruned content stays recoverable by pointer; one ledger (E3), no second memory (D5).
+  Scientific basis: context-rot/lost-in-the-middle degradation means leaner context raises
+  capability. (owner direction, 2026-07-18)
+- **E13 — Harness efficiency is a model-facing projection problem, not a reason to replace the
+  Craft/Fleet kernel.** Benchmark `model × harness/profile × task` on the same sealed task and
+  effort; never generalize a Pi win into “Pi always wins” or treat use of the Pi SDK as proof that
+  Fleet preserves upstream Pi's minimal harness. Craft remains the product shell and the sole
+  Session/permission/timeline/task/settings authority. A Pi-light path is an execution profile over
+  those authorities, not a second agent kernel. Before each model call, the visible prompt, tools,
+  Skills/Sources and environment capabilities are the smallest effective projection of
+  `task need ∩ installed capability ∩ runtime availability ∩ caller policy ∩ live grant`; hidden
+  tools grant no authority, and discovery/call must return through the existing permission and
+  evidence path. TE1 remains observation-only. Prompt diet, centralized tool projection and a
+  Pi-light profile require a separately accepted bounded slice after a trustworthy baseline; they
+  are not smuggled into R1/R2 or TE1. OpenHands, Hermes and OpenClaw remain mechanism evidence, not
+  replacement runtimes or authorities. (owner-approved documentation direction, 2026-07-20)
+
+## F. Compliance (hard product requirements)
 
 - **F1 — No quota bypass, stealth/anti-detection automation, credential/cookie extraction,
-  unauthorized account automation, or terms-of-service evasion.** Ever. Multiple accounts are legal
+  unauthorized account automation, or terms-of-service evasion. Ever.** Multiple accounts are legal
   profiles only. (2026-07-08)
 - **F2 — Preserve user data.** Destructive changes and external side effects require explicit
   authority. Credentials stay in established credential pathways. (2026-07-08)
-- **F3 — Source reuse passes both a license gate and a product-fit gate.** A permissive license alone
-  is not enough; copy only explicitly approved sources, otherwise use an adapter or black-box the
-  behavior. (2026-07-08)
+- **F3 — Source reuse passes both a license gate and a product-fit gate.** A permissive license
+  alone is not enough; copy only explicitly approved sources, otherwise adapter or black-box.
+  (2026-07-08)
 
 ## G. Process
 
-- **G1 — Owner gives concept and intent; the agent chooses the technical route.** Do not ask the owner
-  for engineering opinions. Extract design intent, pick the implementation, document assumptions,
-  escalate only genuine conflicts. (2026-07-08)
-
-## Deferred, not reversed (legacy decisions parked with their modules)
-
-A few durable legacy judgments were deliberately **not** carried as active entries because no near-term
-milestone touches them. They are parked, not overturned; their substance lives in the matching
-`design-library/` file and the original ledger (pre-reset Git history:
-`git show 616eff59e:docs/DECISIONS-LEDGER.md`):
-the `@`/`/` addressing model and session-as-Agent idea (old D16); "Messaging is retained and governed,
-not silently deleted" (old D28 — the messaging packages in the tree stay until a real decision removes
-them); the terminal-surface / CLI-lane / TeamRun three-concept separation (old D21); and
-adapter-first integration for volatile external ecosystems (old D24). Old D29 ("move toward
-`node-pty`") is the one entry that was **reversed**, by Milestone 2's non-interactive-first rule.
+- **G1 — Owner gives concept and intent; the agent chooses the technical route — and owes honest
+  dissent.** Do not ask the owner for engineering opinions. Extract design intent, pick the
+  implementation, document assumptions, escalate only genuine conflicts. **Duty to dissent:** when
+  an owner suggestion is technically suboptimal, the agent must say so before executing — one plain
+  paragraph: the better route, why, and the cost of each. Product intent always remains the owner's
+  call; silent compliance with a bad technical idea is a failure, not obedience. (2026-07-08;
+  dissent duty added at owner request 2026-07-17)
+- **G2 — Value-first integration order.** Integration follows [`05-ROADMAP.md`](05-ROADMAP.md):
+  exactly one release is ACTIVE (a WIP limit, never a time phase — no NOW/NEXT/LATER,
+  near/far, or calendar language); user-visible value ships before shared infrastructure; shared
+  contracts (action seam, ArtifactRef, TaskBrief/RunReport) are **extracted from at least two real
+  implemented callers**, never built speculatively first. Dependency edges describe required
+  integration, not a permission system — the owner may request any capability early, and its status
+  then reports the unresolved edges honestly. (2026-07-16; time-flavored labels removed 2026-07-17)
+- **G5 — Coverage and sequencing are separate.** Every product domain (canvas, video, browser,
+  memory, tokens, sandbox, messaging, workflows, design, deck, jobs, remote…) stays registered and
+  described at breadth
+  at breadth level in [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md) and
+  [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) at all times, with its reference projects
+  and gates named. Integration order never deletes a domain from design; matrix/page rows update in
+  the same slice that changes their facts; depth (full specs) is written when a domain activates or
+  the owner requests it. (2026-07-17)
+- **G6 — Frontend track: pages may run ahead of behavior, honestly.** Complete page specs are
+  encouraged ahead of backend work. Early page builds are allowed when: the page spec exists
+  ([`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) §5); data flows through a typed adapter
+  with mocks behind the adapter (never in components); unwired pages are reachable only behind the
+  developer/preview toggle; status is reported `display-only` until actual behavior is connected.
+  The default user surface
+  never ships a control without real behavior. (2026-07-17)
+- **G3 — Verification is split: agents own everything below look-and-feel.** Agents run static
+  checks, targeted tests, real non-visual data paths, and non-interactive smoke checks
+  ([`09-QUALITY.md`](09-QUALITY.md)) without asking. Routine interactive/visual acceptance belongs
+  to the owner; agents drive UI automation only on explicit request. (2026-07-16, replaces the
+  blanket "no agent UI verification" rule)
+- **G4 — Documentation architecture v2.** The authoritative set is the numbered documents indexed
+  by `00-START-HERE`, OWNER-GUIDE, UI baseline, feature registry, `specs/`, `modules/` and
+  `references/`. Each rule lives in exactly one canonical document. Superseded planning corpora are
+  deleted after unique active facts migrate; they are not archived in-tree. Durable design assets
+  remain in `design-library/` or module packets because they guide their ordered product rows,
+  not because they commemorate prior process. (2026-07-16; clarified 2026-07-17)

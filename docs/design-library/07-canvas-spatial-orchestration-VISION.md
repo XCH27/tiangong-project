@@ -2,9 +2,9 @@
 
 > **Status:** owner-directed vision and durable architecture boundary, amended 2026-07-11 after
 > reviewing public products, owner-provided reverse-engineering reports, and local reference clones.
-> **Not an implementation spec.** Canvas remains deferred. Concrete persisted schemas, RPC names,
-> renderer internals, and numeric resource budgets are defined only when a real producer, consumer, and
-> Electron benchmark exist.
+> **Not an implementation spec.** Canvas is one node in the final capability graph. Concrete persisted
+> schemas, RPC names, renderer internals, and numeric resource budgets are
+> defined only when a real producer, consumer, and Electron benchmark exist.
 
 ---
 
@@ -42,6 +42,7 @@ rendering, rich interaction, media handling, collaboration, and execution.
 | **TRAEWork** (owner-provided reverse analysis) | Separate iframe/WebView website preview from a React Flow design canvas | Do not flatten live website editing and spatial orchestration into one renderer | The analyzed private bundle is not stored in this repository; do not conflate this product with TRAE IDE |
 | **MiniMax Hub / Hilo** (owner-provided reverse analysis) | React Flow v12 for dozens of rich media nodes; custom canvas edge overlay; Agent writes through a gateway; placeholder→job→result; file and asset/provenance layers | Governed Agent canvas actions, async placeholders, batching, dedupe, provenance, and specialized plugin surfaces | Fleet should copy its opencode runtime, gateway, SQLite, DAG, or stores |
 | **FlowGram / Coze** | Workflow-focused editor with free/fixed layout plus form and variable engines; Coze uses it for workflow authoring | Useful comparison if Fleet later needs a dedicated workflow-authoring view | It should own Fleet's spatial canvas or duplicate Fleet's executor/policy/runtime |
+| **Penpot** | MPL-2.0 source separates schema-backed design changes, client presence, server persistence, plugin capabilities and export/render processes | A native design surface benefits from inspectable change batches and hard process/API boundaries | Its design-document, revision, ACL, Redis, plugin registry or exporter topology should become Fleet's canvas/runtime authorities |
 
 Primary public references:
 
@@ -69,13 +70,21 @@ The repository's local clones provide code-level comparison, not application bas
 - `源码参考/software/tldraw/`: signals/store, viewport culling, spatial queries, rendering-shape and
   performance managers. This disproves the claim that tldraw's store is automatically a second Fleet
   domain authority; the real question is what that store owns and how it is synchronized.
-- `源码参考/software/penpot/`: a Rust/Skia Wasm renderer with WebGL surfaces, texture reuse, tile/atlas
-  state, explicit fallback, and separate legacy export/view paths. This shows the cost and value of a
-  professional GPU document renderer.
-- `源码参考/software/openpencil/` and `源码参考/software/open-pencil/`: framework-independent document,
+- `源码参考/software/penpot/` (MPL-2.0; reviewed at `bdc078d5ea0c`): a professional design system whose
+  renderer is only one part. Its shared change builder emits ordered redo and reverse-order inverse
+  changes; undo groups/transactions add selection and attribution metadata; tokens retain identity and
+  references; component instances synchronize by touched attribute groups; plugins use declared
+  capabilities and a hardened API; realtime presence is separate from persisted file changes; export
+  runs behind a dedicated process boundary. Fleet should adapt those seams for a future native design
+  surface, not copy Penpot's server revision/ACL/Redis authorities or treat its document model as the
+  spatial canvas. Copying source files also carries MPL file-level obligations, so pattern study is the
+  default.
+- `源码参考/software/open-pencil/` (the only pencil checkout present; earlier drafts also named a
+  nonexistent `openpencil/`): framework-independent document,
   history, viewport, and spatial-index engines above CanvasKit/Skia. This is the strongest local example
   of keeping the model independent from the UI framework and renderer.
-- `源码参考/software/opencut/` and `源码参考/software/opencut-classic/`: a specialized video-editing
+- `源码参考/software/opencut-classic/` (the only opencut checkout present; earlier drafts also
+  named a nonexistent `opencut/`): a specialized video-editing
   surface and media pipeline. It supports Fleet's “native engine per surface” rule: the canvas hands
   artifacts to a video editor; it does not become the video editor.
 - `源码参考/software/craft-agents-oss/`: the only application base. Fleet reuses its session, permission,
@@ -108,7 +117,7 @@ canvas projection + layout
 renderer adapter
 ```
 
-`ArtifactRef` remains deliberately unfrozen until Milestone 3 proves a real producer and consumer. The
+`ArtifactRef` remains deliberately unfrozen until a real producer and consumer prove its fields. The
 canvas vision requires only these durable properties, not a speculative schema:
 
 - stable identity and exact version;
@@ -205,7 +214,7 @@ For concurrent Agents:
 
 A single global lock around one giant canvas JSON is an acceptable external reference pattern, not a
 Fleet decision. It may become a bottleneck and would make layout the accidental authority for unrelated
-facts. The canvas milestone chooses the smallest concurrency mechanism that real callers require.
+facts. Canvas chooses the smallest concurrency mechanism that real callers require.
 
 ---
 
@@ -386,7 +395,7 @@ gateway, store, or planning corpus.
 - Public-product claims, reverse-engineered reports, and local clones are evidence inputs, not current
   Fleet implementation facts.
 
-The early compatibility contract for every upstream milestone is therefore small: preserve stable
+The compatibility contract for every dependency node is therefore small: preserve stable
 identity, native ownership, version/provenance, caller-aware actions, and attributable events. Those
 properties make entities projectable into any competent renderer. Committing to a library before the
 real workload exists does not.

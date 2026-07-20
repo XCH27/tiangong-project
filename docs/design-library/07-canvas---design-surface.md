@@ -1,8 +1,11 @@
 # M07 — Spatial Canvas and Workflow Projection
 
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+
+
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.
 > The stale Wave/Gate/Loop/packet wrapper and dead cross-links were removed; the **design substance**
-> below is kept as *source material* for a future branch's `DESIGN.md`, not as an active plan. Re-ground
+> below is kept as *source material* only; its development-order owner is the release anchor in `docs/modules/PACKET-INDEX.md`, not this note. Re-ground
 > it in the code that exists when that branch starts, and strip anything no longer true.
 >
 > **Superseded canvas direction:** use
@@ -257,42 +260,3 @@ design module, not the general spatial host.
 | resource saturation | live previews suspended; queue/degraded notice | wait, close heavy views, or split space |
 
 ## 15. First Usable Verification
-
-1. Open M07 through M16 and create a persisted spatial document.
-2. Human places/moves a text input card; Agent places an image capability card through the same
-   action registry path.
-3. Agent creates the two-step workflow in M17; M07 shows typed ports and validated edge.
-4. Human edits one input and starts the run; approval, job, and output state update visibly.
-5. The real image output is registered by M05 and appears as an ArtifactRef card.
-6. Move/remove/undo the result card; verify the artifact remains and spatial binding restores.
-7. Attempt concurrent stale updates; verify explicit conflict and no silent lost edit.
-8. Restart during a running job and after a dirty spatial change; verify M17/M08 reconciliation
-   and M07 document recovery without duplicate generation.
-9. Inspect timeline: human, Agent, workflow, job, and artifact correlations are present; viewport
-   noise and secret prompt data are absent.
-10. Perform a real rendered interaction check at common zooms and during active Agent updates.
-
-## 16. Later Verification
-
-- fan out one image to M18, M09, and M19 and show all outputs as separate versioned cards;
-- open each native editor through M16 while the canvas remains responsive;
-- unload a renderer module and recover its cards;
-- enforce resource degradation with multiple live previews;
-- export a selection through in-memory render plus an approved M05 file write.
-
-## 17. Current decision gates
-
-- First prove a real ArtifactRef producer→consumer handoff; do not freeze the old complete contract.
-- Run the representative renderer/license/media/concurrency spike in the real Electron app.
-- Introduce workflow and view contracts only when their own complete slices begin.
-- Record resource budgets, fallback, and user-visible degraded-state wording from observed behavior.
-- Do not revive Waves, packets, F Track, or contract-freeze gates.
-
-## 18. Non-Goals and Prohibitions
-
-- No fixed cross-module node union as the long-term extension model.
-- No second workflow graph hidden in the canvas.
-- No full live Chromium/video/design/deck editor in every node.
-- No raw file paths or secret payloads in renderer cards.
-- No direct adapter timeline writes or permission checks.
-- No claim of `usable` from a mock canvas or unit tests alone.

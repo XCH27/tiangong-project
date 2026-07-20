@@ -1,8 +1,11 @@
 # M10 — Memory, Context Pack, and Review
 
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+
+
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.
 > The stale Wave/Gate/Loop/packet wrapper and dead cross-links were removed; the **design substance**
-> below is kept as *source material* for a future branch's `DESIGN.md`, not as an active plan. Re-ground
+> below is kept as *source material* only; its development-order owner is the release anchor in `docs/modules/PACKET-INDEX.md`, not this note. Re-ground
 > it in the code that exists when that branch starts, and strip anything no longer true.
 
 
@@ -152,23 +155,14 @@ Rules retained from earlier analysis:
 - every segment carries origin, scope, sensitivity, token estimate, and evidence refs;
 - a token budget drops low-confidence/low-priority segments first and reports omissions.
 
-### 8.1 Local reference: Caveman
+### 8.1 Former local-reference claim (withdrawn)
 
-`源码参考/software/caveman/` (MIT, pinned by its nested Git checkout) is an approved **source reference
-for unstructured output and context-file compression**, not an application base, memory authority, or
-replacement Agent runtime. Useful patterns to evaluate when this area becomes active:
-
-- explicit compression levels rather than one irreversible global style;
-- preserve code, commands, URLs, paths, errors, and structured payloads exactly;
-- measure real input/output token effects instead of claiming savings from shorter prose alone;
-- report that the added instruction itself costs input tokens and can be net-negative on terse work;
-- keep benchmark prompts/results reproducible and separate readability, latency, and cost claims;
-- integrate through Craft's existing skill/hook and usage-tracking seams rather than creating another
-  token ledger or silently rewriting every Agent response.
-
-Do not install Caveman globally into Fleet, copy its persona as product voice, or adopt its headline
-percentage as a Fleet target. A future slice must benchmark Fleet's own multilingual, code-heavy,
-permission, error, and evidence outputs before enabling any compression policy.
+The earlier draft named `源码参考/software/caveman/` as an approved source reference. That checkout
+does not exist in the current repository, so the claim is withdrawn and must not be used as evidence.
+The current context/token evidence is limited to `AV-CTX-01` and `AV-CTX-02` in
+[`docs/references/ADMISSION-V2-AUDIT.md`](../references/ADMISSION-V2-AUDIT.md). A future slice must
+benchmark Fleet's own multilingual, code-heavy, permission, error and evidence outputs before
+enabling any compression policy.
 
 ### 8.2 Subagent / member-run handoff (with M04)
 
@@ -258,27 +252,3 @@ An external AI opinion is not automatically memory, policy, or a code change.
 2. Verify partition/lifecycle/sensitivity, evidence, scope-before-similarity, and origin labels.
 3. Attempt cross-project leakage and quarantine injection; verify refusal.
 4. Create conflict/supersession and inspect both sources.
-5. Delete an entry; verify authoritative and derived-index removal after restart.
-6. Rebuild indexes and verify no deleted content returns.
-
-### M10B Context/Review
-
-1. Build a real ProjectPack preview with files, hashes, exclusions, token estimate, and secret scan.
-2. Block external submission on secret-scan failure; approve an exact safe version.
-3. Submit through a real approved provider/M08 job and reconcile across restart.
-4. Save a report with evidence/cost labels and keep unsupported claims marked as opinion.
-5. Verify report findings do not automatically become memory/tasks/changes.
-
-## 15. Open Gates
-
-- Freeze memory entry, retrieval, deletion/tombstone, ContextSegment, ProjectPack, and ReviewReport
-  contracts.
-- Select one physical store/index adapter and prove deletion/rebuild/isolation.
-- Resolve M11 prompt/cache ownership and real provider review/cost fields.
-- Issue separate M10A/M10B packets.
-
-## 16. Non-Goals and Prohibitions
-
-- No global unfiltered recall, silent cross-project facts, cloud memory sync, double store, or
-  automatic skill/policy promotion.
-- No review upload without exact scope, secret scan, permission, target, and honest cost source.

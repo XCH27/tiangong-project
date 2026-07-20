@@ -1,8 +1,11 @@
 # M13 — Settings and Preferences UX
 
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+
+
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.
 > The stale Wave/Gate/Loop/packet wrapper and dead cross-links were removed; the **design substance**
-> below is kept as *source material* for a future branch's `DESIGN.md`, not as an active plan. Re-ground
+> below is kept as *source material* only; its development-order owner is the release anchor in `docs/modules/PACKET-INDEX.md`, not this note. Re-ground
 > it in the code that exists when that branch starts, and strip anything no longer true.
 
 
@@ -11,10 +14,11 @@
 Keep Fleet's settings understandable by assigning every preference one home and one representation.
 M13 does not own the workbench panel registry or layout engine; M16 does.
 
-**D51 owner wording applies:** 「…也不会有过多的没必要的设置，这样才能适配大多数的用户。」  
+**D51 owner intent applies:** avoid unnecessary settings so the product remains usable for a broad audience.
+The exact owner wording is retained in `OWNER-VOICE.md` when needed.
 Settings only for credentials, safety/policy, retention, rare preferences (old D51-R4). Daily work
 controls stay in-loop, not here. See ~~`FRONTEND-EXPOSURE-MATRIX.md` §0 and § M13~~ *(retired; the
-binding owner wording now lives verbatim in `../01-PRODUCT.md` §4 / Decision P5)*.
+binding owner wording is represented by `../01-WHITEPAPER.md` and Decision P5)*.
 
 ## 2. User-Visible Loop
 

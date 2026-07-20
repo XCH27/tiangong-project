@@ -1,8 +1,11 @@
 # M05 — Files, Library, Artifact References, and Leases
 
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+
+
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.
 > The stale Wave/Gate/Loop/packet wrapper and dead cross-links were removed; the **design substance**
-> below is kept as *source material* for a future branch's `DESIGN.md`, not as an active plan. Re-ground
+> below is kept as *source material* only; its development-order owner is the release anchor in `docs/modules/PACKET-INDEX.md`, not this note. Re-ground
 > it in the code that exists when that branch starts, and strip anything no longer true.
 
 
@@ -46,7 +49,7 @@ an explicit import/copy action creates one and records it.
 - a lease granting authorization;
 - exposing unrestricted local paths to untrusted callers;
 - native document edit semantics owned by other modules (design, media, deck, web);
-- **except** workspace **Markdown 文稿** opened in Craft TipTap: interaction behaviour was specified in
+- **except** workspace **Markdown documents** opened in Craft TipTap: interaction behaviour was specified in
   `docs/contracts/markdown-document-surface.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)* (not a separate module number; not a third-party editor).
 
 ## 4. User-Visible Mutation Loop
@@ -201,7 +204,7 @@ quarantined/reconciled. It is not reported as a finished untracked artifact.
 - conflict card showing holder, expiry, affected paths, wait/retry/reclaim options;
 - artifact inspector showing exact version, parents, hash, sensitivity, license, and usage;
 - missing-reference and stale-version states reusable by M07/M09/M18/M19;
-- Markdown workspace files open on the Craft TipTap surface (modular block reorder when 文稿 ships);
+- Markdown workspace files open on the Craft TipTap surface (modular block reorder when the document editor ships);
   see `docs/contracts/markdown-document-surface.md` *(deleted; recoverable from pre-reset Git history: `git show 616eff59e:docs/contracts/<name>.md`)*.
 
 ## 12. Error Handling

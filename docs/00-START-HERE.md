@@ -1,131 +1,136 @@
-# Start Here
+# 00 — Start Here
 
-> This is the single entry point for the Fleet project. Read this file first, in full.
-> It is short on purpose. Everything an executing agent needs is reachable from here in one hop.
+> Product orientation and the index of the whole document set. Root [`AGENTS.md`](../AGENTS.md) is
+> the mandatory short execution entry; read this file when you need broad context, not for every
+> bounded edit.
+
+**Language convention:** project documentation is English-first, including owner guides, research,
+specifications and source-governance metadata. Chinese is retained only for exact owner quotations,
+`zh-Hans` UI literals/test fixtures, and proper names that would lose identity in translation; add
+one English gloss when the retained text carries meaning. Conversation and handoff messages may
+match the owner's language. Do not maintain bilingual copies of the same rule or concept.
 
 ## What Fleet is
 
 Fleet is a **local-first desktop workbench** where a human and AI agents work on the same project
 through the same sessions, files, permissions, and timeline. It is built by **simplifying and
-extending upstream Craft Agents v0.11** — not by building a new app beside it.
+extending upstream Craft Agents v0.11** — not by building a new app beside it, and not by rebuilding
+from zero.
 
 The product bet, stated once:
 
 > The human owns intent and final judgment. Agents do the middle execution. Every action an agent
-> takes is **inspectable, permissioned, and reversible**, and connected to real project artifacts.
+> takes is **inspectable, permissioned, and recoverable**, and connected to real project artifacts.
 
 Fleet is **not** a chat client, an IDE clone, a terminal skin, a Figma clone, or a pile of
-disconnected AI utilities.
+disconnected AI utilities. The full vision is in [`01-WHITEPAPER.md`](01-WHITEPAPER.md).
 
-## The one rule that governs everything
+## The two rules that govern everything
 
-**This is a product fork of Craft Agents v0.11. Reuse what Craft already
-has. Never build a second one.**
+1. **Reuse Craft. Never build a second one.** Upstream Craft already ships the session store,
+   permission manager, timeline event stream, tool registry, two agent backends, built-in tools,
+   background shell execution, MCP integration, sources/skills/credentials, projects/tasks,
+   automations, scheduler, settings store, and the BrowserPane. Fleet routes new capability
+   *through* those. Before writing code, find your row in
+   [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md) and classify REUSE / EXTEND / NEW.
+2. **Value ships in small verified releases; coverage is never cut.** The roadmap
+   ([`05-ROADMAP.md`](05-ROADMAP.md)) keeps exactly one release **ACTIVE** (a WIP limit, not a time
+   phase), with a concrete spec in `specs/`. Meanwhile every product domain stays registered and
+   described at breadth level in [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md) and
+   [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) (Decision G5), and frontend pages may run
+   ahead of behavior under the honest frontend track (Decision G6). Infrastructure is extracted
+   from working features, not built ahead of them.
 
-Upstream Craft already ships the session store, the permission manager, the timeline event stream,
-the tool registry, two agent backends, built-in tools, background shell execution, a terminal UI, MCP
-integration, sources/skills/credentials, projects/tasks, automations, a scheduler, the settings store,
-and the full BrowserPane. Fleet's job is to *route new capabilities through those*, not to reinvent
-them. If you find yourself about to create a second session store, a second permission path, or a
-second timeline, stop — you are doing it wrong.
+The roadmap is a complete R0–R18 development order, not a near/mid/far-term forecast. Every
+registry capability has an order anchor in `modules/PACKET-INDEX.md`; conditional rows end with an
+implementation or an evidence-backed `NO_GAP` decision, never an unowned “someday”.
 
-**Before writing code for any capability, read [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md)**
-and find whether Craft already has it (`REUSE`), partly has it (`EXTEND`), or genuinely lacks it
-(`NEW`). This step is mandatory — ignoring Craft's existing capability is the single mistake that has
-hurt this project most. See also [`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md).
+## The authoritative document set
 
-## How the work is organized (so features don't collide)
-
-**Stable shared contracts → small vertical slices → one integration owner.** Shared contracts are
-versioned only when a real caller needs them; they are not frozen speculatively. A large feature uses a
-short-lived branch and a bounded set of existing monorepo paths, then merges promptly. It does not need
-a parallel `modules/<feature>/` architecture. The main agent owns cross-package integration and resolves
-overlap. Big in-flight work registers only its boundaries in
-[`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md). Full rules:
-[`04-MILESTONES.md`](04-MILESTONES.md) and [`07-AGENT-RULES.md`](07-AGENT-RULES.md).
-
-## Current honest state (read this before you assume anything)
-
-- **Code:** the runnable application is Craft v0.11.1-derived. The baseline was separated into
-  auditable commits on 2026-07-11 (`616eff59e` upstream alignment — including the E9 thinking-level
-  saturation fix that restored `typecheck:shared` to green; `7aff1c7da` speculative protocol-staging
-  removal; then the document reset). Commit `c7fd6dea0` restored the upstream-required
-  `tsconfig.base.json` omitted from the v0.11.1 tag and advanced the preserved source reference to the
-  exact upstream tag. The last application-source commit, `cdc387e1d`, contains five narrow UI deltas:
-  a primary Board entry,
-  persistent Board project filter, aligned Board status controls, and What's New moved from the
-  sidebar into the Debug menu. Against the pinned upstream checkout, application source differs in
-  only those UI files, the verified `max → xhigh` Pi adapter fix, `tsconfig.base.json`, tests, and
-  local agent instructions. Later commits remove an unrelated bundled design-agent toolkit and change
-  documentation/reference material only. On 2026-07-12 the relevant five UI tests and
-  `bun run validate:dev` passed; the correct Electron development process was also running from
-  `app/`. The auditable pre-redesign snapshot is ref
-  `refs/snapshots/pre-final-ui-20260712-191011` (`20e32a2f8`) with an external bundle at
-  `/Users/lullwen/Documents/天工-snapshots/pre-final-ui-20260712-191011.bundle`.
-- **Fleet capability:** the five UI deltas above are wired, but no Fleet action-spine or other new
-  end-to-end product capability is implemented. Project=Workspace, remote access, label redesign,
-  archived-task management, and file-management proposals remain **not implemented**. Do not assume a
-  Fleet module, invocation contract, ArtifactRef contract, or other "frozen contract" exists in code.
-- **This document set:** a **fresh rewrite** (2026-07-11) that replaced ~100 legacy planning
-  documents. The old corpus was deleted from the tree and is recoverable from pre-reset Git history
-  (e.g. `git show 616eff59e:docs/<file>`); the pre-reset audit that motivated the reset is archived at
-  [`design-library/PROJECT-REVIEW-2026-07-11.md`](design-library/PROJECT-REVIEW-2026-07-11.md). Official
-  source-side and hosted Craft documentation is mirrored under
-  [`源码参考/documentation/craft-agents-official/`](../源码参考/documentation/craft-agents-official/README.md)
-  and indexed for feature-by-feature comparison; it is reference evidence, not Fleet authority.
-
-The gap between "elaborate plan" and "zero implementation" was the reason for the reset. First make
-the baseline auditable and verified; after that, **the next action is code, not more planning.**
-
-## The document set (this is all of it)
-
-Nine numbered plan documents (stable — the "how/what/why", meant to be read), two short helper files
-(an owner-facing checkpoint list and a live feature-registry), one UI baseline, an upstream-reference
-mirror, and a `design-library/` of recovered detailed designs used as source material when a branch
-starts:
-
-| # | File | Read when |
+| File | Role | Read when |
 |---|---|---|
-| 00 | `00-START-HERE.md` (this file) | Always, first |
-| 01 | [`01-PRODUCT.md`](01-PRODUCT.md) | To understand what we are building and the layer model |
-| 02 | [`02-DECISIONS.md`](02-DECISIONS.md) | To check whether a design question is already decided |
-| 03 | [`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md) | Before any architectural or safety-relevant change |
-| 04 | [`04-MILESTONES.md`](04-MILESTONES.md) | To know what to build next and in what order |
-| 05 | [`05-MILESTONE-1-ACTION-SPINE.md`](05-MILESTONE-1-ACTION-SPINE.md) | The exact spec for the first code you write — Milestone 1: caller-aware action invocation (the action spine) |
-| 06 | [`06-CODE-MAP.md`](06-CODE-MAP.md) | To locate the real Craft code you will extend |
-| 07 | [`07-AGENT-RULES.md`](07-AGENT-RULES.md) | How to execute, validate, and report — the working contract |
-| 08 | [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md) | **Before building anything:** what Craft already provides, and REUSE/EXTEND/NEW per capability |
-| — | [`OWNER-CHECKPOINTS.md`](OWNER-CHECKPOINTS.md) (owner-facing) | The moments an agent **must stop and ask the owner** (money, irreversible/public effects, production runtime commitments, new authorities/safety boundaries, product forks) |
-| — | [`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md) (live state, not a plan) | Before starting a **big feature**: read it to avoid duplicating one already in progress, and register your own |
-| — | [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) | Before changing UI structure, components, icons, spacing, colors, typography, or interactions |
-| — | [`源码参考/documentation/craft-agents-official/`](../源码参考/documentation/craft-agents-official/README.md) (upstream reference) | Before changing a Craft-derived feature, external-service dependency, updater, deployment, or user-facing feature documentation |
-| — | [`design-library/`](design-library/README.md) (source material, not a plan) | Historical M00–M19 design material, the recovered verbatim owner-voice signals, and the archived pre-reset audit; use designs only to write a short current delta when justified, never copy wholesale |
+| [`00-START-HERE.md`](00-START-HERE.md) | Orientation + index | Broad orientation |
+| [`01-WHITEPAPER.md`](01-WHITEPAPER.md) | **The whitepaper**: the bet, the finished-product walkthrough, boundaries, moat, honest line | Understanding what Fleet ultimately is |
+| [`02-DECISIONS.md`](02-DECISIONS.md) | Decision ledger | Checking whether a design question is already decided |
+| [`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md) | Hard boundaries | Before any architectural or safety-relevant change |
+| [`04-ARCHITECTURE.md`](04-ARCHITECTURE.md) | Target architecture, invariants, failure models | Designing anything that spans layers |
+| [`05-ROADMAP.md`](05-ROADMAP.md) | **The route: releases, order, acceptance** | Deciding what to build next |
+| [`06-CODE-MAP.md`](06-CODE-MAP.md) | Where the real code is | Locating the entry point |
+| [`07-PLAYBOOK.md`](07-PLAYBOOK.md) | Execution method, multi-agent rules, templates | Executing, delegating, reporting |
+| [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md) | What Craft already provides | **Before building anything** |
+| [`09-QUALITY.md`](09-QUALITY.md) | Testing and acceptance strategy | Verifying and accepting work |
+| [`10-GLOSSARY.md`](10-GLOSSARY.md) | Project vocabulary | Any term reads as jargon |
+| [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md) | Product behavior/authority mapping for registered capabilities | Checking a capability's gap, authority, reference or acceptance |
+| [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) | Full page inventory, state standard, frontend track | Any frontend work; building pages ahead of behavior |
+| [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) | **The orchestration core**: execution kernel, capability composition, canvas command surface | Any orchestration, delegation, canvas, or workflow design |
+| [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md) | **Token economy**: layered savings pipeline, fuse/connect/reject policy, ROI measurement (E12) | Anything touching context size, prompt assembly, caching, compression, or cost |
+| [`14-MODULE-ARCHITECTURE.md`](14-MODULE-ARCHITECTURE.md) | Core/module/spec/reference separation and compatibility gates | Adding or designing any large module |
+| [`15-DOC-AUDIT.md`](15-DOC-AUDIT.md) | Evergreen Goal-readiness, claim and canonical-ownership checks | Checking whether a plan claim is evidenced or a Goal is startable |
+| [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md) | Large independent closed-loop systems, shared contracts, references and parallel build rules | Assigning a whole product system to an Agent or checking suite conflicts |
+| [`WORK-ORDER.md`](WORK-ORDER.md) | Current executable task queue, code seams, first acceptance and handoff format | Starting implementation without inventing scope |
+| [`OWNER-GUIDE.md`](OWNER-GUIDE.md) | Plain-language owner checkpoints, acceptance and request format | Owner-facing; agents read the checkpoint list |
+| [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) | UI component/icon/i18n baseline | Before changing UI structure or visuals |
+| [`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md) | Live claims of big in-flight features | Before starting a big feature |
+| `specs/` | One executable spec per release + template | Implementing the active release |
+| [`modules/`](modules/README.md) | Durable large-module design packets, including later-in-sequence gated capabilities | Designing a large capability before its release row activates |
+| [`modules/REGISTRY.md`](modules/REGISTRY.md) | Complete capability breadth registry | Checking whether a capability has been forgotten |
+| [`core/README.md`](core/README.md) | Core framework index without a second authority | Navigating stable framework documents |
+| [`references/`](references/README.md) | Fixed-commit source/product/license audits | Selecting or absorbing any external project |
+| [`design-library/`](design-library/README.md) | Owner-intent source notes and legacy design material | Only the note for the active slice; migrate durable module design into `modules/` |
+| [`源码参考/`](../源码参考/README.md) | Read-only code evidence + official Craft docs mirror | Comparing upstream/reference behavior |
+| local `UI参考/` | Optional untracked visual material | Human visual study only |
 
-There are no other **Fleet authority** documents. Capability-specific upstream code/docs and the UI
-baseline are read only when that slice touches them. There is no Wave system, packet system, readiness
-gate, maturity label, or status block. If an **active** document (the numbered set, helper files,
-`README.md`, `AGENTS.md`) references those, it is stale — ignore it and tell the owner. The
-`design-library/` files are the known exception: they are quarantined historical material and still
-contain retired vocabulary (Waves, `W0.1`, `L0–L3`, "Lead") by design; read them only through the
-corrections in [`design-library/README.md`](design-library/README.md), and do not report their stale
-wording as a defect.
+There are no other *document classes* that may silently become Fleet authority. The folders below
+are deliberately different kinds of authority, and their scopes must not be mixed:
+
+| Scope | Canonical authority | What it may decide |
+|---|---|---|
+| Owner intent and product direction | current owner request; [`01-WHITEPAPER.md`](01-WHITEPAPER.md) | desired outcomes and final product judgment |
+| Safety and invariants | [`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md); [`04-ARCHITECTURE.md`](04-ARCHITECTURE.md) | boundaries, authorities, failure and recovery rules |
+| Binding design decisions | [`02-DECISIONS.md`](02-DECISIONS.md) | recorded choices and explicit gates |
+| Active implementation contract | the ACTIVE row in [`05-ROADMAP.md`](05-ROADMAP.md) and its `specs/` file | the slice being implemented and accepted now |
+| Code reality | current code, checked through [`06-CODE-MAP.md`](06-CODE-MAP.md) | what exists, where it lives, and its actual status; code does not silently revise a decision/spec |
+| Product breadth and surfaces | [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md), [`modules/REGISTRY.md`](modules/REGISTRY.md), [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) | coverage, gaps, pages and projections; never new state authority |
+| Suite composition and parallel ownership | [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md) | closed-loop grouping, shared-contract ownership and conflict gates; never new state authority |
+| External evidence | [`references/`](references/README.md) and `源码参考/` | what an outside project actually demonstrates; never Fleet requirements |
+| Historical/owner notes | [`design-library/`](design-library/README.md) | intent and migration input only; not a competing specification |
+
+When two documents disagree, resolve by scope first, then by the order above. A code mismatch is
+reported as an implementation gap; it is not permission to rewrite a decision or acceptance
+criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md`](15-DOC-AUDIT.md).
+
+## Current honest state
+
+- **Code:** the committed baseline is Craft v0.11.1-derived and verified (see
+  [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) for the exact intentional delta). A large
+  uncommitted working tree (count drifts — inventory it fresh; contents include Project=Workspace
+  presentation, zh-Hans localization, identity labels, settings, service-independence tests, the
+  2026-07 doc restructure, and reference/document tree changes) awaits the **R0 audit**
+  ([`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md)). Nothing in that tree is `usable`
+  merely because it exists.
+- **Fleet capability:** every differentiating Fleet loop — governed cross-caller actions, versioned
+  artifact handoff, bounded delegation, adaptive organization, canvas/workflows, layered agent
+  memory — is `not implemented`. Craft's inherited capabilities are real and listed in
+  [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md).
+- **Harness direction:** Decisions E12/E13 retain Craft as the sole product kernel and treat Pi-light
+  as a measured execution profile. TE1 observes current calls; prompt/tool reduction waits for the
+  post-R0 baseline and a bounded profile slice; R3 remains the first real product chain. The research
+  record is [`references/context/03-HARNESS-EFFICIENCY-DIAGNOSIS.md`](references/context/03-HARNESS-EFFICIENCY-DIAGNOSIS.md).
+- **History, once:** an earlier planning corpus outran code and was replaced by this release-driven
+  form. Unique active facts were migrated; superseded process documents were deleted rather than
+  archived. Durable design assets remain only in `design-library/` and module packets because they
+  still guide their R0–R18 product rows ([`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md) §6).
 
 ## How to start any task
 
-1. Read this file and [`07-AGENT-RULES.md`](07-AGENT-RULES.md).
-2. **Check Craft first (mandatory):** open [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md),
-   find the capability you're about to touch, then compare the pinned v0.11.1 code, its versioned or
-   bundled documentation, and the matching hosted-document mirror. Decide REUSE / EXTEND / NEW. Do
-   not reinvent what Craft already has, and do not confuse current hosted behavior with the pinned
-   code baseline.
-3. Find the real code via [`06-CODE-MAP.md`](06-CODE-MAP.md), then confirm with `rg`.
-4. Read **one** other document only if the task actually touches it (a decision, a non-negotiable,
-   or the milestone-1 spec).
-5. Before editing a feature, give the owner one short **slice confirmation**: the user-visible
-   frontend change, the existing backend/state authority and data path to extend, what stays
-   unchanged, and which user documentation will be updated after the behavior is real. Wait for the
-   owner's confirmation; do not bundle unrelated features into that confirmation.
-6. Make that smallest coherent change, verify it in the real Electron app/data path, then update the
-   named user-facing documentation and report honestly.
-
-That is the whole method.
+1. Read root [`AGENTS.md`](../AGENTS.md).
+2. If the owner supplied an explicit Goal, keep its objective and done condition fixed; use the
+   roadmap/spec only for dependencies and acceptance anchors. Otherwise open
+   [`05-ROADMAP.md`](05-ROADMAP.md) → the ACTIVE release → its spec in `specs/`.
+3. Check Craft first: capability row in [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md),
+   inspect the code, classify REUSE / EXTEND / NEW.
+4. Locate code via [`06-CODE-MAP.md`](06-CODE-MAP.md); confirm with `rg`.
+5. Implement one coherent block; verify per [`09-QUALITY.md`](09-QUALITY.md); stop only at
+   [`OWNER-GUIDE.md`](OWNER-GUIDE.md) checkpoints.
+6. Update the spec/capability row/user-facing docs that actually changed; report with the fixed
+   status vocabulary.

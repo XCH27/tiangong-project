@@ -1,8 +1,11 @@
 # M04 — Runtime Lanes and TeamRun
 
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+
+
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.
 > The stale Wave/Gate/Loop/packet wrapper and dead cross-links were removed; the **design substance**
-> below is kept as *source material* for a future branch's `DESIGN.md`, not as an active plan. Re-ground
+> below is kept as *source material* only; its development-order owner is the release anchor in `docs/modules/PACKET-INDEX.md`, not this note. Re-ground
 > it in the code that exists when that branch starts, and strip anything no longer true.
 
 
@@ -258,26 +261,3 @@ at app startup. Decision D22 (no daemon) is honoured.
    board must not leak its title, raw prompt, artifact path, or error text.
 5. Human, Agent, and workflow-created TeamRuns use the same projection. M17 may link a workflow
    node to a TaskRun, but WorkflowRun remains a different authority and the board labels that link
-   rather than merging the two trees.
-
-## 18. First Usable Verification — Task Visibility
-
-1. Start one TeamRun with two children from an authorized leader; verify the board shows the exact
-   parent/child relation and assignee for each without creating a second chat or task store.
-2. Hover and keyboard-focus one task entry; verify the compact preview title, status, summary,
-   three references plus overflow, Escape close, and open-inspector path.
-3. Put one child at `waiting_for_approval`, one at `running`, and one at `completed`; verify the
-   board shows truthful states and only finite child counts.
-4. Open a permitted child Conversation tab; verify it routes to the original session and its
-   ordered/redacted evidence. Deny another seat and verify no title, transcript, or artifact
-   metadata leaks.
-5. Restart during a running TeamRun; verify dirty runs become `suspended`, the board reports that
-   state, and resume/cancel uses the owning runtime rather than a UI-only mutation.
-
-## 19. Non-Goals & Prohibitions
-
-- **No Direct Coupling:** A CLI runtime must not directly call tools or own settings of an API runtime teammate. All orchestration must route through the Fleet Bridge.
-- **No Permission Bypass:** Under-the-hood teammate runs must not bypass the L0-L3 graded permissions or timeline evidence logging.
-- **No Fake Codex Claim:** This is a Fleet implementation informed by an owner-supplied Codex
-  screenshot and public durable-goal direction. It must not claim to reproduce Codex private
-  implementation details.

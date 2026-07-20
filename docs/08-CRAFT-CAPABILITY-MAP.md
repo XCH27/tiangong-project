@@ -1,150 +1,121 @@
-# 08 — Craft Capability Map (READ BEFORE YOU BUILD)
+# 08 — Craft Capability Map
 
-> **This is a product fork of Craft Agents v0.11.** The most common way
-> to fail here — and the specific mistake that has happened repeatedly before — is to **rebuild
-> something Craft already has** instead of reusing or extending it.
->
-> **Mandatory rule:** before you write code for any capability, find it in the table below. If it says
-> `REUSE` or `EXTEND`, you **must** read the linked Craft code (and its bundled doc) and build on it. A
-> `NEW` classification is the *only* case where you start from scratch — and even then you reuse the
-> spine (session/permission/timeline). If a capability you need is not in this map, add it here (with
-> its real code path) as part of your change; do not silently invent a parallel system.
+> Use this as an index, not a reading assignment. Find the row for the active capability, inspect
+> the listed code, then confirm with `rg`. Third-party comparisons live in
+> [`源码参考/meta/CAPABILITY-REFERENCE-MAP.md`](../源码参考/meta/CAPABILITY-REFERENCE-MAP.md).
 
-## How to use this map
+## Classification
 
-1. Identify the capability your task touches.
-2. Read its **Craft code entry** (confirm with `rg`) and its **bundled doc** if one exists.
-3. Apply the classification:
-   - **`REUSE`** — Craft already does this well. Call it / configure it / improve it in place. Do **not**
-     wrap it in a new abstraction or duplicate it.
-   - **`EXTEND`** — Craft has the foundation but not the whole thing Fleet needs. Add to the *existing*
-     module, types, and authority. Not a new store, not a parallel path.
-   - **`NEW`** — Craft genuinely lacks this. Build it, but still route through the shared spine
-     (session, permission, timeline) per `03-NON-NEGOTIABLES.md`.
-4. If unsure between `EXTEND` and `NEW`, treat it as `EXTEND` and prove Craft's foundation is
-   insufficient before going `NEW` (this is the safe default and matches non-negotiable #1).
+- **REUSE** — call or improve the existing Craft authority.
+- **EXTEND** — add behavior to the existing authority and migrate every caller coherently.
+- **NEW** — Craft has no authority for it; still connect it to existing Session, permission,
+  timeline, Workspace, and Task boundaries.
+- **CONDITIONAL** — do not build until a real caller or measured failure proves the need.
 
-## Craft's own Agent-readable docs (use these first)
+If a capability is absent, inspect current code before adding one concise row. Never add a second
+session, permission path, timeline, task/job store, settings home, browser stack, or shell.
 
-Craft ships **17 capability docs** in `app/apps/electron/resources/docs/`, synced to
-`~/.craft-agent/docs/` on every launch (they are the live reference an agent reads at runtime). When a
-row below names a bundled doc, read it — it is Craft's own explanation of that feature's config and
-behavior. Craft also ships `app/apps/electron/resources/AGENTS.md` (how bundled assets sync),
-`app/packages/core/CLAUDE.md`, and `app/packages/shared/CLAUDE.md`.
+Paths are relative to `app/`.
 
-The pinned source documentation and the current official hosted documentation are indexed locally at
-`源码参考/documentation/craft-agents-official/README.md`. The hosted mirror is useful for later
-upstream behavior, deployment and configuration, but it does not prove that the pinned v0.11.1 code
-implements the same behavior.
+## How to execute a map row
 
-Bundled docs: `automations`, `browser-tools`, `craft-cli`, `data-tables`, `html-preview`,
-`image-preview`, `labels`, `llm-tool`, `markdown-preview`, `mermaid`, `pdf-preview`, `permissions`,
-`skills`, `sources`, `statuses`, `themes`, `tool-icons`.
+A row is a locator and boundary, not a complete specification. For a REUSE fix, inspect the listed
+authority and its callers. For EXTEND / NEW, follow the route:
 
----
+```text
+current Craft authority → binding decision/spec → exact missing edge
+→ first real producer + consumer → observable failure/recovery proof → promoted shared contract
+```
 
-## The capability map
+A technical detail is binding only when present in current code, the numbered documents, an active
+spec, or the current owner request. Deleted historical documents are never an implicit
+specification; the retained failure lessons live in [`04-ARCHITECTURE.md`](04-ARCHITECTURE.md) §3.
 
-Paths are under `app/`. Classifications are **for Fleet's planned work against each capability** — i.e.
-"when Fleet touches this, is it reuse / extend / new?"
+## Core authority map
 
-### Spine — session, permission, timeline, actions (the foundation Milestone 1 builds on)
-
-| Capability | Craft code entry | Bundled doc | Fleet class | Note |
-|---|---|---|---|---|
-| Session store & lifecycle | `packages/server-core/src/sessions/SessionManager.ts`, `packages/shared/src/sessions/` | — | **REUSE** | The one session authority. Never create a second (non-negotiable #1). |
-| Timeline / SessionEvents | `packages/shared/src/protocol/dto.ts` (`SessionEvent`), `protocol/events.ts`, `channels.ts` | — | **REUSE** | Already has `tool_start`/`tool_result`/`permission_request`. Add no new event kinds for M1. |
-| Permission modes | `packages/shared/src/agent/mode-manager.ts`, `mode-types.ts` (`safe`/`ask`/`allow-all`) | `permissions` | **REUSE** | Map Fleet risk onto these modes; do not invent an L0–L3 engine. |
-| Permission enforcement gate | `packages/shared/src/agent/core/pre-tool-use.ts` + `SessionManager` | `permissions` | **REUSE** | The real gate + approval prompt. `evaluateToolCall` defaults to allow for unknown tools. |
-| Session-scoped Agent tool registry | `packages/session-tools-core/src/tool-defs.ts` (`SESSION_TOOL_DEFS`), `handlers/`, `context.ts` | — | **EXTEND** | Source of truth for Agent session-tool schemas/handlers/metadata. It does **not** unify human RPC, caller identity, policy attribution, or all SDK built-ins. M1 adds a thin caller-aware invocation seam around existing `set_session_labels`; it does not create another registry. |
-| Cross-caller action invocation | UI `sessionCommand`; Agent session tools/PreToolUse; `SessionManager` | — | **EXTEND** | Existing callers already converge on some state authorities but lack one attributed invocation/policy/evidence contract. `PreToolUse` remains Agent-only. |
-| Usage / token tracking | `packages/shared/src/agent/core/usage-tracker.ts` (`usage_update`) | — | **EXTEND** | Real per-message + cumulative token usage. Fleet's real/estimated/unknown *cost* fields extend this — **not** a second ledger (Decision E3). |
-
-### Agent execution & runtimes
-
-| Capability | Craft code entry | Bundled doc | Fleet class | Note |
-|---|---|---|---|---|
-| Agent backends (Claude/Pi) | `packages/shared/src/agent/claude-agent.ts`, `pi-agent.ts`, `agent/backend/` | — | **REUSE** | Two backends already share one tool/permission context. |
-| Built-in tools (Bash/Read/Write/Edit) | `packages/shared/src/agent/core/pre-tool-use.ts` (`BUILT_IN_TOOLS`, `FILE_PATH_TOOLS`) | — | **REUSE** | Agent file/shell ops go through these SDK built-ins today — *not* the session registry. Key fact for M1. |
-| Bash/PowerShell validation | `packages/shared/src/agent/bash-validator.ts`, `powershell-validator.ts` | `permissions` | **REUSE** | Read-only/dangerous-command gating already exists. |
-| Background shell execution | `SessionManager` + `shell_backgrounded`/`shell_killed` events (`protocol/dto.ts`) | — | **EXTEND** | Craft runs background shells via the Bash tool. **No `node-pty`.** |
-| Terminal output UI | `packages/ui/src/components/terminal/TerminalOutput.tsx` (ANSI, bash/grep/glob) | — | **EXTEND** | A terminal *display* exists. M2's interactive terminal builds on it. |
-| Interactive PTY lane / CLI runtime | — (no `node-pty`; no runtime-lane concept) | `craft-cli` (CLI client) | **NEW** | A first-class interactive PTY + selectable runtime lane would be Fleet's addition — but it is **conditional**: Milestone 2 starts with the existing non-interactive Bash/background-shell path, and `node-pty` is added only if that real loop proves an interactive PTY necessary (see `04-MILESTONES.md` M2; adding it is an owner checkpoint as a shipped runtime dependency). Reuse spine + terminal UI + shell validation. |
-| MCP client / external providers | `packages/shared/src/mcp/` (`client.ts`, `mcp-pool.ts`, `pool-server.ts`) | `sources` | **REUSE** | Craft already integrates MCP servers as capability providers. Fleet "external software = replaceable adapter" builds on this. |
-| CLI client | `apps/cli/`, `app/docs/cli.md`, bundled `craft-cli` doc | `craft-cli` | **REUSE/EXTEND** | A CLI over WebSocket exists. Fleet's "CLI as a runtime method" extends it. |
-| Remote Project transport | `server-core/src/transport/`; `electron/src/transport/routed-client.ts`; `preload/bootstrap.ts`; workspace remote config; `electron/src/main/power-manager.ts`; headless bootstrap/systemd build | — | **REUSE/EXTEND** | Reuse direct bidirectional Workspace RPC, Electron main-process hosting, and headless service. Add independent Remote Connections UI, hashed/revocable Workspace-scoped grants, and a remote-standby `prevent-app-suspension` reason; do not add a central server or polling daemon (Decision P7). |
-
-### Files, sources, skills, capabilities
-
-| Capability | Craft code entry | Bundled doc | Fleet class | Note |
-|---|---|---|---|---|
-| Project/Workspace authority and storage | `packages/shared/src/workspaces/storage.ts`, `types.ts`; `apps/electron/src/main/handlers/workspace.ts`; `agent/permissions-config.ts` | — | **REUSE/EXTEND** | Per owner Decision P6, user-facing Project equals backend Workspace. Reuse Workspace root, settings, permissions, Sources/Skills and Session scope; extend it only with useful nested-Project metadata. |
-| Governed file UI/actions | SDK built-in Read/Write/Edit/Bash plus existing preview/file affordances | — | **EXTEND** | Agent file tools exist, but human/Agent parity, leases, provenance, and a complete file-management surface do not. Milestone 3 owns the proven gap. |
-| File leases (concurrent-write) | — | — | **NEW** | Lease/reservation for concurrent agent edits is Fleet's addition (Milestone 3). Build on workspace storage + permission. |
-| Library assets & ArtifactRef | — | — | **NEW** | Versioned handoff is Fleet-owned, but the envelope is derived from a real producer/consumer and versioned before M3 cross-surface use—not frozen in M1. It identifies the native bytes/version and provenance so one result can be referenced by several later Agents/surfaces without copying. It is not a second byte store. Library management remains later. |
-| Sources (external data/creds) | `packages/shared/src/sources/`; `apps/electron/.../SourcesListPanel.tsx` | `sources` | **REUSE** | OAuth/credential/source system exists — reuse, don't rebuild auth. |
-| Skills | `packages/shared/src/skills/`; `SkillsListPanel.tsx` | `skills` | **REUSE** | Skill loading/config exists. Fleet capability-loadout ideas extend this. |
-| Credentials | `packages/shared/src/credentials/`, `agent/core/` credential prompt | `permissions` | **REUSE** | Keep credentials in this pathway (non-negotiable #5). Never build a side channel. |
-
-### Projects, tasks, views, automations, settings
-
-| Capability | Craft code entry | Bundled doc | Fleet class | Note |
-|---|---|---|---|---|
-| Legacy nested Projects | `packages/shared/src/projects/`; `server-core/src/handlers/rpc/projects.ts` | — | **EXTEND → COMPATIBILITY** | Craft v0.11 nested Projects are not Fleet's long-term entity. Keep non-destructive compatibility/migration only; new Projects are Workspaces. |
-| Tasks & Kanban | `packages/shared/src/tasks/`; `server-core/src/tasks/`; Session status/labels/kanban placement | `statuses`, `labels` | **REUSE/EXTEND** | Reuse task and Session authorities. Remove nested `projectId` scope as Project becomes Workspace; do not create another board/task store. |
-| Views (dynamic filters) | `packages/shared/src/views/` (Filtrex, `views.json`) | — | **REUSE/EXTEND** | Runtime session filters exist. Fleet workbench view/layout host extends this + Craft preferences. |
-| Automations | `packages/shared/src/automations/`; `server-core` automation handlers | `automations` | **REUSE** | Rule/automation engine exists. |
-| Scheduler | `packages/shared/src/scheduler/scheduler-service.ts` | — | **REUSE** | Scheduling exists — reuse for any timed behavior. |
-| Search | `packages/shared/src/search/` (fuzzy) | — | **REUSE** | — |
-| Settings / preferences | `apps/electron/src/renderer/pages/settings/`; settings handlers | `themes`, `tool-icons` | **REUSE** | One settings home. Do not add a parallel settings surface (Decision P5). |
-| Labels / statuses | `packages/shared/src/labels/`, `statuses/` | `labels`, `statuses` | **REUSE** | — |
-
-### Distribution, sharing, hosted docs, and external relays
-
-| Capability | Craft code entry | Official doc | Fleet class | Note |
-|---|---|---|---|---|
-| Upstream Craft intake | official source tags; `resources/release-notes/`; `packages/shared/src/version/manifest.ts` | mirror index + installation docs | **REUSE** | Keep version awareness and selectively port upstream fixes/features. This does not authorize installing an official Craft binary over Fleet. |
-| Fleet application updates | `apps/electron/src/main/auto-update.ts`; `apps/electron/electron-builder.yml` | installation | **EXTEND/REPLACE** | Inherited binary channel is Craft-operated. Fleet needs its own signed or user-configured channel, or an honestly disabled installer. |
-| Online session sharing | `packages/shared/src/branding.ts`; `server-core/src/sessions/SessionManager.ts`; renderer share actions; `apps/viewer/` | sharing | **EXTEND/REPLACE** | Current path uploads full session data to Craft's viewer API. Reuse session bundle/viewer code for local export and optional self-hosted/configurable sharing. |
-| Help and Docs MCP | `packages/shared/src/docs/`; `packages/session-mcp-server/src/index.ts`; Electron help actions | hosted mirror; bundled docs | **REUSE/EXTEND** | Prefer bundled/local documentation. Keep official web docs only as an explicit external upstream reference. |
-| Desktop OAuth callback | shared auth modules and local callback server | MCP authentication/config docs | **REUSE** | Existing local desktop callback is independent of Craft cloud and remains the default desktop path. |
-| Remote WebUI OAuth relay | `packages/shared/src/auth/oauth-relay.ts`; `server-core/src/webui/` | server/headless + auth docs | **EXTEND** | Make relay origin configurable/self-hosted; do not hide a mandatory Craft relay. |
-| Slack OAuth relay | `packages/shared/src/auth/slack-oauth.ts` | messaging docs | **EXTEND** | User-controlled app/callback or explicit unavailable state when unconfigured. |
-| Craft-hosted sources/MCP | `packages/shared/src/sources/`; builtin source definitions; MCP client | sources docs | **REUSE as optional connector** | User may intentionally connect to Craft services, but core Fleet startup/data/remote access must not require them. |
-
-### Browser, previews, LLM tool, diagrams
-
-| Capability | Craft code entry | Bundled doc | Fleet class | Note |
-|---|---|---|---|---|
-| BrowserPane + CDP | `apps/electron/src/main/browser-pane-manager.ts`, `browser-cdp.ts`; `agent/browser-tools.ts` | `browser-tools` | **REUSE/EXTEND** | Browser stack + tools exist. Fleet governed evidence capture extends it; no stealth browser (Decision E6). |
-| Preview surfaces (md/html/pdf/image/mermaid/data-tables) | Craft renderer preview components; TipTap markdown | `*-preview`, `mermaid`, `data-tables` | **REUSE** | Rich preview + Markdown editing exist. **Do not add a second Markdown editor** (non-negotiable #2). |
-| LLM tool (`call_llm`) | `packages/shared/src/agent/llm-tool.ts` | `llm-tool` | **REUSE** | In-agent LLM calls exist. |
-| Model routing / fusion / cache | — | — | **NEW** | Auto-routing/fusion/batch is Fleet's (Decision E3), API/OAuth lanes only, default-off. Deferred. |
-
-### Composable / creative (all deferred — see `04-MILESTONES.md`)
-
-| Capability | Craft code entry | Fleet class | Note |
+| Capability | Current authority / code entry | Class | Fleet boundary |
 |---|---|---|---|
-| Workbench panel/layout host | builds on `views/` + settings/preferences | **EXTEND** | Register views/panels inside the Craft shell; never a second shell (Decisions P3, E1). |
-| Spatial canvas projection/layout | builds on Craft sessions, SessionEvent, `views/`, preferences, workspace files, and preview components | **EXTEND/NEW** | New projection/layout surface inside the Craft shell; reuse the existing entity authorities and previews. The renderer is adapter-bound and selected by a real Electron spike. Not a document/job/artifact store. Deferred. |
-| Agent/human canvas actions | builds on the caller-aware action spine and existing permission/timeline paths | **EXTEND** | Agent never writes renderer state. Read/search/select/place/group/reference/focus operations converge with human UI at the governed action/state seam and emit attributed evidence where consequential. Deferred until the action spine is real. |
-| Composable workflows | — | **NEW** | Finite DAGs invoking the shared action path. A workflow edge is distinct from spatial/reference/provenance relations. Deferred. |
-| Creative modules (image/video/web/deck) | — | **NEW** | Each registers capabilities/views on the spine. Deferred. |
-| Governable experience distillation | builds on memory + validation | **NEW** | Milestone 6. Propose→review→retain. Deferred until a complete single-Agent chain and real delegation are proven. |
-| Cross-agent TeamRun / seats / lanes | — (background tasks exist as a base) | **EXTEND/NEW** | Bounded team-runs + Fleet Bridge. Reuse session/background-task base; the orchestration spine is new (Decision C2). |
+| Session lifecycle and persistence | `packages/server-core/src/sessions/SessionManager.ts`; `packages/shared/src/sessions/` | REUSE | One Session authority. |
+| Session evidence | `packages/shared/src/protocol/dto.ts` `SessionEvent`; protocol events/channels | REUSE/EXTEND | Extend events only when a real consumer needs durable or attributed evidence. |
+| Permission modes and Agent gate | `packages/shared/src/agent/mode-manager.ts`; `core/pre-tool-use.ts`; SessionManager approval flow | REUSE | `safe` / `ask` / `allow-all` remain authoritative; no parallel policy engine. |
+| Agent session tools | `packages/session-tools-core/src/tool-defs.ts`, `handlers/`, `context.ts` | EXTEND | Registry covers Agent tools, not human RPC or SDK built-ins. |
+| Human/Agent shared actions | UI RPC + Agent tool/PreToolUse + owning service | EXTEND | **`not implemented` as a generic seam.** Route: [`specs/R4-action-seam.md`](specs/R4-action-seam.md). |
+| Usage and context accounting | `packages/shared/src/agent/core/usage-tracker.ts`; usage events | EXTEND | Add real/estimated/unknown cost to the existing path; no second ledger. |
+| Prompt queue and mid-turn steering | `SessionManager.messageQueue`, `sendMessage`, `processNextQueuedMessage`; backend `redirect` | EXTEND | Preserve disk-before-ack and restart replay. |
+| Project/Workspace | Workspace config/root plus current nested Project compatibility | REUSE/EXTEND | Target model Project = Workspace = one folder, single switcher, task-first entry (P6/P10); migrate explicitly via [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md). |
+| Tasks, Board and scheduling | `packages/shared/src/tasks/`; `server-core/src/tasks/`; Session status/labels; scheduler | REUSE/EXTEND | No second task, issue, or job authority. |
+| Task execution integrity / drift control | Task store + TaskRunner + SessionEvents + PreToolUse + UsageTracker | EXTEND | TaskContract projection, preflight classification, criterion/path gate, no-progress halt, independent verdict (roadmap R6). `not implemented`. |
+| Settings, credentials, Sources and Skills | existing shared stores/managers and Electron settings | REUSE/EXTEND | One settings home; one effective capability provenance path. |
+| Identity labels and statuses | `packages/shared/src/labels/`; status configuration | REUSE/EXTEND | Decision E10. Skill/Source/permission binding: `not implemented`. |
+| Search and dynamic views | `packages/shared/src/search/`; `views/` | REUSE/EXTEND | Views are projections, never state authorities. |
+| Automations | `packages/shared/src/automations/`; server automation handlers; scheduler | REUSE/EXTEND | Extend existing scheduler/Session/Task paths. |
 
----
+## Runtime and execution map
 
-## The one-paragraph summary an agent must internalize
+| Capability | Current authority / code entry | Class | Fleet boundary |
+|---|---|---|---|
+| Claude/Pi backends | `packages/shared/src/agent/claude-agent.ts`, `pi-agent.ts`, shared tool context | REUSE | Provider differences stay behind existing backend seams. |
+| Additional CLI/API/ACP runtimes | backend seam + SessionManager adapters | EXTEND | One adapter contract: start/attach/send/cancel/approve/health/stop; all events map into Fleet authorities. |
+| Built-in Read/Write/Edit/Bash | SDK built-ins plus `core/pre-tool-use.ts` | REUSE | Permission checks stay in PreToolUse. |
+| Command validation | shared Bash/PowerShell validation and permissions config | REUSE/EXTEND | Extend command-aware validation; never trust names or external `readOnlyHint` alone. |
+| Background shell | Bash background path; shell/task events in SessionManager | EXTEND | Reuse existing execution registry and events. |
+| Interactive PTY | no complete authority | NEW, CONDITIONAL | R18 implement-or-`NO_GAP`: only for a real interactive caller; reuses Session permission/evidence/cancellation. |
+| OS isolation | `packages/session-tools-core/src/runtime/{filesystem-isolation,network-isolation,sandbox-env}.ts`; `handlers/script-sandbox.ts` | REUSE/EXTEND, CONDITIONAL | A baseline isolation path exists and is tested; R18 adds a dedicated OS sandbox only when a real risk profile exceeds current permission and process boundaries, otherwise closes `NO_GAP`. |
+| Checkout/worktree isolation | Git/process integration | NEW | Execution location, checkout isolation, and provider choice stay independent (P9). |
+| Multi-Agent execution | child Sessions, `parentSessionId`, TaskRunner DAG, background-task registry | REUSE/EXTEND | Add stable task paths, bounded context, mailbox/wait, runtime adapter — no new stores (roadmap R6). |
+| Adaptive organization | orchestration policy over existing Task/Session authorities | EXTEND | R17: route by measured risk/cost (C5–C6) using R6+ accepted-outcome evidence, or close `NO_GAP`. |
+| Model routing/fusion | backend seam + UsageTracker | EXTEND/NEW, CONDITIONAL | R17 implement-or-`NO_GAP`; default off and API/OAuth lanes only (E3). |
+| Context projection / token economy | existing compaction, large-response paths, `core/rtk-rewrite.ts`, UsageTracker; provider prompt/tool assembly | EXTEND, CONDITIONAL | E12/E13. Reuse the one ledger and existing provider lanes. TE1 is observation-only; after R0 + baseline, extend one centralized effective projection for prompt/tools and test Pi-light as a profile, never a second kernel. ArtifactRef/TaskBrief remain R5/R6; typed compression and Tool Search require measured gates. Raw evidence stays recoverable. |
+| External computer/environment control | BrowserPane/CDP, file/shell tools, script isolation, remote Workspace transport, existing permission path | EXTEND, CONDITIONAL | R16 implement-or-`NO_GAP`. Prefer native/structured Craft routes; Computer Use is a fallback only after a real task proves those insufficient. Require environment/display identity, capability/availability, expiring grant and stale-observation rejection; no generic Environment adapter before a second implementation. Hermes/OpenClaw are evidence only. |
 
-Craft v0.11 **already gives you**: sessions, the timeline, the permission modes + Agent enforcement
-gate, a session-scoped Agent tool registry, two agent backends with shared tool context, built-in Bash/file tools with validation,
-background shell execution, a terminal output UI, MCP external-provider integration, a CLI, workspace
-file storage, sources/credentials/skills, projects/tasks/Kanban, dynamic views, automations, a
-scheduler, search, settings, and the full BrowserPane+CDP+preview stack — most with a bundled
-Agent-readable doc. **Fleet's genuinely new parts are few**: file leases, Library/ArtifactRef, an
-interactive PTY runtime lane, model routing, the spatial canvas, composable workflows, creative
-modules, cross-agent orchestration, and governable experience. **Everything else is REUSE or EXTEND.**
-The most important gap near-term is not another registry: it is caller-aware invocation and attributed
-evidence across existing UI and Agent adapters. When in doubt, assume Craft has a foundation, inspect
-the real caller path, and classify the **remaining gap** rather than the feature name.
+## Files, artifacts and production surfaces
+
+| Capability | Current authority / code entry | Class | Fleet boundary |
+|---|---|---|---|
+| Workspace files | Workspace filesystem and existing file tools | REUSE/EXTEND | Governed file actions enforce containment, permissions, visible errors, recovery. |
+| Concurrent file leases | none | NEW | Only for the first real multi-writer loop; filesystem bytes remain native authority. |
+| ArtifactRef and Library | none | NEW | Versioned reference/provenance envelope over native bytes (roadmap R5); never a second byte store. |
+| Document ingestion | Sources + preview/tool conversion paths | EXTEND | Preserve native file reference and conversion provenance. |
+| Code intelligence | MCP/Sources | REUSE, CONDITIONAL | Optional provider; degrades cleanly. |
+| BrowserPane and CDP | Electron BrowserPane/CDP and `browser_tool` | REUSE/EXTEND | One in-app browser authority (E6). |
+| Markdown/HTML/PDF/image/diagram previews | existing renderer preview components and TipTap | REUSE | No second Markdown editor. |
+| Workbench panels | `views/` + settings/preferences | EXTEND | Register inside the Craft shell; panels are projections. R18 closes any docking gap from a real R10/R12 surface. |
+| Spatial canvas | views + Session/Workspace/file projections | EXTEND/NEW | Renderer adapter-bound and benchmark-gated (E5a; roadmap R7). |
+| Native design documents | no Fleet schema authority | NEW | Decision E11; Penpot is reference evidence only. |
+| Finite workflows | no complete workflow authority | NEW | DAG invokes governed actions and existing Task/runtime/permission paths (roadmap R8). |
+| Creative modules | existing files/previews plus R4 action, R5 ArtifactRef and R11 Job seams | NEW | R10–R13: each module owns only its native schema (E4) and extends the Craft shell/authorities. |
+| Built-in extensions | tool/Sources/Skills/views/permission authorities | EXTEND | Built-in loading and permission parity before any external distribution. |
+| Governed experience | Session evidence + Workspace knowledge | NEW | Layered agent-maintained memory files + logged consolidation (roadmap R9, D5 floors); curation optional; no hidden second store. |
+
+## External services and distribution
+
+| Capability | Current authority / code entry | Class | Fleet boundary |
+|---|---|---|---|
+| MCP and external providers | `packages/shared/src/mcp/`; Sources | REUSE/EXTEND | Optional connector; absence must not break startup. |
+| CLI client | `apps/cli/` and server transport | REUSE/EXTEND | Reuse commands and transport; no second local daemon by default. |
+| Remote/self-hosted execution | server transport, Workspace routing, WebUI | REUSE/EXTEND | User-owned target (P7/P9); identity, capability, disconnect states explicit. |
+| Messaging | messaging gateway/workers and settings/handlers | REUSE/EXTEND | One Workspace-scoped adapter contract; platform absence honest. |
+| Desktop OAuth | existing local callback path | REUSE | Independent of Craft cloud. |
+| WebUI/Slack OAuth relays | shared auth relay modules | EXTEND | User-configurable/self-hosted or explicitly unavailable (R2). |
+| Online sharing | branding, SessionManager share path, viewer | EXTEND/REPLACE | Local export or explicit configured target (R2); never silent upload. |
+| Application updates | auto-update and Electron builder config | EXTEND/REPLACE | Fleet-controlled/user-configured signed channel or honestly disabled (R2). |
+| Help/docs | bundled docs and docs MCP | REUSE/EXTEND | Local/bundled first; hosted Craft docs visibly external (R2). |
+| Upstream intake | pinned Craft reference, tags, release notes | REUSE | Selectively port reviewed changes; never merge wholesale. |
+
+## Reference routing
+
+Open-source checkouts are disposable evidence caches, not Fleet modules. For a capability
+comparison, use [`源码参考/meta/CAPABILITY-REFERENCE-MAP.md`](../源码参考/meta/CAPABILITY-REFERENCE-MAP.md).
+Open a checkout only when current code leaves a concrete question unanswered. A listed project is
+only a candidate until source-level implementation, same-task superiority, credible alternatives,
+the bounded local-improvement test, authority fit, licensing, and retention value all pass the
+admission rules in [`源码参考/meta/PLAYBOOK.md`](../源码参考/meta/PLAYBOOK.md).
+
+## Summary
+
+Craft already provides the product spine: Session, permission, evidence events, backends and tools,
+background execution, MCP, Sources, Skills, credentials, Tasks, views, automations, scheduler,
+settings, browser, previews. Fleet's genuinely new work is limited to proven gaps — the action
+seam, file coordination, ArtifactRef/Library, bounded delegation, finite workflows, native creative
+documents, governed experience — each attached to the existing spine through one real vertical
+behavior loop, in roadmap order.

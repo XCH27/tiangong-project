@@ -13,7 +13,7 @@ Fleet extends Craft Agents v0.11.1. UI work starts from the matching upstream im
 - `源码参考/software/craft-agents-oss/apps/electron/README.md` — Electron architecture and playground
 - `源码参考/software/craft-agents-oss/apps/electron/src/renderer/playground/` — component examples
 - `app/apps/electron/resources/docs/` — the bundled feature documentation shipped with the app
-- `源码参考/documentation/craft-agents-official/online-current/customisation/` — mirrored official
+- `源码参考/craft-docs/online-current/customisation/` — mirrored official
   Colors, Icons, and Themes guidance; current-hosted reference that may be newer than v0.11.1
 
 Official documentation explains customization, semantic colors, icon overrides, and theme structure,
@@ -21,18 +21,39 @@ but it is not a complete component/layout specification. For visual decisions, a
 v0.11.1 code first, in this order:
 
 1. The same upstream component or flow.
-2. An existing shared component under `apps/electron/src/renderer/components/ui/` or `packages/ui/`.
-3. Tokens and semantic colors in `apps/electron/src/renderer/index.css` and `packages/ui/src/styles/index.css`.
+2. An existing shared component under `app/apps/electron/src/renderer/components/ui/` or `app/packages/ui/`.
+3. Tokens and semantic colors in `app/apps/electron/src/renderer/index.css` and `app/packages/ui/src/styles/index.css`.
 4. The mirrored official Colors, Icons, and Themes guidance for supported customization semantics.
 5. A new local component only when the first four cannot express the required behavior.
 
 Generic web design systems, screenshot approximations, and unrelated reference apps may explain a
 behavior, but they do not override Craft's component language.
 
-Local Doubao and TRAE Work kits may exist at `源码参考/ui-kits/`. They are ignored reference-only
-material: their root contains no clear redistribution license, so do not import their SVGs, markup,
-CSS, or components into production. Use them only to study information hierarchy, density, and state
-coverage after comparing the equivalent Craft surface.
+Owner-intent design notes live under `docs/design-library/`. Optional **UI component kits** and page
+samples may live under the local untracked `UI参考/` cache (kits, tokens, icons and page showcases;
+not product authority or a build input). When present, start at its local index, then the kit's own `README.md` / `SKILL.md` /
+`colors_and_type.css`. Neither overrides Craft components, tokens, or this baseline. Do not import
+unlicensed third-party SVGs, CSS, or components into production.
+
+## Frontend Goal contract (kept in Goal/thread state)
+
+Before changing layout, styling, navigation, or a reusable component, lock these fields; do not
+create a separate design document:
+
+- **Visual anchor:** the exact upstream/current component, sibling flow, or playground fixture that
+  defines the language. A new surface names an existing shell/page anchor plus reused primitives.
+- **Intentional delta:** one sentence describing what may look or behave different. Everything else
+  is preserved by default.
+- **Reuse map:** shared components, semantic tokens, icon source, typography and interaction pattern.
+- **State matrix:** applicable default/loading/empty/error/denied/offline/recovery states.
+- **View matrix:** primary width/theme plus any affected narrow, light/dark, zh-Hans/en, hover,
+  focus, disabled and reduced-motion variants.
+- **Forbidden drift:** new palette, icon family, page/toolbar/settings home, locally recreated
+  primitive, or unrelated restyling unless the Goal explicitly authorizes it.
+
+If no concrete visual anchor can be named, the Agent may inspect and propose options but must not
+invent and ship a new visual language. Temporary captures stay outside the product tree unless the
+owner explicitly asks to retain them.
 
 ## Current intentional delta from upstream v0.11.1
 
@@ -45,19 +66,23 @@ As audited on 2026-07-12, the tracked application differs from the pinned upstre
 - What's New moved from the sidebar into the Debug submenu, with desktop/mobile wiring and tests;
 - local `app/AGENTS.md` execution rules and targeted tests for the deltas above.
 
-Treat anything beyond this list as new work that requires its own comparison and coherent slice. The
-current Project=Workspace, remote connection, label, archive, file-browser, and settings redesigns are
-documents or recoverable WIP only; none is current application behavior.
+This list describes the last verified baseline, not the current dirty working tree — that tree is
+being audited under [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md), and this delta list
+is updated as R0 lands features. Nothing is `usable` merely because it appears in a design or an
+unverified working tree.
 
-## Owner rules recovered from the pre-reset documents
+## Owner UI rules (binding)
 
-> 「对于界面安排应该做到如无必要，勿增实体。现在大部分Agent的软件的前端界面都非常的简约。也不会有过多的没必要的设置，这样才能适配大多数的用户。」
-
-> 「我在UI上的很多设计都会选择在原版Craft Agents的基础上做简化或者做优化，而不是凭空增加。」
+Avoid unnecessary entities and settings. Simplify or improve the original Craft Agents interface
+instead of inventing new surfaces. Exact owner wording is preserved once in
+[`design-library/OWNER-VOICE.md`](design-library/OWNER-VOICE.md) as OV-002 and OV-003.
 
 Operationally:
 
 - Keep one primary home for each capability; do not repeat the same list or action in several places.
+- One create verb: **New Task** (P10). Do not reintroduce separate "new chat" entries, and do not
+  show workspace/folder/project as parallel switchers (P6) — overlapping controls merge per the R1
+  dedup inventory.
 - Prefer changing fields, grouping, wording, and progressive disclosure inside the existing Craft
   surface over adding a page, toolbar, sidebar, store, or settings category.
 - Settings are for credentials, security/privacy, retention, connections, and rare preferences.
@@ -65,14 +90,10 @@ Operationally:
 - A visible control must have real behavior, loading/error/recovery states, and the same underlying
   authority as other callers. No display-only controls presented as usable.
 
-The historical full redline remains recoverable at
-`git show ec499338d^:docs/00A-UI改造红线与挂点地图.md`. Its retired Wave/ownership language is not
-current; the Craft reuse and UI placement rules above remain applicable.
-
 ## Icon rules
 
 1. Reuse Craft's custom icon when one exists under
-   `apps/electron/src/renderer/components/icons/` or `packages/ui/src/components/icons/`.
+   `app/apps/electron/src/renderer/components/icons/` or `app/packages/ui/src/components/icons/`.
    Examples: `SquarePenRounded`, `PanelLeftRounded`, `McpIcon`, and status icons.
 2. Otherwise use the already-installed `lucide-react` icon closest to the upstream meaning. Do not
    mix another outline library into the same navigation or control group.
@@ -101,14 +122,44 @@ current; the Craft reuse and UI placement rules above remain applicable.
 - Hover-only actions must remain keyboard reachable. Tooltips explain icon-only controls; they do
   not replace visible labels where the original Craft pattern uses text.
 
-## Required UI review
+## Localization rules
 
-Before declaring a UI slice usable:
+- Every user-visible fixed label, description, empty/error state, menu heading, and action must use
+  the existing i18n catalog. Do not ship English fallback text as normal UI in a translated locale.
+- Built-in dynamic values (for example the default session statuses and untouched starter labels)
+  are product copy and must resolve through i18n at render time. Keep their stored IDs and names
+  stable. User-created or renamed labels/statuses, project names, and other user content remain
+  verbatim.
+- Preserve proper names and literal interface tokens: product/platform names, theme names such as
+  Catppuccin and Dracula, API identifiers, file paths, commands, and physical key labels such as
+  Enter. Translate the surrounding explanation, not the identifier itself.
+- When adding or changing a user-facing field, update every locale key in the same slice and run the
+  i18n parity/coverage checks. Give the owner the affected locale/English surfaces to inspect.
 
-1. Compare the changed component with the same upstream v0.11.1 component and current shared tokens.
-2. Inspect every icon in the changed group for source, size, stroke, color, slot, hover, focus, and
-   disabled state.
-3. Inspect normal and narrow widths for truncation and action overlap.
-4. Inspect the actual Electron surface in light and dark mode when the change affects colors.
+## Agent implementation review
+
+For structural/styling changes, Agents apply the code checks and perform a deterministic rendered
+comparison before handoff. The existing playground is the preferred isolated surface; use the real
+local app when the state cannot be represented honestly in the playground. Copy-only changes may use
+the existing component path plus locale tests when layout is unaffected.
+
+1. Capture or inspect the declared visual anchor before editing; record the intentional delta in the
+   Goal/thread state.
+2. Compare the changed component with the same upstream v0.11.1 component, closest current sibling,
+   and shared tokens. For copy/localization fixes, confirm the current shared path.
+3. Check every icon in the changed group from component props/tokens for source, size, stroke, color,
+   slot, hover, focus, and disabled state.
+4. Render the changed state at the relevant view matrix. Compare anchor and result at the same
+   viewport/theme/state; fix padding, type, color, radius, icon, focus and overflow differences not
+   named in the intentional delta.
 5. Preserve unrelated Craft behaviors such as context menus, relative time, labels, keyboard focus,
    drag/drop, and loading/error states unless the owner explicitly removes them.
+6. Extend the existing playground registry for a new/reworked reusable component or state; do not
+   fork a playground-only copy of production UI.
+
+## Human acceptance
+
+Agent visual comparison proves consistency, not taste. Give the owner the intentional delta and a
+short CHECK THIS list. Promote a user-visible change to `usable` only after the owner accepts its
+appearance and interaction; until then report `wired but not visually checked` (or `display-only`
+when the real behavior is not connected).

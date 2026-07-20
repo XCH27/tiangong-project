@@ -1,61 +1,38 @@
 # Feature Registry — who is building which big feature
 
-> **This is a live state file, not a plan document.** It is the *only* thing an in-flight feature area
-> shares with the others: a thin, read-only awareness of **who is building which big feature and which
-> existing path scope they occupy** — so two areas don't independently build the same big thing (e.g. two agents
-> both starting a spatial canvas from scratch).
+> **Live state file, not a plan.** The only thing an in-flight feature area shares with the others:
+> thin, read-only awareness of **who is building which big feature and which existing path scope
+> they occupy** — so two areas don't independently build the same big thing.
 >
-> **The rule it enforces: know the boundaries, not the contents.** You may read this table to see *what*
-> others are building and *where*. Do not inspect another **in-flight** branch merely to borrow its
-> implementation or widen your scope. Already-merged code and public interfaces remain normal project
-> context. Awareness of overlap is the only in-flight detail shared.
+> Not a task board (Craft's tasks are the task authority), not for small changes, not a source of
+> truth about code — it records *claims of territory*; code and observed behavior are the truth.
 
-## What this is NOT
+## How to use it
 
-- **Not a task board / project system.** Craft's projects/tasks are the task authority; this is not a
-  second one (`03-NON-NEGOTIABLES.md` #1). No progress %, no assignments, no approvals here.
-- **Not for small changes.** Register only a **big feature** with a clearly bounded set of existing
-  renderer/RPC/server/shared/package paths. Ordinary fixes/tweaks are not
-  registered; that would just be noise.
-- **Not a source of truth about code.** It records *claims of territory*, not what was built. The code,
-  integration review, and observed behavior are the truth.
+1. **Before starting a big feature or system suite:** read the table and
+   [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md). If your feature is already `in-progress` or
+   `merged`, do not build a duplicate — report to the main agent (join / divide / explicitly
+   approved competition per [`07-PLAYBOOK.md`](07-PLAYBOOK.md)).
+2. **When you start:** add one row (feature, branch/worktree, path scope, integration owner,
+   unmerged dependencies, status `in-progress`). One branch = one primary-feature row.
+3. **On overlap or path collision:** coordinate one integration owner and one compatible migration.
+4. **When merged or dropped:** update the row status. Prune long-dead rows.
 
-## How to use it (every big-feature area)
-
-1. **Before you start**, read this table. If the big feature you're about to build is already listed as
-   `in-progress` or `merged`, **do not build a duplicate.** Stop and report to the main agent for a
-   decision (join / divide the work / or an explicitly-approved competing implementation).
-2. **When you start**, add one row: your feature, your branch, the path scope you occupy, status
-   `in-progress`. This is a lightweight edit — it does not require the main agent.
-3. **If you discover an overlap or a boundary collision** (your path scopes touch), do not
-   resolve it yourself — record it and escalate to the main agent (matches the single-owner /
-   main-agent-decides rules in `07-AGENT-RULES.md`).
-4. **When your area merges or is dropped**, update your row's status to `merged` / `dropped`. Keep the
-   table short — prune long-dead rows into the note section if it grows.
-
-Competing implementations (two areas on the same big feature) are allowed **only** when the main agent
-has explicitly approved it as deliberate competition for a high-risk/high-uncertainty feature
-(`07-AGENT-RULES.md` → bounded feature development). Mark both rows `competing` and note the
-decision.
+Status values: `in-progress` · `merged` · `dropped` · `competing`.
 
 ## Registry
 
-> Status values: `in-progress` · `merged` · `dropped` · `competing`.
-> Keep rows to big features only. One row per area.
+| Primary feature | Suite | Branch / worktree | Occupies (scope) | Integration owner | Depends on (unmerged) | Status | Notes |
+|---|---|---|---|---|---|---|
+| R0 baseline audit of the legacy working tree | SYS-01 | `work/fresh-base-spine` | the entire uncommitted diff (app code: shell/workspace/label/status/settings/Board, i18n, scripts; the doc restructure; reference/document tree changes — inventory fresh at execution) | `/root` | none | in-progress | Spec: [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md). The former mega-row ("Desktop terminology, navigation and identity-label presentation") is superseded: its surviving features re-register individually as R0 lands them. |
 
-| Big feature | Branch | Occupies (folder / scope) | Status | Notes |
-|---|---|---|---|---|
-| _(none — application baseline recovered; no big feature in flight)_ | `work/fresh-base-spine` | — | — | Start one owner-selected coherent slice. Do not start parallel UI/IA rewrites. |
+## Durable integration rules
 
-## Notes / resolved overlaps
-
-- **2026-07-12 recovery:** Uncommitted thrash (half-finished Project=Workspace UI + agent UI patches)
-  was cleared from the working tree. `app/apps/electron` and `app/packages` match branch **HEAD**
-  (`cdc387e1d` family). Recoverable WIP lives only in git stash
-  `stash@{0}: recovery: unfinished packages WIP before clean restore 20260712` — **do not
-  `stash apply` wholesale.** Re-introduce only as tiny reviewed slices, never as a bulk restore.
-- **Hard rules for the next work:** Craft shell is authority (`CRAFT-UI-BASELINE`); one primary
-  home per capability; no empty future-feature surfaces; M1 does not add panels (see
-  `05-MILESTONE-1-ACTION-SPINE.md`). Project=Workspace (Decision P6 / design-library/20) is a
-  **later** vertical slice, not a full-shell rewrite. The detailed navigation in design-library/20 is
-  not current behavior and does not override the five small Board/menu commits already at HEAD.
+- Craft shell is the default UI authority ([`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md)); one
+  primary home per capability; no empty future-feature surfaces; no duplicate state authority.
+- Independent primary features use separate branches/worktrees; a registry row is a
+  collision/dependency declaration, not permission to reserve unreadable territory.
+- Shared contracts have one integration owner; dependent branches consume the merged contract,
+  never another worktree's uncommitted files.
+- Owner-directed early work on a later-release capability is allowed; its row must record honest
+  status and remaining dependency edges.
