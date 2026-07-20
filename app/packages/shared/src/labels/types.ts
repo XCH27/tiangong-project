@@ -44,7 +44,7 @@ export interface AutoLabelRule {
  * Array position = display order (no explicit order field needed).
  */
 export interface LabelConfig {
-  /** Unique ID — simple slug, globally unique across the tree (e.g., 'bug', 'frontend') */
+  /** Stable identity ID used by sessions and capability bindings; never use a translated name. */
   id: string;
 
   /** Display name */

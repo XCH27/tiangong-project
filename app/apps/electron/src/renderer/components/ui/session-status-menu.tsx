@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import {
   type SessionStatusId,
   type SessionStatus,
+  getLocalizedStatusLabel,
   getStateIcon,
   getStateColor,
   getStatusIconStyle,
@@ -26,11 +27,9 @@ const MENU_ITEM_STYLE = 'flex cursor-pointer select-none items-center gap-3 roun
 // StateItemContent - Shared item rendering
 // ============================================================================
 
-const DEFAULT_STATUS_IDS = new Set(['backlog', 'todo', 'needs-review', 'done', 'cancelled'])
-
 function StateItemContent({ state }: { state: SessionStatus }) {
   const { t } = useTranslation()
-  const label = DEFAULT_STATUS_IDS.has(state.id) ? t(`status.${state.id}`, state.label) : state.label
+  const label = getLocalizedStatusLabel(t, state)
   return (
     <>
       <span className="shrink-0 flex items-center" style={getStatusIconStyle(state)}>
@@ -111,7 +110,7 @@ export function SessionStatusMenu({
           return (
             <CommandPrimitive.Item
               key={state.id}
-              value={state.label}
+              value={getLocalizedStatusLabel(t, state)}
               onSelect={() => onSelect(state.id)}
               className={cn(
                 MENU_ITEM_STYLE,

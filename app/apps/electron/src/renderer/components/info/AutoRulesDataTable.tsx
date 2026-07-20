@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import { toast } from 'sonner'
 import type { LabelConfig, AutoLabelRule } from '@craft-agent/shared/labels'
+import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 /**
  * Flattened auto-rule row: associates a rule with its parent label
@@ -92,11 +93,11 @@ function getColumns(t: TFunction): ColumnDef<AutoRuleRow>[] {
     {
       id: 'label',
       header: ({ column }) => <SortableHeader column={column} title={t("table.label")} />,
-      accessorFn: (row) => row.label.name,
+      accessorFn: (row) => getLocalizedLabelName(t, row.label),
       cell: ({ row }) => (
         <div className="p-1.5 pl-2.5 flex items-center gap-1.5">
           <LabelIcon label={row.original.label} size="xs" />
-          <span className="text-sm truncate">{row.original.label.name}</span>
+          <span className="text-sm truncate">{getLocalizedLabelName(t, row.original.label)}</span>
         </div>
       ),
       minSize: 100,

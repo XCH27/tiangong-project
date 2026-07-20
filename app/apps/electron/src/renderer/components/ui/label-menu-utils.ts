@@ -22,14 +22,18 @@ export function compareLabelMenuItems(a: LabelMenuItem, b: LabelMenuItem): numbe
  * Exclusion is handled here so both the inline # menu and AppShell filter search
  * can share the same flattening/path-building logic.
  */
-export function createLabelMenuItems(labels: LabelConfig[], excludedLabelIds: Iterable<string> = []): LabelMenuItem[] {
+export function createLabelMenuItems(
+  labels: LabelConfig[],
+  excludedLabelIds: Iterable<string> = [],
+  getName: (label: LabelConfig) => string = (label) => label.name,
+): LabelMenuItem[] {
   const excluded = new Set(excludedLabelIds)
 
   return flattenLabelsWithParentPath(labels)
     .filter(({ label }) => !excluded.has(label.id))
     .map(({ label, parentPath }) => ({
       id: label.id,
-      label: label.name,
+      label: getName(label),
       config: label,
       parentPath,
     }))

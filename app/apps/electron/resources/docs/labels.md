@@ -1,4 +1,4 @@
-# Label Configuration
+# Identity Label Configuration
 
 Labels are additive tags that can be applied to sessions. Unlike statuses (which are exclusive — one per session), labels are multi-select (many per session). They support hierarchical organization via nested JSON trees.
 
@@ -10,9 +10,16 @@ Labels are additive tags that can be applied to sessions. Unlike statuses (which
 
 - Config: `~/.craft-agent/workspaces/{id}/labels/config.json`
 
-## No Defaults (Regular Labels)
+## Built-in Identity Labels
 
-Unlike statuses, regular labels start empty. Users create whatever labels they need. There are no built-in or required regular labels.
+New workspaces include a small system catalog (`development`, `code`, `bug`, `automation`, `content`,
+`writing`, `research`, `design`, `priority`, and `project`). Their IDs are stable capability selectors;
+their untouched display names follow the UI language. Users may also create or rename labels, whose
+names are shown verbatim.
+
+Sessions and automations already reference label IDs. Future Skill, Source, and permission bindings
+must also reference `labelId`, never a translated display name. This keeps bindings intact when the
+language changes.
 
 ## Visual Representation
 

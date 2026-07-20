@@ -19,6 +19,7 @@ import { LabelIcon } from '@/components/ui/label-icon'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import type { LabelConfig } from '@craft-agent/shared/labels'
+import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 interface LabelsDataTableProps {
   /** Label tree (root-level nodes with nested children) */
@@ -38,7 +39,7 @@ interface LabelsDataTableProps {
  * ExpandableNameCell - Renders label name with indentation and expand/collapse chevron.
  * Depth-based indentation with a rotating chevron for parent nodes.
  */
-function ExpandableNameCell({ row }: { row: Row<LabelConfig> }) {
+function ExpandableNameCell({ row, t }: { row: Row<LabelConfig>; t: TFunction }) {
   const canExpand = row.getCanExpand()
   const isExpanded = row.getIsExpanded()
 
@@ -69,7 +70,7 @@ function ExpandableNameCell({ row }: { row: Row<LabelConfig> }) {
         // Spacer to keep alignment consistent with expandable rows
         <span className="w-4" />
       )}
-      <span className="text-sm truncate">{row.original.name}</span>
+      <span className="text-sm truncate">{getLocalizedLabelName(t, row.original)}</span>
     </div>
   )
 }
@@ -93,9 +94,10 @@ function getColumns(t: TFunction): ColumnDef<LabelConfig>[] {
       maxSize: 60,
     },
     {
-      accessorKey: 'name',
+      id: 'name',
       header: ({ column }) => <SortableHeader column={column} title={t("common.name")} />,
-      cell: ({ row }) => <ExpandableNameCell row={row} />,
+      accessorFn: (row) => getLocalizedLabelName(t, row),
+      cell: ({ row }) => <ExpandableNameCell row={row} t={t} />,
       meta: { fillWidth: true },
     },
     {
