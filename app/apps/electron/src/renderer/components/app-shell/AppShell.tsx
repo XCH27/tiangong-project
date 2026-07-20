@@ -72,6 +72,7 @@ import {
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
 import { createBoardSidebarItem } from "./kanban/sidebar-navigation"
+import { createProjectSidebarItems } from "./project-sidebar-navigation"
 import { PanelStackContainer } from "./PanelStackContainer"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
@@ -86,13 +87,14 @@ import { useAction, useActionLabel } from "@/actions"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useFocusContext } from "@/context/FocusContext"
 import { getSessionTitle } from "@/utils/session"
+import { getLocalizedLabelName } from "@/utils/label-display-name"
 import { useSetAtom } from "jotai"
 import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSource, LoadedSkill, PermissionMode, SourceFilter, AutomationFilter } from "../../../shared/types"
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
-import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
+import { getLocalizedStatusLabel, type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
 import { useLabels } from "@/hooks/useLabels"
 import { useViews } from "@/hooks/useViews"
@@ -319,6 +321,7 @@ function FilterLabelItems({
   pinnedLabelId?: string | null
   altHeld?: boolean
 }) {
+  const { t } = useTranslation()
   /** Toggle a label filter: if active → remove, if inactive → add as 'include' (or 'exclude' with Alt) */
   const toggleLabel = (id: string, altKey = false) => {
     setLabelFilter(prev => {
@@ -365,7 +368,7 @@ function FilterLabelItems({
               <StyledDropdownMenuSubTrigger>
                 <FilterMenuRow
                   icon={<LabelIcon label={label} size="lg" hasChildren />}
-                  label={label.name}
+                  label={getLocalizedLabelName(t, label)}
                   accessory={
                     showIndicator ? <Check className="h-3 w-3 text-muted-foreground" /> : undefined
                   }
@@ -380,7 +383,7 @@ function FilterLabelItems({
                       <StyledDropdownMenuSubTrigger onClick={(e) => { e.preventDefault(); toggleLabel(label.id, e.altKey) }}>
                         <FilterMenuRow
                           icon={<LabelIcon label={label} size="lg" hasChildren />}
-                          label={label.name}
+                          label={getLocalizedLabelName(t, label)}
                           accessory={<FilterModeBadge mode={mode} />}
                         />
                       </StyledDropdownMenuSubTrigger>
@@ -411,7 +414,7 @@ function FilterLabelItems({
                       >
                         <FilterMenuRow
                           icon={<LabelIcon label={label} size="lg" hasChildren />}
-                          label={label.name}
+                          label={getLocalizedLabelName(t, label)}
                           accessory={isPinned ? <Check className="h-3 w-3 text-muted-foreground" /> : undefined}
                         />
                       </StyledDropdownMenuItem>
@@ -439,7 +442,7 @@ function FilterLabelItems({
               <StyledDropdownMenuSubTrigger onClick={(e) => { e.preventDefault(); toggleLabel(label.id, e.altKey) }}>
                 <FilterMenuRow
                   icon={<LabelIcon label={label} size="lg" />}
-                  label={label.name}
+                  label={getLocalizedLabelName(t, label)}
                   accessory={<FilterModeBadge mode={mode} />}
                 />
               </StyledDropdownMenuSubTrigger>
@@ -463,7 +466,7 @@ function FilterLabelItems({
             >
               <FilterMenuRow
                 icon={<LabelIcon label={label} size="lg" />}
-                label={label.name}
+                label={getLocalizedLabelName(t, label)}
                 accessory={isPinned ? <Check className="h-3 w-3 text-muted-foreground" /> : undefined}
               />
             </StyledDropdownMenuItem>
@@ -1110,8 +1113,8 @@ function AppShellContent({
   // Build flat LabelMenuItem[] from hierarchical labels for the filter dropdown's search mode.
   // Uses the same structure as the # inline menu so the two search surfaces stay aligned.
   const flatLabelMenuItems = useMemo(
-    (): LabelMenuItem[] => createLabelMenuItems(displayLabelConfigs),
-    [displayLabelConfigs],
+    (): LabelMenuItem[] => createLabelMenuItems(displayLabelConfigs, [], label => getLocalizedLabelName(t, label)),
+    [displayLabelConfigs, t],
   )
 
   // Filter dropdown keyboard navigation: tracks highlighted item index in flat search mode.
@@ -2137,14 +2140,26 @@ function AppShellContent({
     }
     flattenTree(labelTree)
 
-    // 3. Sources, Skills, Settings
+    // 3. Sources, Skills, Automations, Projects, Settings
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
+    result.push({ id: 'nav:projects', type: 'nav', action: handleProjectsClick })
+    for (const project of projects) {
+      result.push({ id: `nav:projects:${project.config.id}`, type: 'nav', action: () => handleJumpToProjectSessions(project.config.id) })
+      for (const meta of workspaceSessionMetas) {
+        if (meta.projectId !== project.config.id || meta.isArchived || meta.hidden || meta.parentSessionId || meta.taskDraft) continue
+        result.push({
+          id: `nav:projects:${project.config.id}:session:${meta.id}`,
+          type: 'nav',
+          action: () => navigateToSessionInPanel(meta.id),
+        })
+      }
+    }
     result.push({ id: 'nav:settings', type: 'nav', action: () => handleSettingsClick() })
 
     return result
-  }, [handleAllSessionsClick, handleBoardClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleSettingsClick])
+  }, [handleAllSessionsClick, handleBoardClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelTree, handleSourcesClick, handleSkillsClick, handleAutomationsClick, handleProjectsClick, projects, workspaceSessionMetas, handleJumpToProjectSessions, navigateToSessionInPanel, handleSettingsClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2292,8 +2307,11 @@ function AppShellContent({
         const state = effectiveSessionStatuses.find(s => s.id === sessionFilter.stateId)
         return state ? t(`status.${state.id}`, state.label) : t("sidebar.allSessions")
       }
-      case 'label':
-        return sessionFilter.labelId === '__all__' ? t("sidebar.labels") : getLabelDisplayName(labelConfigs, sessionFilter.labelId)
+      case 'label': {
+        if (sessionFilter.labelId === '__all__') return t("sidebar.labels")
+        const label = findLabelById(labelConfigs, sessionFilter.labelId)
+        return label ? getLocalizedLabelName(t, label) : getLabelDisplayName(labelConfigs, sessionFilter.labelId)
+      }
       case 'view':
         return sessionFilter.viewId === '__all__' ? t("sidebar.views") : viewConfigs.find(v => v.id === sessionFilter.viewId)?.name || t("sidebar.views")
       default:
@@ -2312,7 +2330,7 @@ function AppShellContent({
 
       const item: any = {
         id: `nav:label:${node.fullId}`,
-        title: node.label?.name || node.segment.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        title: node.label ? getLocalizedLabelName(t, node.label) : node.segment.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
         label: count > 0 ? String(count) : undefined,
         // Show label type icon (Hash/Calendar/Type) right-aligned before count, with tooltip explaining the type
         afterTitle: node.label?.valueType ? (
@@ -2356,6 +2374,19 @@ function AppShellContent({
       return item
     })
   }, [sessionFilter, labelCounts, activeWorkspace?.id, handleLabelClick, isExpanded, toggleExpanded, openConfigureLabels, handleAddLabel, handleDeleteLabel])
+
+  const projectSidebarItems = useMemo(() => createProjectSidebarItems({
+    projects: projects.map(project => ({ id: project.config.id, name: project.config.name })),
+    sessions: workspaceSessionMetas,
+    activeSessionId: effectiveSessionId,
+    activeProjectIds: new Set(
+      [...projectFilter].filter(([, mode]) => mode === 'include').map(([projectId]) => projectId)
+    ),
+    isExpanded,
+    onToggle: toggleExpanded,
+    onSelectProject: handleJumpToProjectSessions,
+    onSelectSession: navigateToSessionInPanel,
+  }), [projects, workspaceSessionMetas, effectiveSessionId, projectFilter, isExpanded, toggleExpanded, handleJumpToProjectSessions, navigateToSessionInPanel])
 
   return (
     <AppShellProvider value={appShellContextValue}>
@@ -2616,30 +2647,6 @@ function AppShellContent({
                       },
                     },
                     {
-                      id: "nav:projects",
-                      title: t("sidebar.projects"),
-                      label: String(projects.length),
-                      icon: FolderKanban,
-                      // Highlight only when on Projects view itself, not when a child is "active" (jumped-to filter)
-                      variant: isProjectsNavigation(navState) ? "default" : "ghost",
-                      onClick: handleProjectsClick,
-                      expandable: projects.length > 0,
-                      expanded: isExpanded('nav:projects'),
-                      onToggle: () => toggleExpanded('nav:projects'),
-                      contextMenu: {
-                        type: 'projects' as const,
-                        onAddProject: openAddProject,
-                      },
-                      items: projects.map(p => ({
-                        id: `nav:projects:${p.config.id}`,
-                        title: p.config.name,
-                        icon: FolderKanban,
-                        // Highlight when on allSessions view AND filter includes this project (the jump-to state)
-                        variant: (sessionFilter?.kind === 'allSessions' && projectFilter.get(p.config.id) === 'include') ? "default" as const : "ghost" as const,
-                        onClick: () => handleJumpToProjectSessions(p.config.id),
-                      })),
-                    },
-                    {
                       id: "nav:automations",
                       title: t("sidebar.automations"),
                       label: String(automations.length),
@@ -2683,20 +2690,41 @@ function AppShellContent({
                         },
                       ],
                     },
-                    // --- Separator ---
-                    { id: "separator:skills-settings", type: "separator" },
-                    // --- Settings ---
                     {
-                      id: "nav:settings",
-                      title: t("sidebar.settings"),
-                      icon: Settings,
-                      variant: isSettingsNavigation(navState) ? "default" : "ghost",
-                      onClick: () => handleSettingsClick(),
+                      id: "nav:projects",
+                      title: t("sidebar.projects"),
+                      label: String(projects.length),
+                      icon: FolderKanban,
+                      // Projects are folders; each project expands again to its active task/session rows.
+                      variant: isProjectsNavigation(navState) ? "default" : "ghost",
+                      onClick: handleProjectsClick,
+                      expandable: projects.length > 0,
+                      expanded: isExpanded('nav:projects'),
+                      onToggle: () => toggleExpanded('nav:projects'),
+                      contextMenu: {
+                        type: 'projects' as const,
+                        onAddProject: openAddProject,
+                      },
+                      items: projectSidebarItems,
                     },
                   ]}
                 />
                 {/* Agent Tree: Hierarchical list of agents */}
                 {/* Agents section removed */}
+                </div>
+                <div className="shrink-0 border-t border-foreground/5">
+                  <LeftSidebar
+                    isCollapsed={false}
+                    getItemProps={getSidebarItemProps}
+                    focusedItemId={focusedSidebarItemId}
+                    links={[{
+                      id: "nav:settings",
+                      title: t("sidebar.settings"),
+                      icon: Settings,
+                      variant: isSettingsNavigation(navState) ? "default" : "ghost",
+                      onClick: () => handleSettingsClick(),
+                    }]}
+                  />
                 </div>
               </div>
 
@@ -2892,7 +2920,7 @@ function AppShellContent({
                                     <StyledDropdownMenuItem disabled key={`pinned-status-${state.id}`}>
                                       <FilterMenuRow
                                         icon={state.icon}
-                                        label={state.label}
+                                        label={getLocalizedStatusLabel(t, state)}
                                         accessory={<Check className="h-3 w-3 text-muted-foreground" />}
                                         iconStyle={state.iconColorable ? { color: state.resolvedColor } : undefined}
                                         noIconContainer
@@ -2909,7 +2937,7 @@ function AppShellContent({
                                     <StyledDropdownMenuItem disabled key={`pinned-label-${label.id}`}>
                                       <FilterMenuRow
                                         icon={<LabelIcon label={label} size="lg" />}
-                                        label={label.name}
+                                        label={getLocalizedLabelName(t, label)}
                                         accessory={<Check className="h-3 w-3 text-muted-foreground" />}
                                       />
                                     </StyledDropdownMenuItem>
@@ -2924,7 +2952,7 @@ function AppShellContent({
                                       <StyledDropdownMenuSubTrigger onClick={(e) => { e.preventDefault(); setListFilter(prev => { const next = new Map(prev); next.delete(state.id); return next }) }}>
                                         <FilterMenuRow
                                           icon={state.icon}
-                                          label={state.label}
+                                          label={getLocalizedStatusLabel(t, state)}
                                           accessory={<FilterModeBadge mode={mode} />}
                                           iconStyle={applyColor ? { color: state.resolvedColor } : undefined}
                                           noIconContainer
@@ -2957,7 +2985,7 @@ function AppShellContent({
                                       <StyledDropdownMenuSubTrigger onClick={(e) => { e.preventDefault(); setLabelFilter(prev => { const next = new Map(prev); next.delete(labelId); return next }) }}>
                                         <FilterMenuRow
                                           icon={<LabelIcon label={label} size="lg" />}
-                                          label={label.name}
+                                          label={getLocalizedLabelName(t, label)}
                                           accessory={<FilterModeBadge mode={mode} />}
                                         />
                                       </StyledDropdownMenuSubTrigger>
@@ -3033,7 +3061,7 @@ function AppShellContent({
                                         <StyledDropdownMenuSubTrigger onClick={(e) => { e.preventDefault(); setListFilter(prev => { const next = new Map(prev); next.delete(state.id); return next }) }}>
                                           <FilterMenuRow
                                             icon={state.icon}
-                                            label={state.label}
+                                            label={getLocalizedStatusLabel(t, state)}
                                             accessory={<FilterModeBadge mode={currentMode} />}
                                             iconStyle={applyColor ? { color: state.resolvedColor } : undefined}
                                             noIconContainer
@@ -3075,7 +3103,7 @@ function AppShellContent({
                                       >
                                         <FilterMenuRow
                                           icon={state.icon}
-                                          label={state.label}
+                                          label={getLocalizedStatusLabel(t, state)}
                                           accessory={isPinned ? <Check className="h-3 w-3 text-muted-foreground" /> : null}
                                           iconStyle={applyColor ? { color: state.resolvedColor } : undefined}
                                           noIconContainer
@@ -3257,7 +3285,7 @@ function AppShellContent({
                                             >
                                               <FilterMenuRow
                                                 icon={state.icon}
-                                                label={state.label}
+                                                label={getLocalizedStatusLabel(t, state)}
                                                 accessory={<FilterModeBadge mode={currentMode} />}
                                                 iconStyle={applyColor ? { color: state.resolvedColor } : undefined}
                                                 noIconContainer
@@ -3306,7 +3334,7 @@ function AppShellContent({
                                           >
                                             <FilterMenuRow
                                               icon={state.icon}
-                                              label={state.label}
+                                              label={getLocalizedStatusLabel(t, state)}
                                               accessory={isPinned ? <Check className="h-3 w-3 text-muted-foreground" /> : null}
                                               iconStyle={applyColor ? { color: state.resolvedColor } : undefined}
                                               noIconContainer

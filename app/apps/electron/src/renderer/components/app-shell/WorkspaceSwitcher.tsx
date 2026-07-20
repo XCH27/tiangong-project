@@ -21,6 +21,7 @@ import { WorkspaceCreationScreen } from "@/components/workspace"
 import { waitForTransportConnected } from '@/lib/transport-wait'
 import { useWorkspaceIcons } from "@/hooks/useWorkspaceIcon"
 import { useTransportConnectionState } from "@/hooks/useTransportConnectionState"
+import { getWorkspaceDisplayName } from "@/utils/workspace-display-name"
 import type { Workspace } from "../../../shared/types"
 
 interface WorkspaceSwitcherProps {
@@ -57,6 +58,7 @@ export function WorkspaceSwitcher({
   const [reconnectTarget, setReconnectTarget] = useState<Workspace | null>(null)
   const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
   const selectedWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
+  const selectedWorkspaceName = getWorkspaceDisplayName(selectedWorkspace?.name, t)
   const workspaceIconMap = useWorkspaceIcons(workspaces)
   const connectionState = useTransportConnectionState()
   const isRemote = connectionState?.mode === 'remote'
@@ -195,12 +197,12 @@ export function WorkspaceSwitcher({
             >
               <WorkspaceAvatar
                 workspaceId={selectedWorkspace?.id}
-                workspaceName={selectedWorkspace?.name}
+                workspaceName={selectedWorkspaceName}
                 src={selectedWorkspace ? workspaceIconMap.get(selectedWorkspace.id) : undefined}
                 className="h-4 w-4 mr-1.5 rounded-full ring-1 ring-border/50"
                 fallbackClassName="rounded-full"
               />
-              <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspace?.name || 'Workspace'}</span>
+              <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspaceName}</span>
               {selectedWorkspace?.remoteServer && (
                 isRemoteDisconnected(selectedWorkspace.id)
                   ? <CloudOff className="h-3 w-3 text-destructive shrink-0" />
@@ -221,7 +223,7 @@ export function WorkspaceSwitcher({
             >
               <WorkspaceAvatar
                 workspaceId={selectedWorkspace?.id}
-                workspaceName={selectedWorkspace?.name}
+                workspaceName={selectedWorkspaceName}
                 src={selectedWorkspace ? workspaceIconMap.get(selectedWorkspace.id) : undefined}
                 className="h-4 w-4 rounded-full ring-1 ring-border/50"
                 fallbackClassName="rounded-full"
@@ -229,7 +231,7 @@ export function WorkspaceSwitcher({
               {!isCollapsed && (
                 <>
                   <FadingText className="ml-1 font-sans min-w-0 text-sm" fadeWidth={36}>
-                    {selectedWorkspace?.name || 'Select workspace'}
+                    {selectedWorkspace ? selectedWorkspaceName : t('workspace.selectWorkspace')}
                   </FadingText>
                   {selectedWorkspace?.remoteServer && (
                     isRemoteDisconnected(selectedWorkspace.id)
@@ -248,7 +250,8 @@ export function WorkspaceSwitcher({
           sideOffset={variant === 'topbar' ? 6 : 4}
           minWidth={variant === 'topbar' ? 'min-w-64' : undefined}
         >
-          {workspaces.map((workspace) => {
+              {workspaces.map((workspace) => {
+                const workspaceName = getWorkspaceDisplayName(workspace.name, t)
             const disconnected = isRemoteDisconnected(workspace.id)
             return (
               <StyledDropdownMenuItem
@@ -273,12 +276,12 @@ export function WorkspaceSwitcher({
                 <div className="flex items-center gap-3 font-sans min-w-0 flex-1">
                   <WorkspaceAvatar
                     workspaceId={workspace.id}
-                    workspaceName={workspace.name}
+                    workspaceName={workspaceName}
                     src={workspaceIconMap.get(workspace.id)}
                     className="h-5 w-5 rounded-full ring-1 ring-border/50"
                     fallbackClassName="rounded-full text-xs"
                   />
-                  <span className="truncate">{workspace.name}</span>
+                  <span className="truncate">{workspaceName}</span>
                   {workspace.remoteServer && (
                     disconnected
                       ? <span title={getDisconnectTooltip(workspace.id)} className="shrink-0"><CloudOff className="h-3.5 w-3.5 text-destructive" /></span>

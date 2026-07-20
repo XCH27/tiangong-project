@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { WorkspaceAvatar } from '@/components/ui/workspace-avatar'
 import { useWorkspaceIcons } from '@/hooks/useWorkspaceIcon'
 import { cn } from '@/lib/utils'
+import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 import type { Workspace } from '../../../shared/types'
 
 export interface SendToWorkspaceDialogProps {
@@ -208,12 +209,12 @@ export function SendToWorkspaceDialog({
                 >
                   <WorkspaceAvatar
                     workspaceId={workspace.id}
-                    workspaceName={workspace.name}
+                    workspaceName={getWorkspaceDisplayName(workspace.name, t)}
                     src={workspaceIconMap.get(workspace.id)}
                     className="h-5 w-5 rounded-full ring-1 ring-border/50 shrink-0"
                     fallbackClassName="rounded-full"
                   />
-                  <span className="flex-1 truncate">{workspace.name}</span>
+                  <span className="flex-1 truncate">{getWorkspaceDisplayName(workspace.name, t)}</span>
                   {isDisconnected ? (
                     <CloudOff className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                   ) : (

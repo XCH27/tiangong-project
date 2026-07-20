@@ -6,6 +6,7 @@ import { slugify } from "@/lib/slugify"
 import { Input } from "../ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspacePrimaryButton, AddWorkspaceSecondaryButton } from "./primitives"
+import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 
 const CREATE_NEW_VALUE = '__create_new__'
 
@@ -50,7 +51,7 @@ async function resolveUniqueSlug(baseName: string): Promise<{ slug: string; path
 }
 
 /**
- * AddWorkspaceStep_ConnectRemote - Connect to a remote Craft Agent Server
+ * AddWorkspaceStep_ConnectRemote - Connect directly to a user-hosted workspace service.
  *
  * Two paths:
  * 1. Connect to existing workspace — select from dropdown, no name needed, auto-resolve local slug
@@ -201,10 +202,10 @@ export function AddWorkspaceStep_ConnectRemote({
       </button>
 
       <AddWorkspaceStepHeader
-        title={isReconnectMode ? t("workspace.reconnect", { name: reconnectWorkspace!.name }) : "Connect to remote server"}
+        title={isReconnectMode ? t("workspace.reconnect", { name: reconnectWorkspace!.name }) : t("workspace.connectRemote")}
         description={isReconnectMode
           ? "Update the server URL or token to restore the connection."
-          : "Connect to a remote Craft Agent Server for this workspace."}
+          : t("workspace.connectRemoteDesc")}
       />
 
       <div className="mt-6 w-full space-y-5">
@@ -285,7 +286,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {!isReconnectMode && testState === 'ok' && remoteWorkspaces.length > 0 && !isCreateNew && (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground">
-              Workspace
+              {t('settings.workspace.title')}
             </label>
             <div className="bg-background shadow-minimal rounded-lg">
               <Select
@@ -299,7 +300,7 @@ export function AddWorkspaceStep_ConnectRemote({
                 <SelectContent container={selectPortalRef.current}>
                   {remoteWorkspaces.map(ws => (
                     <SelectItem key={ws.id} value={ws.id}>
-                      {ws.name}
+                      {getWorkspaceDisplayName(ws.name, t)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -312,7 +313,7 @@ export function AddWorkspaceStep_ConnectRemote({
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <Plus className="h-3 w-3" />
-              Create new workspace on server
+              {t('workspace.createNew')}
             </button>
           </div>
         )}
@@ -321,7 +322,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {!isReconnectMode && testState === 'ok' && showCreateMode && (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground">
-              Workspace name
+              {t('workspace.nameLabel')}
             </label>
             <div className="bg-background shadow-minimal rounded-lg">
               <Input
@@ -333,7 +334,7 @@ export function AddWorkspaceStep_ConnectRemote({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              A workspace will be created on the remote server with this name.
+              {t('workspace.createWorkspaceDesc')}
             </p>
             {isCreateNew && remoteWorkspaces.length > 0 && (
               <button
@@ -346,7 +347,7 @@ export function AddWorkspaceStep_ConnectRemote({
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft className="h-3 w-3" />
-                Use existing workspace
+                {t('workspace.selectWorkspace')}
               </button>
             )}
           </div>

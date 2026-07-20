@@ -66,6 +66,7 @@ import {
 } from '@/components/ui/label-menu-utils'
 import type { LabelConfig } from '@craft-agent/shared/labels'
 import {
+  getLocalizedStatusLabel,
   getStateColor,
   getStateIcon,
   getStatusIconStyle,
@@ -75,6 +76,7 @@ import {
 import type { SessionMeta } from '@/atoms/sessions'
 import { getSessionStatus, hasUnreadMeta, hasMessagesMeta } from '@/utils/session'
 import { getFileManagerName } from '@/lib/platform'
+import { getLocalizedLabelName } from '@/utils/label-display-name'
 import { useMessagingConnect, type MessagingPlatform } from '@/components/messaging/MessagingSessionMenuItem'
 import { useSessionMenuActions } from '@/hooks/useSessionMenuActions'
 
@@ -184,8 +186,8 @@ export function CompactSessionMenu({
   const actions = useSessionMenuActions({ item, onLabelsChange })
 
   const flatLabelItems = React.useMemo(
-    (): LabelMenuItem[] => createLabelMenuItems(labels),
-    [labels],
+    (): LabelMenuItem[] => createLabelMenuItems(labels, [], label => getLocalizedLabelName(t, label)),
+    [labels, t],
   )
 
   // Wrap a callback so it also closes the drawer. Async callbacks fire
@@ -531,6 +533,7 @@ function StatusPane({
   activeStateId?: SessionStatusId | null
   onSelect: (id: SessionStatusId) => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col">
       {sessionStatuses.map((state) => {
@@ -541,7 +544,7 @@ function StatusPane({
           <Row
             key={state.id}
             icon={<span style={getStatusIconStyle(state)}>{bareStateIcon}</span>}
-            label={state.label}
+            label={getLocalizedStatusLabel(t, state)}
             radioSelected={activeStateId === state.id}
             onTap={() => onSelect(state.id)}
           />

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
+import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 import type { WorkspaceInfo } from '../../../shared/types'
 import {
   AddWorkspaceContainer,
@@ -84,10 +85,10 @@ export function WorkspacePicker({ onSelectWorkspace }: WorkspacePickerProps) {
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-foreground/5"
               >
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent text-xs font-semibold uppercase">
-                  {ws.name.charAt(0)}
+                  {getWorkspaceDisplayName(ws.name, t).charAt(0)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{ws.name}</div>
+                  <div className="truncate font-medium">{getWorkspaceDisplayName(ws.name, t)}</div>
                   <div className="truncate text-xs text-muted-foreground">{ws.slug}</div>
                 </div>
               </button>

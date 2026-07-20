@@ -15,11 +15,12 @@ import { resolveEntityColor } from '@craft-agent/shared/colors'
 import { useTheme } from '@/context/ThemeContext'
 import { useDynamicStack } from '@/hooks/useDynamicStack'
 import type { SessionStatus } from '@/config/session-status-config'
-import { getState } from '@/config/session-status-config'
+import { getLocalizedStatusLabel, getState } from '@/config/session-status-config'
 import { SessionStatusMenu } from '@/components/ui/session-status-menu'
 import { MetadataBadge } from '@/components/ui/metadata-badge'
 import { openLabelLink } from '@/lib/open-label-link'
 import { SessionInfoPopover } from './SessionInfoPopover'
+import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 // ============================================================================
 // Permission Mode Icon Component
@@ -276,6 +277,7 @@ function LabelBadge({
   onRemove: () => void
   sessionId?: string
 }) {
+  const { t } = useTranslation()
   const { isDark } = useTheme()
   const [open, setOpen] = React.useState(false)
 
@@ -306,7 +308,7 @@ function LabelBadge({
       sessionId={sessionId}
     >
       <MetadataBadge
-        label={label.name}
+        label={getLocalizedLabelName(t, label)}
         value={displayValue}
         onValueClick={label.valueType === 'link' && value ? () => openLabelLink(value) : undefined}
         icon={<LabelIcon label={label} size="lg" />}
@@ -354,8 +356,7 @@ function StateBadge({
   const badgeColor = state.resolvedColor || 'var(--foreground)'
   const applyColor = state.iconColorable
 
-  const DEFAULT_STATUS_IDS = new Set(['backlog', 'todo', 'needs-review', 'done', 'cancelled'])
-  const stateLabel = DEFAULT_STATUS_IDS.has(state.id) ? t(`status.${state.id}`, state.label) : state.label
+  const stateLabel = getLocalizedStatusLabel(t, state)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -524,4 +525,3 @@ function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessio
     </Popover>
   )
 }
-

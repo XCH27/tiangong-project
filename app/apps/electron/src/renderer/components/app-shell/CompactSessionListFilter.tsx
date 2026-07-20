@@ -52,8 +52,9 @@ import {
 } from '@/components/ui/label-menu-utils'
 import { findLabelById } from '@craft-agent/shared/labels'
 import type { LabelConfig } from '@craft-agent/shared/labels'
-import { type SessionStatus, type SessionStatusId } from '@/config/session-status-config'
+import { getLocalizedStatusLabel, type SessionStatus, type SessionStatusId } from '@/config/session-status-config'
 import type { ChatGroupingMode } from './SessionList'
+import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 type FilterMode = 'include' | 'exclude'
 
@@ -109,8 +110,8 @@ export function CompactSessionListFilter({
   }, [open])
 
   const flatLabelItems = React.useMemo(
-    (): LabelMenuItem[] => createLabelMenuItems(displayLabelConfigs),
-    [displayLabelConfigs],
+    (): LabelMenuItem[] => createLabelMenuItems(displayLabelConfigs, [], label => getLocalizedLabelName(t, label)),
+    [displayLabelConfigs, t],
   )
 
   const trimmedQuery = query.trim()
@@ -255,7 +256,7 @@ export function CompactSessionListFilter({
                     icon={state.icon}
                     iconColor={colorize ? state.resolvedColor : undefined}
                     bareIcon
-                    label={state.label}
+                    label={getLocalizedStatusLabel(t, state)}
                     mode={mode}
                     pinned={isPinned}
                     onTap={() => toggleStatus(state.id)}
@@ -474,7 +475,7 @@ function PinnedSummary({
                   : pinnedStatus.icon}
               </span>
             }
-            label={pinnedStatus.label}
+            label={getLocalizedStatusLabel(t, pinnedStatus)}
           />
         )}
         {pinnedLabel && (
