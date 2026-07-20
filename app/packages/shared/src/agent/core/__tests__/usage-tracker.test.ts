@@ -27,7 +27,7 @@ describe('UsageTracker', () => {
 
     it('should record message usage', () => {
       tracker.recordMessageUsage({
-        inputTokens: 1000,
+        inputTokens: 1300,
         outputTokens: 500,
         cacheReadTokens: 200,
         cacheCreationTokens: 100,
@@ -35,7 +35,7 @@ describe('UsageTracker', () => {
 
       const usage = tracker.getLastMessageUsage();
       expect(usage).not.toBe(null);
-      expect(usage!.inputTokens).toBe(1300); // 1000 + 200 + 100
+      expect(usage!.inputTokens).toBe(1300); // Already normalized by the provider adapter
       expect(usage!.outputTokens).toBe(500);
       expect(usage!.cacheReadTokens).toBe(200);
       expect(usage!.cacheCreationTokens).toBe(100);
@@ -54,7 +54,7 @@ describe('UsageTracker', () => {
 
     it('should return current input tokens', () => {
       tracker.recordMessageUsage({
-        inputTokens: 5000,
+        inputTokens: 6500,
         cacheReadTokens: 1000,
         cacheCreationTokens: 500,
       });
@@ -72,14 +72,14 @@ describe('UsageTracker', () => {
 
     it('should accumulate usage on turn complete', () => {
       tracker.recordMessageUsage({
-        inputTokens: 1000,
+        inputTokens: 1200,
         outputTokens: 500,
         cacheReadTokens: 200,
       });
       tracker.recordTurnComplete();
 
       tracker.recordMessageUsage({
-        inputTokens: 2000,
+        inputTokens: 2300,
         outputTokens: 800,
         cacheReadTokens: 300,
       });
@@ -178,14 +178,14 @@ describe('UsageTracker', () => {
   describe('Usage Updates', () => {
     it('should build usage update object', () => {
       tracker.recordMessageUsage({
-        inputTokens: 50000,
+        inputTokens: 60000,
         outputTokens: 1000,
         cacheReadTokens: 10000,
       });
       tracker.recordTurnComplete();
 
       const update = tracker.buildUsageUpdate();
-      expect(update.inputTokens).toBe(60000); // 50k + 10k cache
+      expect(update.inputTokens).toBe(60000); // Already normalized by the provider adapter
       expect(update.contextWindow).toBe(200000);
       expect(update.cacheHitRate).toBeGreaterThan(0);
     });

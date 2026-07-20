@@ -20,7 +20,7 @@
  * Token usage for a single message.
  */
 export interface MessageUsage {
-  /** Total input tokens (includes cache tokens) */
+  /** Total input tokens (already includes cache read/creation tokens). */
   inputTokens: number;
 
   /** Output tokens generated */
@@ -124,6 +124,7 @@ export class UsageTracker {
    * This is called during message processing to track real-time usage.
    */
   recordMessageUsage(usage: {
+    /** Complete context size, already including cache read/creation tokens. */
     inputTokens: number;
     outputTokens?: number;
     cacheReadTokens?: number;
@@ -131,21 +132,19 @@ export class UsageTracker {
   }): void {
     const now = Date.now();
 
-    // Calculate total input including cache
     const cacheRead = usage.cacheReadTokens ?? 0;
     const cacheCreation = usage.cacheCreationTokens ?? 0;
-    const totalInput = usage.inputTokens + cacheRead + cacheCreation;
 
     // Update last message usage (for per-message display)
     this.lastMessageUsage = {
-      inputTokens: totalInput,
+      inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens ?? 0,
       cacheReadTokens: cacheRead,
       cacheCreationTokens: cacheCreation,
       timestamp: now,
     };
 
-    this.debug(`Message usage: ${totalInput} input, ${usage.outputTokens ?? 0} output, ${cacheRead} cache read`);
+    this.debug(`Message usage: ${usage.inputTokens} input, ${usage.outputTokens ?? 0} output, ${cacheRead} cache read`);
 
     // Emit usage update
     this.emitUsageUpdate();
