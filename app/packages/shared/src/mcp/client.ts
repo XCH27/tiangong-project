@@ -8,6 +8,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { buildMcpStdioEnv } from './env.ts';
 
 /**
  * HTTP transport config for remote MCP servers
@@ -34,32 +35,6 @@ export interface StdioMcpClientConfig {
 export type McpClientConfig = HttpMcpClientConfig | StdioMcpClientConfig;
 
 /**
- * Sensitive environment variables that should NOT be passed to MCP subprocesses.
- * These could contain API keys, tokens, or credentials that MCP servers don't need
- * and shouldn't have access to.
- * NOTE: This list is duplicated in packages/session-tools-core/src/handlers/transform-data.ts (BLOCKED_ENV_VARS).
- * If you add a new entry here, update it there too.
- */
-const BLOCKED_ENV_VARS = [
-  // Craft Agent auth (set by the app itself)
-  'ANTHROPIC_API_KEY',
-  'CLAUDE_CODE_OAUTH_TOKEN',
-
-  // AWS credentials
-  'AWS_ACCESS_KEY_ID',
-  'AWS_SECRET_ACCESS_KEY',
-  'AWS_SESSION_TOKEN',
-
-  // Common API keys/tokens
-  'GITHUB_TOKEN',
-  'GH_TOKEN',
-  'OPENAI_API_KEY',
-  'GOOGLE_API_KEY',
-  'STRIPE_SECRET_KEY',
-  'NPM_TOKEN',
-];
-
-/**
  * Interface for clients managed by McpClientPool.
  * Both CraftMcpClient (remote MCP sources) and ApiSourcePoolClient (API sources) implement this.
  */
@@ -82,18 +57,13 @@ export class CraftMcpClient {
 
     // Create transport based on config type
     if (config.transport === 'stdio') {
-      // Stdio transport for local MCP servers - merge with process env,
-      // but filter out sensitive credentials to prevent leaking secrets to subprocesses
-      const processEnv: Record<string, string> = {};
-      for (const [key, value] of Object.entries(process.env)) {
-        if (value !== undefined && !BLOCKED_ENV_VARS.includes(key)) {
-          processEnv[key] = value;
-        }
-      }
+      // Stdio: inherit host env minus secrets; apply user env minus hijack keys
+      // (see buildMcpStdioEnv). Session script sandbox keeps a separate list in
+      // session-tools-core/runtime/sandbox-env.ts.
       this.transport = new StdioClientTransport({
         command: config.command,
         args: config.args,
-        env: { ...processEnv, ...config.env },
+        env: buildMcpStdioEnv(config.env),
       });
     } else {
       // HTTP transport for remote MCP servers
