@@ -25,7 +25,7 @@ import { useOnboarding } from '@/hooks/useOnboarding'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useSession } from '@/hooks/useSession'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
-import { NavigationProvider } from '@/contexts/NavigationContext'
+import { NavigationProvider } from '@/context/NavigationContext'
 import { navigate, routes } from './lib/navigate'
 import { attachmentFromContentRef, toDraftRef } from './lib/drafts'
 import { stripMarkdown } from './utils/text'
@@ -35,6 +35,10 @@ import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallb
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
 import { initRendererPerf } from './lib/perf'
+
+const PROJECT_OVERVIEW_SESSION_SCOPE = {
+  scope: 'local-project-overview',
+} as const
 import {
   initializeSessionsAtom,
   addSessionAtom,
@@ -520,7 +524,7 @@ export default function App() {
     setSessionLoadError(null)
 
     try {
-      const loadedSessions = await window.electronAPI.getSessions()
+      const loadedSessions = await window.electronAPI.getSessions(PROJECT_OVERVIEW_SESSION_SCOPE)
 
       // Initialize per-session atoms and metadata map
       // NOTE: No sessionsAtom used - sessions are only in per-session atoms
@@ -549,7 +553,11 @@ export default function App() {
       if (initialSessionId && windowWorkspaceId) {
         const session = loadedSessions.find(s => s.id === initialSessionId)
         if (session) {
-          navigate(routes.view.allSessions(session.id))
+          navigate(routes.view.sessionHome({
+            id: session.id,
+            workingDirectory: session.workingDirectory,
+            workspaceId: session.workspaceId,
+          }))
         }
       }
     } catch (err) {
@@ -579,7 +587,7 @@ export default function App() {
     const transportState = await window.electronAPI.getTransportConnectionState().catch(() => null)
 
     try {
-      const sessions = await window.electronAPI.getSessions()
+      const sessions = await window.electronAPI.getSessions(PROJECT_OVERVIEW_SESSION_SCOPE)
       const returnedIds = new Set(sessions.map(s => s.id))
       const missingIds = Array.from(beforeIds).filter(id => !returnedIds.has(id))
       const addedIds = sessions.map(s => s.id).filter(id => !beforeIds.has(id))
@@ -743,9 +751,13 @@ export default function App() {
 
   // Notification system - shows native OS notifications and badge count
   const handleNavigateToSession = useCallback((sessionId: string) => {
-    // Navigate to the session via central routing (uses allSessions filter)
-    navigate(routes.view.allSessions(sessionId))
-  }, [])
+    const meta = store.get(sessionMetaMapAtom).get(sessionId)
+    navigate(routes.view.sessionHome({
+      id: sessionId,
+      workingDirectory: meta?.workingDirectory,
+      workspaceId: meta?.workspaceId,
+    }))
+  }, [store])
 
   const { isWindowFocused, showSessionNotification } = useNotifications({
     workspaceId: windowWorkspaceId,
@@ -952,7 +964,7 @@ export default function App() {
               syncSessionOptionsFromSession(createdSession)
               return
             }
-            return window.electronAPI.getSessions().then(initializeSessions)
+            return window.electronAPI.getSessions(PROJECT_OVERVIEW_SESSION_SCOPE).then(initializeSessions)
           })
           .catch((error: unknown) => console.error('Failed to handle session_created event:', error))
         return
@@ -1228,9 +1240,12 @@ export default function App() {
   const handleSetActiveViewingSession = useCallback((sessionId: string) => {
     // Optimistic UI update: clear hasUnread immediately
     updateSessionById(sessionId, { hasUnread: false })
-    // Tell main process user is viewing this session
-    window.electronAPI.sessionCommand(sessionId, { type: 'setActiveViewing', workspaceId: windowWorkspaceId ?? '' })
-  }, [updateSessionById, windowWorkspaceId])
+    // Tell main process user is viewing this session. Use the session's own workspace
+    // (cross-project lists can surface sessions from other folders); fall back to the
+    // window's workspace when the meta isn't loaded.
+    const metaWorkspaceId = store.get(sessionMetaMapAtom).get(sessionId)?.workspaceId
+    window.electronAPI.sessionCommand(sessionId, { type: 'setActiveViewing', workspaceId: metaWorkspaceId ?? windowWorkspaceId ?? '' })
+  }, [updateSessionById, windowWorkspaceId, store])
 
   const handleMarkSessionRead = useCallback((sessionId: string) => {
     // Update hasUnread flag (primary source of truth for NEW badge)
@@ -1567,21 +1582,27 @@ export default function App() {
   }, [schedulePersistDraft])
 
   // Open new chat - creates session and selects it
-  // Used by components via AppShellContext and for programmatic navigation
+  // Used by components via AppShellContext and for programmatic navigation.
+  // Without an explicit folder → 对话 (R1 clause 2); never rely on user_default.
   const openNewChat = useCallback(async (params: NewChatActionParams = {}) => {
     if (!windowWorkspaceId) {
       console.warn('[App] Cannot open new chat: no workspace ID')
       return
     }
 
-    const session = await handleCreateSession(windowWorkspaceId)
+    const session = await handleCreateSession(windowWorkspaceId, {
+      workingDirectory: 'none',
+    })
 
     if (params.name) {
       await window.electronAPI.sessionCommand(session.id, { type: 'rename', name: params.name })
     }
 
-    // Navigate to the chat view - this sets both selectedSession and activeView
-    navigate(routes.view.allSessions(session.id))
+    navigate(routes.view.sessionHome({
+      id: session.id,
+      workingDirectory: session.workingDirectory,
+      workspaceId: session.workspaceId,
+    }))
 
     // Pre-fill input if provided (after a small delay to ensure component is mounted)
     if (params.input) {
@@ -1777,47 +1798,48 @@ export default function App() {
       // Open (or focus) the window for the selected workspace
       window.electronAPI.openWorkspace(workspaceId)
     } else {
-      // Switch workspace in current window
+      const previous = workspaces.find(w => w.id === windowWorkspaceId)
+      const next = workspaces.find(w => w.id === workspaceId)
+      // Local→local focus must not tear down the shell (Cursor/Codex multi-folder model).
+      // Remote involvement still does a hard switch — different runtime / connection.
+      const softLocalSwitch = !previous?.remoteServer && !next?.remoteServer
+
       // 1. Update the main process's window-workspace mapping
       await window.electronAPI.switchWorkspace(workspaceId)
 
       // 2. Update React state to trigger re-renders
       setWindowWorkspaceId(workspaceId)
 
-      // 3. Clear selected session - the old session belongs to the previous workspace
-      // and should not remain selected when switching to a new workspace.
-      // This prevents showing stale session data from the wrong workspace.
-      setSession({ selected: null })
+      // 3. Soft local switch keeps the selected session when it still belongs to the
+      // focused project, and keeps pending permission/credential prompts (same runtime,
+      // still relevant). Hard switch clears both.
+      if (!softLocalSwitch) {
+        setSession({ selected: null })
+      }
 
-      // 4. Clear pending permissions/credentials (not relevant to new workspace)
-      setPendingPermissions(new Map())
-      setPendingCredentials(new Map())
+      if (!softLocalSwitch) {
+        // Hard switch: drop transient editor state bound to the previous runtime.
+        // Pending permission/credential requests stay keyed by Session ID so a
+        // still-blocked Session can recover when the user returns to that runtime.
+        setSessionOptions(new Map())
+        sessionDraftsRef.current.clear()
+      }
 
-      // 5. Clear session options from previous workspace
-      // (session IDs are unique UUIDs, but clearing prevents unbounded memory growth
-      // and ensures no stale state from old workspace persists)
-      setSessionOptions(new Map())
-
-      // 6. Clear message drafts from previous workspace
-      // (prevents memory growth on repeated workspace switches)
-      sessionDraftsRef.current.clear()
-
-      // 7. Reset sources and skills atoms to empty
-      // (prevents stale data flash during workspace switch - AppShell will reload)
+      // Always clear sources/skills on workspace change (Craft v0.10.5 App.tsx).
+      // Soft-local used to skip this and briefly showed the previous workspace's MCP/skills.
       store.set(sourcesAtom, [])
       store.set(skillsAtom, [])
 
-      // 8. Clear session atoms BEFORE workspace switch
-      // This prevents stale session data from the previous workspace being visible.
-      store.set(sessionMetaMapAtom, new Map())
-      store.set(sessionIdsAtom, [])
+      if (!softLocalSwitch) {
+        // Hard switch (remote boundary): also clear session listing
+        store.set(sessionMetaMapAtom, new Map())
+        store.set(sessionIdsAtom, [])
+      }
 
       // Note: NavigationContext detects the workspaceId change and handles
-      // panel restoration from the stored workspace URL (or defaults to allSessions).
-      // Sessions and theme will reload automatically due to windowWorkspaceId dependency
-      // in useEffect hooks.
+      // panel restoration. Soft local navigation usually sets projectSessions itself.
     }
-  }, [windowWorkspaceId, setSession, store])
+  }, [windowWorkspaceId, workspaces, setSession, store])
 
   // Handle workspace switch by slug (called by NavigationContext on popstate when ?ws= changes)
   const handleSwitchWorkspaceBySlug = useCallback((slug: string) => {

@@ -1,14 +1,16 @@
 /**
- * WorkspaceSettingsPage
+ * WorkspaceSettingsPage — product surface: **Project settings** (R1).
  *
- * Workspace-level settings for the active workspace.
+ * Persistence is still the Craft workspace store (1:1 with Project). User-facing
+ * copy says Project/folder; route id remains `settings/workspace` for compatibility.
  *
  * Settings:
- * - Identity (Name, Icon)
+ * - Identity (Name, Icon, folder path, local|remote)
  * - Permissions (Default mode, Mode cycling)
- * - Advanced (Working directory, Local MCP servers)
+ * - Default sources
+ * - Advanced (default session folder fallback, Local MCP servers)
  *
- * Note: AI settings (model, thinking, connection) have been moved to AiSettingsPage.
+ * AI model/thinking/connection defaults live on AiSettingsPage (with per-project overrides).
  */
 
 import * as React from 'react'
@@ -18,7 +20,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
-import { useAppShellContext } from '@/context/AppShellContext'
+import { useAppShellContext, useActiveWorkspace } from '@/context/AppShellContext'
 import { cn } from '@/lib/utils'
 import { routes } from '@/lib/navigate'
 import { Spinner } from '@craft-agent/ui'
@@ -51,12 +53,18 @@ export const meta: DetailsPageMeta = {
 export default function WorkspaceSettingsPage() {
   const { t } = useTranslation()
 
-  // Get active workspace from context
+  // R1 §3 / P6: soft-focus filters the Session list only — settings stay on the
+  // shell-active Workspace (implementation Project). Do not re-bind settings to
+  // sessionFilter.workspaceId without an owner decision that overrides P6.
   const appShellContext = useAppShellContext()
   const activeWorkspaceId = appShellContext.activeWorkspaceId
   const onRefreshWorkspaces = appShellContext.onRefreshWorkspaces
+  const activeProject = useActiveWorkspace()
+  const settingsWorkspaceId = activeWorkspaceId
+  const projectFolder = activeProject?.rootPath?.trim() || ''
+  const isRemoteProject = !!activeProject?.remoteServer
 
-  // Workspace settings state
+  // Project settings state
   const [wsName, setWsName] = useState('')
   const [wsNameEditing, setWsNameEditing] = useState('')
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
@@ -75,17 +83,17 @@ export default function WorkspaceSettingsPage() {
   const [enabledModes, setEnabledModes] = useState<PermissionMode[]>(['safe', 'ask', 'allow-all'])
   const [modeCyclingError, setModeCyclingError] = useState<string | null>(null)
 
-  // Load workspace settings when active workspace changes
+  // Load settings when the target project changes (active shell or soft-focused row)
   useEffect(() => {
     const loadWorkspaceSettings = async () => {
-      if (!window.electronAPI || !activeWorkspaceId) {
+      if (!window.electronAPI || !settingsWorkspaceId) {
         setIsLoadingWorkspace(false)
         return
       }
 
       setIsLoadingWorkspace(true)
       try {
-        const settings = await window.electronAPI.getWorkspaceSettings(activeWorkspaceId)
+        const settings = await window.electronAPI.getWorkspaceSettings(settingsWorkspaceId)
         if (settings) {
           setWsName(settings.name || '')
           setWsNameEditing(settings.name || '')
@@ -101,7 +109,7 @@ export default function WorkspaceSettingsPage() {
           const savedSlugs = settings.enabledSourceSlugs ?? []
 
           // Load available sources and auto-heal stale slugs
-          const sources = await window.electronAPI.getSources(activeWorkspaceId)
+          const sources = await window.electronAPI.getSources(settingsWorkspaceId)
           setAvailableSources(sources)
           const validSlugs = new Set(sources.map(s => s.config.slug))
           const healedSlugs = savedSlugs.filter(s => validSlugs.has(s))
@@ -109,7 +117,7 @@ export default function WorkspaceSettingsPage() {
 
           // Persist cleaned list if stale slugs were removed
           if (healedSlugs.length !== savedSlugs.length) {
-            window.electronAPI.updateWorkspaceSetting(activeWorkspaceId, 'enabledSourceSlugs', healedSlugs)
+            window.electronAPI.updateWorkspaceSetting(settingsWorkspaceId, 'enabledSourceSlugs', healedSlugs)
           }
         }
 
@@ -118,7 +126,7 @@ export default function WorkspaceSettingsPage() {
         let iconFound = false
         for (const ext of ICON_EXTENSIONS) {
           try {
-            const iconData = await window.electronAPI.readWorkspaceImage(activeWorkspaceId, `./icon.${ext}`)
+            const iconData = await window.electronAPI.readWorkspaceImage(settingsWorkspaceId, `./icon.${ext}`)
             // IPC returns null for missing files - continue to next extension
             if (!iconData) {
               continue
@@ -146,34 +154,34 @@ export default function WorkspaceSettingsPage() {
     }
 
     loadWorkspaceSettings()
-  }, [activeWorkspaceId])
+  }, [settingsWorkspaceId])
 
   // Subscribe to live source changes (additions/removals)
   useEffect(() => {
     if (!window.electronAPI) return
     const cleanup = window.electronAPI.onSourcesChanged((workspaceId: string, sources: LoadedSource[]) => {
-      if (workspaceId !== activeWorkspaceId) return
+      if (workspaceId !== settingsWorkspaceId) return
       setAvailableSources(sources)
       // Auto-heal: remove slugs for sources that no longer exist
       const validSlugs = new Set(sources.map(s => s.config.slug))
       setEnabledSourceSlugs(prev => {
         const healed = prev.filter(s => validSlugs.has(s))
-        if (healed.length !== prev.length && activeWorkspaceId) {
-          window.electronAPI.updateWorkspaceSetting(activeWorkspaceId, 'enabledSourceSlugs', healed)
+        if (healed.length !== prev.length && settingsWorkspaceId) {
+          window.electronAPI.updateWorkspaceSetting(settingsWorkspaceId, 'enabledSourceSlugs', healed)
         }
         return healed
       })
     })
     return cleanup
-  }, [activeWorkspaceId])
+  }, [settingsWorkspaceId])
 
   // Save workspace setting
   const updateWorkspaceSetting = useCallback(
     async <K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]) => {
-      if (!window.electronAPI || !activeWorkspaceId) return false
+      if (!window.electronAPI || !settingsWorkspaceId) return false
 
       try {
-        await window.electronAPI.updateWorkspaceSetting(activeWorkspaceId, key, value)
+        await window.electronAPI.updateWorkspaceSetting(settingsWorkspaceId, key, value)
         return true
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -184,13 +192,13 @@ export default function WorkspaceSettingsPage() {
         return false
       }
     },
-    [activeWorkspaceId, t]
+    [settingsWorkspaceId, t]
   )
 
   // Workspace icon upload handler
   const handleIconUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !activeWorkspaceId || !window.electronAPI) return
+    if (!file || !settingsWorkspaceId || !window.electronAPI) return
 
     // Validate file type
     const validTypes = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif']
@@ -218,10 +226,10 @@ export default function WorkspaceSettingsPage() {
       const ext = extMap[file.type] || 'png'
 
       // Upload to workspace
-      await window.electronAPI.writeWorkspaceImage(activeWorkspaceId, `./icon.${ext}`, base64, file.type)
+      await window.electronAPI.writeWorkspaceImage(settingsWorkspaceId, `./icon.${ext}`, base64, file.type)
 
       // Reload the icon locally for settings display
-      const iconData = await window.electronAPI.readWorkspaceImage(activeWorkspaceId, `./icon.${ext}`)
+      const iconData = await window.electronAPI.readWorkspaceImage(settingsWorkspaceId, `./icon.${ext}`)
       if (iconData) {
         if (ext === 'svg' && !iconData.startsWith('data:')) {
           setWsIconUrl(`data:image/svg+xml;base64,${btoa(iconData)}`)
@@ -239,7 +247,7 @@ export default function WorkspaceSettingsPage() {
       // Reset the input so the same file can be selected again
       e.target.value = ''
     }
-  }, [activeWorkspaceId, onRefreshWorkspaces])
+  }, [settingsWorkspaceId, onRefreshWorkspaces])
 
   // Workspace settings handlers
   const handlePermissionModeChange = useCallback(
@@ -324,8 +332,8 @@ export default function WorkspaceSettingsPage() {
     [enabledModes, updateWorkspaceSetting, t]
   )
 
-  // Show empty state if no workspace is active
-  if (!activeWorkspaceId) {
+  // Show empty state if no project is available to edit
+  if (!settingsWorkspaceId) {
     return (
       <div className="h-full flex flex-col">
         <PanelHeader title={t("settings.workspace.workspaceSettings")} actions={<HeaderMenu route={routes.view.settings('workspace')} helpFeature="workspaces" />} />
@@ -355,7 +363,7 @@ export default function WorkspaceSettingsPage() {
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">
           <div className="space-y-8">
-            {/* Workspace Info */}
+            {/* Project identity — folder is the product boundary (R1 clause 3) */}
             <SettingsSection title={t("settings.workspace.workspaceInfo")}>
               <SettingsCard>
                 <SettingsRow
@@ -403,11 +411,26 @@ export default function WorkspaceSettingsPage() {
                       <img src={wsIconUrl} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-xs font-medium text-muted-foreground">
-                        {wsName?.charAt(0)?.toUpperCase() || 'W'}
+                        {wsName?.charAt(0)?.toUpperCase() || 'P'}
                       </span>
                     )}
                   </div>
                 </SettingsRow>
+                <SettingsRow
+                  label={t("settings.workspace.location")}
+                  description={
+                    isRemoteProject
+                      ? t("settings.workspace.locationRemote")
+                      : t("settings.workspace.locationLocal")
+                  }
+                />
+                <SettingsRow
+                  label={t("settings.workspace.projectFolder")}
+                  description={
+                    projectFolder
+                      || t("settings.workspace.projectFolderMissing")
+                  }
+                />
               </SettingsCard>
 
               <RenameDialog
@@ -512,12 +535,23 @@ export default function WorkspaceSettingsPage() {
               )}
             </SettingsSection>
 
-            {/* Advanced */}
-            <SettingsSection title={t("settings.workspace.advanced")}>
+            {/* Advanced.
+              * Project folder (rootPath) is the R1 boundary shown above. This default
+              * working directory is a fallback for creates that still resolve via
+              * user_default (legacy paths). New Task in a project binds rootPath directly. */}
+            <SettingsSection
+              title={t("settings.workspace.advanced")}
+              description={t("settings.workspace.advancedDesc")}
+            >
               <SettingsCard>
                 <SettingsRow
                   label={t("settings.workspace.defaultWorkingDir")}
-                  description={workingDirectory || t("settings.workspace.defaultWorkingDirDesc")}
+                  description={
+                    workingDirectory
+                      || (projectFolder
+                        ? t("settings.workspace.defaultWorkingDirUsesProject", { path: projectFolder })
+                        : t("settings.workspace.defaultWorkingDirDesc"))
+                  }
                   action={
                     <div className="flex items-center gap-2">
                       {workingDirectory && (

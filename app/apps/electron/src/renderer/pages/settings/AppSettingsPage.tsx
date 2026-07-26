@@ -326,21 +326,27 @@ export default function AppSettingsPage() {
                   </SettingsRow>
                   {isElectron && (
                     <SettingsRow label={t("settings.about.checkForUpdates")}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCheckForUpdates}
-                        disabled={isCheckingForUpdates}
-                      >
-                        {isCheckingForUpdates ? (
-                          <>
-                            <Spinner className="mr-1.5" />
-                            {t("common.checking")}
-                          </>
-                        ) : (
-                          t("settings.about.checkNow")
-                        )}
-                      </Button>
+                      {updateChecker.updateInfo?.downloadState === 'disabled' ? (
+                        <span className="text-sm text-foreground/50">
+                          {t("toast.updatesDisabled")}
+                        </span>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCheckForUpdates}
+                          disabled={isCheckingForUpdates}
+                        >
+                          {isCheckingForUpdates ? (
+                            <>
+                              <Spinner className="mr-1.5" />
+                              {t("common.checking")}
+                            </>
+                          ) : (
+                            t("settings.about.checkNow")
+                          )}
+                        </Button>
+                      )}
                     </SettingsRow>
                   )}
                   {isElectron && updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion && (

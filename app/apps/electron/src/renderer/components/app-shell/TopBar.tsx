@@ -27,7 +27,6 @@ import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
 import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
 import { AppMenu } from "../AppMenu"
@@ -202,8 +201,12 @@ export function TopBar({
             </>
           )}
 
-          <div className="min-w-0 flex-1">
-            {isCompact ? (
+          {/* The full-width workspace switcher is gone: the sidebar's 项目 section is the single
+            * container list and carries the create action, so a second switcher above it was the
+            * duplicate the owner kept pointing at (R1 clause 1). Compact mode hides the sidebar, so it
+            * still needs this control — removing it there would lose the capability outright. */}
+          {isCompact && (
+            <div className="min-w-0 flex-1">
               <CompactWorkspaceSwitcher
                 workspaces={workspaces}
                 activeWorkspaceId={activeWorkspaceId}
@@ -212,18 +215,8 @@ export function TopBar({
                 onWorkspaceRemoved={onWorkspaceRemoved}
                 workspaceUnreadMap={workspaceUnreadMap}
               />
-            ) : (
-              <WorkspaceSwitcher
-                variant="topbar"
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onSelect={onSelectWorkspace}
-                onWorkspaceCreated={onWorkspaceCreated}
-                onWorkspaceRemoved={onWorkspaceRemoved}
-                workspaceUnreadMap={workspaceUnreadMap}
-              />
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -208,6 +208,7 @@ import type {
   SessionFile,
   OAuthResult,
   McpToolsResult,
+  GetSessionsOptions,
   GitBashStatus,
   ClaudeOAuthResult,
   UpdateInfo,
@@ -225,7 +226,7 @@ import type {
 
 export interface ElectronAPI {
   // Session management
-  getSessions(): Promise<Session[]>
+  getSessions(options?: GetSessionsOptions): Promise<Session[]>
   getUnreadSummary(): Promise<UnreadSummary>
   markAllSessionsRead(workspaceId: string): Promise<void>
   getSessionMessages(sessionId: string): Promise<Session | null>
@@ -308,7 +309,7 @@ export interface ElectronAPI {
   getWindowWorkspace(): Promise<string | null>
   getWindowMode(): Promise<string | null>
   openWorkspace(workspaceId: string): Promise<void>
-  openSessionInNewWindow(workspaceId: string, sessionId: string): Promise<void>
+  openSessionInNewWindow(workspaceId: string, sessionId: string, workingDirectory?: string | null): Promise<void>
   switchWorkspace(workspaceId: string): Promise<void>
   closeWindow(): Promise<void>
   confirmCloseWindow(): Promise<void>
@@ -804,9 +805,18 @@ export type RightSidebarPanel =
 
 /**
  * Session filter options
+ *
+ * Product model (R1 / P9):
+ * - `projectSessions` — folder-bound work under 项目 (optional one-workspace focus)
+ * - `conversations` — folder-less work under 对话
+ * - `allSessions` — legacy alias kept for URL/compat; list code treats it like unscoped project+loose
  */
 export type SessionFilter =
   | { kind: 'allSessions' }
+  /** Folder-bound sessions (has workingDirectory). Optional workspaceId focuses one project. */
+  | { kind: 'projectSessions'; workspaceId?: string }
+  /** Sessions with no folder / working directory. */
+  | { kind: 'conversations' }
   | { kind: 'flagged' }
   | { kind: 'state'; stateId: string }
   | { kind: 'label'; labelId: string }
@@ -939,7 +949,7 @@ export const isProjectsNavigation = (
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
-  filter: { kind: 'allSessions' },
+  filter: { kind: 'projectSessions' },
   details: null,
 }
 
@@ -978,6 +988,7 @@ export const getNavigationStateKey = (state: NavigationState): string => {
   if (f.kind === 'state') base = `state:${f.stateId}`
   else if (f.kind === 'label') base = `label:${f.labelId}`
   else if (f.kind === 'view') base = `view:${f.viewId}`
+  else if (f.kind === 'projectSessions' && f.workspaceId) base = `projectSessions:${encodeURIComponent(f.workspaceId)}`
   else base = f.kind
   if (state.details) {
     return `${base}/chat/${state.details.sessionId}`
@@ -1039,6 +1050,14 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   const parseSessionsKey = (filterKey: string, sessionId?: string): NavigationState | null => {
     let filter: SessionFilter
     if (filterKey === 'allSessions') filter = { kind: 'allSessions' }
+    else if (filterKey === 'projectSessions') filter = { kind: 'projectSessions' }
+    else if (filterKey.startsWith('projectSessions:')) {
+      const workspaceId = filterKey.slice('projectSessions:'.length)
+      if (!workspaceId) return null
+      // Serialized with encodeURIComponent (see getNavigationStateKey / session-list-collapse)
+      filter = { kind: 'projectSessions', workspaceId: decodeURIComponent(workspaceId) }
+    }
+    else if (filterKey === 'conversations') filter = { kind: 'conversations' }
     else if (filterKey === 'flagged') filter = { kind: 'flagged' }
     else if (filterKey === 'archived') filter = { kind: 'archived' }
     else if (filterKey.startsWith('state:')) {

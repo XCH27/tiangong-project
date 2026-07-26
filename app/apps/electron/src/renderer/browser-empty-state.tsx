@@ -9,7 +9,9 @@ import './index.css'
 function BrowserEmptyStateApp() {
   const { t } = useTranslation()
   const handlePromptSelect = useCallback(async (fullPrompt: string) => {
-    const route = routes.action.newSession({ input: fullPrompt, send: true })
+    // Browser quick chats are folder-less: pin workdir 'none' so they land under
+    // conversations regardless of the workspace's default workingDirectory config.
+    const route = routes.action.newSession({ input: fullPrompt, send: true, workdir: 'none' })
     const token = String(Date.now())
 
     try {

@@ -482,7 +482,13 @@ export interface TaskEditorProps {
    * user somewhere useful — e.g. the session list scoped to the task. `taskLabelId` is the
    * RESOLVED reserved-label id from tasks:create (may be 'task-2' after a name collision).
    */
-  onCreated?: (created: { sessionId: string; taskLabelId?: string; projectId?: string }) => void
+  onCreated?: (created: {
+    sessionId: string
+    taskLabelId?: string
+    projectId?: string
+    /** Freshly created session fields — lets the host navigate before the meta map catches up. */
+    session?: { workingDirectory?: string; workspaceId?: string }
+  }) => void
   /** Real provider→model groups (from the workspace's LLM connections). */
   modelGroups: KanbanModelProviderGroup[]
   /** model id → connection slug that serves it (so each node routes to the right backend). */
@@ -880,6 +886,9 @@ export function TaskEditor({
           sessionId: created.orchestratorSessionId,
           taskLabelId: created.taskLabelId,
           projectId: projectId || undefined,
+          // The meta map may not have announced the orchestrator yet; carry what we
+          // know so the jump handler can compute the correct home without racing it.
+          session: { workingDirectory: cwd.trim() || undefined, workspaceId },
         })
       }
       if (!run) {

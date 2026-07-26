@@ -1616,7 +1616,7 @@ export class SessionManager implements ISessionManager {
       },
       onSkillChange: async (slug, skill) => {
         sessionLog.info(`Skill '${slug}' changed:`, skill ? 'updated' : 'deleted')
-        // Broadcast updated list to UI
+        // Broadcast updated list to UI (Craft v0.10.5: workspace + global only here)
         const { loadAllSkills } = await import('@craft-agent/shared/skills')
         const skills = loadAllSkills(workspaceRootPath)
         this.broadcastSkillsChanged(workspaceId, skills)
@@ -2395,6 +2395,12 @@ export class SessionManager implements ISessionManager {
     // Returns session metadata only - messages are NOT included to save memory
     // Use getSession(id) to load messages for a specific session
     let sessions = Array.from(this.sessions.values())
+
+    // Drop sessions whose workspace was removed from config (workspace:remove
+    // deletes only the config entry + on-disk data; in-memory entries would
+    // otherwise linger in the cross-workspace session list).
+    const liveWorkspaceIds = new Set(getWorkspaces().map(w => w.id))
+    sessions = sessions.filter(m => liveWorkspaceIds.has(m.workspace.id))
 
     // Filter by workspace if specified (used when switching workspaces)
     if (workspaceId) {
@@ -5670,6 +5676,29 @@ export class SessionManager implements ISessionManager {
     sessionLog.info(`Deleted session ${sessionId}`)
   }
 
+  /**
+   * Purge in-memory sessions for a workspace that was removed from config.
+   * On-disk data is already deleted by storage.removeWorkspace, so this only
+   * releases runtime resources and notifies windows (session_deleted per
+   * session) so the cross-workspace session list drops them immediately.
+   */
+  async removeWorkspaceSessions(workspaceId: string): Promise<void> {
+    const sessionIds = [...this.sessions]
+      .filter(([, managed]) => managed.workspace.id === workspaceId)
+      .map(([sessionId]) => sessionId)
+
+    // Reuse the complete lifecycle cleanup. The workspace data directory may
+    // already be gone, but deleteSession still owns agents, browser panes,
+    // pending permissions, timers, automation metadata, shares, and push events.
+    for (const sessionId of sessionIds) {
+      await this.deleteSession(sessionId)
+    }
+
+    if (sessionIds.length > 0) {
+      sessionLog.info(`Purged ${sessionIds.length} session(s) for removed workspace ${workspaceId}`)
+    }
+  }
+
   async sendMessage(
     sessionId: string,
     message: string,
@@ -8297,18 +8326,20 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  private sendEvent(event: SessionEvent, workspaceId?: string): void {
+  private sendEvent(event: SessionEvent, workspaceId: string): void {
     if (!this.eventSink) {
       sessionLog.warn('Cannot send event - no event sink')
       return
     }
 
-    if (!workspaceId) {
-      sessionLog.warn(`Cannot send ${event.type} event - no workspaceId`)
-      return
-    }
-
-    this.eventSink(RPC_CHANNELS.sessions.EVENT, { to: 'workspace', workspaceId }, event)
+    // Desktop Project overview clients may explicitly subscribe to multiple
+    // local Workspace Session streams. Other Workspace channels stay bound to
+    // the client's primary Workspace.
+    this.eventSink(
+      RPC_CHANNELS.sessions.EVENT,
+      { to: 'session-workspace', workspaceId },
+      event,
+    )
   }
 
   /**

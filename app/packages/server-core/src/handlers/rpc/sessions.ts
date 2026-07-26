@@ -1,8 +1,14 @@
 import { readFile, writeFile, stat } from 'fs/promises'
 import { join } from 'path'
-import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
+import {
+  RPC_CHANNELS,
+  type FileAttachment,
+  type GetSessionsOptions,
+  type SendMessageOptions,
+  type SessionEvent,
+} from '@craft-agent/shared/protocol'
 import type { StoredAttachment } from '@craft-agent/core/types'
-import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
+import { getWorkspaceByNameOrId, getWorkspaces } from '@craft-agent/shared/config'
 import { perf } from '@craft-agent/shared/utils'
 import { isValidThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
@@ -135,7 +141,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Get all sessions for the calling window's workspace
   // Waits for initialization to complete so sessions are never returned empty during startup
-  server.handle(RPC_CHANNELS.sessions.GET, async (ctx) => {
+  server.handle(RPC_CHANNELS.sessions.GET, async (ctx, options?: GetSessionsOptions) => {
     try {
       await sessionManager.waitForInit()
     } catch (error) {
@@ -145,15 +151,43 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
     const windowWorkspaceId = ctx.webContentsId != null
       ? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId)
       : undefined
-    const workspaceId = ctx.workspaceId ?? windowWorkspaceId
-    const sessions = sessionManager.getSessions(workspaceId ?? undefined)
+    const wantsLocalProjectOverview =
+      options?.scope === 'local-project-overview'
+      && ctx.webContentsId != null
+
+    let sessions
+    let resolvedWorkspaceId = ctx.workspaceId ?? windowWorkspaceId ?? undefined
+
+    if (wantsLocalProjectOverview) {
+      // Electron desktop may project all configured Projects in one sidebar.
+      // Remote twin ids are included only for metadata already present in this
+      // local SessionManager; remote execution keeps its own connection.
+      const visibleWorkspaceIds = new Set<string>()
+      for (const workspace of getWorkspaces()) {
+        visibleWorkspaceIds.add(workspace.id)
+        if (workspace.remoteServer?.remoteWorkspaceId) {
+          visibleWorkspaceIds.add(workspace.remoteServer.remoteWorkspaceId)
+        }
+      }
+
+      sessions = sessionManager.getSessions().filter(session =>
+        visibleWorkspaceIds.has(session.workspaceId)
+      )
+      server.updateClientSessionWorkspaces?.(ctx.clientId, [...visibleWorkspaceIds])
+      resolvedWorkspaceId = undefined
+    } else {
+      // Preserve the single-Workspace contract for CLI, WebUI, remote clients
+      // and ordinary RPC callers.
+      sessions = sessionManager.getSessions(resolvedWorkspaceId)
+    }
     end()
 
     log.info('[sessions:get] result', {
       ctxWorkspaceId: ctx.workspaceId,
       webContentsId: ctx.webContentsId,
       windowWorkspaceId,
-      resolvedWorkspaceId: workspaceId,
+      requestedScope: options?.scope ?? 'workspace',
+      resolvedWorkspaceId,
       returnedCount: sessions.length,
       returnedWorkspaceIds: sessionWorkspaceDistribution(sessions),
       returnedIds: summarizeIds(sessions.map(s => s.id)),

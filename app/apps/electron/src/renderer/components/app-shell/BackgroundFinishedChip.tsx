@@ -36,9 +36,10 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { AnimatePresence, motion } from 'motion/react'
 import { CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { NavigationContext } from '@/contexts/NavigationContext'
+import { NavigationContext } from '@/context/NavigationContext'
 import { navigate, routes } from '@/lib/navigate'
 import { focusedSessionIdAtom } from '@/atoms/panel-stack'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
 import {
   backgroundFinishedAtom,
   dismissBackgroundFinishedAtom,
@@ -64,6 +65,7 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
   const queue = useAtomValue(backgroundFinishedAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
   const dismiss = useSetAtom(dismissBackgroundFinishedAtom)
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
 
   // Opening a session acknowledges it: clear its queued entry whenever it's the
   // session shown in this row. The detector in App.tsx already avoids queuing
@@ -109,7 +111,16 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
     setExiting(false)
     dismiss(targetId)
     if (nav) nav.navigateToSession(targetId)
-    else navigate(routes.view.allSessions(targetId))
+    else {
+      // Fallback (no NavigationContext): build sessionHome from meta so folder-bound
+      // sessions don't land on 对话 and lose their selection.
+      const meta = sessionMetaMap.get(targetId)
+      navigate(routes.view.sessionHome({
+        id: targetId,
+        workingDirectory: meta?.workingDirectory,
+        workspaceId: meta?.workspaceId,
+      }))
+    }
   }
 
   return (

@@ -5,7 +5,7 @@
  * Each badge opens a shared action menu.
  */
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef } from 'react'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import * as Icons from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
@@ -28,6 +28,8 @@ import {
   removeBrowserInstanceAtom,
 } from '@/atoms/browser-pane'
 import { useAppShellContext } from '@/context/AppShellContext'
+import { NavigationContext } from '@/context/NavigationContext'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { BrowserTabBadge } from './BrowserTabBadge'
 import type { BrowserInstanceInfo } from '../../../shared/types'
 import { getHostname } from './utils'
@@ -62,6 +64,11 @@ export function BrowserTabStrip({
   const updateInstance = useSetAtom(updateBrowserInstanceAtom)
   const removeInstance = useSetAtom(removeBrowserInstanceAtom)
   const [activeInstanceId, setActiveInstanceId] = useAtom(activeBrowserInstanceIdAtom)
+  // NavigationContext is nullable so the strip stays mountable in the playground;
+  // navigateToSession rehomes by session meta, the raw navigate() fallback needs
+  // the meta's workingDirectory/workspaceId to build the correct sessionHome route.
+  const nav = useContext(NavigationContext)
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const effectiveInstances = instancesOverride ?? instances
   const instancesRef = useRef(effectiveInstances)
   const removeReconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -196,8 +203,19 @@ export function BrowserTabStrip({
   const openSessionUsingWindow = useCallback((instance: BrowserInstanceInfo) => {
     const sessionId = instance.boundSessionId ?? instance.ownerSessionId
     if (!sessionId) return
-    navigate(routes.view.allSessions(sessionId))
-  }, [])
+    if (nav) {
+      nav.navigateToSession(sessionId)
+      return
+    }
+    // R1: no permanent All Sessions; home from meta so folder-bound sessions keep
+    // their selection (bare {id} would wrongly route them to 对话).
+    const meta = sessionMetaMap.get(sessionId)
+    navigate(routes.view.sessionHome({
+      id: sessionId,
+      workingDirectory: meta?.workingDirectory,
+      workspaceId: meta?.workspaceId,
+    }))
+  }, [nav, sessionMetaMap])
 
   const terminateBrowserWindow = useCallback((instance: BrowserInstanceInfo) => {
     if (!instancesOverride) {

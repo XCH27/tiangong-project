@@ -165,8 +165,13 @@ export function useSessionMenuActions({
   }, [sessionId, t])
 
   const openInNewPanel = React.useCallback(() => {
-    navigate(routes.view.allSessions(sessionId), { newPanel: true })
-  }, [sessionId])
+    // R1: open under Project or Conversations home, not permanent All Sessions
+    navigate(routes.view.sessionHome({
+      id: sessionId,
+      workingDirectory: item.workingDirectory,
+      workspaceId: item.workspaceId,
+    }), { newPanel: true })
+  }, [sessionId, item.workingDirectory, item.workspaceId])
 
   const openSharedInBrowser = React.useCallback(() => {
     if (!sharedUrl) return

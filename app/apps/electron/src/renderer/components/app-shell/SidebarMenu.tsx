@@ -24,11 +24,13 @@ import {
   Plus,
   Trash2,
   ExternalLink,
+  FolderKanban,
+  Cloud,
 } from 'lucide-react'
 import { useMenuComponents } from '@/components/ui/menu-context'
 import { getDocUrl, type DocFeature } from '@craft-agent/shared/docs/doc-links'
 
-export type SidebarMenuType = 'allSessions' | 'flagged' | 'status' | 'sources' | 'skills' | 'automations' | 'projects' | 'labels' | 'views' | 'newSession'
+export type SidebarMenuType = 'allSessions' | 'flagged' | 'status' | 'sources' | 'skills' | 'automations' | 'projects' | 'project' | 'labels' | 'views' | 'newSession'
 
 export interface SidebarMenuProps {
   /** Type of sidebar item (determines available menu items) */
@@ -53,8 +55,16 @@ export interface SidebarMenuProps {
   onAddSkill?: () => void
   /** Handler for "Add Automation" action - only for automations type */
   onAddAutomation?: () => void
-  /** Handler for "Add Project" action - only for projects type */
+  /** Handler for "Add Project" action - only for projects type (local folder) */
   onAddProject?: () => void
+  /** Handler for cloud/remote Project connection */
+  onAddCloudProject?: () => void
+  /** Handler for "Manage projects" — keeps the project detail surface reachable */
+  onManageProjects?: () => void
+  /** Handler for removing one project (workspace) — for the 'project' row type */
+  onRemoveProject?: () => void
+  /** Opens settings for the selected project row */
+  onOpenProjectSettings?: () => void
   /** Source type filter for "Learn More" link - determines which docs page to open */
   sourceType?: 'api' | 'mcp' | 'local'
   /** Handler for "Edit Views" action - for views type */
@@ -82,6 +92,10 @@ export function SidebarMenu({
   onAddSkill,
   onAddAutomation,
   onAddProject,
+  onAddCloudProject,
+  onManageProjects,
+  onRemoveProject,
+  onOpenProjectSettings,
   sourceType,
   onConfigureViews,
   viewId,
@@ -93,9 +107,10 @@ export function SidebarMenu({
   const { MenuItem, Separator } = useMenuComponents()
 
   // New Session: only shows "Open in New Window"
+  // Explicit workdir=none so the new window matches global folder-less create (R1 §2).
   if (type === 'newSession') {
     return (
-      <MenuItem onClick={() => window.electronAPI.openUrl('craftagents://action/new-session?window=focused')}>
+      <MenuItem onClick={() => window.electronAPI.openUrl('craftagents://action/new-session?workdir=none&window=focused')}>
         <AppWindow className="h-3.5 w-3.5" />
         <span className="flex-1">{t("sidebarMenu.openInNewWindow")}</span>
       </MenuItem>
@@ -220,14 +235,50 @@ export function SidebarMenu({
     )
   }
 
-  // Projects: show "Add Project"
+  // Projects: local folder is primary; cloud computer is the existing secondary path.
   if (type === 'projects') {
     return (
       <>
         {onAddProject && (
           <MenuItem onClick={onAddProject}>
             <Plus className="h-3.5 w-3.5" />
-            <span className="flex-1">{t("sidebarMenu.addProject")}</span>
+            <span className="flex-1">{t("sidebar.newProjectLocal")}</span>
+          </MenuItem>
+        )}
+        {onAddCloudProject && (
+          <MenuItem onClick={onAddCloudProject}>
+            <Cloud className="h-3.5 w-3.5" />
+            <span className="flex-1">{t("sidebar.newProjectCloud")}</span>
+          </MenuItem>
+        )}
+        {/* Opens Project settings (folder-project / Workspace authority), not nested v0.11 list. */}
+        {onManageProjects && (
+          <MenuItem onClick={onManageProjects}>
+            <FolderKanban className="h-3.5 w-3.5" />
+            <span className="flex-1">{t("sidebarMenu.manageProjects")}</span>
+          </MenuItem>
+        )}
+      </>
+    )
+  }
+
+  // A single project (workspace) row. Removing a project used to live only in the top-bar workspace
+  // switcher; that switcher is gone in normal mode, and the settings page never had the action, so
+  // without this the capability would exist only in compact mode.
+  if (type === 'project') {
+    return (
+      <>
+        {onOpenProjectSettings && (
+          <MenuItem onClick={onOpenProjectSettings}>
+            <FolderKanban className="h-3.5 w-3.5" />
+            <span className="flex-1">{t("sidebarMenu.manageProjects")}</span>
+          </MenuItem>
+        )}
+        {onOpenProjectSettings && onRemoveProject && <Separator />}
+        {onRemoveProject && (
+          <MenuItem onClick={onRemoveProject} variant="destructive">
+            <Trash2 className="h-3.5 w-3.5" />
+            <span className="flex-1">{t("sidebarMenu.removeProject")}</span>
           </MenuItem>
         )}
       </>

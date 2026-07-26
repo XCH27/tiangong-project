@@ -32,7 +32,7 @@ import {
   isSkillsNavigation,
   isAutomationsNavigation,
   isProjectsNavigation,
-} from '@/contexts/NavigationContext'
+} from '@/context/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
 import { extractLabelId } from '@craft-agent/shared/labels'

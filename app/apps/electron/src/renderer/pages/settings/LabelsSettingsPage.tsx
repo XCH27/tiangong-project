@@ -126,6 +126,7 @@ export default function LabelsSettingsPage() {
                           maxHeight={350}
                           fullscreen
                           fullscreenTitle={t("settings.labels.labelHierarchy")}
+                          onLabelSelect={setSelectedLabelId}
                         />
                       ) : (
                         <div className="p-8 text-center text-muted-foreground">

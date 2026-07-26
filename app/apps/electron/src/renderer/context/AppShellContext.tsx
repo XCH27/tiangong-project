@@ -68,7 +68,12 @@ export interface AppShellContextType {
    * filter when given) with the task's scope — the same user-clearable header-chip
    * filters — and selects the session. Used by kanban tile/subtask clicks + post-create.
    */
-  onJumpToTaskSessions?: (sessionId: string, scope: { labelId: string; projectId?: string }) => void
+  onJumpToTaskSessions?: (sessionId: string, scope: {
+    labelId: string
+    projectId?: string
+    /** Session fields carried from the creator — fallback when the meta map hasn't loaded it yet. */
+    session?: { workingDirectory?: string; workspaceId?: string }
+  }) => void
   /** Enabled permission modes for Shift+Tab cycling */
   enabledModes?: PermissionMode[]
   /** Dynamic todo states from workspace config (provided by AppShell, defaults to empty) */

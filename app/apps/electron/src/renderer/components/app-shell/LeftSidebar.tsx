@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 import * as React from "react"
-import { AnimatePresence, motion, type Variants } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
 import { ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -12,6 +12,24 @@ import {
 import { ContextMenuProvider } from '@/components/ui/menu-context'
 import { SidebarMenu, type SidebarMenuType } from './SidebarMenu'
 import { SortableList, type SortableItemData } from '@/components/ui/sortable-list'
+
+/**
+ * One interaction language for every sidebar row (top-level and nested):
+ *
+ * | Gesture / state     | Behavior |
+ * |---------------------|----------|
+ * | Hover (ghost)       | `bg-sidebar-hover` fill |
+ * | Selected (default)  | `bg-foreground/[0.07]` fill |
+ * | Context menu open   | same fill as hover via `data-state=open` |
+ * | Click row           | `onClick` only (navigate / open) — never toggles expand |
+ * | Click chevron       | expand/collapse only (`stopPropagation`) |
+ * | Trailing + / count  | revealed on row hover; pointer-events gated when hidden |
+ * | Density             | normal `py-[5px]`; `compact` only for dense label trees |
+ *
+ * Nested rows (Sources → API, 项目 → session, 对话 → session) use the same
+ * SidebarButton as Flagged/Archived. Expand height is animated once on the
+ * parent; children do not stagger-fade (that felt like a second UI kit).
+ */
 
 /** Context menu configuration for sidebar items */
 export interface SidebarContextMenuConfig {
@@ -37,8 +55,14 @@ export interface SidebarContextMenuConfig {
   onAddSkill?: () => void
   /** Handler for "Add Automation" action - for automations type */
   onAddAutomation?: () => void
-  /** Handler for "Add Project" action - for projects type */
+  /** Handler for "Add Project" action - for projects type (local folder pick) */
   onAddProject?: () => void
+  /** Handler for cloud/remote Project connection */
+  onAddCloudProject?: () => void
+  /** Handler for "Manage projects" — keeps the project detail surface reachable */
+  onManageProjects?: () => void
+  /** Handler for removing one project (workspace) */
+  onRemoveProject?: () => void
   /** Source type filter for "Learn More" link - determines which docs page to open */
   sourceType?: 'api' | 'mcp' | 'local'
   /** Handler for "Edit Views" action - for views type */
@@ -73,7 +97,7 @@ export interface LinkItem {
   expanded?: boolean
   onToggle?: () => void
   items?: SidebarItem[]    // Subitems as data (rendered as nested LeftSidebar) - supports separators
-  // Compact mode: reduced vertical padding (4px less total height)
+  // Compact mode: reduced vertical padding — only for dense label trees (many nodes)
   compact?: boolean
   // Tutorial system
   dataTutorial?: string // data-tutorial attribute for tutorial targeting
@@ -83,6 +107,12 @@ export interface LinkItem {
   sortable?: SortableConfig
   // Optional element rendered after the title (e.g., label type icon), revealed on hover
   afterTitle?: React.ReactNode
+  /**
+   * Interactive row action rendered as a *sibling overlay* of the row button, never nested inside
+   * it — a button inside a button breaks keyboard traversal and hit-testing. Occupies the 24 px
+   * action slot from `docs/UI-SPEC.md` §4 and stays keyboard reachable while hover-revealed.
+   */
+  trailingAction?: React.ReactNode
 }
 
 export interface SeparatorItem {
@@ -110,83 +140,23 @@ interface LeftSidebarProps {
   isNested?: boolean
 }
 
-// Stagger animation for child items
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.025,
-      delayChildren: 0.01,
-    },
-  },
-  exit: {
-    opacity: 0,
-    transition: {
-      staggerChildren: 0.015,
-      staggerDirection: -1,
-    },
-  },
-}
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, x: -8 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.15, ease: 'easeOut' },
-  },
-  exit: {
-    opacity: 0,
-    x: -8,
-    transition: { duration: 0.1, ease: 'easeIn' },
-  },
-}
-
 /**
  * LeftSidebar - Vertical list of navigation buttons with icons
  *
- * Navigation is managed by the parent component (Chat.tsx) for unified
- * sidebar keyboard navigation. This component just renders the items.
- *
- * Styling matches agent items in the sidebar for consistency:
- * - py-[7px] px-2 text-[13px] rounded-md
- * - Icon: h-3.5 w-3.5
- *
- * Link variants:
- * - "default": Highlighted style (used for active/selected items)
- * - "ghost": Subtle style (used for inactive items)
- *
- * Expandable items:
- * - Show a chevron toggle on hover (replaces icon position)
- * - Children are rendered with animated expand/collapse
- * - Nested items have left indentation with vertical line
- *
- * Drag-and-drop:
- * - Expandable items can opt-in to sortable (flat) or sortableTree (hierarchical) DnD
- * - Uses @dnd-kit with DragOverlay portaled to document.body (no clipping)
- * - Two-phase drop animation: overlay fades out, ghost fades in
+ * One row component (`SidebarButton`) for every level. Expand/collapse is
+ * chevron-only; row click always runs `onClick`. Nested trees indent with a
+ * rail but do not use a second hover/click system.
  */
 export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, isNested }: LeftSidebarProps) {
-  // For nested sidebars, wrap in motion container for stagger effect
-  const NavWrapper = isNested ? motion.nav : 'nav'
-  const navProps = isNested ? {
-    variants: containerVariants,
-    initial: 'hidden',
-    animate: 'visible',
-    exit: 'exit',
-  } : {}
-
   return (
     <div className={cn("flex flex-col select-none", !isNested && "py-1")}>
-      <NavWrapper
+      <nav
         className={cn(
           "grid gap-0.5",
           isNested ? "pl-5 pr-0 relative" : "px-2"
         )}
         role="navigation"
         aria-label={isNested ? "Sub navigation" : "Main navigation"}
-        {...navProps}
       >
         {/* Vertical line for nested items - 4px left of chevron center */}
         {isNested && (
@@ -207,7 +177,6 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
 
           const link = item
           const itemProps = getItemProps?.(link.id)
-          const isFocused = focusedItemId === link.id
 
           // Button element shared by both expandable and non-expandable items
           const buttonElement = (
@@ -225,9 +194,7 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
           // Wrap with context menu if configured, scoped to button only.
           // ContextMenuTrigger with asChild sets data-state="open" on the button
           // so only the clicked item highlights, not the entire section.
-          const content = (
-            <div className="group/section">
-              {link.contextMenu ? (
+          const rowElement = link.contextMenu ? (
                 <ContextMenu modal={true}>
                   <ContextMenuTrigger asChild>
                     {buttonElement}
@@ -247,6 +214,9 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                         onAddSkill={link.contextMenu.onAddSkill}
                         onAddAutomation={link.contextMenu.onAddAutomation}
                         onAddProject={link.contextMenu.onAddProject}
+                        onAddCloudProject={link.contextMenu.onAddCloudProject}
+                        onManageProjects={link.contextMenu.onManageProjects}
+                        onRemoveProject={link.contextMenu.onRemoveProject}
                         sourceType={link.contextMenu.sourceType}
                         onConfigureViews={link.contextMenu.onConfigureViews}
                         viewId={link.contextMenu.viewId}
@@ -257,9 +227,39 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                 </ContextMenu>
               ) : (
                 buttonElement
-              )}
-              {/* Expandable subitems — outside context menu scope so only the
-                * clicked button gets data-state="open", not nested children */}
+              )
+
+          // group/section wraps ONLY the header row (and trailing +), not nested children.
+          // If children sit inside the same group, hovering a child falsely triggers parent
+          // hover styles and reveals the parent's "+" (Craft keeps badges tied to the row).
+          return (
+            <React.Fragment key={link.id}>
+              <div className="group/section">
+                {link.trailingAction ? (
+                  <div className="relative">
+                    {rowElement}
+                    {/* Sibling overlay, not nested button (UI-SPEC §4). Same reveal as count
+                      * badges: row hover, focus-within, or open menu (data-state=open). */}
+                    <div
+                      data-touch-reveal="true"
+                      className={cn(
+                        "absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center",
+                        // opacity-0 alone still hit-tests — gate pointer events until revealed
+                        "pointer-events-none opacity-0 transition-opacity duration-150",
+                        "group-hover/section:pointer-events-auto group-hover/section:opacity-100",
+                        "focus-within:pointer-events-auto focus-within:opacity-100",
+                        "has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100",
+                      )}
+                      onMouseDown={(event) => event.stopPropagation()}
+                    >
+                      {link.trailingAction}
+                    </div>
+                  </div>
+                ) : (
+                  rowElement
+                )}
+              </div>
+              {/* Expandable subitems — height animate only; children are instant rows */}
               {link.expandable && link.items && (
                 <AnimatePresence initial={false}>
                   {link.expanded && (
@@ -275,21 +275,10 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                   )}
                 </AnimatePresence>
               )}
-            </div>
-          )
-
-          // For nested items, wrap in motion.div for stagger animation
-          return isNested ? (
-            <motion.div key={link.id} variants={itemVariants}>
-              {content}
-            </motion.div>
-          ) : (
-            <React.Fragment key={link.id}>
-              {content}
             </React.Fragment>
           )
         })}
-      </NavWrapper>
+      </nav>
     </div>
   )
 }
@@ -320,38 +309,40 @@ function renderExpandedContent(
         onReorder={link.sortable.onReorder}
         getItemProps={getItemProps}
         focusedItemId={focusedItemId}
-        trailingItems={trailingItems.length > 0 ? trailingItems : undefined}
+        trailingItems={trailingItems}
       />
     )
   }
 
-  // Default: regular nested sidebar (no DnD)
+  // Regular nested sidebar (same row interaction as top-level)
   return (
     <LeftSidebar
       isCollapsed={false}
-      isNested={true}
+      links={link.items ?? []}
       getItemProps={getItemProps}
       focusedItemId={focusedItemId}
-      links={link.items!}
+      isNested={true}
     />
   )
 }
 
 // ============================================================
-// SortableStatusList — flat sortable wrapper for status items
+// Sortable status list (flat reorder under an expandable section)
 // ============================================================
 
-interface SortableStatusListProps {
+function SortableStatusList({
+  items,
+  onReorder,
+  getItemProps,
+  focusedItemId,
+  trailingItems,
+}: {
   items: SidebarItem[]
   onReorder: (orderedIds: string[]) => void
-  getItemProps: LeftSidebarProps['getItemProps']
-  focusedItemId: string | null | undefined
-  /** Non-sortable items rendered after the sortable list (e.g., Flagged, Archived) */
+  getItemProps?: LeftSidebarProps['getItemProps']
+  focusedItemId?: string | null
   trailingItems?: LinkItem[]
-}
-
-function SortableStatusList({ items, onReorder, getItemProps, focusedItemId, trailingItems }: SortableStatusListProps) {
-  // Filter to LinkItems only (separators don't participate in DnD)
+}) {
   const linkItems = items.filter((item): item is LinkItem => !isSeparatorItem(item))
 
   // Map to SortableItemData format (needs `id` field)
@@ -406,6 +397,10 @@ function SortableStatusList({ items, onReorder, getItemProps, focusedItemId, tra
                         onAddSource={item.contextMenu.onAddSource}
                         onAddSkill={item.contextMenu.onAddSkill}
                         onAddAutomation={item.contextMenu.onAddAutomation}
+                        onAddProject={item.contextMenu.onAddProject}
+                        onAddCloudProject={item.contextMenu.onAddCloudProject}
+                        onManageProjects={item.contextMenu.onManageProjects}
+                        onRemoveProject={item.contextMenu.onRemoveProject}
                         sourceType={item.contextMenu.sourceType}
                         onConfigureViews={item.contextMenu.onConfigureViews}
                         viewId={item.contextMenu.viewId}
@@ -453,7 +448,7 @@ function SortableStatusList({ items, onReorder, getItemProps, focusedItemId, tra
 }
 
 // ============================================================
-// SidebarButton - Extracted button component for reuse in sortable contexts
+// SidebarButton - Single row primitive for every sidebar level
 // ============================================================
 
 interface SidebarButtonProps {
@@ -473,6 +468,7 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
   ({ link, itemProps, isOverlay, className: extraClassName, ...radixProps }, forwardedRef) => {
     return (
       <button
+        type="button"
         {...(isOverlay ? {} : (() => {
           // Separate ref from itemProps so we can merge it with forwardedRef
           const { ref: _itemRef, ...rest } = itemProps || { ref: undefined }
@@ -489,15 +485,22 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
         onClick={isOverlay ? undefined : link.onClick}
         data-tutorial={link.dataTutorial}
         className={cn(
+          // Shared row chrome — identical for Flagged, Sources children, 项目 sessions, 对话 sessions
           "group flex w-full items-center gap-2 rounded-[6px] text-[13px] select-none outline-none",
           "focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
-          // Compact mode: 4px less total height (py-[3px] vs py-[5px])
+          // Density: normal for all primary trees; compact only when caller opts in (labels)
           link.compact ? "py-[3px]" : "py-[5px]",
           "px-2",
+          // Reserve the 24 px action slot so the title truncates instead of sliding under "+"
+          link.trailingAction && "pr-7",
           link.variant === "default"
             ? "bg-foreground/[0.07]"
-            // Highlight on hover, context menu open (data-state), or EditPopover active (data-edit-active)
-            : "hover:bg-sidebar-hover data-[state=open]:bg-sidebar-hover data-[edit-active=true]:bg-sidebar-hover",
+            // Hover / open states — same tokens for every ghost row at every depth
+            : cn(
+              "hover:bg-sidebar-hover data-[state=open]:bg-sidebar-hover data-[edit-active=true]:bg-sidebar-hover",
+              // Keep row highlighted while the pointer is on the sibling trailing action
+              link.trailingAction && "group-hover/section:bg-sidebar-hover",
+            ),
           extraClassName,
         )}
       >
@@ -509,7 +512,7 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
               <span className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity duration-150">
                 {renderIcon(link)}
               </span>
-              {/* Toggle chevron - shown on hover. data-no-dnd prevents drag activation on click. */}
+              {/* Toggle chevron - shown on hover. Expand only; never the row's navigate action. */}
               <span
                 className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
                 data-no-dnd="true"
@@ -531,16 +534,27 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
             renderIcon(link)
           )}
         </span>
-        {link.title}
-        {/* After-title element: type indicator icon, right-aligned before count badge, revealed on hover */}
+        {/* min-w-0 + truncate: long titles never wrap or shove actions (UI-SPEC §4) */}
+        <span className="min-w-0 truncate">{link.title}</span>
+        {/* After-title / count: same reveal language on every row (button hover OR section hover) */}
         {link.afterTitle && (
-          <span data-touch-reveal="true" className="ml-auto opacity-0 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100 transition-opacity">
+          <span
+            data-touch-reveal="true"
+            className="ml-auto opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100"
+          >
             {link.afterTitle}
           </span>
         )}
-        {/* Label Badge: Shows count or status on the right, revealed on section hover */}
         {link.label && (
-          <span data-touch-reveal="true" className={cn(link.afterTitle ? 'ml-0' : 'ml-auto', 'text-xs text-foreground/30 opacity-0 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100 transition-opacity')}>
+          <span
+            data-touch-reveal="true"
+            className={cn(
+              link.afterTitle ? 'ml-0' : 'ml-auto',
+              'text-xs text-foreground/30 opacity-0 transition-opacity duration-150',
+              'group-hover:opacity-100 group-hover/section:opacity-100',
+              'group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100',
+            )}
+          >
             {link.label}
           </span>
         )}
@@ -548,6 +562,7 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
     )
   }
 )
+SidebarButton.displayName = 'SidebarButton'
 
 /**
  * Helper to render icon - either component (function/forwardRef) or React element.
@@ -562,33 +577,23 @@ function renderIcon(link: LinkItem) {
   // Lucide components are always colorable; ReactNode icons check iconColorable
   // Default to true for backwards compatibility (most icons are colorable)
   const applyColor = link.iconColorable !== false
-  const colorStyle = applyColor ? { color: link.iconColor || defaultColor } : undefined
 
   if (isComponent) {
-    const Icon = link.icon as React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+    const Icon = link.icon as LucideIcon
     return (
       <Icon
-        className="h-3.5 w-3.5 shrink-0"
-        style={colorStyle}
+        className="h-3.5 w-3.5"
+        style={applyColor ? { color: link.iconColor || defaultColor } : undefined}
       />
     )
   }
-  // Already a React element or primitive ReactNode
-  // Clone with bare={true} to remove EntityIcon container, wrapper provides sizing
-  // Only pass bare to components that accept it (have acceptsBare marker) to avoid
-  // forwarding unknown props to DOM elements (e.g., Lucide icons → SVG)
-  const iconElement = link.icon as React.ReactNode
-  const bareIcon = React.isValidElement(iconElement)
-    ? (typeof iconElement.type === 'function' && (iconElement.type as { acceptsBare?: boolean }).acceptsBare)
-      ? React.cloneElement(iconElement as React.ReactElement<{ bare?: boolean }>, { bare: true })
-      : iconElement
-    : iconElement
-  return (
-    <span
-      className="h-3.5 w-3.5 shrink-0 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
-      style={colorStyle}
-    >
-      {bareIcon}
-    </span>
-  )
+
+  // React element — clone with size + optional color
+  const element = link.icon as React.ReactElement<{ className?: string; style?: React.CSSProperties }>
+  return React.cloneElement(element, {
+    className: cn("h-3.5 w-3.5", element.props.className),
+    style: applyColor
+      ? { ...element.props.style, color: link.iconColor || defaultColor }
+      : element.props.style,
+  })
 }

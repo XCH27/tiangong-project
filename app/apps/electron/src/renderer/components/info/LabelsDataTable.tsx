@@ -32,6 +32,8 @@ interface LabelsDataTableProps {
   fullscreen?: boolean
   /** Title for fullscreen overlay */
   fullscreenTitle?: string
+  /** Select a label for its settings/detail panel */
+  onLabelSelect?: (labelId: string) => void
   className?: string
 }
 
@@ -39,7 +41,15 @@ interface LabelsDataTableProps {
  * ExpandableNameCell - Renders label name with indentation and expand/collapse chevron.
  * Depth-based indentation with a rotating chevron for parent nodes.
  */
-function ExpandableNameCell({ row, t }: { row: Row<LabelConfig>; t: TFunction }) {
+function ExpandableNameCell({
+  row,
+  t,
+  onLabelSelect,
+}: {
+  row: Row<LabelConfig>
+  t: TFunction
+  onLabelSelect?: (labelId: string) => void
+}) {
   const canExpand = row.getCanExpand()
   const isExpanded = row.getIsExpanded()
 
@@ -70,13 +80,28 @@ function ExpandableNameCell({ row, t }: { row: Row<LabelConfig>; t: TFunction })
         // Spacer to keep alignment consistent with expandable rows
         <span className="w-4" />
       )}
-      <span className="text-sm truncate">{getLocalizedLabelName(t, row.original)}</span>
+      {onLabelSelect ? (
+        <button
+          type="button"
+          className="min-w-0 truncate text-left text-sm hover:underline"
+          onClick={() => onLabelSelect(row.original.id)}
+        >
+          {getLocalizedLabelName(t, row.original)}
+        </button>
+      ) : (
+        <span className="min-w-0 truncate text-sm">
+          {getLocalizedLabelName(t, row.original)}
+        </span>
+      )}
     </div>
   )
 }
 
 // Column definitions for the labels tree table
-function getColumns(t: TFunction): ColumnDef<LabelConfig>[] {
+function getColumns(
+  t: TFunction,
+  onLabelSelect?: (labelId: string) => void,
+): ColumnDef<LabelConfig>[] {
   return [
     {
       id: 'color',
@@ -97,7 +122,9 @@ function getColumns(t: TFunction): ColumnDef<LabelConfig>[] {
       id: 'name',
       header: ({ column }) => <SortableHeader column={column} title={t("common.name")} />,
       accessorFn: (row) => getLocalizedLabelName(t, row),
-      cell: ({ row }) => <ExpandableNameCell row={row} t={t} />,
+      cell: ({ row }) => (
+        <ExpandableNameCell row={row} t={t} onLabelSelect={onLabelSelect} />
+      ),
       meta: { fillWidth: true },
     },
     {
@@ -134,12 +161,13 @@ export function LabelsDataTable({
   maxHeight = 400,
   fullscreen = false,
   fullscreenTitle = 'Labels',
+  onLabelSelect,
   className,
 }: LabelsDataTableProps) {
   const { t } = useTranslation()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { isDark } = useTheme()
-  const columns = useMemo(() => getColumns(t), [t])
+  const columns = useMemo(() => getColumns(t, onLabelSelect), [t, onLabelSelect])
 
   // Fullscreen button (shown on hover via group class)
   const fullscreenButton = fullscreen ? (

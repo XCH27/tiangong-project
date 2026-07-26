@@ -6,7 +6,7 @@ import { useAppShellContext } from '@/context/AppShellContext'
 import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/atoms/sessions'
 import { projectsAtom } from '@/atoms/projects'
 import { kanbanProjectFilterAtom, kanbanColumnStatusAtom, kanbanEditorTargetAtom } from '@/atoms/kanban'
-import { useNavigation } from '@/contexts/NavigationContext'
+import { useNavigation } from '@/context/NavigationContext'
 import { useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
 import { useLabels } from '@/hooks/useLabels'
 import { getSessionTitle } from '@/utils/session'
@@ -521,10 +521,10 @@ export function KanbanBoardContainer() {
           setEditorTarget(null)
           navigateToSession(sessionId)
         }}
-        onCreated={({ sessionId, taskLabelId, projectId: createdProjectId }) => {
+        onCreated={({ sessionId, taskLabelId, projectId: createdProjectId, session }) => {
           // Same human-clearable scope as a tile click; no label (fail-soft) → plain open.
           if (taskLabelId && onJumpToTaskSessions) {
-            onJumpToTaskSessions(sessionId, { labelId: taskLabelId, projectId: createdProjectId })
+            onJumpToTaskSessions(sessionId, { labelId: taskLabelId, projectId: createdProjectId, session })
           } else {
             navigateToSession(sessionId)
           }

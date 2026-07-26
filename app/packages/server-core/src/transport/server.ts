@@ -42,6 +42,8 @@ interface ClientConnection {
   id: string
   ws: WebSocket
   workspaceId: string | null
+  /** Extra Workspace event streams explicitly opened by the desktop Project overview. */
+  sessionWorkspaceIds: Set<string>
   webContentsId: number | null
   capabilities: Set<string>
   missedPongs: number
@@ -560,6 +562,7 @@ export class WsRpcServer implements RpcServer {
           id: clientId,
           ws,
           workspaceId: envelope.workspaceId ?? null,
+          sessionWorkspaceIds: new Set(),
           webContentsId: envelope.webContentsId ?? null,
           capabilities: new Set(envelope.clientCapabilities ?? []),
           missedPongs: 0,
@@ -805,6 +808,10 @@ export class WsRpcServer implements RpcServer {
       case 'workspace':
         if (target.exclude && client.id === target.exclude) return false
         return client.workspaceId === target.workspaceId
+      case 'session-workspace':
+        if (target.exclude && client.id === target.exclude) return false
+        return client.workspaceId === target.workspaceId
+          || client.sessionWorkspaceIds.has(target.workspaceId)
       case 'client':
         return client.id === target.clientId
       default:
@@ -818,6 +825,17 @@ export class WsRpcServer implements RpcServer {
     if (client) {
       client.workspaceId = workspaceId
     }
+  }
+
+  /**
+   * Replace the desktop client's additional Session-event subscriptions.
+   * This does not affect Sources, Skills, settings, messaging, or any other
+   * Workspace-targeted channel.
+   */
+  updateClientSessionWorkspaces(clientId: string, workspaceIds: readonly string[]): void {
+    const client = this.clients.get(clientId)
+    if (!client) return
+    client.sessionWorkspaceIds = new Set(workspaceIds.filter(Boolean))
   }
 
   private findClientByWs(ws: WebSocket): ClientConnection | undefined {

@@ -100,9 +100,15 @@ export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDep
   })
 
   // Open a session in a new window
-  server.handle(RPC_CHANNELS.window.OPEN_SESSION_IN_NEW_WINDOW, async (_ctx, workspaceId: string, sessionId: string) => {
+  // Deep link follows routes.view.sessionHome semantics: folder-bound sessions land under
+  // projectSessions (workspace-scoped when known), folder-less sessions under conversations.
+  server.handle(RPC_CHANNELS.window.OPEN_SESSION_IN_NEW_WINDOW, async (_ctx, workspaceId: string, sessionId: string, workingDirectory?: string | null) => {
     if (!windowManager) return
-    const deepLink = `craftagents://allSessions/session/${sessionId}`
+    const deepLink = workingDirectory
+      ? workspaceId
+        ? `craftagents://projectSessions/ws/${encodeURIComponent(workspaceId)}/session/${sessionId}`
+        : `craftagents://projectSessions/session/${sessionId}`
+      : `craftagents://conversations/session/${sessionId}`
     windowManager.createWindow({
       workspaceId,
       focused: true,

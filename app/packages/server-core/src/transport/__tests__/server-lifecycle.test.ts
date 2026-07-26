@@ -27,7 +27,11 @@ function createServer(opts?: {
   })
 }
 
-function handshake(url: string, token: string): Promise<{ ws: WebSocket; clientId: string }> {
+function handshake(
+  url: string,
+  token: string,
+  identity?: { workspaceId?: string; webContentsId?: number },
+): Promise<{ ws: WebSocket; clientId: string }> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url)
     const timeout = setTimeout(() => {
@@ -41,6 +45,8 @@ function handshake(url: string, token: string): Promise<{ ws: WebSocket; clientI
         type: 'handshake',
         protocolVersion: PROTOCOL_VERSION,
         token,
+        workspaceId: identity?.workspaceId,
+        webContentsId: identity?.webContentsId,
       }))
     })
     ws.on('message', (data) => {
@@ -166,6 +172,32 @@ describe('WsRpcServer lifecycle', () => {
     const { ws: ws2 } = await handshake(url, TEST_TOKEN)
     openSockets.push(ws2)
     expect(server!.getConnectedClientCount()).toBe(1)
+  })
+
+  it('routes Session events to explicit overview subscriptions without widening other Workspace events', async () => {
+    server = createServer()
+    await server.listen()
+    const url = `ws://127.0.0.1:${server.port}`
+
+    const first = await handshake(url, TEST_TOKEN, { workspaceId: 'ws-a', webContentsId: 11 })
+    const second = await handshake(url, TEST_TOKEN, { workspaceId: 'ws-b', webContentsId: 22 })
+    openSockets.push(first.ws, second.ws)
+
+    const firstMessages: any[] = []
+    const secondMessages: any[] = []
+    first.ws.on('message', data => firstMessages.push(JSON.parse(data.toString())))
+    second.ws.on('message', data => secondMessages.push(JSON.parse(data.toString())))
+
+    server.updateClientSessionWorkspaces(first.clientId, ['ws-b'])
+    server.push('session:event', { to: 'session-workspace', workspaceId: 'ws-b' }, { type: 'complete' })
+    server.push('sources:changed', { to: 'workspace', workspaceId: 'ws-b' }, ['source'])
+
+    await new Promise(resolve => setTimeout(resolve, 20))
+
+    expect(firstMessages.some(message => message.channel === 'session:event')).toBe(true)
+    expect(secondMessages.some(message => message.channel === 'session:event')).toBe(true)
+    expect(firstMessages.some(message => message.channel === 'sources:changed')).toBe(false)
+    expect(secondMessages.some(message => message.channel === 'sources:changed')).toBe(true)
   })
 
   // -- Handler timeout test --

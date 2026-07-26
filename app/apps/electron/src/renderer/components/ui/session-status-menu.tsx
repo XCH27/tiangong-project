@@ -158,7 +158,7 @@ export function SessionStatusMenu({
               <span className="shrink-0 flex items-center opacity-60">
                 {isArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
               </span>
-              <div className="flex-1 min-w-0">{isArchived ? 'Unarchive' : 'Archive'}</div>
+              <div className="flex-1 min-w-0">{t(isArchived ? 'sessionMenu.unarchive' : 'sessionMenu.archive')}</div>
             </CommandPrimitive.Item>
           </>
         )}

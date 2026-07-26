@@ -45,8 +45,19 @@ export const routes = {
      * @param status - Optional status/todo-state ID to apply to the new session
      * @param label - Optional label ID to apply to the new session
      * @param project - Optional project id to bind the new session to
+     * @param workdir - Optional working directory (`user_default` | `none` | absolute path)
      */
-    newSession: (params?: { input?: string; name?: string; send?: boolean; status?: string; label?: string; project?: string }) =>
+    newSession: (params?: {
+      input?: string
+      name?: string
+      send?: boolean
+      status?: string
+      label?: string
+      project?: string
+      workdir?: string
+      /** Create under this workspace without switching the shell's active project (local multi-folder). */
+      workspaceId?: string
+    }) =>
       `action/new-session${toQueryString(params ? { ...params, send: params.send ? 'true' : undefined } : undefined)}` as const,
 
     /** Rename a session */
@@ -93,9 +104,43 @@ export const routes = {
   // View Routes - Compound sidebar/navigator/details routes
   // ============================================
   view: {
-    /** All sessions view (sessions navigator, allSessions filter) */
+    /** All sessions view (sessions navigator, allSessions filter) — legacy; prefer projectSessions */
     allSessions: (sessionId?: string) =>
       sessionId ? `allSessions/session/${sessionId}` as const : 'allSessions' as const,
+
+    /**
+     * Folder-bound work under 项目.
+     * Optional workspaceId focuses one local/remote project without inventing a second list.
+     */
+    projectSessions: (sessionId?: string, workspaceId?: string) => {
+      if (workspaceId && sessionId) {
+        return `projectSessions/ws/${encodeURIComponent(workspaceId)}/session/${sessionId}` as const
+      }
+      if (workspaceId) {
+        return `projectSessions/ws/${encodeURIComponent(workspaceId)}` as const
+      }
+      if (sessionId) {
+        return `projectSessions/session/${sessionId}` as const
+      }
+      return 'projectSessions' as const
+    },
+
+    /** Folder-less work under 对话 */
+    conversations: (sessionId?: string) =>
+      sessionId ? `conversations/session/${sessionId}` as const : 'conversations' as const,
+
+    /**
+     * Open a session under the correct R1 home (项目 vs 对话).
+     * Prefer this over allSessions for notifications, deep links, and sidebar trees.
+     */
+    sessionHome: (session: {
+      id: string
+      workingDirectory?: string | null
+      workspaceId?: string
+    }) =>
+      session.workingDirectory
+        ? routes.view.projectSessions(session.id, session.workspaceId)
+        : routes.view.conversations(session.id),
 
     /** Flagged view (sessions navigator, flagged filter) */
     flagged: (sessionId?: string) =>

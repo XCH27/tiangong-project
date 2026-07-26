@@ -140,6 +140,7 @@ export class CodedError extends Error {
 export type PushTarget =
   | { to: 'all'; exclude?: string }
   | { to: 'workspace'; workspaceId: string; exclude?: string }
+  | { to: 'session-workspace'; workspaceId: string; exclude?: string }
   | { to: 'client'; clientId: string }
 
 // ---------------------------------------------------------------------------

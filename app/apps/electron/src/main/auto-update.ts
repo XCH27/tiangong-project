@@ -122,13 +122,39 @@ function broadcastDownloadProgress(progress: number): void {
   eventSink(RPC_CHANNELS.update.DOWNLOAD_PROGRESS, { to: 'all' }, progress)
 }
 
+// ─── Fork safety: the update channel must be Fleet-controlled ─────────────────
+
+/**
+ * Fleet is a fork of Craft Agents. The inherited `publish` target in electron-builder.yml points at
+ * `agents.craft.do/electron/latest`, so an unmodified updater would download and install an
+ * **upstream Craft binary over Fleet**, erasing the fork. Decision P8 forbids that, and spec R2-C2
+ * requires the channel to be Fleet-controlled/user-configured *or* the install honestly disabled.
+ *
+ * No Fleet release channel exists yet, so the default is disabled: no check, no download, no
+ * install, and — importantly — no network call to a Craft-operated host. Set
+ * `FLEET_UPDATE_FEED_URL` to a Fleet-controlled or self-hosted feed to re-enable the full path.
+ */
+const FLEET_UPDATE_FEED_URL = process.env.FLEET_UPDATE_FEED_URL?.trim() || null
+
+export function isUpdaterEnabled(): boolean {
+  return FLEET_UPDATE_FEED_URL !== null
+}
+
 // ─── Configure electron-updater ───────────────────────────────────────────────
 
-// Auto-download updates in the background after detection
-autoUpdater.autoDownload = true
-
-// Install on app quit (if update is downloaded but user hasn't clicked "Restart")
-autoUpdater.autoInstallOnAppQuit = true
+if (FLEET_UPDATE_FEED_URL) {
+  autoUpdater.setFeedURL({ provider: 'generic', url: FLEET_UPDATE_FEED_URL })
+  // Auto-download updates in the background after detection
+  autoUpdater.autoDownload = true
+  // Install on app quit (if update is downloaded but user hasn't clicked "Restart")
+  autoUpdater.autoInstallOnAppQuit = true
+} else {
+  // Both must be false: `autoInstallOnAppQuit` would otherwise install anything already staged in
+  // the updater cache by a previous build, without any further check.
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
+  updateInfo = { ...updateInfo, downloadState: 'disabled' }
+}
 
 // Use the logger for electron-updater internal logging
 autoUpdater.logger = {
@@ -327,6 +353,21 @@ function checkForExistingDownload(): { exists: boolean; version?: string } {
  * @param options.autoDownload - If false, only checks without downloading (for manual "Check Now")
  */
 export async function checkForUpdates(options: CheckOptions = {}): Promise<UpdateInfo> {
+  // Return before any network call: with no Fleet channel configured, the only reachable feed is
+  // Craft's (R2-C1 forbids silent calls to Craft-operated hosts; R2-C2 forbids installing them).
+  if (!isUpdaterEnabled()) {
+    mainLog.info('[auto-update] Updater disabled: no FLEET_UPDATE_FEED_URL configured')
+    updateInfo = {
+      ...updateInfo,
+      available: false,
+      latestVersion: null,
+      downloadState: 'disabled',
+      downloadProgress: 0,
+    }
+    broadcastUpdateInfo()
+    return { ...updateInfo }
+  }
+
   const { autoDownload = true } = options
 
   // Temporarily override autoDownload for this check if needed

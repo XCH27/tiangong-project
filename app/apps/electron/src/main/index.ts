@@ -768,7 +768,13 @@ app.whenReady().then(async () => {
       // Remove workspace from config (cleanup stale entries)
       ipcMain.handle('workspace:remove', async (_event, workspaceId: string) => {
         const { removeWorkspace: remove } = await import('@craft-agent/shared/config')
-        return remove(workspaceId)
+        const removed = await remove(workspaceId)
+        if (removed) {
+          // Purge in-memory sessions so the removed workspace's sessions no
+          // longer appear in getSessions() / the shell's project overview.
+          await sessionManager?.removeWorkspaceSessions(workspaceId)
+        }
+        return removed
       })
 
       // Cross-server RPC — invoke a channel on an arbitrary remote server

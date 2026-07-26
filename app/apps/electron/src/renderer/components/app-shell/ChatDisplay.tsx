@@ -68,7 +68,7 @@ import { ChatInputZone, type StructuredInputState, type StructuredResponse, type
 import type { RichTextInputHandle } from "@/components/ui/rich-text-input"
 import { useBackgroundTasks } from "@/hooks/useBackgroundTasks"
 import { useTurnCardExpansion } from "@/hooks/useTurnCardExpansion"
-import { useNavigation } from "@/contexts/NavigationContext"
+import { useNavigation } from "@/context/NavigationContext"
 import { useAppShellContext } from "@/context/AppShellContext"
 import { navigate, routes } from "@/lib/navigate"
 import { CHAT_LAYOUT } from "@/config/layout"
@@ -1745,7 +1745,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                                 enabledSourceSlugs: session.enabledSourceSlugs,
                               }
                             )
-                            navigate(routes.view.allSessions(child.id), { newPanel: resolveBranchNewPanelOption(options) })
+                            navigate(routes.view.sessionHome({
+                              id: child.id,
+                              workingDirectory: child.workingDirectory ?? session.workingDirectory,
+                              workspaceId: child.workspaceId ?? session.workspaceId,
+                            }), { newPanel: resolveBranchNewPanelOption(options) })
                           } catch (error) {
                             const rawMessage = error instanceof Error ? error.message : 'Failed to create branch'
                             const message = rawMessage.includes('source and target providers must match')

@@ -40,6 +40,16 @@ export type SessionStatus = string
 export type BuiltInStatusId = 'todo' | 'in-progress' | 'needs-review' | 'done' | 'cancelled'
 
 /**
+ * Session-list scope requested by a UI client.
+ *
+ * The desktop Project overview is the only broad scope. CLI, WebUI and remote
+ * callers keep the transport client's single-Workspace scope.
+ */
+export interface GetSessionsOptions {
+  scope?: 'workspace' | 'local-project-overview'
+}
+
+/**
  * Electron-specific Session type (includes runtime state).
  * Extends core Session with messages array and processing state.
  */
@@ -724,7 +734,12 @@ export interface UpdateInfo {
   available: boolean
   currentVersion: string
   latestVersion: string | null
-  downloadState: 'idle' | 'downloading' | 'ready' | 'installing' | 'error'
+  /**
+   * `disabled` means no Fleet-controlled update channel is configured, so the updater performs no
+   * network call at all. This is a first-class state, not a failure: Fleet is a fork of Craft, and
+   * installing an upstream Craft binary over it would erase the fork (Decision P8, spec R2-C2).
+   */
+  downloadState: 'idle' | 'disabled' | 'downloading' | 'ready' | 'installing' | 'error'
   downloadProgress: number
   error?: string
 }

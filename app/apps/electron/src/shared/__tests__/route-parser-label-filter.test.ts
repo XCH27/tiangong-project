@@ -48,3 +48,28 @@ describe('route-parser: label filter routes', () => {
     expect(segments[segments.indexOf('session') + 1]).toBe('abc123')
   })
 })
+
+describe('route-parser: Project and Conversations routes', () => {
+  it('round-trips a Project-scoped Session without losing the Workspace id', () => {
+    const route = routes.view.projectSessions('session-1', 'workspace/with spaces')
+    expect(route).toBe('projectSessions/ws/workspace%2Fwith%20spaces/session/session-1')
+
+    const state = parseRouteToNavigationState(route)
+    if (!state || !isSessionsNavigation(state)) throw new Error('expected sessions navigation state')
+    expect(state.filter).toEqual({
+      kind: 'projectSessions',
+      workspaceId: 'workspace/with spaces',
+    })
+    expect(state.details).toEqual({ type: 'session', sessionId: 'session-1' })
+    expect(buildRouteFromNavigationState(state)).toBe(route)
+  })
+
+  it('round-trips a folder-less Session under Conversations', () => {
+    const route = routes.view.conversations('session-2')
+    const state = parseRouteToNavigationState(route)
+    if (!state || !isSessionsNavigation(state)) throw new Error('expected sessions navigation state')
+    expect(state.filter).toEqual({ kind: 'conversations' })
+    expect(state.details).toEqual({ type: 'session', sessionId: 'session-2' })
+    expect(buildRouteFromNavigationState(state)).toBe(route)
+  })
+})

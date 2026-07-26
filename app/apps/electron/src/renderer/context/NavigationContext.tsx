@@ -16,7 +16,7 @@
  * (and thus scroll position, streaming state, etc.).
  *
  * Usage:
- *   import { useNavigation, useNavigationState } from '@/contexts/NavigationContext'
+ *   import { useNavigation, useNavigationState } from '@/context/NavigationContext'
  *   import { routes } from '@/shared/routes'
  *
  *   const { navigate } = useNavigation()
@@ -536,36 +536,51 @@ export function NavigationProvider({
   // Always excludes hidden sessions - they should never appear in navigation
   const filterSessionsByFilter = useCallback(
     (filter: SessionFilter): SessionMeta[] => {
-      // First filter out hidden sessions - they should never appear in any view
-      const visibleSessions = sessionMetas.filter(
-        s => !s.hidden && (!workspaceId || s.workspaceId === workspaceId)
-      )
+      // Hidden sessions never appear. Project/conversation lists are cross-workspace
+      // (local multi-folder shell); other filters stay on the active workspace unless
+      // the session already belongs to the remote twin id.
+      const inActiveWorkspace = (s: SessionMeta) =>
+        !workspaceId
+        || s.workspaceId === workspaceId
+        || (!!remoteWorkspaceId && s.workspaceId === remoteWorkspaceId)
+
+      const visibleSessions = sessionMetas.filter(s => !s.hidden)
 
       return visibleSessions.filter((session) => {
         switch (filter.kind) {
           case 'allSessions':
-            return session.isArchived !== true
+            return session.isArchived !== true && inActiveWorkspace(session)
+          case 'projectSessions': {
+            if (session.isArchived === true) return false
+            if (!session.workingDirectory) return false
+            if (filter.workspaceId) return session.workspaceId === filter.workspaceId
+            // Unscoped: every folder-bound session across loaded workspaces
+            return true
+          }
+          case 'conversations':
+            return session.isArchived !== true && !session.workingDirectory
           case 'flagged':
             return session.isFlagged === true && session.isArchived !== true
           case 'archived':
             return session.isArchived === true
           case 'state':
-            return session.sessionStatus === filter.stateId && session.isArchived !== true
+            return session.sessionStatus === filter.stateId && session.isArchived !== true && inActiveWorkspace(session)
           case 'label': {
             if (session.isArchived === true) return false
+            if (!inActiveWorkspace(session)) return false
             // Shared predicate — descendant-aware and project-scoped, matching
             // exactly what the session list renders (auto-select must agree).
             return matchesLabelFilter(session, filter, labelConfigs)
           }
           case 'view':
             if (session.isArchived === true) return false
-            return true
+            return inActiveWorkspace(session)
           default:
             return false
         }
       })
     },
-    [sessionMetas, workspaceId, labelConfigs]
+    [sessionMetas, workspaceId, remoteWorkspaceId, labelConfigs]
   )
 
   const getFirstSessionId = useCallback(
@@ -622,15 +637,42 @@ export function NavigationProvider({
     (newState: NavigationState, options?: { skipAutoSelect?: boolean }): NavigationState => {
       let nextState = newState
 
-      // Validate session exists in current workspace (local or remote ID)
+      // Validate session exists and is allowed for this navigator.
+      // R1 clause 1: 项目 / 对话 / flagged / archived are cross-workspace lists (soft multi-folder).
+      // Do NOT require shell activeWorkspaceId for those — that made sidebar clicks look dead.
       if (isSessionsNavigation(nextState) && nextState.details) {
         const freshMetaMap = store.get(sessionMetaMapAtom)
         const meta = freshMetaMap.get(nextState.details.sessionId)
-        const matchesWorkspace = !workspaceId
-          || meta?.workspaceId === workspaceId
-          || (remoteWorkspaceId && meta?.workspaceId === remoteWorkspaceId)
-        if (!meta || !matchesWorkspace) {
+        if (!meta) {
           nextState = { ...nextState, details: null }
+        } else {
+          const filter = nextState.filter
+          const crossWorkspace =
+            filter.kind === 'projectSessions'
+            || filter.kind === 'conversations'
+            || filter.kind === 'flagged'
+            || filter.kind === 'archived'
+          if (crossWorkspace) {
+            if (filter.kind === 'projectSessions') {
+              if (!meta.workingDirectory) {
+                nextState = { ...nextState, details: null }
+              } else if (filter.workspaceId && meta.workspaceId !== filter.workspaceId) {
+                nextState = { ...nextState, details: null }
+              }
+            } else if (filter.kind === 'conversations') {
+              if (meta.workingDirectory) {
+                nextState = { ...nextState, details: null }
+              }
+            }
+            // flagged/archived: any known meta is valid
+          } else {
+            const matchesWorkspace = !workspaceId
+              || meta.workspaceId === workspaceId
+              || (remoteWorkspaceId && meta.workspaceId === remoteWorkspaceId)
+            if (!matchesWorkspace) {
+              nextState = { ...nextState, details: null }
+            }
+          }
         }
       }
 
@@ -713,7 +755,32 @@ export function NavigationProvider({
           if (parsed.params.project) {
             createOptions.projectId = parsed.params.project
           }
-          const session = await onCreateSession(workspaceId, createOptions)
+          // Prefer explicit workspaceId so "new task in project B" does not require
+          // switching the whole shell off project A / 对话.
+          const createInWorkspaceId = parsed.params.workspaceId || workspaceId
+          if (!createInWorkspaceId) return
+
+          // Defense: project-targeted create without workdir still binds the project folder.
+          // Empty My Workspace often has no defaults.workingDirectory; bare workspaceId +
+          // user_default would resolve to no WD and land under 对话.
+          if (
+            !createOptions.workingDirectory
+            && parsed.params.workspaceId
+            && typeof window !== 'undefined'
+            && window.electronAPI?.getWorkspaces
+          ) {
+            try {
+              const allWorkspaces = await window.electronAPI.getWorkspaces()
+              const target = allWorkspaces.find(w => w.id === parsed.params.workspaceId)
+              if (target?.rootPath) {
+                createOptions.workingDirectory = target.rootPath
+              }
+            } catch (err) {
+              console.warn('[Navigation] Failed to resolve project folder for new session:', err)
+            }
+          }
+
+          const session = await onCreateSession(createInWorkspaceId, createOptions)
 
           if (parsed.params.name) {
             await window.electronAPI.sessionCommand(session.id, { type: 'rename', name: parsed.params.name })
@@ -733,16 +800,24 @@ export function NavigationProvider({
             await window.electronAPI.sessionCommand(session.id, { type: 'setLabels', labels: [parsed.params.label] })
           }
 
-          // Determine navigation filter
+          // Land from the *resolved* session, not raw route intent (user_default may store no WD).
+          const resolvedWd = session.workingDirectory
+          const folderBound = !!resolvedWd
+          const projectWorkspaceId = session.workspaceId || parsed.params.workspaceId || createInWorkspaceId
           const filter: import('../../shared/types').SessionFilter =
             parsed.params.status ? { kind: 'state', stateId: parsed.params.status } :
             parsed.params.label ? { kind: 'label', labelId: parsed.params.label } :
-            { kind: 'allSessions' }
+            folderBound ? { kind: 'projectSessions', workspaceId: projectWorkspaceId } :
+            { kind: 'conversations' }
+
+          const newSessionRoute = folderBound
+            ? routes.view.projectSessions(session.id, projectWorkspaceId)
+            : routes.view.conversations(session.id)
 
           if (options?.newPanel) {
             // Open the new session in a new panel using lane-aware routing (pushPanel auto-focuses it)
             pushPanel({
-              route: routes.view.allSessions(session.id) as ViewRoute,
+              route: newSessionRoute as ViewRoute,
               targetLaneId: options.targetLaneId,
               intent: 'explicit',
             })
@@ -1015,12 +1090,12 @@ export function NavigationProvider({
         // Replace all params with the saved workspace's URL
         url.search = savedSearch
       } else {
-        // No saved state — default to allSessions
+        // No saved state — default to 项目 (folder-bound work list)
         for (const key of [...url.searchParams.keys()]) {
           url.searchParams.delete(key)
         }
         url.searchParams.set('ws', workspaceSlug)
-        url.searchParams.set('route', 'allSessions')
+        url.searchParams.set('route', 'projectSessions')
       }
 
       // Push a new history entry for the workspace switch
@@ -1065,9 +1140,9 @@ export function NavigationProvider({
     reconcileFromUrlParamsRef.current(params)
     lastSemanticHistoryKeyRef.current = getSemanticHistoryKey()
 
-    // If nothing was in the URL, navigate to default
+    // If nothing was in the URL, navigate to default (项目 list)
     if (!params.get('route') && !params.get('panels')) {
-      navigate(routes.view.allSessions())
+      navigate(routes.view.projectSessions())
     }
 
     // Initialize history with seq=0 (replaceState so we don't create an extra entry)
@@ -1203,15 +1278,78 @@ export function NavigationProvider({
   }, [navigationState, navigate])
 
   const navigateToSession = useCallback((sessionId: string) => {
+    const meta = store.get(sessionMetaMapAtom).get(sessionId)
+    const rehomeByMeta = (resolvedMeta = meta) => {
+      navigate(routes.view.sessionHome({
+        id: sessionId,
+        workingDirectory: resolvedMeta?.workingDirectory,
+        workspaceId: resolvedMeta?.workspaceId,
+      }))
+    }
+
+    if (!meta) {
+      // Notifications and browser ownership can arrive before the overview
+      // snapshot. Resolve the Session before choosing Project vs Conversations;
+      // guessing "folder-less" here opens the wrong home.
+      void window.electronAPI.getSessionMessages(sessionId)
+        .then(session => {
+          if (!session) return
+          rehomeByMeta(session)
+        })
+        .catch(error => {
+          console.error(`[Navigation] Failed to resolve session ${sessionId}:`, error)
+        })
+      return
+    }
+
     if (!isSessionsNavigation(navigationState)) {
-      navigate(routes.view.allSessions(sessionId))
+      rehomeByMeta()
       return
     }
 
     const filter = navigationState.filter
+    // Preserve specialized filters (flagged/label/…) only when the session belongs there.
+    // For 项目/对话/allSessions, rehome if the session does not match the current list —
+    // otherwise sidebar trees and cross-section clicks look broken.
+    const matchesCurrentList = (() => {
+      if (!meta) return false
+      switch (filter.kind) {
+        case 'projectSessions':
+          if (!meta.workingDirectory) return false
+          if (filter.workspaceId && meta.workspaceId !== filter.workspaceId) return false
+          return true
+        case 'conversations':
+          return !meta.workingDirectory
+        case 'flagged':
+          return meta.isFlagged === true && meta.isArchived !== true
+        case 'archived':
+          return meta.isArchived === true
+        case 'allSessions':
+          return meta.isArchived !== true
+        case 'state':
+        case 'label':
+        case 'view':
+          return true
+        default:
+          return false
+      }
+    })()
+
+    if (!matchesCurrentList) {
+      rehomeByMeta()
+      return
+    }
+
     switch (filter.kind) {
       case 'allSessions':
-        navigate(routes.view.allSessions(sessionId))
+        // Legacy hybrid list — prefer the R1 clause-1 home so create/bind stay consistent.
+        rehomeByMeta()
+        break
+      case 'projectSessions':
+        navigate(routes.view.projectSessions(sessionId, filter.workspaceId ?? meta?.workspaceId))
+        break
+      case 'conversations':
+        navigate(routes.view.conversations(sessionId))
         break
       case 'flagged':
         navigate(routes.view.flagged(sessionId))
@@ -1229,9 +1367,9 @@ export function NavigationProvider({
         navigate(routes.view.view(filter.viewId, sessionId))
         break
       default:
-        navigate(routes.view.allSessions(sessionId))
+        rehomeByMeta()
     }
-  }, [navigationState, navigate])
+  }, [navigationState, navigate, store])
 
   // =========================================================================
   // AUTO-SELECT ON SESSION LOAD

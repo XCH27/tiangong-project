@@ -8,7 +8,7 @@ import { fuzzyScore } from "@craft-agent/shared/search"
 import { getSessionTitle, getSessionStatus } from "@/utils/session"
 import type { SessionMeta } from "@/atoms/sessions"
 import type { ViewConfig } from "@craft-agent/shared/views"
-import type { SessionFilter } from "@/contexts/NavigationContext"
+import type { SessionFilter } from "@/context/NavigationContext"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -252,6 +252,16 @@ export function sessionMatchesCurrentFilter(
     case 'allSessions':
       return session.isArchived !== true
 
+    case 'projectSessions': {
+      if (session.isArchived === true) return false
+      if (!session.workingDirectory) return false
+      if (currentFilter.workspaceId) return session.workspaceId === currentFilter.workspaceId
+      return true
+    }
+
+    case 'conversations':
+      return session.isArchived !== true && !session.workingDirectory
+
     case 'flagged':
       return session.isFlagged === true && session.isArchived !== true
 
@@ -305,6 +315,16 @@ export function useSessionSearch({
   const [isSearchUnavailable, setIsSearchUnavailable] = useState(false)
   const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY_LIMIT)
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const contentSearchWorkspaceIds = useMemo(() => {
+    const ids = new Set(
+      items
+        .map(item => item.workspaceId)
+        .filter((id): id is string => Boolean(id)),
+    )
+    if (workspaceId) ids.add(workspaceId)
+    return [...ids].sort()
+  }, [items, workspaceId])
+  const contentSearchWorkspaceKey = contentSearchWorkspaceIds.join('\u0000')
 
   // Search mode is active when search is open AND query has 2+ characters
   const isSearchMode = searchActive && searchQuery.length >= 2
@@ -313,7 +333,7 @@ export function useSessionSearch({
   // --- Content search (ripgrep IPC with debounce + cancellation) ---
 
   useEffect(() => {
-    if (!workspaceId || !isSearchMode) {
+    if (contentSearchWorkspaceIds.length === 0 || !isSearchMode) {
       setContentSearchResults(new Map())
       return
     }
@@ -330,7 +350,12 @@ export function useSessionSearch({
         searchLog.info('ipc:call', { searchId })
         const ipcStart = performance.now()
 
-        const results = await window.electronAPI.searchSessionContent(workspaceId, searchQuery, searchId)
+        const resultGroups = await Promise.all(
+          contentSearchWorkspaceIds.map((id, index) =>
+            window.electronAPI.searchSessionContent(id, searchQuery, `${searchId}:${index}`)
+          ),
+        )
+        const results = resultGroups.flat()
 
         if (cancelled) return
 
@@ -375,7 +400,7 @@ export function useSessionSearch({
       clearTimeout(timer)
       setIsSearchingContent(false)
     }
-  }, [workspaceId, isSearchMode, searchQuery])
+  }, [contentSearchWorkspaceKey, isSearchMode, searchQuery])
 
   // --- Focus search input when search activates ---
 
