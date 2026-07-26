@@ -344,21 +344,6 @@
   implemented callers**, never built speculatively first. Dependency edges describe required
   integration, not a permission system — the owner may request any capability early, and its status
   then reports the unresolved edges honestly. (2026-07-16; time-flavored labels removed 2026-07-17)
-- **G5 — Coverage and sequencing are separate.** Every product domain (canvas, video, browser,
-  memory, tokens, sandbox, messaging, workflows, design, deck, jobs, remote…) stays registered and
-  described at breadth
-  at breadth level in [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md) and
-  [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) at all times, with its reference projects
-  and gates named. Integration order never deletes a domain from design; matrix/page rows update in
-  the same slice that changes their facts; depth (full specs) is written when a domain activates or
-  the owner requests it. (2026-07-17)
-- **G6 — Frontend track: pages may run ahead of behavior, honestly.** Complete page specs are
-  encouraged ahead of backend work. Early page builds are allowed when: the page spec exists
-  ([`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) §5); data flows through a typed adapter
-  with mocks behind the adapter (never in components); unwired pages are reachable only behind the
-  developer/preview toggle; status is reported `display-only` until actual behavior is connected.
-  The default user surface
-  never ships a control without real behavior. (2026-07-17)
 - **G3 — Verification is split: agents own everything below look-and-feel.** Agents run static
   checks, targeted tests, real non-visual data paths, and non-interactive smoke checks
   ([`09-QUALITY.md`](09-QUALITY.md)) without asking. Routine interactive/visual acceptance belongs
@@ -370,3 +355,25 @@
   deleted after unique active facts migrate; they are not archived in-tree. Durable design assets
   remain in `design-library/` or module packets because they guide their ordered product rows,
   not because they commemorate prior process. (2026-07-16; clarified 2026-07-17)
+- **G5 — Coverage and sequencing are separate.** Every product domain (canvas, video, browser,
+  memory, tokens, sandbox, messaging, workflows, design, deck, jobs, remote…) stays registered and
+  described at breadth level in [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md) and
+  [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) at all times, with its reference projects
+  and gates named. Integration order never deletes a domain from design; matrix/page rows update in
+  the same slice that changes their facts; depth (full specs) is written when a domain activates or
+  the owner requests it. (2026-07-17)
+- **G6 — Frontend track: pages may run ahead of behavior, honestly.** Complete page specs are
+  encouraged ahead of backend work. Early page builds are allowed when: the page spec exists
+  ([`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) §5); data flows through a typed adapter
+  with mocks behind the adapter (never in components); unwired pages are reachable only behind the
+  developer/preview toggle; status is reported `display-only` until actual behavior is connected.
+  The default user surface
+  never ships a control without real behavior. (2026-07-17)
+- **G7 — Sidebar trailing-meta at-rest visibility: OPEN, owner confirmation required.** Facts of
+  record: an always-visible decision was claimed in a commit message on 2026-07-26 (d25b763f6,
+  "second walkthrough round"); the same day, fa5ee7460 reverted it with no recorded rationale.
+  HEAD implements hover-reveal with one at-rest visibility language per sidebar level
+  ([`UI-SPEC.md`](UI-SPEC.md) §8). Neither state is confirmed as the owner's standing intent: the
+  owner must confirm hover-reveal vs always-visible at the next walkthrough, as one decision
+  applied to the whole level. Until then, hover-reveal remains the implemented baseline and no
+  agent may flip it. (recorded 2026-07-26; status OPEN)

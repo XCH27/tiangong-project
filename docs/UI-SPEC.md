@@ -19,8 +19,8 @@ Observed drift that this file exists to make impossible:
 | Drifted value | Why it is wrong |
 |---|---|
 | `text-foreground/32`, `/38`, `/48`, `/[0.055]` | absent from both snapshots; the ladder is §3 |
-| `rounded-[22px]` | radius scale tops out at `rounded-[12px]` (§5) |
-| `shadow-[0_18px_50px_rgba(0,0,0,0.07)]` | three shadow tokens exist (§6); arbitrary shadows are forbidden |
+| `rounded-[22px]` | absent from both snapshots; the preferred scale tops out at `rounded-[12px]` and the inherited tail is a closed list (§5) |
+| `shadow-[0_18px_50px_rgba(0,0,0,0.07)]` | shadows come from the enforced allowlist (§6); arbitrary shadows are forbidden |
 | `strokeWidth={1.9}` | icons own their stroke (§4) |
 | `h-3.5 w-3.5` icon in an `h-5 w-5` slot | row action slot is 24 px (§4) |
 | 28 px centered hero title | no surface in either snapshot uses a hero (§9) |
@@ -135,11 +135,25 @@ Rules:
 | `rounded-[12px]` | largest permitted container radius |
 | `rounded-full` | avatars, status dots, pills only |
 
-**Not permitted:** `rounded-xl`, `rounded-2xl`, and any `rounded-[Npx]` above 12 px.
+The table is the preferred scale for **new** work. The pinned v0.10.5 baseline itself carries an
+inherited tail above it — 23× `rounded-xl`, 7× `rounded-2xl`, plus `rounded-[14px]`,
+`rounded-[16px]`, `rounded-[20px]` and `rounded-[36px]` — including production components retained
+in the current tree (`ContentFrame`, `DocumentFormattedMarkdownOverlay`, `UserMessageBubble`,
+`SessionInfoPopover`, the `App.tsx` error card). Reuse in matching contexts is fine; do not add new
+values. (This section previously banned that tail outright, which contradicted the measured
+baseline — corrected 2026-07-26, the same defect class as the §6 correction.)
+
+**Not permitted in new work:** `rounded-xl` / `rounded-2xl` and any `rounded-[Npx]` above 12 px,
+unless the exact value already exists in the v0.10.5 component you are modifying.
 
 ## 6. Elevation
 
-Exactly three shadow tokens exist. Use them by name:
+The named shadow utilities are the only elevation vocabulary. The enforced allowlist is the
+`allowedClasses` option of `craft-styles/no-nonstandard-shadows` (a build-blocking error) in **two**
+configs kept identical: `app/apps/electron/eslint.config.mjs` and `app/packages/ui/eslint.config.mjs`.
+(The rule implementation exists as byte-identical copies under each package's `eslint-rules/`; its
+built-in defaults are overridden by those options, so the configs are the authority, not the rule
+file.) Prefer these three for new work:
 
 | Token | Use |
 |---|---|
@@ -147,8 +161,18 @@ Exactly three shadow tokens exist. Use them by name:
 | `--shadow-minimal-flat` | same weight without the vertical offset |
 | `--shadow-modal-small` | dialogs, popovers, floating panels |
 
-**Arbitrary `shadow-[…]` values are forbidden.** If a surface needs elevation that these three do not
-express, that is a design question for the owner, not a local override.
+The table names CSS variables. `shadow-minimal` and `shadow-modal-small` also exist as allowlisted
+utility classes; `--shadow-minimal-flat` does **not** — it is applied only through a variable remap
+(e.g. `PanelSlot`'s `'--shadow-minimal': 'var(--shadow-minimal-flat)'`), and writing
+`shadow-minimal-flat` as a className trips the lint.
+
+The remaining allowlisted utilities (`shadow-none/-xs/-thin/-middle/-strong/-tinted/-bottom-border/
+-bottom-border-thin/-panel-focused`) are inherited Craft tokens that existing surfaces already use —
+reuse in matching contexts is fine; do not add new names. (This section previously claimed "exactly
+three tokens exist", which contradicted the enforced rule — corrected 2026-07-26.)
+
+**Arbitrary `shadow-[…]` values and inline `boxShadow` are forbidden.** If a surface needs elevation
+the allowlist does not express, that is a design question for the owner, not a local override.
 
 ## 7. Spacing
 
@@ -177,6 +201,13 @@ transitions opacity duration-150 · transform duration-200
 A row action added to this component is a **sibling overlay**, never a nested `<button>` inside the
 row button (nested interactive elements break keyboard and hit-testing). It occupies the 24 px slot
 from §4 and stays keyboard reachable when hover-revealed.
+
+**At-rest visibility of trailing elements (policy).** All trailing elements on a sidebar level
+(counts, after-title meta, row actions) share one at-rest visibility language. The current baseline
+is hover-reveal, as measured above. Switching any element to always-visible is a single owner
+decision applied to the whole level, never a per-control fork. Status: **awaiting owner
+re-confirmation** — an always-visible decision was claimed and reverted on 2026-07-26; see
+[`02-DECISIONS.md`](02-DECISIONS.md) G7 for the open decision record.
 
 ### Menu / popover / tooltip / dialog / entity row / panel header
 
@@ -243,7 +274,7 @@ git diff -U0 | grep -E '^\+' | grep -oE 'foreground/(\[[0-9.]+\]|[0-9]+)' | sort
 ```
 
 ```bash
-git diff -U0 | grep -E '^\+' | grep -nE 'shadow-\[|rounded-(xl|2xl|3xl)|rounded-\[(1[3-9]|[2-9][0-9])px\]|strokeWidth=|text-\[(1[6-9]|[2-9][0-9])(\.[0-9]+)?px\]'
+git diff -U0 | grep -E '^\+' | grep -nE 'shadow-\[|rounded-(xl|2xl|3xl)|text-(xl|2xl|3xl)|rounded-\[(1[3-9]|[2-9][0-9])px\]|strokeWidth=|text-\[(1[6-9]|[2-9][0-9])(\.[0-9]+)?px\]'
 ```
 
 Both must come back empty, or every hit must be named in the Goal's intentional delta. Verified
