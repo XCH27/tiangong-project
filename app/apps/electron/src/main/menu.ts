@@ -1,4 +1,5 @@
 import { Menu, app, shell, BrowserWindow } from 'electron'
+import { join } from 'path'
 import { i18n } from '@craft-agent/shared/i18n'
 import { RPC_CHANNELS, type BroadcastEventMap } from '../shared/types'
 import { EDIT_MENU, VIEW_MENU, WINDOW_MENU } from '../shared/menu-schema'
@@ -236,6 +237,15 @@ export async function rebuildMenu(): Promise<void> {
           label: i18n.t("menu.helpAndDocs"),
           click: () => shell.openExternal('https://agents.craft.do/docs')
         },
+        // Preview-gated surfaces (G6 frontend track) live in the component
+        // playground; until now the page was built but had no entry point.
+        ...(isDebugMode ? [{
+          label: i18n.t("menu.componentPlayground"),
+          click: () => {
+            const win = new BrowserWindow({ width: 1280, height: 860, title: i18n.t("menu.componentPlayground") })
+            void win.loadFile(join(__dirname, 'renderer/playground.html'))
+          }
+        }] : []),
         {
           label: i18n.t("menu.keyboardShortcuts"),
           accelerator: 'CmdOrCtrl+/',

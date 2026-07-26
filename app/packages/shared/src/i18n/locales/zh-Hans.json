@@ -533,6 +533,7 @@
   "menu.allDocumentation": "全部文档",
   "menu.checkForUpdates": "检查更新",
   "menu.checkForUpdatesEllipsis": "检查更新…",
+  "menu.componentPlayground": "组件预览（Playground）",
   "menu.copy": "复制",
   "menu.craftMenu": "Craft 菜单",
   "menu.cut": "剪切",
