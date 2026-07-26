@@ -145,7 +145,7 @@ export function TaskTile({
         'group relative overflow-hidden rounded-lg border border-border/60 bg-card shadow-minimal',
         'cursor-pointer transition-colors hover:border-border focus-visible:outline-none',
         'focus-visible:ring-2 focus-visible:ring-ring/50',
-        isLive && 'ring-1 shadow-tinted'
+        isLive && 'ring-1'
       )}
       style={isLive ? ({ ['--tw-ring-color' as string]: accent } as React.CSSProperties) : undefined}
     >

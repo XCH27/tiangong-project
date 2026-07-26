@@ -31,7 +31,7 @@ export function FabNewChat({ onClick, className }: FabNewChatProps) {
         "fixed right-4 z-30 size-14 rounded-full",
         "bg-accent text-white",
         "flex items-center justify-center",
-        "shadow-strong",
+        "shadow-modal-small",
         "transition-all duration-150",
         "hover:scale-105",
         "active:scale-95",
