@@ -30,6 +30,7 @@ import {
   Bot,
   Info,
   MailOpen,
+  CheckCheck,
   FolderKanban,
   MessageSquareText,
   Folder,
@@ -113,7 +114,11 @@ import { resolveEntityColor } from "@craft-agent/shared/colors"
 import * as storage from "@/lib/local-storage"
 import { toast } from "sonner"
 import { navigate, routes } from "@/lib/navigate"
-import { R1_HIDE_NESTED_PROJECT_ID_UI } from "@/lib/r1-product-gates"
+import {
+  R1_HIDE_NESTED_PROJECT_FILTER_UI,
+  R1_HIDE_NESTED_PROJECT_ID_UI,
+} from "@/lib/r1-product-gates"
+import { getUnreadSessionIds } from "@/lib/session-list-read"
 import {
   useNavigation,
   useNavigationState,
@@ -242,7 +247,6 @@ function AppShellContent({
     onOpenStoredUserPreferences,
     onReset,
     onSendMessage,
-    openNewChat,
     pendingPermissions,
   } = contextValue
 
@@ -449,7 +453,9 @@ function AppShellContent({
 
   // Derive current view's project filter as a Map<projectId, FilterMode>
   const projectFilter = useMemo(() => {
-    if (!sessionFilterKey) return new Map<string, FilterMode>()
+    if (R1_HIDE_NESTED_PROJECT_FILTER_UI || !sessionFilterKey) {
+      return new Map<string, FilterMode>()
+    }
     const entry = viewFiltersMap[sessionFilterKey]?.projects ?? {}
     return new Map<string, FilterMode>(Object.entries(entry) as [string, FilterMode][])
   }, [viewFiltersMap, sessionFilterKey])
@@ -1381,6 +1387,12 @@ function AppShellContent({
 
     return result
   }, [workspaceSessionMetas, activeSessionMetas, allActiveSessionMetas, allSessionMetas, sessionFilter, listFilter, labelFilter, projectFilter, labelConfigs, evaluateViews])
+
+  const handleMarkFilteredSessionsRead = useCallback(() => {
+    for (const sessionId of getUnreadSessionIds(filteredSessionMetas)) {
+      onMarkSessionRead(sessionId)
+    }
+  }, [filteredSessionMetas, onMarkSessionRead])
 
   // Derive "pinned" (non-removable) filters from the current sessionFilter path.
   // These represent filters that are implicit in the current deeplink/route and
@@ -2771,6 +2783,12 @@ function AppShellContent({
                           <>
                             {/* === HIERARCHICAL MODE (default) === */}
 
+                            <StyledDropdownMenuItem onClick={handleMarkFilteredSessionsRead}>
+                              <CheckCheck className="h-3.5 w-3.5" />
+                              <span className="flex-1">{t("sidebarMenu.markAllRead")}</span>
+                            </StyledDropdownMenuItem>
+                            <StyledDropdownMenuSeparator />
+
                             {/* Active filter chips: pinned (non-removable) + user-added (removable) */}
                             {(pinnedFilters.pinnedFlagged || pinnedFilters.pinnedStatusId || pinnedFilters.pinnedLabelId || listFilter.size > 0 || labelFilter.size > 0 || projectFilter.size > 0) && (
                               <>
@@ -3050,7 +3068,7 @@ function AppShellContent({
                             </DropdownMenuSub>
 
                             {/* Projects submenu - flat list of workspace projects */}
-                            {projectMenuOptions.length > 0 && (
+                            {!R1_HIDE_NESTED_PROJECT_FILTER_UI && projectMenuOptions.length > 0 && (
                               <DropdownMenuSub>
                                 <StyledDropdownMenuSubTrigger>
                                   <FolderKanban className="h-3.5 w-3.5" />

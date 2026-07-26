@@ -109,6 +109,23 @@ Dispatch rules:
 | TE1-OBS — cache-alignment observation | read-only | `specs/TE1-cache-alignment.md` | measurements + report | — | open |
 | DOCS-COV — matrix/page coverage refresh after merges | branch | Decision G5 coverage track | `docs/11-PRODUCT-MATRIX.md`, `docs/12-PAGE-ARCHITECTURE.md` rows | all merged | open |
 
+### Execution queue (2026-07-26)
+
+The R1 overlap audit is the bounded execution map; choose the first unblocked row and keep owner
+checkpoints intact.
+
+| Order | Slice | State | Next evidence / checkpoint |
+|---:|---|---|---|
+| 1 | Wave 1: S1 Mark All Read + S2 dead-code review + O4 nested-project filter gate | landed — `wired but not visually checked` | typecheck, targeted regression test and UI-SPEC §12 checks passed; owner walks the list-header action |
+| 2 | S6 New Task noun unification (G8) | landed | seven-locale parity/sort/coverage/literal gates passed |
+| 3 | S8 registry-truth sync (non-visual rows only) | landed | doc-contract validator passed; visible Labels preview gate remains owner-gated |
+| 4 | S3→S4 compact workspace-create/switch convergence | owner-gated | owner confirms compact local-create behavior, then rendered walkthrough |
+| 5 | S7 sidebar-leaf Session menu | owner-gated | owner chooses shared menu vs navigation-only leaves |
+| 6 | O14 deep-link gates + intake item D stale-chip lifecycle | owner-gated | explicit product decisions |
+
+Still outside these slices: R0 tag/walkthrough (R0-C7), the docs-MCP default, and final visual
+acceptance. Conditional intake item C remains tied to remote-workspace transfer.
+
 Execution record, honest: the landed packets above ran serially as direct commits on
 `work/fresh-base-spine` by the integration agent — not as `work/<packet-id>` branches merged by
 the integrator as rule 1 prescribes. Recorded as-is; whether the rule or the practice changes is

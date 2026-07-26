@@ -108,14 +108,14 @@ merge; ✋ = blocked on an open question in §5.
 
 | Slice | Contents (cluster rows) | Depends on | Flags |
 |---|---|---|---|
-| **S1 — Restore Mark All Read** | O1 (restore the affordance at the owner-chosen home) | Q1 answered | ✋ 🚶 (small, but it is the audit's only capability restoration — owner should see it) |
-| **S2 — Dead-code hygiene** | O9, O10, O11, O12 (four REMOVEs) + O8 (openNewChat MERGE) | none | Owner sign-off on the file list (tree diverges from snapshot inventory); zero user-visible change, verifiable by grep + build |
+| **S1 — Restore Mark All Read** | O1 (list-header menu, current filtered view; G9) | Q1 answered | landed `wired but not visually checked`; 🚶 owner should see the restored action |
+| **S2 — Dead-code hygiene** | REMOVE O9/O12; MERGE O8; KEEP-LATER O10/O11 after the owner's four-check review | none | landed; zero user-visible change, verified by caller audit + typecheck |
 | **S3 — One workspace-create/switch language** | O2 + O3: shared workspace-list model + command set; compact drawer becomes renderer-only and adopts the two-action create language | none | 🚶 (compact mode changes are visible; walk the drawer before/after) |
 | **S4 — Shared workspace-target list body** | O7 (+ boot `WorkspacePicker` presentational convergence from O2) | S3 (consumes its shared list body) | — |
-| **S5 — Project-identity read-side + deep-link gates** | O4 (nested `projectId` filter re-point/gate) + O14 (`board`/`allSessions` prefix gates in `r1-product-gates.ts`) | Q5, Q6 answered | ✋; pure gating — no deletion of Board/parser code |
-| **S6 — Create-verb i18n catalog pass** | O5 (all seven locales in one slice; drop `projectInfo.newSessionButton`) | Q4 answered | ✋; wording-only, run UI-SPEC §12 self-check |
+| **S5 — Project-identity read-side + deep-link gates** | O4 nested `projectId` filter gated in wave 1; O14 (`board`/`allSessions`) remains owner-gated | Q5 answered by docs-consistent delegation; Q6 open | O4 landed; O14 open; no deletion of Board/parser code |
+| **S6 — Create-verb i18n catalog pass** | O5 (all seven locales in one slice; drop `projectInfo.newSessionButton`) | Q4 answered by G8 | landed; i18n gates + UI-SPEC §12 self-check passed |
 | **S7 — Sidebar leaf session menus** | O6 (attach existing `SessionMenu` definition, or record navigation-only decision) | Q2 answered | ✋ 🚶 |
-| **S8 — Registry truth pass** | O21 + O22 (doc corrections + `navigation-registry.ts` shrink) + O16 (labels identity section behind preview gate) | none | O16 changes a visible settings page — owner nod on the gating |
+| **S8 — Registry truth pass** | O21 page rows corrected + O22 `navigation-registry.ts` reduced to its live metadata type; O16 labels preview gate remains | none | non-visual truth pass landed; O16 remains owner-gated |
 | **Standing rule (no slice)** | O13: SurfaceState adoption rides each page's owning release slice — never a big-bang restyle | per page | Record as a review-checklist item |
 | **Parked (no action this cycle)** | O15, O17, O18, O19, O20 (LATER set; O20 unlocks only after S1) | as noted | — |
 
@@ -123,15 +123,16 @@ S2 and S8 can start immediately and in parallel. S3→S4 is the only hard code d
 
 ## 5. Open questions for the owner
 
-1. **Mark All Read home (O1):** 项目 header context menu, list-header filter menu, or both?
+1. **Mark All Read home (O1) — answered (G9):** current Session-list header menu; action follows
+   the current filtered view.
 2. **Sidebar session leaves (O6):** full shared context menu, or explicitly navigation-only? Today
    right-click silently does nothing — either answer is fine, silence is not.
 3. **What's New (O15):** is debug-only reachability in packaged builds the intended end state of the
    accepted move, or should a non-debug entry (one menu line) return?
-4. **Create-verb vocabulary (O5):** R1 names the flow *New Task*; does the folder-less scope keep a
-   distinct 对话 wording on its own `+`, or does everything converge on one noun?
-5. **Nested `projectId` filter (O4):** gate it off entirely, or keep it reachable (re-pointed) while
-   residual `projectId` data exists on disk?
+4. **Create-verb vocabulary (O5) — answered (G8):** every trigger converges on New Task/新建任务;
+   folder choice routes the resulting Session to Projects or Conversations.
+5. **Nested `projectId` filter (O4) — answered by delegated docs-consistent call:** gate it off;
+   Project narrowing survives through the Workspace/folder scope.
 6. **Deep-link holes (O14):** close `craftagents://board` and `allSessions` via gate now, or accept
    the residue until the task-center release?
 7. **Compact local-create (O2/S3):** should compact's local path also go straight to the OS folder

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/hooks/useTheme'
 import type { ThemeOverrides } from '@config/theme'
 import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
-import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
+import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
 import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
 import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
@@ -1581,35 +1581,6 @@ export default function App() {
     schedulePersistDraft(sessionId)
   }, [schedulePersistDraft])
 
-  // Open new chat - creates session and selects it
-  // Used by components via AppShellContext and for programmatic navigation.
-  // Without an explicit folder → 对话 (R1 clause 2); never rely on user_default.
-  const openNewChat = useCallback(async (params: NewChatActionParams = {}) => {
-    if (!windowWorkspaceId) {
-      console.warn('[App] Cannot open new chat: no workspace ID')
-      return
-    }
-
-    const session = await handleCreateSession(windowWorkspaceId, {
-      workingDirectory: 'none',
-    })
-
-    if (params.name) {
-      await window.electronAPI.sessionCommand(session.id, { type: 'rename', name: params.name })
-    }
-
-    navigate(routes.view.sessionHome({
-      id: session.id,
-      workingDirectory: session.workingDirectory,
-      workspaceId: session.workspaceId,
-    }))
-
-    // Pre-fill input if provided (after a small delay to ensure component is mounted)
-    if (params.input) {
-      setTimeout(() => handleInputChange(session.id, params.input!), 100)
-    }
-  }, [windowWorkspaceId, handleCreateSession, handleInputChange])
-
   const handleRespondToPermission = useCallback(async (
     sessionId: string,
     requestId: string,
@@ -1908,8 +1879,6 @@ export default function App() {
     onSessionOptionsChange: handleSessionOptionsChange,
     onInputChange: handleInputChange,
     onAttachmentsChange: handleAttachmentsChange,
-    // New chat (via deep link navigation)
-    openNewChat,
   }), [
     // NOTE: sessions removed to prevent memory leaks - components use atoms instead
     workspaces,
@@ -1949,7 +1918,6 @@ export default function App() {
     handleSessionOptionsChange,
     handleInputChange,
     handleAttachmentsChange,
-    openNewChat,
   ])
 
   // Platform actions for @craft-agent/ui components (overlays, etc.)

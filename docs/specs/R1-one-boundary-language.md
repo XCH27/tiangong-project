@@ -6,6 +6,10 @@
 > trialed and reverted twice on 2026-07-26 (`7762c8bc4`→`2136b1ea9`, `d25b763f6`→`fa5ee7460`)
 > and then **decided by the owner: hover-reveal stays** ([`02-DECISIONS.md`](../02-DECISIONS.md)
 > G7, 2026-07-26). Do not re-attempt always-visible without the owner reopening G7.
+> The R1 execution map is
+> [`../design-library/21-entry-overlap-framework-audit.md`](../design-library/21-entry-overlap-framework-audit.md);
+> G8 fixes the create noun as New Task/新建任务 and G9 restores Mark All Read in the current
+> Session-list header menu.
 > Owner acceptance date: —
 
 ## Outcome
@@ -27,7 +31,7 @@ without seeing duplicate Session lists. The same surfaces are complete in zh-Han
 |---|---|---|
 | `源码参考/software/craft-agents-oss-v0.10.5/` @ `c9d9a26fbefa` | product/interaction baseline | shell hierarchy, navigation, composer, menus and preserved Session actions |
 | current `app/` tree | implementation reality | existing authorities, data compatibility and code that must be migrated or removed |
-| `源码参考/software/craft-agents-oss/` @ `4289b1609732` (v0.11.1) | selective-update reference | independent fixes and bounded backend mechanisms only |
+| `源码参考/software/craft-agents-oss/` @ `a60ebc1a5a7c` (v0.11.2) | selective-update reference | independent fixes and bounded backend mechanisms only; per-file intake is recorded in `docs/references/REFERENCE-REGISTRY.md` |
 | owner-supplied screenshots and products | behavior evidence | clarity goals and interaction comparisons, never code or shell authority |
 
 Every v0.11-derived delta receives one verdict before implementation:

@@ -51,8 +51,8 @@ Two standing tracks run **beside** the release queue and are never blocked by it
 | # | Release | Outcome (one line) | State | Dependency / gate |
 |---|---|---|---|---|
 | R0 | **Baseline audit** | The dirty working tree is audited feature-by-feature: land, fix, or drop; `main` green, tagged, runnable. | **ACTIVE** — landing complete 2026-07-26 (tree clean; full test/typecheck/i18n/doc gates green); remaining: owner tag + walkthrough checkpoint | — |
-| R1 | **Upstream baseline convergence + one Session list + language** | Restore the v0.10.5 interaction baseline; show folder-bound Sessions under Projects and folder-less Sessions under Conversations through one list implementation; keep one context-bound New Task flow, archive/labels/session actions, direct folder picking, no permanent All Sessions or default Kanban; then finish Project=folder wording and zh-Hans. | READY — pre-landed 2026-07-26: slice-1 inventory (R1-C1, `aaa09b094`) and the clause 1–3 boundary shell (`2d08364f7`), `wired but not visually checked`; trailing-meta decided 2026-07-26: hover-reveal stays (G7) | R0 |
-| R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | READY — slices C2–C5 landed 2026-07-26 via the WORK-ORDER frontier (`wired but not visually checked`; see [`specs/R2-independence.md`](specs/R2-independence.md)). C1 offline-start is not yet passable: session startup still dials the Craft docs MCP unconditionally (a `FLEET_DOCS_MCP_URL` override is in flight; the default stays Craft-operated pending an owner decision). C6 inventory + C7 acceptance open | R0 |
+| R1 | **Upstream baseline convergence + one Session list + language** | Restore the v0.10.5 interaction baseline; show folder-bound Sessions under Projects and folder-less Sessions under Conversations through one list implementation; keep one context-bound New Task flow, archive/labels/session actions, direct folder picking, no permanent All Sessions or default Kanban; then finish Project=folder wording and zh-Hans. | READY — pre-landed 2026-07-26: slice-1 inventory (R1-C1, `aaa09b094`), boundary shell (`2d08364f7`), overlap-audit wave 1, and G8 seven-locale noun pass; `wired but not visually checked`. G7/G8/G9 decided; the 147-entry overlap audit is the execution map | R0 |
+| R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | READY — slices C2–C5 landed 2026-07-26 (`wired but not visually checked`; see [`specs/R2-independence.md`](specs/R2-independence.md)). C1's `FLEET_DOCS_MCP_URL` override and docs-link routing landed in `8cbc572a6`; the Craft-operated default remains pending owner decision, and the network-blocked smoke is still required. C6 inventory + C7 acceptance open | R0 |
 | R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | DEP | R0 (R1/R2 improve it) |
 | R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
 | R5 | **Artifact handoff** | ArtifactRef v1: exact version + provenance; one real producer→consumer pair; stale-writer rejection. | DEP | R3 (supplies the real artifact + friction list) |
@@ -175,3 +175,10 @@ Change log:
   slices (R1 shell `2d08364f7` + inventory `aaa09b094`; R2 C2–C5); README, 00-START-HERE,
   FEATURE-REGISTRY and the R0/R1/R2 spec status headers re-synced to this roadmap's R0 row as the
   single release-state edit point.
+- 2026-07-26 — selective donor advanced to v0.11.2: reference mirror and official-docs mirror
+  repinned/refreshed, the per-file intake ledger recorded, and bounded fix groups A+B landed in
+  `26100e45d`; `create_task` and later product interaction remain excluded.
+- 2026-07-26 — owner decisions G8/G9 fix New Task as the single create noun and restore Mark All
+  Read in the current Session-list header menu. The 147-entry overlap audit becomes the R1
+  execution map; wave 1, the seven-locale noun pass, and the non-visual registry-truth pass landed
+  `wired but not visually checked`.

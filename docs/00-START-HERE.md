@@ -114,10 +114,14 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
   [`05-ROADMAP.md`](05-ROADMAP.md)** — landing complete 2026-07-26 (test/typecheck/i18n/doc gates
   green); remaining, owner-owned: the `fleet-baseline-r0` tag and the owner walkthrough (R0-C7).
   Landed since on the same branch (2026-07-26): the R1 Project-is-the-boundary shell
-  (`2d08364f7`, plus fix/revert churn from the owner walkthrough — the sidebar trailing-meta
-  question is still open), R2 independence slices C2–C5 (`wired but not visually checked`,
-  recorded in [`specs/R2-independence.md`](specs/R2-independence.md)), and the R7 canvas preview
-  page (`display-only`, G6 frontend track). App groups are `wired but not visually checked`;
+  (`2d08364f7`; trailing meta is decided hover-reveal, G7), R2 independence slices C2–C5
+  (`wired but not visually checked`, recorded in
+  [`specs/R2-independence.md`](specs/R2-independence.md)), the v0.11.2 selective-donor repin and
+  per-file intake audit (A+B fixes landed in `26100e45d`), and the R7 canvas preview page
+  (`display-only`, G6 frontend track). The 147-entry overlap audit is now the R1 execution map
+  ([`design-library/21-entry-overlap-framework-audit.md`](design-library/21-entry-overlap-framework-audit.md));
+  owner decisions G8/G9 fix the New Task vocabulary and the restored Mark All Read home. App
+  groups are `wired but not visually checked`;
   nothing is `usable` before owner acceptance
   ([`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md)).
 - **Fleet capability:** every differentiating Fleet loop — governed cross-caller actions, versioned

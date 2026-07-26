@@ -6,15 +6,15 @@ export const actions = {
   // ═══════════════════════════════════════════
   'app.newChat': {
     id: 'app.newChat',
-    label: 'New Chat',
-    description: 'Create a new chat session',
+    label: 'New Task',
+    description: 'Create a new task',
     defaultHotkey: 'mod+n',
     category: 'General',
   },
   'app.newChatInPanel': {
     id: 'app.newChatInPanel',
-    label: 'New Chat in Panel',
-    description: 'Create a new chat session in a new panel',
+    label: 'New Task in Panel',
+    description: 'Create a new task in a new panel',
     defaultHotkey: 'mod+t',
     category: 'General',
   },

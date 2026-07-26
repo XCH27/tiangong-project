@@ -377,3 +377,18 @@
   ([`UI-SPEC.md`](UI-SPEC.md) §8); switching any element to always-visible reopens this decision
   as one change applied to the whole level, never a per-control fork. (recorded 2026-07-26;
   status DECIDED 2026-07-26)
+- **G8 — The create verb is "New Task" (新建任务), and folder choice routes the result.** Owner
+  decision 2026-07-26 resolving the four-noun divergence (New Task/Session/Chat/Conversation
+  across triggers): every create trigger uses one noun, **Task/任务** — "应该统一成新建任务，
+  只有任务才可以方便在对话和项目之间通用" (only "task" travels between Conversations and
+  Projects). Routing semantics: a task created **without** choosing a local/cloud folder lands in
+  对话 (Conversations); choosing a folder routes it into 项目 (Projects). Recorded owner
+  direction for later releases (not an R1 work item): 管理Agent (management agents) will be
+  Conversations-scoped tasks — no project binding, so they may read across projects. UI copy,
+  menu labels and the seven locale files converge on this noun; entity/code names (Session)
+  stay unchanged — this is product vocabulary, not a data-model rename. (2026-07-26)
+- **G9 — Mark All Read returns in the session-list header menu.** The v0.10.5 capability lost its
+  UI entry when All Sessions was removed (RPC survived). Owner decision 2026-07-26: its home is
+  the Session-list header dropdown, acting on the current filtered view; the dormant SidebarMenu
+  branch stays gated. Restores the capability per the 简化不等于删除 rule — simplification never
+  deletes capability, it relocates the entry with a named surviving path. (2026-07-26)

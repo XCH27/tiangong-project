@@ -9,7 +9,7 @@
 
 | ID | State | Evidence |
 |---|---|---|
-| R2-C1 | **open** — not yet passable. Two silent-dial blockers remain: `app/packages/shared/src/agent/claude-agent.ts` wires the `craft-agents-docs` MCP (`https://agents.craft.do/docs/mcp`) into every session, and `app/packages/session-mcp-server/src/index.ts` `connectDocsUpstream()` dials the same endpoint unconditionally at startup. Three docs-root links also bypass the doc-links module: `app/apps/electron/src/main/menu.ts` (~line 238), `app/apps/electron/src/shared/menu-schema.ts` (~line 302), `app/apps/electron/src/renderer/components/app-shell/TopBar.tsx` (~line 286). A links/env-override fix (`FLEET_DOCS_MCP_URL`) is in flight 2026-07-26; the default stays Craft-operated pending an owner decision. C1 acceptance still requires the network-blocked smoke + traffic log. | audit 2026-07-26 |
+| R2-C1 | **open** — the docs-root links now route through the shared doc-links module and the `FLEET_DOCS_MCP_URL` override landed in `8cbc572a6`, so an explicit off/self-hosted path exists. The default still points to the Craft-operated docs MCP pending the owner default decision. C1 acceptance still requires the network-blocked smoke + traffic log. | `8cbc572a6`; audit 2026-07-26 |
 | R2-C2 | landed — `wired but not visually checked` | `445e11b92` (+ isolated-harness test fix `09c59e7f7`) |
 | R2-C3 | landed — `wired but not visually checked` | `18bf53415` |
 | R2-C4 | landed — `wired but not visually checked` | `3ddbe59fe` (+ ChatPage docs-link routing `58a033d51`) |

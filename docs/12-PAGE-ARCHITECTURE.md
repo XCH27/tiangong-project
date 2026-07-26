@@ -30,8 +30,12 @@ switcher. Search, labels and archive are list states; Project home does not repe
 | Project settings · SkillInfoPage · SourceInfoPage | `usable` | entity info; Project settings target the selected Workspace-as-Project |
 | Nested v0.11 ProjectInfoPage | `display-only` | compatibility route only; not the canonical Project authority |
 | ShortcutsPage | `usable` | |
+| AutomationInfoPage | `usable` | routed automation detail/configuration surface in `MainContentPanel` |
 | Board (kanban, in app-shell) | `not implemented` | dormant v0.11 compatibility code; no R1 product entry |
 | Settings: Ai · App · Appearance · Input · Labels · Messaging · Permissions · Preferences · Server · Shortcuts · Workspace (+ navigator) | `usable` | zh-Hans pass in R0-audited tree |
+| Design-system playground window | `display-only` | debug-only preview host; never a product authority |
+| Browser empty-state page | `usable` | BrowserPane auxiliary window entry |
+| Onboarding · Reauth · WorkspacePicker startup screens | `usable` | pre-shell startup and recovery surfaces |
 
 Every change to these starts from the matching upstream component (UI baseline rule).
 
@@ -75,20 +79,20 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 
 | ID | Surface | Host / primary home | Registry rows | State |
 |---|---|---|---|---|
-| P-01 | App shell, navigation and command palette | Global shell | CORE-01, CORE-10 | usable |
+| P-01 | App shell and navigation; command palette target | Global shell | CORE-01, CORE-10 | shell/navigation usable; command palette not implemented |
 | P-02 | Session work/conversation, progressive composer and stream inspector; global/Project New Task triggers share one Session path (P10) | Conversation | CORE-03 | wired but not visually checked |
-| P-03 | Project home and switcher (converging on one Project switcher per P6/R1) | Main content | CORE-02 | usable |
+| P-03 | Project home and switcher (converging on one Project switcher per P6/R1) | Main content | CORE-02 | switcher/settings wired but not visually checked; full target home not implemented |
 | P-04 | Structured task detail/activity and later task-center projection; Kanban is not the default product surface | Task inspector | CORE-04 | not implemented |
 | P-05 | Settings navigator and preference forms | Settings | CORE-05, CORE-10 | usable |
 | P-06 | Search, label and archive filters over the one work list | Sidebar / command view | CORE-06, INFO-06 | wired but not visually checked |
 | P-07 | First-run and provider setup | Onboarding route/dialog | CORE-07 | usable |
-| P-08 | Help, local docs and support links | Help route/drawer | CORE-08 | usable |
+| P-08 | Help, local docs and support links | external doc-links + Settings/Shortcuts | CORE-08 | wired but not visually checked |
 | P-09 | Update channel, release notes and recovery | Settings / dialog | CORE-09 | wired but not visually checked |
 | P-10 | Docking, split, resize and layout restore | Workbench host | CORE-11 | wired but not visually checked |
 | P-11 | Workspace file browser and file actions | Project home / drawer | INFO-01 | usable |
 | P-12 | Library, versions and asset inspector | Library route | INFO-02 | not implemented |
 | P-13 | Source ingestion and conversion progress | Sources / Jobs | INFO-04 | usable |
-| P-14 | Document editor, preview and co-edit controls | Document route | INFO-05, CREATE-16 | usable |
+| P-14 | Document editor, preview and co-edit controls | FileViewer overlay / future editor host | INFO-05, CREATE-16 | file preview usable; document editor/co-edit not implemented |
 | P-15 | Browser tabs, navigation and capture controls | BrowserPane | INFO-03 | tabs/navigation usable (Craft BrowserPane); capture controls not implemented |
 | P-16 | Evidence, citation and provenance review | Inspector / timeline | INFO-03, INFO-07 | not implemented |
 | P-17 | Import, export and migration wizard | Dialog / settings | INFO-08 | not implemented |
@@ -102,7 +106,7 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 | P-25 | Remote target, grant and disconnect state | Workspace settings | EXEC-09 | not implemented |
 | P-26 | Automation schedule and run history | Task / settings extension | EXEC-10 | usable |
 | P-27 | Messaging channels, delivery and reconnect | Settings / inbox | EXEC-11 | `not implemented` |
-| P-28 | Sharing, invite and revoke dialog | Project settings | EXEC-12 | share/update/revoke wired but not visually checked (landed 2026-07-26); invites not implemented |
+| P-28 | Sharing, invite and revoke dialog | ChatPage session header/dialog | EXEC-12 | share/update/revoke wired but not visually checked (landed 2026-07-26); invites not implemented |
 | P-29 | Context preview, compaction and token budget | Session / cost inspector | INTEL-01, INTEL-02 | `not implemented` |
 | P-30 | Model capability, routing and cost ledger | Session / settings | INTEL-03, INTEL-04 | not implemented |
 | P-31 | Memory layers, consolidation log and curation (pin/correct/delete) | Memory route | INTEL-05 | not implemented |
