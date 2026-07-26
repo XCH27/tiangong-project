@@ -241,12 +241,21 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                 {link.trailingAction ? (
                   <div className="relative min-w-0">
                     {rowElement}
-                    {/* Sibling overlay, not nested button (UI-SPEC §4). Same language as the
-                      * count badges beside it: trailing elements are always visible (owner
-                      * decision 2026-07-26 — one rule for the whole level, so the control can
-                      * never vanish mid-drag and never depends on hover discovery). */}
+                    {/* Sibling overlay, not nested button (UI-SPEC §4). Same reveal as count
+                      * badges: row hover, focus-within, or open menu (data-state=open) — one
+                      * interaction language for every trailing element at this level; do not
+                      * fork it (owner 2026-07-26). Whether trailing meta should instead be
+                      * always-visible is a single deliberate decision across all rows. */}
                     <div
-                      className="absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center"
+                      data-touch-reveal="true"
+                      className={cn(
+                        "absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center",
+                        // opacity-0 alone still hit-tests — gate pointer events until revealed
+                        "pointer-events-none opacity-0 transition-opacity duration-150",
+                        "group-hover/section:pointer-events-auto group-hover/section:opacity-100",
+                        "focus-within:pointer-events-auto focus-within:opacity-100",
+                        "has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100",
+                      )}
                       onMouseDown={(event) => event.stopPropagation()}
                     >
                       {link.trailingAction}
@@ -535,19 +544,23 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
           * badges/actions stay pinned to the row's right edge regardless of text length
           * and track the panel edge during divider drags (UI-SPEC §4; owner 2026-07-26). */}
         <span className="min-w-0 flex-1 truncate text-left">{link.title}</span>
-        {/* After-title / count: ONE language for every trailing element on a row — always
-          * visible (owner decision 2026-07-26: affordances must not vanish during panel
-          * drags or at rest; length-independence comes from the title's flex-1). */}
+        {/* After-title / count: same reveal language on every row (button hover OR section hover) */}
         {link.afterTitle && (
-          <span className="ml-auto">
+          <span
+            data-touch-reveal="true"
+            className="ml-auto opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100"
+          >
             {link.afterTitle}
           </span>
         )}
         {link.label && (
           <span
+            data-touch-reveal="true"
             className={cn(
               link.afterTitle ? 'ml-0' : 'ml-auto',
-              'text-xs text-foreground/30',
+              'text-xs text-foreground/30 opacity-0 transition-opacity duration-150',
+              'group-hover:opacity-100 group-hover/section:opacity-100',
+              'group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100',
             )}
           >
             {link.label}
