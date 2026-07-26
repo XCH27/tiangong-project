@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 
 import { OAUTH_RELAY_CALLBACK_URL, decodeOAuthRelayState, isOAuthRelayState } from '../../auth/oauth-relay.ts';
 import { SourceCredentialManager } from '../credential-manager.ts';
@@ -52,6 +52,13 @@ function createMcpSource(overrides: Partial<FolderSourceConfig> = {}): LoadedSou
 
 describe('SourceCredentialManager.prepareOAuth relay wrapping', () => {
   const credManager = new SourceCredentialManager();
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    // bun test shares one process across files — a leaked fetch mock breaks
+    // later real-HTTP tests (webui http-server).
+    globalThis.fetch = originalFetch;
+  });
 
   beforeEach(() => {
     globalThis.fetch = mock((input: string | URL | Request) => {
