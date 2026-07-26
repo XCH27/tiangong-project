@@ -33,6 +33,7 @@ import {
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeveloperFeedbackEnabled } from '@craft-agent/shared/feature-flags';
+import { getDocsMcpUrl } from '@craft-agent/shared/docs/doc-links';
 // Import from session-tools-core
 import {
   type SessionToolContext,
@@ -272,8 +273,6 @@ function createSessionTools(includeDeveloperFeedback: boolean): Tool[] {
 // Craft Agents Docs Upstream Proxy
 // ============================================================
 
-const DOCS_MCP_URL = 'https://agents.craft.do/docs/mcp';
-
 /** Cached upstream client + tool list */
 let docsClient: Client | null = null;
 let docsTools: Tool[] = [];
@@ -282,14 +281,14 @@ let docsTools: Tool[] = [];
  * Connect to the craft-agents-docs MCP server and fetch its tool definitions.
  * Falls back gracefully if the server is unreachable (tools will just be empty).
  */
-async function connectDocsUpstream(): Promise<void> {
+async function connectDocsUpstream(docsMcpUrl: string): Promise<void> {
   try {
     const client = new Client(
       { name: 'craft-agent-session-proxy', version: '1.0.0' },
       { capabilities: {} }
     );
 
-    const transport = new StreamableHTTPClientTransport(new URL(DOCS_MCP_URL));
+    const transport = new StreamableHTTPClientTransport(new URL(docsMcpUrl));
     await client.connect(transport);
 
     const result = await client.listTools();
@@ -521,8 +520,11 @@ async function main() {
     }
   );
 
-  // Connect to upstream docs server (non-blocking, best-effort)
-  await connectDocsUpstream();
+  // R2-C1: keep the Craft-operated default pending owner decision; "off" skips the upstream.
+  const docsMcpUrl = getDocsMcpUrl();
+  if (docsMcpUrl) {
+    await connectDocsUpstream(docsMcpUrl);
+  }
 
   // Handle tool listing — session tools + docs upstream tools
   server.setRequestHandler(ListToolsRequestSchema, async () => ({

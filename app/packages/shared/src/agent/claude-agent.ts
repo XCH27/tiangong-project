@@ -94,6 +94,7 @@ import {
   isSpawnEnoent as detectSpawnEnoent,
 } from './spawn-helpers.ts';
 import { IMAGE_LIMITS } from '../utils/files.ts';
+import { getDocsMcpUrl } from '../docs/doc-links.ts';
 
 /** Image extensions that may need size-guard in PreToolUse (matches Read tool's image detection) */
 const IMAGE_READ_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff']);
@@ -1077,15 +1078,17 @@ export class ClaudeAgent extends BaseAgent {
       }
 
       // Build full MCP servers set first, then filter for mini agents
+      const docsMcpUrl = getDocsMcpUrl();
       const fullMcpServers: Options['mcpServers'] = {
         // Session-scoped tools (SubmitPlan, source_test, update_user_preferences, transform_data, etc.)
         session: getSessionScopedTools(sessionId, this.workspaceRootPath),
-        // Craft Agents documentation - always available for searching setup guides
-        // This is a public Mintlify MCP server, no auth needed
-        'craft-agents-docs': {
-          type: 'http',
-          url: 'https://agents.craft.do/docs/mcp',
-        },
+        // R2-C1: keep the Craft-operated default pending owner decision; "off" omits this server.
+        ...(docsMcpUrl ? {
+          'craft-agents-docs': {
+            type: 'http' as const,
+            url: docsMcpUrl,
+          },
+        } : {}),
         // Per-source proxy servers from centralized MCP pool (MCP + API sources)
         // Each source gets its own SDK server keyed by slug (e.g., 'linear', 'github', 'gmail')
         // so the SDK produces correct tool names: mcp__{slug}__{toolName}

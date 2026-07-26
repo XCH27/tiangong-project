@@ -14,12 +14,23 @@
  * route these links to your own site.
  */
 const DEFAULT_DOC_BASE_URL = 'https://agents.craft.do/docs'
+const DEFAULT_DOCS_MCP_URL = 'https://agents.craft.do/docs/mcp'
 
 function getDocsBaseUrl(): string {
   // Renderer bundles have no process env; they keep the default. The override
   // applies where the environment exists (main process, server, tests).
   const override = typeof process !== 'undefined' ? process.env.FLEET_DOCS_BASE_URL?.trim() : undefined
   return override || DEFAULT_DOC_BASE_URL
+}
+
+export function getDocsHomeUrl(): string {
+  return getDocsBaseUrl()
+}
+
+export function getDocsMcpUrl(): string | null {
+  const override = typeof process !== 'undefined' ? process.env.FLEET_DOCS_MCP_URL?.trim() : undefined
+  if (override === 'off') return null
+  return override || DEFAULT_DOCS_MCP_URL
 }
 
 export type DocFeature =
