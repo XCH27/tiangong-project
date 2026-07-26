@@ -125,6 +125,23 @@ Every v0.11-derived delta receives one verdict before implementation:
 6. **Verify:** component/data-path tests, i18n checks, non-interactive smoke, then owner visual
    acceptance. Do not claim `usable` before the final checkpoint.
 
+## Slice-1 source inventory (v0.10.5 `c9d9a26fbefa` ↔ tree `fe2333cf9`, 2026-07-26)
+
+File-level verdicts for every diverging path in `apps/electron/src`, `packages/shared/src` and
+`packages/server-core/src` (222 paths total; full machine lists reproducible with
+`diff -rq` against the pinned checkout). Verdicts use this spec's vocabulary; clusters share one
+rationale. This inventory satisfies R1-C1's diff-inventory requirement.
+
+| Verdict | Cluster (paths) | Rationale |
+|---|---|---|
+| KEEP | R1 boundary core: `AppShell/LeftSidebar/SessionList/TopBar/SessionItem/SessionMenu*/SidebarMenu/Compact*` + `App.tsx`, `session-filter-menu`, `r1-product-gates`, `WorkingDirectorySelector`, `ProjectsListPanel`, `SessionProjectColorWrapper`, `projects/` components, `ProjectInfoPage`, navigation (`context/NavigationContext` + history/reconcile), routes/route-parser/types + tests, `event-processor/*`, `nav-helpers`, `local-storage`, session-list-collapse + search/menu hooks, `AppShellContext/SessionListContext`, workspace/label display-name utils + tests | The clause 1–3 implementation over one Session list; landed R0 groups; tests updated in-slice |
+| KEEP | Fleet mechanisms with callers: `atoms/{background-finished,projects,workspace-avatar-colors}`, `BackgroundFinishedChip`, `workspace-avatar`, `color-picker`/`inline-color-picker-row`, `SkillSelectorPopover`, label family (`labels/{filter,system-labels}` + crud/types deltas, label-menu UI, `LabelsDataTable`), `session-status-*` (E10), settings pages zh-Hans passes, i18n catalogs + i18n/independence tests, `mcp/{env,validation,client}` (+tests), `persistent-input`, Pi backend deltas + `cache-economy` (TE1 core), prompts/system, protocol/*, sessions storage/types, `SessionManager` + rpc handlers + session tests, transport `session-workspace` targets, `main/{index,handlers/workspace,deep-link}` + shared prefixes, `channel-map`, `SettingsIcons` (R0 compile repair), css/main.tsx boot deltas, app-menu + mobile pages, playground additions (dev harness), browser pane/toolbar/tab-strip deltas, `AuthRequestCard`, automations UI/handlers | Independent fixes and Fleet features audited into the R0 landing; each carried its targeted tests |
+| KEEP | R2 independence gates: `auto-update` (+`useUpdateChecker`, isolated test), `branding`, `doc-links`, `oauth-relay`/`slack-oauth`/`credential-manager` (+tests) | Landed R2 service rows (capability map "Landed 2026-07-26" rows) |
+| RESHAPE | `SendToWorkspaceDialog` / `SendResourceToWorkspaceDialog` / `WorkspacePicker` / `CompactWorkspaceSwitcher` variant set | Works today; the dedup table's "one switcher, no parallel Workspace picker" still owes a variant merge — tracked by this spec, not silently deleted |
+| RESHAPE | `ThemeContext` delta | Per donor decision: per-workspace theme removed from product surface; IPC/override API kept compatibility-only |
+| REMOVE (executed) | `WorkspaceSwitcher.tsx`, `renderer/contexts/` | Switcher lifted into the sidebar project list (owner 2026-07-25); context home unified — deletions landed with replacements in the same change |
+| LATER | Kanban/Task set: `app-shell/kanban/`, `atoms/kanban`, `useKanbanColumnColors`, kanban/task-editor playground entries, `shared/src/{projects,tasks}`, `server-core/src/tasks` + `rpc/{projects,tasks}`, `TaskActionMenu`/`ActiveTasksBar` deltas, task-related SessionManager tests | Clause 9: dormant v0.11 backend/UI behind `r1-product-gates`; no default navigation; `projectId`/`kanbanColumn` stay compatibility data |
+
 ## Executor handoff
 
 Land the work as the following independently revertible groups. A later group must not compensate
