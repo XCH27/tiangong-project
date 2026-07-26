@@ -369,11 +369,11 @@
   developer/preview toggle; status is reported `display-only` until actual behavior is connected.
   The default user surface
   never ships a control without real behavior. (2026-07-17)
-- **G7 — Sidebar trailing-meta at-rest visibility: OPEN, owner confirmation required.** Facts of
+- **G7 — Sidebar trailing-meta at-rest visibility: hover-reveal, owner-confirmed.** History of
   record: an always-visible decision was claimed in a commit message on 2026-07-26 (d25b763f6,
   "second walkthrough round"); the same day, fa5ee7460 reverted it with no recorded rationale.
-  HEAD implements hover-reveal with one at-rest visibility language per sidebar level
-  ([`UI-SPEC.md`](UI-SPEC.md) §8). Neither state is confirmed as the owner's standing intent: the
-  owner must confirm hover-reveal vs always-visible at the next walkthrough, as one decision
-  applied to the whole level. Until then, hover-reveal remains the implemented baseline and no
-  agent may flip it. (recorded 2026-07-26; status OPEN)
+  Resolution: the owner confirmed **hover-reveal** on 2026-07-26 (owner reply: "维持 hover 显现" —
+  keep hover-reveal). One at-rest visibility language per sidebar level
+  ([`UI-SPEC.md`](UI-SPEC.md) §8); switching any element to always-visible reopens this decision
+  as one change applied to the whole level, never a per-control fork. (recorded 2026-07-26;
+  status DECIDED 2026-07-26)

@@ -203,11 +203,10 @@ row button (nested interactive elements break keyboard and hit-testing). It occu
 from §4 and stays keyboard reachable when hover-revealed.
 
 **At-rest visibility of trailing elements (policy).** All trailing elements on a sidebar level
-(counts, after-title meta, row actions) share one at-rest visibility language. The current baseline
-is hover-reveal, as measured above. Switching any element to always-visible is a single owner
-decision applied to the whole level, never a per-control fork. Status: **awaiting owner
-re-confirmation** — an always-visible decision was claimed and reverted on 2026-07-26; see
-[`02-DECISIONS.md`](02-DECISIONS.md) G7 for the open decision record.
+(counts, after-title meta, row actions) share one at-rest visibility language. The baseline is
+**hover-reveal**, as measured above and **owner-confirmed 2026-07-26**
+([`02-DECISIONS.md`](02-DECISIONS.md) G7). Switching any element to always-visible reopens G7 as a
+single owner decision applied to the whole level, never a per-control fork.
 
 ### Menu / popover / tooltip / dialog / entity row / panel header
 
