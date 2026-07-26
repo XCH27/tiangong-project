@@ -4789,8 +4789,12 @@ export class SessionManager implements ISessionManager {
         return { success: false, error: 'Session file not found' }
       }
 
-      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-      const response = await fetch(`${VIEWER_URL}/s/api`, {
+      const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
+      const viewerUrl = getShareViewerUrl()
+      if (!viewerUrl) {
+        return { success: false, error: 'Online sharing is not configured. Set FLEET_SHARE_VIEWER_URL to a viewer you own; local export remains available.' }
+      }
+      const response = await fetch(`${viewerUrl}/s/api`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(storedSession)
@@ -4853,8 +4857,12 @@ export class SessionManager implements ISessionManager {
         return { success: false, error: 'Session file not found' }
       }
 
-      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-      const response = await fetch(`${VIEWER_URL}/s/api/${managed.sharedId}`, {
+      const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
+      const viewerUrl = getShareViewerUrl()
+      if (!viewerUrl) {
+        return { success: false, error: 'Online sharing is not configured, so the shared copy cannot be updated from here.' }
+      }
+      const response = await fetch(`${viewerUrl}/s/api/${managed.sharedId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(storedSession)
@@ -4898,9 +4906,13 @@ export class SessionManager implements ISessionManager {
     this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
 
     try {
-      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
+      const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
+      const viewerUrl = getShareViewerUrl()
+      if (!viewerUrl) {
+        return { success: false, error: 'Online sharing is not configured, so the remote shared copy cannot be revoked from here.' }
+      }
       const response = await fetch(
-        `${VIEWER_URL}/s/api/${managed.sharedId}`,
+        `${viewerUrl}/s/api/${managed.sharedId}`,
         { method: 'DELETE' }
       )
 
@@ -5598,15 +5610,22 @@ export class SessionManager implements ISessionManager {
     // Revoke share if session was shared (prevent orphaned viewer copies)
     if (managed.sharedId) {
       try {
-        const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-        const response = await fetch(
-          `${VIEWER_URL}/s/api/${managed.sharedId}`,
-          { method: 'DELETE', signal: AbortSignal.timeout(5000) }
-        )
-        if (!response.ok) {
-          sessionLog.warn(`Failed to revoke share for ${sessionId}: HTTP ${response.status}`)
+        const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
+        const viewerUrl = getShareViewerUrl()
+        if (!viewerUrl) {
+          // No configured target: deletion proceeds locally; the remote copy (if any)
+          // is unreachable from here and stays whatever it was.
+          sessionLog.warn(`Share target not configured; skipping remote revoke for deleted session ${sessionId}`)
         } else {
-          sessionLog.info(`Revoked share for deleted session ${sessionId}`)
+          const response = await fetch(
+            `${viewerUrl}/s/api/${managed.sharedId}`,
+            { method: 'DELETE', signal: AbortSignal.timeout(5000) }
+          )
+          if (!response.ok) {
+            sessionLog.warn(`Failed to revoke share for ${sessionId}: HTTP ${response.status}`)
+          } else {
+            sessionLog.info(`Revoked share for deleted session ${sessionId}`)
+          }
         }
       } catch (error) {
         sessionLog.warn(`Failed to revoke share for ${sessionId}:`, error)
