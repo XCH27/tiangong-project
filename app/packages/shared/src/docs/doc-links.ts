@@ -3,7 +3,24 @@
  * Summaries provide quick context; "Learn more" opens the full docs.
  */
 
-const DOC_BASE_URL = 'https://agents.craft.do/docs'
+/**
+ * Docs-site base for "Learn more"/Help links.
+ *
+ * Service class (Decision P8 / spec R2-C4): bundled summaries in DOCS below are
+ * the local-first help; the full docs site is a **visibly external** link that
+ * currently points at upstream Craft's hosted docs — an upstream reference,
+ * never fetched silently (every use is an explicit user click that opens the
+ * system browser). Set FLEET_DOCS_BASE_URL to a docs deployment you own to
+ * route these links to your own site.
+ */
+const DEFAULT_DOC_BASE_URL = 'https://agents.craft.do/docs'
+
+function getDocsBaseUrl(): string {
+  // Renderer bundles have no process env; they keep the default. The override
+  // applies where the environment exists (main process, server, tests).
+  const override = typeof process !== 'undefined' ? process.env.FLEET_DOCS_BASE_URL?.trim() : undefined
+  return override || DEFAULT_DOC_BASE_URL
+}
 
 export type DocFeature =
   | 'sources'
@@ -22,7 +39,7 @@ export type DocFeature =
   | 'messaging'
 
 export interface DocInfo {
-  /** Path relative to DOC_BASE_URL */
+  /** Path relative to the docs base URL */
   path: string
   /** Display title for the help popover */
   title: string
@@ -121,7 +138,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
  * Get the full documentation URL for a feature
  */
 export function getDocUrl(feature: DocFeature): string {
-  return `${DOC_BASE_URL}${DOCS[feature].path}`
+  return `${getDocsBaseUrl()}${DOCS[feature].path}`
 }
 
 /**
