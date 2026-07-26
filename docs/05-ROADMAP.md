@@ -50,7 +50,7 @@ Two standing tracks run **beside** the release queue and are never blocked by it
 
 | # | Release | Outcome (one line) | State | Dependency / gate |
 |---|---|---|---|---|
-| R0 | **Baseline audit** | The dirty working tree is audited feature-by-feature: land, fix, or drop; `main` green, tagged, runnable. | **ACTIVE** | — |
+| R0 | **Baseline audit** | The dirty working tree is audited feature-by-feature: land, fix, or drop; `main` green, tagged, runnable. | **ACTIVE** — landing complete 2026-07-26 (tree clean; full test/typecheck/i18n/doc gates green); remaining: owner tag + walkthrough checkpoint | — |
 | R1 | **Upstream baseline convergence + one Session list + language** | Restore the v0.10.5 interaction baseline; show folder-bound Sessions under Projects and folder-less Sessions under Conversations through one list implementation; keep one context-bound New Task flow, archive/labels/session actions, direct folder picking, no permanent All Sessions or default Kanban; then finish Project=folder wording and zh-Hans. | READY (candidate code exists but must be reclassified against v0.10.5) | R0 |
 | R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | READY | R0 |
 | R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | DEP | R0 (R1/R2 improve it) |

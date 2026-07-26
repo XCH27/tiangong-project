@@ -80,6 +80,37 @@ High-risk tasks also require a real data-path check, cancel/recovery coverage an
 verification. Git, remote targets, credentials, deletion, publication or a new authority stop at
 the [`OWNER-GUIDE.md`](OWNER-GUIDE.md) checkpoint.
 
+## Parallel dispatch queue — current frontier (post-R0 landing)
+
+A projection of the queue above for multi-agent execution, governed by the multi-agent and
+bounded-feature rules in [`07-PLAYBOOK.md`](07-PLAYBOOK.md): every child gets a TaskBrief and
+returns a RunReport; parallel writers take disjoint paths in separate worktree branches; shared
+contracts have one integrator; the main integration agent owns merge order, conflict resolution
+and final verification, and keeps this table in sync.
+
+Dispatch rules:
+
+1. Writers branch as `work/<packet-id>` from the current green baseline; read-only packets run
+   without a branch. No packet pushes or merges — merging is the integrator's job, in Deps order,
+   with `typecheck` + targeted tests between merges.
+2. Every packet starts by reading root `AGENTS.md` and its spec slice, then confirms exact code
+   paths with `rg` — the boundary column below is a containment ceiling, not a path inventory.
+3. A packet that discovers a cross-packet contract change stops and returns the decision to the
+   integrator; no packet widens its own scope or touches another packet's boundary.
+
+| Packet | Mode | Spec slice / contract | Boundary ceiling | Deps |
+|---|---|---|---|---|
+| R1-INV — v0.10.5 ↔ current source inventory for shell/list/menu/composer | read-only | `specs/R1-one-boundary-language.md` slice 1 (feeds R1-C1) | report only | — |
+| R2-UPD — updater independence | branch | `specs/R2-independence.md`, updater class | Electron main updater path + builder config | — |
+| R2-SHARE — sharing and docs-link honesty | branch | `specs/R2-independence.md`, sharing/docs classes | sharing surfaces + bundled docs links | — |
+| R2-OAUTH — OAuth relay independence | branch | `specs/R2-independence.md`, relay class | `packages/shared/src/auth` + webui auth surface | — |
+| R3-SMOKE — production-chain non-visual smoke | branch | `specs/R3-first-production-chain.md` fixture slice | tests/fixtures beside the chain seams | R1-INV |
+| TE1-OBS — cache-alignment observation | read-only | `specs/TE1-cache-alignment.md` | measurements + report | — |
+| DOCS-COV — matrix/page coverage refresh after merges | branch | Decision G5 coverage track | `docs/11-PRODUCT-MATRIX.md`, `docs/12-PAGE-ARCHITECTURE.md` rows | all merged |
+
+Owner checkpoints stay owner-owned regardless of parallelism: R0 tag/walkthrough, R1-C12 visual
+acceptance, and any service replacement in R2 that has a paid or public effect.
+
 ## Handoff format
 
 ```text
