@@ -4,9 +4,9 @@
 > editing** — the tree changes and these paths are orientation, not a contract. All paths are under
 > `app/`.
 >
-> **Last path verification:** 2026-07-17 against HEAD `248664bce3cf` plus the dirty worktree. The
-> top-level roots listed below existed; feature-level claims remain provisional until R0 classifies
-> the current 236 working-tree entries. Re-run the existence check and update this line when R0 lands.
+> **Last path verification:** 2026-07-26 against the R0-landed tree (project audit sweep). Entry
+> points below were spot-checked with `ls`/`rg`; one stale path corrected (`contexts/` →
+> `context/`). Re-run the existence check and update this line after the next large landing.
 
 ## Baseline facts
 
@@ -104,7 +104,7 @@ recorded condition, not an open work item; touch them only when a slice already 
 | Session list | `app/apps/electron/src/renderer/components/app-shell/SessionList.tsx` |
 | Main content routing | `app/apps/electron/src/renderer/components/app-shell/MainContentPanel.tsx` |
 | Conversation surface | `app/apps/electron/src/renderer/components/app-shell/ChatDisplay.tsx` |
-| Navigation state | `app/apps/electron/src/renderer/contexts/NavigationContext.tsx` |
+| Navigation state | `app/apps/electron/src/renderer/context/NavigationContext.tsx` |
 
 ## Common change routes
 

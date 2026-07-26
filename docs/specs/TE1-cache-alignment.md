@@ -34,7 +34,7 @@ measurement and visible product capability are `not implemented` until the slice
 | S1 | Feed summaries: both event adapters attach normalized cache usage per turn; SessionManager exposes a per-session `CacheEconomySummary` | `packages/shared/src/agent/backend/claude/event-adapter.ts` (`AssistantUsage`, ~line 250), `backend/pi/event-adapter.ts` (`lastUsage`, ~line 88/267), `core/usage-tracker.ts` | TE1-C1 |
 | S3 | Prefix snapshots: at prompt assembly, capture `{stableZone: [systemPrompt, toolDefsSerialized], logZone: messageIds}` per request; count breaks via `diagnoseCacheBreak`; emit on the existing usage/debug event path (no new store) | `claude-agent.ts` (system prompt + `preset` assembly), `pi-agent.ts` equivalent | TE1-C3 |
 | S4 | Surface it: session info/cost display gains cache columns (hit rate, saved fraction, saved USD when price known, prefix breaks) — smallest honest UI per P5, no new page | existing session usage/info surface (find with `rg usage_update` in renderer) | TE1-C4 + owner CHECK |
-| S5 | Baseline harness: during R0 replay one recorded label/status trace to prove the measurement path; after R0 record the current Claude-full and Pi-current profiles on a sealed task. R3 later becomes the cross-domain trace. Store machine output or concise numbers in this spec's log, not a new report | script under `app/scripts/`, read-only vs. providers or mocked usage fixtures | TE1-C5 |
+| S5 | Baseline harness: during R0 replay one recorded label/status trace to prove the measurement path; after R0 record the current Claude-full and Pi-current profiles on a sealed task. R3 later becomes the cross-domain trace. Store machine output or concise numbers, not a new report | script under `app/scripts/`, read-only vs. providers or mocked usage fixtures | TE1-C5 |
 
 ## Acceptance criteria
 
@@ -44,7 +44,7 @@ measurement and visible product capability are `not implemented` until the slice
 | TE1-C2 | Pi input accounting proven single-counted; regression test locks it | fixture test before/after |
 | TE1-C3 | A deliberate mid-session system-prompt change is detected and reported as a stable-zone break; append-only turns report none | targeted test + one real dev-session log |
 | TE1-C4 | Owner sees hit rate / savings / breaks on the session surface; wording plain-language | owner acceptance |
-| TE1-C5 | Baseline numbers recorded (hit rate, saved fraction, breaks) for the fixed trace | harness output pasted into the log below |
+| TE1-C5 | Baseline numbers recorded (hit rate, saved fraction, breaks) for the fixed trace | harness output |
 | TE1-C6 | No new store, no second ledger, no behavior change to model calls (S1–S3 are read-and-report) | diff review |
 
 ## References consumed
@@ -63,7 +63,7 @@ model-call behavior and require a separate owner-accepted slice after this basel
 
 ## Risks
 
-- Reading SDK usage wrong → S1/S2 fixtures use captured real shapes, not invented ones.
+- Reading SDK usage wrong → S1 fixtures use captured real shapes, not invented ones.
 - Silent behavior change → TE1-C6 diff review; S1–S3 are observation-only.
 - Numbers drift (provider pricing) → profiles carry `verifiedAt` + `costConfidence`; update data,
   not call sites.
