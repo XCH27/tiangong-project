@@ -51,7 +51,7 @@ Two standing tracks run **beside** the release queue and are never blocked by it
 | # | Release | Outcome (one line) | State | Dependency / gate |
 |---|---|---|---|---|
 | R0 | **Baseline audit** | The dirty working tree is audited feature-by-feature: land, fix, or drop; `main` green, tagged, runnable. | **ACTIVE** | — |
-| R1 | **One boundary + task-first entry + language** | Project=folder single concept with one switcher, New-Task-first navigation with project-grouped task list, overlapping-control dedup, zh-Hans localization, identity-label presentation — finished and accepted. | READY (most code exists in the R0 tree) | R0 |
+| R1 | **Upstream baseline convergence + one Session list + language** | Restore the v0.10.5 interaction baseline; show folder-bound Sessions under Projects and folder-less Sessions under Conversations through one list implementation; keep one context-bound New Task flow, archive/labels/session actions, direct folder picking, no permanent All Sessions or default Kanban; then finish Project=folder wording and zh-Hans. | READY (candidate code exists but must be reclassified against v0.10.5) | R0 |
 | R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | READY | R0 |
 | R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | DEP | R0 (R1/R2 improve it) |
 | R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
@@ -96,7 +96,8 @@ this queue when their gate fires.
 - **R0 first:** nothing is trustworthy while an unaudited dirty tree sits on one branch; every
   later claim depends on a green, tagged baseline.
 - **R1/R2 next:** the dirty tree contains substantial candidate code for R1 and inherited service
-  paths for R2, but neither percentage nor usability is assumed. R0 must classify each path as
+  paths for R2, but neither percentage nor usability is assumed. R1 first compares every changed
+  navigation/control path with v0.10.5 and drops v0.11-derived duplication. R0 must classify each path as
   usable, wired but not visually checked, display-only, or not implemented before it is counted.
   This keeps near-done work valuable without turning file presence into a product claim.
 - **R3 before R4 (this reverses the old loop order):** the seam contract itself requires extraction
@@ -149,11 +150,21 @@ Change log:
 - 2026-07-20 — D5 amended (owner direction): memory is agent-autonomous and layered; human
   review becomes optional curation. R9 outcome reworded; daily working notes are ordinary
   permissioned file writes and may begin alongside R3 chains without a new authority.
-- 2026-07-20 — owner UI direction: P6 extended to the folder collapse + single switcher; new P10
-  task-first command surface (New Task replaces new chat; project-grouped task list); P9 gains the
+- 2026-07-20 — owner UI direction (superseded by the 2026-07-21 source/interaction correction): P6
+  extended to the folder collapse + single switcher; P10 initially used a project-grouped task list; P9 gains the
   local/cloud location presets with agent-managed worktree isolation (never a user preset). R1
   scope extended accordingly.
 - 2026-07-20 — owner priority: upstream-basics redesigns (merge/simplify/delete, task-first entry,
   single switcher) land first — R1 slice order fixed accordingly. C4 gains the branch presentation
   rule + landing ladder (diff read-only → apply/discard with R6 → PR with R14); branches are
   agent-managed, never a user surface. New T17/P-60 task-changes review surface registered.
+- 2026-07-21 — owner source/interaction correction: v0.10.5 becomes the product and UI baseline;
+  v0.11.1 is selective update evidence only. P10 is narrowed to one Session-backed work list and
+  one create flow; labels/archive/search become states of that list, Project home cannot duplicate
+  it, and the v0.11 Kanban Board is removed from R1's target product shape.
+- 2026-07-25 — owner boundary review: the R0 landing branch converges Project=Workspace
+  presentation on the R1 clause 1–3 contract (Projects and Conversations as sibling scopes over
+  one Session list; the switcher lifted into the sidebar project list; the standalone
+  `WorkspaceSwitcher` and `project-sidebar-navigation` modules retired). R1 itself stays READY
+  until R0 tags a green baseline. `UI-SPEC.md` becomes the mandatory rendered-value authority in
+  the AGENTS.md routing table.

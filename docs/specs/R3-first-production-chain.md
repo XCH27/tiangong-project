@@ -14,7 +14,8 @@ engine.
 
 ## User story / walkthrough
 
-1. **Intent.** The owner creates a task in a Project (New Task, P10; a Task with its Session): “Research X, write a concise brief, and save it under deliverables.”
+1. **Intent.** The owner starts work in a Project through the shared New Task flow (P10; one
+   authoritative Session in R1): “Research X, write a concise brief, and save it under deliverables.”
 2. **Research.** The agent gathers sources (BrowserPane/web + local files). Captured pages and
    quotes land as session evidence (existing timeline events); the deliverable will reference them.
 3. **Production.** The agent writes `brief.md` in the Workspace via existing file tools; the owner

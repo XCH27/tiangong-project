@@ -25,7 +25,8 @@ boundaries, product forks.
    Goal/thread state, never a new planning file.
 2. **Check Craft first, then check references.** Capability row in
    [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md), inspect the code path, classify
-   **REUSE / EXTEND / NEW**. Compare pinned v0.11.1 source or the hosted-doc mirror only when
+   **REUSE / EXTEND / NEW**. Compare pinned v0.10.5 first for product/interaction behavior; inspect
+   v0.11.1 only for selective fixes/backend mechanisms. Use the hosted-doc mirror only when later
    upstream behavior genuinely matters; hosted docs never override observed code. **For EXTEND/NEW
    work, run a bounded reference intake before designing:** open the domain's reference column in
    [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md), read the named checkout's *specific relevant

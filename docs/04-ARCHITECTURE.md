@@ -12,7 +12,7 @@ the suite document does not create another architecture ledger.
 
 ```text
 ┌─ Craft shell (retained) ─────────────────────────────────────────────┐
-│  Sessions · Timeline · Permissions · Tasks/Board · Settings          │
+│  Sessions · Timeline · Permissions · Tasks/Scheduling · Settings     │
 │  Sources/MCP · Skills · Automations · Scheduler · BrowserPane        │
 │                                                                      │
 │  ┌─ shared spine (one of each) ────────────────────────────────┐     │

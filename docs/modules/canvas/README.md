@@ -4,7 +4,7 @@ Design state: `breadth`; implementation status: `not implemented`; development o
 
 The canvas is a projection and command surface. It owns layout, viewport and grouping; native
 authorities own tasks, sessions, artifacts, media projects, jobs, permissions and workflows.
-Its Craft starting point is the existing Electron shell plus Session/Task/Board/timeline
+Its Craft starting point is the existing Electron shell plus Session/optional Task/timeline
 projections; it is a new surface inside that shell, never a replacement workbench or runtime.
 
 Compatibility gates:

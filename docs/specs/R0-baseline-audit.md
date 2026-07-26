@@ -69,7 +69,7 @@ rechecked after each landing group:
 |---|---|---|---|---|---|
 | P-01 | audit shell/navigation | existing navigation state | existing workspace/session policy | empty/error/narrow/i18n | shell + sidebar |
 | P-02 | audit chat | existing Session RPC/events | existing permission prompt | loading/empty/error/denied/offline | conversation + composer |
-| P-04 | audit Board | existing Task store/RPC | existing task policy | loading/empty/error/narrow/i18n | Board + task drawer |
+| P-04 | audit v0.11-derived Board candidate without accepting it as baseline | existing Task store/RPC | existing task policy | loading/empty/error/narrow/i18n | classify for R1 KEEP/LATER/REMOVE |
 | P-05 | audit settings | existing settings RPC | existing settings policy | loading/empty/error/narrow/i18n | settings navigator/forms |
 
 ## Acceptance criteria
@@ -86,8 +86,8 @@ rechecked after each landing group:
 
 ## References consumed
 
-- Craft v0.11.1 baseline and the current repository tree are the only references for this audit;
-  no external project is being admitted or copied by R0.
+- Craft v0.10.5 is the product/interaction baseline; v0.11.1 and the current repository tree are
+  implementation/selective-update comparisons. No external project is admitted or copied by R0.
 - The exact code roots and verification commands are listed in [`../06-CODE-MAP.md`](../06-CODE-MAP.md)
   and [`../09-QUALITY.md`](../09-QUALITY.md).
 
@@ -107,7 +107,8 @@ None upstream. Produces the trustworthy base every later release consumes.
 ## Verification plan
 
 Ladder 1–3 per group; one smoke at the end; `validate:dev` at integration. Owner CHECK THIS:
-zh-Hans settings/workspace surfaces, Board header, label menus — both languages.
+zh-Hans settings/workspace surfaces and label menus in both languages. The Board is classified for
+R1 and is not a required acceptance surface.
 
 ## Doc updates on completion
 

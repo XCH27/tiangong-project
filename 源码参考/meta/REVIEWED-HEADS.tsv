@@ -11,6 +11,7 @@ plugins/mem0	ddaa655edf41	top-tier-source-intake
 plugins/playwright-mcp	55679f5f3d4b	top-tier-source-intake
 software/OpenHands	613406ca2bca
 software/codex	38b064c31b1f
+software/craft-agents-oss-v0.10.5	c9d9a26fbefa	product-interaction-baseline
 software/craft-agents-oss	4289b1609732
 software/hermes-agent	2ea39daeb1f6
 software/openclaw	9f5609382b54

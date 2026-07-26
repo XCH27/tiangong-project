@@ -11,7 +11,9 @@ packet index ([`PACKET-INDEX.md`](PACKET-INDEX.md)) points to a repository-groun
 containing paths, authority mapping, reference evidence, dependency/rollback steps and acceptance
 IDs. Packet readiness is never an implementation claim.
 
-Every gap class is relative to Craft v0.11. `NEW` means only that Craft lacks the native domain
+Every gap class is relative to the Craft v0.10.5 product/interaction baseline plus the current
+implementation authorities. v0.11.1 is selective-update evidence, not the product baseline. `NEW`
+means only that Craft lacks the native domain
 model or adapter named by that row; it never authorizes a new shell, agent kernel, session/task
 system, permission path, timeline, settings home or provider harness. Implementation starts from
 the matching row in [`../08-CRAFT-CAPABILITY-MAP.md`](../08-CRAFT-CAPABILITY-MAP.md) and extends
@@ -29,7 +31,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | CORE-01 | App shell and runtime | REUSE | breadth | usable | Electron/Bun/React shell |
 | CORE-02 | Project/Workspace boundary | EXTEND | breadth | usable | Workspace authority |
 | CORE-03 | Session and chat | REUSE/EXTEND | breadth | usable | SessionManager + SessionEvents |
-| CORE-04 | Tasks and Board | EXTEND | breadth | usable | Task store + TaskRunner |
+| CORE-04 | Structured tasks, scheduling and task-center projection | EXTEND | breadth | backend usable; default task-center surface not implemented | Task store + TaskRunner; SessionManager for ordinary R1 work |
 | CORE-05 | Settings and preferences | EXTEND | breadth | usable | one settings home |
 | CORE-06 | Search, filters and saved views | EXTEND | breadth | usable | views are projections |
 | CORE-07 | Onboarding and first-run | EXTEND | breadth | usable | no implied Craft service |

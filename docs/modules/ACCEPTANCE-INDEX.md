@@ -9,7 +9,7 @@ with a concrete code path, evidence command and status. They are intentionally n
 | CORE-01-A | Shell launches and routes to every usable baseline surface without a duplicate host | dev launch + route smoke |
 | CORE-02-A | A Project boundary resolves one workspace root and rejects an out-of-bound path | boundary test + trace |
 | CORE-03-A | Session stream, cancellation and event history use one Session authority | RPC/data-path trace |
-| CORE-04-A | Task and Board mutations round-trip through the existing task store | task-store test + UI smoke |
+| CORE-04-A | Structured task mutations round-trip through the existing task store; any task-center view remains a projection and ordinary R1 Sessions need no duplicate Task record | task-store test + projection/data-path audit |
 | CORE-05-A | Settings changes persist and are read from one settings home | settings test |
 | CORE-06-A | Search/filter/view state is a projection and survives reload without copying domain data | view test |
 | CORE-07-A | First-run creates or selects a workspace and reports missing provider setup honestly | onboarding smoke |

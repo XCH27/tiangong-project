@@ -34,7 +34,8 @@ normally uses SPARSE. There is no NOTES grade.
 
 | Path | Grade | Primary evidence use |
 |---|---|---|
-| `software/craft-agents-oss` | FULL / pinned v0.11.1 | Craft compatibility baseline |
+| `software/craft-agents-oss-v0.10.5` | FULL / pinned `c9d9a26fbefa` | Craft product/interaction baseline |
+| `software/craft-agents-oss` | FULL / pinned `4289b1609732` (v0.11.1) | Selective independent-fix/backend comparison only |
 | `software/pi-mono` | FULL / pinned `13437ca82889` | Same-lineage harness/profile comparison for Craft's embedded Earendil Pi; never a second kernel |
 | `software/OpenHands` | FULL | Sandbox lifecycle |
 | `software/hermes-agent` | FULL | Messaging gateway and capability-probe mechanisms |

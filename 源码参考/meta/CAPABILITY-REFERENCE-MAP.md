@@ -43,7 +43,7 @@ file/symbol evidence is in
 
 | Fleet capability | Primary reference | Secondary reference | Allowed absorption boundary |
 |---|---|---|---|
-| Craft product baseline | `software/craft-agents-oss` pinned v0.11.1 | — | REUSE/EXTEND first; never recreate Session, permission, timeline, Task, settings, Workspace, credentials or Job authority |
+| Craft product/interaction baseline | `software/craft-agents-oss-v0.10.5` pinned v0.10.5 | `software/craft-agents-oss` pinned v0.11.1 for selective updates | Preserve v0.10.5 product behavior; admit independent fixes or bounded backend mechanisms from v0.11.1 only after comparison; never recreate Session, permission, timeline, Task, settings, Workspace, credentials or Job authority |
 | Craft/Pi harness and effective prompt/tool projection | Craft checkout + pinned `software/pi-mono` | Databricks same-model harness result; OpenHands weight contrast | TE1/R3 compare current-full and bounded Pi-light inside the existing backend; absorb narrow prompt/tool/extension mechanisms, never another kernel |
 | Multi CLI/API runtimes | Craft provider/runtime seams | Codex, OpenHands | Adapter capability negotiation and process lifecycle; preserve one Task/credential/executor authority and label usage/quotas exact, estimated or unknown |
 | Degradable external execution environment | OpenHands | Craft BrowserPane/process paths | R16/R18 executor interface, capability probe, events, cancel/recovery; reuse Craft permissions, Session and Job paths |

@@ -75,7 +75,7 @@ Violating this is how the product fragments into disconnected utilities.
 
 ## 4. Persistence discipline (the SQLite trigger)
 
-Near-term persistence retains Craft v0.11 filesystem stores under one logical authority (Decision
+Near-term persistence retains the current Craft-derived filesystem stores under one logical authority (Decision
 D2). Introduce SQLite or a control-plane database only when a **concrete, observable engineering
 signal** appears — e.g. the first real bug where file-based lease-restart reconciliation or job
 idempotency cannot be made atomic on the filesystem. Record the trigger, migration path, and owning

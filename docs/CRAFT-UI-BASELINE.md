@@ -5,9 +5,11 @@
 
 ## Authority
 
-Fleet extends Craft Agents v0.11.1. UI work starts from the matching upstream implementation at:
+Fleet's product and interaction baseline is Craft Agents v0.10.5. The current implementation tree
+is v0.11.1-derived, so UI work compares both pinned snapshots before editing:
 
-- `源码参考/software/craft-agents-oss` — pinned to official tag `v0.11.1`
+- `源码参考/software/craft-agents-oss-v0.10.5` — product/interaction baseline, official tag `v0.10.5`
+- `源码参考/software/craft-agents-oss` — selective-update reference, official tag `v0.11.1`
 - `源码参考/software/craft-agents-oss/README.md` — official build and product overview
 - `源码参考/software/craft-agents-oss/CONTRIBUTING.md` — official development workflow
 - `源码参考/software/craft-agents-oss/apps/electron/README.md` — Electron architecture and playground
@@ -18,12 +20,12 @@ Fleet extends Craft Agents v0.11.1. UI work starts from the matching upstream im
 
 Official documentation explains customization, semantic colors, icon overrides, and theme structure,
 but it is not a complete component/layout specification. For visual decisions, authority remains the
-v0.11.1 code first, in this order:
+v0.10.5 interaction code first, in this order:
 
-1. The same upstream component or flow.
-2. An existing shared component under `app/apps/electron/src/renderer/components/ui/` or `app/packages/ui/`.
-3. Tokens and semantic colors in `app/apps/electron/src/renderer/index.css` and `app/packages/ui/src/styles/index.css`.
-4. The mirrored official Colors, Icons, and Themes guidance for supported customization semantics.
+1. The same v0.10.5 component or flow for product structure and interaction.
+2. The v0.11.1 counterpart to identify an independent fix or bounded backend improvement.
+3. The current component and existing shared primitives under `app/`.
+4. Current tokens and semantic colors plus mirrored official customization guidance.
 5. A new local component only when the first four cannot express the required behavior.
 
 Generic web design systems, screenshot approximations, and unrelated reference apps may explain a
@@ -55,14 +57,22 @@ If no concrete visual anchor can be named, the Agent may inspect and propose opt
 invent and ship a new visual language. Temporary captures stay outside the product tree unless the
 owner explicitly asks to retain them.
 
-## Current intentional delta from upstream v0.11.1
+## Current convergence delta
 
-As audited on 2026-07-12, the tracked application differs from the pinned upstream checkout only in:
+The committed app is v0.11.1-derived and the unaccepted R0/R1 candidate tree contains later
+Projects/Board interaction. R1 must compare it with v0.10.5 and classify each affected path as
+KEEP, RESHAPE, REMOVE or LATER. Previously recorded deltas include:
 
 - the required root `tsconfig.base.json` omitted by the upstream tag;
 - the Pi adapter's verified `max → xhigh` saturation and its tests;
-- a standalone primary Board navigation entry, with the former list/board toggle removed;
-- a Board header that keeps the existing Project filter visible and aligns status control heights;
+- a standalone primary Board navigation entry — **REMOVED 2026-07-24.** The sidebar item and its
+  `kanban/sidebar-navigation.ts` helper are gone; the Kanban page stays reachable only from a task
+  orchestrator session's "Edit task" action. Project/Task coupling remains unclassified and is still
+  a candidate for REMOVE or LATER, not an accepted product delta;
+- **Fleet delta, kept:** a Projects sidebar section whose rows expand to their sessions and carry a
+  "+" create action (P6/P10). The action calls `routes.action.newSession({ project })` — the same
+  Session path as the global New Task button. `ProjectInfoPage` correspondingly no longer has a
+  Sessions tab (R1 §1/§4);
 - What's New moved from the sidebar into the Debug submenu, with desktop/mobile wiring and tests;
 - local `app/AGENTS.md` execution rules and targeted tests for the deltas above.
 
@@ -70,6 +80,34 @@ This list describes the last verified baseline, not the current dirty working tr
 being audited under [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md), and this delta list
 is updated as R0 lands features. Nothing is `usable` merely because it appears in a design or an
 unverified working tree.
+
+## Simplification is convergence, never deletion (binding)
+
+The owner's repeated finding (2026-07-24, restated 2026-07-25): agents asked to "simplify" have
+**deleted whole pages and features**, while the **small necessary buttons and affordances were not
+preserved** — or were silently moved. The combined effect is that *no baseline can be established*:
+after such a change you can no longer tell whether the current shape is an acceptable starting
+point, because capability and position both moved at once.
+
+Before removing anything user-visible, classify it:
+
+| Class | Example | Rule |
+|---|---|---|
+| **Duplicate home** | the same capability with two permanent entry points | the only legitimate removal target — merge into one home |
+| **Scope or filtered state** | Projects, Conversations, per-status views, Flagged, Archived, the label tree | **keep.** Projects and Conversations are the two honest folder-bound/folder-less scopes; the others add predicates to the same list implementation. A third All Sessions aggregate is a duplicate home and is removed by P10 |
+| **Small affordance** | inline row buttons, context-menu items, quick entries | **keep by default.** If one genuinely must move, list `old location → new location` explicitly in the handoff |
+
+Two hard requirements:
+
+1. **Check upstream first.** Before deleting a user-visible control, confirm whether
+   `源码参考/software/craft-agents-oss-v0.10.5/` has it and what it looks like. Absent there = a
+   Fleet/v0.11 addition and a candidate for removal. Present there = it is baseline, and removing it
+   needs an explicit owner decision.
+2. **Never move and remove in the same breath.** A change may relocate a control or delete a
+   duplicate home — doing both at once destroys the comparison the owner needs to accept the result.
+
+Worked examples are the ✅/❌ pairs in
+[`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md) §Binding interaction contract.
 
 ## Owner UI rules (binding)
 
@@ -79,10 +117,14 @@ instead of inventing new surfaces. Exact owner wording is preserved once in
 
 Operationally:
 
-- Keep one primary home for each capability; do not repeat the same list or action in several places.
-- One create verb: **New Task** (P10). Do not reintroduce separate "new chat" entries, and do not
-  show workspace/folder/project as parallel switchers (P6) — overlapping controls merge per the R1
-  dedup inventory.
+- Keep one primary home for each capability; a Session appears once under its Project or in the
+  sibling Conversations scope. Search, labels and archive are filtered states, not additional
+  homes.
+- One create flow: **New Task** (P10), triggered globally or from a Project row. It uses the existing
+  Session path in R1 and does not require a v0.11 Task/Board record. Do not show workspace/folder/
+  project as parallel switchers (P6).
+- Label definitions live in Settings; assignment stays in the Session menu. Project home owns
+  documents/assets/settings and never repeats the Session list. Archive and Restore remain reachable.
 - Prefer changing fields, grouping, wording, and progressive disclosure inside the existing Craft
   surface over adding a page, toolbar, sidebar, store, or settings category.
 - Settings are for credentials, security/privacy, retention, connections, and rare preferences.
@@ -90,37 +132,24 @@ Operationally:
 - A visible control must have real behavior, loading/error/recovery states, and the same underlying
   authority as other callers. No display-only controls presented as usable.
 
-## Icon rules
+## Rendered values live in UI-SPEC
 
-1. Reuse Craft's custom icon when one exists under
-   `app/apps/electron/src/renderer/components/icons/` or `app/packages/ui/src/components/icons/`.
-   Examples: `SquarePenRounded`, `PanelLeftRounded`, `McpIcon`, and status icons.
-2. Otherwise use the already-installed `lucide-react` icon closest to the upstream meaning. Do not
-   mix another outline library into the same navigation or control group.
-3. Let the icon component own its stroke. Do not add arbitrary per-use `strokeWidth` values. An
-   explicit stroke override is allowed only when matching the same upstream control.
-4. Match the existing slot, not merely the SVG:
-   - normal sidebar navigation icon: `h-3.5 w-3.5` (14 px);
-   - compact row/action icon: `h-4 w-4` (16 px) inside a fixed 24 px action slot;
-   - top-bar icon: copy the exact existing `TopBarButton` or `HeaderIconButton` pattern.
-5. Icons inherit semantic foreground colors. Default icons use the existing foreground opacity;
-   accent/info/success/destructive colors are reserved for real state, not decoration.
-6. Sibling icons must share size, optical alignment, color, hover treatment, focus treatment, and
-   reserved width. Long text truncates before the icon slot and never pushes or overlaps actions.
-7. Do not hand-draw a new SVG when a Craft or Lucide icon already expresses the action.
+Every **numeric or enumerable** visual rule — type scale, foreground opacity ladder, icon sources and
+slot sizes, radius, elevation, spacing grid, the measured sidebar-row spec, the shared-primitive
+list, motion durations, required states, and the file-level forbidden-drift list — is owned by
+[`UI-SPEC.md`](UI-SPEC.md) and lives there only. Read it before writing UI code and run its §12
+self-check against your diff.
 
-## Component and layout rules
+This file keeps the parts that are judgment, not values: which component to start from, what the
+intentional delta is, and how the change is reviewed and accepted.
 
-- Sidebar rows follow the upstream `LeftSidebar` baseline: 13 px text, 14 px leading icon,
-  `rounded-md`/the existing radius, semantic foreground opacity, and the existing hover/selected state.
-- Use shared menu, tooltip, popover, button, entity-row, and panel-header components. Do not recreate
-  their padding, shadow, radius, animation, or keyboard behavior locally.
-- Use the six-color Craft theme (`background`, `foreground`, `accent`, `info`, `success`,
-  `destructive`) and derived tokens. Do not hard-code a parallel palette.
-- Reserve fixed action columns before applying `truncate`; narrow widths remove text, not action
-  affordances. Verify the same component at narrow and normal sidebar widths.
-- Hover-only actions must remain keyboard reachable. Tooltips explain icon-only controls; they do
-  not replace visible labels where the original Craft pattern uses text.
+Two rules stay here because they are about *choosing*, not measuring:
+
+- Reuse Craft's custom icon when one exists (`components/icons/`, `packages/ui/src/components/icons/`
+  — `SquarePenRounded`, `PanelLeftRounded`, `McpIcon`, status icons) before reaching for
+  `lucide-react`; never hand-draw an SVG for an action either already expresses.
+- Hover-only actions must remain keyboard reachable. Tooltips explain icon-only controls; they do not
+  replace visible labels where the original Craft pattern uses text.
 
 ## Localization rules
 
@@ -145,8 +174,8 @@ the existing component path plus locale tests when layout is unaffected.
 
 1. Capture or inspect the declared visual anchor before editing; record the intentional delta in the
    Goal/thread state.
-2. Compare the changed component with the same upstream v0.11.1 component, closest current sibling,
-   and shared tokens. For copy/localization fixes, confirm the current shared path.
+2. Compare the changed component with v0.10.5, its v0.11.1 counterpart, the current sibling and
+   shared tokens. Name any retained later-upstream behavior and why it passes P2.
 3. Check every icon in the changed group from component props/tokens for source, size, stroke, color,
    slot, hover, focus, and disabled state.
 4. Render the changed state at the relevant view matrix. Compare anchor and result at the same

@@ -13,9 +13,10 @@ match the owner's language. Do not maintain bilingual copies of the same rule or
 ## What Fleet is
 
 Fleet is a **local-first desktop workbench** where a human and AI agents work on the same project
-through the same sessions, files, permissions, and timeline. It is built by **simplifying and
-extending upstream Craft Agents v0.11** — not by building a new app beside it, and not by rebuilding
-from zero.
+through the same sessions, files, permissions, and timeline. It is built from Craft Agents with
+**v0.10.5 as the product/interaction baseline**, the current `app/` tree as implementation reality,
+and v0.11.1 as a selective source of fixes and backend mechanisms — not by building a new app or
+accepting every later upstream product change.
 
 The product bet, stated once:
 
@@ -69,7 +70,8 @@ implementation or an evidence-backed `NO_GAP` decision, never an unowned “some
 | [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md) | Large independent closed-loop systems, shared contracts, references and parallel build rules | Assigning a whole product system to an Agent or checking suite conflicts |
 | [`WORK-ORDER.md`](WORK-ORDER.md) | Current executable task queue, code seams, first acceptance and handoff format | Starting implementation without inventing scope |
 | [`OWNER-GUIDE.md`](OWNER-GUIDE.md) | Plain-language owner checkpoints, acceptance and request format | Owner-facing; agents read the checkpoint list |
-| [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) | UI component/icon/i18n baseline | Before changing UI structure or visuals |
+| [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md) | UI authority order, visual anchor contract, review method | Before changing UI structure |
+| [`UI-SPEC.md`](UI-SPEC.md) | **Measured, decidable design values**: type, opacity ladder, icon slots, radius, elevation, spacing, component specs, forbidden drift | **Before writing any UI code** |
 | [`FEATURE-REGISTRY.md`](FEATURE-REGISTRY.md) | Live claims of big in-flight features | Before starting a big feature |
 | `specs/` | One executable spec per release + template | Implementing the active release |
 | [`modules/`](modules/README.md) | Durable large-module design packets, including later-in-sequence gated capabilities | Designing a large capability before its release row activates |
@@ -101,7 +103,9 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
 
 ## Current honest state
 
-- **Code:** the committed baseline is Craft v0.11.1-derived (see
+- **Code:** the committed implementation tree is Craft v0.11.1-derived, but its product/interaction
+  target is now pinned Craft v0.10.5; R1 compares and removes later Projects/Board interaction while
+  selectively retaining proven fixes and backend mechanisms (see
   [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md)). The former dirty working tree (247 entries) was
   inventoried and landed on `work/fresh-base-spine` as grouped commits on 2026-07-20 (G-docs,
   G-refs, and six app groups: agent-core/TE1 accounting, labels-i18n, workspace-project presentation,

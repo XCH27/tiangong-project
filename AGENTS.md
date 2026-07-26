@@ -5,10 +5,12 @@ routing table below and read only what the task touches.
 
 ## The 10 rules that matter most
 
-1. **This is a product fork of Craft Agents v0.11 (Apache-2.0). Check Craft first.** Before writing
-   code, find your capability row in [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md)
-   and classify the gap: **REUSE / EXTEND / NEW**. Rebuilding what Craft already has is the mistake
-   that has hurt this project most.
+1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first.** Use pinned v0.10.5
+   as the product/interaction baseline and the current `app/` tree as implementation reality. Treat
+   v0.11.1 as a selective donor for independent fixes and proven backend mechanisms, never as
+   authority to restore Projects/Board interaction wholesale. Before writing code, find the
+   capability row in [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) and
+   classify the gap: **REUSE / EXTEND / NEW**.
 2. **Never create a second authority.** One session store, one permission path, one timeline, one
    task store, one settings home. Extend the existing one or get owner sign-off first
    ([`docs/03-NON-NEGOTIABLES.md`](docs/03-NON-NEGOTIABLES.md)).
@@ -77,10 +79,11 @@ routing table below and read only what the task touches.
 | Architecture, invariants, failure modes | `docs/04-ARCHITECTURE.md` |
 | Multi-agent, Git/delivery, templates, reporting | `docs/07-PLAYBOOK.md` |
 | Tests, verification, acceptance split | `docs/09-QUALITY.md` |
-| UI structure, components, icons, i18n | `docs/CRAFT-UI-BASELINE.md` |
+| UI structure, which component to start from, review method | `docs/CRAFT-UI-BASELINE.md` |
+| **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, motion, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
 | Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |
 | Starting a big feature | `docs/FEATURE-REGISTRY.md` (register your boundary) |
-| Upstream Craft behavior/docs | `源码参考/craft-docs/`, pinned checkout `源码参考/software/craft-agents-oss/` |
+| Upstream Craft behavior/docs | `源码参考/craft-docs/`, product baseline `源码参考/software/craft-agents-oss-v0.10.5/`, selective-update reference `源码参考/software/craft-agents-oss/` |
 
 ## Working method (one paragraph)
 

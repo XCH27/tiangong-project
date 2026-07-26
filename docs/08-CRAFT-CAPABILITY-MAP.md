@@ -3,6 +3,8 @@
 > Use this as an index, not a reading assignment. Find the row for the active capability, inspect
 > the listed code, then confirm with `rg`. Third-party comparisons live in
 > [`源码参考/meta/CAPABILITY-REFERENCE-MAP.md`](../源码参考/meta/CAPABILITY-REFERENCE-MAP.md).
+> For product behavior compare pinned v0.10.5 first. The current `app/` tree is implementation
+> reality; pinned v0.11.1 supplies only selectively admitted fixes or backend mechanisms (P2/P5).
 
 ## Classification
 
@@ -42,12 +44,12 @@ specification; the retained failure lessons live in [`04-ARCHITECTURE.md`](04-AR
 | Human/Agent shared actions | UI RPC + Agent tool/PreToolUse + owning service | EXTEND | **`not implemented` as a generic seam.** Route: [`specs/R4-action-seam.md`](specs/R4-action-seam.md). |
 | Usage and context accounting | `packages/shared/src/agent/core/usage-tracker.ts`; usage events | EXTEND | Add real/estimated/unknown cost to the existing path; no second ledger. |
 | Prompt queue and mid-turn steering | `SessionManager.messageQueue`, `sendMessage`, `processNextQueuedMessage`; backend `redirect` | EXTEND | Preserve disk-before-ack and restart replay. |
-| Project/Workspace | Workspace config/root plus current nested Project compatibility | REUSE/EXTEND | Target model Project = Workspace = one folder, single switcher, task-first entry (P6/P10); migrate explicitly via [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md). |
-| Tasks, Board and scheduling | `packages/shared/src/tasks/`; `server-core/src/tasks/`; Session status/labels; scheduler | REUSE/EXTEND | No second task, issue, or job authority. |
+| Project/Workspace | Workspace config/root plus current nested Project compatibility | REUSE/EXTEND | Project = Workspace = one folder and one switcher (P6). Project rows group Sessions and host New Task; Project home owns documents/assets/settings and never repeats the Session list. Existing cloud/remote connection reuses Workspace routing and remains user-owned. |
+| Sessions, tasks, Board and scheduling | SessionManager/SessionEvents; `packages/shared/src/tasks/`; `server-core/src/tasks/`; Session status/labels; scheduler | REUSE/EXTEND | R1 uses the Session-backed v0.10.5 work model. Existing v0.11 Task/Board code is a selectively retained backend candidate, not a requirement to create one Task per Session or expose Kanban. A later task center projects these authorities; no second task, issue, conversation or job store. |
 | Task execution integrity / drift control | Task store + TaskRunner + SessionEvents + PreToolUse + UsageTracker | EXTEND | TaskContract projection, preflight classification, criterion/path gate, no-progress halt, independent verdict (roadmap R6). `not implemented`. |
 | Settings, credentials, Sources and Skills | existing shared stores/managers and Electron settings | REUSE/EXTEND | One settings home; one effective capability provenance path. |
-| Identity labels and statuses | `packages/shared/src/labels/`; status configuration | REUSE/EXTEND | Decision E10. Skill/Source/permission binding: `not implemented`. |
-| Search and dynamic views | `packages/shared/src/search/`; `views/` | REUSE/EXTEND | Views are projections, never state authorities. |
+| Identity labels and statuses | `packages/shared/src/labels/`; status configuration | REUSE/EXTEND | Definitions have one Settings home; Session menus assign them; label results filter the one work list. Decision E10. Skill/Source/permission binding: `not implemented`. |
+| Search, archive and dynamic views | `packages/shared/src/search/`; `views/`; Session archive commands | REUSE/EXTEND | Search/archive/label results are projections or list states, never parallel conversation homes or state authorities. |
 | Automations | `packages/shared/src/automations/`; server automation handlers; scheduler | REUSE/EXTEND | Extend existing scheduler/Session/Task paths. |
 
 ## Runtime and execution map

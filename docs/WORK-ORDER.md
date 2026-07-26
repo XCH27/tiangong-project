@@ -36,8 +36,8 @@ not a second roadmap: `05-ROADMAP.md` owns order, and `modules/REGISTRY.md` owns
 
 | Order | Task ID | Suite | Accepted outcome | Craft starting point | Entry contract | Unlock condition |
 |---:|---|---|---|---|---|---|
-| 0 | R0-BASELINE | SYS-01 | Classify every dirty-tree group as land/fix/drop and produce a runnable, attributable baseline | entire Craft v0.11.1 fork | `specs/R0-baseline-audit.md` | **ACTIVE** |
-| 1 | R1-BOUNDARY | SYS-01 | One Project=folder concept + single switcher, New-Task-first sidebar (project-grouped tasks), control dedup, `zh-Hans`, identity labels — same Craft data paths | Workspace, Task store, app-shell, labels, i18n, settings | `specs/R1-one-boundary-language.md` | R0 |
+| 0 | R0-BASELINE | SYS-01 | Classify every dirty-tree group as land/fix/drop and produce a runnable, attributable baseline | current Craft-derived implementation tree | `specs/R0-baseline-audit.md` | **ACTIVE** |
+| 1 | R1-BOUNDARY | SYS-01 | Converge interaction on v0.10.5; Projects and Conversations are two honest scopes over one Session list; one context-bound create flow, direct folder picker, preserved archive/label/actions, no permanent All Sessions or default Kanban, complete `zh-Hans` | Workspace, SessionManager, app-shell, labels, i18n, settings; v0.11 Task code classification only | `specs/R1-one-boundary-language.md` | R0 |
 | 2 | R2-INDEPENDENCE | SYS-01 | Make inherited Craft-hosted dependencies Fleet-owned, local, user-configured, or honestly unavailable | updater, sharing, docs, OAuth | `specs/R2-independence.md` | R0 |
 | 3 | R3-PRODUCTION | SYS-01/03/04 | intent → research/evidence → Markdown → review → accepted output → delivery | Session, Sources, BrowserPane, TipTap, files | `specs/R3-first-production-chain.md`; TE1/profile work follows the roadmap | R0; R1/R2 improve the experience |
 | 4 | R4-ACTION | SYS-01 | Two real human/Agent mutations share one Craft permission and evidence path | RPC, session tools, PreToolUse, owning service | `specs/R4-action-seam.md` | R3 |

@@ -11,22 +11,33 @@
 
 - **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and
   the bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
-- **P2 — Build on and simplify Craft v0.11; never fork a second app.** The preserved upstream
-  checkout (pinned tag v0.11.1) is behavior/design *reference* only — never a second base to merge
-  wholesale. (2026-07-08)
+- **P2 — Build on Craft without inheriting every upstream product change.** The committed `app/`
+  remains the one implementation tree. Pinned Craft v0.10.5 is the product/interaction baseline;
+  pinned v0.11.1 is a selective-update reference. Port an independent fix or backend mechanism only
+  after a code comparison proves that it preserves the v0.10.5 work model and Fleet's authorities.
+  Never merge either checkout wholesale or create a second app. (2026-07-08; superseded baseline
+  policy, owner direction 2026-07-21)
 - **P3 — Retain the Craft shell.** The spatial canvas is a first-class *project surface* hosted
   inside the shell, not a replacement shell. (2026-07-09)
 - **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription. (2026-07-08)
-- **P5 — UI baseline is clean Craft v0.11; default work is simplify/optimize, not invent.** New
-  surfaces only when a capability must be visible and no Craft surface can host it. Verbatim owner
-  wording: [`01-WHITEPAPER.md`](01-WHITEPAPER.md) §5. (owner, binding, 2026-07-10)
+- **P5 — UI baseline is clean Craft v0.10.5; later upstream UI is comparison evidence only.** Start
+  from the older shell, navigation, composer, menus and session actions. Preserve useful controls
+  before changing their placement. New surfaces exist only when a capability must be visible and no
+  existing surface can host it. v0.11 Projects/Board UI is never the default starting point, though
+  a bounded interaction or backend mechanism may pass P2's selective-intake gate. (owner, binding,
+  2026-07-10; baseline corrected 2026-07-21)
 - **P6 — One user concept: Project = Workspace = one folder.** The user meets exactly one work
   boundary — **Project**, which is a chosen folder on disk. Creating a project is picking or
   creating that folder; opening a folder is opening a project. Workspace remains the invisible
   storage/config/session/remote-routing implementation authority. No default surface may present
   "workspace", "local folder" and "project" as parallel concepts; pickers, switchers and
-  "send to…" dialogs converge on the single Project vocabulary and one switcher control. The
-  one-boundary model is binding;
+  "send to…" dialogs converge on the single Project vocabulary and one switcher control. Folder-
+  bound Sessions are grouped under Project rows; folder-less Sessions remain legal and appear in a
+  sibling **Conversations** section rather than being silently attached to a default Project.
+  Selecting a local Project filters the current Session list and does not replace global Sources,
+  Skills or settings context. Adding a local Project opens the operating-system folder picker
+  directly; it does not route through an intermediate creation screen. The one-boundary model is
+  binding;
   navigation, migration, and remote-project presentation are delivered as coherent verified slices
   (spec: [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md); design source:
   [`design-library/20-workspace-project-session-remote-connections.md`](design-library/20-workspace-project-session-remote-connections.md),
@@ -66,16 +77,19 @@
   preset ships only when R14 lands — no disabled placeholder control before that (G6). (owner
   direction 2026-07-13; location presets + agent-managed worktrees, owner direction 2026-07-20)
 
-- **P10 — Task-first command surface.** The primary create action everywhere is **New Task**
-  (「新建任务」), never "new chat": it creates one Craft Task with its Session inside the current
-  Project, so every conversation is attached to a task and the sidebar organizes **Project →
-  task list** (with Skills and Automations as their own entries). Chat is a task's conversation
-  surface, not a separate product concept; a quick throwaway exchange is a task with no
-  deliverable. Implementation is an EXTEND over the existing Task store + SessionManager
-  (default 1 task : 1 primary session; delegation children hang off the same tree) — no new
-  store, no second task authority, and the Board remains the same Task data. Mainstream
-  task-first desktops (TRAE, Codex, Cursor) are presentation evidence only, never shell imports.
-  (owner direction, 2026-07-20)
+- **P10 — One work list and one create flow.** The primary action is **New Task** (「新建任务」),
+  available globally and on each Project row, but it creates work through the existing Session
+  authority; R1 does not require a parallel v0.11 Task record for every conversation. New Task is
+  context-bound: a Project-row trigger supplies that folder, while the global trigger may create a
+  folder-less Session under Conversations. A Session appears once in exactly one of those sibling
+  scopes. There is no permanent **All Sessions** navigation entry: search, status, flagged, labels
+  and archive are filtered states over the same Session-list implementation, never additional
+  conversation homes. Label definitions live only in Settings; Session menus assign them.
+  Selecting a Project opens its documents, assets and settings, not another copy of its Session
+  list. A later Claude/Codex-style task center may project selected Session/Task/Job state through
+  the existing authorities; it is not the v0.11 Kanban Board and does not justify a second store.
+  (owner direction 2026-07-20; corrected after source and interaction review 2026-07-21 and
+  boundary review 2026-07-25)
 
 ## B. The spine (agent-native execution)
 
@@ -172,7 +186,7 @@
 
 - **D1 — One logical authority per state class.** File format (JSON/SQLite/native) is an
   implementation detail of that authority, never license for a second product store. (2026-07-08)
-- **D2 — Persistence retains Craft v0.11 filesystem authorities** unless a measured requirement
+- **D2 — Persistence retains the current Craft-derived filesystem authorities** unless a measured requirement
   changes the implementation. No product-wide SQLite control plane; no independent `jobs.json` /
   `memory.json` / `clips.json`. SQLite requires a written decision with a concrete trigger — see
   [`03-NON-NEGOTIABLES.md`](03-NON-NEGOTIABLES.md) §4. (2026-07-09)

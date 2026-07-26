@@ -39,7 +39,9 @@ if set(registry_ids) != set(packet_ids):
     )
 
 page_text = read(DOCS / "12-PAGE-ARCHITECTURE.md")
-known_pages = set(re.findall(r"\bP-\d{2}\b", page_text))
+# Only §3A's registry rows *define* a surface ID. Harvesting every "P-NN" mention in the file would
+# let a typo define itself: writing P-99 in a reference would silently add P-99 to the known set.
+known_pages = set(re.findall(r"^\| (P-\d{2}) \|", page_text, re.M))
 acceptance_text = read(DOCS / "modules/ACCEPTANCE-INDEX.md")
 known_acceptance = set(re.findall(r"\b(?:[A-Z]+-\d{2}-A|[A-Z]+-\d{3})\b", acceptance_text))
 valid_states = {"BREADTH_ONLY", "PACKET_DRAFT", "READY_FOR_SPEC"}
@@ -66,13 +68,76 @@ for line in packet_text.splitlines():
     if not re.search(r"\b(?:TE1|R(?:[0-9]|1[0-8]))\b", anchor_and_acceptance):
         errors.append(f"{capability}: missing TE1/R0-R18 development-order anchor")
 
+# §3's T1-T17 target pages and §3A's P-01..P-60 surfaces describe overlapping things in one file.
+# The T rows now declare their surface IDs so the overlap is checkable instead of implied.
+for line in page_text.splitlines():
+    t_match = re.match(r"^\| (T\d+) \| [^|]* \| ([^|]*) \|", line)
+    if not t_match:
+        continue
+    target, declared = t_match.group(1), t_match.group(2).strip()
+    if declared == "—":
+        continue
+    if not declared:
+        errors.append(f"target page {target}: missing Surface IDs join (use '—' if none applies)")
+        continue
+    for surface in (part.strip() for part in declared.split(",")):
+        if not re.fullmatch(r"P-\d{2}", surface):
+            errors.append(f"target page {target}: malformed surface ID {surface!r}")
+        elif surface not in known_pages:
+            errors.append(f"target page {target}: unknown surface ID {surface}")
+
+# 11-PRODUCT-MATRIX.md is keyed by domain name, not capability ID. Without a declared join it sits
+# outside every check above, which is how a domain such as "External computer/environment control"
+# reached an R16 acceptance anchor with no registry row behind it. Sections A-F must therefore
+# declare their registry IDs in column 2; section G (technology routes) is a different table shape
+# and is exempt.
+matrix_text = read(DOCS / "11-PRODUCT-MATRIX.md")
+matrix_ids: set[str] = set()
+matrix_section: str | None = None
+id_pattern = re.compile(r"^(?:CORE|INFO|EXEC|INTEL|CREATE|ORCH)-\d{2}$")
+
+for line in matrix_text.splitlines():
+    section_match = re.match(r"^## ([A-G])\.", line)
+    if section_match:
+        matrix_section = section_match.group(1)
+        continue
+    if matrix_section not in {"A", "B", "C", "D", "E", "F"} or not line.startswith("|"):
+        continue
+
+    cells = line.split("|")
+    if len(cells) < 3:
+        continue
+    domain, declared = cells[1].strip(), cells[2].strip()
+    if not domain or domain == "Domain" or set(domain) <= {"-", " "}:
+        continue
+
+    if declared == "—":
+        continue  # explicit, deliberate coverage gap
+    if not declared:
+        errors.append(f"matrix row '{domain}': missing Registry IDs join (use '—' if none applies)")
+        continue
+    for candidate in (part.strip() for part in declared.split(",")):
+        if not id_pattern.match(candidate):
+            errors.append(f"matrix row '{domain}': malformed registry ID {candidate!r}")
+        elif candidate not in set(registry_ids):
+            errors.append(f"matrix row '{domain}': unknown registry ID {candidate}")
+        else:
+            matrix_ids.add(candidate)
+
 if errors:
     print("documentation contract validation failed:")
     for error in errors:
         print(f"- {error}")
     sys.exit(1)
 
+# Coverage is reported, not enforced: several registry rows are deliberately folded into a broader
+# matrix domain or covered by section G. A growing list is a prompt to check, not a failure.
+uncovered = sorted(set(registry_ids) - matrix_ids)
+
 print(
     f"documentation contracts valid: {len(registry_ids)} capability IDs, "
-    f"{len(known_pages)} page IDs, {len(known_acceptance)} acceptance IDs"
+    f"{len(known_pages)} page IDs, {len(known_acceptance)} acceptance IDs, "
+    f"{len(matrix_ids)} matrix-joined IDs"
 )
+if uncovered:
+    print(f"note: {len(uncovered)} registry IDs have no A-F matrix row: {', '.join(uncovered)}")

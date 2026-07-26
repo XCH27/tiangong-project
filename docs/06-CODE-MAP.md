@@ -11,17 +11,20 @@
 ## Baseline facts
 
 - **App root:** `app/` — a Bun monorepo. `app/package.json` = `0.11.1` (upstream Craft v0.11 line).
-- **Baseline:** Craft v0.11.1-derived; intentional deltas listed in
-  [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md).
-- **Preserved reference (never merge/copy wholesale):** `源码参考/software/craft-agents-oss/` at
-  Craft tag `v0.11.1` / commit `4289b160`; behavior/design reference only.
+- **Implementation reality:** current `app/` is Craft v0.11.1-derived; intentional/convergence
+  deltas are listed in [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md).
+- **Product/interaction baseline:** `源码参考/software/craft-agents-oss-v0.10.5/` at official tag
+  `v0.10.5` / commit `c9d9a26f`.
+- **Selective-update reference:** `源码参考/software/craft-agents-oss/` at official tag `v0.11.1` /
+  commit `4289b160`; compare independent fixes/backend mechanisms, never merge wholesale.
 
 ## Reference roots (do not mix their authority)
 
 | Reference | Location | Use |
 |---|---|---|
 | Fleet product authority | `docs/` numbered set + `specs/` | Decisions, boundaries, route, code entries |
-| Pinned upstream implementation | `源码参考/software/craft-agents-oss/` | Exact Craft v0.11.1 behavior; compare files, never merge the tree |
+| Product/interaction baseline | `源码参考/software/craft-agents-oss-v0.10.5/` | Exact Craft v0.10.5 behavior for shell, navigation, composer, menus and Session actions |
+| Selective-update implementation | `源码参考/software/craft-agents-oss/` | Exact Craft v0.11.1 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
 | Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.11.1 |
 | Mirror index and provenance | `源码参考/craft-docs/README.md`, `SYNC-MANIFEST.txt` | Locate source docs, verify downloaded bytes, known Craft-operated service list |
 | Owner design notes | `docs/design-library/` | Owner intent; open the relevant note after checking code |
@@ -42,6 +45,34 @@ refresh is upstream intake, not permission to change application behavior.
 | Shared UI package | `app/packages/ui/src/` |
 | CLI app | `app/apps/cli/` |
 | Web UI / viewer | `app/apps/webui/`, `app/apps/viewer/` |
+
+## File size: a navigability constraint, not a style preference
+
+Measured 2026-07-24 on `work/fresh-base-spine`: **54 files exceed 900 lines.** The largest are
+
+| File | Lines | Consequence |
+|---|---|---|
+| `packages/server-core/src/sessions/SessionManager.ts` | 8,920 | the session authority is one file |
+| `apps/electron/src/renderer/components/app-shell/AppShell.tsx` | 3,926 | **every** shell change lands here |
+| `apps/electron/src/main/browser-pane-manager.ts` | 3,613 | |
+| `packages/ui/src/components/chat/TurnCard.tsx` | 3,279 | |
+| `packages/shared/src/agent/claude-agent.ts` | 3,168 | |
+| `apps/electron/src/renderer/.../input/FreeFormInput.tsx` | 2,512 | composer changes land here |
+| `apps/electron/src/renderer/.../ChatDisplay.tsx` | 2,383 | |
+| `apps/electron/src/renderer/App.tsx` | 2,269 | |
+
+This is inherited from upstream, not caused by Fleet, and it is not a cleanup backlog — most of these
+files are stable and untouched. It is recorded here because of one specific failure it causes:
+
+> **A file an agent cannot read is a file an agent will drift in.** `AppShell.tsx` is the declared
+> visual anchor for shell work, and it is 3,926 lines. Agents that cannot hold it in context invent
+> structure and values instead of matching it. This is the mechanism behind the reverted 2026-07-24
+> frontend drift.
+
+**Binding rule, renderer only:** a change that adds net lines to a renderer file already above 1,500
+must either (a) extract the affected concern into a new module in the same slice, or (b) name in the
+Goal why extraction is unsafe. Applies to `apps/electron/src/renderer/`. Backend files above are a
+recorded condition, not an open work item; touch them only when a slice already requires it.
 
 ## Spine primitives that already exist
 

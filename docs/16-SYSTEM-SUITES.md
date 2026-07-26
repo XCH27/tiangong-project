@@ -123,7 +123,8 @@ candidate list remain in [`references/REFERENCE-REGISTRY.md`](references/REFEREN
 **integration owner**, not a mandate to build this entire loop before product work. Roadmap slices
 start from Craft and extract each shared contract only when R3/R4/R5/R6 supplies its real callers.
 
-**References to audit together:** Craft v0.11.1 remains authority. Pi tests the thin harness; Codex
+**References to audit together:** Craft v0.10.5 remains product/interaction authority; current app
+authorities remain implementation truth and v0.11.1 is selective-update evidence. Pi tests the thin harness; Codex
 tests bounded graph/protocol patterns; OpenHands tests executor isolation. Hermes and OpenClaw are
 kept only for the owner's explicit complex-computer-environment comparison. Specialized sources may
 prove a missing lease, queue or recovery mechanism, but cannot become standing shells.

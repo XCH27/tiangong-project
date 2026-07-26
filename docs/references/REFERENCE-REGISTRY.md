@@ -27,7 +27,8 @@ checkout; they are not claims that the mechanism has passed product comparison.
 
 ## Local checkout cross-check
 
-Every path and short SHA in this table was checked with `git rev-parse HEAD`. `pending` means the
+Every retained checkout path and short SHA in this table was checked against its recorded source;
+the Craft tag commits were also verified against the official upstream tags. `pending` means the
 new admission-v2 source audit has not been recorded; even an exact SHA and a readable LICENSE is
 not a formal reference.
 
@@ -45,7 +46,8 @@ not a formal reference.
 | `plugins/playwright-mcp` | `55679f5f3d4b` | Apache-2.0 | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/OpenHands` | `613406ca2bca` | MIT (text verified) | `pending` |
 | `software/codex` | `38b064c31b1f` | Apache-2.0 | `pending` |
-| `software/craft-agents-oss` | `4289b1609732` | Apache-2.0 | `baseline` |
+| `software/craft-agents-oss-v0.10.5` | `c9d9a26fbefa` | Apache-2.0 | `product/interaction baseline` |
+| `software/craft-agents-oss` | `4289b1609732` | Apache-2.0 | `selective-update reference (v0.11.1)` |
 | `software/hermes-agent` | `2ea39daeb1f6` | MIT (text verified) | `pending` |
 | `software/openclaw` | `9f5609382b54` | MIT (text verified) | `pending` |
 | `software/opencode` | `c69abee0c732` | MIT (text verified) | `pending` |
@@ -58,11 +60,13 @@ not a formal reference.
 | `software/mcp-registry` | `29e32c39dcb5` | mixed Apache-2.0/MIT transition; docs CC-BY-4.0 | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/opencut` | `5e0696bc9b92` | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` |
 
-The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open Pencil,
-Vibeframe, Headroom, CodeGraph, RTK, Ponytail, Open Design and react-timeline-editor checkouts were
-removed from standing retention on 2026-07-20. Their fixed-head findings remain historical
-`EVIDENCE_ONLY` in `ADMISSION-V2-AUDIT.md`; no active design may start from them without a new
-top-tier gate and temporary source intake.
+The two Craft snapshots have different roles: v0.10.5 decides R1 product/interaction behavior;
+v0.11.1 is inspected only for independent fixes and bounded backend mechanisms. Neither is merged
+wholesale. The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open
+Pencil, Vibeframe, Headroom, CodeGraph, RTK, Ponytail, Open Design and react-timeline-editor
+checkouts were removed from standing retention on 2026-07-20. Their fixed-head findings remain
+historical `EVIDENCE_ONLY` in `ADMISSION-V2-AUDIT.md`; no active design may start from them without
+a new top-tier gate and temporary source intake.
 
 ## Top-tier source intake: exact mechanisms
 
