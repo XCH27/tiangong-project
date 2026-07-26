@@ -50,7 +50,7 @@ packets; it does not promote implementation status or create suite-owned state.
 | INFO-08 | Information / capability | — | P-17 | R2,R5 / INFO-08-A | BREADTH_ONLY |
 | EXEC-01 | Governed Execution / core | — | P-18 | R2,R4 / EXEC-01-A | BREADTH_ONLY |
 | EXEC-02 | Governed Execution / core | — | P-18,P-50 | R4 / EXEC-02-A | BREADTH_ONLY |
-| EXEC-03 | Governed Execution / core | — | P-19 | R0,R4 / EXEC-03-A | BREADTH_ONLY |
+| EXEC-03 | Governed Execution / core | — | P-19 | R0,R4,R18 / EXEC-03-A | BREADTH_ONLY |
 | EXEC-04 | Governed Execution / product | — | P-20 | R6 / EXEC-04-A | BREADTH_ONLY |
 | EXEC-05 | Governed Execution / adapter | — | P-21 | R0,R6 / EXEC-05-A | BREADTH_ONLY |
 | EXEC-06 | Governed Execution / capability | — | P-22 | R17 / EXEC-06-A | BREADTH_ONLY |
@@ -87,12 +87,12 @@ packets; it does not promote implementation status or create suite-owned state.
 | CREATE-16 | Creative Media / product | — | P-14 | R10 / CREATE-16-A | BREADTH_ONLY |
 | ORCH-01 | Composition / product | workflows/README.md | P-46 | R8 / WF-001..004 | PACKET_DRAFT |
 | ORCH-02 | Governed Execution / surface | workflows/README.md | P-47 | R8 / ORCH-02-A | PACKET_DRAFT |
-| ORCH-03 | Intelligence / product | suites/SYS-08-marketplaces.md | P-48 | R15 / ORCH-03-A | PACKET_DRAFT |
-| ORCH-04 | Governed Execution / adapter | suites/SYS-08-marketplaces.md | P-48 | R4,R6 / ORCH-04-A | PACKET_DRAFT |
+| ORCH-03 | Intelligence / product | suites/SYS-08-marketplaces.md | P-48,P-56 | R15 / ORCH-03-A | PACKET_DRAFT |
+| ORCH-04 | Governed Execution / adapter | suites/SYS-08-marketplaces.md | P-48,P-56 | R4,R6 / ORCH-04-A | PACKET_DRAFT |
 | ORCH-05 | Integrations / core | jobs/README.md | P-49 | R11-R13 / JOB-001..004 | PACKET_DRAFT |
 | ORCH-06 | Work Core / core | — | P-50 | R3,R4 / ORCH-06-A | BREADTH_ONLY |
 | ORCH-07 | Composition / surface | — | P-51 | R4,R6 / ORCH-07-A | BREADTH_ONLY |
-| ORCH-08 | Integrations / capability | — | P-52 | R0,R2 / ORCH-08-A | BREADTH_ONLY |
+| ORCH-08 | Integrations / capability | — | P-52 | R0,R2,R18 / ORCH-08-A | BREADTH_ONLY |
 | ORCH-09 | Integrations / adapter | — | P-53 | R2 / ORCH-09-A | BREADTH_ONLY |
 | ORCH-10 | Intelligence / product | suites/SYS-08-marketplaces.md | P-56,P-57 | R15 / ORCH-10-A | PACKET_DRAFT |
 | ORCH-11 | Governed Execution / product | suites/SYS-08-marketplaces.md | P-56,P-58 | R15 / ORCH-11-A | PACKET_DRAFT |

@@ -2,7 +2,9 @@
 
 This registry is the breadth authority for product capabilities and design coverage. It is not a
 list of independent software modules. Inclusion is not a claim of implementation. A capability can
-be fully designed while its implementation is `not implemented` or `gated`; its architectural kind
+be fully designed while its implementation is `not implemented` (possibly behind a named gate —
+gates are recorded in the compatibility-anchor column and the roadmap row, never as a fifth
+implementation status); its architectural kind
 and parent context come from [`MODULE-TAXONOMY.md`](MODULE-TAXONOMY.md) and [`CONTEXTS.md`](CONTEXTS.md).
 
 **Coverage is not packet completion.** `breadth` means that the capability is named, placed in a
@@ -35,7 +37,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | CORE-05 | Settings and preferences | EXTEND | breadth | usable | one settings home |
 | CORE-06 | Search, filters and saved views | EXTEND | breadth | usable | views are projections |
 | CORE-07 | Onboarding and first-run | EXTEND | breadth | usable | no implied Craft service |
-| CORE-08 | Help, docs and support | EXTEND | breadth | usable | local/user-configured links |
+| CORE-08 | Help, docs and support | EXTEND | breadth | wired but not visually checked | local/user-configured links |
 | CORE-09 | Updates, packaging and distribution | EXTEND | breadth | wired but not visually checked | Fleet channel |
 | CORE-10 | Internationalization and identity | EXTEND | breadth | wired but not visually checked | i18n + stable IDs |
 | CORE-11 | Panels, docking and layout | EXTEND | breadth | wired but not visually checked | one Workbench host |
@@ -46,7 +48,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 |---|---|---|---|---|---|
 | INFO-01 | Workspace files and file tools | REUSE/EXTEND | breadth | usable | filesystem + permission |
 | INFO-02 | Library and ArtifactRef | NEW | breadth | not implemented | one version/provenance authority |
-| INFO-03 | Browser evidence and capture | EXTEND | breadth | not implemented | BrowserPane + evidence ArtifactRef |
+| INFO-03 | Browser evidence and capture | EXTEND | breadth | BrowserPane baseline usable; capture/evidence not implemented | BrowserPane + evidence ArtifactRef |
 | INFO-04 | Document ingestion and conversion | EXTEND | breadth | usable | Sources/preview + provenance |
 | INFO-05 | Document editing and preview | EXTEND | breadth | usable | existing TipTap only |
 | INFO-06 | Search indexing and retrieval | EXTEND | breadth | usable | search/views projection |
@@ -61,14 +63,14 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | EXEC-02 | Actions and caller-aware action seam | NEW/EXTEND | breadth | not implemented | one executor/policy/evidence path |
 | EXEC-03 | Terminal and local execution | EXTEND | breadth | usable | Bash/background; PTY gated |
 | EXEC-04 | Multi-agent delegation | EXTEND | breadth | not implemented | Session/Task tree |
-| EXEC-05 | Runtime/provider adapters | EXTEND | breadth | not implemented | capability negotiation |
+| EXEC-05 | Runtime/provider adapters | EXTEND | breadth | Claude+Pi lanes usable; generic adapter contract not implemented | capability negotiation |
 | EXEC-06 | Adaptive organization/router | NEW | breadth | not implemented | measured Task/Session policy |
 | EXEC-07 | Worktree isolation | NEW | breadth | not implemented | Git/process lifecycle |
 | EXEC-08 | Sandbox and OS isolation | EXTEND/NEW | breadth | wired but not visually checked | tested Fleet filesystem/network/script isolation; full OS/container executor remains gated |
 | EXEC-09 | Remote and cloud execution | EXTEND | breadth | not implemented | direct user-owned Fleet transport |
 | EXEC-10 | Automations and scheduler | EXTEND | breadth | usable | governed actions |
 | EXEC-11 | Messaging and channel adapters | EXTEND | breadth | not implemented | Workspace-scoped gateway |
-| EXEC-12 | Collaboration, sharing and invites | EXTEND | breadth | not implemented | explicit grants/side effects |
+| EXEC-12 | Collaboration, sharing and invites | EXTEND | breadth | sharing gate wired but not visually checked; invites/grants not implemented | explicit grants/side effects |
 | EXEC-13 | Git repository, branch and PR review delivery | EXTEND/NEW | breadth | not implemented | governed Git/PR adapter; never a task authority |
 | EXEC-14 | System prompt, effective execution profile and agent identity configuration | EXTEND | breadth | not implemented | one prompt/tool projection over provider + permission seams |
 
@@ -78,7 +80,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 |---|---|---|---|---|---|
 | INTEL-01 | Context/effective capability projection and compaction | EXTEND | breadth | not implemented | centralized measurable projection; compaction gated |
 | INTEL-02 | Token optimization and cache strategy | EXTEND | breadth | not implemented | existing prompt/tool assembly + one UsageTracker |
-| INTEL-03 | Model routing and capability negotiation | NEW/EXTEND | breadth | not implemented | provider adapters |
+| INTEL-03 | Model routing and capability negotiation | NEW/EXTEND | breadth | per-model thinking-level mapping usable; routing not implemented | provider adapters |
 | INTEL-04 | Cost and usage ledger | NEW/EXTEND | breadth | not implemented | real/estimated/unknown |
 | INTEL-05 | Layered agent-maintained memory | NEW | breadth | not implemented | autonomous accumulation + logged consolidation; curation optional; D5 floors |
 | INTEL-06 | Prompt, skill and context loadouts | EXTEND | breadth | not implemented | install/loadout/runtime separated; feeds one effective projection |
@@ -88,7 +90,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 
 | ID | Module | Gap class | Design state | Implementation status | Compatibility anchor |
 |---|---|---|---|---|---|
-| CREATE-01 | Spatial canvas and orchestration | NEW | breadth | not implemented | projection only |
+| CREATE-01 | Spatial canvas and orchestration | NEW | breadth | not implemented; playground preview page display-only | projection only |
 | CREATE-02 | Video and media editing | NEW | breadth | not implemented | sequence + Job + ArtifactRef |
 | CREATE-03 | Image generation and editing | NEW | breadth | not implemented | generation Job + provenance |
 | CREATE-04 | Audio, voice and music | NEW | breadth | not implemented | media Job + track provenance |

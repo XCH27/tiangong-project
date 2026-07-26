@@ -89,7 +89,7 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 | P-12 | Library, versions and asset inspector | Library route | INFO-02 | not implemented |
 | P-13 | Source ingestion and conversion progress | Sources / Jobs | INFO-04 | usable |
 | P-14 | Document editor, preview and co-edit controls | Document route | INFO-05, CREATE-16 | usable |
-| P-15 | Browser tabs, navigation and capture controls | BrowserPane | INFO-03 | not implemented |
+| P-15 | Browser tabs, navigation and capture controls | BrowserPane | INFO-03 | tabs/navigation usable (Craft BrowserPane); capture controls not implemented |
 | P-16 | Evidence, citation and provenance review | Inspector / timeline | INFO-03, INFO-07 | not implemented |
 | P-17 | Import, export and migration wizard | Dialog / settings | INFO-08 | not implemented |
 | P-18 | Permission prompt, approval history and policy explanation | Dialog / inbox | EXEC-01, EXEC-02 | `not implemented` |
@@ -102,13 +102,13 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 | P-25 | Remote target, grant and disconnect state | Workspace settings | EXEC-09 | not implemented |
 | P-26 | Automation schedule and run history | Task / settings extension | EXEC-10 | usable |
 | P-27 | Messaging channels, delivery and reconnect | Settings / inbox | EXEC-11 | `not implemented` |
-| P-28 | Sharing, invite and revoke dialog | Project settings | EXEC-12 | not implemented |
+| P-28 | Sharing, invite and revoke dialog | Project settings | EXEC-12 | share/update/revoke wired but not visually checked (landed 2026-07-26); invites not implemented |
 | P-29 | Context preview, compaction and token budget | Session / cost inspector | INTEL-01, INTEL-02 | `not implemented` |
 | P-30 | Model capability, routing and cost ledger | Session / settings | INTEL-03, INTEL-04 | not implemented |
 | P-31 | Memory layers, consolidation log and curation (pin/correct/delete) | Memory route | INTEL-05 | not implemented |
 | P-32 | Skill/capability install, loadout and runtime view | Skills/Sources extension | INTEL-06 | not implemented |
 | P-33 | Evaluation run, regression evidence and comparison | Diagnostics / Jobs | INTEL-07 | not implemented |
-| P-34 | Spatial canvas and node inspector | Canvas route | CREATE-01 | not implemented |
+| P-34 | Spatial canvas and node inspector | Canvas route | CREATE-01 | not implemented; playground preview display-only (landed 2026-07-26) |
 | P-35 | Video sequence, media bin and timeline | Video route | CREATE-02 | not implemented |
 | P-36 | Image generation/editing and result review | Jobs / media route | CREATE-03, CREATE-14 | not implemented |
 | P-37 | Audio, voice and music tracks | Media / video route | CREATE-04 | not implemented |
@@ -124,7 +124,7 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 | P-47 | Workflow run, inputs, outputs and history | Workflow / task extension | ORCH-02 | not implemented |
 | P-48 | Plugin, tool registry, MCP and loadout permissions | Skills/Sources / settings | ORCH-03, ORCH-04 | `not implemented` |
 | P-49 | Job queue, resource limits, retry and cancellation | Jobs panel | ORCH-05 | not implemented |
-| P-50 | Activity timeline and event detail | Session / project timeline | ORCH-06 | usable |
+| P-50 | Activity timeline and event detail | Session / project timeline | ORCH-06, EXEC-02 | usable (timeline); EXEC-02 evidence detail not implemented |
 | P-51 | Notifications, approvals and inbox | Inbox drawer | ORCH-07 | `not implemented` |
 | P-52 | Diagnostics, health checks and recovery actions | Help / settings | ORCH-08 | not implemented |
 | P-53 | Telemetry, privacy and redaction controls | Settings | ORCH-09 | not implemented |

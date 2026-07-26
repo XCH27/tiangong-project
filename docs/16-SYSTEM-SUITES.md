@@ -98,6 +98,15 @@ candidate list remain in [`references/REFERENCE-REGISTRY.md`](references/REFEREN
 | ORCH-05 jobs | `JobRef`, cancellation, budget and lifecycle contract | SYS-06 implements media/render jobs; SYS-07 projects workflow jobs; neither creates a queue authority |
 | INFO-02 ArtifactRef | envelope/version/provenance contract | SYS-04/05/06 own their native evidence/design/media content |
 | ORCH-10..12 marketplaces | package identity, manifest, trust and lifecycle contracts | SYS-08 owns catalogs and transactions; SYS-01 owns grants/policy; SYS-03 consumes loadouts |
+| CORE-11 panels/layout | Workbench host, fixed-shell presentation and layout persistence | SYS-05 consumes panel/canvas hosting; docking/split primitives stay gated (R18) |
+| EXEC-01 permissions | modes, PreToolUse gate and approval authority | SYS-04 consumes deny/approve decisions for capture, credential and external-effect actions — no second permission store |
+| EXEC-07 worktrees | occupancy/lifecycle contract over Git/process integration | SYS-02 implements remote checkout/worktree adapters for the delivery loop |
+| EXEC-10 automations | schedules, automation handlers and their permission path | SYS-07 projects scheduled workflow runs — no second scheduler |
+| INFO-07 provenance/citation | provenance fields ride the SYS-01-owned ArtifactRef/evidence contract | SYS-04 produces capture/evidence provenance; SYS-06 produces media source/output provenance |
+| ORCH-04 tool registry/MCP | one action/tool policy path, grants and revocation | SYS-08 owns MCP server catalog, manifest and install transactions |
+| ORCH-06 event stream | SessionEvents/timeline authority | SYS-07 projects workflow run history from it — no second run/event store |
+| ORCH-07 notifications/inbox | permission/session evidence the inbox projects | SYS-04 routes capture/approval prompts; SYS-07 routes run notifications — the inbox stays a projection |
+| CREATE-12 export/delivery | `DeliveryReceipt`/Job-output contracts (shared-contract owner) | SYS-06 implements media render/export; SYS-07 projects workflow delivery — one exporter contract, no per-surface forks |
 
 ## Shared-contract ownership
 
