@@ -12,18 +12,23 @@ UPSTREAM_DIR="$ROOT_DIR/源码参考/software/craft-agents-oss"
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-mkdir -p "$ONLINE_DIR"
+tmp_online_dir="$tmp_dir/online-current"
+mkdir -p "$tmp_online_dir"
 curl -fsSL --retry 3 --max-time 60 "$INDEX_URL" -o "$tmp_dir/llms.txt"
-cp "$tmp_dir/llms.txt" "$ONLINE_DIR/llms.txt"
-curl -fsSL --retry 3 --max-time 60 "$SITEMAP_URL" -o "$ONLINE_DIR/sitemap.xml"
+cp "$tmp_dir/llms.txt" "$tmp_online_dir/llms.txt"
+curl -fsSL --retry 3 --max-time 60 "$SITEMAP_URL" -o "$tmp_online_dir/sitemap.xml"
 
 sed -nE 's/.*\((https:\/\/agents\.craft\.do\/docs\/[^)]+)\).*/\1/p' "$tmp_dir/llms.txt" |
 while IFS= read -r url; do
   relative_path="${url#https://agents.craft.do/docs/}"
-  destination="$ONLINE_DIR/$relative_path"
+  destination="$tmp_online_dir/$relative_path"
   mkdir -p "$(dirname "$destination")"
   curl -fsSL --retry 3 --max-time 60 "$url" -o "$destination"
 done
+
+mkdir -p "$TARGET_DIR"
+rm -rf "$ONLINE_DIR"
+mv "$tmp_online_dir" "$ONLINE_DIR"
 
 # The official Quickstart remains reachable but is absent from both llms.txt and the sitemap.
 # Preserve it separately so it is available for migration research without presenting it as current.
