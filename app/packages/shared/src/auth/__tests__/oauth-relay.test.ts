@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
-  OAUTH_RELAY_CALLBACK_URL,
   decodeOAuthRelayState,
   encodeOAuthRelayState,
+  getOAuthRelayCallbackUrl,
   isOAuthRelayState,
   wrapPreparedOAuthFlowForRelay,
 } from '../oauth-relay.ts';
@@ -28,6 +28,25 @@ describe('oauth relay state', () => {
   });
 });
 
+describe('getOAuthRelayCallbackUrl', () => {
+  const ORIGINAL = process.env.FLEET_OAUTH_RELAY_URL;
+
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.FLEET_OAUTH_RELAY_URL;
+    else process.env.FLEET_OAUTH_RELAY_URL = ORIGINAL;
+  });
+
+  it('has no relay by default — never a Craft-operated fallback', () => {
+    delete process.env.FLEET_OAUTH_RELAY_URL;
+    expect(getOAuthRelayCallbackUrl()).toBeNull();
+  });
+
+  it('returns the user-operated relay when configured', () => {
+    process.env.FLEET_OAUTH_RELAY_URL = 'https://relay.example.test/auth/callback';
+    expect(getOAuthRelayCallbackUrl()).toBe('https://relay.example.test/auth/callback');
+  });
+});
+
 describe('wrapPreparedOAuthFlowForRelay', () => {
   it('keeps the inner flow state but rewrites auth URL state and redirect_uri', () => {
     const prepared: PreparedOAuthFlow = {
@@ -41,16 +60,18 @@ describe('wrapPreparedOAuthFlowForRelay', () => {
       provider: 'google',
     };
 
+    const RELAY = 'https://relay.example.test/auth/callback';
     const wrapped = wrapPreparedOAuthFlowForRelay(
       prepared,
       'https://ghalmos.craftdocs-cf-t1.com/api/oauth/callback',
+      RELAY,
     );
 
     expect(wrapped.state).toBe('inner-state-123');
-    expect(wrapped.redirectUri).toBe(OAUTH_RELAY_CALLBACK_URL);
+    expect(wrapped.redirectUri).toBe(RELAY);
 
     const authUrl = new URL(wrapped.authUrl);
-    expect(authUrl.searchParams.get('redirect_uri')).toBe(OAUTH_RELAY_CALLBACK_URL);
+    expect(authUrl.searchParams.get('redirect_uri')).toBe(RELAY);
 
     const outerState = authUrl.searchParams.get('state');
     expect(outerState).toBeTruthy();

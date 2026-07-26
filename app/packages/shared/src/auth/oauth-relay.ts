@@ -1,6 +1,19 @@
 import type { PreparedOAuthFlow } from './oauth-flow-types.ts';
 
-export const OAUTH_RELAY_CALLBACK_URL = 'https://agents.craft.do/auth/callback';
+/**
+ * Optional OAuth relay for deployments whose callback URL cannot be
+ * pre-registered with every provider. Fleet operates no relay: the inherited
+ * `agents.craft.do` worker is a Craft-operated service (Decision P8, spec
+ * R2-C5), so there is no default. Unset means prepared flows use their own
+ * callback URL directly as redirect_uri — the provider must have that URL
+ * registered. Set FLEET_OAUTH_RELAY_URL to a relay you operate (a worker that
+ * unwraps the `ca1.` state envelope and forwards to `returnTo`). The desktop
+ * local-callback-port path never touches this.
+ */
+export function getOAuthRelayCallbackUrl(): string | null {
+  return process.env.FLEET_OAUTH_RELAY_URL?.trim() || null;
+}
+
 const OAUTH_RELAY_STATE_PREFIX = 'ca1.';
 const OAUTH_RELAY_STATE_VERSION = 1;
 
@@ -76,14 +89,15 @@ export function decodeOAuthRelayState(value: string): OAuthRelayState {
 export function wrapPreparedOAuthFlowForRelay(
   prepared: PreparedOAuthFlow,
   returnTo: string,
+  relayCallbackUrl: string,
 ): PreparedOAuthFlow {
   const authUrl = new URL(prepared.authUrl);
-  authUrl.searchParams.set('redirect_uri', OAUTH_RELAY_CALLBACK_URL);
+  authUrl.searchParams.set('redirect_uri', relayCallbackUrl);
   authUrl.searchParams.set('state', encodeOAuthRelayState(returnTo, prepared.state));
 
   return {
     ...prepared,
     authUrl: authUrl.toString(),
-    redirectUri: OAUTH_RELAY_CALLBACK_URL,
+    redirectUri: relayCallbackUrl,
   };
 }
