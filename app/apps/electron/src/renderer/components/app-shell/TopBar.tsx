@@ -55,6 +55,10 @@ interface TopBarProps {
   canGoBack: boolean
   canGoForward: boolean
   onToggleSidebar: () => void
+  /** Live sidebar width. When > 0 (desktop, sidebar visible) the toggle pins to the
+   *  sidebar's right edge and follows resize drags; 0/undefined falls back to the
+   *  inline position next to the menu so the control stays reachable when hidden. */
+  sidebarWidth?: number
   onToggleFocusMode: () => void
   onAddSessionPanel: () => void
   onAddBrowserPanel: () => void
@@ -83,6 +87,7 @@ export function TopBar({
   canGoBack,
   canGoForward,
   onToggleSidebar,
+  sidebarWidth,
   onToggleFocusMode,
   onAddSessionPanel,
   onAddBrowserPanel,
@@ -147,18 +152,13 @@ export function TopBar({
         className="pointer-events-auto flex min-w-0 flex-1 items-center gap-0.5"
         style={{ paddingLeft: menuLeftPadding, paddingRight: isCompact ? 12 : 0 }}
       >
-        <div className="flex items-center gap-0.5">
-        {!isCompact && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <TopBarButton onClick={onToggleSidebar} aria-label={t("menu.toggleSidebar")}>
-              <PanelLeftRounded className="h-[18px] w-[18px] text-foreground/70" />
-            </TopBarButton>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("menu.toggleSidebar")}</TooltipContent>
-        </Tooltip>
-        )}
-
+        {/* Sidebar zone: spans from the traffic-light inset to the live sidebar edge so the
+            toggle rides the edge during resize drags (owner walkthrough 2026-07-26). With the
+            sidebar hidden (width 0) the zone collapses and the toggle sits inline again. */}
+        <div
+          className={cn('flex items-center gap-0.5', !isCompact && sidebarWidth ? 'shrink-0 justify-between' : undefined)}
+          style={!isCompact && sidebarWidth ? { width: Math.max(0, sidebarWidth - menuLeftPadding) } : undefined}
+        >
         <AppMenu
           onNewChat={onNewChat}
           onNewWindow={onNewWindow}
@@ -171,6 +171,17 @@ export function TopBar({
           onToggleSidebar={onToggleSidebar}
           onToggleFocusMode={onToggleFocusMode}
         />
+
+        {!isCompact && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <TopBarButton onClick={onToggleSidebar} aria-label={t("menu.toggleSidebar")}>
+              <PanelLeftRounded className="h-[18px] w-[18px] text-foreground/70" />
+            </TopBarButton>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("menu.toggleSidebar")}</TooltipContent>
+        </Tooltip>
+        )}
         </div>
 
         {/* Back / Forward / Workspace selector (moved from center).

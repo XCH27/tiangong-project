@@ -2263,6 +2263,7 @@ function AppShellContent({
         {/* === TOP BAR === */}
         <TopBar
           workspaces={workspaces}
+          sidebarWidth={isSidebarVisible ? sidebarWidth : 0}
           activeWorkspaceId={activeWorkspaceId}
           onSelectWorkspace={onSelectWorkspace}
           workspaceUnreadMap={workspaceUnreadMap}

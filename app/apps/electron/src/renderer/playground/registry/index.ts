@@ -26,11 +26,13 @@ import { surfaceStateComponents } from './surface-states'
 import { imageSupportComponents } from './image-support'
 import { mobileWebUIComponents } from './mobile-webui'
 import { kanbanComponents } from './kanban'
+import { canvasComponents } from './canvas'
 import { taskEditorComponents } from './task-editor'
 
 export * from './types'
 
 export const componentRegistry: ComponentEntry[] = [
+  ...canvasComponents,
   ...mobileWebUIComponents,
   ...apiKeyInputComponents,
   ...onboardingComponents,
@@ -65,7 +67,7 @@ export const componentRegistry: ComponentEntry[] = [
 export function getCategories(): CategoryGroup[] {
   // Every Category must appear here — this list filters the registry, so a category declared in
   // types.ts but omitted below renders nothing and the omission is silent.
-  const categoryOrder: Category[] = ['Mobile WebUI', 'Automations', 'Onboarding', 'Agent Setup', 'Chat', 'Island', 'Browser', 'Planner', 'Custom Shadows', 'Session List', 'Kanban', 'Entity Lists', 'Edit Popover', 'Turn Cards', 'TurnCard Modes', 'Fullscreen', 'Chat Messages', 'Chat Inputs', 'Toast Messages', 'Markdown', 'Icons', 'OAuth', 'Messaging', 'Feedback', 'Settings', 'Sources']
+  const categoryOrder: Category[] = ['Canvas', 'Mobile WebUI', 'Automations', 'Onboarding', 'Agent Setup', 'Chat', 'Island', 'Browser', 'Planner', 'Custom Shadows', 'Session List', 'Kanban', 'Entity Lists', 'Edit Popover', 'Turn Cards', 'TurnCard Modes', 'Fullscreen', 'Chat Messages', 'Chat Inputs', 'Toast Messages', 'Markdown', 'Icons', 'OAuth', 'Messaging', 'Feedback', 'Settings', 'Sources']
   const categoryMap = new Map<Category, ComponentEntry[]>()
 
   for (const entry of componentRegistry) {
