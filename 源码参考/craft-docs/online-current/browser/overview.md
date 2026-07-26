@@ -103,13 +103,13 @@ Closing the browser window via the OS close button **hides** it rather than dest
 
 ## Per-workspace tabs
 
-Browser windows are scoped to the [workspace](/go-further/workspaces) that opened them. When you switch workspaces, the toolbar and tab strip only show the browser tabs that belong to the active workspace — sessions in another workspace can keep their own windows running in parallel without cluttering your view.
+Browser windows are scoped to the [workspace](/docs/go-further/workspaces) that opened them. When you switch workspaces, the toolbar and tab strip only show the browser tabs that belong to the active workspace — sessions in another workspace can keep their own windows running in parallel without cluttering your view.
 
 Manual windows you open from the top bar follow the same rule: they belong to the workspace that was active when you opened them.
 
 ## Browser on remote workspaces
 
-When you connect to a [remote workspace](/server/headless) from the desktop app, the agent running on the server drives **your local browser** rather than spawning a headless Chromium on the remote machine. The remote agent calls back to your desktop client over the same WebSocket connection, and you see the browser window open on your own computer — already signed in to your accounts, with your cookies and extensions.
+When you connect to a [remote workspace](/docs/server/headless) from the desktop app, the agent running on the server drives **your local browser** rather than spawning a headless Chromium on the remote machine. The remote agent calls back to your desktop client over the same WebSocket connection, and you see the browser window open on your own computer — already signed in to your accounts, with your cookies and extensions.
 
 <Note>
   Remote browser support requires the desktop app as the client. The browser tool is not available when the only connected client is the web UI or the CLI.

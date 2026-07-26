@@ -243,7 +243,7 @@ craft-cli sessions
 craft-cli send abc-123 "Run the tests"
 ```
 
-See the [CLI guide](/server/cli) for the full command reference.
+See the [CLI guide](/docs/server/cli) for the full command reference.
 
 ## Environment Variables
 
@@ -457,9 +457,9 @@ Then connect to `ws://localhost:9100` from the desktop app or browser. The tunne
 
 ## Browser tool
 
-The built-in [browser](/browser/overview) bridges from the remote server to the connected desktop client — pages open on your local machine, using your cookies and signed-in sessions. The browser tool is available when at least one desktop client is connected; web UI and CLI clients cannot host browser windows.
+The built-in [browser](/docs/browser/overview) bridges from the remote server to the connected desktop client — pages open on your local machine, using your cookies and signed-in sessions. The browser tool is available when at least one desktop client is connected; web UI and CLI clients cannot host browser windows.
 
-See [Browser on remote workspaces](/browser/overview#browser-on-remote-workspaces) for the security model and the `allowRemoteEvaluate` switch.
+See [Browser on remote workspaces](/docs/browser/overview#browser-on-remote-workspaces) for the security model and the `allowRemoteEvaluate` switch.
 
 ## Version Compatibility
 

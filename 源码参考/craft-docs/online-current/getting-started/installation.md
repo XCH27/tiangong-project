@@ -165,10 +165,10 @@ First launch opens the setup wizard.
 
 ## Next Steps
 
-<Card title="Add Sources" icon="plug" href="/sources/overview" horizontal>
+<Card title="Add Sources" icon="plug" href="/docs/sources/overview" horizontal>
   Connect GitHub, Linear, APIs, and local files to extend what the agent can access.
 </Card>
 
-<Card title="Optimize command output with RTK" icon="gauge" href="/go-further/performance" horizontal>
+<Card title="Optimize command output with RTK" icon="gauge" href="/docs/go-further/performance" horizontal>
   Install RTK and enable Settings → AI → Performance → Token Optimization for command-heavy coding sessions.
 </Card>

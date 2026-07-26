@@ -9,7 +9,7 @@
 Craft Agent supports icons on sources, skills, and statuses. Icons can be emojis, SVG files, or raster images (PNG, JPG).
 
 <Note>
-  Labels do **not** use icons — they display as colored circles. See [Colors](/customisation/colors) for label color configuration.
+  Labels do **not** use icons — they display as colored circles. See [Colors](/docs/customisation/colors) for label color configuration.
 </Note>
 
 ## Supported Formats

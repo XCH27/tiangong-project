@@ -15,7 +15,7 @@ match the owner's language. Do not maintain bilingual copies of the same rule or
 Fleet is a **local-first desktop workbench** where a human and AI agents work on the same project
 through the same sessions, files, permissions, and timeline. It is built from Craft Agents with
 **v0.10.5 as the product/interaction baseline**, the current `app/` tree as implementation reality,
-and v0.11.1 as a selective source of fixes and backend mechanisms — not by building a new app or
+and v0.11.2 as a selective source of fixes and backend mechanisms — not by building a new app or
 accepting every later upstream product change.
 
 The product bet, stated once:

@@ -4,7 +4,7 @@
 > the listed code, then confirm with `rg`. Third-party comparisons live in
 > [`源码参考/meta/CAPABILITY-REFERENCE-MAP.md`](../源码参考/meta/CAPABILITY-REFERENCE-MAP.md).
 > For product behavior compare pinned v0.10.5 first. The current `app/` tree is implementation
-> reality; pinned v0.11.1 supplies only selectively admitted fixes or backend mechanisms (P2/P5).
+> reality; pinned v0.11.2 supplies only selectively admitted fixes or backend mechanisms (P2/P5).
 
 ## Classification
 

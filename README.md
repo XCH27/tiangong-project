@@ -3,7 +3,7 @@
 A **local-first desktop workbench** where a human and AI agents work on the same projects through
 the same sessions, files, permissions, and timeline. Built from Craft Agents (Apache-2.0) with
 **v0.10.5 as the product/interaction baseline**, the current `app/` tree as implementation
-reality, and v0.11.1 as a selective donor of fixes and backend mechanisms — simplified and
+reality, and v0.11.2 as a selective donor of fixes and backend mechanisms — simplified and
 extended, never rebuilt beside it.
 
 > The human owns intent and final judgment. Agents do the middle execution. Every consequential

@@ -123,11 +123,11 @@ When connecting MCP servers to your sources:
 ## Next Steps
 
 <Columns cols={2}>
-  <Card title="Connect a server" icon="link" href="/sources/mcp-servers/connecting-servers">
+  <Card title="Connect a server" icon="link" href="/docs/sources/mcp-servers/connecting-servers">
     Step-by-step guide to adding MCP servers as sources.
   </Card>
 
-  <Card title="Authentication" icon="key" href="/sources/mcp-servers/authentication">
+  <Card title="Authentication" icon="key" href="/docs/sources/mcp-servers/authentication">
     Configure OAuth, bearer tokens, and API keys.
   </Card>
 </Columns>

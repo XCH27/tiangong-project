@@ -16,7 +16,7 @@ Local folders are bookmarks to directories on your machine. They provide a named
 
 | Need                                     | Solution                                                  |
 | ---------------------------------------- | --------------------------------------------------------- |
-| Work in a single project directory       | Use [Working Directory](/core-concepts/working-directory) |
+| Work in a single project directory       | Use [Working Directory](/docs/core-concepts/working-directory) |
 | Bookmark multiple folders                | Use Local Folders                                         |
 | Document folder contents and conventions | Use Local Folders with guide.md                           |
 

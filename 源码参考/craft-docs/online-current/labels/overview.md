@@ -125,7 +125,7 @@ Each label object supports these properties:
 | `color`     | EntityColor                                      | No       | `currentColor` at 40% opacity | Color for the label circle (see below)                                     |
 | `valueType` | `"string"` \| `"number"` \| `"date"` \| `"link"` | No       | *(none — presence-only)*      | Value type hint. Omit for presence-only labels.                            |
 | `children`  | Label\[]                                         | No       | `[]`                          | Nested child labels                                                        |
-| `autoRules` | AutoRule\[]                                      | No       | `[]`                          | Regex rules for auto-applying (see [Auto-Apply Rules](/labels/auto-rules)) |
+| `autoRules` | AutoRule\[]                                      | No       | `[]`                          | Regex rules for auto-applying (see [Auto-Apply Rules](/docs/labels/auto-rules)) |
 
 ## Colors
 

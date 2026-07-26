@@ -222,6 +222,6 @@ This re-establishes the MCP connection and refreshes available tools.
 
 ## Next Steps
 
-<Card title="Configure authentication" icon="key" href="/sources/mcp-servers/authentication" horizontal>
+<Card title="Configure authentication" icon="key" href="/docs/sources/mcp-servers/authentication" horizontal>
   Learn about OAuth, bearer tokens, and public authentication for MCP servers.
 </Card>

@@ -14,7 +14,7 @@ The `color` field in entity configs accepts two forms:
 
 ### System Colors
 
-Reference one of 5 design system colors by name. These map to CSS variables defined by your [theme](/customisation/themes), so they automatically adapt to light and dark mode.
+Reference one of 5 design system colors by name. These map to CSS variables defined by your [theme](/docs/customisation/themes), so they automatically adapt to light and dark mode.
 
 ```json theme={null}
 {
@@ -157,7 +157,7 @@ Smart labels support the `color` field:
 
 ## Theme Relationship
 
-System colors (`accent`, `info`, `success`, `destructive`, `foreground`) reference the same CSS variables that your [theme](/customisation/themes) defines. This means:
+System colors (`accent`, `info`, `success`, `destructive`, `foreground`) reference the same CSS variables that your [theme](/docs/customisation/themes) defines. This means:
 
 * Entity colors **automatically adapt** when you change themes
 * A status with `"color": "accent"` will be purple with the default theme, but blue if you override accent to blue

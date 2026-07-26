@@ -114,11 +114,11 @@ Connect my GitHub account
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Your first conversation" icon="message" href="/getting-started/first-conversation">
+  <Card title="Your first conversation" icon="message" href="/docs/getting-started/first-conversation">
     Detailed walkthrough of interacting with the agent.
   </Card>
 
-  <Card title="Add sources" icon="plug" href="/sources/overview">
+  <Card title="Add sources" icon="plug" href="/docs/sources/overview">
     Connect GitHub, Linear, local files, and more.
   </Card>
 </CardGroup>

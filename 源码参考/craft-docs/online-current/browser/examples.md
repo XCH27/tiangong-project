@@ -81,7 +81,7 @@ See what API calls a page is making — useful for debugging or discovering inte
 "Open the dashboard, click the refresh button, and show me what API calls it makes"
 ```
 
-The agent uses network inspection to capture all HTTP requests the page triggers, showing URLs, methods, status codes, and response sizes. This is especially powerful for [discovering internal APIs](/browser/api-discovery).
+The agent uses network inspection to capture all HTTP requests the page triggers, showing URLs, methods, status codes, and response sizes. This is especially powerful for [discovering internal APIs](/docs/browser/api-discovery).
 
 ## Take Targeted Screenshots
 
@@ -116,7 +116,7 @@ Combine multiple browser actions into complex workflows.
 job titles and departments into a spreadsheet"
 ```
 
-For tasks like this that involve iterating through many items, the agent often discovers a more efficient approach — see [API Discovery](/browser/api-discovery) for how the agent can find internal APIs and fetch all data in parallel instead of clicking through one by one.
+For tasks like this that involve iterating through many items, the agent often discovers a more efficient approach — see [API Discovery](/docs/browser/api-discovery) for how the agent can find internal APIs and fetch all data in parallel instead of clicking through one by one.
 
 <AccordionGroup>
   <Accordion title="Tips for best results">

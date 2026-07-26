@@ -46,7 +46,7 @@ export ANTHROPIC_BASE_URL="http://localhost:11434"
 ```
 
 <Note>
-  This variable is typically managed by Craft Agents based on your [API Provider configuration](/reference/config/custom-endpoint). You only need to set it manually for automation or CI scenarios.
+  This variable is typically managed by Craft Agents based on your [API Provider configuration](/docs/reference/config/custom-endpoint). You only need to set it manually for automation or CI scenarios.
 </Note>
 
 ### AWS Credentials (Bedrock)
@@ -111,7 +111,7 @@ export CRAFT_DEBUG="true"
 
 ## Server Mode Variables
 
-These configure the [remote server](/server/headless) when running in standalone or embedded mode.
+These configure the [remote server](/docs/server/headless) when running in standalone or embedded mode.
 
 ### CRAFT\_SERVER\_TOKEN
 

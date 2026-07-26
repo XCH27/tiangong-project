@@ -81,7 +81,7 @@ craft-cli run --provider anthropic --base-url https://openrouter.ai/api/v1 --api
 craft-cli run --output-format stream-json "Run the test suite"
 ```
 
-An API key is resolved from `--api-key`, `$LLM_API_KEY`, or a provider-specific env var (e.g., `$ANTHROPIC_API_KEY`, `$OPENAI_API_KEY`). See the [CLI Reference](/reference/cli) for all `run` and LLM configuration flags.
+An API key is resolved from `--api-key`, `$LLM_API_KEY`, or a provider-specific env var (e.g., `$ANTHROPIC_API_KEY`, `$OPENAI_API_KEY`). See the [CLI Reference](/docs/reference/cli) for all `run` and LLM configuration flags.
 
 ### Validate a Server Deployment
 
@@ -189,4 +189,4 @@ craft-cli listen session:event
 
 ## Connection Options
 
-See the full [CLI Reference](/reference/cli) for all flags, environment variables, and troubleshooting.
+See the full [CLI Reference](/docs/reference/cli) for all flags, environment variables, and troubleshooting.

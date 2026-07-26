@@ -89,7 +89,7 @@ Conversations can be organized by status to track your workflow:
 | **Done**         | Closed   | Completed conversations                  |
 | **Cancelled**    | Closed   | Conversations that are no longer needed  |
 
-**Open** statuses appear in your inbox; **Closed** statuses are archived. You can [customize statuses](/statuses/overview) to match your workflow—add custom statuses like "Blocked" or "Waiting" to fit your process.
+**Open** statuses appear in your inbox; **Closed** statuses are archived. You can [customize statuses](/docs/statuses/overview) to match your workflow—add custom statuses like "Blocked" or "Waiting" to fit your process.
 
 ## Batch Operations
 
@@ -174,7 +174,7 @@ This means:
 * The full conversation history is preserved when using skills
 * You can chain skills together, each building on previous work
 
-Learn more about creating and using skills in the [Skills documentation](/skills/overview).
+Learn more about creating and using skills in the [Skills documentation](/docs/skills/overview).
 
 ## Long Conversations
 
@@ -200,7 +200,7 @@ Switching workspaces switches to that workspace's conversation context.
 
 ## Transferring Sessions
 
-You can transfer a session to a remote workspace using **Send to Workspace** from the session menu. This creates an independent copy on the target workspace with a conversation summary for context. See [Sharing](/go-further/sharing#transfer-between-workspaces) for details.
+You can transfer a session to a remote workspace using **Send to Workspace** from the session menu. This creates an independent copy on the target workspace with a conversation summary for context. See [Sharing](/docs/go-further/sharing#transfer-between-workspaces) for details.
 
 ## Tips for Effective Conversations
 

@@ -50,7 +50,7 @@ The main configuration file stores your workspace list, LLM connections, and app
 
 Array of LLM connection configurations. Each connection represents a provider setup (Anthropic, Codex/OpenAI, OpenRouter, etc.).
 
-See [LLM Connections](/reference/config/llm-connections) for schema details and examples.
+See [LLM Connections](/docs/reference/config/llm-connections) for schema details and examples.
 
 ### defaultLlmConnection
 
@@ -98,7 +98,7 @@ Enable or disable desktop notifications for task completion events. Default: `tr
 ID of the selected preset theme (e.g., `"dracula"`, `"nord"`). Default: `"default"`.
 
 <Note>
-  For per‑workspace defaults, use `defaults.colorTheme` in each workspace config. See [Workspaces](/go-further/workspaces).
+  For per‑workspace defaults, use `defaults.colorTheme` in each workspace config. See [Workspaces](/docs/go-further/workspaces).
 </Note>
 
 ### dismissedUpdateVersion

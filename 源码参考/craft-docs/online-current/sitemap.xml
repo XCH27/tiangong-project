@@ -37,6 +37,11 @@
   </url>
 
   <url>
+    <loc>https://agents.craft.do/docs/core-concepts/projects</loc>
+    <lastmod>2026-07-22T11:38:50.612Z</lastmod>
+  </url>
+
+  <url>
     <loc>https://agents.craft.do/docs/core-concepts/working-directory</loc>
     <lastmod>2026-01-28T17:06:27.063Z</lastmod>
   </url>
@@ -82,6 +87,11 @@
   </url>
 
   <url>
+    <loc>https://agents.craft.do/docs/go-further/kanban</loc>
+    <lastmod>2026-07-22T11:38:50.601Z</lastmod>
+  </url>
+
+  <url>
     <loc>https://agents.craft.do/docs/go-further/performance</loc>
     <lastmod>2026-05-19T21:41:46.561Z</lastmod>
   </url>
@@ -97,8 +107,13 @@
   </url>
 
   <url>
+    <loc>https://agents.craft.do/docs/go-further/tasks</loc>
+    <lastmod>2026-07-22T11:38:50.197Z</lastmod>
+  </url>
+
+  <url>
     <loc>https://agents.craft.do/docs/go-further/workspaces</loc>
-    <lastmod>2026-05-24T15:46:41.548Z</lastmod>
+    <lastmod>2026-07-22T11:38:50.195Z</lastmod>
   </url>
 
   <url>

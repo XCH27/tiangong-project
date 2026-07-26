@@ -40,7 +40,7 @@ Every conversation captures decisions, trade-offs, and implementation details. S
 
 ### Work from anywhere
 
-Run a [remote server](/server/headless) and access your workspaces from any machine — desktop app, browser, or CLI. Transfer sessions between local and remote workspaces. Deploy a standalone server on Linux or macOS with a single install script.
+Run a [remote server](/docs/server/headless) and access your workspaces from any machine — desktop app, browser, or CLI. Transfer sessions between local and remote workspaces. Deploy a standalone server on Linux or macOS with a single install script.
 
 ### Fully customizable
 
@@ -48,10 +48,10 @@ Themes, skills, statuses, permissions—everything is a config file the agent ca
 
 | What                                          | How It Works                | Customization Level                                     |
 | --------------------------------------------- | --------------------------- | ------------------------------------------------------- |
-| [**Skills**](/skills/overview)                | YAML frontmatter + markdown | Reusable instructions invoked with `@mention`           |
-| [**Themes**](/go-further/themes)              | 6-color semantic system     | App or workspace, with dark mode and scenic backgrounds |
-| [**Statuses**](/statuses/overview)            | Config for workflow states  | Custom labels, colors, icons, inbox/archive categories  |
-| [**Permissions**](/core-concepts/permissions) | Layered rules               | App → workspace → source cascade                        |
+| [**Skills**](/docs/skills/overview)                | YAML frontmatter + markdown | Reusable instructions invoked with `@mention`           |
+| [**Themes**](/docs/go-further/themes)              | 6-color semantic system     | App or workspace, with dark mode and scenic backgrounds |
+| [**Statuses**](/docs/statuses/overview)            | Config for workflow states  | Custom labels, colors, icons, inbox/archive categories  |
+| [**Permissions**](/docs/core-concepts/permissions) | Layered rules               | App → workspace → source cascade                        |
 
 ## Craft Agents vs Claude Code
 
@@ -63,18 +63,18 @@ Craft Agents and Claude Code share the same foundation—the [Claude Agent SDK](
 | **Data sources**  | MCP servers             | MCP + REST APIs + local files                                            |
 | **Session org**   | Continue with `-c` flag | Inbox with custom workflow statuses                                      |
 | **Config scope**  | Per-project `.claude/`  | Multi-workspace with full isolation                                      |
-| **Permissions**   | Fixed mode behaviors    | [Customizable rules](/core-concepts/permissions) per workspace/source    |
-| **Remote access** | SSH + terminal          | [Remote server](/server/headless) with desktop, browser, and CLI clients |
+| **Permissions**   | Fixed mode behaviors    | [Customizable rules](/docs/core-concepts/permissions) per workspace/source    |
+| **Remote access** | SSH + terminal          | [Remote server](/docs/server/headless) with desktop, browser, and CLI clients |
 
 **What's the same:** Claude model, core tools (Read, Write, Edit, Bash, Glob, Grep), MCP support, skills format, and thinking level control (Off / Low / Medium / High / Max).
 
 ## Key Concepts
 
-[**Sources**](/sources/overview) connect Craft Agents to external data—GitHub repos, Linear projects, Craft spaces, or your local filesystem. Each source gives the agent new capabilities.
+[**Sources**](/docs/sources/overview) connect Craft Agents to external data—GitHub repos, Linear projects, Craft spaces, or your local filesystem. Each source gives the agent new capabilities.
 
-[**Workspaces**](/go-further/workspaces) are isolated environments with their own sources, skills, and sessions. Use different workspaces for different projects or contexts.
+[**Workspaces**](/docs/go-further/workspaces) are isolated environments with their own sources, skills, and sessions. Use different workspaces for different projects or contexts.
 
-[**Permission modes**](/core-concepts/permissions) control what the agent can do. Cycle through them with **SHIFT+TAB**:
+[**Permission modes**](/docs/core-concepts/permissions) control what the agent can do. Cycle through them with **SHIFT+TAB**:
 
 | Mode            | Behavior                                      |
 | --------------- | --------------------------------------------- |
@@ -82,9 +82,9 @@ Craft Agents and Claude Code share the same foundation—the [Claude Agent SDK](
 | **Ask to Edit** | Prompts before changes. Review each action.   |
 | **Execute**     | Full autonomy. The agent works uninterrupted. |
 
-[**Sessions**](/core-concepts/conversations) are persistent conversations organized like an inbox. Start multiple tasks, switch between them, and pick up where you left off.
+[**Sessions**](/docs/core-concepts/conversations) are persistent conversations organized like an inbox. Start multiple tasks, switch between them, and pick up where you left off.
 
-[**Skills**](/skills/overview) are custom instructions that define specialized agent behaviors—like a code review workflow or a content generation template. Same format as Claude Code skills.
+[**Skills**](/docs/skills/overview) are custom instructions that define specialized agent behaviors—like a code review workflow or a content generation template. Same format as Claude Code skills.
 
 ## Open Source
 
@@ -93,11 +93,11 @@ Craft Agents is open source under Apache 2.0. The codebase lives at [github.com/
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Install Craft Agents" icon="download" href="/getting-started/installation">
+  <Card title="Install Craft Agents" icon="download" href="/docs/getting-started/installation">
     Desktop app for macOS, Windows, and Linux.
   </Card>
 
-  <Card title="Add Sources" icon="plug" href="/sources/overview">
+  <Card title="Add Sources" icon="plug" href="/docs/sources/overview">
     Connect GitHub, Linear, APIs, and local files.
   </Card>
 </CardGroup>

@@ -51,6 +51,13 @@ fi
     if [[ -d "$UPSTREAM_DIR/.git" ]]; then
       printf 'pinned_source_commit=%s\n' "$(git -C "$UPSTREAM_DIR" rev-parse HEAD)"
       printf 'pinned_source_tag=%s\n' "$(git -C "$UPSTREAM_DIR" describe --tags --exact-match HEAD 2>/dev/null || printf unknown)"
+    else
+      # The mirror is a plain copy (no .git): derive the pin from its
+      # package.json version and the matching tag in the Fleet repo, which
+      # carries the craft-upstream tags.
+      mirror_version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$UPSTREAM_DIR/package.json" | head -n1)"
+      printf 'pinned_source_tag=%s\n' "${mirror_version:+v$mirror_version}"
+      printf 'pinned_source_commit=%s\n' "$(git -C "$ROOT_DIR" rev-parse "v$mirror_version^{commit}" 2>/dev/null || printf unknown)"
     fi
     printf 'indexed_online_file_count=%s\n' "$(find online-current -type f | wc -l | tr -d ' ')"
     printf 'legacy_unindexed_file_count=%s\n' "$(find legacy-unindexed -type f | wc -l | tr -d ' ')"

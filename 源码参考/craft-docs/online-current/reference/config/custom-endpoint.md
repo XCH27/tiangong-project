@@ -9,7 +9,7 @@
 Craft Agents supports multiple API providers through a built-in preset system. You can connect to Anthropic directly, use aggregators like OpenRouter, run local models via Ollama, or point to any API endpoint compatible with the Anthropic Messages format.
 
 <Note>
-  This page covers **Anthropic-compatible** providers. For Codex/OpenAI connections and multi‑connection setup, see [LLM Connections](/reference/config/llm-connections).
+  This page covers **Anthropic-compatible** providers. For Codex/OpenAI connections and multi‑connection setup, see [LLM Connections](/docs/reference/config/llm-connections).
 </Note>
 
 ## Supported Providers
@@ -142,7 +142,7 @@ If you attach an image while the active model is still text-only, an inline pre-
 
 ### JSON config (automation / advanced)
 
-For headless setups, automation scripts, or when you want every model on an endpoint multimodal at once, write the connection config directly. These examples use the low-level **LLM connection** schema from [LLM Connections](/reference/config/llm-connections), where `customEndpoint.api` selects the endpoint wire format.
+For headless setups, automation scripts, or when you want every model on an endpoint multimodal at once, write the connection config directly. These examples use the low-level **LLM connection** schema from [LLM Connections](/docs/reference/config/llm-connections), where `customEndpoint.api` selects the endpoint wire format.
 
 #### Per-model opt-in
 
@@ -170,7 +170,7 @@ For headless setups, automation scripts, or when you want every model on an endp
   Per-model overrides take precedence over the endpoint-wide default, so you can opt one specific model out of vision (`supportsImages: false`) even if the endpoint default is `true`.
 </Note>
 
-For the full config schema, see [LLM Connections](/reference/config/llm-connections#custom-endpoint-capabilities).
+For the full config schema, see [LLM Connections](/docs/reference/config/llm-connections#custom-endpoint-capabilities).
 
 ## How It Works
 
@@ -220,6 +220,6 @@ At session launch, the base URL is passed via the `ANTHROPIC_BASE_URL` environme
 
 ## Security
 
-Your API key is stored securely in the encrypted credentials file. See [Credentials](/reference/config/credentials) for details on how credentials are protected.
+Your API key is stored securely in the encrypted credentials file. See [Credentials](/docs/reference/config/credentials) for details on how credentials are protected.
 
 The base URL and model name are stored in the LLM connection configuration (not encrypted, as they are not sensitive).

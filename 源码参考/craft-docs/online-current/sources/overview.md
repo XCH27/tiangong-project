@@ -9,7 +9,7 @@
 Sources are the data connections that power your agents. They let your agent access external services, APIs, and files to complete tasks that require real-world data.
 
 <Note>
-  **Working on local files?** For direct filesystem access in a single directory, use the [Working Directory](/core-concepts/working-directory) instead. It provides built-in tools like `Read`, `Write`, and `Bash` without MCP configuration. Sources are best for external services or accessing multiple file locations.
+  **Working on local files?** For direct filesystem access in a single directory, use the [Working Directory](/docs/core-concepts/working-directory) instead. It provides built-in tools like `Read`, `Write`, and `Bash` without MCP configuration. Sources are best for external services or accessing multiple file locations.
 </Note>
 
 <Tip>
@@ -35,19 +35,19 @@ Each source gives your agent tools it can call during conversations. When you as
 ## Source Types
 
 <CardGroup cols={3}>
-  <Card title="MCP Servers" icon="plug" href="/sources/mcp-servers/overview">
+  <Card title="MCP Servers" icon="plug" href="/docs/sources/mcp-servers/overview">
     Model Context Protocol servers provide rich, pre-built tool integrations. Many services offer official MCP support.
 
     **Examples:** Linear, GitHub, Brave Search
   </Card>
 
-  <Card title="REST APIs" icon="code" href="/sources/apis/overview">
+  <Card title="REST APIs" icon="code" href="/docs/sources/apis/overview">
     Connect to any service with an API. Provide documentation and your agent can make authenticated requests.
 
     **Examples:** Exa Search, custom backends
   </Card>
 
-  <Card title="Local Folders" icon="bookmark" href="/sources/local-filesystems">
+  <Card title="Local Folders" icon="bookmark" href="/docs/sources/local-filesystems">
     Bookmark folders on your machine with documentation and quick access.
 
     **Examples:** Notes, downloads, reference directories
@@ -172,19 +172,19 @@ Patterns are automatically scoped to the source, so `list` becomes `mcp__linear_
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="MCP Servers" icon="plug" href="/sources/mcp-servers/overview">
+  <Card title="MCP Servers" icon="plug" href="/docs/sources/mcp-servers/overview">
     Connect to services with MCP support
   </Card>
 
-  <Card title="REST APIs" icon="code" href="/sources/apis/overview">
+  <Card title="REST APIs" icon="code" href="/docs/sources/apis/overview">
     Connect to any service with an API
   </Card>
 
-  <Card title="Local Folders" icon="bookmark" href="/sources/local-filesystems">
+  <Card title="Local Folders" icon="bookmark" href="/docs/sources/local-filesystems">
     Bookmark folders on your machine
   </Card>
 
-  <Card title="Authentication" icon="key" href="/sources/mcp-servers/authentication">
+  <Card title="Authentication" icon="key" href="/docs/sources/mcp-servers/authentication">
     Set up secure credentials
   </Card>
 </CardGroup>

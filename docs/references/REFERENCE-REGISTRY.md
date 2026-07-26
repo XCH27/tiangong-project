@@ -47,7 +47,7 @@ not a formal reference.
 | `software/OpenHands` | `613406ca2bca` | MIT (text verified) | `pending` |
 | `software/codex` | `38b064c31b1f` | Apache-2.0 | `pending` |
 | `software/craft-agents-oss-v0.10.5` | `c9d9a26fbefa` | Apache-2.0 | `product/interaction baseline` |
-| `software/craft-agents-oss` | `4289b1609732` | Apache-2.0 | `selective-update reference (v0.11.1)` |
+| `software/craft-agents-oss` | `a60ebc1a5a7c` | Apache-2.0 | `selective-update reference (v0.11.2; repinned 2026-07-26 from v0.11.1, 68-file delta, intake audit below)` |
 | `software/hermes-agent` | `2ea39daeb1f6` | MIT (text verified) | `pending` |
 | `software/openclaw` | `9f5609382b54` | MIT (text verified) | `pending` |
 | `software/opencode` | `c69abee0c732` | MIT (text verified) | `pending` |
@@ -61,8 +61,8 @@ not a formal reference.
 | `software/opencut` | `5e0696bc9b92` | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` |
 
 The two Craft snapshots have different roles: v0.10.5 decides R1 product/interaction behavior;
-v0.11.1 is inspected only for independent fixes and bounded backend mechanisms. Neither is merged
-wholesale. The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open
+the v0.11.x line (currently v0.11.2) is inspected only for independent fixes and bounded backend
+mechanisms. Neither is merged wholesale. The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open
 Pencil, Vibeframe, Headroom, CodeGraph, RTK, Ponytail, Open Design and react-timeline-editor
 checkouts were removed from standing retention on 2026-07-20. Their fixed-head findings remain
 historical `EVIDENCE_ONLY` in `ADMISSION-V2-AUDIT.md`; no active design may start from them without

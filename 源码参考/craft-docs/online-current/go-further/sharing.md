@@ -76,7 +76,7 @@ In addition to sharing online, you can transfer a session to another workspace u
 The transfer includes all messages and metadata. The forked session is independent — changes in one workspace don't affect the other.
 
 <Note>
-  Send to Workspace requires a connected [remote workspace](/go-further/workspaces#remote-workspaces). Disconnected workspaces appear greyed out with a CloudOff icon.
+  Send to Workspace requires a connected [remote workspace](/docs/go-further/workspaces#remote-workspaces). Disconnected workspaces appear greyed out with a CloudOff icon.
 </Note>
 
 ## Limitations

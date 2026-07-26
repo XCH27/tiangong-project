@@ -143,7 +143,7 @@ supergroup, sender-level rules apply identically to DMs.
 * **In-app (desktop Electron):** the adapter uses **long-poll** (grammY's built-in updater). No public URL needed.
 * **Headless server:** the adapter uses **webhook** mode. You configure a public URL (e.g., `https://your-server.tld/telegram/webhook`), register it with `setWebhook`, and Telegram posts updates to it. The server verifies the `X-Telegram-Bot-Api-Secret-Token` header.
 
-See [Server → Headless](/server/headless) for the webhook deployment path.
+See [Server → Headless](/docs/server/headless) for the webhook deployment path.
 
 ## Troubleshooting
 

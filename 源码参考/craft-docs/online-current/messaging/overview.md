@@ -15,15 +15,15 @@ Messaging lets you **bind** an external chat (a Telegram DM, a WhatsApp contact,
 ## Supported Platforms
 
 <CardGroup cols={3}>
-  <Card title="Telegram" icon="paper-plane" href="/messaging/telegram">
+  <Card title="Telegram" icon="paper-plane" href="/docs/messaging/telegram">
     Bot token (via @BotFather) — works over in-process long-poll or webhook. Supports inline buttons, photos, documents, voice, and video attachments up to 20 MB.
   </Card>
 
-  <Card title="WhatsApp" icon="whatsapp" href="/messaging/whatsapp">
+  <Card title="WhatsApp" icon="whatsapp" href="/docs/messaging/whatsapp">
     QR-code or code pairing via a Baileys-based worker subprocess. Supports text, media attachments, and a "self-chat" mode so you don't need a second phone to test.
   </Card>
 
-  <Card title="Lark / Feishu" icon="message" href="/messaging/lark">
+  <Card title="Lark / Feishu" icon="message" href="/docs/messaging/lark">
     App ID + App Secret pairing via Lark Open Platform (international) or Feishu Open Platform (China). Use the **"Built for agents"** Create button on the app-creation page to skip the scope and event-subscription setup. Long-connection mode, rich-text via Lark `post`, interactive cards, image/file attachments.
   </Card>
 </CardGroup>
@@ -118,7 +118,7 @@ The **session's own permission mode** is still authoritative — `approvalChanne
 
 ### Plan Submission
 
-When the agent submits a plan in **Explore** mode, Telegram bindings get inline `✅ Accept plan` / `♻️ Accept & compact` buttons (plus the plan content inline or as a `plan.md` attachment). WhatsApp bindings get a text pointer telling you to open the desktop app — plans can't be accepted from WhatsApp yet. See [WhatsApp → Plan Submission](/messaging/whatsapp#plan-submission) for the reasons.
+When the agent submits a plan in **Explore** mode, Telegram bindings get inline `✅ Accept plan` / `♻️ Accept & compact` buttons (plus the plan content inline or as a `plan.md` attachment). WhatsApp bindings get a text pointer telling you to open the desktop app — plans can't be accepted from WhatsApp yet. See [WhatsApp → Plan Submission](/docs/messaging/whatsapp#plan-submission) for the reasons.
 
 ## Security & Scope
 
@@ -142,4 +142,4 @@ Edits to `bindings.json` take effect on the next inbound message. Deleting `what
 
 ## Headless Server
 
-The gateway also runs inside the standalone headless Bun server (`packages/server`). Telegram uses webhook mode on the server (you configure a webhook URL), while WhatsApp still runs its Baileys worker subprocess. See [Server](/server/headless) for deployment details.
+The gateway also runs inside the standalone headless Bun server (`packages/server`). Telegram uses webhook mode on the server (you configure a webhook URL), while WhatsApp still runs its Baileys worker subprocess. See [Server](/docs/server/headless) for deployment details.

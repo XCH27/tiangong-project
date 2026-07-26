@@ -299,6 +299,6 @@ Use MCP sources when available for richer integration with predefined tools. Use
 
 ## Next Steps
 
-<Card title="Practical Examples" icon="code" href="/sources/apis/curl-examples" horizontal>
+<Card title="Practical Examples" icon="code" href="/docs/sources/apis/curl-examples" horizontal>
   Real-world examples of API source configurations.
 </Card>

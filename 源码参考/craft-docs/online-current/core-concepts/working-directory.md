@@ -20,7 +20,7 @@ Think of it as opening a terminal and running `cd /path/to/project`. Everything 
 * **Search** with Glob (file patterns) and Grep (content search)
 * **Execute** bash commands in that directory context
 
-This is different from [Sources](/sources/overview), which connect to external services through MCP tools. The working directory is for local, direct filesystem access.
+This is different from [Sources](/docs/sources/overview), which connect to external services through MCP tools. The working directory is for local, direct filesystem access.
 
 ## Setting Your Working Directory
 
@@ -150,6 +150,6 @@ The agent reads this file automatically when you start a conversation with that 
   </Accordion>
 
   <Accordion title="Combine with Local Folders">
-    Need to access files in multiple locations? Use the working directory for your main project and add a [local folder](/sources/local-filesystems) for other directories you reference occasionally.
+    Need to access files in multiple locations? Use the working directory for your main project and add a [local folder](/docs/sources/local-filesystems) for other directories you reference occasionally.
   </Accordion>
 </AccordionGroup>

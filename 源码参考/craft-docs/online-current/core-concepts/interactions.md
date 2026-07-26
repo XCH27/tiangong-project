@@ -83,7 +83,7 @@ Open **Settings → AI**, scroll to the **Connections** section, click the **`�
   If you're unsure, leave the default. The two modes deliver the same end result for a calm follow-up — the difference only matters when you're actively redirecting an in-flight task.
 </Tip>
 
-For the schema-level field, see [LLM Connections → midStreamBehavior](/reference/config/llm-connections#mid-stream-behavior).
+For the schema-level field, see [LLM Connections → midStreamBehavior](/docs/reference/config/llm-connections#mid-stream-behavior).
 
 ## Session Management
 

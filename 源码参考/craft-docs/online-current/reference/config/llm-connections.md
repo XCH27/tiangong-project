@@ -215,7 +215,7 @@ Set `awsRegion` to the region where you have Bedrock model access enabled (e.g.,
 Custom endpoints default to a **128K context window** and **text-only input**. If your model supports a larger context window or accepts image input, set those capabilities explicitly in the connection config.
 
 <Tip>
-  For toggling per-model **image support** specifically, the chat input model picker now exposes an inline image icon on each row of a custom-endpoint connection — one click flips `models[i].supportsImages` and persists. See [API Providers → Image Input for Custom Endpoints](/reference/config/custom-endpoint#image-input-for-custom-endpoints). The JSON forms below remain useful for automation and for setting `customEndpoint.supportsImages` (the endpoint-wide default), which has no UI surface.
+  For toggling per-model **image support** specifically, the chat input model picker now exposes an inline image icon on each row of a custom-endpoint connection — one click flips `models[i].supportsImages` and persists. See [API Providers → Image Input for Custom Endpoints](/docs/reference/config/custom-endpoint#image-input-for-custom-endpoints). The JSON forms below remain useful for automation and for setting `customEndpoint.supportsImages` (the endpoint-wide default), which has no UI surface.
 </Tip>
 
 ### Per-model overrides (recommended)
@@ -294,7 +294,7 @@ Open **Settings → AI**, scroll to the **Connections** section, click the **`�
   This is a per-connection setting, not per-session. Two sessions sharing the same connection will both use the same mode.
 </Note>
 
-For the user-facing concept and UI walkthrough, see [Interactions → Sending while the agent is responding](/core-concepts/interactions#sending-while-the-agent-is-responding).
+For the user-facing concept and UI walkthrough, see [Interactions → Sending while the agent is responding](/docs/core-concepts/interactions#sending-while-the-agent-is-responding).
 
 ## Managing Connections
 

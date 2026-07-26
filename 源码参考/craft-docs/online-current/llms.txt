@@ -9,6 +9,7 @@
 - [Conversations](https://agents.craft.do/docs/core-concepts/conversations.md): How conversation history and sessions work
 - [Interactions](https://agents.craft.do/docs/core-concepts/interactions.md): Mentions, file attachments, session management, and keyboard shortcuts
 - [Permissions](https://agents.craft.do/docs/core-concepts/permissions.md): How Craft Agents handles sensitive operations
+- [Projects](https://agents.craft.do/docs/core-concepts/projects.md): Group sessions, assets, and context inside a workspace
 - [Working Directory](https://agents.craft.do/docs/core-concepts/working-directory.md): The current working directory (cwd) where your agent executes commands
 - [Colors](https://agents.craft.do/docs/customisation/colors.md): Configure colors for labels, statuses, and smart labels using the EntityColor system
 - [Icons](https://agents.craft.do/docs/customisation/icons.md): Configure icons for sources, skills, and statuses
@@ -18,9 +19,11 @@
 - [Connect to Anything](https://agents.craft.do/docs/go-further/connect-to-anything.md): Use API aggregators to connect 10,000+ services—just ask the agent to set it up
 - [Deep Links](https://agents.craft.do/docs/go-further/deeplinks.md): Launch Craft Agents from anywhere using the craftagents:// URL scheme
 - [Document Tools](https://agents.craft.do/docs/go-further/document-tools.md): Convert, process, and create documents — Word, Excel, PDF, PowerPoint, images, and more
+- [Kanban board](https://agents.craft.do/docs/go-further/kanban.md): Visualize and move sessions across columns with a drag-and-drop board
 - [Performance and Token Optimization](https://agents.craft.do/docs/go-further/performance.md): Use RTK to reduce token usage from verbose development commands
 - [Rich Output](https://agents.craft.do/docs/go-further/rich-output.md): Interactive tables, diagrams, HTML previews, PDFs, and code diffs — rendered natively in your conversations
 - [Sharing Conversations](https://agents.craft.do/docs/go-further/sharing.md): Share your conversations online with a single click
+- [Tasks](https://agents.craft.do/docs/go-further/tasks.md): Orchestrate multi-step work with task DAGs, subtasks, and acceptance criteria
 - [Workspaces](https://agents.craft.do/docs/go-further/workspaces.md): Organize your configurations with multiple workspaces
 - [Auto-Apply Rules](https://agents.craft.do/docs/labels/auto-rules.md): Automatically tag sessions with labels using regex patterns
 - [Labels](https://agents.craft.do/docs/labels/overview.md): Organize sessions with colored tags and structured metadata

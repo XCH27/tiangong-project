@@ -9,21 +9,21 @@ Fleet's product and interaction baseline is Craft Agents v0.10.5. The current im
 is v0.11.1-derived, so UI work compares both pinned snapshots before editing:
 
 - `源码参考/software/craft-agents-oss-v0.10.5` — product/interaction baseline, official tag `v0.10.5`
-- `源码参考/software/craft-agents-oss` — selective-update reference, official tag `v0.11.1`
+- `源码参考/software/craft-agents-oss` — selective-update reference, official tag `v0.11.2`
 - `源码参考/software/craft-agents-oss/README.md` — official build and product overview
 - `源码参考/software/craft-agents-oss/CONTRIBUTING.md` — official development workflow
 - `源码参考/software/craft-agents-oss/apps/electron/README.md` — Electron architecture and playground
 - `源码参考/software/craft-agents-oss/apps/electron/src/renderer/playground/` — component examples
 - `app/apps/electron/resources/docs/` — the bundled feature documentation shipped with the app
 - `源码参考/craft-docs/online-current/customisation/` — mirrored official
-  Colors, Icons, and Themes guidance; current-hosted reference that may be newer than v0.11.1
+  Colors, Icons, and Themes guidance; current-hosted reference that may be newer than v0.11.2
 
 Official documentation explains customization, semantic colors, icon overrides, and theme structure,
 but it is not a complete component/layout specification. For visual decisions, authority remains the
 v0.10.5 interaction code first, in this order:
 
 1. The same v0.10.5 component or flow for product structure and interaction.
-2. The v0.11.1 counterpart to identify an independent fix or bounded backend improvement.
+2. The v0.11.2 counterpart to identify an independent fix or bounded backend improvement.
 3. The current component and existing shared primitives under `app/`.
 4. Current tokens and semantic colors plus mirrored official customization guidance.
 5. A new local component only when the first four cannot express the required behavior.
@@ -174,7 +174,7 @@ the existing component path plus locale tests when layout is unaffected.
 
 1. Capture or inspect the declared visual anchor before editing; record the intentional delta in the
    Goal/thread state.
-2. Compare the changed component with v0.10.5, its v0.11.1 counterpart, the current sibling and
+2. Compare the changed component with v0.10.5, its v0.11.2 counterpart, the current sibling and
    shared tokens. Name any retained later-upstream behavior and why it passes P2.
 3. Check every icon in the changed group from component props/tokens for source, size, stroke, color,
    slot, hover, focus, and disabled state.

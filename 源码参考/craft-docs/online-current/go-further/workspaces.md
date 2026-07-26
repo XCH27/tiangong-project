@@ -83,6 +83,11 @@ Each workspace maintains its own:
           session.jsonl     # Conversation in JSONL format
           attachments/      # Uploaded files
           plans/            # Implementation plans
+      projects/
+        {project-slug}/     # Optional workspace-scoped projects
+          config.json       # Project configuration
+          MEMORY.md         # Long-lived project memory
+          assets/           # Files surfaced via the asset manifest
       permissions.json      # Optional Explore mode rules
       icon.png              # Optional workspace icon (png/jpg/svg)
 ```
@@ -132,7 +137,7 @@ When you accept an auto-update, Craft Agents now saves your open-window layout *
 
 ## Remote Workspaces
 
-You can connect to workspaces running on a [remote server](/server/headless). Remote workspaces appear in your workspace switcher alongside local ones.
+You can connect to workspaces running on a [remote server](/docs/server/headless). Remote workspaces appear in your workspace switcher alongside local ones.
 
 ### Connecting to a remote server
 
@@ -209,6 +214,6 @@ This creates an independent copy — changes in one workspace don't sync to the 
   </Accordion>
 
   <Accordion title="Customize Explore mode">
-    Add a `permissions.json` file to allow additional operations in Explore mode. See [Permissions](/core-concepts/permissions) for details.
+    Add a `permissions.json` file to allow additional operations in Explore mode. See [Permissions](/docs/core-concepts/permissions) for details.
   </Accordion>
 </AccordionGroup>
