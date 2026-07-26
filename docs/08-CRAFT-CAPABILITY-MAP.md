@@ -98,10 +98,10 @@ specification; the retained failure lessons live in [`04-ARCHITECTURE.md`](04-AR
 | Remote/self-hosted execution | server transport, Workspace routing, WebUI | REUSE/EXTEND | User-owned target (P7/P9); identity, capability, disconnect states explicit. |
 | Messaging | messaging gateway/workers and settings/handlers | REUSE/EXTEND | One Workspace-scoped adapter contract; platform absence honest. |
 | Desktop OAuth | existing local callback path | REUSE | Independent of Craft cloud. |
-| WebUI/Slack OAuth relays | shared auth relay modules | EXTEND | User-configurable/self-hosted or explicitly unavailable (R2). |
-| Online sharing | branding, SessionManager share path, viewer | EXTEND/REPLACE | Local export or explicit configured target (R2); never silent upload. |
-| Application updates | auto-update and Electron builder config | EXTEND/REPLACE | Fleet-controlled/user-configured signed channel or honestly disabled (R2). |
-| Help/docs | bundled docs and docs MCP | REUSE/EXTEND | Local/bundled first; hosted Craft docs visibly external (R2). |
+| WebUI/Slack OAuth relays | shared auth relay modules | EXTEND | **Landed 2026-07-26** (`wired but not visually checked`): no Craft default; direct deployment callback is the WebUI default, `FLEET_OAUTH_RELAY_URL` / `FLEET_SLACK_OAUTH_RELAY_URL` enable user-operated relays; desktop local callback untouched. |
+| Online sharing | branding, SessionManager share path, viewer | EXTEND/REPLACE | **Landed 2026-07-26** (`wired but not visually checked`): share/update/revoke honestly refuse without `FLEET_SHARE_VIEWER_URL` (self-hostable `apps/viewer`); local export unchanged; never silent upload. |
+| Application updates | auto-update and Electron builder config | EXTEND/REPLACE | **Landed 2026-07-26** (`wired but not visually checked`): honestly disabled by default (no feed, no network, no builder publish target); `FLEET_UPDATE_FEED_URL` enables a user-controlled channel; Fleet release channel remains an owner checkpoint. |
+| Help/docs | bundled docs and docs MCP | REUSE/EXTEND | **Landed 2026-07-26** (`wired but not visually checked`): bundled summaries are local-first; docs-site links stay visibly external (upstream Craft reference) with `FLEET_DOCS_BASE_URL` override. |
 | Upstream intake | pinned Craft reference, tags, release notes | REUSE | Selectively port reviewed changes; never merge wholesale. |
 
 ## Reference routing

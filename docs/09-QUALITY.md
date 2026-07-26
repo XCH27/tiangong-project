@@ -81,6 +81,24 @@ preview-gated page's *design* (layout, states, wording) while its status remains
 Keep this table honest: if a new test area appears (e.g. smoke scripts under `app/scripts/`), add
 its row in the same slice.
 
+### Shared-process test hazards (binding)
+
+`bun test` runs many files in one process, which makes two failure classes real (both observed
+2026-07-26 and fixed at the source):
+
+1. **Global leaks.** Any test that replaces a process global (`globalThis.fetch`, env vars,
+   `clearTimeout`, …) must capture and restore it in `afterEach`/`afterAll`. A module-top-level
+   replacement without restore broke unrelated real-HTTP tests three packages away.
+2. **`mock.module` is first-import-wins.** The module cache keeps the instance created by the
+   *first* importer of a path; a later file's `mock.module` for the same path does not replace the
+   cached instance, so its assertions may silently run against another file's mock (or the real
+   module). A regular `*.test.ts` may therefore use `mock.module` only for modules no earlier suite
+   file can have imported. Anything heavier goes in a `*.isolated.ts` file — excluded from the bare
+   suite and run per-process by the root `test` script (invoke as `bun test ./path/to/file.isolated.ts`).
+
+A test that fails only in the full suite (or passes only there) is assumed to be one of these two
+classes until proven otherwise — bisect with file pairs before touching product code.
+
 ### Harness/profile comparison protocol
 
 A harness optimization is not accepted by unit tests or lower token count alone. Seal the task,
