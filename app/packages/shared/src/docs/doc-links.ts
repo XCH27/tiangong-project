@@ -23,6 +23,7 @@ function getDocsBaseUrl(): string {
 }
 
 export type DocFeature =
+  | 'sharing'
   | 'sources'
   | 'sources-api'
   | 'sources-mcp'
@@ -48,6 +49,12 @@ export interface DocInfo {
 }
 
 export const DOCS: Record<DocFeature, DocInfo> = {
+  sharing: {
+    path: '/go-further/sharing',
+    title: 'Sharing',
+    summary:
+      'Share a session as a read-only web page. Online sharing needs a viewer you configure; local export always works.',
+  },
   sources: {
     path: '/sources/overview',
     title: 'Sources',
