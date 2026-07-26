@@ -21,6 +21,7 @@ import {
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
 import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
+import type { MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
@@ -1177,6 +1178,25 @@ export interface SessionCompletionEvent {
   finalText?: string
   /** The session's cumulative token usage, so the Conductor can meter token_budget without re-fetching. */
   tokenUsage?: TokenUsage
+}
+
+export interface MidStreamDeliveryOutcome {
+  shouldQueue: boolean
+  wasInterrupted: boolean
+}
+
+/**
+ * Translate backend delivery into queue/interruption semantics. Queue mode never
+ * aborts the active turn; a failed steer does, and must annotate the replay.
+ */
+export function resolveMidStreamDeliveryOutcome(
+  behavior: MidStreamBehavior,
+  steered: boolean,
+): MidStreamDeliveryOutcome {
+  return {
+    shouldQueue: !steered,
+    wasInterrupted: behavior === 'steer' && !steered,
+  }
 }
 
 export class SessionManager implements ISessionManager {
@@ -5813,23 +5833,30 @@ export class SessionManager implements ISessionManager {
       }
       managed.messages.push(userMessage)
 
+      const delivery = resolveMidStreamDeliveryOutcome(behavior, steered)
+
       // Emit to UI — 'accepted' iff a steer succeeded; 'queued' otherwise
       // (covers both queue-direct and queue-after-abort paths).
       this.sendEvent({
         type: 'user_message',
         sessionId,
         message: userMessage,
-        status: steered ? 'accepted' : 'queued',
+        status: delivery.shouldQueue ? 'queued' : 'accepted',
         optimisticMessageId: options?.optimisticMessageId
       }, managed.workspace.id)
 
-      if (!steered) {
+      if (delivery.shouldQueue) {
         // Push for FIFO replay on next onProcessingStopped tick. Same shape
         // for both queue-direct (current turn still running) and
         // queue-after-abort (backend already aborted) — the replay path in
         // processNextQueuedMessage is identical.
         managed.messageQueue.push({ message, attachments, storedAttachments, options, messageId: userMessage.id, optimisticMessageId: options?.optimisticMessageId })
-        managed.wasInterrupted = true
+        // Only claim interruption when a steer attempt actually aborted the
+        // in-flight turn. In 'queue' mode the current turn runs to natural
+        // completion, so the replayed turn must NOT inject the "previous response
+        // was interrupted" reminder (it would falsely tell the model its own
+        // complete answer was cut off → confusion).
+        if (delivery.wasInterrupted) managed.wasInterrupted = true
       }
 
       this.persistSession(managed)
@@ -6688,6 +6715,11 @@ export class SessionManager implements ISessionManager {
       if (existingMessage) {
         // Clear isQueued flag and persist - prevents re-queueing if crash during processing
         existingMessage.isQueued = false
+        // Re-stamp so this replayed message sorts AFTER the previous turn's
+        // finalized assistant reply. It was created mid-stream (an earlier
+        // timestamp) while queued; groupMessagesByTurn sorts by timestamp, so
+        // without this the prior turn's completed response would render BELOW it.
+        existingMessage.timestamp = this.monotonic()
         this.persistSession(managed)
 
         this.sendEvent({
