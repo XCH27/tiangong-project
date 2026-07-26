@@ -5,7 +5,7 @@ authorization, and not the place for reusable UI component kits.
 
 | Design area | Source notes |
 |---|---|
-| Owner and baseline | [`OWNER-VOICE.md`](OWNER-VOICE.md), [`01-clean-craft-v0.11-baseline-notes.md`](01-clean-craft-v0.11-baseline-notes.md) |
+| Owner and baseline | [`OWNER-VOICE.md`](OWNER-VOICE.md), [`01-clean-craft-v0.11-baseline-notes.md`](01-clean-craft-v0.11-baseline-notes.md), [`21-entry-overlap-framework-audit.md`](21-entry-overlap-framework-audit.md) |
 | Platform and execution | [`00-platform-spine.md`](00-platform-spine.md), [`02-terminal---cli-runtime-loop.md`](02-terminal---cli-runtime-loop.md), [`03-internal-action-registry.md`](03-internal-action-registry.md), [`04-runtime-lanes--teamrun.md`](04-runtime-lanes--teamrun.md) |
 | Files, evidence and browser | [`05-files-library-artifactref--leases.md`](05-files-library-artifactref--leases.md), [`06-browser-artifact-evidence-surface.md`](06-browser-artifact-evidence-surface.md) |
 | Canvas and design | [`07-canvas---design-surface.md`](07-canvas---design-surface.md), [`07-canvas-spatial-orchestration-VISION.md`](07-canvas-spatial-orchestration-VISION.md) |
