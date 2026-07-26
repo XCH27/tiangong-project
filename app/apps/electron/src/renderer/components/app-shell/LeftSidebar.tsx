@@ -529,8 +529,10 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
             renderIcon(link)
           )}
         </span>
-        {/* min-w-0 + truncate: long titles never wrap or shove actions (UI-SPEC §4) */}
-        <span className="min-w-0 truncate">{link.title}</span>
+        {/* flex-1 + min-w-0 + truncate: the title owns the flexible middle, so trailing
+          * badges/actions stay pinned to the row's right edge regardless of text length
+          * and track the panel edge during divider drags (UI-SPEC §4; owner 2026-07-26). */}
+        <span className="min-w-0 flex-1 truncate text-left">{link.title}</span>
         {/* After-title / count: same reveal language on every row (button hover OR section hover) */}
         {link.afterTitle && (
           <span
