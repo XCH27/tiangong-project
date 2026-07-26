@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Repo pre-commit gate. Wired via: git config core.hooksPath .githooks
+# (replaces the dead husky runtime path .husky/_ that was never generated —
+#  see docs/07-PLAYBOOK.md quality chain).
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+
+# Doc-contract joins (registry/packet/matrix/page IDs) — stdlib-only, <1s.
+python3 "$root/scripts/validate-doc-contracts.py"
+
+# Staged typecheck + i18n gates (same commands husky ran).
+cd "$root/app"
+sh .husky/pre-commit

@@ -2,7 +2,7 @@ name: Agent Verify (CI)
 on:
   pull_request:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "work/fresh-base-spine" ]
   workflow_dispatch:
 
 jobs:
@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Validate doc contracts
+        run: python3 scripts/validate-doc-contracts.py
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
