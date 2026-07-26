@@ -238,13 +238,21 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                 {link.trailingAction ? (
                   <div className="relative">
                     {rowElement}
-                    {/* Sibling overlay, not nested button (UI-SPEC §4). Always visible, like the
-                      * count badges beside it — hover-only reveal made the control vanish during
-                      * panel-divider drags and at rest (owner walkthrough 2026-07-26). The row
-                      * reserves its 24 px slot (pr-7), so long folder names truncate first. */}
+                    {/* Sibling overlay, not nested button (UI-SPEC §4). Same reveal as count
+                      * badges: row hover, focus-within, or open menu (data-state=open) — one
+                      * interaction language for every trailing element at this level; do not
+                      * fork it (owner 2026-07-26). Whether trailing meta should instead be
+                      * always-visible is a single deliberate decision across all rows. */}
                     <div
                       data-touch-reveal="true"
-                      className="absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center"
+                      className={cn(
+                        "absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center",
+                        // opacity-0 alone still hit-tests — gate pointer events until revealed
+                        "pointer-events-none opacity-0 transition-opacity duration-150",
+                        "group-hover/section:pointer-events-auto group-hover/section:opacity-100",
+                        "focus-within:pointer-events-auto focus-within:opacity-100",
+                        "has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100",
+                      )}
                       onMouseDown={(event) => event.stopPropagation()}
                     >
                       {link.trailingAction}
