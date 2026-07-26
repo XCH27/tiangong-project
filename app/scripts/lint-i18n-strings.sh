@@ -64,7 +64,9 @@ EXCLUDE_PATHS='playground\|registry\|\.test\.\|apps/marketing/\|apps/online-docs
 
 # ─── File list ───────────────────────────────────────────────────────────────
 if [ "$mode" = "staged" ]; then
-  files="$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.tsx$' | grep -v "$EXCLUDE_PATHS" || true)"
+  # --relative keeps paths cwd-relative so the `git diff -- $files` pathspec
+  # below resolves in the nested outer-repo layout (see typecheck-staged.sh).
+  files="$(git diff --cached --name-only --diff-filter=ACMR --relative | grep -E '\.tsx$' | grep -v "$EXCLUDE_PATHS" || true)"
   if [ -z "$files" ]; then
     exit 0
   fi
@@ -89,7 +91,7 @@ output=""
 
 for file in $files; do
   if [ "$mode" = "staged" ]; then
-    content="$(git show ":$file" 2>/dev/null || true)"
+    content="$(git show ":./$file" 2>/dev/null || true)"
   else
     content="$(cat "$file" 2>/dev/null || true)"
   fi

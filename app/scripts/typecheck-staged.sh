@@ -11,7 +11,11 @@
 #   - `bun run tsc --noEmit` otherwise (plain TS workspace)
 set -euo pipefail
 
-changed_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+# --relative: paths come back relative to this script's cwd (app/), so the
+# workspace detection below works when the app tree is nested inside the
+# outer Fleet repo (git prints repo-root-relative paths otherwise, and
+# `app/packages/...` never matches `^(apps|packages)/`).
+changed_files="$(git diff --cached --name-only --diff-filter=ACMR --relative)"
 
 if [ -z "$changed_files" ]; then
   echo "No staged files detected. Skipping typecheck."
