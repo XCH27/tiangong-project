@@ -62,7 +62,32 @@ not a formal reference.
 
 The two Craft snapshots have different roles: v0.10.5 decides R1 product/interaction behavior;
 the v0.11.x line (currently v0.11.2) is inspected only for independent fixes and bounded backend
-mechanisms. Neither is merged wholesale. The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open
+mechanisms. Neither is merged wholesale.
+
+**v0.11.2 intake audit (2026-07-26, delta 4289b1609→a60ebc1a5, 68 files).** Full `git apply
+--check` against `app/`: clean except three Fleet-diverged files (SendToWorkspaceDialog,
+shared/CLAUDE.md, zh-Hans locale). Verdicts:
+
+- **TAKE — A. mid-stream queue correctness** (SessionManager `resolveMidStreamDeliveryOutcome` +
+  `monotonic()` re-stamp; renderer `session.ts` timestamp copy; two upstream test files). Also
+  removes a spurious injected "previous response was interrupted" reminder — aligns with the
+  token-economy rules. The same upstream commit's `createTaskFn` hunks are create_task feature
+  code and must be split out on cherry-pick.
+- **TAKE — B. task_notification classifier unification** (new
+  `backend/claude/task-notification.ts`; event-adapter + claude-agent route through it; malformed
+  terminal notifications warn instead of silently stranding a chip; upstream test file).
+- **CONDITIONAL — C. transfer request-timeout passthrough** (`handlers/workspace.ts`): take only
+  while Fleet retains remote-workspace transfer; extract `TRANSFER_REQUEST_TIMEOUT_MS` alone —
+  the surrounding `main/index.ts` hunk is out-of-scope product code.
+- **OWNER CALL — D. background-chip stale lifecycle** (20-min no-signal → honest `stale` state +
+  renderer-only Dismiss): fix-flavored but interaction-visible; needs the owner's product read.
+- **DO NOT TAKE — product out of scope (29 files):** create_task board tool (incl. new
+  `shared/src/tasks/slug.ts` — no Fleet collision; Fleet slugifiers are separate scopes),
+  any-to-any workspace transfer + local targets, Arrow-Up empty-input recall,
+  `background-finished` default flip. `prompts/system.ts` +3 lines is create_task tool-doc only
+  (~120 tokens of dead prompt without the tool) — skip.
+- **R2-RELEVANT: none.** No updater/telemetry/OAuth/docs-link/Craft-endpoint changes; no new
+  phone-home. **Security: none required.** The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open
 Pencil, Vibeframe, Headroom, CodeGraph, RTK, Ponytail, Open Design and react-timeline-editor
 checkouts were removed from standing retention on 2026-07-20. Their fixed-head findings remain
 historical `EVIDENCE_ONLY` in `ADMISSION-V2-AUDIT.md`; no active design may start from them without
