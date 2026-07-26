@@ -98,15 +98,21 @@ Dispatch rules:
 3. A packet that discovers a cross-packet contract change stops and returns the decision to the
    integrator; no packet widens its own scope or touches another packet's boundary.
 
-| Packet | Mode | Spec slice / contract | Boundary ceiling | Deps |
-|---|---|---|---|---|
-| R1-INV — v0.10.5 ↔ current source inventory for shell/list/menu/composer | read-only | `specs/R1-one-boundary-language.md` slice 1 (feeds R1-C1) | report only | — |
-| R2-UPD — updater independence | branch | `specs/R2-independence.md`, updater class | Electron main updater path + builder config | — |
-| R2-SHARE — sharing and docs-link honesty | branch | `specs/R2-independence.md`, sharing/docs classes | sharing surfaces + bundled docs links | — |
-| R2-OAUTH — OAuth relay independence | branch | `specs/R2-independence.md`, relay class | `packages/shared/src/auth` + webui auth surface | — |
-| R3-SMOKE — production-chain non-visual smoke | branch | `specs/R3-first-production-chain.md` fixture slice | tests/fixtures beside the chain seams | R1-INV |
-| TE1-OBS — cache-alignment observation | read-only | `specs/TE1-cache-alignment.md` | measurements + report | — |
-| DOCS-COV — matrix/page coverage refresh after merges | branch | Decision G5 coverage track | `docs/11-PRODUCT-MATRIX.md`, `docs/12-PAGE-ARCHITECTURE.md` rows | all merged |
+| Packet | Mode | Spec slice / contract | Boundary ceiling | Deps | Status |
+|---|---|---|---|---|---|
+| R1-INV — v0.10.5 ↔ current source inventory for shell/list/menu/composer | read-only | `specs/R1-one-boundary-language.md` slice 1 (feeds R1-C1) | report only | — | landed 2026-07-26 as `aaa09b094` (inventory recorded in the R1 spec, R1-C1) |
+| R2-UPD — updater independence | branch | `specs/R2-independence.md`, updater class | Electron main updater path + builder config | — | landed 2026-07-26 (`445e11b92`, harness fix `09c59e7f7`) |
+| R2-SHARE — sharing and docs-link honesty | branch | `specs/R2-independence.md`, sharing/docs classes | sharing surfaces + bundled docs links | — | landed 2026-07-26 (`18bf53415` sharing; `3ddbe59fe` + `58a033d51` docs links) |
+| R2-OAUTH — OAuth relay independence | branch | `specs/R2-independence.md`, relay class | `packages/shared/src/auth` + webui auth surface | — | landed 2026-07-26 (`61045ebb9`) |
+| R2-SLACK — Slack relay independence (row added retroactively: this work ran without a queued packet) | branch | `specs/R2-independence.md`, relay class | shared auth Slack relay path | — | landed 2026-07-26 (`8678c7501`, R2-C5) |
+| R3-SMOKE — production-chain non-visual smoke | branch | `specs/R3-first-production-chain.md` fixture slice | tests/fixtures beside the chain seams | R1-INV | open |
+| TE1-OBS — cache-alignment observation | read-only | `specs/TE1-cache-alignment.md` | measurements + report | — | open |
+| DOCS-COV — matrix/page coverage refresh after merges | branch | Decision G5 coverage track | `docs/11-PRODUCT-MATRIX.md`, `docs/12-PAGE-ARCHITECTURE.md` rows | all merged | open |
+
+Execution record, honest: the landed packets above ran serially as direct commits on
+`work/fresh-base-spine` by the integration agent — not as `work/<packet-id>` branches merged by
+the integrator as rule 1 prescribes. Recorded as-is; whether the rule or the practice changes is
+an open integrator/owner call.
 
 Owner checkpoints stay owner-owned regardless of parallelism: R0 tag/walkthrough, R1-C12 visual
 acceptance, and any service replacement in R2 that has a paid or public effect.

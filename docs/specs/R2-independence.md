@@ -1,7 +1,21 @@
 # SPEC — R2 Independence (no silent Craft-operated dependencies)
 
-> Spec status: `draft`
+> Spec status: `draft` — slices C2–C5 landed 2026-07-26 ahead of activation via the WORK-ORDER
+> frontier (the R2 roadmap row remains READY; R0 is the ACTIVE release). See "Landed slices"
+> below. Nothing is `usable` before owner acceptance (R2-C7).
 > Owner acceptance date: —
+
+## Landed slices and per-criterion state (2026-07-26)
+
+| ID | State | Evidence |
+|---|---|---|
+| R2-C1 | **open** — not yet passable. Two silent-dial blockers remain: `app/packages/shared/src/agent/claude-agent.ts` wires the `craft-agents-docs` MCP (`https://agents.craft.do/docs/mcp`) into every session, and `app/packages/session-mcp-server/src/index.ts` `connectDocsUpstream()` dials the same endpoint unconditionally at startup. Three docs-root links also bypass the doc-links module: `app/apps/electron/src/main/menu.ts` (~line 238), `app/apps/electron/src/shared/menu-schema.ts` (~line 302), `app/apps/electron/src/renderer/components/app-shell/TopBar.tsx` (~line 286). A links/env-override fix (`FLEET_DOCS_MCP_URL`) is in flight 2026-07-26; the default stays Craft-operated pending an owner decision. C1 acceptance still requires the network-blocked smoke + traffic log. | audit 2026-07-26 |
+| R2-C2 | landed — `wired but not visually checked` | `445e11b92` (+ isolated-harness test fix `09c59e7f7`) |
+| R2-C3 | landed — `wired but not visually checked` | `18bf53415` |
+| R2-C4 | landed — `wired but not visually checked` | `3ddbe59fe` (+ ChatPage docs-link routing `58a033d51`) |
+| R2-C5 | landed — `wired but not visually checked` | `61045ebb9` (OAuth relay) + `8678c7501` (Slack relay) |
+| R2-C6 | open — endpoint inventory vs the refreshed `源码参考/craft-docs/` mirror not run | — |
+| R2-C7 | open — owner acceptance pending; until it happens no R2 surface is `usable` | — |
 
 ## Outcome
 

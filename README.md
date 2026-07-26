@@ -1,8 +1,10 @@
 # Fleet — AI Work Workbench
 
 A **local-first desktop workbench** where a human and AI agents work on the same projects through
-the same sessions, files, permissions, and timeline. Built as a product fork of
-**Craft Agents v0.11** (Apache-2.0) — simplified and extended, never rebuilt beside it.
+the same sessions, files, permissions, and timeline. Built from Craft Agents (Apache-2.0) with
+**v0.10.5 as the product/interaction baseline**, the current `app/` tree as implementation
+reality, and v0.11.1 as a selective donor of fixes and backend mechanisms — simplified and
+extended, never rebuilt beside it.
 
 > The human owns intent and final judgment. Agents do the middle execution. Every consequential
 > agent action is inspectable, permissioned, and honest about recovery, and connects to real project artifacts.
@@ -33,12 +35,15 @@ the same sessions, files, permissions, and timeline. Built as a product fork of
 
 ## Current state (honest)
 
-The committed application is a **Craft v0.11.1-derived baseline** plus the R0 landing commits of
-2026-07-20: doc restructure, reference-tree reorganization, and six app groups (TE1 accounting,
-zh-Hans/labels, Project=Workspace presentation, Board, settings, MCP) — all typechecked and
-targeted-tested in the audit sandbox, status `wired but not visually checked`. **R0 remains open**
-until the doc-tools gate and dev-launch smoke run on a full machine and the owner accepts the
-visible surfaces (then `fleet-baseline-r0` is tagged). Fleet's differentiating loops (governed action seam,
+The committed application is a Craft v0.11.1-derived implementation tree pinned to the
+**v0.10.5 product/interaction baseline**. Release state has exactly one edit point: the **R0 row
+in [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md)** — landing complete 2026-07-26 (test/typecheck/
+i18n/doc gates green); remaining, owner-owned: the `fleet-baseline-r0` tag and the owner
+walkthrough (R0-C7). Landed since on the same branch (2026-07-26): the R1 Project-is-the-boundary
+shell (`2d08364f7`, with follow-up fix/revert churn under the owner walkthrough), R2 independence
+slices C2–C5 (updater, sharing, docs links, OAuth/Slack relays — all
+`wired but not visually checked`; see [`docs/specs/R2-independence.md`](docs/specs/R2-independence.md)),
+and the R7 canvas preview page (`display-only`, G6 frontend track). Fleet's differentiating loops (governed action seam,
 artifact handoff, delegation, canvas, experience) are **not implemented**; the roadmap orders their
 *integration* behind user-visible value. Every product domain remains registered and described at
 breadth in [`docs/11-PRODUCT-MATRIX.md`](docs/11-PRODUCT-MATRIX.md) and

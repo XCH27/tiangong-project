@@ -3,6 +3,13 @@
 > Spec status: `active`
 > Owner acceptance date: —
 >
+> **State 2026-07-26 (per the roadmap R0 row, the single release-state edit point):** landing
+> complete — groups landed 2026-07-20, test/typecheck/i18n/doc gates green (R0-C2..C6). The tree
+> was clean at the landing claim; it currently carries the 2026-07-26 remediation edits
+> (UI-SPEC §6 correction, tooling script, this doc sync), so R0-C1 must be re-verified with an
+> empty porcelain at tag time. Open, owner-owned: R0-C7 — `fleet-baseline-r0` tag (does not exist
+> yet) + owner walkthrough.
+>
 > **Execution boundary:** this release contains Git-history and destructive operations. It is run
 > by one agent working with the owner present at the marked checkpoints — it is not a fire-and-forget
 > task. Deleting anything follows [`../03-NON-NEGOTIABLES.md`](../03-NON-NEGOTIABLES.md) §6.

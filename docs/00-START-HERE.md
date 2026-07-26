@@ -110,12 +110,15 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
   inventoried and landed on `work/fresh-base-spine` as grouped commits on 2026-07-20 (G-docs,
   G-refs, and six app groups: agent-core/TE1 accounting, labels-i18n, workspace-project presentation,
   board, settings-chat, mcp, plus tooling scripts); full pre-audit snapshot preserved at
-  `backup/pre-r0-audit`. Verified in the audit sandbox: all 8 package typechecks, targeted tests
-  (120), the shared suite (83), and every i18n lint — green. **R0 is not complete:** the
-  `test:doc-tools` gate needs a networked machine (sandbox tunnel blocked — environment failure,
-  not product code), the non-interactive dev-launch smoke needs a GUI machine, owner visual
-  acceptance (R0-C7) is pending, and the `fleet-baseline-r0` tag is not created. App groups are
-  `wired but not visually checked`; nothing is `usable` before owner acceptance
+  `backup/pre-r0-audit`. **Release state has one edit point: the R0 row in
+  [`05-ROADMAP.md`](05-ROADMAP.md)** — landing complete 2026-07-26 (test/typecheck/i18n/doc gates
+  green); remaining, owner-owned: the `fleet-baseline-r0` tag and the owner walkthrough (R0-C7).
+  Landed since on the same branch (2026-07-26): the R1 Project-is-the-boundary shell
+  (`2d08364f7`, plus fix/revert churn from the owner walkthrough — the sidebar trailing-meta
+  question is still open), R2 independence slices C2–C5 (`wired but not visually checked`,
+  recorded in [`specs/R2-independence.md`](specs/R2-independence.md)), and the R7 canvas preview
+  page (`display-only`, G6 frontend track). App groups are `wired but not visually checked`;
+  nothing is `usable` before owner acceptance
   ([`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md)).
 - **Fleet capability:** every differentiating Fleet loop — governed cross-caller actions, versioned
   artifact handoff, bounded delegation, adaptive organization, canvas/workflows, layered agent
