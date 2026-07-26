@@ -152,7 +152,10 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
     <div className={cn("flex flex-col select-none", !isNested && "py-1")}>
       <nav
         className={cn(
-          "grid gap-0.5",
+          // minmax(0,1fr): a bare `grid` track floors at min-content, so under panel
+          // compression rows kept their natural width and overflowed — titles clipped
+          // without an ellipsis and edge-pinned actions were cut off (owner 2026-07-26).
+          "grid grid-cols-[minmax(0,1fr)] gap-0.5",
           isNested ? "pl-5 pr-0 relative" : "px-2"
         )}
         role="navigation"
@@ -234,9 +237,9 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
           // hover styles and reveals the parent's "+" (Craft keeps badges tied to the row).
           return (
             <React.Fragment key={link.id}>
-              <div className="group/section">
+              <div className="group/section min-w-0">
                 {link.trailingAction ? (
-                  <div className="relative">
+                  <div className="relative min-w-0">
                     {rowElement}
                     {/* Sibling overlay, not nested button (UI-SPEC §4). Same language as the
                       * count badges beside it: trailing elements are always visible (owner
