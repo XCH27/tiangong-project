@@ -1417,7 +1417,7 @@
   "settings.terminal.status.partial": "一部検出",
   "settings.terminal.status.ready": "準備完了",
   "settings.terminal.status.unavailable": "未インストール",
-  "settings.terminal.title": "ターミナル",
+  "settings.terminal.title": "CLI agents",
   "settings.tools.builtInBrowser": "組み込みブラウザ",
   "settings.tools.builtInBrowserDesc": "Playwright、Puppeteer、またはブラウザMCPサーバーなどの外部ブラウザツールを使用する場合は無効にしてください。",
   "settings.tools.title": "ツール",

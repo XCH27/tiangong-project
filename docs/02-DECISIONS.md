@@ -486,3 +486,73 @@
   something underneath it is blocked. Presentation returns a *tone*, not a colour — themes own the
   palette — and only `idle` is muted and drawn without an indicator, because a column of identical
   grey dots hides the two rows that matter. (2026-07-30)
+- **H6 — CLI agents connect over ACP; the three hand-written probes are debt, not design.**
+  `cli-runtime-handshake.ts` reverse-engineers three tools three ways: OpenCode's model list is
+  parsed out of human-readable `--verbose` text by counting braces; Codex gets a hand-rolled
+  JSON-RPC conversation with hardcoded request ids against `codex app-server --stdio`; Claude Code
+  is read by regexing `claude --help` for `--effort <level>` and by opening `~/.claude.json`'s
+  `modelAccessCache` — another program's private state file, empty until that tool has been run and
+  free to change shape without notice. Each of these breaks silently and reports the result as "no
+  models" rather than "we could not read this", and a fourth agent means a fourth hack. The Agent
+  Client Protocol is the standard for exactly this: JSON-RPC 2.0 over stdio, LSP's idea applied to
+  coding agents, created by Zed in August 2025, joined by JetBrains, and by 2026 implemented by 25+
+  agents with a shared registry. Gemini CLI speaks it natively (`--acp`); Claude Code and Codex have
+  adapters (`claude-agent-acp`, `codex-acp`). Decision: one ACP client replaces the probes, the
+  catalog is declarative, and `transport: 'legacy-probe'` marks what has not migrated yet so the
+  debt is visible in the type rather than buried in a service file. Contract:
+  `packages/shared/src/cli-agents/cli-agent-connection.ts`. (2026-07-30)
+- **H7 — Detection and configuration are separate layers.** Borrowed from AionUi, whose
+  `DetectedAgent` type states it outright: what is installed on this machine is a fact to discover;
+  what the user chose is a configuration that *references* those facts. The settings page currently
+  renders probe results directly as the configuration, so a transient handshake failure silently
+  drops the user's configured agent and there is no way to express "I want Claude Code" on a machine
+  where it is not installed yet. `resolveSelection` therefore reports *why* a saved choice is
+  unusable (`not-detected` / `agent-unavailable` / `model-missing`) instead of falling back to
+  something else. (2026-07-30)
+- **H8 — A resolved binary path is recorded, and bare command names are not trusted.** The probes
+  call `execFile('claude', …)` with a bare name. A desktop app launched from Finder or the Dock does
+  not inherit the shell PATH, so anyone who installed through nvm, fnm, mise, asdf, volta or
+  Homebrew-on-ARM is told the tool is not installed while it sits in their terminal. Resolution
+  order is `configured → inherited PATH → login shell → well-known paths`: a configured path is an
+  instruction rather than a hint, and the login shell outranks guessed locations because it reflects
+  the version manager's current selection while a well-known path may be a shim for a removed
+  version. Detection results are cached (5 min on success, 1 min on failure) because every settings
+  visit currently spawns three processes, one of which is an app-server. (2026-07-30)
+- **H9 — The command runner states its boundary instead of letting the user discover it.** The
+  terminal is `execFile` with a 30-second timeout and a 1.5 MB buffer: no PTY, no streaming, no
+  cancellation, no persistent `cd`. Those limits are defensible for the bounded runner R18 scoped;
+  discovering them by waiting thirty seconds for `vim` to hang is not. Commands are classified
+  before they run — `bounded` / `interactive` / `long-running` — and one the backend cannot host is
+  refused with the reason. Output truncation keeps the *tail*, because `maxBuffer` currently kills
+  the process and discards everything including the error at the end, which is the only part anyone
+  wanted. Adding a PTY backend later means declaring a second capability, not rewriting callers.
+  Related: the settings page titled "Terminal" contained no terminal — it is the CLI agent page and
+  is now named so. (2026-07-30)
+- **H10 — Delegation routes by requirement, then by cost, and escalates on mechanical failure.**
+  `spawn_session` lets a captain pick a model and `help=true` lists what exists, but nothing says
+  what any of them are *good for* or what they cost — so the choice is made from a model id, and the
+  predictable outcome is that everything runs on whatever the parent was already using, usually the
+  most expensive option, including tasks that are three lines of text manipulation. "Cheap for
+  simple, expensive for complex" cannot be implemented, because complexity is not observable before
+  the work starts. What *is* observable is what a task requires. So: discard candidates that cannot
+  do the work, take the cheapest that can, and escalate only when the cheap one mechanically fails
+  (`tool-loop-exhausted` / `context-overflow` / `repeated-error` / explicit request). Escalating on a
+  *wrong answer* is out of scope — that needs a judge, and without one the rule would degrade into
+  "escalate when someone is unhappy". The savings come from step three: guessing the tier up front is
+  wrong in both directions and expensive in one of them, while trying cheap and escalating pays the
+  premium price only for the tasks that needed it. An escalation must strictly increase cost or
+  context, otherwise it is a retry wearing a different name. The escalation path is computed at
+  routing time so the captain can show its plan before spending anything. Contract:
+  `packages/shared/src/agent/delegation-routing.ts`. (2026-07-30)
+- **H11 — Sub-agents appear inline in the conversation; the session list stays clean.** Sub-agents
+  are real sessions, and the code already excludes them from the left list (`!s.parentSessionId` in
+  `AppShell`) while the board groups them under their parent. Both are right and neither is enough:
+  five sub-agents per task would make the session list unusable, and a delegation visible only on a
+  board is invisible while reading the conversation that caused it. Decision: the conversation
+  carries a compact delegation strip — who was called, for what, how it ended — with the full
+  sub-session one click away. Day to day the strip is the entire answer, which is the assumption the
+  parent activity rollup (H5) already encodes. Escalations render as one row with its attempts
+  attached, not as sibling delegations, because an escalation is one decision with two attempts.
+  What the captain is *offered* is capabilities and a cost tier rather than a model list: a captain
+  given ids picks by name recognition, and the cheap tier is only ever chosen when it is described
+  by what it is good at rather than by what it lacks. (2026-07-30)

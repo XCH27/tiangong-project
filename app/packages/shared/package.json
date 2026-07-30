@@ -68,7 +68,10 @@
     "./tasks": "./src/tasks/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./resources": "./src/resources/index.ts",
-    "./artifacts/history-backend": "./src/artifacts/history-backend.ts"
+    "./artifacts/history-backend": "./src/artifacts/history-backend.ts",
+    "./cli-agents/cli-agent-connection": "./src/cli-agents/cli-agent-connection.ts",
+    "./terminal/terminal-capability": "./src/terminal/terminal-capability.ts",
+    "./agent/delegation-routing": "./src/agent/delegation-routing.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",

@@ -1417,7 +1417,7 @@
   "settings.terminal.status.partial": "Partially detected",
   "settings.terminal.status.ready": "Ready",
   "settings.terminal.status.unavailable": "Not installed",
-  "settings.terminal.title": "Terminal",
+  "settings.terminal.title": "CLI agents",
   "settings.tools.builtInBrowser": "Built-in browser",
   "settings.tools.builtInBrowserDesc": "Disable if you use external browser tools like Playwright, Puppeteer, or browser MCP servers.",
   "settings.tools.title": "Tools",

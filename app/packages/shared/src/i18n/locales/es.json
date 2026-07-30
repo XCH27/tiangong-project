@@ -1417,7 +1417,7 @@
   "settings.terminal.status.partial": "Detección parcial",
   "settings.terminal.status.ready": "Listo",
   "settings.terminal.status.unavailable": "No instalado",
-  "settings.terminal.title": "Terminal",
+  "settings.terminal.title": "CLI agents",
   "settings.tools.builtInBrowser": "Navegador integrado",
   "settings.tools.builtInBrowserDesc": "Desactiva si usas herramientas de navegador externas como Playwright, Puppeteer o servidores MCP de navegador.",
   "settings.tools.title": "Herram.",

@@ -1417,7 +1417,7 @@
   "settings.terminal.status.partial": "Részben észlelve",
   "settings.terminal.status.ready": "Kész",
   "settings.terminal.status.unavailable": "Nincs telepítve",
-  "settings.terminal.title": "Terminál",
+  "settings.terminal.title": "CLI agents",
   "settings.tools.builtInBrowser": "Beépített böngésző",
   "settings.tools.builtInBrowserDesc": "Tiltsd le, ha külső böngészőeszközöket használsz, például Playwright, Puppeteer vagy böngésző MCP szervereket.",
   "settings.tools.title": "Eszközök",

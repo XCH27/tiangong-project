@@ -1417,7 +1417,7 @@
   "settings.terminal.status.partial": "部分可用",
   "settings.terminal.status.ready": "已就绪",
   "settings.terminal.status.unavailable": "未安装",
-  "settings.terminal.title": "终端",
+  "settings.terminal.title": "CLI 代理",
   "settings.tools.builtInBrowser": "内置浏览器",
   "settings.tools.builtInBrowserDesc": "如果使用外部浏览器工具 (如 Playwright、Puppeteer 或浏览器 MCP 服务器) 则禁用。",
   "settings.tools.title": "工具",
