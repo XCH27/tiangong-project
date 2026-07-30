@@ -119,6 +119,44 @@ describe('re-reverting', () => {
   })
 })
 
+describe('multi-agent scoping', () => {
+  const shared: TurnSnapshot[] = [
+    { messageId: 'm1', seq: 1, agentId: 'a1', startSnapshot: 'snap-1', files: ['src/a.ts'] },
+    { messageId: 'm2', seq: 2, agentId: 'a2', startSnapshot: 'snap-2', files: ['src/b.ts'] },
+    { messageId: 'm3', seq: 3, agentId: 'a1', startSnapshot: 'snap-3', files: ['src/c.ts'] },
+  ]
+
+  // Unscoped, a revert rolls back whatever happened to touch a file after the
+  // boundary — including another agent's in-flight work.
+  it('reverts only the requested agent’s turns', () => {
+    const plan = planRevert(shared, 'm1', { agentId: 'a1' })
+    expect(plan?.revertedTurnCount).toBe(1)
+    expect([...(plan?.files.keys() ?? [])]).toEqual(['src/c.ts'])
+    expect(plan?.agentId).toBe('a1')
+  })
+
+  it('still covers every agent when unscoped', () => {
+    expect(planRevert(shared, 'm1')?.revertedTurnCount).toBe(2)
+    expect(planRevert(shared, 'm1')?.agentId).toBeUndefined()
+  })
+
+  it('reports nothing to revert when the agent has no later turns', () => {
+    expect(revertAvailability({
+      turns: shared,
+      boundaryMessageId: 'm1',
+      isProcessing: false,
+      agentId: 'a2',
+    })).toMatchObject({ canRevert: true, turnCount: 1 })
+
+    expect(revertAvailability({
+      turns: shared,
+      boundaryMessageId: 'm3',
+      isProcessing: false,
+      agentId: 'a1',
+    })).toMatchObject({ canRevert: false, reason: 'nothing-after' })
+  })
+})
+
 describe('dock summary', () => {
   // Counts come from what actually happened, not from a re-derived plan: the
   // plan changes as new turns arrive.

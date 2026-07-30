@@ -81,6 +81,28 @@ signal** appears — e.g. the first real bug where file-based lease-restart reco
 idempotency cannot be made atomic on the filesystem. Record the trigger, migration path, and owning
 authority in `02-DECISIONS.md`, then migrate. "It would be cleaner" is not a trigger.
 
+### Artifact history (Decisions H1–H4)
+
+- **A snapshot writes git objects and never moves HEAD, the index, a ref, a branch, a tag, or a
+  stash.** Loose objects are invisible to `git status`, `git log`, and every UI the user has open,
+  and `gc` collects them if abandoned. Anything touching a ref is visible history, and an agent
+  silently committing or stashing under a user is the most destructive thing this capability can do
+  — which is exactly what "just stash it" produces. The allow-list is explicit and each refusal
+  carries its reason in code (`packages/shared/src/git/snapshot-plan.ts`).
+- **Do not put media in a git tree, and do not put a canvas there either.** History is routed by
+  artifact kind (H1). Reaching for git because it is already there is how a repository becomes
+  unusable one video at a time.
+- **Do not build the snapshot tree through the repository's own index.** Borrowing it drops the
+  user's staged work the moment a snapshot runs; use `GIT_INDEX_FILE` pointed at a scratch path.
+- **Do not merge concurrent agent writes to the same file.** Admit one writer, make the second wait,
+  and route that decision through the existing permission path (H3). There is no commit to merge and
+  no human watching conflict markers.
+- **Do not give a parallel agent a worktree and call it isolated.** Ports, databases, caches,
+  scratch space and environment are shared until declared otherwise (H4).
+- **Do not ask a human to maintain a status the system can observe.** Derived activity and the
+  manual `sessionStatus` label are separate fields with separate owners (H5); only one of them is
+  the machine's job to keep true.
+
 ### Current state authorities
 
 Confirm each row against current code before changing it; extend the authority rather than creating

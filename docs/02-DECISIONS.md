@@ -432,3 +432,57 @@
   the Session-list header dropdown, acting on the current filtered view; the dormant SidebarMenu
   branch stays gated. Restores the capability per the 简化不等于删除 rule — simplification never
   deletes capability, it relocates the entry with a named surviving path. (2026-07-26)
+- **H1 — Artifact history is routed by kind; git is one backend, not the store.** The first
+  snapshot design hardcoded git. That is right for code and wrong for everything this product is
+  heading toward, in ways that are not recoverable later. Git stores each version of a compressed
+  file whole — delta compression does nothing on media, so a repository grows by the full file size
+  per edit and `git diff` on it is meaningless; this is exactly the problem git-lfs exists to solve,
+  and it solves it by keeping *pointers* in git and the bytes in a separate content-addressed store.
+  A canvas is one JSON document, so a file diff of "moved one node" is a whole-file rewrite; history
+  has to be record-level to carry meaning, which is the shape tldraw's store already uses
+  (`{added, updated: [from, to], removed}`, with a reversible diff and no snapshot required for
+  undo). Decision: three backends behind one routing function —
+  `text → git-tree`, `media → content-store`, `document-graph → operation-log`. A canvas and a video
+  timeline are the same problem (references plus operations), so this is two new mechanisms, not
+  three. Routing is by extension denylist rather than a size heuristic: a threshold would put a small
+  PNG in git and a large generated `.ts` in the content store. Unknown extensions default to text,
+  because misfiling a text file costs storage while misfiling a binary costs a diff nobody can read.
+  The "never touch a ref" rule from the original design is scoped to the **git backend**; a content
+  store has no refs to protect. Contract: `packages/shared/src/artifacts/history-backend.ts`.
+  Rejected: git-lfs — it requires a server, which Decision P8 forbids as a startup dependency.
+  (2026-07-30)
+- **H2 — Attribution is orthogonal to history and required by all three backends.** Every change
+  carries `ChangeAttribution { sessionId, agentId?, messageId?, at }`. With one agent this reads as
+  bookkeeping; with several it is the difference between a review that can be read and a pile of
+  interleaved edits, and between reverting your own work and reverting a colleague's. `agentId`
+  absent means the human acted directly, which must stay distinguishable from an agent acting on
+  their behalf. tldraw carries the same field (`source: 'user' | 'remote'`) for the same reason and
+  simply needs fewer values. `planRevert` and `filterReviewDiffs` take an optional `agentId` scope;
+  unscoped remains the default so single-agent sessions are unchanged. (2026-07-30)
+- **H3 — Concurrent writes are admitted, not merged.** Two agents editing one file cannot be
+  reconciled by git in a live session: there is no commit to merge and no human watching conflict
+  markers. One writer at a time per path, second waits. This is a permission decision and belongs on
+  the existing permission path (03 §1), not in a new lock manager. Leases expire so a crashed agent
+  does not hold a file forever, and a holder may re-enter its own lease. `document-graph` is exempt:
+  record-level operations on disjoint nodes genuinely commute, which is the only reason that format
+  can be collaborative when source files cannot. (2026-07-30)
+- **H4 — Worktree isolation is necessary and insufficient; runtime facets are declared with it.**
+  Git worktrees are the established isolation primitive for parallel coding agents and are what
+  Claude Code, Codex and Cursor all use. They stop one agent overwriting another's *files* and do
+  nothing about the ports, databases, caches, scratch space and environment they share — two agents
+  running the same dev server race for one port, and the failure presents as a flaky test rather
+  than a collision. `AgentIsolation` therefore declares worktree **and** runtime facets together, so
+  adding a facet is one edit instead of a bug found in production. Ports are assigned by agent index
+  rather than found free: a found-free port changes every run, which makes a failure impossible to
+  reproduce and a log impossible to read. (2026-07-30)
+- **H5 — Session activity is derived; `sessionStatus` stays manual.** The session-row icon read
+  `sessionStatus`, a Kanban label written only by a context menu, a URL parameter or a board drag —
+  nothing set it automatically, so it answered "what did someone file this as", never "what is this
+  doing". There were already two manual status fields (`sessionStatus`, `kanbanColumn`) and no
+  derived one. `deriveSessionActivity` adds the derived one and replaces neither. Ordering is by
+  urgency, not likelihood: a pending approval outranks running, because the first needs a human and
+  the second does not, and with several agents in flight the only thing worth seeing at a glance is
+  which ones are stuck. Child activity rolls up so a collapsed parent cannot read as calm while
+  something underneath it is blocked. Presentation returns a *tone*, not a colour — themes own the
+  palette — and only `idle` is muted and drawn without an indicator, because a column of identical
+  grey dots hides the two rows that matter. (2026-07-30)

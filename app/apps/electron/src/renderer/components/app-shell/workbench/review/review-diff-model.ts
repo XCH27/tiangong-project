@@ -31,6 +31,15 @@ export interface ReviewDiff {
   path: string
   status: ReviewFileStatus
   source: ReviewDiffSource
+  /**
+   * Agent that produced the change. Absent for working-tree rows, which have no
+   * author, and for single-agent sessions.
+   *
+   * Without it a review of delegated work is one interleaved pile: the reader
+   * cannot tell which agent to ask about a change, and per-agent revert has
+   * nothing to scope by.
+   */
+  agentId?: string
   additions: number
   deletions: number
   /**
@@ -86,6 +95,7 @@ function isReviewDiff(value: unknown): value is ReviewDiff {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const diff = value as Record<string, unknown>
   if (typeof diff.path !== 'string' || !diff.path) return false
+  if (diff.agentId !== undefined && typeof diff.agentId !== 'string') return false
   if (typeof diff.additions !== 'number' || typeof diff.deletions !== 'number') return false
   if (diff.patch !== undefined && typeof diff.patch !== 'string') return false
   return isReviewFileStatus(diff.status) && isReviewDiffSource(diff.source)
@@ -164,10 +174,34 @@ export function normalizeReviewPath(path: string): string {
 export function filterReviewDiffs(
   diffs: readonly ReviewDiff[],
   query: string,
+  options: { agentId?: string } = {},
 ): readonly ReviewDiff[] {
   const value = query.trim().toLowerCase()
-  if (!value) return diffs
-  return diffs.filter((diff) => normalizeReviewPath(diff.path).toLowerCase().includes(value))
+  const byAgent = options.agentId === undefined
+    ? diffs
+    : diffs.filter((diff) => diff.agentId === options.agentId)
+  if (!value) return byAgent
+  return byAgent.filter((diff) => normalizeReviewPath(diff.path).toLowerCase().includes(value))
+}
+
+/**
+ * Reviewers read delegated work one agent at a time; a single list of
+ * interleaved edits from three agents cannot be reasoned about. Working-tree
+ * rows have no author and collect under the reserved key.
+ */
+export const REVIEW_UNATTRIBUTED_KEY = 'unattributed'
+
+export function groupReviewDiffsByAgent(
+  diffs: readonly ReviewDiff[],
+): ReadonlyMap<string, readonly ReviewDiff[]> {
+  const grouped = new Map<string, ReviewDiff[]>()
+  for (const diff of diffs) {
+    const key = diff.agentId ?? REVIEW_UNATTRIBUTED_KEY
+    const bucket = grouped.get(key)
+    if (bucket) bucket.push(diff)
+    else grouped.set(key, [diff])
+  }
+  return grouped
 }
 
 export interface ReviewTotals {

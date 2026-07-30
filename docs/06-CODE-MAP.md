@@ -120,6 +120,26 @@ recorded condition, not an open work item; touch them only when a slice already 
   [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md); extend one effective projection before provider
   schema adaptation. Do not couple it to R4 or treat a provider lane as a loadout authority.
 
+## Artifact history and attribution (Decisions H1–H5)
+
+New domain layer. Pure modules — no git commands, no I/O — so the rules are testable without a
+repository and the executor's only job is to refuse anything the plan did not authorize.
+
+| Concern | Real code | Note |
+|---|---|---|
+| Which mechanism owns an artifact's history | `packages/shared/src/artifacts/history-backend.ts` | `text → git-tree`, `media → content-store`, `document-graph → operation-log`. Routing by extension denylist, not size |
+| Change attribution | same file (`ChangeAttribution`, `groupByAuthor`) | `agentId` absent = the human acted directly |
+| Concurrent write admission | same file (`admitWrite`, `WriteLease`) | One writer per path; `document-graph` exempt because record ops commute |
+| Parallel-agent isolation | same file (`AgentIsolation`, `agentPortOffset`) | Worktree **plus** ports/scratch/env; ports by index so they reproduce |
+| Git snapshot safety boundary | `packages/shared/src/git/snapshot-plan.ts` | Explicit allow-list; scratch `GIT_INDEX_FILE`; capability degrades rather than fails |
+| Message revert (file-level) | `packages/shared/src/sessions/revert-model.ts` | Distinct from `branchFromMessageId`, which forks the *conversation* and leaves files alone |
+| Derived session activity | `packages/shared/src/sessions/session-activity.ts` | Live; `sessionStatus` stays the manual label |
+| Review diff normalization | `apps/electron/src/renderer/components/app-shell/workbench/review/review-diff-model.ts` | Unifies working-tree and session-snapshot sources; directory rollup; lazy patch predicate |
+
+Not yet built, in order: the git executor behind `snapshot-plan`, the per-turn capture hook in
+`SessionManager`, the content store, the operation log, and the two surfaces (review file tree,
+revert dock). `SessionStatusIcon` and the session row still read the manual label.
+
 ## Craft-operated service boundaries (R2 scope)
 
 Inherited entry points, each handled as its own coherent slice per Decision P8 and

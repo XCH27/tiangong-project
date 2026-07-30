@@ -29,6 +29,15 @@ export type SnapshotId = string
 /** What one assistant turn recorded about the files it was about to change. */
 export interface TurnSnapshot {
   messageId: string
+  /**
+   * Which agent ran the turn. Absent means a single-agent session.
+   *
+   * Required once work is delegated: without it a revert rolls back whatever
+   * happened to touch the same file, including another agent's in-flight work,
+   * and the review surface reads as one interleaved pile rather than per-agent
+   * changes.
+   */
+  agentId?: string
   /** Ordering key. Turn order, not wall-clock: clocks are not monotonic. */
   seq: number
   /** State captured *before* this turn ran. */
@@ -39,6 +48,8 @@ export interface TurnSnapshot {
 
 export interface RevertPlan {
   boundaryMessageId: string
+  /** Set when the plan covers only one agent's turns. */
+  agentId?: string
   /** Path → snapshot to restore it from. */
   files: ReadonlyMap<string, SnapshotId>
   /** Turns that will be undone. Shown before the user commits to it. */
@@ -56,12 +67,17 @@ export interface RevertPlan {
 export function planRevert(
   turns: readonly TurnSnapshot[],
   boundaryMessageId: string,
+  options: { agentId?: string } = {},
 ): RevertPlan | null {
   const boundary = turns.find((turn) => turn.messageId === boundaryMessageId)
   if (!boundary) return null
 
+  // Scoping to one agent is the difference between undoing your own work and
+  // undoing a colleague's. Unscoped stays the default so a single-agent session
+  // behaves as before.
   const after = turns
     .filter((turn) => turn.seq > boundary.seq)
+    .filter((turn) => options.agentId === undefined || turn.agentId === options.agentId)
     .sort((a, b) => a.seq - b.seq)
 
   const files = new Map<string, SnapshotId>()
@@ -71,7 +87,12 @@ export function planRevert(
     }
   }
 
-  return { boundaryMessageId, files, revertedTurnCount: after.length }
+  return {
+    boundaryMessageId,
+    ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
+    files,
+    revertedTurnCount: after.length,
+  }
 }
 
 /**
@@ -137,12 +158,14 @@ export function revertAvailability(input: {
   turns: readonly TurnSnapshot[]
   boundaryMessageId: string
   isProcessing: boolean
+  /** Restrict the check to one agent's turns. */
+  agentId?: string
 }): RevertAvailability {
   if (input.isProcessing) {
     return { canRevert: false, reason: 'session-busy', turnCount: 0 }
   }
 
-  const plan = planRevert(input.turns, input.boundaryMessageId)
+  const plan = planRevert(input.turns, input.boundaryMessageId, { agentId: input.agentId })
   if (!plan || plan.revertedTurnCount === 0) {
     return { canRevert: false, reason: 'nothing-after', turnCount: 0 }
   }
