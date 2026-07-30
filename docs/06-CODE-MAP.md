@@ -141,6 +141,8 @@ repository and the executor's only job is to refuse anything the plan did not au
 | Skill routing inside a kit | `packages/shared/src/labels/skill-routing.ts` | Triggers + decisive exclusions + offered successors; `auditCatalog` catches what makes routing feel broken |
 | Expert-kit gallery (browse, cards, install admission) | `packages/shared/src/labels/kit-gallery.ts` | Catalog size never warns; missing connectors refuse, missing routing warns |
 | Legacy `kind: 'identity'` normalization | `packages/shared/src/labels/kind-normalize.ts` | **Expert kits are the old identity labels.** Never compare `kind` directly |
+| Kit-declared data sources | `packages/shared/src/labels/kit-sources.ts` | Local archives are forced `sensitive` and `search-only`; missing required sources refuse |
+| Memory-curator kit (worked example) | `packages/shared/src/labels/memory-curator-kit.ts` | Idle-triggered, prune-always/consolidate-opt-in, never deletes, cheap-model requirement |
 | Example kits (data, not advice) | `packages/shared/src/labels/example-kits.ts` | One small kit, one 18-step kit that only works routed |
 | Memory scope, promotion and tool facts | `packages/shared/src/memory/memory-scope.ts` | Delegates return findings and write nothing; curated layers are consolidation-only |
 | Delegation routing and cost escalation | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only |

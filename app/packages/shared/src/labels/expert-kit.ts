@@ -72,7 +72,14 @@ export interface ExpertKit {
   labelId: string
   /** Skill slugs this role carries. */
   skills: readonly string[]
-  /** Source slugs this role may read. */
+  /**
+   * Sources this role reads.
+   *
+   * Slugs here refer to bindings the kit declares (`kit-sources.ts`) rather than
+   * to globally-connected sources. A source connected globally is either always
+   * in scope — attention spent on data the role cannot use — or toggled per
+   * session, which is a step nobody performs reliably.
+   */
   sources: readonly string[]
   /**
    * Session tool ids this role is offered.

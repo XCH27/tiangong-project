@@ -78,7 +78,9 @@
     "./labels/skill-routing": "./src/labels/skill-routing.ts",
     "./labels/example-kits": "./src/labels/example-kits.ts",
     "./labels/kit-gallery": "./src/labels/kit-gallery.ts",
-    "./labels/kind-normalize": "./src/labels/kind-normalize.ts"
+    "./labels/kind-normalize": "./src/labels/kind-normalize.ts",
+    "./labels/kit-sources": "./src/labels/kit-sources.ts",
+    "./labels/memory-curator-kit": "./src/labels/memory-curator-kit.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",

@@ -702,3 +702,46 @@
   up later: expert kits *are* the old identity labels, renamed and given a real payload.** That is
   the whole of the history worth carrying. Contract:
   `packages/shared/src/labels/kind-normalize.ts`. (2026-07-30)
+- **H24 — Data sources are declared by a kit, not connected globally.** A globally-connected source
+  is either always in scope — attention spent on data the current role cannot use — or toggled per
+  session, which is a step nobody performs reliably. Once kits define roles the binding belongs to
+  the kit, alongside its skills and tools, and it carries the two things a global connection cannot
+  express: whether the kit *needs* it, and how sensitive the contents are. Missing **required**
+  sources refuse activation; missing optional ones degrade and say so, because a curator that quietly
+  ran over two of its five archives produces a plausible result, and nobody re-runs a result that
+  looks fine. A binding declared read-write but not granted write is refused rather than downgraded
+  to read: silently downgrading leaves the kit failing later at a write it was told it could perform,
+  which reads as the kit being broken. Contract: `packages/shared/src/labels/kit-sources.ts`.
+  (2026-07-30)
+- **H25 — An imported archive is searched, never absorbed.** A chat export from another application
+  is somebody's correspondence. It is exactly the material a memory curator wants and exactly the
+  material that must never be injected wholesale or promoted into durable memory — treating it as
+  "just another source" is how a private conversation ends up in `MEMORY.md` with a source pointer
+  attached. So `local-archive` is forced to `sensitive` **regardless of what the binding declares**:
+  the kit author is not the person whose correspondence it points at, and their judgement is not the
+  one that should decide. Its disposition is `search-only`, and nothing derived from it is promotable
+  automatically. This is not a restriction on usefulness — the value of an archive is the *pattern*
+  across it (this team always ships behind a flag; this API is the one that keeps breaking), and a
+  pattern is a new claim the curator states and sources, not a passage it lifts. (2026-07-30)
+- **H26 — The memory-curator kit, and why its defaults are Hermes'.** A worked example of the whole
+  design: kit-declared sources, routed skills, and a consolidation loop that earns its keep. It is
+  the kit that makes every other kit better, because what it produces is what the rest of the system
+  reads. Four choices are taken from Hermes' curator, which solves the same problem — an agent that
+  saves a skill whenever it solves something novel accumulates dozens of narrow near-duplicates that
+  pollute the catalog and cost tokens every turn. **Idle-triggered, not scheduled**: a pass needs
+  both an interval since the last one and a stretch of inactivity, because a cron pass fires mid-task
+  and rewrites the prefix the session is reading. **Two phases, expensive one off by default**:
+  deterministic ageing (30-day stale, 90-day archive) costs nothing and always runs; model-driven
+  consolidation makes broad structural changes and is opt-in. **Never deletes** — the worst outcome
+  is recoverable archival, and pinned entries are untouchable by the pass *and* by the agent, because
+  a promise a background job can override is not one. **First run defers a full interval**, so a user
+  gets a whole cycle to look at what accumulated and pin or opt out before anything moves. Two
+  additions Fleet needs: the consolidation pass declares a *requirement* (tools, no reasoning, modest
+  context) rather than naming a model, so the router picks the cheapest qualifying option — ageing
+  and dedupe are not reasoning work, and paying premium rates for a background pass is the surest way
+  to have it switched off, at which point the duplicates return. And conflicts stay conflicts: when
+  two entries disagree the pass records both, because silently resolving in favour of the newer one
+  is how a correction gets overwritten by the mistake it corrected. A log line naming no entries, or
+  promoting with no sources, is rejected — a consolidation log exists so a person can disagree with a
+  pass they were not present for, and "merged 3 entries" is a receipt rather than an explanation.
+  Contract: `packages/shared/src/labels/memory-curator-kit.ts`. (2026-07-30)
