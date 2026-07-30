@@ -36,7 +36,18 @@
  * (`03-NON-NEGOTIABLES.md` §1).
  */
 
-/** Evidence-based thresholds, kept together so the reason survives a refactor. */
+/**
+ * Thresholds for what is **in the window**, not for what a kit may contain.
+ *
+ * A kit's catalog is deliberately unbounded. Capping capability to save tokens
+ * trades away the reason the kit exists, and a kit that had to be cut down to
+ * pass a check is a worse kit — the user came for the twenty-eight-step
+ * workflow, not for twelve of its steps. Routing is what makes a large catalog
+ * cheap (`skill-routing.ts`), so the architecture absorbs the size instead of
+ * the author paying for it.
+ *
+ * These numbers therefore describe a *measurement*, never a limit on the kit.
+ */
 export const TOOL_BUDGET = {
   /** Accuracy is measurably intact at or below this. */
   focused: 10,
@@ -82,28 +93,74 @@ export interface ExpertKit {
 
 export interface ExpertKitAssessment {
   verdict: ToolBudgetVerdict
-  toolCount: number
-  /** Present when the role should be split rather than trimmed. */
-  suggestion?: 'split-into-specialists'
+  /** What is in the window: the number the budget actually governs. */
+  activeCount: number
+  /** Everything the kit can do. Deliberately not budgeted. */
+  catalogCount: number
+  suggestion?: ExpertKitSuggestion
 }
 
+export type ExpertKitSuggestion =
+  /**
+   * The kit carries a large catalog with no way to select within it, so all of
+   * it loads at once.
+   *
+   * This is the only finding that matters, and it is an *architecture* gap
+   * rather than a capability one: adding routing costs the kit nothing and loses
+   * no step. Never phrase it as "too many skills".
+   */
+  | 'add-skill-routing'
+  /**
+   * Routing is in place and the routed set is still large.
+   *
+   * Offered as information, not as an instruction to cut anything. Splitting
+   * distributes the *same* capability across agents that can each hold their
+   * share; the alternative — trimming — is the one option that actually loses
+   * something, and it is never suggested.
+   */
+  | 'consider-splitting'
+
 /**
- * Judge a kit by what actually costs attention.
+ * Measure what is in the window. Never judge what the kit can do.
  *
- * Skills and sources are counted with tools because they arrive in the same
- * window and compete for the same attention. Counting only tool schemas
- * under-reports a role carrying twelve skills and four tools, which behaves like
- * sixteen.
+ * An earlier version budgeted the whole declared set, which called every
+ * substantial kit over-budget and told the author to split it. That is backwards:
+ * real workflows are long — a design kit spanning problem framing through
+ * engineering handoff is twenty-plus steps — and a kit trimmed to satisfy a
+ * threshold is simply a worse kit. Capability is the product; token cost is an
+ * implementation detail to be solved by architecture.
+ *
+ * So the catalog is unbounded and the measurement applies to the *active* set.
+ * A kit that routes (`skill-routing.ts`) is measured on what routing selected,
+ * and a large routed kit is `focused` — correctly, because that is what it costs
+ * per turn. A kit with no routing loads everything, and for it the two numbers
+ * coincide; the finding there is the missing routing, not the size.
+ *
+ * Sources and tools count alongside skills because they arrive in the same
+ * window and compete for the same attention.
  */
-export function assessExpertKit(kit: ExpertKit): ExpertKitAssessment {
-  const toolCount = kit.tools.length + kit.skills.length + kit.sources.length
-  const verdict = toolBudgetVerdict(toolCount)
+export function assessExpertKit(
+  kit: ExpertKit,
+  options: { activeSkillCount?: number } = {},
+): ExpertKitAssessment {
+  const catalogCount = kit.tools.length + kit.skills.length + kit.sources.length
+  const activeSkillCount = options.activeSkillCount
+  const routes = activeSkillCount !== undefined
+  const activeCount = activeSkillCount === undefined
+    ? catalogCount
+    : kit.tools.length + activeSkillCount + kit.sources.length
+
+  const verdict = toolBudgetVerdict(activeCount)
+  if (verdict !== 'over-budget') return { verdict, activeCount, catalogCount }
+
+  // The unrouted case has a fix that costs nothing. The routed case is reported
+  // for information only — the kit works, it is simply large per turn, and the
+  // user may well want exactly that.
   return {
     verdict,
-    toolCount,
-    // Trimming an over-budget role loses capability; splitting keeps all of it
-    // and hands the parts to agents that can each hold their share.
-    ...(verdict === 'over-budget' ? { suggestion: 'split-into-specialists' as const } : {}),
+    activeCount,
+    catalogCount,
+    suggestion: routes ? 'consider-splitting' : 'add-skill-routing',
   }
 }
 

@@ -74,7 +74,11 @@
     "./agent/delegation-routing": "./src/agent/delegation-routing.ts",
     "./config/model-pricing": "./src/config/model-pricing.ts",
     "./labels/expert-kit": "./src/labels/expert-kit.ts",
-    "./memory/memory-scope": "./src/memory/memory-scope.ts"
+    "./memory/memory-scope": "./src/memory/memory-scope.ts",
+    "./labels/skill-routing": "./src/labels/skill-routing.ts",
+    "./labels/example-kits": "./src/labels/example-kits.ts",
+    "./labels/kit-gallery": "./src/labels/kit-gallery.ts",
+    "./labels/kind-normalize": "./src/labels/kind-normalize.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",

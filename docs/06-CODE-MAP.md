@@ -137,7 +137,11 @@ repository and the executor's only job is to refuse anything the plan did not au
 | CLI agent connection (ACP + catalog + binary resolution) | `packages/shared/src/cli-agents/cli-agent-connection.ts` | Replaces three hand-written probes; `legacy-probe` marks what has not migrated |
 | Terminal capability and command admission | `packages/shared/src/terminal/terminal-capability.ts` | Classifies before running so `vim` is refused instead of hanging for 30s |
 | Model pricing (cache tiers, context tiers, subscription) | `packages/shared/src/config/model-pricing.ts` | models.dev shape; unknown pricing sorts last so it cannot become the silent default |
-| Expert kits and the attention budget | `packages/shared/src/labels/expert-kit.ts` | ≤10 focused / ≤15 crowded / >15 split; union takes the *narrowest* permission request |
+| Expert kits and the attention budget | `packages/shared/src/labels/expert-kit.ts` | Budget governs the **active** set, not the catalog; union takes the *narrowest* permission request |
+| Skill routing inside a kit | `packages/shared/src/labels/skill-routing.ts` | Triggers + decisive exclusions + offered successors; `auditCatalog` catches what makes routing feel broken |
+| Expert-kit gallery (browse, cards, install admission) | `packages/shared/src/labels/kit-gallery.ts` | Catalog size never warns; missing connectors refuse, missing routing warns |
+| Legacy `kind: 'identity'` normalization | `packages/shared/src/labels/kind-normalize.ts` | **Expert kits are the old identity labels.** Never compare `kind` directly |
+| Example kits (data, not advice) | `packages/shared/src/labels/example-kits.ts` | One small kit, one 18-step kit that only works routed |
 | Memory scope, promotion and tool facts | `packages/shared/src/memory/memory-scope.ts` | Delegates return findings and write nothing; curated layers are consolidation-only |
 | Delegation routing and cost escalation | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only |
 | Review diff normalization | `apps/electron/src/renderer/components/app-shell/workbench/review/review-diff-model.ts` | Unifies working-tree and session-snapshot sources; directory rollup; lazy patch predicate |

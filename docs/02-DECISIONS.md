@@ -636,3 +636,69 @@
   so two independent observations is the threshold. Invalidation is by the tool disappearing or the
   convention changing, never by age: time-based expiry drops a correct fact about a stable repository
   while keeping a wrong one about a moving API. (2026-07-30)
+- **H19 — A kit's catalog is not its loadout; the attention budget governs the active set.** H13 fixed
+  the tool budget to the whole declared kit, which calls every substantial kit over-budget and tells
+  the author to split. Real workflows are long — a design kit spanning problem framing, research, IA,
+  flows, visual direction, motion, accessibility and engineering handoff is twenty-plus steps — and
+  splitting one into three kits makes the user choose a kit *before* they know which step they are
+  on. Reference kits in the wild ship well past the threshold and are right to. The mistake was
+  conflating two counts: **catalog** (everything a kit can do; large is fine) and **active** (what is
+  in the window this turn; this is what costs attention). A kit is a catalog you route within, not a
+  bundle you carry, so twenty-eight skills can cost less attention than a loadout of twelve. This is
+  the retrieval-based selection the measurements favour — choosing a subset before the model reads
+  anything roughly tripled tool-selection accuracy while halving prompt tokens. `assessExpertKit`
+  now measures the active set and distinguishes the two remedies: an unrouted kit is told to
+  `add-skill-routing`, which loses no step; only a kit still over budget *after* routing is told to
+  `split-into-specialists`. Contract: `packages/shared/src/labels/skill-routing.ts`. (2026-07-30)
+- **H20 — Routing happens before the model reads, and exclusions are first-class.** Two refinements
+  over the kit designs this borrows from. **Route mechanically, not by asking the model to choose.**
+  A kit that relies on the model picking from twenty-eight skill descriptions reintroduces the
+  problem it was built to solve: those descriptions are long, and reading all of them to select one
+  is exactly the attention cost being avoided. Matching runs on declared triggers and only the
+  winner's full text is loaded. **A skill must be able to say what it is *not* for.** Without
+  exclusions the largest catalog absorbs every ambiguous request purely by having more surface to
+  match against — a designer's "write the PRD" lands in the design kit because that kit mentions
+  requirements more often than the product-management kit does. Exclusions are therefore evaluated
+  before triggers and are decisive, not a tie-break. Successors are *offered* rather than loaded: a
+  chain is a suggestion about what usually comes next, and auto-loading it turns a twenty-eight-step
+  workflow into a twenty-eight-skill prompt one step at a time. Ranking prefers the skill with fewer
+  triggers, because a catch-all beating a precise match is how the wrong step gets loaded.
+  `auditCatalog` reports the failures that make routing feel broken — ambiguous triggers, dangling
+  successors, unreachable skills — since the symptom is otherwise indistinguishable from the model
+  simply choosing badly. Two example kits ship as data (`labels/example-kits.ts`): one small enough
+  to load whole, one large enough that routing is the only thing that makes it usable. (2026-07-30)
+- **H21 — A kit's catalog is unbounded; the budget never caps capability.** H19 measured the active
+  set instead of the catalog, but its vocabulary still read as rationing — an author was told to
+  "split" a kit for being large. That is the wrong trade. Capability is the product; token cost is an
+  implementation detail, and a kit trimmed to satisfy a threshold is simply a worse kit — the user
+  came for the twenty-eight-step workflow, not for twelve of its steps. So the catalog has no limit
+  and never earns a warning. The only finding that matters is **architectural**: a kit with no
+  routing loads all of itself, which `add-skill-routing` fixes at zero cost to the kit. A routed kit
+  whose active set is still large reports `consider-splitting` as *information* — splitting
+  distributes the same capability across agents that can each hold their share, and trimming, the one
+  option that actually loses something, is never suggested. (2026-07-30)
+- **H22 — The expert-kit gallery is a first-class surface, and a card says what installing costs.**
+  A kit is only worth defining if it can be found, so the catalog needs browsing: role- and
+  industry-shaped categories (people look for "the thing for my job", not "the thing that reads
+  files"), an installed/available split, popular/newest ordering, and search. Installed kits sort
+  first in either order — someone scanning is usually looking for something they already have, and
+  burying it makes the installed tab the only usable view, which defeats having one list. A card
+  carries skill count, connector count and **whether the kit routes**, because a reader cannot tell a
+  routed twenty-skill kit from an unrouted one by size alone and the two behave nothing alike; that
+  is how someone installs eight kits and wonders why the agent got worse. Missing connectors *refuse*
+  installation rather than warn — a kit whose skills all fail on first use is worse than one never
+  installed, because the failure presents as the agent being bad at the job. An unrouted kit is
+  admitted with a warning: it works, it simply costs more attention than its size suggests, and that
+  is the user's call. Unknown adoption sorts last rather than as zero, so a local kit does not
+  silently outrank a marketplace one that has no count yet. Contract:
+  `packages/shared/src/labels/kit-gallery.ts`. (2026-07-30)
+- **H23 — `kind: 'identity'` is deprecated, readable forever, and normalized in one place.** Expert
+  kits grew out of the identity-label design, so stored catalogs still contain the old value. It is
+  never rewritten on read — rewriting a user's label store during a read is how a bug in the reader
+  becomes a bug in their data — and it drains out through ordinary editing via
+  `withNormalizedKind()`. New code must not write it, must not compare `kind` directly, and asks
+  `isExpertLabel()` / `normalizeLabelKind()` instead: scattered `kind === 'identity'` checks are how
+  half a codebase keeps accepting a value the other half has forgotten. **For any agent picking this
+  up later: expert kits *are* the old identity labels, renamed and given a real payload.** That is
+  the whole of the history worth carrying. Contract:
+  `packages/shared/src/labels/kind-normalize.ts`. (2026-07-30)

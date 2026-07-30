@@ -77,8 +77,10 @@ export interface LabelConfig {
    * Omit or `functional` = organize/filter/automate only.
    * `expert` = a specialist definition: prompt preset plus an `expertKit`.
    *
-   * `identity` is the legacy spelling of `expert` and is still read so stored
-   * catalogs keep working; new writes use `expert`.
+   * @deprecated `'identity'` — expert kits grew out of the identity-label design,
+   * so stored catalogs still contain it and every read path accepts it. Do not
+   * write it. Normalize on read with `normalizeLabelKind()`; anything reasoning
+   * about experts should ask `isExpertLabel()` rather than comparing this field.
    */
   kind?: 'functional' | 'expert' | 'identity';
 

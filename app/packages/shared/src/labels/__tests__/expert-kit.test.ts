@@ -28,14 +28,29 @@ describe('tool budget', () => {
   // Skills and sources arrive in the same window and compete for the same
   // attention; counting only tool schemas under-reports the real load.
   it('counts skills and sources against the same budget', () => {
-    expect(assessExpertKit(kit('a', { skills: names('s', 12), tools: names('t', 4) })).toolCount)
+    expect(assessExpertKit(kit('a', { skills: names('s', 12), tools: names('t', 4) })).activeCount)
       .toBe(16)
   })
 
-  // Trimming loses capability; splitting keeps all of it.
-  it('suggests splitting rather than trimming when over budget', () => {
-    expect(assessExpertKit(kit('a', { tools: names('t', 21) })).suggestion)
-      .toBe('split-into-specialists')
+  // A large catalog is not the problem; loading all of it is. Splitting a long
+  // workflow into three kits makes the user choose a kit before they know which
+  // step they are on.
+  it('tells an unrouted kit to route rather than to split', () => {
+    expect(assessExpertKit(kit('a', { skills: names('s', 18) })).suggestion)
+      .toBe('add-skill-routing')
+  })
+
+  it('measures a routing kit on what routing selected', () => {
+    const assessment = assessExpertKit(kit('a', { skills: names('s', 18) }), { activeSkillCount: 3 })
+    expect(assessment).toMatchObject({ verdict: 'focused', activeCount: 3, catalogCount: 18 })
+  })
+
+  // Offered as information, never as an instruction to cut capability: the
+  // alternative to splitting is trimming, and trimming is the only option that
+  // actually loses something.
+  it('mentions splitting only once routing is already in place', () => {
+    expect(assessExpertKit(kit('a', { skills: names('s', 30) }), { activeSkillCount: 16 }).suggestion)
+      .toBe('consider-splitting')
     expect(assessExpertKit(kit('a', { tools: ['t1'] })).suggestion).toBeUndefined()
   })
 })
