@@ -1,5 +1,5 @@
 /**
- * Identity labels as loadouts.
+ * Identity labels as kits.
  *
  * `LabelConfig.kind === 'identity'` exists today and carries exactly one thing:
  * a `systemPromptPreset`. Its own comment records the gap —
@@ -21,7 +21,7 @@
  * **The published fix is specialisation, which is exactly what an identity is.**
  * The 2026 HTAA framing is an orchestrator plus specialists carrying 5–10
  * tightly-focused tools each, rather than one agent holding fifty. An identity
- * label that binds a loadout *is* that specialist definition, and delegation is
+ * label that binds a kit *is* that specialist definition, and delegation is
  * how the orchestrator reaches it. So the label system, the delegation router,
  * and the permission path are one mechanism seen from three places:
  *
@@ -30,9 +30,9 @@
  *     delegation      →  how the captain reaches a specialist instead of growing
  *     permission      →  what that role may do, enforced on the existing path
  *
- * The last line is the one that must not drift. A loadout narrows what an agent
+ * The last line is the one that must not drift. A kit narrows what an agent
  * *sees*; it never widens what it may *do*. Grants stay on the permission path,
- * and a loadout that could grant would be a second authority
+ * and a kit that could grant would be a second authority
  * (`03-NON-NEGOTIABLES.md` §1).
  */
 
@@ -54,10 +54,10 @@ export function toolBudgetVerdict(toolCount: number): ToolBudgetVerdict {
   return 'over-budget'
 }
 
-// ── The loadout ─────────────────────────────────────────────────────────────
+// ── The kit ─────────────────────────────────────────────────────────────
 
-export interface IdentityLoadout {
-  /** Label id this loadout belongs to. */
+export interface ExpertKit {
+  /** Label id this kit belongs to. */
   labelId: string
   /** Skill slugs this role carries. */
   skills: readonly string[]
@@ -74,13 +74,13 @@ export interface IdentityLoadout {
    * Permission mode this role *requests*.
    *
    * A request, not a grant. The permission path decides, and it may return
-   * something narrower. A loadout that could widen permissions would be a
+   * something narrower. A kit that could widen permissions would be a
    * second authority over the same decision.
    */
   requestedPermissionMode?: 'safe' | 'ask' | 'allow-all'
 }
 
-export interface LoadoutAssessment {
+export interface ExpertKitAssessment {
   verdict: ToolBudgetVerdict
   toolCount: number
   /** Present when the role should be split rather than trimmed. */
@@ -88,15 +88,15 @@ export interface LoadoutAssessment {
 }
 
 /**
- * Judge a loadout by what actually costs attention.
+ * Judge a kit by what actually costs attention.
  *
  * Skills and sources are counted with tools because they arrive in the same
  * window and compete for the same attention. Counting only tool schemas
  * under-reports a role carrying twelve skills and four tools, which behaves like
  * sixteen.
  */
-export function assessLoadout(loadout: IdentityLoadout): LoadoutAssessment {
-  const toolCount = loadout.tools.length + loadout.skills.length + loadout.sources.length
+export function assessExpertKit(kit: ExpertKit): ExpertKitAssessment {
+  const toolCount = kit.tools.length + kit.skills.length + kit.sources.length
   const verdict = toolBudgetVerdict(toolCount)
   return {
     verdict,
@@ -110,13 +110,13 @@ export function assessLoadout(loadout: IdentityLoadout): LoadoutAssessment {
 // ── Projection over the real registries ─────────────────────────────────────
 
 /**
- * Resolve a loadout against what actually exists.
+ * Resolve a kit against what actually exists.
  *
- * A loadout naming a removed skill must not silently become a role with a
+ * A kit naming a removed skill must not silently become a role with a
  * missing capability: it resolves to the intersection, and what fell out is
  * reported so the identity can be repaired rather than quietly degraded.
  */
-export interface ResolvedLoadout {
+export interface ResolvedExpertKit {
   skills: readonly string[]
   sources: readonly string[]
   tools: readonly string[]
@@ -128,22 +128,22 @@ export interface ResolvedLoadout {
   }
 }
 
-export function resolveLoadout(
-  loadout: IdentityLoadout,
+export function resolveExpertKit(
+  kit: ExpertKit,
   available: {
     skills: ReadonlySet<string>
     sources: ReadonlySet<string>
     tools: ReadonlySet<string>
   },
-): ResolvedLoadout {
+): ResolvedExpertKit {
   const partition = (names: readonly string[], pool: ReadonlySet<string>) => ({
     present: names.filter((name) => pool.has(name)),
     missing: names.filter((name) => !pool.has(name)),
   })
 
-  const skills = partition(loadout.skills, available.skills)
-  const sources = partition(loadout.sources, available.sources)
-  const tools = partition(loadout.tools, available.tools)
+  const skills = partition(kit.skills, available.skills)
+  const sources = partition(kit.sources, available.sources)
+  const tools = partition(kit.tools, available.tools)
 
   return {
     skills: skills.present,
@@ -158,32 +158,32 @@ export function resolveLoadout(
 }
 
 /**
- * Combine the loadouts of every identity a session carries.
+ * Combine the kits of every identity a session carries.
  *
  * Sessions can hold several identity labels, and the union is what the agent
  * sees — which is exactly how a session quietly ends up over budget without
  * anyone choosing that. The assessment is therefore taken on the union, not on
  * each label, and it is the union that a captain is told to split.
  */
-export function unionLoadouts(
-  loadouts: readonly IdentityLoadout[],
-): Omit<IdentityLoadout, 'labelId'> & { labelIds: readonly string[] } {
+export function unionExpertKits(
+  kits: readonly ExpertKit[],
+): Omit<ExpertKit, 'labelId'> & { labelIds: readonly string[] } {
   const skills = new Set<string>()
   const sources = new Set<string>()
   const tools = new Set<string>()
-  let requested: IdentityLoadout['requestedPermissionMode']
+  let requested: ExpertKit['requestedPermissionMode']
 
-  for (const loadout of loadouts) {
-    for (const skill of loadout.skills) skills.add(skill)
-    for (const source of loadout.sources) sources.add(source)
-    for (const tool of loadout.tools) tools.add(tool)
+  for (const kit of kits) {
+    for (const skill of kit.skills) skills.add(skill)
+    for (const source of kit.sources) sources.add(source)
+    for (const tool of kit.tools) tools.add(tool)
     // The union takes the *narrowest* request, not the widest. Combining roles
     // must never be a way to accumulate permission that neither role was given.
-    requested = narrowerMode(requested, loadout.requestedPermissionMode)
+    requested = narrowerMode(requested, kit.requestedPermissionMode)
   }
 
   return {
-    labelIds: loadouts.map((loadout) => loadout.labelId),
+    labelIds: kits.map((kit) => kit.labelId),
     skills: [...skills],
     sources: [...sources],
     tools: [...tools],
@@ -191,16 +191,16 @@ export function unionLoadouts(
   }
 }
 
-const MODE_WIDTH: Record<NonNullable<IdentityLoadout['requestedPermissionMode']>, number> = {
+const MODE_WIDTH: Record<NonNullable<ExpertKit['requestedPermissionMode']>, number> = {
   safe: 0,
   ask: 1,
   'allow-all': 2,
 }
 
 function narrowerMode(
-  a: IdentityLoadout['requestedPermissionMode'],
-  b: IdentityLoadout['requestedPermissionMode'],
-): IdentityLoadout['requestedPermissionMode'] {
+  a: ExpertKit['requestedPermissionMode'],
+  b: ExpertKit['requestedPermissionMode'],
+): ExpertKit['requestedPermissionMode'] {
   if (a === undefined) return b
   if (b === undefined) return a
   return MODE_WIDTH[a] <= MODE_WIDTH[b] ? a : b
@@ -211,12 +211,12 @@ function narrowerMode(
 /**
  * What a captain needs to know about a specialist it might call.
  *
- * Deliberately the loadout rather than the prompt: a captain choosing a
+ * Deliberately the kit rather than the prompt: a captain choosing a
  * specialist is asking "who can do this", and the answer is what that role
  * carries. The prompt preset is how the specialist behaves once chosen, which is
  * not the captain's decision to reason about.
  */
-export interface SpecialistOffer {
+export interface ExpertKitOffer {
   labelId: string
   name: string
   skills: readonly string[]
@@ -224,16 +224,16 @@ export interface SpecialistOffer {
   verdict: ToolBudgetVerdict
 }
 
-export function describeSpecialist(
-  loadout: IdentityLoadout,
+export function describeExpertKit(
+  kit: ExpertKit,
   name: string,
-): SpecialistOffer {
+): ExpertKitOffer {
   return {
-    labelId: loadout.labelId,
+    labelId: kit.labelId,
     name,
-    skills: loadout.skills,
-    sources: loadout.sources,
-    verdict: assessLoadout(loadout).verdict,
+    skills: kit.skills,
+    sources: kit.sources,
+    verdict: assessExpertKit(kit).verdict,
   }
 }
 
@@ -244,9 +244,9 @@ export function describeSpecialist(
  * do the work — but it should not be the first thing a captain reaches for, or
  * delegation reproduces the overload it exists to avoid.
  */
-export function rankSpecialists(
-  offers: readonly SpecialistOffer[],
-): readonly SpecialistOffer[] {
+export function rankExpertKits(
+  offers: readonly ExpertKitOffer[],
+): readonly ExpertKitOffer[] {
   const rank: Record<ToolBudgetVerdict, number> = {
     focused: 0,
     crowded: 1,

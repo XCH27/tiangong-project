@@ -12,12 +12,12 @@ export function labelIdOf(rawLabel: string): string {
   return rawLabel.split('::')[0] ?? rawLabel
 }
 
-/** Recursively collect labels marked kind === 'identity'. */
+/** Recursively collect labels marked kind === 'expert' || label.kind === 'identity'. */
 export function collectIdentityLabels(labels: readonly LabelConfig[]): LabelConfig[] {
   const out: LabelConfig[] = []
   const walk = (list: readonly LabelConfig[]): void => {
     for (const label of list) {
-      if (label.kind === 'identity') out.push(label)
+      if (label.kind === 'expert' || label.kind === 'identity') out.push(label)
       if (label.children?.length) walk(label.children)
     }
   }
@@ -40,7 +40,8 @@ export function indexLabelsById(labels: readonly LabelConfig[]): Map<string, Lab
 
 /**
  * Build a prompt context block from identity labels applied to a session.
- * Only includes labels with kind=identity and a non-empty systemPromptPreset.
+ * Only includes expert labels (kind `expert`, or the legacy `identity`) that carry a
+ * non-empty systemPromptPreset.
  */
 export function formatIdentityLabelPromptBlock(
   sessionLabels: readonly string[] | undefined,
@@ -56,7 +57,7 @@ export function formatIdentityLabelPromptBlock(
     if (seen.has(id)) continue
     seen.add(id)
     const label = byId.get(id)
-    if (!label || label.kind !== 'identity') continue
+    if (!label || (label.kind !== 'expert' && label.kind !== 'identity')) continue
     const preset = label.systemPromptPreset?.trim()
     if (!preset) continue
     parts.push(`- #${id}${label.name ? ` (${label.name})` : ''}: ${preset}`)

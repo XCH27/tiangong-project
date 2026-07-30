@@ -596,3 +596,43 @@
   identity defines the specialist, the tool budget says when a role must split, delegation reaches
   the specialist instead of growing the current one, and permission decides what any of them may
   actually do. (2026-07-30)
+- **H15 — Identity labels become expert kits; the field carries the kit.** Renaming follows the
+  substance: an identity was a paragraph of text, an expert is a specialist definition. `LabelConfig`
+  gains `expertKit { skills, sources, tools, requestedPermissionMode }` and `kind: 'expert'`;
+  `kind: 'identity'` stays readable so stored catalogs keep working, and new writes use `expert`.
+  Types renamed accordingly (`ExpertKit`, `assessExpertKit`, `unionExpertKits`,
+  `describeExpertKit`, `rankExpertKits`); contract moves to
+  `packages/shared/src/labels/expert-kit.ts`. (2026-07-30)
+- **H16 — Delegates return findings; only the captain's session promotes memory.** D5 and the memory
+  packet settle layers, floors and retrieval, and neither mentions delegation — the packet was
+  written for one agent per session and the phrase "sub-agent" does not appear in it. The gap has two
+  failure modes pulling opposite ways. If every sub-agent writes memory, working notes become the
+  transcript dump D5 forbids: five specialists on one task produce five accounts of the same events,
+  contradicting each other with no way to adjudicate, and the captain later reads its own delegates'
+  notes as independent corroboration — an echo chamber with source pointers attached. If no sub-agent
+  records anything, every finding dies with the sub-session and the next run rediscovers it at full
+  price, which is the cost delegation exists to avoid. So the rule is asymmetric: **a delegate reads
+  a narrow slice and returns a `DelegateFinding`; only the captain's session promotes anything
+  durable, and only the consolidation pass writes curated layers.** A report is evidence; memory is a
+  claim about what is true. Keeping delegates on the evidence side leaves one writer per task and one
+  place a contradiction must be resolved. Delegates are refused *every* layer rather than given a
+  private scratch: a scratch nothing reads wastes disk and attention, and one something reads is the
+  echo chamber again. Promotion refusals are explicit (`no-source-pointer`, `low-confidence`,
+  `sensitive`, `cross-project`) because each names something the captain could go and fix.
+  Contract: `packages/shared/src/memory/memory-scope.ts`. (2026-07-30)
+- **H17 — A delegate's memory read is scoped by its expert kit, for the same reason its tools are.**
+  Handing a specialist the whole memory is the same attention tax as handing it every tool (H13). A
+  delegate reads its kit's domain files and the `tool` partition and nothing else: it was given one
+  bounded job, and the user profile or another domain's long-term memory is context it cannot act on
+  but must still pay attention for. `sensitive-quarantine` and `archive` appear in no scope at all —
+  quarantine is never injected (D5 floor 1) and an archived entry reaching a prompt would undo the
+  consolidation that archived it. (2026-07-30)
+- **H18 — Tool memory records the fact a call revealed, not the call.** The output is already in the
+  timeline, which stays the evidence authority. What pays for itself is the durable fact: this
+  repository installs with pnpm, that endpoint rate-limits above ten requests a second, this test is
+  flaky on CI and not locally. Those apply to every future turn and rediscovering each one costs a
+  full tool round-trip. Durability requires **repetition, not eloquence** — a single failure is as
+  likely a transient as a rule, and writing it down teaches the agent to avoid something that works,
+  so two independent observations is the threshold. Invalidation is by the tool disappearing or the
+  convention changing, never by age: time-based expiry drops a correct fact about a stable repository
+  while keeping a wrong one about a moving API. (2026-07-30)

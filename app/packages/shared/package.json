@@ -73,7 +73,8 @@
     "./terminal/terminal-capability": "./src/terminal/terminal-capability.ts",
     "./agent/delegation-routing": "./src/agent/delegation-routing.ts",
     "./config/model-pricing": "./src/config/model-pricing.ts",
-    "./labels/identity-loadout": "./src/labels/identity-loadout.ts"
+    "./labels/expert-kit": "./src/labels/expert-kit.ts",
+    "./memory/memory-scope": "./src/memory/memory-scope.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",

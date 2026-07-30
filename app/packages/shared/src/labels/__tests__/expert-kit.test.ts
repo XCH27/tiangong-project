@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'bun:test'
 import {
   TOOL_BUDGET,
-  assessLoadout,
-  describeSpecialist,
-  rankSpecialists,
-  resolveLoadout,
+  assessExpertKit,
+  describeExpertKit,
+  rankExpertKits,
+  resolveExpertKit,
   toolBudgetVerdict,
-  unionLoadouts,
-  type IdentityLoadout,
-} from '../identity-loadout'
+  unionExpertKits,
+  type ExpertKit,
+} from '../expert-kit'
 
-const loadout = (labelId: string, patch: Partial<IdentityLoadout> = {}): IdentityLoadout => ({
+const kit = (labelId: string, patch: Partial<ExpertKit> = {}): ExpertKit => ({
   labelId, skills: [], sources: [], tools: [], ...patch,
 })
 
@@ -28,23 +28,23 @@ describe('tool budget', () => {
   // Skills and sources arrive in the same window and compete for the same
   // attention; counting only tool schemas under-reports the real load.
   it('counts skills and sources against the same budget', () => {
-    expect(assessLoadout(loadout('a', { skills: names('s', 12), tools: names('t', 4) })).toolCount)
+    expect(assessExpertKit(kit('a', { skills: names('s', 12), tools: names('t', 4) })).toolCount)
       .toBe(16)
   })
 
   // Trimming loses capability; splitting keeps all of it.
   it('suggests splitting rather than trimming when over budget', () => {
-    expect(assessLoadout(loadout('a', { tools: names('t', 21) })).suggestion)
+    expect(assessExpertKit(kit('a', { tools: names('t', 21) })).suggestion)
       .toBe('split-into-specialists')
-    expect(assessLoadout(loadout('a', { tools: ['t1'] })).suggestion).toBeUndefined()
+    expect(assessExpertKit(kit('a', { tools: ['t1'] })).suggestion).toBeUndefined()
   })
 })
 
 describe('resolution against real registries', () => {
-  // A loadout naming a removed skill must not quietly become a weaker role.
+  // A kit naming a removed skill must not quietly become a weaker role.
   it('reports what no longer resolves instead of degrading silently', () => {
-    const resolved = resolveLoadout(
-      loadout('a', { skills: ['ok', 'gone'], tools: ['t1'] }),
+    const resolved = resolveExpertKit(
+      kit('a', { skills: ['ok', 'gone'], tools: ['t1'] }),
       { skills: new Set(['ok']), sources: new Set(), tools: new Set(['t1']) },
     )
     expect(resolved.skills).toEqual(['ok'])
@@ -55,9 +55,9 @@ describe('resolution against real registries', () => {
 
 describe('multiple identities on one session', () => {
   it('unions what the agent sees', () => {
-    const union = unionLoadouts([
-      loadout('a', { skills: ['s1'], tools: ['t1'] }),
-      loadout('b', { skills: ['s2'], tools: ['t1', 't2'] }),
+    const union = unionExpertKits([
+      kit('a', { skills: ['s1'], tools: ['t1'] }),
+      kit('b', { skills: ['s2'], tools: ['t1', 't2'] }),
     ])
     expect([...union.skills].sort()).toEqual(['s1', 's2'])
     expect([...union.tools].sort()).toEqual(['t1', 't2'])
@@ -66,37 +66,37 @@ describe('multiple identities on one session', () => {
 
   // Combining roles must never accumulate permission neither role was given.
   it('takes the narrowest requested permission, not the widest', () => {
-    expect(unionLoadouts([
-      loadout('a', { requestedPermissionMode: 'allow-all' }),
-      loadout('b', { requestedPermissionMode: 'safe' }),
+    expect(unionExpertKits([
+      kit('a', { requestedPermissionMode: 'allow-all' }),
+      kit('b', { requestedPermissionMode: 'safe' }),
     ]).requestedPermissionMode).toBe('safe')
 
-    expect(unionLoadouts([
-      loadout('a', { requestedPermissionMode: 'ask' }),
-      loadout('b'),
+    expect(unionExpertKits([
+      kit('a', { requestedPermissionMode: 'ask' }),
+      kit('b'),
     ]).requestedPermissionMode).toBe('ask')
   })
 
   // This is how a session quietly ends up over budget without anyone choosing it.
   it('is the union that gets assessed, not each label', () => {
-    const union = unionLoadouts([
-      loadout('a', { tools: names('t', 9) }),
-      loadout('b', { tools: names('u', 9) }),
+    const union = unionExpertKits([
+      kit('a', { tools: names('t', 9) }),
+      kit('b', { tools: names('u', 9) }),
     ])
-    expect(assessLoadout({ labelId: 'union', ...union }).verdict).toBe('over-budget')
+    expect(assessExpertKit({ labelId: 'union', ...union }).verdict).toBe('over-budget')
   })
 })
 
 describe('specialist offers', () => {
   it('describes a specialist by what it carries', () => {
-    const offer = describeSpecialist(loadout('reviewer', { skills: ['diff'] }), 'Reviewer')
+    const offer = describeExpertKit(kit('reviewer', { skills: ['diff'] }), 'Reviewer')
     expect(offer).toMatchObject({ labelId: 'reviewer', name: 'Reviewer', verdict: 'focused' })
     expect(offer.skills).toEqual(['diff'])
   })
 
   // Otherwise delegation reproduces the overload it exists to avoid.
   it('offers focused specialists before crowded ones', () => {
-    expect(rankSpecialists([
+    expect(rankExpertKits([
       { labelId: 'x', name: 'x', skills: [], sources: [], verdict: 'over-budget' },
       { labelId: 'y', name: 'y', skills: [], sources: [], verdict: 'focused' },
       { labelId: 'z', name: 'z', skills: [], sources: [], verdict: 'crowded' },

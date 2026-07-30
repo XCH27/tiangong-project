@@ -75,17 +75,37 @@ export interface LabelConfig {
   /**
    * Role of this label in the catalog (Decision E10 — one label store).
    * Omit or `functional` = organize/filter/automate only.
-   * `identity` = session role guidance via systemPromptPreset.
-   * Identity assignment is still session `labels[]` — no second identity store.
-   * Skill/Source/permission bindings are not implemented; do not store fake bind fields.
+   * `expert` = a specialist definition: prompt preset plus an `expertKit`.
+   *
+   * `identity` is the legacy spelling of `expert` and is still read so stored
+   * catalogs keep working; new writes use `expert`.
    */
-  kind?: 'functional' | 'identity';
+  kind?: 'functional' | 'expert' | 'identity';
 
   /**
-   * For identity labels: text injected when building agent context for a session
+   * For expert labels: text injected when building agent context for a session
    * that carries this label id. Does not grant tools or bypass the permission path.
    */
   systemPromptPreset?: string;
+
+  /**
+   * What this expert carries: skills, sources, tools, and the permission mode it
+   * *requests*.
+   *
+   * Previously this was the documented gap — an expert was a paragraph of text
+   * and every session saw every tool regardless of its role, which is a
+   * measurable accuracy cost rather than a tidiness one (Decision H13). The kit
+   * narrows what the agent *sees*; it never widens what it may *do*, and the
+   * permission path still decides (H14).
+   *
+   * Shape and budget rules: `labels/expert-kit.ts`.
+   */
+  expertKit?: {
+    skills?: string[];
+    sources?: string[];
+    tools?: string[];
+    requestedPermissionMode?: 'safe' | 'ask' | 'allow-all';
+  };
 }
 
 /**
