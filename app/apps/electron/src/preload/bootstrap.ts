@@ -24,6 +24,7 @@ import { buildClientApi } from '../transport/build-api'
 import { CHANNEL_MAP } from '../transport/channel-map'
 import { createCallbackServer } from '@craft-agent/shared/auth/callback-server'
 import { CHATGPT_OAUTH_CONFIG } from '@craft-agent/shared/auth/chatgpt-oauth-config'
+import { classifyExternalUrl } from '@craft-agent/shared/utils/url-safety'
 import {
   CLIENT_OPEN_EXTERNAL,
   CLIENT_OPEN_PATH,
@@ -158,14 +159,43 @@ if (isClientOnly) {
 // Register client-side capability handlers (server can invoke these)
 // ---------------------------------------------------------------------------
 
-client.handleCapability(CLIENT_OPEN_EXTERNAL, (url: string) => shell.openExternal(url))
+const SENSITIVE_PATH_PATTERNS = [
+  /\.ssh[\\/]/, /\.gnupg[\\/]/, /\.aws[\\/]/, /\.config[\\/]gcloud/,
+  /\.env$/, /\.env\./, /credentials$/, /\.pem$/, /\.key$/,
+  /id_rsa/, /id_ecdsa/, /id_ed25519/,
+]
+
+function isSensitivePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, '/')
+  return SENSITIVE_PATH_PATTERNS.some((pattern) => pattern.test(normalized))
+}
+
+client.handleCapability(CLIENT_OPEN_EXTERNAL, (url: string) => {
+  const classification = classifyExternalUrl(url)
+  if (classification.kind === 'dangerous') {
+    throw new Error(`Blocked URL: ${classification.reason}`)
+  }
+  return shell.openExternal(url)
+})
 
 client.handleCapability(CLIENT_OPEN_PATH, async (path: string) => {
+  if (!path || typeof path !== 'string' || path.includes('..')) {
+    throw new Error('Invalid path')
+  }
+  if (isSensitivePath(path)) {
+    throw new Error('Access to sensitive path is blocked')
+  }
   const error = await shell.openPath(path)
   return { error: error || undefined }
 })
 
 client.handleCapability(CLIENT_SHOW_IN_FOLDER, (path: string) => {
+  if (!path || typeof path !== 'string' || path.includes('..')) {
+    throw new Error('Invalid path')
+  }
+  if (isSensitivePath(path)) {
+    throw new Error('Access to sensitive path is blocked')
+  }
   shell.showItemInFolder(path)
 })
 

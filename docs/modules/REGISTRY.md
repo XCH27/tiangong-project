@@ -14,7 +14,7 @@ containing paths, authority mapping, reference evidence, dependency/rollback ste
 IDs. Packet readiness is never an implementation claim.
 
 Every gap class is relative to the Craft v0.10.5 product/interaction baseline plus the current
-implementation authorities. v0.11.1 is selective-update evidence, not the product baseline. `NEW`
+implementation authorities. v0.11.2 is selective-update evidence, not the product baseline. `NEW`
 means only that Craft lacks the native domain
 model or adapter named by that row; it never authorizes a new shell, agent kernel, session/task
 system, permission path, timeline, settings home or provider harness. Implementation starts from
@@ -70,7 +70,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | EXEC-09 | Remote and cloud execution | EXTEND | breadth | not implemented | direct user-owned Fleet transport |
 | EXEC-10 | Automations and scheduler | EXTEND | breadth | usable | governed actions |
 | EXEC-11 | Messaging and channel adapters | EXTEND | breadth | not implemented | Workspace-scoped gateway |
-| EXEC-12 | Collaboration, sharing and invites | EXTEND | breadth | sharing gate wired but not visually checked; invites/grants not implemented | explicit grants/side effects |
+| EXEC-12 | Collaboration, sharing and invites | EXTEND | breadth | online sharing removed 2026-07-26; invites/collaborative grants not implemented | explicit grants/side effects |
 | EXEC-13 | Git repository, branch and PR review delivery | EXTEND/NEW | breadth | not implemented | governed Git/PR adapter; never a task authority |
 | EXEC-14 | System prompt, effective execution profile and agent identity configuration | EXTEND | breadth | not implemented | one prompt/tool projection over provider + permission seams |
 

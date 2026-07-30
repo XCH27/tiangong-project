@@ -41,6 +41,10 @@ export interface Info_DataTableProps<TData, TValue> {
   floatingAction?: React.ReactNode
   /** Enable tree/hierarchical rows (passed through to DataTable) */
   getSubRows?: (row: TData) => TData[] | undefined
+  /** Row highlight / selection styling */
+  getRowClassName?: (row: TData) => string | undefined
+  /** Whole-row click handler */
+  onRowClick?: (row: TData) => void
   /** Additional class names */
   className?: string
 }
@@ -76,6 +80,8 @@ export function Info_DataTable<TData, TValue>({
   emptyContent,
   floatingAction,
   getSubRows,
+  getRowClassName,
+  onRowClick,
   className,
 }: Info_DataTableProps<TData, TValue>) {
   const { t } = useTranslation()
@@ -147,6 +153,8 @@ export function Info_DataTable<TData, TValue>({
           filterValue={searchConfig?.column ? searchValue : undefined}
           emptyContent={emptyContent}
           getSubRows={getSubRows}
+          getRowClassName={getRowClassName}
+          onRowClick={onRowClick}
           noBorder
           noWrapper
         />

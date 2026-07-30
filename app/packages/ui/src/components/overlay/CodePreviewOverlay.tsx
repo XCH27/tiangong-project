@@ -21,6 +21,8 @@ export interface CodePreviewOverlayProps {
   content: string
   /** File path for language detection and display */
   filePath: string
+  /** Whether filePath is a real host path with Open / Reveal actions. */
+  filePathActions?: boolean
   /** Language for syntax highlighting (auto-detected if not provided) */
   language?: string
   /** Mode: 'read' or 'write' */
@@ -46,6 +48,7 @@ export function CodePreviewOverlay({
   onClose,
   content,
   filePath,
+  filePathActions = true,
   language,
   mode = 'read',
   startLine = 1,
@@ -75,6 +78,7 @@ export function CodePreviewOverlay({
         variant: mode === 'write' ? 'amber' : 'blue',
       }}
       filePath={filePath}
+      filePathActions={filePathActions}
       subtitle={subtitle}
       error={error ? { label: mode === 'write' ? 'Write Failed' : 'Read Failed', message: error } : undefined}
       embedded={embedded}

@@ -68,8 +68,14 @@ export interface PanelHeaderProps {
   title?: string
   /** Optional badge element (e.g., agent badge) */
   badge?: React.ReactNode
+  /** Optional hover-revealed action rendered immediately after the centered title */
+  titleTrailingAction?: React.ReactNode
   /** Optional dropdown menu content for interactive title (renders chevron when provided) */
   titleMenu?: React.ReactNode
+  /** Optional controlled state for the title dropdown */
+  titleMenuOpen?: boolean
+  /** Called when the title dropdown opens or closes */
+  onTitleMenuOpenChange?: (open: boolean) => void
   /**
    * Compact-mode replacement for the interactive title. When provided AND
    * `isCompactMode === true`, this node is rendered in place of the desktop
@@ -104,7 +110,10 @@ export interface PanelHeaderProps {
 export function PanelHeader({
   title,
   badge,
+  titleTrailingAction,
   titleMenu,
+  titleMenuOpen,
+  onTitleMenuOpenChange,
   compactTitleMenu,
   leadingAction: explicitLeadingAction,
   centerButton,
@@ -130,13 +139,18 @@ export function PanelHeader({
 
   // Controlled dropdown state for anchoring to chevron while keeping full title clickable
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const resolvedDropdownOpen = titleMenuOpen ?? dropdownOpen
+  const setResolvedDropdownOpen = React.useCallback((open: boolean) => {
+    if (titleMenuOpen === undefined) setDropdownOpen(open)
+    onTitleMenuOpenChange?.(open)
+  }, [onTitleMenuOpenChange, titleMenuOpen])
 
   // Force-close the desktop dropdown when compact mode takes over the title
   // slot — otherwise the open state survives unmount and the dropdown
   // resurrects open the next time the user resizes back to desktop width.
   React.useEffect(() => {
-    if (isCompactMode && dropdownOpen) setDropdownOpen(false)
-  }, [isCompactMode, dropdownOpen])
+    if (isCompactMode && resolvedDropdownOpen) setResolvedDropdownOpen(false)
+  }, [isCompactMode, resolvedDropdownOpen, setResolvedDropdownOpen])
 
   // Title content - either static or interactive with dropdown
   // Shimmer effect shows during title regeneration
@@ -161,15 +175,15 @@ export function PanelHeader({
   // consumers can render a Drawer-based menu instead of a Radix popover that
   // would otherwise get clipped by the panel container query.
   const desktopTitleNode = titleMenu ? (
-    <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+    <DropdownMenu open={resolvedDropdownOpen} onOpenChange={setResolvedDropdownOpen}>
       {/* Wrapper button for the whole clickable area */}
       <button
-        onClick={() => setDropdownOpen(true)}
+        onClick={() => setResolvedDropdownOpen(true)}
         className={cn(
           "flex items-center gap-1 px-2 py-1 rounded-md titlebar-no-drag min-w-0",
           "hover:bg-foreground/[0.03] transition-colors",
           "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          dropdownOpen && "bg-foreground/[0.03]"
+          resolvedDropdownOpen && "bg-foreground/[0.03]"
         )}
       >
         {titleContent}
@@ -186,7 +200,15 @@ export function PanelHeader({
     </DropdownMenu>
   ) : titleContent
 
-  const titleNode = (isCompactMode && compactTitleMenu) ? compactTitleMenu : desktopTitleNode
+  const resolvedTitleNode = (isCompactMode && compactTitleMenu) ? compactTitleMenu : desktopTitleNode
+  const titleNode = titleTrailingAction ? (
+    <div className="group/title-action flex min-w-0 items-center gap-1">
+      {resolvedTitleNode}
+      <span className="shrink-0 opacity-0 transition-opacity group-hover/title-action:opacity-100 group-focus-within/title-action:opacity-100">
+        {titleTrailingAction}
+      </span>
+    </div>
+  ) : resolvedTitleNode
 
   // Compact (mobile) layout puts the title in an absolute-positioned overlay.
   // The side insets are based on the actual number of control slots so a long

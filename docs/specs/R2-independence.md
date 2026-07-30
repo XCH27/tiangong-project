@@ -9,7 +9,7 @@
 
 | ID | State | Evidence |
 |---|---|---|
-| R2-C1 | **open** — the docs-root links now route through the shared doc-links module and the `FLEET_DOCS_MCP_URL` override landed in `8cbc572a6`, so an explicit off/self-hosted path exists. The default still points to the Craft-operated docs MCP pending the owner default decision. C1 acceptance still requires the network-blocked smoke + traffic log. | `8cbc572a6`; audit 2026-07-26 |
+| R2-C1 | **open** — docs MCP now defaults off and connects only through `FLEET_DOCS_MCP_URL`; C1 acceptance still requires the network-blocked smoke + traffic log. | code + targeted test; audit 2026-07-26 |
 | R2-C2 | landed — `wired but not visually checked` | `445e11b92` (+ isolated-harness test fix `09c59e7f7`) |
 | R2-C3 | landed — `wired but not visually checked` | `18bf53415` |
 | R2-C4 | landed — `wired but not visually checked` | `3ddbe59fe` (+ ChatPage docs-link routing `58a033d51`) |
@@ -33,13 +33,13 @@ binary updater can no longer install a Craft binary over Fleet.
    local · self-hosted · third-party connector · unavailable (01-WHITEPAPER §5 identity honesty).
 3. Update check: either a Fleet-controlled/user-configured channel, or the updater UI states
    updates are disabled — it never offers a Craft binary.
-4. Session sharing: local export works; any online target is explicitly user-configured; no silent
-   upload to Craft's viewer.
+4. Session sharing: **removed 2026-07-26 by owner decision.** Local export works; there is no
+   online share control and no bundled viewer, so no Craft-operated share dependency can exist.
 
 ## Scope
 
 One slice per service row from [`../06-CODE-MAP.md`](../06-CODE-MAP.md) "Craft-operated service
-boundaries" — updater, sharing/viewer, help/docs links + docs MCP, WebUI OAuth relay, Slack OAuth
+boundaries" — updater, sharing/viewer (closed by removal), help/docs links + docs MCP, WebUI OAuth relay, Slack OAuth
 relay, sources/connectors audit, branding/support text (deliberate rename pass with
 license/trademark review). Trace UI → handler → persistence → recovery per slice; never several
 services in one patch.
@@ -65,7 +65,7 @@ must record the target URL/process log; a code search alone does not prove C1 or
 | P-08 | extend help/docs links | bundled docs + external-link descriptor | no hidden network call | loading/empty/offline/unavailable | help menu + external indicator |
 | P-09 | extend updater state | updater manifest/channel adapter | update/install approval | loading/error/denied/unavailable/recovery | update dialog |
 | P-17 | extend import/export only where a service slice needs it | existing file paths | file permission | empty/error/denied/recovery | migration dialog |
-| P-28 | extend sharing state | local export/configured target | owner checkpoint before public effect | loading/error/denied/offline/recovery | share/revoke dialog |
+| P-28 | — | removed; local export only | n/a | n/a | n/a |
 
 ## Acceptance criteria
 
@@ -73,11 +73,11 @@ must record the target URL/process log; a code search alone does not prove C1 or
 |---|---|---|
 | R2-C1 | Offline fresh start: core local behavior works; no silent Craft calls at startup or in core flows | network-blocked smoke + traffic log |
 | R2-C2 | Updater never installs a non-Fleet binary; channel is Fleet-controlled/user-configured or install honestly disabled | code audit + updater state check |
-| R2-C3 | Sharing defaults to local export; online sharing only via explicit user-configured target | data-path test + UI state |
+| R2-C3 | Online sharing and the bundled viewer are removed; local export is the only session-export path | absence test (no share channel/handler) |
 | R2-C4 | Help/docs default to bundled/local; external links visibly external | owner check |
 | R2-C5 | OAuth relays configurable/self-hosted or explicitly unavailable; desktop local callback preserved | targeted tests |
 | R2-C6 | Each remaining inherited endpoint is an explicit optional connector with a visible class | endpoint inventory vs `源码参考/craft-docs/` service list |
-| R2-C7 | Owner accepts the changed surfaces (settings, share dialog, update UI, help menu) | owner acceptance |
+| R2-C7 | Owner accepts the changed surfaces (settings, update UI, help menu) | owner acceptance |
 
 ## References consumed
 
@@ -102,7 +102,7 @@ recorded edge (owner checkpoint: production runtime commitment).
 
 ## Verification plan
 
-Ladder 1–3 per slice + one network-blocked smoke at the end. Owner CHECK THIS: share dialog,
+Ladder 1–3 per slice + one network-blocked smoke at the end. Owner CHECK THIS:
 update UI, help menu, any settings surface that names an external service.
 
 ## Doc updates on completion

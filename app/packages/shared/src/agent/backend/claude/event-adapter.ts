@@ -244,6 +244,8 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
         type: 'usage_update',
         usage: {
           inputTokens: currentInputTokens,
+          cacheReadTokens: this.lastAssistantUsage.cache_read_input_tokens,
+          cacheCreationTokens: this.lastAssistantUsage.cache_creation_input_tokens,
           contextWindow: this.cachedContextWindow,
         },
       });

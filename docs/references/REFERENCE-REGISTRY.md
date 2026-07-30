@@ -1,6 +1,6 @@
 # Reference registry — evidence status, not dependency approval
 
-Audit date: 2026-07-20
+Audit date: 2026-07-27
 
 The current file-level evidence ledger for the highest-risk routes is
 [`ADMISSION-V2-AUDIT.md`](ADMISSION-V2-AUDIT.md). It records what was actually found in source;
@@ -50,13 +50,14 @@ not a formal reference.
 | `software/craft-agents-oss` | `a60ebc1a5a7c` | Apache-2.0 | `selective-update reference (v0.11.2; repinned 2026-07-26 from v0.11.1, 68-file delta, intake audit below)` |
 | `software/hermes-agent` | `2ea39daeb1f6` | MIT (text verified) | `pending` |
 | `software/openclaw` | `9f5609382b54` | MIT (text verified) | `pending` |
-| `software/opencode` | `c69abee0c732` | MIT (text verified) | `pending` |
+| `software/opencode` | `40e4d730cac3` (re-cloned 2026-07-27 sparse; prior incomplete snapshot retired) | MIT (text verified) | `pending` / mode evidence in `context/06-MODE-SELECTION-COMPARISON.md` §4.5 |
 | `software/opencut-classic` | `cf5e79e91914` | MIT (text verified) | `pending` |
 | `software/penpot` | `bdc078d5ea0c` | MPL-2.0 | `pending` |
 | `software/pi-mono` | `13437ca82889` | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` |
 | `software/tldraw` | `c26735e45258` | tldraw License (production restrictions) | `pending` |
 | `software/browser-use` | `950eb03617e6` | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/flowgram.ai` | `5afd287a989a` | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
+| `software/grok-build` | `b41c75a578f9` | Apache-2.0 first-party code; vendored code retains original licenses | `source-reviewed / EVIDENCE_ONLY` |
 | `software/mcp-registry` | `29e32c39dcb5` | mixed Apache-2.0/MIT transition; docs CC-BY-4.0 | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/opencut` | `5e0696bc9b92` | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` |
 
@@ -87,11 +88,14 @@ shared/CLAUDE.md, zh-Hans locale). Verdicts:
   `background-finished` default flip. `prompts/system.ts` +3 lines is create_task tool-doc only
   (~120 tokens of dead prompt without the tool) — skip.
 - **R2-RELEVANT: none.** No updater/telemetry/OAuth/docs-link/Craft-endpoint changes; no new
-  phone-home. **Security: none required.** The earlier Aion, Omnigent, Multica, Golutra, Orca, DeepSeek-Reasonix, Grok Build, Open
-Pencil, Vibeframe, Headroom, CodeGraph, RTK, Ponytail, Open Design and react-timeline-editor
-checkouts were removed from standing retention on 2026-07-20. Their fixed-head findings remain
-historical `EVIDENCE_ONLY` in `ADMISSION-V2-AUDIT.md`; no active design may start from them without
-a new top-tier gate and temporary source intake.
+  phone-home. **Security: none required.** The earlier Aion, Omnigent, Multica, Golutra, Orca,
+  DeepSeek-Reasonix, Open Pencil, Vibeframe, Headroom, CodeGraph, RTK, Ponytail, Open Design and
+  react-timeline-editor checkouts were removed from standing retention on 2026-07-20. Their
+  fixed-head findings remain historical `EVIDENCE_ONLY` in `ADMISSION-V2-AUDIT.md`; no active
+  design may start from them without a new top-tier gate and temporary source intake. Grok Build
+  was cloned again at the owner's request on 2026-07-27 and source-reviewed in
+  [`context/05-GROK-BUILD-HARNESS-RESEARCH.md`](context/05-GROK-BUILD-HARNESS-RESEARCH.md); it
+  remains `EVIDENCE_ONLY`, not an admitted runtime or product-shell reference.
 
 ## Top-tier source intake: exact mechanisms
 

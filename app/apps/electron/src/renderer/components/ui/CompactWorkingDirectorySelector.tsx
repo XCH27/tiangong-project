@@ -22,6 +22,11 @@ export interface CompactWorkingDirectorySelectorProps {
   sessionFolderPath?: string
   isEmptySession?: boolean
   workspaceId?: string
+  /** Project root path — suppresses the "has folder" chip when WD equals project identity. */
+  workspaceRootPath?: string
+  /** Controlled open (optional). */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -41,10 +46,22 @@ export function CompactWorkingDirectorySelector({
   sessionFolderPath,
   isEmptySession = false,
   workspaceId,
+  workspaceRootPath,
+  open: openControlled,
+  onOpenChange,
 }: CompactWorkingDirectorySelectorProps) {
   const { t } = useTranslation()
-  const [open, setOpen] = React.useState(false)
-  const closeDrawer = React.useCallback(() => setOpen(false), [])
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const isControlled = openControlled !== undefined
+  const open = isControlled ? openControlled : uncontrolledOpen
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      if (!isControlled) setUncontrolledOpen(next)
+      onOpenChange?.(next)
+    },
+    [isControlled, onOpenChange],
+  )
+  const closeDrawer = React.useCallback(() => setOpen(false), [setOpen])
 
   const {
     homeDir,
@@ -71,6 +88,7 @@ export function CompactWorkingDirectorySelector({
     onWorkingDirectoryChange,
     sessionFolderPath,
     workspaceId,
+    workspaceRootPath,
     isOpen: open,
     onClose: closeDrawer,
   })
@@ -97,7 +115,7 @@ export function CompactWorkingDirectorySelector({
         hasSelection={hasFolder}
         showChevron={true}
         isOpen={open}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => setOpen(!open)}
         tooltip={
           hasFolder ? (
             <span className="flex flex-col gap-0.5">

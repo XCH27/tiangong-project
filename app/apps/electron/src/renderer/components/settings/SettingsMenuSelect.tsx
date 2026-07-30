@@ -20,6 +20,8 @@ export interface SettingsMenuSelectOption {
   label: string
   /** Optional description/subtitle */
   description?: string
+  /** Optional existing product/provider icon. The select does not own icon lookup. */
+  icon?: React.ReactNode
 }
 
 export interface SettingsMenuSelectProps {
@@ -121,6 +123,9 @@ export function SettingsMenuSelect({
             className
           )}
         >
+          {selectedOption?.icon && (
+            <span className="shrink-0" aria-hidden="true">{selectedOption.icon}</span>
+          )}
           <span className="truncate">{selectedOption?.label || placeholder}</span>
           <ChevronDown className="opacity-50 shrink-0 size-3.5" />
         </button>
@@ -171,13 +176,18 @@ export function SettingsMenuSelect({
                     isSelected && 'bg-foreground/3'
                   )}
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className={settingsUI.label}>{option.label}</div>
-                    {option.description && (
-                      <div className={cn(settingsUI.descriptionSmall, settingsUI.labelDescriptionGap)}>
-                        {option.description}
-                      </div>
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
+                    {option.icon && (
+                      <span className="mt-0.5 shrink-0" aria-hidden="true">{option.icon}</span>
                     )}
+                    <div className="min-w-0 flex-1">
+                      <div className={settingsUI.label}>{option.label}</div>
+                      {option.description && (
+                        <div className={cn(settingsUI.descriptionSmall, settingsUI.labelDescriptionGap)}>
+                          {option.description}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {isSelected && (
                     <Check className="size-4 text-foreground shrink-0 ml-3" />

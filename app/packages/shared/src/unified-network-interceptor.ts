@@ -11,7 +11,7 @@
  *   - Anthropic: STRIPS metadata from stream (SDK validates immediately)
  *   - OpenAI: CAPTURES metadata passthrough (hook strips before execution)
  * - Captures API errors (4xx/5xx) for error handler
- * - Fast mode support for Anthropic (Opus 4.7)
+ * - Capability-gated fast mode support for the first-party Anthropic transport
  *
  * Auto-detects API format based on request URL:
  * - Anthropic: baseUrl + /messages
@@ -30,7 +30,6 @@ import {
   displayNameSchema,
   intentSchema,
 } from './interceptor-common.ts';
-import { FEATURE_FLAGS } from './feature-flags.ts';
 import { resolveRequestContext } from './interceptor-request-utils.ts';
 
 // Type alias for fetch's HeadersInit
@@ -44,6 +43,13 @@ type HeadersInitType = Headers | Record<string, string> | string[][];
  * verbose and may contain user prompts/tool args.
  */
 const DEBUG_SSE_RAW = process.env.CRAFT_DEBUG_SSE_RAW === '1';
+
+/**
+ * Request and response bodies may contain prompts, tool arguments, and other
+ * user data. Keep them out of ordinary debug logs; an explicit diagnostic
+ * opt-in is required for the current subprocess only.
+ */
+const DEBUG_HTTP_BODY = process.env.CRAFT_DEBUG_HTTP_BODY === '1';
 
 // ============================================================================
 // PROXY CONFIGURATION (from env vars injected by parent process)
@@ -426,11 +432,82 @@ export function upgradePromptCacheTtl(body: Record<string, unknown>): number {
 
 /**
  * Check if fast mode should be enabled for this request.
- * Only activates for Opus 4.7 on Anthropic's API when the feature flag is on.
+ * Only activates for a first-party Anthropic model that supports fast mode
+ * when the owning session opted in. Connection-level validation happens
+ * before the request reaches this adapter.
  */
 function shouldEnableFastMode(model: unknown): boolean {
-  if (!FEATURE_FLAGS.fastMode) return false;
-  return typeof model === 'string' && model === 'claude-opus-4-7';
+  return process.env.CRAFT_FAST_MODE === '1'
+    && typeof model === 'string'
+    && model === 'claude-opus-4-8';
+}
+
+interface RequestRuntimeMode {
+  requestBody?: Record<string, unknown>;
+  requestHeaders?: Record<string, string>;
+}
+
+function getRequestRuntimeMode(): RequestRuntimeMode | undefined {
+  const raw = process.env.CRAFT_MODEL_RUNTIME_MODE;
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as RequestRuntimeMode;
+    return parsed && typeof parsed === 'object' ? parsed : undefined;
+  } catch {
+    debugLog('[Runtime Mode] Ignoring malformed CRAFT_MODEL_RUNTIME_MODE');
+    return undefined;
+  }
+}
+
+function mergeRequestFragment(
+  target: Record<string, unknown>,
+  fragment: Record<string, unknown>,
+): void {
+  for (const [key, value] of Object.entries(fragment)) {
+    const targetValue = target[key];
+    if (
+      value !== null
+      && typeof value === 'object'
+      && !Array.isArray(value)
+      && targetValue !== null
+      && typeof targetValue === 'object'
+      && !Array.isArray(targetValue)
+    ) {
+      mergeRequestFragment(targetValue as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+export function applyRequestRuntimeMode(
+  init: RequestInit,
+  body: Record<string, unknown>,
+): { init: RequestInit; body: Record<string, unknown> } {
+  const mode = getRequestRuntimeMode();
+  if (!mode) return { init, body };
+  if (mode.requestBody) mergeRequestFragment(body, mode.requestBody);
+
+  let headers = init.headers as HeadersInitType | undefined;
+  for (const [name, value] of Object.entries(mode.requestHeaders ?? {})) {
+    headers = name.toLowerCase() === 'anthropic-beta'
+      ? appendBetaHeader(headers, value)
+      : { ...normalizeHeaders(headers), [name]: value };
+  }
+  debugLog('[Runtime Mode] Applied provider-advertised request mode');
+  return { init: { ...init, ...(headers ? { headers } : {}) }, body };
+}
+
+function normalizeHeaders(headers: HeadersInitType | undefined): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => { normalized[key] = value; });
+  } else if (Array.isArray(headers)) {
+    for (const [key, value] of headers) normalized[key as string] = value as string;
+  } else if (headers) {
+    Object.assign(normalized, headers);
+  }
+  return normalized;
 }
 
 /**
@@ -801,7 +878,11 @@ const anthropicAdapter: ApiAdapter = {
       };
     }
 
-    const fastMode = shouldEnableFastMode(body.model);
+    const runtimeMode = applyRequestRuntimeMode(init, body);
+    init = runtimeMode.init;
+    body = runtimeMode.body;
+
+    const fastMode = !getRequestRuntimeMode() && shouldEnableFastMode(body.model);
     if (fastMode) {
       body.speed = 'fast';
       debugLog(`[Fast Mode] Enabled for model=${body.model}`);
@@ -1261,6 +1342,10 @@ const openAiAdapter: ApiAdapter = {
   },
 
   stripsSseMetadata: true,
+
+  modifyRequest(_url: string, init: RequestInit, body: Record<string, unknown>) {
+    return applyRequestRuntimeMode(init, body);
+  },
 };
 
 /**
@@ -1479,6 +1564,10 @@ const openAiResponsesAdapter: ApiAdapter = {
   },
 
   stripsSseMetadata: true,
+
+  modifyRequest(_url: string, init: RequestInit, body: Record<string, unknown>) {
+    return applyRequestRuntimeMode(init, body);
+  },
 };
 
 /**
@@ -1886,7 +1975,9 @@ async function captureApiError(response: Response, url: string): Promise<void> {
       message: errorMessage,
       timestamp: Date.now(),
     });
-    debugLog(`[Captured API error: ${response.status} ${errorMessage}]`);
+    debugLog(DEBUG_HTTP_BODY
+      ? `[Captured API error: ${response.status} ${errorMessage}]`
+      : `[Captured API error: ${response.status}; message omitted]`);
   } catch (e) {
     setStoredError({
       status: response.status,
@@ -1905,6 +1996,34 @@ async function captureApiError(response: Response, url: string): Promise<void> {
 /**
  * Convert headers to cURL -H flags, redacting sensitive values
  */
+const SENSITIVE_HEADER_NAMES = new Set([
+  'authorization',
+  'cookie',
+  'proxy-authorization',
+  'set-cookie',
+  'x-api-key',
+]);
+
+function redactHeaderValue(key: string, value: string): string {
+  const normalized = key.toLowerCase();
+  const sensitiveName = /(?:^|[-_])(?:api[-_]?key|auth(?:orization)?|cookie|credential|password|secret|signature|token)(?:$|[-_])/i;
+  return SENSITIVE_HEADER_NAMES.has(normalized) || sensitiveName.test(normalized) ? '[REDACTED]' : value;
+}
+
+function redactDebugUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    for (const key of parsed.searchParams.keys()) {
+      if (/(?:api[_-]?key|access[_-]?token|auth|code|credential|password|secret|signature|token)/i.test(key)) {
+        parsed.searchParams.set(key, '[REDACTED]');
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return '[unparseable URL omitted]';
+  }
+}
+
 function headersToCurl(headers: HeadersInitType | undefined): string {
   if (!headers) return '';
 
@@ -1915,13 +2034,9 @@ function headersToCurl(headers: HeadersInitType | undefined): string {
         ? Object.fromEntries(headers)
         : (headers as Record<string, string>);
 
-  const sensitiveKeys = ['x-api-key', 'authorization', 'cookie'];
-
   return Object.entries(headerObj)
     .map(([key, value]) => {
-      const redacted = sensitiveKeys.includes(key.toLowerCase())
-        ? '[REDACTED]'
-        : value;
+      const redacted = redactHeaderValue(key, value);
       return `-H '${key}: ${redacted}'`;
     })
     .join(' \\\n  ');
@@ -1930,7 +2045,11 @@ function headersToCurl(headers: HeadersInitType | undefined): string {
 /**
  * Format a fetch request as a cURL command
  */
-function toCurl(url: string, init?: RequestInit): string {
+export function formatDebugRequest(
+  url: string,
+  init?: RequestInit,
+  includeBody = DEBUG_HTTP_BODY,
+): string {
   const method = init?.method?.toUpperCase() ?? 'GET';
   const headers = headersToCurl(init?.headers as HeadersInitType | undefined);
 
@@ -1939,10 +2058,14 @@ function toCurl(url: string, init?: RequestInit): string {
     curl += ` \\\n  ${headers}`;
   }
   if (init?.body && typeof init.body === 'string') {
-    const escapedBody = init.body.replace(/'/g, "'\\''");
-    curl += ` \\\n  -d '${escapedBody}'`;
+    if (includeBody) {
+      const escapedBody = init.body.replace(/'/g, "'\\''");
+      curl += ` \\\n  -d '${escapedBody}'`;
+    } else {
+      curl += ` \\\n  -d '[REQUEST BODY OMITTED: ${init.body.length} chars]'`;
+    }
   }
-  curl += ` \\\n  '${url}'`;
+  curl += ` \\\n  '${redactDebugUrl(url)}'`;
 
   return curl;
 }
@@ -1961,17 +2084,22 @@ async function logResponse(response: Response, url: string, startTime: number, a
   if (!DEBUG) return response;
 
   debugLog(`\n\u2190 RESPONSE ${response.status} ${response.statusText} (${duration}ms)`);
-  debugLog(`  URL: ${url}`);
+  debugLog(`  URL: ${redactDebugUrl(url)}`);
 
   const respHeaders: Record<string, string> = {};
   response.headers.forEach((value, key) => {
-    respHeaders[key] = value;
+    respHeaders[key] = redactHeaderValue(key, value);
   });
   debugLog('  Headers:', respHeaders);
 
   const contentType = response.headers.get('content-type') ?? '';
   if (contentType.includes('text/event-stream')) {
     debugLog('  Body: [SSE stream - not logged]');
+    return response;
+  }
+
+  if (!DEBUG_HTTP_BODY) {
+    debugLog('  Body: [omitted; set CRAFT_DEBUG_HTTP_BODY=1 for this subprocess to include it]');
     return response;
   }
 
@@ -2144,7 +2272,7 @@ async function interceptedFetch(
   if (DEBUG) {
     debugLog('\n' + '='.repeat(80));
     debugLog('\u2192 REQUEST');
-    debugLog(toCurl(url, init));
+    debugLog(formatDebugRequest(url, init));
   }
 
   // Find matching adapter for this URL

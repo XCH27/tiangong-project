@@ -217,6 +217,56 @@ keyboard behavior:
 `entity-list` · `entity-panel` · `button` · `badge` · `input` · `select` ·
 `components/app-shell/PanelHeader` · `SidebarMenu`
 
+### Model connection and tokenized model field
+
+- Settings labels the user concept **Model**, not Provider. Provider is a metadata row/group inside
+  the model workflow.
+- Add/edit expands in the existing page. A menu owns provider choice; the form is not placed inside
+  that menu and does not navigate to onboarding.
+- Selected model chips render inside the combobox before the text caret. Search and custom-ID
+  creation use that same text value. A second search field, a chip row below the input, or an
+  internal `pi/` display prefix fails the component contract.
+- Chips are buttons with an accessible remove name, Backspace/Delete behavior and visible
+  `focus-visible` state. Enter selects a highlighted known result; custom creation requires a
+  labelled result/action so Enter never ambiguously saves the surrounding form.
+- Provider icons come from one admitted icon projection. A missing brand uses the shared generic
+  model/provider icon; it never introduces a one-off glyph or hand-drawn SVG.
+
+### Model picker, reasoning and runtime modes
+
+- Desktop popover and compact drawer share `ModelPickerList` data, grouping, ordering, search and
+  selection semantics. Container placement may change; information hierarchy may not.
+- Model detail is a compact two-column list: `Model`, `Provider/runtime`, `Input`, `Reasoning`,
+  `Context`. Values align right, truncate safely and use `—` for unknown. The list does not replace
+  unknown with zero or infer support from a model name.
+- Reasoning effort and runtime speed are separate controls in state/request data. They may share one
+  compact menu: exact effort rows first, then a separated fast/service toggle with usage impact.
+  Speed is never styled as the “highest” reasoning tier.
+- More than 50 model rows require windowing or an equivalent measured bound. Search remains visible
+  while the result list scrolls.
+
+### Context indicator, quota bars and turn footer
+
+- The composer owns one compact context indicator. Its detail owns one primary context bar;
+  authenticated subscription windows may add one or two labelled quota bars only for the selected
+  membership connection. Multiple decorative rings or persistent zero-value quota tracks are
+  forbidden.
+- Counts and shares for one category occupy one row. All numbers use tabular figures and locale
+  formatting; percent bars expose their label/value to assistive technology.
+- A turn footer may rest at `opacity-0`, but `group-hover`, `group-focus-within` and an explicit
+  touch/coarse-pointer reveal path are all required. Hover-only metadata or actions fail review.
+  Icon-only copy/revert controls require `aria-label`, tooltip/title and visible focus state.
+- “Revert conversation” and “restore files” are distinct verbs and icons. A transcript-only action
+  must not use copy that promises workspace recovery.
+
+### Inline/menu versus dialog/system surface
+
+Use inline expansion or a menu for reversible selection and compact editing. Use the existing
+dialog/drawer/system surface for OAuth browser handoff, the OS folder picker, destructive
+confirmation, credential recovery and conflict-heavy restore. “No modal” is not a reason to hide a
+multi-step form inside an oversized dropdown; “use a dialog” is not a reason to navigate away from
+ordinary connection editing.
+
 ## 9. Composition rules
 
 - **No hero.** No surface in either pinned snapshot uses a centered oversized title, a decorative
@@ -250,6 +300,15 @@ Every surface ships the applicable states from
 
 ## 11. Forbidden drift (file-level)
 
+### 11.0 Reference workflows are not frozen screenshots
+
+“One design language” does not mean preserving the current component tree. A reference such as
+OpenCode Desktop may justify removing, regrouping, or replacing an interaction when it produces a
+shorter and more coherent workflow. What remains fixed is the rendering grammar: Fleet/Craft type,
+spacing, color, icon slots, radii, elevation, focus behavior, and shared overlay primitives. The
+same capability must also share one data projection across desktop and compact containers; a
+popover and drawer may differ in placement, but not in information hierarchy or selection rules.
+
 Unless the owner's Goal explicitly authorizes it, a UI change may not:
 
 1. add a color outside the six-color theme, or an opacity outside the §3 ladder;
@@ -266,7 +325,16 @@ Unless the owner's Goal explicitly authorizes it, a UI change may not:
 
 ## 12. Self-check before handoff
 
-Run against the diff, not from memory:
+Run the repository guard against staged, unstaged, and untracked renderer additions:
+
+```bash
+cd app && bun run lint:ui-contract
+```
+
+The guard enforces the opacity, type, radius, elevation, and icon rules below. Electron ESLint also
+rejects direct Radix imports from product surfaces: menus, dialogs, popovers, tooltips, and selects
+must enter through `components/ui`, so a caller cannot silently create a second interaction
+primitive. The underlying checks are equivalent to:
 
 ```bash
 git diff -U0 | grep -E '^\+' | grep -oE 'foreground/(\[[0-9.]+\]|[0-9]+)' | sort -u | grep -vE '/(2|3|5|10|20|30|40|50|60|70|80|90|95)$' | grep -vE '/\[0\.0(2|3|5|7)\]$'
@@ -276,6 +344,5 @@ git diff -U0 | grep -E '^\+' | grep -oE 'foreground/(\[[0-9.]+\]|[0-9]+)' | sort
 git diff -U0 | grep -E '^\+' | grep -nE 'shadow-\[|rounded-(xl|2xl|3xl)|text-(xl|2xl|3xl)|rounded-\[(1[3-9]|[2-9][0-9])px\]|strokeWidth=|text-\[(1[6-9]|[2-9][0-9])(\.[0-9]+)?px\]'
 ```
 
-Both must come back empty, or every hit must be named in the Goal's intentional delta. Verified
-against the reverted drift: the first command reports 11 off-ladder values and the second 14 hits,
-so the checks do catch this failure class.
+The repository guard must pass, or every exception must be an owner-approved intentional delta
+encoded in the shared primitive or token authority rather than waived at an individual caller.

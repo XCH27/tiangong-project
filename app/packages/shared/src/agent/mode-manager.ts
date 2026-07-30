@@ -1778,6 +1778,7 @@ const ALWAYS_ALLOWED_TOOLS = new Set([
   'WebFetch', 'WebSearch',          // Web research
   'TodoWrite',                      // Task tracking
   'SubmitPlan',                     // Plan submission
+  'EnterPlan',                      // Enter Plan phase (no abort)
   'LSP',                            // Language server (read-only)
   // Browser automation tool (canonical wrapper)
   'browser_tool',

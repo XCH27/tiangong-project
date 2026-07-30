@@ -4,9 +4,7 @@ import { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { useAtomValue, useStore } from "jotai"
 import { motion, AnimatePresence } from "motion/react"
 import {
-  Archive,
   Settings,
-  ChevronRight,
   ChevronDown,
   MoreHorizontal,
   RotateCw,
@@ -21,7 +19,6 @@ import {
   Zap,
   Inbox,
   Globe,
-  FolderOpen,
   Calendar,
   Layers,
   ListTodo,
@@ -36,14 +33,20 @@ import {
   Folder,
   Cloud,
 } from "lucide-react"
+import { formatDistanceToNowStrict, type Locale } from "date-fns"
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
 import { TopBar } from "./TopBar"
+import { GlobalSearchDialog } from "./GlobalSearchDialog"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { McpIcon } from "../icons/McpIcon"
 import { cn } from "@/lib/utils"
+import { getSessionStatus, getSessionTitle, shortTimeLocale } from "@/utils/session"
+import { getStateIcon, getStateIconStyle } from "@/config/session-status-config"
 import { Button } from "@/components/ui/button"
 import { HeaderIconButton } from "@/components/ui/HeaderIconButton"
+import { PanelHeaderCenterButton } from "@/components/ui/PanelHeaderCenterButton"
+import { PanelRightRounded } from "../icons/PanelRightRounded"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipTrigger, TooltipContent, DocumentFormattedMarkdownOverlay } from "@craft-agent/ui"
 import {
@@ -61,8 +64,10 @@ import {
   ContextMenuTrigger,
   StyledContextMenuContent,
 } from "@/components/ui/styled-context-menu"
-import { ContextMenuProvider } from "@/components/ui/menu-context"
+import { ContextMenuProvider, DropdownMenuProvider } from "@/components/ui/menu-context"
 import { SidebarMenu } from "./SidebarMenu"
+import { SidebarSessionActions } from "./SidebarSessionActions"
+import { SessionLabelBadges } from "./SessionBadges"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FadingText } from "@/components/ui/fading-text"
 import {
@@ -74,6 +79,8 @@ import {
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
 import { PanelStackContainer } from "./PanelStackContainer"
+import { RightWorkbench } from "./RightWorkbench"
+import { isRightWorkbenchAvailable } from "@/atoms/right-workbench"
 import { useDirectoryPicker } from "@/hooks/useDirectoryPicker"
 import { ServerDirectoryBrowser } from "@/components/ServerDirectoryBrowser"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
@@ -88,8 +95,8 @@ import { getResizeGradientStyle } from "@/hooks/useResizeGradient"
 import { useAction, useActionLabel } from "@/actions"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useFocusContext } from "@/context/FocusContext"
-import { getSessionTitle } from "@/utils/session"
 import { getLocalizedLabelName } from "@/utils/label-display-name"
+import { getWorkspaceDisplayName } from "@/utils/workspace-display-name"
 import { useSetAtom } from "jotai"
 import { fullscreenOverlayOpenAtom } from "@/atoms/overlay"
 import { WorkspaceCreationScreen } from "@/components/workspace"
@@ -108,7 +115,7 @@ import { useContainerWidth } from "@/hooks/useContainerWidth"
 import { LabelIcon } from "@/components/ui/label-icon"
 import { filterSessionStatuses as filterLabelMenuStates } from "@/components/ui/label-menu"
 import { createLabelMenuItems, filterItems as filterLabelMenuItems, type LabelMenuItem } from "@/components/ui/label-menu-utils"
-import { getDescendantIds, getLabelDisplayName, extractLabelId, findLabelById, sortLabelsForDisplay, matchesLabelFilter } from "@craft-agent/shared/labels"
+import { flattenLabels, getDescendantIds, getLabelDisplayName, extractLabelId, findLabelById, sortLabelsForDisplay, matchesLabelFilter } from "@craft-agent/shared/labels"
 import type { LabelConfig } from "@craft-agent/shared/labels"
 import { resolveEntityColor } from "@craft-agent/shared/colors"
 import * as storage from "@/lib/local-storage"
@@ -118,7 +125,7 @@ import {
   R1_HIDE_NESTED_PROJECT_FILTER_UI,
   R1_HIDE_NESTED_PROJECT_ID_UI,
 } from "@/lib/r1-product-gates"
-import { getUnreadSessionIds } from "@/lib/session-list-read"
+import { getUnreadSessionIds, isSessionListVisible } from "@/lib/session-list-read"
 import {
   useNavigation,
   useNavigationState,
@@ -140,7 +147,6 @@ import { useAutomations } from "@/hooks/useAutomations"
 import { useProjects } from "@/hooks/useProjects"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { PanelHeader } from "./PanelHeader"
-import { FabNewChat } from "./FabNewChat"
 import { SendToWorkspaceDialog } from "./SendToWorkspaceDialog"
 
 import { MessagingDialogHost } from "@/components/messaging/MessagingDialogHost"
@@ -149,13 +155,19 @@ import SettingsNavigator from "@/pages/settings/SettingsNavigator"
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
+  PANEL_TOP_EDGE_INSET,
+  PANEL_RIGHT_EDGE_INSET,
+  PANEL_BOTTOM_EDGE_INSET,
+  PANEL_SIDEBAR_GAP,
   PANEL_SASH_HALF_HIT_WIDTH,
   PANEL_SASH_HIT_WIDTH,
   PANEL_SASH_LINE_WIDTH,
   PANEL_STACK_VERTICAL_OVERFLOW,
+  RIGHT_WORKBENCH_MIN_WIDTH,
   RADIUS_EDGE,
   RADIUS_INNER,
 } from "./panel-constants"
+import { resolveResponsivePanelLayout } from "./responsive-panel-layout"
 import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
@@ -231,6 +243,7 @@ function AppShellContent({
     workspaces,
     activeWorkspaceId,
     sessionOptions,
+    onCreateSession,
     onSelectWorkspace,
     onRefreshWorkspaces,
     onDeleteSession,
@@ -239,9 +252,9 @@ function AppShellContent({
     onArchiveSession,
     onUnarchiveSession,
     onMarkSessionRead,
-    onMarkSessionUnread,
     onSessionStatusChange,
     onRenameSession,
+    onOpenFile,
     onOpenSettings,
     onOpenKeyboardShortcuts,
     onOpenStoredUserPreferences,
@@ -254,6 +267,7 @@ function AppShellContent({
 
   // Get hotkey labels from centralized action registry
   const newChatHotkey = useActionLabel('app.newChat').hotkey
+  const globalSearchHotkey = useActionLabel('app.search').hotkey
 
   const [isSidebarVisible, setIsSidebarVisible] = React.useState(() => {
     return storage.get(storage.KEYS.sidebarVisible, !defaultCollapsed)
@@ -265,6 +279,10 @@ function AppShellContent({
   const [sessionListWidth, setSessionListWidth] = React.useState(() => {
     return storage.get(storage.KEYS.sessionListWidth, 300)
   })
+  const [rightWorkbenchWidth, setRightWorkbenchWidth] = React.useState(() => {
+    return storage.get(storage.KEYS.rightWorkbenchWidth, 420)
+  })
+  const rightWorkbenchWidthRef = React.useRef(rightWorkbenchWidth)
 
   // Hides both sidebar and navigator (CMD+. toggle)
   // Seed from either focused window param or persisted preference, then keep it toggleable.
@@ -280,8 +298,6 @@ function AppShellContent({
   const MOBILE_THRESHOLD = 768
   const isAutoCompact = shellWidth > 0 && shellWidth < MOBILE_THRESHOLD
 
-  const effectiveSidebarAndNavigatorHidden = isSidebarAndNavigatorHidden || isAutoCompact
-
   // What's New overlay
   const [showWhatsNew, setShowWhatsNew] = React.useState(false)
   const [releaseNotesContent, setReleaseNotesContent] = React.useState('')
@@ -296,14 +312,22 @@ function AppShellContent({
     })
   }, [])
 
-  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | null>(null)
+  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | 'right-workbench' | null>(null)
   const [sidebarHandleY, setSidebarHandleY] = React.useState<number | null>(null)
   const [sessionListHandleY, setSessionListHandleY] = React.useState<number | null>(null)
+  const [rightWorkbenchHandleY, setRightWorkbenchHandleY] = React.useState<number | null>(null)
   const resizeHandleRef = React.useRef<HTMLDivElement>(null)
   const sessionListHandleRef = React.useRef<HTMLDivElement>(null)
+  const rightWorkbenchHandleRef = React.useRef<HTMLDivElement>(null)
   const [session, setSession] = useSession()
   const { resolvedMode, isDark, setMode } = useTheme()
-  const { canGoBack, canGoForward, goBack, goForward, navigateToSource, navigateToSession } = useNavigation()
+  const {
+    goBack,
+    goForward,
+    navigateToSource,
+    navigateToSession,
+    updateRightSidebar,
+  } = useNavigation()
 
   // Double-Esc interrupt feature: first Esc shows warning, second Esc interrupts
   const { handleEscapePress } = useEscapeInterrupt()
@@ -316,6 +340,16 @@ function AppShellContent({
   const panelStack = useAtomValue(panelStackAtom)
   const panelCount = useAtomValue(panelCountAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const isRightWorkbenchAvailableForRoute = isRightWorkbenchAvailable(navState)
+  const isRightWorkbenchVisible =
+    isRightWorkbenchAvailableForRoute
+    && navState.rightSidebar?.type === 'workbench'
+    && !isAutoCompact
+
+  const handleToggleRightWorkbench = useCallback(() => {
+    if (!isRightWorkbenchAvailableForRoute) return
+    updateRightSidebar(isRightWorkbenchVisible ? undefined : { type: 'workbench' })
+  }, [isRightWorkbenchAvailableForRoute, isRightWorkbenchVisible, updateRightSidebar])
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel and still
@@ -364,9 +398,55 @@ function AppShellContent({
 
   const sessionFilter = sessionsContext?.filter ?? null
 
-  // Board view replaces the session-list navigator with the full-width Kanban panel,
-  // so the navigator (and its resize handle) collapse to zero width while it's active.
+  // Session navigation now lives in the global left sidebar. Keep the middle navigator
+  // only for domains that still require a dedicated list (sources, skills, settings,
+  // automations, and project detail routes). This prevents a hidden second session list
+  // from retaining width, focus targets, filters, and menu state.
   const isBoardView = isSessionsNavigation(navState) && navState.viewMode === 'board'
+  const isNavigatorPanelNeeded = !isBoardView && !isSessionsNavigation(navState)
+  const responsivePanelLayout = resolveResponsivePanelLayout({
+    containerWidth: shellWidth,
+    compact: isAutoCompact,
+    focusMode: isSidebarAndNavigatorHidden,
+    sidebarVisible: isSidebarVisible,
+    sidebarWidth,
+    navigatorVisible: isNavigatorPanelNeeded,
+    navigatorWidth: sessionListWidth,
+    workbenchVisible: isRightWorkbenchVisible,
+    workbenchWidth: rightWorkbenchWidth,
+  })
+  const isRightWorkbenchRendered =
+    isRightWorkbenchVisible && responsivePanelLayout.workbenchWidth > 0
+
+  // A width-blocked workbench must not present as an enabled toggle that does
+  // nothing. `isRightWorkbenchVisible` is only the requested state; the resolver
+  // decides whether the shell can actually host the panel. Probe it with the
+  // workbench requested so the control can say honestly why it is unavailable
+  // instead of silently flipping `aria-pressed` with nothing on screen.
+  const canFitRightWorkbench =
+    isRightWorkbenchAvailableForRoute
+    && !isAutoCompact
+    && (
+      shellWidth <= 0
+      || resolveResponsivePanelLayout({
+        containerWidth: shellWidth,
+        compact: isAutoCompact,
+        focusMode: isSidebarAndNavigatorHidden,
+        sidebarVisible: isSidebarVisible,
+        sidebarWidth,
+        navigatorVisible: isNavigatorPanelNeeded,
+        navigatorWidth: sessionListWidth,
+        workbenchVisible: true,
+        workbenchWidth: rightWorkbenchWidth,
+      }).workbenchWidth > 0
+    )
+  const effectiveSidebarAndNavigatorHidden =
+    isSidebarAndNavigatorHidden
+    || isAutoCompact
+    || (
+      responsivePanelLayout.sidebarWidth === 0
+      && responsivePanelLayout.navigatorWidth === 0
+    )
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -578,6 +658,7 @@ function AppShellContent({
   // Search state for session list
   const [searchActive, setSearchActive] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState('')
+  const [globalSearchOpen, setGlobalSearchOpen] = React.useState(false)
 
   // Grouping mode for chat list: per-view (stored in viewFiltersMap), forced to 'date' for state sub-views.
   // R1 clause 1: unscoped 项目 overview defaults to group-by-project (workspace buckets). Single-project
@@ -644,8 +725,8 @@ function AppShellContent({
     setSearchQuery('')
   }, [navFilterKey])
 
-  // Cmd+F to activate search
-  useAction('app.search', () => setSearchActive(true))
+  useAction('app.search', () => setGlobalSearchOpen(true))
+  useAction('session.search', () => setSearchActive(true))
 
   // Unified sidebar keyboard navigation state
   // Load expanded folders from localStorage (default: all collapsed)
@@ -719,19 +800,12 @@ function AppShellContent({
   // Whether local MCP servers are enabled (affects stdio source status)
   const [localMcpEnabled, setLocalMcpEnabled] = React.useState(true)
 
-  // Enabled permission modes for Shift+Tab cycling (min 2 modes)
-  const [enabledModes, setEnabledModes] = React.useState<PermissionMode[]>(['safe', 'ask', 'allow-all'])
-
-  // Load workspace settings (for localMcpEnabled and cyclablePermissionModes) on workspace change
+  // Load workspace runtime prefs (MCP only — work-mode cycle order is fixed).
   React.useEffect(() => {
     if (!activeWorkspaceId) return
     window.electronAPI.getWorkspaceSettings(activeWorkspaceId).then((settings) => {
       if (settings) {
         setLocalMcpEnabled(settings.localMcpEnabled ?? true)
-        // Load cyclablePermissionModes from workspace settings
-        if (settings.cyclablePermissionModes && settings.cyclablePermissionModes.length >= 2) {
-          setEnabledModes(settings.cyclablePermissionModes)
-        }
       }
     }).catch((err) => {
       console.error('[Chat] Failed to load workspace settings:', err)
@@ -837,6 +911,10 @@ function AppShellContent({
   // Load labels from workspace config
   const { labels: labelConfigs } = useLabels(activeWorkspace?.id || null)
   const displayLabelConfigs = useMemo(() => sortLabelsForDisplay(labelConfigs), [labelConfigs])
+  const flatDisplayLabelConfigs = useMemo(
+    () => flattenLabels(displayLabelConfigs),
+    [displayLabelConfigs],
+  )
 
   // Views: compiled once on config load, evaluated per session in list/chat
   const { evaluateSession: evaluateViews, viewConfigs } = useViews(activeWorkspace?.id || null)
@@ -919,8 +997,6 @@ function AppShellContent({
     focusNextZone()
   }, { enabled: () => !document.querySelector('[role="dialog"]') })
 
-  // Shift+Tab cycles permission mode through enabled modes (textarea handles its own, this handles when focus is elsewhere)
-  // In multi-panel, targets the focused panel's session
   const effectiveSessionId = focusedSessionId ?? session.selected
 
   // Focus chat input for the target session only (multi-panel safe).
@@ -928,20 +1004,6 @@ function AppShellContent({
     if (!targetSessionId) return
     dispatchFocusInputEvent({ sessionId: targetSessionId })
   }, [])
-
-  useAction('chat.cyclePermissionMode', () => {
-    if (effectiveSessionId) {
-      const currentOptions = contextValue.sessionOptions.get(effectiveSessionId)
-      const currentMode = currentOptions?.permissionMode ?? 'ask'
-      // Cycle through enabled permission modes
-      const modes = enabledModes.length >= 2 ? enabledModes : ['safe', 'ask', 'allow-all'] as PermissionMode[]
-      const currentIndex = modes.indexOf(currentMode)
-      // If current mode not in enabled list, jump to first enabled mode
-      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length
-      const nextMode = modes[nextIndex]
-      contextValue.onSessionOptionsChange(effectiveSessionId, { permissionMode: nextMode })
-    }
-  })
 
   const handleToggleSidebar = useCallback(() => {
     if (isSidebarAndNavigatorHidden) {
@@ -1084,6 +1146,13 @@ function AppShellContent({
           const rect = sessionListHandleRef.current.getBoundingClientRect()
           setSessionListHandleY(e.clientY - rect.top)
         }
+      } else if (isResizing === 'right-workbench') {
+        const newWidth = Math.min(
+          Math.max(window.innerWidth - e.clientX, RIGHT_WORKBENCH_MIN_WIDTH),
+          Math.min(640, window.innerWidth * 0.55),
+        )
+        rightWorkbenchWidthRef.current = newWidth
+        setRightWorkbenchWidth(newWidth)
       }
     }
 
@@ -1094,6 +1163,8 @@ function AppShellContent({
       } else if (isResizing === 'session-list') {
         storage.set(storage.KEYS.sessionListWidth, sessionListWidth)
         setSessionListHandleY(null)
+      } else if (isResizing === 'right-workbench') {
+        storage.set(storage.KEYS.rightWorkbenchWidth, rightWorkbenchWidthRef.current)
       }
       setIsResizing(null)
     }
@@ -1109,6 +1180,7 @@ function AppShellContent({
     isResizing,
     sidebarWidth,
     sessionListWidth,
+    rightWorkbenchWidth,
     isSidebarVisible,
   ])
 
@@ -1169,6 +1241,13 @@ function AppShellContent({
   const allSessionMetas = useMemo(() => {
     return Array.from(sessionMetaMap.values()).filter(s => !s.hidden && !s.parentSessionId && !s.taskDraft)
   }, [sessionMetaMap])
+
+  const handleGlobalSearchSession = useCallback((meta: SessionMeta) => {
+    openSessionInPanel(meta.id, {
+      workingDirectory: meta.workingDirectory,
+      workspaceId: meta.workspaceId,
+    })
+  }, [openSessionInPanel])
 
   // Filter session metadata by active workspace
   // Also exclude hidden sessions (mini-agent sessions) from all counts and lists
@@ -1233,9 +1312,6 @@ function AppShellContent({
 
   // Count sessions by todo state (scoped to workspace)
   const isMetaDone = (s: SessionMeta) => s.sessionStatus === 'done' || s.sessionStatus === 'cancelled'
-  const flaggedCount = allActiveSessionMetas.filter(s => s.isFlagged).length
-  const archivedCount = allSessionMetas.filter(s => s.isArchived).length
-
   // Count sources by type for the Sources dropdown subcategories
   const sourceTypeCounts = useMemo(() => {
     const counts = { api: 0, mcp: 0, local: 0 }
@@ -1385,14 +1461,21 @@ function AppShellContent({
       }
     }
 
-    return result
+    // Never list composer placeholders: no first message yet (name/preview/count).
+    // Placement (项目 vs 对话) applies once the session becomes list-visible.
+    return result.filter(isSessionListVisible)
   }, [workspaceSessionMetas, activeSessionMetas, allActiveSessionMetas, allSessionMetas, sessionFilter, listFilter, labelFilter, projectFilter, labelConfigs, evaluateViews])
 
+  const bulkActionSessionMetasRef = useRef<readonly SessionMeta[]>([])
+  const handleBulkActionItemsChange = useCallback((items: readonly SessionMeta[]) => {
+    bulkActionSessionMetasRef.current = items
+  }, [])
+
   const handleMarkFilteredSessionsRead = useCallback(() => {
-    for (const sessionId of getUnreadSessionIds(filteredSessionMetas)) {
+    for (const sessionId of getUnreadSessionIds(bulkActionSessionMetasRef.current)) {
       onMarkSessionRead(sessionId)
     }
-  }, [filteredSessionMetas, onMarkSessionRead])
+  }, [onMarkSessionRead])
 
   // Derive "pinned" (non-removable) filters from the current sessionFilter path.
   // These represent filters that are implicit in the current deeplink/route and
@@ -1429,34 +1512,33 @@ function AppShellContent({
     return onDeleteSession(sessionId, skipConfirmation)
   }, [session.selected, setSession, onDeleteSession])
 
-  // Extend context value with local overrides (wrapped onDeleteSession, sources, skills, labels, enabledModes, rightSidebarOpenButton, effectiveSessionStatuses)
-  const appShellContextValue = React.useMemo<AppShellContextType>(() => ({
-    ...contextValue,
-    onDeleteSession: handleDeleteSession,
-    enabledSources: sources,
-    skills,
-    activeSessionWorkingDirectory,
-    labels: displayLabelConfigs,
-    onSessionLabelsChange: handleSessionLabelsChange,
-    enabledModes,
-    sessionStatuses: effectiveSessionStatuses,
-    onSessionSourcesChange: handleSessionSourcesChange,
-    onJumpToTaskSessions: handleJumpToTaskSessions,
-    rightSidebarButton: null,
-    isCompactMode: isAutoCompact,
-    // Search state for ChatDisplay highlighting
-    sessionListSearchQuery: searchActive ? searchQuery : undefined,
-    isSearchModeActive: searchActive,
-    chatDisplayRef,
-    onChatMatchInfoChange: handleChatMatchInfoChange,
-    onTestAutomation: handleTestAutomation,
-    onToggleAutomation: handleToggleAutomation,
-    onDuplicateAutomation: handleDuplicateAutomation,
-    onDeleteAutomation: handleDeleteAutomation,
-    automationTestResults,
-    getAutomationHistory,
-    onReplayAutomation: handleReplayAutomation,
-  }), [contextValue, handleDeleteSession, sources, skills, activeSessionWorkingDirectory, displayLabelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, handleJumpToTaskSessions, isAutoCompact, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleReplayAutomation])
+  // Right workbench control for chat panel header (replaces the old close-X design).
+  const workbenchHeaderButton = React.useMemo(() => {
+    if (!isRightWorkbenchAvailableForRoute) return null
+    const label = canFitRightWorkbench
+      ? t('rightWorkbench.toggle')
+      : t('rightWorkbench.toggleTooNarrow')
+    return (
+      <PanelHeaderCenterButton
+        icon={<PanelRightRounded className="h-4 w-4" />}
+        onClick={handleToggleRightWorkbench}
+        // aria-disabled, not disabled: the tooltip must stay reachable so the
+        // control can explain that the window is too narrow.
+        aria-disabled={!canFitRightWorkbench}
+        tooltip={label}
+        aria-label={label}
+        // Report what is on screen, not what was requested.
+        aria-pressed={isRightWorkbenchRendered}
+        className={isRightWorkbenchRendered ? 'opacity-100' : undefined}
+      />
+    )
+  }, [
+    canFitRightWorkbench,
+    handleToggleRightWorkbench,
+    isRightWorkbenchAvailableForRoute,
+    isRightWorkbenchRendered,
+    t,
+  ])
 
   // Persist expanded folders to localStorage (workspace-scoped)
   React.useEffect(() => {
@@ -1503,14 +1585,6 @@ function AppShellContent({
   }, [collapsedItems, activeWorkspaceId])
 
 
-  const handleFlaggedClick = useCallback(() => {
-    navigate(routes.view.flagged())
-  }, [])
-
-  const handleArchivedClick = useCallback(() => {
-    navigate(routes.view.archived())
-  }, [])
-
   const handleViewClick = useCallback((viewId: string) => {
     navigate(routes.view.view(viewId))
   }, [])
@@ -1529,10 +1603,6 @@ function AppShellContent({
     navigate(routes.view.sourcesMcp())
   }, [])
 
-  const handleSourcesLocalClick = useCallback(() => {
-    navigate(routes.view.sourcesLocal())
-  }, [])
-
   // Handler for skills view
   const handleSkillsClick = useCallback(() => {
     navigate(routes.view.skills())
@@ -1541,12 +1611,6 @@ function AppShellContent({
   // Handlers for automations view
   const handleAutomationsClick = useCallback(() => {
     navigate(routes.view.automations())
-  }, [])
-
-  // 项目 header = every folder-bound conversation across projects (no separate "所有会话").
-  // skipAutoSelect: like 自动化 parent — select this level only; do not open a child session.
-  const handleProjectsClick = useCallback(() => {
-    navigate(routes.view.projectSessions(), { skipAutoSelect: true })
   }, [])
 
   // 对话 header = every session with no folder selected — independent of which project is focused.
@@ -1716,17 +1780,11 @@ function AppShellContent({
     return null
   }, [listFilter, labelFilter, projectFilter])
 
-  // New Task (R1 §2) — one Session create path; context from the trigger:
-  // - 对话 filter → folder-less (workdir 'none' must be explicit)
-  // - focused Project row (projectSessions + workspaceId) → that folder
-  // - Project overview / Flagged / labels / etc. without a focused project → folder-less
-  // Project-row trailing "+" uses handleNewTaskInProject (same Session path, folder prefilled).
-  // Never omit workdir: SessionManager treats omit as workspace default, not Conversations.
-  const handleNewChat = useCallback((newPanel: boolean = false) => {
-    if (!activeWorkspace) return
-
-    setSearchActive(false)
-    setSearchQuery('')
+  // Resolve the one Session-create context used by the main task entry and the
+  // right-workbench side-task projection. The latter changes placement only;
+  // it does not introduce another task/session authority.
+  const resolveNewSessionCreateParams = useCallback((): NewSessionParams | null => {
+    if (!activeWorkspace) return null
 
     const inherited = resolveInheritedNewSessionParams()
     const focusedProjectId =
@@ -1748,19 +1806,38 @@ function AppShellContent({
       const bound = bindToProject(focusedProject)
       if (!bound) {
         toast.error(t('toast.failedToCreateWorkspace'))
-        return
+        return null
       }
       createParams = bound
     } else {
-      // No project focus (overview, flagged, labels, …) → Conversations
       createParams = { workdir: 'none' }
     }
 
-    // Merge status/label chips only; never let nested projectId override folder binding.
     if (inherited) {
       const { project: _ignoreNested, ...rest } = inherited
       createParams = { ...createParams, ...rest }
     }
+
+    return createParams
+  }, [
+    activeWorkspace,
+    resolveInheritedNewSessionParams,
+    sessionFilter,
+    workspaces,
+    t,
+  ])
+
+  // New Task (R1 §2) — one Session create path; context from the trigger:
+  // - 对话 filter → folder-less (workdir 'none' must be explicit)
+  // - focused Project row (projectSessions + workspaceId) → that folder
+  // - Project overview / Flagged / labels / etc. without a focused project → folder-less
+  // Project-row trailing "+" uses handleNewTaskInProject (same Session path, folder prefilled).
+  // Never omit workdir: SessionManager treats omit as workspace default, not Conversations.
+  const handleNewChat = useCallback((newPanel: boolean = false) => {
+    setSearchActive(false)
+    setSearchQuery('')
+    const createParams = resolveNewSessionCreateParams()
+    if (!createParams) return
 
     navigate(
       routes.action.newSession(createParams),
@@ -1768,25 +1845,39 @@ function AppShellContent({
     )
 
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
-  }, [activeWorkspace, focusZone, navigate, resolveInheritedNewSessionParams, sessionFilter, workspaces, t])
+  }, [focusZone, navigate, resolveNewSessionCreateParams])
+
+  const handleCreateSideTask = useCallback(async (): Promise<string | null> => {
+    const createParams = resolveNewSessionCreateParams()
+    if (!createParams || !activeWorkspace) return null
+
+    try {
+      const created = await onCreateSession(
+        createParams.workspaceId ?? activeWorkspace.id,
+        {
+          workingDirectory: createParams.workdir,
+          sessionStatus: createParams.status,
+          labels: createParams.label ? [createParams.label] : undefined,
+          projectId: createParams.project,
+        },
+      )
+      setSearchActive(false)
+      setSearchQuery('')
+      return created.id
+    } catch {
+      toast.error(t('toast.failedToCreateSession'))
+      return null
+    }
+  }, [
+    activeWorkspace,
+    onCreateSession,
+    resolveNewSessionCreateParams,
+    t,
+  ])
 
   // P10: the Project-row create trigger. It is the *same* Session path as the global New Task
   // button with the Project pre-selected — not a second create flow, and never a Task record or
   // the Board (specs/R1-one-boundary-language.md §2).
-
-  // Create a brand new dedicated browser window and focus it.
-  // Intentionally unbound: this action should always create a NEW window.
-  const handleNewBrowserWindow = useCallback(async () => {
-    try {
-      const instanceId = await window.electronAPI.browserPane.create({
-        show: true,
-      })
-      await window.electronAPI.browserPane.focus(instanceId)
-    } catch (error) {
-      console.error('[Chat] Failed to create browser window:', error)
-      toast.error(t('toast.failedToCreateBrowser'))
-    }
-  }, [])
 
   // Delete Source - simplified since agents system is removed
   const handleDeleteSource = useCallback(async (sourceSlug: string) => {
@@ -1798,7 +1889,7 @@ function AppShellContent({
       console.error('[Chat] Failed to delete source:', error)
       toast.error(t('toast.failedToDeleteSource'))
     }
-  }, [activeWorkspace])
+  }, [activeWorkspace, t])
 
   // Delete Skill
   const handleDeleteSkill = useCallback(async (skillSlug: string) => {
@@ -1810,7 +1901,7 @@ function AppShellContent({
       console.error('[Chat] Failed to delete skill:', error)
       toast.error(t('toast.failedToDeleteSkill'))
     }
-  }, [activeWorkspace])
+  }, [activeWorkspace, t])
 
   // Respond to menu bar "New Chat" trigger
   const menuTriggerRef = useRef(menuNewChatTrigger)
@@ -1828,6 +1919,8 @@ function AppShellContent({
     action?: () => void
   }
 
+  const pendingProjectCreationRef = React.useRef<((workspace: Workspace) => void) | null>(null)
+
   const handleProjectFolderPicked = useCallback(async (folderPath: string) => {
     const name = folderPath.split('/').filter(Boolean).pop() || folderPath
     try {
@@ -1839,7 +1932,10 @@ function AppShellContent({
         console.warn('[AppShell] Project created but default workingDirectory not saved:', settingsErr)
       }
       onRefreshWorkspaces?.()
-      navigate(routes.view.projectSessions(undefined, workspace.id), { skipAutoSelect: true })
+      const requester = pendingProjectCreationRef.current
+      pendingProjectCreationRef.current = null
+      if (requester) requester(workspace)
+      else navigate(routes.view.projectSessions(undefined, workspace.id), { skipAutoSelect: true })
       toast.success(t('toast.createdWorkspace', { name: workspace.name }))
     } catch (err) {
       console.error('[AppShell] Failed to create project from folder:', err)
@@ -1853,7 +1949,9 @@ function AppShellContent({
     serverBrowserMode: projectFolderBrowserMode,
     cancelServerBrowser: cancelProjectFolderBrowser,
     confirmServerBrowser: confirmProjectFolderBrowser,
-  } = useDirectoryPicker(handleProjectFolderPicked)
+  } = useDirectoryPicker(handleProjectFolderPicked, () => {
+    pendingProjectCreationRef.current = null
+  })
 
   const openProjectCreateLocal = useCallback(() => {
     pickProjectFolder()
@@ -1874,16 +1972,36 @@ function AppShellContent({
     setFullscreenOverlayOpen(false)
   }, [setFullscreenOverlayOpen])
 
+  const cancelProjectCreateScreen = useCallback(() => {
+    pendingProjectCreationRef.current = null
+    closeProjectCreateScreen()
+  }, [closeProjectCreateScreen])
+
   const handleProjectCreatedFromScreen = useCallback(async (workspace: Workspace) => {
     onRefreshWorkspaces?.()
-    await onSelectWorkspace(workspace.id)
-    navigate(routes.view.projectSessions(
-      undefined,
-      workspace.remoteServer?.remoteWorkspaceId ?? workspace.id,
-    ), { skipAutoSelect: true })
+    const requester = pendingProjectCreationRef.current
+    pendingProjectCreationRef.current = null
+    if (requester) {
+      requester(workspace)
+    } else {
+      await onSelectWorkspace(workspace.id)
+      navigate(routes.view.projectSessions(
+        undefined,
+        workspace.remoteServer?.remoteWorkspaceId ?? workspace.id,
+      ), { skipAutoSelect: true })
+    }
     closeProjectCreateScreen()
     toast.success(t('toast.createdWorkspace', { name: workspace.name }))
   }, [onRefreshWorkspaces, onSelectWorkspace, navigate, closeProjectCreateScreen, t])
+
+  const requestProjectCreation = useCallback((
+    kind: 'local' | 'remote',
+    onCreated: (workspace: Workspace) => void,
+  ) => {
+    pendingProjectCreationRef.current = onCreated
+    if (kind === 'local') openProjectCreateLocal()
+    else openProjectCreateCloud()
+  }, [openProjectCreateLocal, openProjectCreateCloud])
 
   const openAddProject = useCallback(() => {
     pickProjectFolder()
@@ -1947,6 +2065,81 @@ function AppShellContent({
   // - Never parent + child both "default" at once
   const openSessionId = sessionsContext?.sessionId ?? null
   const hasSessionDetail = !!openSessionId
+  const hasRemoteWorkspaces = workspaces.some(workspace => !!workspace.remoteServer)
+
+  const renderSidebarSessionActions = useCallback((meta: SessionMeta) => (
+    <SidebarSessionActions
+      item={meta}
+      buttonClassName={sidebarTrailingIconButtonClassName}
+      hasRemoteWorkspaces={hasRemoteWorkspaces}
+      projects={projectMenuOptions}
+      onSetProjectId={handleSessionProjectChange}
+      sessionStatuses={effectiveSessionStatuses}
+      onSessionStatusChange={onSessionStatusChange}
+      labels={displayLabelConfigs}
+      onLabelsChange={handleSessionLabelsChange}
+      onRename={onRenameSession}
+      onFlag={onFlagSession}
+      onUnflag={onUnflagSession}
+      onArchive={onArchiveSession}
+      onUnarchive={onUnarchiveSession}
+      onSendToWorkspace={(sessionId) => setSendToWorkspaceIds([sessionId])}
+      onDelete={(sessionId) => { void handleDeleteSession(sessionId) }}
+    />
+  ), [
+    handleDeleteSession,
+    hasRemoteWorkspaces,
+    projectMenuOptions,
+    handleSessionProjectChange,
+    effectiveSessionStatuses,
+    onSessionStatusChange,
+    displayLabelConfigs,
+    handleSessionLabelsChange,
+    onArchiveSession,
+    onFlagSession,
+    onRenameSession,
+    onUnarchiveSession,
+    onUnflagSession,
+    setSendToWorkspaceIds,
+    sidebarTrailingIconButtonClassName,
+  ])
+
+  const renderSidebarSessionBadges = useCallback((meta: SessionMeta) => (
+    meta.labels?.length ? (
+      <SessionLabelBadges
+        item={meta}
+        flatLabels={flatDisplayLabelConfigs}
+        readOnly
+      />
+    ) : undefined
+  ), [flatDisplayLabelConfigs])
+
+  /** Status glyph for a session leaf — same source as the conversation list. */
+  const getSidebarSessionStatusIcon = useCallback((meta: SessionMeta): React.ReactNode => {
+    const statusId = getSessionStatus(meta)
+    return (
+      <span
+        className="flex h-3.5 w-3.5 items-center justify-center [&>svg]:h-full [&>svg]:w-full [&>img]:h-full [&>img]:w-full [&>span]:text-[10px] leading-none"
+        style={getStateIconStyle(statusId, effectiveSessionStatuses)}
+      >
+        {getStateIcon(statusId, effectiveSessionStatuses)}
+      </span>
+    )
+  }, [effectiveSessionStatuses])
+
+  /** Relative time / flag — same trailing slot language as SessionItem. */
+  const getSidebarSessionTrailingMeta = useCallback((meta: SessionMeta): React.ReactNode => {
+    if (meta.isFlagged) {
+      return <Flag className="h-3.5 w-3.5 text-info" />
+    }
+    if (meta.lastMessageAt) {
+      return formatDistanceToNowStrict(new Date(meta.lastMessageAt), {
+        locale: shortTimeLocale as Locale,
+        roundingMethod: 'floor',
+      })
+    }
+    return null
+  }, [])
 
   const workspaceProjectItems = useMemo(() => {
     const focusedWorkspaceId =
@@ -1964,12 +2157,19 @@ function AppShellContent({
       // Folder-bound sessions for this project — from the full map so local multi-project
       // rows stay populated without a hard workspace switch.
       const conversations = allActiveSessionMetas
-        .filter(meta => meta.workspaceId === sessionWorkspaceId && !!meta.workingDirectory)
+        .filter(meta =>
+          meta.workspaceId === sessionWorkspaceId
+          && !!meta.workingDirectory
+          && isSessionListVisible(meta),
+        )
         .sort((a, b) => (b.lastMessageAt ?? b.createdAt ?? 0) - (a.lastMessageAt ?? a.createdAt ?? 0))
         .map(meta => ({
           id: `nav:projects:ws:${workspace.id}:session:${meta.id}`,
           title: getSessionTitle(meta),
-          icon: MessageSquareText,
+          icon: getSidebarSessionStatusIcon(meta),
+          iconColorable: false,
+          trailingMeta: getSidebarSessionTrailingMeta(meta),
+          badges: renderSidebarSessionBadges(meta),
           // Leaf only: selected when this session is the open detail under 项目
           variant: (
             sessionFilter?.kind === 'projectSessions'
@@ -1981,10 +2181,12 @@ function AppShellContent({
             workingDirectory: meta.workingDirectory,
             workspaceId: meta.workspaceId,
           }),
+          trailingAction: renderSidebarSessionActions(meta),
         }))
+      const projectTitle = getWorkspaceDisplayName(workspace.name, t)
       return {
         id: `nav:projects:ws:${workspace.id}`,
-        title: workspace.name,
+        title: projectTitle,
         // local = folder; remote/cloud computer = Cloud (existing Craft icon language)
         icon: isRemote ? Cloud : Folder,
         variant: (isProjectRowSelected ? 'default' : 'ghost') as 'default' | 'ghost',
@@ -1998,8 +2200,8 @@ function AppShellContent({
           <button
             type="button"
             className={sidebarTrailingIconButtonClassName}
-            aria-label={t('sidebar.newTaskInProject', { name: workspace.name })}
-            title={t('sidebar.newTaskInProject', { name: workspace.name })}
+            aria-label={t('sidebar.newTaskInProject', { name: projectTitle })}
+            title={t('sidebar.newTaskInProject', { name: projectTitle })}
             onClick={(event) => {
               event.stopPropagation()
               void handleNewTaskInProject(workspace)
@@ -2022,17 +2224,20 @@ function AppShellContent({
         },
       }
     })
-  }, [workspaces, allActiveSessionMetas, openSessionId, hasSessionDetail, sessionFilter, handleProjectRowClick, openSessionInPanel, isExpanded, toggleExpanded, handleRemoveProject, handleNewTaskInProject, activeWorkspaceId, onSelectWorkspace, navigate, t])
+  }, [workspaces, allActiveSessionMetas, openSessionId, hasSessionDetail, sessionFilter, handleProjectRowClick, openSessionInPanel, isExpanded, toggleExpanded, handleRemoveProject, handleNewTaskInProject, activeWorkspaceId, onSelectWorkspace, navigate, renderSidebarSessionActions, renderSidebarSessionBadges, getSidebarSessionStatusIcon, getSidebarSessionTrailingMeta, sidebarTrailingIconButtonClassName, t])
 
   // Sessions with no project folder across all loaded workspaces (R1 clause 1).
   const unboundSessionItems = useMemo(() => {
     return allActiveSessionMetas
-      .filter(meta => !meta.workingDirectory)
+      .filter(meta => !meta.workingDirectory && isSessionListVisible(meta))
       .sort((a, b) => (b.lastMessageAt ?? b.createdAt ?? 0) - (a.lastMessageAt ?? a.createdAt ?? 0))
       .map(session => ({
         id: `nav:conversations:${session.id}`,
         title: getSessionTitle(session),
-        icon: MessageSquareText,
+        icon: getSidebarSessionStatusIcon(session),
+        iconColorable: false,
+        trailingMeta: getSidebarSessionTrailingMeta(session),
+        badges: renderSidebarSessionBadges(session),
         // Leaf only under 对话 — same exclusive rule as 自动化 → 定时
         variant: (
           sessionFilter?.kind === 'conversations' && openSessionId === session.id
@@ -2043,8 +2248,9 @@ function AppShellContent({
           workingDirectory: undefined,
           workspaceId: session.workspaceId,
         }),
+        trailingAction: renderSidebarSessionActions(session),
       }))
-  }, [allActiveSessionMetas, openSessionId, sessionFilter, openSessionInPanel])
+  }, [allActiveSessionMetas, openSessionId, sessionFilter, openSessionInPanel, renderSidebarSessionActions, renderSidebarSessionBadges, getSidebarSessionStatusIcon, getSidebarSessionTrailingMeta])
 
   const unifiedSidebarItems = React.useMemo((): SidebarItem[] => {
     const result: SidebarItem[] = []
@@ -2061,15 +2267,16 @@ function AppShellContent({
       }
     }
 
-    // Filtered states (not a second "所有会话" home — 项目 owns the main list)
-    result.push({ id: 'nav:flagged', type: 'nav', action: handleFlaggedClick })
-    result.push({ id: 'nav:archived', type: 'nav', action: handleArchivedClick })
-
+    result.push({ id: 'nav:search', type: 'nav', action: () => setGlobalSearchOpen(true) })
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
 
-    result.push({ id: 'nav:projects', type: 'nav', action: handleProjectsClick })
+    result.push({
+      id: 'nav:projects',
+      type: 'nav',
+      action: () => toggleExpanded('nav:projects'),
+    })
     for (const workspaceItem of workspaceProjectItems) {
       pushLink(workspaceItem)
     }
@@ -2081,12 +2288,10 @@ function AppShellContent({
 
     return result
   }, [
-    handleFlaggedClick,
-    handleArchivedClick,
     handleSourcesClick,
     handleSkillsClick,
     handleAutomationsClick,
-    handleProjectsClick,
+    toggleExpanded,
     handleConversationsClick,
     workspaceProjectItems,
     unboundSessionItems,
@@ -2268,6 +2473,36 @@ function AppShellContent({
   // Each node renders with condensed height (compact: true) since many labels expected.
   // Clicking any label navigates to its filter view; the chevron toggles expand/collapse.
 
+  // Extend the single shell authority only after all local actions exist. Project
+  // creation requested by the composer resolves through the same folder/remote
+  // flows used by the sidebar, then hands the Workspace back to the Session flow.
+  const appShellContextValue = React.useMemo<AppShellContextType>(() => ({
+    ...contextValue,
+    onDeleteSession: handleDeleteSession,
+    enabledSources: sources,
+    skills,
+    activeSessionWorkingDirectory,
+    labels: displayLabelConfigs,
+    onSessionLabelsChange: handleSessionLabelsChange,
+    sessionStatuses: effectiveSessionStatuses,
+    onSessionSourcesChange: handleSessionSourcesChange,
+    onJumpToTaskSessions: handleJumpToTaskSessions,
+    onRequestProjectCreation: requestProjectCreation,
+    rightSidebarButton: workbenchHeaderButton,
+    isCompactMode: isAutoCompact,
+    sessionListSearchQuery: searchActive ? searchQuery : undefined,
+    isSearchModeActive: searchActive,
+    chatDisplayRef,
+    onChatMatchInfoChange: handleChatMatchInfoChange,
+    onTestAutomation: handleTestAutomation,
+    onToggleAutomation: handleToggleAutomation,
+    onDuplicateAutomation: handleDuplicateAutomation,
+    onDeleteAutomation: handleDeleteAutomation,
+    automationTestResults,
+    getAutomationHistory,
+    onReplayAutomation: handleReplayAutomation,
+  }), [contextValue, handleDeleteSession, sources, skills, activeSessionWorkingDirectory, displayLabelConfigs, handleSessionLabelsChange, effectiveSessionStatuses, handleSessionSourcesChange, handleJumpToTaskSessions, requestProjectCreation, workbenchHeaderButton, isAutoCompact, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleReplayAutomation])
+
 
 
   return (
@@ -2283,31 +2518,39 @@ function AppShellContent({
           activeSessionId={effectiveSessionId}
           onNewChat={() => handleNewChat()}
           onNewWindow={() => window.electronAPI.menuNewWindow()}
+          onOpenGlobalSearch={() => setGlobalSearchOpen(true)}
           onOpenSettings={onOpenSettings}
           onOpenSettingsSubpage={handleSettingsClick}
           onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
           onOpenStoredUserPreferences={onOpenStoredUserPreferences}
           onOpenWhatsNew={handleWhatsNewClick}
           hasUnseenReleaseNotes={hasUnseenReleaseNotes}
-          onBack={goBack}
-          onForward={goForward}
-          canGoBack={canGoBack}
-          canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-          onAddSessionPanel={() => handleNewChat(true)}
-          onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
         />
+        <GlobalSearchDialog
+          open={globalSearchOpen}
+          onOpenChange={setGlobalSearchOpen}
+          workspaces={workspaces}
+          sessions={allSessionMetas.filter(isSessionListVisible)}
+          onOpenSession={handleGlobalSearchSession}
+          onOpenFile={onOpenFile}
+          onNavigate={route => navigate(route)}
+        />
 
-      {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
+      {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar ===
+          Keep Craft's single shell geometry authority: one shared gap separates
+          adjacent panels and one shared inset clears every desktop window edge.
+          The left global sidebar alone reserves the native titlebar controls. */}
       <div
         ref={shellRef}
         className="flex items-stretch relative"
         style={{
           height: '100%',
-          paddingRight: isAutoCompact ? 0 : PANEL_EDGE_INSET,
-          paddingBottom: isAutoCompact ? 0 : PANEL_EDGE_INSET,
+          paddingTop: isAutoCompact ? 0 : PANEL_TOP_EDGE_INSET,
+          paddingRight: isAutoCompact ? 0 : PANEL_RIGHT_EDGE_INSET,
+          paddingBottom: isAutoCompact ? 0 : PANEL_BOTTOM_EDGE_INSET,
           paddingLeft: 0,
           gap: PANEL_GAP,
         }}
@@ -2322,7 +2565,10 @@ function AppShellContent({
               tabIndex={sidebarFocused ? 0 : -1}
               onKeyDown={handleSidebarKeyDown}
             >
-            <div className="flex h-full flex-col select-none">
+            <div
+              className="flex h-full flex-col select-none"
+              style={{ paddingTop: 'var(--topbar-height)' }}
+            >
               {/* Sidebar Top Section */}
               <div className="flex-1 flex flex-col min-h-0">
                 {/* New Session Button - Gmail-style, with context menu for "Open in New Window" */}
@@ -2353,8 +2599,8 @@ function AppShellContent({
                     <TooltipContent side="right">{newChatHotkey}</TooltipContent>
                   </Tooltip>
                 </div>
-                {/* Primary Nav: Flagged/Archived | tools | 项目 (folder-bound) | 对话 (folder-less) | Settings.
-                    项目 is the main work list — no separate 所有会话 (owner + R1 clause 1). Status chips live on the list header. */}
+                {/* Primary Nav: Search (own section) | tools | 项目 | 对话 | Settings.
+                    Global search reuses LeftSidebar row chrome + GlobalSearchDialog — no custom bar. */}
                 {/* pb-4 provides clearance so the last item scrolls above the mask-fade-bottom gradient */}
                 <div className="flex-1 overflow-y-auto min-h-0 mask-fade-bottom pb-4">
                 <LeftSidebar
@@ -2362,24 +2608,18 @@ function AppShellContent({
                   getItemProps={getSidebarItemProps}
                   focusedItemId={focusedSidebarItemId}
                   links={[
+                    // --- Global search (separate section above Sources; same SidebarButton language) ---
                     {
-                      id: "nav:flagged",
-                      title: t("sidebar.flagged"),
-                      label: flaggedCount > 0 ? String(flaggedCount) : undefined,
-                      icon: <Flag className="h-3.5 w-3.5" />,
-                      variant: (sessionFilter?.kind === 'flagged' ? "default" : "ghost") as "default" | "ghost",
-                      onClick: handleFlaggedClick,
+                      id: "nav:search",
+                      title: t("sidebar.search"),
+                      icon: Search,
+                      variant: "ghost",
+                      onClick: () => setGlobalSearchOpen(true),
+                      dataTutorial: "global-search-button",
+                      // Same trailing slot as source/skill counts — hotkey when known
+                      label: globalSearchHotkey || undefined,
                     },
-                    {
-                      id: "nav:archived",
-                      title: t("sidebar.archived"),
-                      label: archivedCount > 0 ? String(archivedCount) : undefined,
-                      icon: Archive,
-                      variant: (sessionFilter?.kind === 'archived' ? "default" : "ghost") as "default" | "ghost",
-                      onClick: handleArchivedClick,
-                    },
-                    // --- Separator ---
-                    { id: "separator:chats-sources", type: "separator" },
+                    { id: "separator:search-tools", type: "separator" },
                     // --- Sources & Skills Section ---
                     {
                       id: "nav:sources",
@@ -2421,19 +2661,6 @@ function AppShellContent({
                             type: 'sources' as const,
                             onAddSource: () => openAddSource('mcp'),
                             sourceType: 'mcp',
-                          },
-                        },
-                        {
-                          id: "nav:sources:local",
-                          title: t("sidebar.localFolders"),
-                          label: String(sourceTypeCounts.local),
-                          icon: FolderOpen,
-                          variant: (sourceFilter?.kind === 'type' && sourceFilter.sourceType === 'local') ? "default" : "ghost",
-                          onClick: handleSourcesLocalClick,
-                          contextMenu: {
-                            type: 'sources' as const,
-                            onAddSource: () => openAddSource('local'),
-                            sourceType: 'local',
                           },
                         },
                       ],
@@ -2494,19 +2721,14 @@ function AppShellContent({
                         },
                       ],
                     },
+                    { id: "separator:tools-projects", type: "separator" },
                     {
                       id: "nav:projects",
                       title: t("sidebar.projects"),
-                      icon: FolderKanban,
-                      // Exclusive like 自动化: selected only on overview with no session leaf open.
-                      variant: (
-                        sessionFilter?.kind === 'projectSessions'
-                        && !sessionFilter.workspaceId
-                        && !hasSessionDetail
-                          ? "default"
-                          : "ghost"
-                      ) as "default" | "ghost",
-                      onClick: handleProjectsClick,
+                      // This is a disclosure heading, not a second Project home.
+                      // Pointer and unified keyboard activation both toggle this same branch.
+                      variant: "ghost" as const,
+                      onClick: () => toggleExpanded('nav:projects'),
                       expandable: workspaceProjectItems.length > 0,
                       expanded: isExpanded('nav:projects'),
                       onToggle: () => toggleExpanded('nav:projects'),
@@ -2518,42 +2740,47 @@ function AppShellContent({
                         // authority), not the nested v0.11 projects list.
                         onManageProjects: () => navigate(routes.view.settings('workspace')),
                       },
-                      // Local folder is first; cloud computer remains the existing secondary path.
+                      // Create and more are independent controls; neither activates the heading.
                       trailingAction: (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className={sidebarTrailingIconButtonClassName}
-                              aria-label={t('sidebar.newProject')}
-                              title={t('sidebar.newProject')}
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <StyledDropdownMenuContent align="start" side="right" className="min-w-[180px]">
-                            <StyledDropdownMenuItem
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                openProjectCreateLocal()
-                              }}
-                            >
-                              <Folder className="h-3.5 w-3.5" />
-                              <span className="flex-1">{t('sidebar.newProjectLocal')}</span>
-                            </StyledDropdownMenuItem>
-                            <StyledDropdownMenuItem
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                openProjectCreateCloud()
-                              }}
-                            >
-                              <Cloud className="h-3.5 w-3.5" />
-                              <span className="flex-1">{t('sidebar.newProjectCloud')}</span>
-                            </StyledDropdownMenuItem>
-                          </StyledDropdownMenuContent>
-                        </DropdownMenu>
+                        <>
+                          <button
+                            type="button"
+                            className={sidebarTrailingIconButtonClassName}
+                            aria-label={t('sidebar.newProject')}
+                            title={t('sidebar.newProject')}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              openProjectCreateLocal()
+                            }}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                className={sidebarTrailingIconButtonClassName}
+                                aria-label={t('common.more')}
+                                title={t('common.more')}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <StyledDropdownMenuContent align="start" side="right">
+                              <DropdownMenuProvider>
+                                <SidebarMenu
+                                  type="projects"
+                                  onAddProject={openProjectCreateLocal}
+                                  onAddCloudProject={openProjectCreateCloud}
+                                  onManageProjects={() => navigate(routes.view.settings('workspace'))}
+                                />
+                              </DropdownMenuProvider>
+                            </StyledDropdownMenuContent>
+                          </DropdownMenu>
+                        </>
                       ),
+                      trailingActionSlots: 2,
                       items: workspaceProjectItems,
                     },
                     // Folder-less work is a sibling of Projects (R1 clause 1). Click = list all unbound.
@@ -2615,8 +2842,8 @@ function AppShellContent({
             </div>
           </div>
           }
-          sidebarWidth={effectiveSidebarAndNavigatorHidden ? 0 : (isSidebarVisible ? sidebarWidth : 0)}
-          navigatorSlot={
+          sidebarWidth={responsivePanelLayout.sidebarWidth}
+          navigatorSlot={isNavigatorPanelNeeded ? (
             <div
               style={{ width: isAutoCompact ? '100%' : sessionListWidth }}
               className="h-full flex flex-col min-w-0 relative z-panel"
@@ -2638,9 +2865,7 @@ function AppShellContent({
               ) : undefined}
               actions={
                 <>
-                  {/* Filter dropdown - available in ALL chat views.
-                      Shows user-added filters (removable) and pinned filters (non-removable, derived from route).
-                      Pinned filters: state views pin a status, label views pin a label, flagged pins the flag. */}
+                  {/* List filter only — global search lives in the left sidebar above Sources. */}
                   {isSessionsNavigation(navState) && (
                     isAutoCompact ? (
                       <CompactSessionListFilter
@@ -3507,19 +3732,20 @@ function AppShellContent({
                   items={searchActive
                     // Cross-project surfaces search the full map so 对话 does not shrink when a
                     // project row is focused; workspace-scoped tools still use active workspace.
+                    // Always hide empty placeholders (not yet first-sent).
                     ? (sessionFilter?.kind === 'projectSessions'
                       || sessionFilter?.kind === 'conversations'
                       || sessionFilter?.kind === 'flagged'
                       || sessionFilter?.kind === 'archived'
                       ? allSessionMetas
-                      : workspaceSessionMetas)
+                      : workspaceSessionMetas
+                    ).filter(isSessionListVisible)
                     : filteredSessionMetas}
                   onDelete={handleDeleteSession}
                   onFlag={onFlagSession}
                   onUnflag={onUnflagSession}
                   onArchive={onArchiveSession}
                   onUnarchive={onUnarchiveSession}
-                  onMarkUnread={onMarkSessionUnread}
                   onSessionStatusChange={onSessionStatusChange}
                   onRename={onRenameSession}
                   onFocusChatInput={(targetSessionId) => {
@@ -3562,7 +3788,10 @@ function AppShellContent({
                   // Group-by-project buckets by workspace folder (Project=folder).
                   groupByProjects={
                     chatGroupingMode === 'project'
-                      ? workspaces.map(w => ({ id: w.id, name: w.name }))
+                      ? workspaces.map(w => ({
+                          id: w.id,
+                          name: getWorkspaceDisplayName(w.name, t),
+                        }))
                       : undefined
                   }
                   projectGroupField="workspaceId"
@@ -3576,26 +3805,76 @@ function AppShellContent({
                   hasPendingPrompt={hasPendingPrompt}
                   activeChatMatchInfo={chatMatchInfo}
                   onNewSession={() => handleNewChat()}
+                  onBulkActionItemsChange={handleBulkActionItemsChange}
                 />
               </>
             )}
-            {/* Mobile/compact-only FAB for starting a new chat — only on the
-                session list itself, not when a chat is open (it would overlap
-                the chat input). */}
-            {isAutoCompact && isSessionsNavigation(navState) && !navState.details && (
-              <FabNewChat onClick={() => handleNewChat()} />
-            )}
             </div>
-          }
-          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isBoardView ? 0 : sessionListWidth)}
+          ) : null}
+          navigatorWidth={responsivePanelLayout.navigatorWidth}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={false}
+          isRightSidebarVisible={isRightWorkbenchRendered}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
 
+        {isRightWorkbenchRendered && (
+          <div
+            className="relative h-full shrink-0"
+            style={{ width: responsivePanelLayout.workbenchWidth }}
+          >
+            <div
+              ref={rightWorkbenchHandleRef}
+              className="absolute z-panel flex cursor-col-resize justify-center"
+              style={{
+                top: PANEL_STACK_VERTICAL_OVERFLOW,
+                bottom: PANEL_STACK_VERTICAL_OVERFLOW,
+                left: -(PANEL_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH,
+                width: PANEL_SASH_HIT_WIDTH,
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                setIsResizing('right-workbench')
+              }}
+              onMouseMove={(event) => {
+                if (rightWorkbenchHandleRef.current) {
+                  const rect = rightWorkbenchHandleRef.current.getBoundingClientRect()
+                  setRightWorkbenchHandleY(event.clientY - rect.top)
+                }
+              }}
+              onMouseLeave={() => {
+                if (isResizing !== 'right-workbench') setRightWorkbenchHandleY(null)
+              }}
+            >
+              <div
+                className="h-full"
+                style={{
+                  ...getResizeGradientStyle(
+                    rightWorkbenchHandleY,
+                    rightWorkbenchHandleRef.current?.clientHeight ?? null,
+                  ),
+                  width: PANEL_SASH_LINE_WIDTH,
+                }}
+              />
+            </div>
+            <RightWorkbench
+              sessionId={effectiveSessionId}
+              workingDirectory={
+                effectiveSessionId
+                  ? sessionMetaMap.get(effectiveSessionId)?.workingDirectory
+                  : undefined
+              }
+              sources={sources}
+              skills={skills}
+              projects={projects}
+              labels={displayLabelConfigs}
+              onCreateSideTask={handleCreateSideTask}
+            />
+          </div>
+        )}
+
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
-        {!effectiveSidebarAndNavigatorHidden && (
+        {responsivePanelLayout.sidebarWidth > 0 && (
         <div
           ref={resizeHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('sidebar') }}
@@ -3611,8 +3890,8 @@ function AppShellContent({
             width: PANEL_SASH_HIT_WIDTH,
             top: PANEL_STACK_VERTICAL_OVERFLOW,
             bottom: PANEL_STACK_VERTICAL_OVERFLOW,
-            left: isSidebarVisible
-              ? sidebarWidth + (PANEL_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH
+            left: responsivePanelLayout.sidebarWidth > 0
+              ? responsivePanelLayout.sidebarWidth + (PANEL_SIDEBAR_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH
               : -PANEL_GAP,
             transition: isResizing === 'sidebar' ? undefined : 'left 0.15s ease-out',
           }}
@@ -3628,7 +3907,7 @@ function AppShellContent({
         )}
 
         {/* Session List Resize Handle (absolute, hidden in focused mode and board view) */}
-        {!effectiveSidebarAndNavigatorHidden && !isBoardView && (
+        {responsivePanelLayout.navigatorWidth > 0 && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}
@@ -3645,8 +3924,10 @@ function AppShellContent({
             top: PANEL_STACK_VERTICAL_OVERFLOW,
             bottom: PANEL_STACK_VERTICAL_OVERFLOW,
             left:
-              (isSidebarVisible ? sidebarWidth + PANEL_GAP : PANEL_EDGE_INSET) +
-              sessionListWidth +
+              (responsivePanelLayout.sidebarWidth > 0
+                ? responsivePanelLayout.sidebarWidth + PANEL_SIDEBAR_GAP
+                : PANEL_EDGE_INSET) +
+              responsivePanelLayout.navigatorWidth +
               (PANEL_GAP / 2) -
               PANEL_SASH_HALF_HIT_WIDTH,
             transition: isResizing === 'session-list' ? undefined : 'left 0.15s ease-out',
@@ -3813,7 +4094,7 @@ function AppShellContent({
         <WorkspaceCreationScreen
           initialStep="remote"
           onWorkspaceCreated={(workspace) => { void handleProjectCreatedFromScreen(workspace) }}
-          onClose={closeProjectCreateScreen}
+          onClose={cancelProjectCreateScreen}
         />
       )}
 

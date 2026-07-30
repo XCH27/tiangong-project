@@ -1,10 +1,12 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "declaration": true,
-    "declarationDir": "./dist",
+    // No rootDir/outDir/declaration here on purpose. This package is never built
+    // by tsc: package.json `main`/`types`/`exports` all point at raw `src/*.ts`,
+    // there is no build script, and the root config sets `noEmit`. Declaring
+    // `rootDir: ./src` made every `@craft-agent/core` import (which resolves to
+    // ../core/src per `paths`) a TS6059 "not under rootDir" error, which is why
+    // `typecheck:all` — and therefore `validate:dev` — could not pass.
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],

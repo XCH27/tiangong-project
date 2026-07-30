@@ -1,3 +1,10 @@
+import {
+  THINKING_LEVELS,
+  isValidThinkingLevel,
+  type ThinkingLevel,
+  type ThinkingLevelDefinition,
+} from '../agent/thinking-levels.ts';
+
 /**
  * Centralized Model Registry
  *
@@ -111,10 +118,46 @@ export interface ModelDefinition {
   provider: ModelProvider;
   /** Maximum context window in tokens */
   contextWindow: number;
-  /** Whether this model supports thinking/reasoning effort. Defaults to true when undefined. */
+  /**
+   * Whether this model exposes a user-selectable thinking/reasoning effort.
+   * Missing metadata means unknown, so the UI must not guess or render a control.
+   */
   supportsThinking?: boolean;
+  /**
+   * Provider-advertised reasoning values. When present, the UI and adapter
+   * must only expose this subset of the Fleet thinking vocabulary.
+   *
+   * Providers commonly call this `supportedReasoningEfforts`; we retain the
+   * normalized values here so model discovery remains the single authority.
+   */
+  supportedReasoningEfforts?: readonly string[];
+  /** Whether the provider exposes a request-level fast/speed mode for this model. */
+  supportsFastMode?: boolean;
+  /**
+   * Provider-native request modes advertised for this exact model.
+   *
+   * These are deliberately separate from reasoning effort: for example,
+   * OpenAI's `fast` mode selects priority service while `pro` changes a
+   * provider-specific reasoning mode. Neither is another model ID.
+   */
+  runtimeModes?: Readonly<Record<string, ModelRuntimeMode>>;
   /** Explicit per-model image input capability hint, primarily for custom endpoints. */
   supportsImages?: boolean;
+  /**
+   * Provider-advertised input modalities. Discovered API and CLI models keep
+   * this lossless projection; static models may fall back to text plus
+   * `supportsImages`.
+   */
+  inputModalities?: readonly ('text' | 'image' | 'audio' | 'video' | 'pdf')[];
+}
+
+export interface ModelRuntimeMode {
+  /** Provider request-body fragment to merge when the mode is selected. */
+  requestBody?: Readonly<Record<string, unknown>>;
+  /** Provider request headers to merge when the mode is selected. */
+  requestHeaders?: Readonly<Record<string, string>>;
+  /** Optional usage multiplier surfaced by provider metadata. */
+  quotaMultiplier?: number;
 }
 
 // ============================================
@@ -137,6 +180,9 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.opusDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
+    supportsThinking: true,
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+    supportsFastMode: true,
   },
   {
     id: 'claude-opus-4-7',
@@ -146,6 +192,8 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.opusDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
+    supportsThinking: true,
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     id: 'claude-sonnet-5',
@@ -155,6 +203,8 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.sonnetDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
+    supportsThinking: true,
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     id: 'claude-sonnet-4-6',
@@ -164,6 +214,8 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.sonnetDesc',
     provider: 'anthropic',
     contextWindow: 200_000,
+    supportsThinking: true,
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     id: 'claude-haiku-4-5-20251001',
@@ -173,6 +225,8 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.haikuDesc',
     provider: 'anthropic',
     contextWindow: 200_000,
+    supportsThinking: true,
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
   },
   {
     id: 'claude-fable-5',
@@ -182,6 +236,8 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.fableDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
+    supportsThinking: true,
+    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
 
   // ----------------------------------------
@@ -213,6 +269,51 @@ export const ANTHROPIC_MODELS = getModelsByProvider('anthropic');
  * @deprecated Use ANTHROPIC_MODELS or MODEL_REGISTRY instead
  */
 export const MODELS = ANTHROPIC_MODELS;
+
+/**
+ * Convert provider-specific reasoning labels into Fleet's persisted thinking
+ * vocabulary. Unknown values are intentionally ignored: sending a value the
+ * adapter does not understand is worse than hiding an option.
+ */
+function normalizeProviderThinkingLevel(value: string): ThinkingLevel | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'default') return 'medium';
+  if (normalized === 'none' || normalized === 'disabled' || normalized === 'off') return 'off';
+  return isValidThinkingLevel(normalized) ? normalized : undefined;
+}
+
+/**
+ * Resolve the effort choices for one model. This is deliberately capability
+ * based rather than provider based, matching OpenCode's model catalog.
+ */
+export function getThinkingLevelsForModel(
+  model: ModelDefinition | string | undefined,
+): readonly ThinkingLevelDefinition[] {
+  // A bare custom-endpoint model string has no capability metadata. Do not
+  // expose a control that would send an unsupported reasoning parameter.
+  if (!model || typeof model === 'string') return [];
+  // An explicit denial always wins. A stale provider catalog must not make
+  // the composer send a reasoning parameter the adapter has ruled out.
+  if (model.supportsThinking === false) return [];
+  const advertised = model.supportedReasoningEfforts;
+  // Explicit effort values are themselves a positive capability declaration.
+  // When neither it nor supportsThinking is present, remain conservative.
+  if (model.supportsThinking !== true && (!advertised || advertised.length === 0)) return [];
+  // `supportsThinking` alone only says the model reasons; it does not define a
+  // request-level effort vocabulary. Static/custom models must advertise the
+  // selectable values explicitly. Pi discovery translates its SDK contract
+  // into `supportedReasoningEfforts` before the renderer sees the model.
+  if (!advertised || advertised.length === 0) return [];
+  const ids = new Set(advertised.map(normalizeProviderThinkingLevel).filter(
+    (value): value is ThinkingLevel => value !== undefined,
+  ));
+  return THINKING_LEVELS.filter(level => ids.has(level.id));
+}
+
+/** Fast mode is opt-in and must be advertised by the selected model. */
+export function modelSupportsFastMode(model: ModelDefinition | string | undefined): boolean {
+  return typeof model !== 'string' && model?.supportsFastMode === true;
+}
 
 // ============================================
 // MODEL ID HELPERS (Derived from Registry)

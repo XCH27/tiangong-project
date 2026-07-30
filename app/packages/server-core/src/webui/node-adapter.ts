@@ -11,6 +11,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 
 type WebHandler = (req: Request) => Promise<Response> | Response
 
+/** Maximum allowed request body size (10 MB) to mitigate DoS via oversized payloads. */
+const MAX_BODY_BYTES = 10 * 1024 * 1024
+
 /**
  * Wrap a web-standard fetch handler as a Node HTTP request listener.
  * WebSocket upgrade requests are NOT routed through this adapter —
@@ -50,8 +53,21 @@ async function handleRequest(
   let body: Buffer | null = null
   if (nodeReq.method !== 'GET' && nodeReq.method !== 'HEAD') {
     const chunks: Buffer[] = []
+    let totalBytes = 0
+    let tooLarge = false
     for await (const chunk of nodeReq) {
-      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
+      totalBytes += buf.length
+      if (totalBytes > MAX_BODY_BYTES) {
+        tooLarge = true
+        break
+      }
+      chunks.push(buf)
+    }
+    if (tooLarge) {
+      nodeRes.writeHead(413, { 'Content-Type': 'text/plain' })
+      nodeRes.end('Request body too large')
+      return
     }
     body = Buffer.concat(chunks)
   }

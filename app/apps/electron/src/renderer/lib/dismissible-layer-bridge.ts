@@ -1,43 +1,26 @@
-export type DismissibleLayerType = 'radix-dialog' | 'radix-popover' | 'island' | 'modal' | 'custom'
+/**
+ * Dismissible-layer bridge — re-export only.
+ *
+ * SINGLE AUTHORITY (NON-NEGOTIABLES §2): the bridge lives in `@craft-agent/ui`
+ * and is the one place that owns the layer registry. This module used to be a
+ * byte-identical 43-line copy of it, which meant the renderer and the UI package
+ * each compiled their own structurally-unrelated `DismissibleLayerRegistration`.
+ * The two copies only appeared to cooperate because they share a `globalThis`
+ * key at runtime — TypeScript could not relate them, so drift in either copy
+ * would have broken Escape/dismiss ordering silently, with `tsc` green.
+ *
+ * Import from here or from `@craft-agent/ui` directly; both resolve to the same
+ * module instance and the same types.
+ */
 
-export interface DismissibleLayerRegistration {
-  id: string
-  type: DismissibleLayerType
-  priority?: number
-  isOpen?: boolean
-  close: () => void
-  canBack?: () => boolean
-  back?: () => boolean
-}
+export {
+  setDismissibleLayerBridge,
+  getDismissibleLayerBridge,
+} from '@craft-agent/ui'
 
-export interface DismissibleLayerSnapshot {
-  id: string
-  type: DismissibleLayerType
-  priority: number
-}
-
-export interface DismissibleLayerBridge {
-  registerLayer: (layer: DismissibleLayerRegistration) => () => void
-  hasOpenLayers: () => boolean
-  getTopLayer: () => DismissibleLayerSnapshot | null
-  closeTop: () => boolean
-  handleEscape: () => boolean
-}
-
-const BRIDGE_KEY = '__craftAgentDismissibleLayerBridge__'
-
-type BridgeHost = typeof globalThis & {
-  [BRIDGE_KEY]?: DismissibleLayerBridge | null
-}
-
-function getBridgeHost(): BridgeHost {
-  return globalThis as BridgeHost
-}
-
-export function setDismissibleLayerBridge(bridge: DismissibleLayerBridge | null): void {
-  getBridgeHost()[BRIDGE_KEY] = bridge
-}
-
-export function getDismissibleLayerBridge(): DismissibleLayerBridge | null {
-  return getBridgeHost()[BRIDGE_KEY] ?? null
-}
+export type {
+  DismissibleLayerType,
+  DismissibleLayerRegistration,
+  DismissibleLayerSnapshot,
+  DismissibleLayerBridge,
+} from '@craft-agent/ui'

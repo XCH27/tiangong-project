@@ -14,7 +14,6 @@
  * route these links to your own site.
  */
 const DEFAULT_DOC_BASE_URL = 'https://agents.craft.do/docs'
-const DEFAULT_DOCS_MCP_URL = 'https://agents.craft.do/docs/mcp'
 
 function getDocsBaseUrl(): string {
   // Renderer bundles have no process env; they keep the default. The override
@@ -29,12 +28,11 @@ export function getDocsHomeUrl(): string {
 
 export function getDocsMcpUrl(): string | null {
   const override = typeof process !== 'undefined' ? process.env.FLEET_DOCS_MCP_URL?.trim() : undefined
-  if (override === 'off') return null
-  return override || DEFAULT_DOCS_MCP_URL
+  if (!override || override === 'off') return null
+  return override
 }
 
 export type DocFeature =
-  | 'sharing'
   | 'sources'
   | 'sources-api'
   | 'sources-mcp'
@@ -60,12 +58,6 @@ export interface DocInfo {
 }
 
 export const DOCS: Record<DocFeature, DocInfo> = {
-  sharing: {
-    path: '/go-further/sharing',
-    title: 'Sharing',
-    summary:
-      'Share a session as a read-only web page. Online sharing needs a viewer you configure; local export always works.',
-  },
   sources: {
     path: '/sources/overview',
     title: 'Sources',
@@ -106,7 +98,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
     path: '/core-concepts/permissions',
     title: 'Permissions',
     summary:
-      'Control how much autonomy your agent has. Explore mode is read-only, Ask to Edit prompts before changes, and Execute mode runs without prompts.',
+      'Choose Auto, Explore, Plan, or Execute for the work phase. Execution approval is configured separately, so Execute can still ask before privileged actions.',
   },
   labels: {
     path: '/labels/overview',

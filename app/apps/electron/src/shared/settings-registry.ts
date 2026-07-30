@@ -35,17 +35,71 @@ export interface SettingsPageDefinition {
  * time via t(). Do NOT call i18n.t() here — this module loads before i18n init.
  */
 export const SETTINGS_PAGES = [
-  { id: 'app' as const, labelKey: 'settings.app.title', descriptionKey: 'settings.app.description' },
-  { id: 'ai' as const, labelKey: 'settings.ai.title', descriptionKey: 'settings.ai.description' },
-  { id: 'appearance' as const, labelKey: 'settings.appearance.title', descriptionKey: 'settings.appearance.description' },
-  { id: 'input' as const, labelKey: 'settings.input.title', descriptionKey: 'settings.input.description' },
-  { id: 'workspace' as const, labelKey: 'settings.workspace.title', descriptionKey: 'settings.workspace.description' },
-  { id: 'permissions' as const, labelKey: 'settings.permissions.title', descriptionKey: 'settings.permissions.description' },
-  { id: 'labels' as const, labelKey: 'settings.labels.title', descriptionKey: 'settings.labels.description' },
-  { id: 'messaging' as const, labelKey: 'settings.messaging.title', descriptionKey: 'settings.messaging.description' },
-  { id: 'server' as const, labelKey: 'settings.server.title', descriptionKey: 'settings.server.description' },
-  { id: 'shortcuts' as const, labelKey: 'settings.shortcuts.title', descriptionKey: 'settings.shortcuts.description' },
-  { id: 'preferences' as const, labelKey: 'settings.preferences.title', descriptionKey: 'settings.preferences.description' },
+  {
+    id: 'app' as const,
+    labelKey: 'settings.app.title',
+    descriptionKey: 'settings.app.description',
+  },
+  {
+    id: 'ai' as const,
+    labelKey: 'settings.ai.title',
+    descriptionKey: 'settings.ai.description',
+  },
+  {
+    id: 'terminal' as const,
+    labelKey: 'settings.terminal.title',
+    descriptionKey: 'settings.terminal.description',
+  },
+  {
+    id: 'appearance' as const,
+    labelKey: 'settings.appearance.title',
+    descriptionKey: 'settings.appearance.description',
+  },
+  {
+    id: 'input' as const,
+    labelKey: 'settings.input.title',
+    descriptionKey: 'settings.input.description',
+  },
+  {
+    id: 'workspace' as const,
+    labelKey: 'settings.workspace.title',
+    descriptionKey: 'settings.workspace.description',
+  },
+  {
+    id: 'permissions' as const,
+    labelKey: 'settings.permissions.title',
+    descriptionKey: 'settings.permissions.description',
+  },
+  {
+    id: 'labels' as const,
+    labelKey: 'settings.labels.title',
+    descriptionKey: 'settings.labels.description',
+  },
+  {
+    id: 'messaging' as const,
+    labelKey: 'settings.messaging.title',
+    descriptionKey: 'settings.messaging.description',
+  },
+  {
+    id: 'server' as const,
+    labelKey: 'settings.server.title',
+    descriptionKey: 'settings.server.description',
+  },
+  {
+    id: 'shortcuts' as const,
+    labelKey: 'settings.shortcuts.title',
+    descriptionKey: 'settings.shortcuts.description',
+  },
+  {
+    id: 'preferences' as const,
+    labelKey: 'settings.preferences.title',
+    descriptionKey: 'settings.preferences.description',
+  },
+  {
+    id: 'archived' as const,
+    labelKey: 'settings.archived.title',
+    descriptionKey: 'settings.archived.description',
+  },
 ] satisfies readonly SettingsPageDefinition[]
 
 /**
@@ -57,12 +111,15 @@ export type SettingsSubpage = (typeof SETTINGS_PAGES)[number]['id']
 /**
  * Array of valid settings subpage IDs - for runtime validation
  */
-export const VALID_SETTINGS_SUBPAGES: readonly SettingsSubpage[] = SETTINGS_PAGES.map(p => p.id)
+export const VALID_SETTINGS_SUBPAGES: readonly SettingsSubpage[] =
+  SETTINGS_PAGES.map((p) => p.id)
 
 /**
  * Type guard to check if a string is a valid settings subpage
  */
-export function isValidSettingsSubpage(value: string): value is SettingsSubpage {
+export function isValidSettingsSubpage(
+  value: string,
+): value is SettingsSubpage {
   return VALID_SETTINGS_SUBPAGES.includes(value as SettingsSubpage)
 }
 
@@ -70,7 +127,7 @@ export function isValidSettingsSubpage(value: string): value is SettingsSubpage 
  * Get settings page definition by ID
  */
 export function getSettingsPage(id: SettingsSubpage): SettingsPageDefinition {
-  const page = SETTINGS_PAGES.find(p => p.id === id)
+  const page = SETTINGS_PAGES.find((p) => p.id === id)
   if (!page) throw new Error(`Unknown settings page: ${id}`)
   return page
 }

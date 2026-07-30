@@ -208,6 +208,8 @@ describe('ClaudeEventAdapter', () => {
         type: 'usage_update',
         usage: {
           inputTokens: 1700, // 1000 + 500 + 200
+          cacheReadTokens: 500,
+          cacheCreationTokens: 200,
         },
       });
     });

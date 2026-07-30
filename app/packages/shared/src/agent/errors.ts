@@ -4,15 +4,20 @@
  * These error types map HTTP status codes and error patterns to
  * actionable error information that can be displayed to users.
  *
- * The `ErrorCode` union is owned by `@craft-agent/core` so the wire
- * format (which crosses package boundaries) stays in one place; this
- * file owns the user-facing text and recovery actions for each code.
+ * The `ErrorCode` union and `RecoveryAction` shape are owned by
+ * `@craft-agent/core` so the wire format (which crosses package boundaries)
+ * stays in one place; this file owns the user-facing text and the concrete
+ * recovery actions built for each code.
  */
 
-import type { ErrorCode } from '@craft-agent/core/types';
+import type { ErrorCode, RecoveryAction, TypedError } from '@craft-agent/core/types';
 import { getProviderMetadata } from '../config/provider-metadata.ts';
 
-export type { ErrorCode };
+// Re-exported, not redeclared. `RecoveryAction` was previously a verbatim
+// second copy of the core interface; because the two were structurally
+// unrelated declarations, a field added on either side would have type-checked
+// clean while silently failing to cross the package boundary.
+export type { ErrorCode, RecoveryAction };
 
 /** Provider info attached to errors for user-facing context */
 export interface ProviderInfo {
@@ -21,38 +26,7 @@ export interface ProviderInfo {
   dashboardUrl?: string;
 }
 
-export interface RecoveryAction {
-  /** Keyboard shortcut (single letter) */
-  key: string;
-  /** Description of the action */
-  label: string;
-  /** Slash command to execute (e.g., '/settings') */
-  command?: string;
-  /** Custom action type for special handling */
-  action?: 'retry' | 'settings' | 'reauth' | 'open_url' | 'reconnect_source';
-  /** URL to open (for 'open_url' action) */
-  url?: string;
-  /** Source slug (for 'reconnect_source' action) */
-  sourceSlug?: string;
-}
-
-export interface AgentError {
-  /** Error code for programmatic handling */
-  code: ErrorCode;
-  /** User-friendly title */
-  title: string;
-  /** Detailed message explaining what went wrong */
-  message: string;
-  /** Suggested recovery actions */
-  actions: RecoveryAction[];
-  /** Whether auto-retry is possible */
-  canRetry: boolean;
-  /** Retry delay in ms (if canRetry is true) */
-  retryDelayMs?: number;
-  /** Original error message for debugging */
-  originalError?: string;
-  /** Diagnostic check results for debugging */
-  details?: string[];
+export interface AgentError extends TypedError {
   /** Provider info for user-facing context */
   providerInfo?: ProviderInfo;
 }

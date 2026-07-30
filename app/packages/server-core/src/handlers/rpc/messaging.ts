@@ -27,7 +27,8 @@ export function registerMessagingHandlers(server: RpcServer, deps: HandlerDeps):
     return { success: true }
   })
 
-  server.handle(RPC_CHANNELS.messaging.TEST_TELEGRAM, async (_ctx, token: string) => {
+  server.handle(RPC_CHANNELS.messaging.TEST_TELEGRAM, async (ctx, token: string) => {
+    if (!ctx.workspaceId) throw new Error('Missing workspaceId')
     return registry.testTelegramToken(token)
   })
 
@@ -38,9 +39,10 @@ export function registerMessagingHandlers(server: RpcServer, deps: HandlerDeps):
   })
 
   server.handle(RPC_CHANNELS.messaging.TEST_LARK, async (
-    _ctx,
+    ctx,
     creds: { appId: string; appSecret: string; domain: 'lark' | 'feishu' },
   ) => {
+    if (!ctx.workspaceId) throw new Error('Missing workspaceId')
     return registry.testLarkCredentials(creds)
   })
 

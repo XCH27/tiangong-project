@@ -32,8 +32,40 @@ const AUDIT_LOG_PATH = join(homedir(), '.craft-agent', 'logs', 'privileged-actio
  */
 export class PrivilegedExecutionBroker {
   private pending = new Map<string, PendingPrivilegedRequest>()
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null
 
-  constructor(private logger: Logger) {}
+  constructor(private logger: Logger) {
+    // Periodically purge expired pending requests so they don't leak memory
+    // when the user never responds (UI closed, forgot, etc.).
+    this.cleanupTimer = setInterval(() => {
+      const now = Date.now()
+      for (const [id, req] of this.pending) {
+        if (now > req.expiresAt) {
+          this.pending.delete(id)
+          void this.appendAudit({
+            event: 'privileged_request_expired_uncollected',
+            requestId: req.requestId,
+            sessionId: req.sessionId,
+            commandHash: req.commandHash,
+            expiresAt: req.expiresAt,
+          })
+        }
+      }
+    }, 60_000)
+    // Don't keep the Node.js event loop alive solely for this timer.
+    this.cleanupTimer.unref?.()
+  }
+
+  /**
+   * Stop the cleanup timer. Called during shutdown to avoid dangling handles.
+   */
+  dispose(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+    this.pending.clear()
+  }
 
   createRequest(input: {
     requestId: string
@@ -156,6 +188,20 @@ export class PrivilegedExecutionBroker {
 
   private validatePolicy(command: string): { allowed: boolean; reason?: string } {
     const normalized = command.trim().toLowerCase()
+
+    // Reject shell metacharacters that allow command chaining/injection.
+    // This prevents payloads like "brew install --cask foo && rm -rf /".
+    // NOTE: the character class must NOT contain alternation branches — an
+    // earlier version used `...|\b||\b` which JS parses as `\b | (empty) | \b`,
+    // and the empty branch matches every string, rejecting ALL commands.
+    const dangerousMetachars = /[;&|`$()\n\r<>\\]/
+    if (dangerousMetachars.test(normalized)) {
+      return {
+        allowed: false,
+        reason: 'Privileged execution policy rejects commands with shell metacharacters (chaining, pipes, substitution)',
+      }
+    }
+
     const allowlisted =
       /^brew\s+install\s+--cask\s+/.test(normalized) ||
       /^brew\s+upgrade\s+--cask\s+/.test(normalized) ||

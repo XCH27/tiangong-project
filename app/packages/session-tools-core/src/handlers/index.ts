@@ -9,6 +9,10 @@
 export { handleSubmitPlan } from './submit-plan.ts';
 export type { SubmitPlanArgs } from './submit-plan.ts';
 
+// EnterPlan
+export { handleEnterPlan } from './enter-plan.ts';
+export type { EnterPlanArgs } from './enter-plan.ts';
+
 // Config Validate
 export { handleConfigValidate } from './config-validate.ts';
 export type { ConfigValidateArgs } from './config-validate.ts';
@@ -66,6 +70,8 @@ export type { SendDeveloperFeedbackArgs } from './send-developer-feedback.ts';
 // Session Self-Management
 export { handleSetSessionLabels } from './set-session-labels.ts';
 export type { SetSessionLabelsArgs } from './set-session-labels.ts';
+export { handleSetSessionGoal } from './set-session-goal.ts';
+export type { SetSessionGoalArgs } from './set-session-goal.ts';
 export { handleSetSessionStatus } from './set-session-status.ts';
 export type { SetSessionStatusArgs } from './set-session-status.ts';
 export { handleGetSessionInfo } from './get-session-info.ts';

@@ -3,8 +3,16 @@ import { isMac } from '@/lib/platform'
 /** Gap between any adjacent panels (sidebar ↔ navigator ↔ content ↔ right sidebar) */
 export const PANEL_GAP = 6
 
-/** Padding from window edges to outermost panels (right, bottom, left when sidebar hidden) */
+/** Sidebar seams use the same panel rhythm as every adjacent panel. */
+export const PANEL_SIDEBAR_GAP = PANEL_GAP
+
+/** Padding from window edges to outermost panels (right, left when sidebar hidden) */
 export const PANEL_EDGE_INSET = 6
+
+/** The outer desktop edges share one canonical Craft inset. */
+export const PANEL_TOP_EDGE_INSET = PANEL_EDGE_INSET
+export const PANEL_RIGHT_EDGE_INSET = PANEL_EDGE_INSET
+export const PANEL_BOTTOM_EDGE_INSET = PANEL_EDGE_INSET
 
 /** Corner radius for panel edges touching the window boundary (macOS native corners → larger) */
 export const RADIUS_EDGE = isMac ? 14 : 8
@@ -14,6 +22,9 @@ export const RADIUS_INNER = 10
 
 /** Minimum width for any content panel */
 export const PANEL_MIN_WIDTH = 440
+
+/** Minimum usable width for the right workbench before left-side chrome yields. */
+export const RIGHT_WORKBENCH_MIN_WIDTH = 320
 
 /** Extra vertical space reserved in panel stack for box-shadows. */
 export const PANEL_STACK_VERTICAL_OVERFLOW = 8

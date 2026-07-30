@@ -1,9 +1,6 @@
 /**
- * LabelsDataTable
- *
- * Hierarchical data table for displaying label configurations.
- * Uses TanStack Table's built-in expand/collapse for tree rendering.
- * Columns: Color, Name (indented + chevron), Value Type.
+ * LabelsDataTable — hierarchical catalog (Craft).
+ * Tree expand/collapse + optional whole-row select for settings editor.
  */
 
 import * as React from 'react'
@@ -22,44 +19,35 @@ import type { LabelConfig } from '@craft-agent/shared/labels'
 import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 interface LabelsDataTableProps {
-  /** Label tree (root-level nodes with nested children) */
   data: LabelConfig[]
-  /** Show search input */
   searchable?: boolean
-  /** Max height with scroll */
   maxHeight?: number
-  /** Enable fullscreen button */
   fullscreen?: boolean
-  /** Title for fullscreen overlay */
   fullscreenTitle?: string
-  /** Select a label for its settings/detail panel */
+  /** Settings: highlight + click to edit */
+  selectedLabelId?: string | null
   onLabelSelect?: (labelId: string) => void
+  /** Show purpose column (functional / identity) */
+  showPurposeColumn?: boolean
   className?: string
 }
 
-/**
- * ExpandableNameCell - Renders label name with indentation and expand/collapse chevron.
- * Depth-based indentation with a rotating chevron for parent nodes.
- */
 function ExpandableNameCell({
   row,
   t,
-  onLabelSelect,
 }: {
   row: Row<LabelConfig>
   t: TFunction
-  onLabelSelect?: (labelId: string) => void
 }) {
   const canExpand = row.getCanExpand()
   const isExpanded = row.getIsExpanded()
+  const name = getLocalizedLabelName(t, row.original)
 
   return (
     <div
       className="flex items-center gap-1.5 p-1.5 pl-2.5"
-      // Indent based on depth: 16px per level
       style={{ paddingLeft: `${row.depth * 16 + 10}px` }}
     >
-      {/* Expand/collapse chevron for parent nodes */}
       {canExpand ? (
         <button
           type="button"
@@ -68,44 +56,34 @@ function ExpandableNameCell({
             row.toggleExpanded()
           }}
           className="p-0.5 rounded hover:bg-foreground/5 transition-colors"
+          aria-expanded={isExpanded}
         >
           <ChevronRight
             className={cn(
               'w-3 h-3 text-muted-foreground transition-transform duration-150',
-              isExpanded && 'rotate-90'
+              isExpanded && 'rotate-90',
             )}
           />
         </button>
       ) : (
-        // Spacer to keep alignment consistent with expandable rows
-        <span className="w-4" />
+        <span className="w-4 shrink-0" />
       )}
-      {onLabelSelect ? (
-        <button
-          type="button"
-          className="min-w-0 truncate text-left text-sm hover:underline"
-          onClick={() => onLabelSelect(row.original.id)}
-        >
-          {getLocalizedLabelName(t, row.original)}
-        </button>
-      ) : (
-        <span className="min-w-0 truncate text-sm">
-          {getLocalizedLabelName(t, row.original)}
-        </span>
-      )}
+      <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+        #{row.original.id}
+      </span>
     </div>
   )
 }
 
-// Column definitions for the labels tree table
 function getColumns(
   t: TFunction,
-  onLabelSelect?: (labelId: string) => void,
+  showPurposeColumn: boolean,
 ): ColumnDef<LabelConfig>[] {
-  return [
+  const columns: ColumnDef<LabelConfig>[] = [
     {
       id: 'color',
-      header: () => <span className="p-1.5 pl-2.5">{t("common.color")}</span>,
+      header: () => <span className="p-1.5 pl-2.5">{t('common.color')}</span>,
       cell: ({ row }) => (
         <div className="p-1.5 pl-2.5">
           <LabelIcon
@@ -115,42 +93,59 @@ function getColumns(
           />
         </div>
       ),
-      minSize: 60,
-      maxSize: 60,
+      minSize: 56,
+      maxSize: 56,
+      enableSorting: false,
     },
     {
       id: 'name',
-      header: ({ column }) => <SortableHeader column={column} title={t("common.name")} />,
+      header: ({ column }) => <SortableHeader column={column} title={t('common.name')} />,
       accessorFn: (row) => getLocalizedLabelName(t, row),
-      cell: ({ row }) => (
-        <ExpandableNameCell row={row} t={t} onLabelSelect={onLabelSelect} />
-      ),
+      cell: ({ row }) => <ExpandableNameCell row={row} t={t} />,
       meta: { fillWidth: true },
     },
-    {
-      id: 'valueType',
-      accessorKey: 'valueType',
-      header: ({ column }) => <SortableHeader column={column} title={t("common.type")} />,
+  ]
+
+  if (showPurposeColumn) {
+    columns.push({
+      id: 'kind',
+      header: () => <span className="p-1.5 pl-2.5">{t('settings.labels.kindHeader')}</span>,
+      accessorFn: (row) => (row.kind === 'identity' ? 'identity' : 'functional'),
       cell: ({ row }) => (
         <div className="p-1.5 pl-2.5">
-          {row.original.valueType ? (
-            <Info_Badge color="muted" className="capitalize whitespace-nowrap">
-              {t(`sidebar.labelValueType.${row.original.valueType}`)}
-            </Info_Badge>
-          ) : (
-            <span className="text-muted-foreground/50 text-sm">—</span>
-          )}
+          <Info_Badge color="muted" className="whitespace-nowrap">
+            {row.original.kind === 'identity'
+              ? t('settings.labels.kindIdentity')
+              : t('settings.labels.kindFunctional')}
+          </Info_Badge>
         </div>
       ),
-      minSize: 120,
-    },
-  ]
+      minSize: 96,
+      enableSorting: false,
+    })
+  }
+
+  columns.push({
+    id: 'valueType',
+    accessorKey: 'valueType',
+    header: ({ column }) => <SortableHeader column={column} title={t('common.type')} />,
+    cell: ({ row }) => (
+      <div className="p-1.5 pl-2.5">
+        {row.original.valueType ? (
+          <Info_Badge color="muted" className="capitalize whitespace-nowrap">
+            {t(`sidebar.labelValueType.${row.original.valueType}`)}
+          </Info_Badge>
+        ) : (
+          <span className="text-muted-foreground/50 text-sm">—</span>
+        )}
+      </div>
+    ),
+    minSize: 100,
+  })
+
+  return columns
 }
 
-/**
- * Extract children from a LabelConfig for tree expansion.
- * Returns undefined if no children (tells TanStack this is a leaf node).
- */
 function getSubRows(row: LabelConfig): LabelConfig[] | undefined {
   return row.children?.length ? row.children : undefined
 }
@@ -161,64 +156,80 @@ export function LabelsDataTable({
   maxHeight = 400,
   fullscreen = false,
   fullscreenTitle = 'Labels',
+  selectedLabelId = null,
   onLabelSelect,
+  showPurposeColumn = false,
   className,
 }: LabelsDataTableProps) {
   const { t } = useTranslation()
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { isDark } = useTheme()
-  const columns = useMemo(() => getColumns(t, onLabelSelect), [t, onLabelSelect])
+  const columns = useMemo(
+    () => getColumns(t, showPurposeColumn),
+    [t, showPurposeColumn],
+  )
 
-  // Fullscreen button (shown on hover via group class)
   const fullscreenButton = fullscreen ? (
     <button
+      type="button"
       onClick={() => setIsFullscreen(true)}
       className={cn(
         'p-1 rounded-[6px] transition-all',
         'opacity-0 group-hover:opacity-100',
         'bg-background/80 backdrop-blur-sm shadow-minimal',
         'text-muted-foreground/50 hover:text-foreground',
-        'focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100'
+        'focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100',
       )}
-      title={t("table.viewFullscreen")}
+      title={t('table.viewFullscreen')}
     >
       <Maximize2 className="w-3.5 h-3.5" />
     </button>
   ) : undefined
 
-  // Count all labels recursively for the subtitle
-  const countLabels = (labels: LabelConfig[]): number =>
-    labels.reduce((sum, l) => sum + 1 + countLabels(l.children || []), 0)
+  const countLabels = (items: LabelConfig[]): number =>
+    items.reduce((sum, l) => sum + 1 + countLabels(l.children || []), 0)
   const totalCount = countLabels(data)
+
+  const getRowClassName = onLabelSelect
+    ? (row: LabelConfig) =>
+        row.id === selectedLabelId ? 'bg-foreground/[0.07]' : undefined
+    : undefined
+
+  const onRowClick = onLabelSelect
+    ? (row: LabelConfig) => onLabelSelect(row.id)
+    : undefined
 
   return (
     <>
       <Info_DataTable
         columns={columns}
         data={data}
-        searchable={searchable ? { placeholder: t("table.searchLabels") } : false}
+        searchable={searchable ? { placeholder: t('table.searchLabels') } : false}
         maxHeight={maxHeight}
-        emptyContent={t("table.noLabelsConfigured")}
+        emptyContent={t('table.noLabelsConfigured')}
         floatingAction={fullscreenButton}
         className={cn(fullscreen && 'group', className)}
         getSubRows={getSubRows}
+        getRowClassName={getRowClassName}
+        onRowClick={onRowClick}
       />
 
-      {/* Fullscreen overlay */}
       {fullscreen && (
         <DataTableOverlay
           isOpen={isFullscreen}
           onClose={() => setIsFullscreen(false)}
           title={fullscreenTitle}
-          subtitle={t("table.labelCount", { count: totalCount })}
+          subtitle={t('table.labelCount', { count: totalCount })}
           theme={isDark ? 'dark' : 'light'}
         >
           <Info_DataTable
             columns={columns}
             data={data}
-            searchable={searchable ? { placeholder: t("table.searchLabels") } : false}
-            emptyContent={t("table.noLabelsConfigured")}
+            searchable={searchable ? { placeholder: t('table.searchLabels') } : false}
+            emptyContent={t('table.noLabelsConfigured')}
             getSubRows={getSubRows}
+            getRowClassName={getRowClassName}
+            onRowClick={onRowClick}
           />
         </DataTableOverlay>
       )}

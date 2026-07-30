@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import {
   AlertTriangle,
+  ArrowDown,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -16,6 +17,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { toast } from "sonner"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { coerceInputText, appendRestoredInput } from "@/lib/input-text"
 import { Markdown, CollapsibleMarkdownProvider, StreamingMarkdown, type RenderMode } from "@/components/markdown"
@@ -42,7 +44,9 @@ import {
 } from "@craft-agent/ui"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
-import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill } from "../../../shared/types"
+import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill, Workspace } from "../../../shared/types"
+import { estimateContextBreakdown } from './input/context-breakdown'
+import { stripPiPrefixForDisplay } from './input/model-picker-helpers'
 import type { PermissionMode } from "@craft-agent/shared/agent/modes"
 import type { ThinkingLevel } from "@craft-agent/shared/agent/thinking-levels"
 import {
@@ -72,7 +76,7 @@ import { useNavigation } from "@/context/NavigationContext"
 import { useAppShellContext } from "@/context/AppShellContext"
 import { navigate, routes } from "@/lib/navigate"
 import { CHAT_LAYOUT } from "@/config/layout"
-import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
+import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity, summarizeFileChanges } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
 import { handleErrorMessageAction } from "./error-message-actions"
 
@@ -163,12 +167,11 @@ interface ChatDisplayProps {
   thinkingLevel?: ThinkingLevel
   /** Callback when thinking level changes */
   onThinkingLevelChange?: (level: ThinkingLevel) => void
+  fastMode?: boolean
+  onFastModeChange?: (enabled: boolean) => void
   // Advanced options
   /** Current permission mode */
   permissionMode?: PermissionMode
-  onPermissionModeChange?: (mode: PermissionMode) => void
-  /** Enabled permission modes for Shift+Tab cycling */
-  enabledModes?: PermissionMode[]
   // Input value preservation (controlled from parent)
   /** Current input value - preserved across mode switches and conversation changes */
   inputValue?: string
@@ -203,6 +206,8 @@ interface ChatDisplayProps {
   workingDirectory?: string
   /** Callback when working directory changes */
   onWorkingDirectoryChange?: (path: string) => void
+  /** Change the execution workspace for an empty session. */
+  onExecutionWorkspaceChange?: (workspaceId: string, workspace?: Workspace) => void
   /** Session folder path (for "Reset to Session Root" option) */
   sessionFolderPath?: string
   // Lazy loading
@@ -452,10 +457,10 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Thinking level
   thinkingLevel = 'medium',
   onThinkingLevelChange,
+  fastMode = false,
+  onFastModeChange,
   // Advanced options
   permissionMode = 'ask',
-  onPermissionModeChange,
-  enabledModes,
   // Input value preservation
   inputValue,
   onInputChange,
@@ -476,6 +481,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Working directory
   workingDirectory,
   onWorkingDirectoryChange,
+  onExecutionWorkspaceChange,
   sessionFolderPath,
   // Lazy loading
   messagesLoading = false,
@@ -507,6 +513,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const isInputDisabled = disabled
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const scrollViewportRef = React.useRef<HTMLDivElement>(null)
+  const [showScrollToBottom, setShowScrollToBottom] = React.useState(false)
   const prevSessionIdRef = React.useRef<string | null>(null)
   // Reverse pagination: show last N turns initially, load more on scroll up
   const TURNS_PER_PAGE = 20
@@ -525,6 +532,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const prevSessionIdForCommitScrollRef = React.useRef<string | null>(null)
   const internalTextareaRef = React.useRef<RichTextInputHandle>(null)
   const textareaRef = externalTextareaRef || internalTextareaRef
+  const inputValueRef = React.useRef(inputValue)
+  inputValueRef.current = inputValue
   const [sendMessageKey, setSendMessageKey] = useState<'enter' | 'cmd-enter'>('enter')
   const [openAnnotationRequest, setOpenAnnotationRequest] = React.useState<{
     messageId: string
@@ -1104,6 +1113,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight
     // 20px threshold for "at bottom" detection
     isStickToBottomRef.current = distanceFromBottom < 20
+    setShowScrollToBottom(distanceFromBottom >= 20)
 
     // Load more turns when scrolling near top (within 100px)
     if (scrollTop < 100) {
@@ -1124,6 +1134,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         return prev + TURNS_PER_PAGE
       })
     }
+  }, [])
+
+  const scrollToBottom = React.useCallback(() => {
+    isStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
   // Set up scroll event listener
@@ -1386,8 +1402,75 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Memoize turn grouping - avoids O(n) iteration on every render/keystroke
   const allTurns = React.useMemo(() => {
     if (!session) return []
-    return groupMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
+    return groupMessagesByTurn(
+      session.messages.filter((message) => !message.isQueued),
+      { isSessionProcessing: session.isProcessing },
+    )
   }, [session?.messages, session?.isProcessing])
+
+  const sessionFileChanges = React.useMemo(() => collectFileChangesFromActivities(
+    allTurns.flatMap((turn) => turn.type === 'assistant' ? turn.activities : []),
+  ).filter((change) => !change.error), [allTurns])
+  const sessionFileChangeSummary = React.useMemo(
+    () => summarizeFileChanges(sessionFileChanges),
+    [sessionFileChanges],
+  )
+
+  const queuedComposerItems = React.useMemo(() => {
+    if (!session) return []
+    return session.messages
+      .filter((message) => message.role === 'user' && message.isQueued && !message.hidden)
+      .map((message) => ({ id: message.id, text: coerceInputText(message.content) }))
+      .filter((item) => item.text.length > 0)
+  }, [session?.messages])
+
+  React.useEffect(() => {
+    setShowScrollToBottom(false)
+  }, [session?.id])
+
+  const removeQueuedComposerItem = React.useCallback(async (item: { id: string; text: string }) => {
+    if (!session) return undefined
+    const removed = await window.electronAPI.sessionCommand(session.id, {
+      type: 'removeQueuedMessage',
+      messageId: item.id,
+    })
+    if (typeof removed !== 'string') return undefined
+    return removed
+  }, [session?.id])
+
+  const handleEditQueuedComposerItem = React.useCallback(async (item: { id: string; text: string }) => {
+    try {
+      const restored = await removeQueuedComposerItem(item)
+      if (restored) onInputChange?.(appendRestoredInput(inputValueRef.current, restored))
+      textareaRef.current?.focus()
+    } catch (error) {
+      console.error('[ChatDisplay] Failed to edit queued message:', error)
+    }
+  }, [onInputChange, removeQueuedComposerItem, textareaRef])
+
+  const handleRemoveQueuedComposerItem = React.useCallback(async (item: { id: string; text: string }) => {
+    try {
+      await removeQueuedComposerItem(item)
+    } catch (error) {
+      console.error('[ChatDisplay] Failed to remove queued message:', error)
+    }
+  }, [removeQueuedComposerItem])
+
+  const handleRevertCompletedMessage = React.useCallback(async (message: Message) => {
+    if (!session || message.role !== 'user') return
+    try {
+      const restored = await window.electronAPI.sessionCommand(session.id, {
+        type: 'revertToUserMessage',
+        messageId: message.id,
+      })
+      if (typeof restored === 'string' && restored.trim()) {
+        onInputChange?.(appendRestoredInput(inputValueRef.current, restored))
+      }
+      textareaRef.current?.focus()
+    } catch (error) {
+      console.error('[ChatDisplay] Failed to revert completed message:', error)
+    }
+  }, [onInputChange, session, textareaRef])
 
   // Keep ref in sync for scroll handler
   totalTurnCountRef.current = allTurns.length
@@ -1630,6 +1713,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             onOpenUrl={onOpenUrl}
                             sessionId={session?.id}
                             compactMode={compactMode}
+                            canRetractCompleted={!session.isProcessing && !turn.message.isQueued}
+                            onRetractCompleted={handleRevertCompletedMessage}
                           />
                         </div>
                       )
@@ -1696,6 +1781,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
                     // Assistant turns - render with TurnCard (buffered streaming)
                     const assistantUiKey = getAssistantTurnUiKey(turn, index)
+                    const requestTurn = turns
+                      .slice(0, index)
+                      .findLast((candidate): candidate is UserTurn => candidate.type === 'user')
+                    const turnFileChangeSummary = summarizeFileChanges(
+                      collectFileChangesFromActivities(turn.activities).filter(change => !change.error),
+                    )
                     return (
                       <div
                         key={turnKey}
@@ -1712,6 +1803,18 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         sessionFolderPath={session.sessionFolderPath}
                         hasActiveFollowUpAnnotations={pendingFollowUpAnnotations.length > 0}
                         turnId={turn.turnId}
+                        modelName={stripPiPrefixForDisplay(
+                          requestTurn?.message.requestModel
+                            || session.model
+                            || '',
+                        ) || undefined}
+                        workMode={requestTurn?.message.requestWorkMode}
+                        fileChangeSummary={turnFileChangeSummary.fileCount > 0
+                          ? turnFileChangeSummary
+                          : undefined}
+                        durationMs={turn.isComplete && requestTurn && turn.completedAt !== undefined
+                          ? Math.max(0, turn.completedAt - requestTurn.message.timestamp)
+                          : undefined}
                         activities={turn.activities}
                         response={turn.response}
                         intent={turn.intent}
@@ -1916,11 +2019,25 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             </div>
           </div>
 
+          {showScrollToBottom && (
+            <div className="flex shrink-0 justify-center py-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label={t('chat.scrollToBottom')}
+                onClick={scrollToBottom}
+                className="h-8 w-8 rounded-full bg-background shadow-minimal"
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
           {/* === INPUT CONTAINER: FreeForm or Structured Input === */}
           <ChatInputZone
             compactMode={compactMode}
             permissionMode={permissionMode}
-            onPermissionModeChange={onPermissionModeChange}
             tasks={backgroundTasks}
             sessionId={session.id}
             sessionFolderPath={sessionFolderPath}
@@ -1932,6 +2049,19 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             sessionStatuses={sessionStatuses}
             currentSessionStatus={session.sessionStatus || 'todo'}
             onSessionStatusChange={onSessionStatusChange}
+            composerContext={!compactMode ? {
+              fileSummary: sessionFileChangeSummary.fileCount > 0 ? sessionFileChangeSummary : undefined,
+              queuedItems: queuedComposerItems,
+              onOpenFileChanges: sessionFileChanges.length > 0 ? () => {
+                setOverlayState({
+                  type: 'multi-diff',
+                  changes: sessionFileChanges,
+                  consolidated: true,
+                })
+              } : undefined,
+              onEditQueued: handleEditQueuedComposerItem,
+              onRemoveQueued: handleRemoveQueuedComposerItem,
+            } : undefined}
             inputProps={{
               placeholder,
               disabled: isInputDisabled,
@@ -1944,7 +2074,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onModelChange,
               thinkingLevel,
               onThinkingLevelChange,
-              enabledModes,
+              fastMode,
+              onFastModeChange,
               enableCompactModelPicker,
               structuredInput,
               onStructuredResponse: handleStructuredResponse,
@@ -1959,6 +2090,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               workspaceId,
               workingDirectory,
               onWorkingDirectoryChange,
+              onExecutionWorkspaceChange,
               disableSend: disableSend || connectionUnavailable,
               connectionUnavailable,
               isEmptySession: session.messages.length === 0,
@@ -1968,6 +2100,14 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                 isCompacting: session.currentStatus?.statusType === 'compacting',
                 inputTokens: session.tokenUsage?.inputTokens,
                 contextWindow: session.tokenUsage?.contextWindow,
+                outputTokens: session.tokenUsage?.outputTokens,
+                cacheReadTokens: session.tokenUsage?.cacheReadTokens,
+                cacheCreationTokens: session.tokenUsage?.cacheCreationTokens,
+                costUsd: session.tokenUsage?.costUsd,
+                breakdown: estimateContextBreakdown(
+                  session.messages,
+                  session.tokenUsage?.inputTokens,
+                ),
               },
               followUpItems: followUpInputItems,
               onFollowUpClick: handleFollowUpChipClick,
@@ -2003,6 +2143,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             onClose={handleCloseOverlay}
             content={activityOutputOverlayData.content}
             filePath={activityOutputOverlayData.filePath}
+            filePathActions={activityOutputOverlayData.filePathActions}
             mode={activityOutputOverlayData.mode}
             startLine={activityOutputOverlayData.startLine}
             totalLines={activityOutputOverlayData.totalLines}
@@ -2040,6 +2181,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             onOpenUrl={onOpenUrl}
             onOpenFile={onOpenFile}
             filePath={activityOutputOverlayData.filePath}
+            filePathActions={activityOutputOverlayData.filePathActions}
             typeBadge={{
               icon: Info,
               label: activityOutputOverlayData.toolName,
@@ -2097,6 +2239,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             onClose={handleCloseOverlay}
             content={overlayState.content}
             filePath="response.md"
+            filePathActions={false}
             language="markdown"
             mode="read"
             theme={isDark ? 'dark' : 'light'}
@@ -2144,6 +2287,8 @@ interface MessageBubbleProps {
   compactMode?: boolean
   /** Callback to resend the user message that preceded an error */
   onRetry?: () => void
+  canRetractCompleted?: boolean
+  onRetractCompleted?: (message: Message) => void | Promise<void>
 }
 
 /**
@@ -2231,6 +2376,8 @@ function MessageBubble({
   onPopOut,
   compactMode,
   onRetry,
+  canRetractCompleted,
+  onRetractCompleted,
 }: MessageBubbleProps) {
   const { t } = useTranslation()
 
@@ -2243,6 +2390,23 @@ function MessageBubble({
         badges={message.badges}
         isPending={message.isPending}
         isQueued={message.isQueued}
+        timestamp={message.timestamp}
+        modelName={
+          message.requestModel
+            ? stripPiPrefixForDisplay(message.requestModel)
+            : undefined
+        }
+        workMode={message.requestWorkMode}
+        onRetract={message.isQueued && sessionId
+          ? async () => {
+              await window.electronAPI.sessionCommand(sessionId, {
+                type: 'removeQueuedMessage',
+                messageId: message.id,
+              })
+            }
+          : canRetractCompleted && onRetractCompleted
+            ? () => onRetractCompleted(message)
+            : undefined}
         onUrlClick={onOpenUrl}
         onFileClick={onOpenFile}
         compactMode={compactMode}
@@ -2381,7 +2545,13 @@ const MemoizedMessageBubble = React.memo(MessageBubble, (prev, next) => {
     prev.message.id === next.message.id &&
     prev.message.content === next.message.content &&
     prev.message.role === next.message.role &&
+    prev.message.isQueued === next.message.isQueued &&
+    prev.message.timestamp === next.message.timestamp &&
+    prev.message.requestModel === next.message.requestModel &&
+    prev.message.requestWorkMode === next.message.requestWorkMode &&
     prev.sessionId === next.sessionId &&
-    prev.compactMode === next.compactMode
+    prev.compactMode === next.compactMode &&
+    prev.canRetractCompleted === next.canRetractCompleted &&
+    prev.onRetractCompleted === next.onRetractCompleted
   )
 })

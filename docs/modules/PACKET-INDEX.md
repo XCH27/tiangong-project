@@ -59,7 +59,7 @@ packets; it does not promote implementation status or create suite-owned state.
 | EXEC-09 | Governed Execution / adapter | — | P-25 | R14 / EXEC-09-A | BREADTH_ONLY |
 | EXEC-10 | Integrations / capability | — | P-26 | R4 / EXEC-10-A | BREADTH_ONLY |
 | EXEC-11 | Integrations / adapter | — | P-27 | R14 / EXEC-11-A | BREADTH_ONLY |
-| EXEC-12 | Governed Execution / product | — | P-28 | R14 + owner checkpoint / EXEC-12-A | BREADTH_ONLY |
+| EXEC-12 | Governed Execution / product | — | — | R14 + owner checkpoint / EXEC-12-A | BREADTH_ONLY |
 | EXEC-13 | Integrations / product | — | P-54, P-60 | R14 / EXEC-13-A (diff ladder starts R3-era per C4) | BREADTH_ONLY |
 | EXEC-14 | Governed Execution / capability | suites/SYS-03-context-economy.md | P-55 | TE1,R3 / EXEC-14-A | PACKET_DRAFT |
 | INTEL-01 | Intelligence / capability | suites/SYS-03-context-economy.md | P-29 | TE1,R3,R9 / INTEL-01-A | PACKET_DRAFT |

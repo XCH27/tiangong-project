@@ -13,10 +13,11 @@ match the owner's language. Do not maintain bilingual copies of the same rule or
 ## What Fleet is
 
 Fleet is a **local-first desktop workbench** where a human and AI agents work on the same project
-through the same sessions, files, permissions, and timeline. It is built from Craft Agents with
-**v0.10.5 as the product/interaction baseline**, the current `app/` tree as implementation reality,
-and v0.11.2 as a selective source of fixes and backend mechanisms — not by building a new app or
-accepting every later upstream product change.
+through the same sessions, files, permissions, and timeline. It is built from Craft Agents: the
+current `app/` tree is what runs; pinned Craft trees (v0.10.5, v0.11.2, later pins) and hosted Craft
+docs are **candidate sources**. **Admit the better interaction, fix, or backend mechanism** that
+still lands on one Fleet authority (择优录取 / best-of admission). Do not invent a second app or a
+second authority; do not wholesale-merge a checkout.
 
 The product bet, stated once:
 
@@ -103,27 +104,15 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
 
 ## Current honest state
 
-- **Code:** the committed implementation tree is Craft v0.11.1-derived, but its product/interaction
-  target is now pinned Craft v0.10.5; R1 compares and removes later Projects/Board interaction while
-  selectively retaining proven fixes and backend mechanisms (see
-  [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md)). The former dirty working tree (247 entries) was
-  inventoried and landed on `work/fresh-base-spine` as grouped commits on 2026-07-20 (G-docs,
-  G-refs, and six app groups: agent-core/TE1 accounting, labels-i18n, workspace-project presentation,
-  board, settings-chat, mcp, plus tooling scripts); full pre-audit snapshot preserved at
-  `backup/pre-r0-audit`. **Release state has one edit point: the R0 row in
-  [`05-ROADMAP.md`](05-ROADMAP.md)** — landing complete 2026-07-26 (test/typecheck/i18n/doc gates
-  green); remaining, owner-owned: the `fleet-baseline-r0` tag and the owner walkthrough (R0-C7).
-  Landed since on the same branch (2026-07-26): the R1 Project-is-the-boundary shell
-  (`2d08364f7`; trailing meta is decided hover-reveal, G7), R2 independence slices C2–C5
-  (`wired but not visually checked`, recorded in
-  [`specs/R2-independence.md`](specs/R2-independence.md)), the v0.11.2 selective-donor repin and
-  per-file intake audit (A+B fixes landed in `26100e45d`), and the R7 canvas preview page
-  (`display-only`, G6 frontend track). The 147-entry overlap audit is now the R1 execution map
-  ([`design-library/21-entry-overlap-framework-audit.md`](design-library/21-entry-overlap-framework-audit.md));
-  owner decisions G8/G9 fix the New Task vocabulary and the restored Mark All Read home. App
-  groups are `wired but not visually checked`;
-  nothing is `usable` before owner acceptance
-  ([`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md)).
+- **Code:** the committed implementation tree is Craft v0.11.x-derived. R1 product shape is Project =
+  folder, one Session list, Conversations for folder-less work — not a standing ban on later Craft
+  UI. Intake is **best-of admission**: compare current `app/`, pinned Craft trees, and fix/UI/backend
+  candidates; take the better mechanism that preserves one authority (see
+  [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md), Decision P2). **Release state has one edit point:
+  the R0 row in [`05-ROADMAP.md`](05-ROADMAP.md)**. Working tree may still be dirty after local
+  slices; status vocabulary remains honest (`wired but not visually checked` until owner walkthrough
+  accepts `usable`). Evidence: R1 shell, R2 independence slices, v0.11.2 mid-stream/task-notification
+  fixes, R7 canvas preview, and the R1 overlap execution map under `design-library/`.
 - **Fleet capability:** every differentiating Fleet loop — governed cross-caller actions, versioned
   artifact handoff, bounded delegation, adaptive organization, canvas/workflows, layered agent
   memory — is `not implemented`. Craft's inherited capabilities are real and listed in

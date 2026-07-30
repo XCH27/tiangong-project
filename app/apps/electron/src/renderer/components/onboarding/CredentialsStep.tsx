@@ -62,6 +62,7 @@ export function CredentialsStep({
   const isClaudeOAuth = apiSetupMethod === 'claude_oauth'
   const isChatGptOAuth = apiSetupMethod === 'pi_chatgpt_oauth'
   const isCopilotOAuth = apiSetupMethod === 'pi_copilot_oauth'
+  const isXaiOAuth = apiSetupMethod === 'pi_xai_oauth'
   const isAnthropicApiKey = apiSetupMethod === 'anthropic_api_key'
   const isPiApiKey = apiSetupMethod === 'pi_api_key'
   const isApiKey = isAnthropicApiKey || isPiApiKey
@@ -131,11 +132,15 @@ export function CredentialsStep({
   }
 
   // --- Copilot OAuth flow (device flow) ---
-  if (isCopilotOAuth) {
+  if (isCopilotOAuth || isXaiOAuth) {
+    const providerName = isXaiOAuth ? 'xAI' : 'GitHub'
+    const connectionName = isXaiOAuth ? 'Grok Subscription' : 'GitHub Copilot'
     return (
       <StepFormLayout
-        title={t("onboarding.credentials.connectGitHub")}
-        description={t("onboarding.credentials.connectGitHubDesc")}
+        title={isXaiOAuth ? 'Connect Grok Subscription' : t("onboarding.credentials.connectGitHub")}
+        description={isXaiOAuth
+          ? 'Authorize xAI in your browser. Subscription eligibility and quota are verified by xAI.'
+          : t("onboarding.credentials.connectGitHubDesc")}
         actions={
           <>
             <BackButton onClick={onBack} disabled={status === 'validating'} />
@@ -146,7 +151,7 @@ export function CredentialsStep({
               loadingText={t("onboarding.credentials.waitingForAuth")}
             >
               <ExternalLink className="size-4" />
-              {t("onboarding.credentials.signInGitHub")}
+              {isXaiOAuth ? 'Sign in to xAI' : t("onboarding.credentials.signInGitHub")}
             </ContinueButton>
           </>
         }
@@ -155,7 +160,7 @@ export function CredentialsStep({
           {copilotDeviceCode ? (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm space-y-3">
               <p className="text-muted-foreground text-center">
-                {t("onboarding.credentials.enterCodeOnGitHub")}
+                Enter this code on {providerName}
               </p>
               <div className="flex flex-col items-center justify-center gap-2">
                 <button
@@ -171,12 +176,12 @@ export function CredentialsStep({
                 </span>
               </div>
               <p className="text-muted-foreground text-xs text-center">
-                {t("onboarding.credentials.browserOpenedGitHub")}
+                Your browser was opened to {providerName}.
               </p>
             </div>
           ) : (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm text-muted-foreground text-center">
-              <p>{t("onboarding.credentials.clickToSignInGitHub")}</p>
+              <p>Continue to connect {connectionName}.</p>
             </div>
           )}
           {status === 'error' && errorMessage && (
@@ -186,7 +191,7 @@ export function CredentialsStep({
           )}
           {status === 'success' && (
             <div className="rounded-lg bg-success/10 text-success text-sm p-3 text-center">
-              {t("onboarding.credentials.copilotConnected")}
+              {connectionName} connected.
             </div>
           )}
         </div>

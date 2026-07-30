@@ -10,8 +10,9 @@
  */
 
 import type { PermissionMode } from '../agent/mode-manager.ts';
+import type { ExecutionPermissionMode, WorkMode, WorkModeSelection } from '../agent/work-mode.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
-import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage } from '@craft-agent/core/types';
+import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage, TokenUsage } from '@craft-agent/core/types';
 
 /**
  * Session fields that persist to disk.
@@ -29,13 +30,14 @@ export const SESSION_PERSISTENT_FIELDS = [
   // Timestamps
   'createdAt', 'lastUsedAt', 'lastMessageAt',
   // Display
-  'name', 'isFlagged', 'sessionStatus', 'labels', 'hidden',
+  'name', 'goal', 'isFlagged', 'sessionStatus', 'labels', 'hidden',
   // Read tracking
   'lastReadMessageId', 'hasUnread',
   // Config
-  'enabledSourceSlugs', 'permissionMode', 'previousPermissionMode', 'workingDirectory',
+  'enabledSourceSlugs', 'permissionMode', 'previousPermissionMode',
+  'workMode', 'workModeSelection', 'executionPermissionMode', 'workingDirectory',
   // Model/Connection
-  'model', 'llmConnection', 'connectionLocked', 'thinkingLevel',
+  'model', 'llmConnection', 'connectionLocked', 'thinkingLevel', 'fastMode',
   // Sharing
   'sharedUrl', 'sharedId',
   // Plan execution
@@ -86,17 +88,7 @@ export type BuiltInStatusId = 'todo' | 'in-progress' | 'needs-review' | 'done' |
 /**
  * Session token usage tracking
  */
-export interface SessionTokenUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  contextTokens: number;
-  costUsd: number;
-  cacheReadTokens?: number;
-  cacheCreationTokens?: number;
-  /** Model's context window size in tokens (from SDK modelUsage) */
-  contextWindow?: number;
-}
+export type SessionTokenUsage = TokenUsage;
 
 /**
  * Stored message format (simplified for persistence)
@@ -115,6 +107,8 @@ export interface SessionConfig {
   workspaceRootPath: string;
   /** Optional user-defined name */
   name?: string;
+  /** Persistent objective the Agent should keep pursuing across turns. */
+  goal?: string;
   createdAt: number;
   lastUsedAt: number;
   /** Timestamp of last meaningful message (user or final assistant). Used for date grouping in session list.
@@ -126,6 +120,12 @@ export interface SessionConfig {
   permissionMode?: PermissionMode;
   /** Previous permission mode (used to preserve modeTransition context across restarts) */
   previousPermissionMode?: PermissionMode;
+  /** User-visible work phase, independent from action approval. */
+  workMode?: WorkMode;
+  /** Auto routes each request; manual locks the selected phase. */
+  workModeSelection?: WorkModeSelection;
+  /** Approval posture restored when the phase enters Execute. */
+  executionPermissionMode?: ExecutionPermissionMode;
   /** User-controlled session status - determines inbox vs completed */
   sessionStatus?: SessionStatus;
   /** Labels applied to this session (bare IDs or "id::value" entries) */
@@ -156,6 +156,8 @@ export interface SessionConfig {
   connectionLocked?: boolean;
   /** Thinking level for this session ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel;
+  /** Opt into the selected provider's supported low-latency mode. */
+  fastMode?: boolean;
   /**
    * Pending plan execution state - tracks "Accept & Compact" flow.
    * When set, indicates a plan needs to be executed after compaction completes.
@@ -248,6 +250,8 @@ export interface SessionHeader {
   workspaceRootPath: string;
   /** Optional user-defined name */
   name?: string;
+  /** Persistent objective the Agent should keep pursuing across turns. */
+  goal?: string;
   createdAt: number;
   lastUsedAt: number;
   /** Timestamp of last meaningful message — persisted separately from lastUsedAt for stable date grouping across restarts. */
@@ -258,6 +262,9 @@ export interface SessionHeader {
   permissionMode?: PermissionMode;
   /** Previous permission mode (used to preserve modeTransition context across restarts) */
   previousPermissionMode?: PermissionMode;
+  workMode?: WorkMode;
+  workModeSelection?: WorkModeSelection;
+  executionPermissionMode?: ExecutionPermissionMode;
   /** User-controlled session status - determines inbox vs completed */
   sessionStatus?: SessionStatus;
   /** Labels applied to this session (bare IDs or "id::value" entries) */
@@ -288,6 +295,7 @@ export interface SessionHeader {
   connectionLocked?: boolean;
   /** Thinking level for this session ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel;
+  fastMode?: boolean;
   /**
    * Pending plan execution state - tracks "Accept & Compact" flow.
    * When set, indicates a plan needs to be executed after compaction completes.
@@ -371,6 +379,9 @@ export interface SessionMetadata {
   permissionMode?: PermissionMode;
   /** Previous permission mode (used to preserve modeTransition context across restarts) */
   previousPermissionMode?: PermissionMode;
+  workMode?: WorkMode;
+  workModeSelection?: WorkModeSelection;
+  executionPermissionMode?: ExecutionPermissionMode;
   /** Number of plan files for this session */
   planCount?: number;
   /** Shared viewer URL (if shared via viewer) */
@@ -391,6 +402,7 @@ export interface SessionMetadata {
   connectionLocked?: boolean;
   /** Thinking level for this session ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel;
+  fastMode?: boolean;
   /** ID of last message user has read - for unread detection */
   lastReadMessageId?: string;
   /** ID of the last final (non-intermediate) assistant message - for unread detection */

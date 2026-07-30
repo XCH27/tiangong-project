@@ -15,6 +15,9 @@
   },
   "workspaceDefaults": {
     "thinkingLevel": "think",
+    "defaultWorkMode": "auto",
+    "executionPermissionMode": "ask",
+    "cyclableWorkModes": ["auto", "explore", "plan", "execute"],
     "permissionMode": "safe",
     "cyclablePermissionModes": ["safe", "allow-all"],
     "localMcpServers": {

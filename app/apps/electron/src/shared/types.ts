@@ -110,6 +110,50 @@ export interface BrowserPaneCreateOptions {
   bindToSessionId?: string
 }
 
+export interface BrowserPaneEmbedBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface GitWorkingTreeFile {
+  path: string
+  indexStatus: string
+  workingTreeStatus: string
+  additions: number
+  deletions: number
+}
+
+export interface GitWorktreeEntry {
+  path: string
+  branch: string | null
+  bare: boolean
+}
+
+export interface GitWorkingTreeSnapshot {
+  repoRoot: string
+  branch: string | null
+  files: GitWorkingTreeFile[]
+  totals: {
+    additions: number
+    deletions: number
+  }
+  worktrees: GitWorktreeEntry[]
+}
+
+export interface GitFileDiff {
+  path: string
+  diff: string
+  truncated: boolean
+}
+
+export interface TerminalCommandResult {
+  output: string
+  exitCode: number
+  timedOut: boolean
+}
+
 /**
  * Empty-state launch request from the browser empty-state renderer.
  */
@@ -197,7 +241,6 @@ import type {
   PermissionResponseOptions,
   CredentialResponse,
   SessionCommand,
-  ShareResult,
   RefreshTitleResult,
   FileSearchResult,
   SessionSearchResult,
@@ -255,7 +298,7 @@ export interface ElectronAPI {
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
 
   // Consolidated session command handler
-  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
+  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | string | RefreshTitleResult | { count: number }>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>
@@ -335,7 +378,7 @@ export interface ElectronAPI {
   openFileDialog(): Promise<string[]>
   readFileAttachment(path: string): Promise<FileAttachment | null>
   /** Re-read a user-attached file by absolute path (bypasses workspace-dir validation).
-   *  Used only by draft hydration for paths the user explicitly picked via OS dialog / drag. */
+   *  Used by composer attach + draft hydration for paths the user explicitly picked via OS dialog / drag. */
   readUserAttachment(path: string): Promise<FileAttachment | null>
   storeAttachment(sessionId: string, attachment: FileAttachment): Promise<import('../../../../packages/core/src/types/index.ts').StoredAttachment>
   generateThumbnail(base64: string, mimeType: string): Promise<string | null>
@@ -436,14 +479,39 @@ export interface ElectronAPI {
   copilotLogout(connectionSlug: string): Promise<{ success: boolean }>
   onCopilotDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
 
+  // xAI Grok subscription OAuth
+  startXaiOAuth(connectionSlug: string): Promise<{ success: boolean; error?: string }>
+  cancelXaiOAuth(): Promise<{ success: boolean }>
+  getXaiAuthStatus(connectionSlug: string): Promise<{ authenticated: boolean; expiresAt?: number; hasRefreshToken?: boolean }>
+  xaiLogout(connectionSlug: string): Promise<{ success: boolean }>
+  onXaiDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
+
   /** Unified LLM connection setup */
   setupLlmConnection(setup: LlmConnectionSetup): Promise<{ success: boolean; error?: string }>
+  discoverLlmModels(params: import('@craft-agent/shared/protocol').DiscoverLlmModelsParams): Promise<import('@craft-agent/shared/protocol').DiscoverLlmModelsResult>
   /** Unified connection test — spawns a lightweight agent subprocess to validate credentials */
   testLlmConnectionSetup(params: TestLlmConnectionParams): Promise<TestLlmConnectionResult>
   // Pi provider discovery (main process only — Pi SDK can't run in renderer)
   getPiApiKeyProviders(): Promise<Array<{ key: string; label: string; placeholder: string }>>
   getPiProviderBaseUrl(provider: string): Promise<string | undefined>
-  getPiProviderModels(provider: string): Promise<{ models: Array<{ id: string; name: string; costInput: number; costOutput: number; contextWindow: number; reasoning: boolean }>; totalCount: number }>
+  getPiProviderModels(provider: string): Promise<{
+    models: Array<{
+      id: string
+      name: string
+      shortName: string
+      description: string
+      provider: 'pi'
+      costInput: number
+      costOutput: number
+      contextWindow: number
+      reasoning: boolean
+      supportsThinking: boolean
+      supportedReasoningEfforts: readonly string[]
+      supportsFastMode?: boolean
+      supportsImages?: boolean
+    }>
+    totalCount: number
+  }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
@@ -516,6 +584,7 @@ export interface ElectronAPI {
   // Labels (workspace-scoped)
   listLabels(workspaceId: string): Promise<import('@craft-agent/shared/labels').LabelConfig[]>
   createLabel(workspaceId: string, input: import('@craft-agent/shared/labels').CreateLabelInput): Promise<import('@craft-agent/shared/labels').LabelConfig>
+  updateLabel(workspaceId: string, labelId: string, input: import('@craft-agent/shared/labels').UpdateLabelInput): Promise<import('@craft-agent/shared/labels').LabelConfig>
   deleteLabel(workspaceId: string, labelId: string): Promise<{ stripped: number }>
   onLabelsChanged(callback: (workspaceId: string) => void): () => void
 
@@ -608,6 +677,12 @@ export interface ElectronAPI {
 
   // Git operations
   getGitBranch(dirPath: string): Promise<string | null>
+  getGitWorkingTree(sessionId: string): Promise<GitWorkingTreeSnapshot | null>
+  getGitFileDiff(sessionId: string, path: string): Promise<GitFileDiff | null>
+  runTerminalCommand(sessionId: string, command: string): Promise<TerminalCommandResult>
+  handshakeCliRuntimes(): Promise<
+    import('@craft-agent/shared/protocol').CliRuntimeHandshake[]
+  >
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>
@@ -641,6 +716,8 @@ export interface ElectronAPI {
     reload(id: string): Promise<void>
     stop(id: string): Promise<void>
     focus(id: string): Promise<void>
+    embed(id: string, bounds: BrowserPaneEmbedBounds): Promise<void>
+    detach(id: string): Promise<void>
     emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void
@@ -652,6 +729,9 @@ export interface ElectronAPI {
   listLlmConnectionsWithStatus(): Promise<LlmConnectionWithStatus[]>
   getLlmConnection(slug: string): Promise<LlmConnection | null>
   getLlmConnectionApiKey(slug: string): Promise<string | null>
+  getSubscriptionQuota(
+    slug: string,
+  ): Promise<import('@craft-agent/shared/protocol').SubscriptionQuotaSnapshot>
   saveLlmConnection(connection: LlmConnection): Promise<{ success: boolean; error?: string }>
   deleteLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   testLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
@@ -801,6 +881,7 @@ export type WhatsAppUiEvent =
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
   | { type: 'history' }
+  | { type: 'workbench' }
   | { type: 'none' }
 
 /**

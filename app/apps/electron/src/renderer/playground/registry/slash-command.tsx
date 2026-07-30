@@ -19,7 +19,7 @@ function SlashCommandDemo() {
   const [activeCommands, setActiveCommands] = React.useState<SlashCommandId[]>([])
   const [buttonMenuOpen, setButtonMenuOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState('')
-  const [permissionMode, setPermissionMode] = React.useState<PermissionMode>('ask')
+  const permissionMode: PermissionMode = 'ask'
   const [model, setModel] = React.useState('claude-sonnet-4-20250514')
 
   // FreeFormInput depends on Electron bridge APIs (attachments, clipboard, etc.)
@@ -136,7 +136,6 @@ function SlashCommandDemo() {
           currentModel={model}
           onModelChange={setModel}
           permissionMode={permissionMode}
-          onPermissionModeChange={setPermissionMode}
           inputValue={inputValue}
           onInputChange={setInputValue}
           sessionId="playground-session"

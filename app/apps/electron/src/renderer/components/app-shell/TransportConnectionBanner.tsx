@@ -1,5 +1,5 @@
-import i18n from 'i18next'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Button } from '@/components/ui/button'
 import type { TransportConnectionState } from '../../../shared/types'
 
@@ -15,21 +15,21 @@ export interface TransportBannerCopy {
   tone: 'warning' | 'error' | 'info'
 }
 
-export function getTransportBannerCopy(state: TransportConnectionState): TransportBannerCopy {
+export function getTransportBannerCopy(state: TransportConnectionState, t: TFunction): TransportBannerCopy {
   switch (state.status) {
     case 'connecting':
       return {
-        title: i18n.t('transport.connecting'),
-        description: i18n.t('transport.connectingDesc', { url: state.url }),
+        title: t('transport.connecting'),
+        description: t('transport.connectingDesc', { url: state.url }),
         showRetry: false,
         tone: 'info',
       }
 
     case 'reconnecting': {
-      const retry = state.nextRetryInMs != null ? i18n.t('transport.retryIn', { ms: state.nextRetryInMs }) : i18n.t('transport.retrying')
+      const retry = state.nextRetryInMs != null ? t('transport.retryIn', { ms: state.nextRetryInMs }) : t('transport.retrying')
       return {
-        title: i18n.t('transport.reconnecting'),
-        description: i18n.t('transport.reconnectingDesc', { reason: getFailureReason(state), retry, attempt: state.attempt }),
+        title: t('transport.reconnecting'),
+        description: t('transport.reconnectingDesc', { reason: getFailureReason(state, t), retry, attempt: state.attempt }),
         showRetry: true,
         tone: 'warning',
       }
@@ -37,46 +37,46 @@ export function getTransportBannerCopy(state: TransportConnectionState): Transpo
 
     case 'failed':
       return {
-        title: i18n.t('transport.failed'),
-        description: getFailureReason(state),
+        title: t('transport.failed'),
+        description: getFailureReason(state, t),
         showRetry: true,
         tone: 'error',
       }
 
     case 'disconnected':
       return {
-        title: i18n.t('transport.disconnected'),
-        description: getFailureReason(state),
+        title: t('transport.disconnected'),
+        description: getFailureReason(state, t),
         showRetry: true,
         tone: 'warning',
       }
 
     default:
       return {
-        title: i18n.t('transport.defaultStatus'),
-        description: getFailureReason(state),
+        title: t('transport.defaultStatus'),
+        description: getFailureReason(state, t),
         showRetry: true,
         tone: 'info',
       }
   }
 }
 
-function getFailureReason(state: TransportConnectionState): string {
+function getFailureReason(state: TransportConnectionState, t: TFunction): string {
   const err = state.lastError
   if (err) {
-    if (err.kind === 'auth') return i18n.t('transport.authFailed')
-    if (err.kind === 'protocol') return i18n.t('transport.protocolMismatch')
-    if (err.kind === 'timeout') return i18n.t('transport.timeout', { url: state.url })
-    if (err.kind === 'network') return i18n.t('transport.networkError', { url: state.url })
+    if (err.kind === 'auth') return t('transport.authFailed')
+    if (err.kind === 'protocol') return t('transport.protocolMismatch')
+    if (err.kind === 'timeout') return t('transport.timeout', { url: state.url })
+    if (err.kind === 'network') return t('transport.networkError', { url: state.url })
     return err.message
   }
 
   if (state.lastClose?.code != null) {
-    const reason = state.lastClose.reason ? i18n.t('transport.wsClosedReason', { reason: state.lastClose.reason }) : ''
-    return i18n.t('transport.wsClosedWithCode', { code: state.lastClose.code, reason })
+    const reason = state.lastClose.reason ? t('transport.wsClosedReason', { reason: state.lastClose.reason }) : ''
+    return t('transport.wsClosedWithCode', { code: state.lastClose.code, reason })
   }
 
-  return i18n.t('transport.waitingForConnection')
+  return t('transport.waitingForConnection')
 }
 
 export function TransportConnectionBanner({
@@ -87,13 +87,13 @@ export function TransportConnectionBanner({
   onRetry: () => void
 }) {
   const { t } = useTranslation()
-  const copy = getTransportBannerCopy(state)
+  const copy = getTransportBannerCopy(state, t)
 
   const toneClasses = copy.tone === 'error'
     ? 'border-destructive/30 bg-destructive/10 text-destructive'
     : copy.tone === 'warning'
-      ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-      : 'border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300'
+      ? 'border-info/30 bg-info/10 text-info'
+      : 'border-accent/30 bg-accent/10 text-accent'
 
   return (
     <div className={`shrink-0 border-b px-4 py-2 ${toneClasses}`}>

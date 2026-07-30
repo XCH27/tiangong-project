@@ -5,12 +5,15 @@ routing table below and read only what the task touches.
 
 ## The 10 rules that matter most
 
-1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first.** Use pinned v0.10.5
-   as the product/interaction baseline and the current `app/` tree as implementation reality. Treat
-   v0.11.1 as a selective donor for independent fixes and proven backend mechanisms, never as
-   authority to restore Projects/Board interaction wholesale. Before writing code, find the
-   capability row in [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) and
-   classify the gap: **REUSE / EXTEND / NEW**.
+1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first — then admit the best.**
+   The current `app/` tree is implementation reality. Pinned Craft trees (v0.10.5, v0.11.2, and any
+   later pin) plus hosted Craft docs are **candidate sources**: compare them and **admit the better
+   interaction, fix, or backend mechanism** that still lands on one Fleet authority
+   (择优录取 / best-of admission). Do not invent a standing “we do not sync X” policy; do not
+   wholesale-merge a checkout over the working tree; do not restore a second Projects/Board home.
+   Before writing code, find the capability row in
+   [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) and classify:
+   **REUSE / EXTEND / NEW**.
 2. **Never create a second authority.** One session store, one permission path, one timeline, one
    task store, one settings home. Extend the existing one or get owner sign-off first
    ([`docs/03-NON-NEGOTIABLES.md`](docs/03-NON-NEGOTIABLES.md)).
@@ -83,12 +86,13 @@ routing table below and read only what the task touches.
 | **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, motion, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
 | Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |
 | Starting a big feature | `docs/FEATURE-REGISTRY.md` (register your boundary) |
-| Upstream Craft behavior/docs | `源码参考/craft-docs/`, product baseline `源码参考/software/craft-agents-oss-v0.10.5/`, selective-update reference `源码参考/software/craft-agents-oss/` |
+| Upstream Craft behavior/docs | `源码参考/craft-docs/`, Craft pins `源码参考/software/craft-agents-oss-v0.10.5/` and `源码参考/software/craft-agents-oss/` (best-of candidates, not “do-not-sync” lists) |
 
 ## Working method (one paragraph)
 
 Define one coherent user-visible or system behavior block from the explicit Goal or active spec; classify it
-REUSE/EXTEND/NEW against Craft; implement every affected layer (UI, logic, state, error, recovery);
-verify with the cheapest sufficient ladder; update only canonical facts that changed; report with the fixed status
-vocabulary and hand rendered look-and-feel to the owner. Do not micro-test every edit, do not
-parallelize linear work, and do not grow documentation faster than implementation.
+REUSE/EXTEND/NEW against Craft; **compare candidate Craft pins and take the better mechanism** that fits
+one authority; implement every affected layer (UI, logic, state, error, recovery); verify with the cheapest
+sufficient ladder; update only canonical facts that changed; report with the fixed status vocabulary and
+hand rendered look-and-feel to the owner. Do not micro-test every edit, do not parallelize linear work,
+and do not grow documentation faster than implementation.

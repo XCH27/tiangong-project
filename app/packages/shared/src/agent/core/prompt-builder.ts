@@ -17,6 +17,8 @@ import { formatPreferencesForPrompt } from '../../config/preferences.ts';
 import { formatSessionState } from '../mode-manager.ts';
 import { getDateTimeContext, getWorkingDirectoryContext } from '../../prompts/system.ts';
 import { getSessionPlansPath, getSessionDataPath, getSessionPath } from '../../sessions/storage.ts';
+import { listLabels } from '../../labels/storage.ts';
+import { formatIdentityLabelPromptBlock } from '../../labels/identity.ts';
 import type {
   PromptBuilderConfig,
   ContextBlockOptions,
@@ -129,7 +131,30 @@ export class PromptBuilder {
       parts.push(sourceStateBlock);
     }
 
+    // Identity labels (role guidance). Volatile: labels can change mid-session.
+    // Only active labels are included. The full identity catalog is deliberately
+    // discovered through tools/UI instead of being injected into every prompt.
+    // Does not grant tools — permission path stays authoritative.
+    const identityBlock = this.formatIdentityLabelContext();
+    if (identityBlock) {
+      parts.push(identityBlock);
+    }
+
     return parts;
+  }
+
+  /**
+   * Inject systemPromptPreset text for active identity labels on this session.
+   */
+  private formatIdentityLabelContext(): string | null {
+    const sessionLabels = this.config.session?.labels;
+    if (!sessionLabels?.length || !this.workspaceRootPath) return null;
+    try {
+      const catalog = listLabels(this.workspaceRootPath);
+      return formatIdentityLabelPromptBlock(sessionLabels, catalog);
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -113,8 +113,33 @@ describe('createBuiltInConnection', () => {
     expect(conn.name).toContain('3')
   })
 
+  it('creates a catalog-backed Pi connection without a second store', () => {
+    const conn = createBuiltInConnection('deepseek', 'https://api.deepseek.com')
+    expect(conn).toMatchObject({
+      slug: 'deepseek',
+      name: 'DeepSeek',
+      providerType: 'pi',
+      authType: 'api_key',
+      piAuthProvider: 'deepseek',
+    })
+  })
+
+  it('creates an unbacked catalog provider through the existing compat lane', () => {
+    const conn = createBuiltInConnection(
+      'siliconflow',
+      'https://api.siliconflow.cn/v1',
+    )
+    expect(conn).toMatchObject({
+      slug: 'siliconflow',
+      name: '硅基流动',
+      providerType: 'pi_compat',
+      authType: 'api_key_with_endpoint',
+      customEndpoint: { api: 'openai-completions' },
+    })
+  })
+
   it('throws for unknown slug', () => {
-    expect(() => createBuiltInConnection('unknown-provider')).toThrow('Unknown built-in connection slug')
+    expect(() => createBuiltInConnection('unknown-provider')).toThrow('Unknown provider connection slug')
   })
 
   it('always sets createdAt', () => {

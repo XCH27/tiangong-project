@@ -124,6 +124,26 @@ export function registerTransferHandlers(server: RpcServer): void {
       throw new Error('Invalid largeArgIndex')
     }
 
+    // Guard against resource exhaustion: cap total transfer size and chunk
+    // count, and limit concurrent transfers per client.
+    const MAX_TOTAL_BYTES = 500 * 1024 * 1024 // 500 MB
+    const MAX_CHUNK_COUNT = 10_000
+    const MAX_CONCURRENT_TRANSFERS_PER_CLIENT = 3
+
+    if (opts.totalBytes > MAX_TOTAL_BYTES) {
+      throw new Error(`Transfer too large: ${opts.totalBytes} bytes exceeds limit of ${MAX_TOTAL_BYTES}`)
+    }
+    if (opts.chunkCount > MAX_CHUNK_COUNT) {
+      throw new Error(`Too many chunks: ${opts.chunkCount} exceeds limit of ${MAX_CHUNK_COUNT}`)
+    }
+    let activeForClient = 0
+    for (const t of activeTransfers.values()) {
+      if (t.ownerClientId === ctx.clientId) activeForClient++
+    }
+    if (activeForClient >= MAX_CONCURRENT_TRANSFERS_PER_CLIENT) {
+      throw new Error(`Too many concurrent transfers for this client (limit: ${MAX_CONCURRENT_TRANSFERS_PER_CLIENT})`)
+    }
+
     const transferId = randomUUID()
     const dir = join(tmpdir(), `craft-transfer-${transferId}`)
     await mkdir(dir, { recursive: true })

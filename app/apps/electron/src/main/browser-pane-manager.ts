@@ -173,6 +173,7 @@ interface BrowserInstance {
   lastAction: LastBrowserAction | null
   agentControl: AgentControlState | null
   lockState: AgentControlLockState
+  embeddedHost: BrowserWindow | null
   nativeOverlayReady: boolean
   themeColor: string | null
   inPageThemeTimer: ReturnType<typeof setTimeout> | null
@@ -476,6 +477,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         active: false,
         previousResizable: this.getWindowResizable(window),
       },
+      embeddedHost: null,
       nativeOverlayReady: false,
       themeColor: null,
       inPageThemeTimer: null,
@@ -793,6 +795,13 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     const instance = this.instances.get(id)
     if (!instance) return
 
+    if (instance.embeddedHost && !instance.embeddedHost.isDestroyed()) {
+      instance.embeddedHost.show()
+      instance.embeddedHost.focus()
+      instance.pageView.webContents.focus()
+      return
+    }
+
     const win = instance.window
     if (win.isDestroyed()) return
 
@@ -811,6 +820,76 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     win.focus()
 
     instance.isVisible = true
+    this.emitStateChange(instance)
+  }
+
+  embedInstance(
+    id: string,
+    hostWindow: BrowserWindow,
+    bounds: { x: number; y: number; width: number; height: number },
+  ): void {
+    const instance = this.requireAliveInstance(id)
+    const normalizedBounds = {
+      x: Math.max(0, Math.round(bounds.x)),
+      y: Math.max(0, Math.round(bounds.y)),
+      width: Math.max(1, Math.round(bounds.width)),
+      height: Math.max(1, Math.round(bounds.height)),
+    }
+
+    if (instance.embeddedHost !== hostWindow) {
+      if (instance.embeddedHost && !instance.embeddedHost.isDestroyed()) {
+        instance.embeddedHost.removeBrowserView(instance.pageView)
+        const previousClosed = (instance as { embeddedHostClosedHandler?: () => void }).embeddedHostClosedHandler
+        if (previousClosed) {
+          instance.embeddedHost.removeListener('closed', previousClosed)
+          ;(instance as { embeddedHostClosedHandler?: () => void }).embeddedHostClosedHandler = undefined
+        }
+      }
+      instance.window.removeBrowserView(instance.pageView)
+      hostWindow.addBrowserView(instance.pageView)
+      instance.embeddedHost = hostWindow
+
+      // The renderer's unmount effect normally detaches, but it cannot be
+      // relied on when the host window goes away: a forced destroy (or app
+      // quit) tears down the renderer without running React cleanup. Without
+      // this, pageView stays parented to a destroyed window and the whole
+      // instance leaks with no way to reach it again.
+      // Store one handler per instance so re-embed after detach cannot stack
+      // multiple `closed` listeners on the same host window.
+      const onHostClosed = () => {
+        const current = this.instances.get(id)
+        if (current?.embeddedHost === hostWindow) this.detachInstance(id)
+      }
+      ;(instance as { embeddedHostClosedHandler?: () => void }).embeddedHostClosedHandler = onHostClosed
+      hostWindow.once('closed', onHostClosed)
+    }
+
+    instance.pageView.setAutoResize({ width: false, height: false })
+    instance.pageView.setBounds(normalizedBounds)
+    hostWindow.setTopBrowserView(instance.pageView)
+    if (!instance.window.isDestroyed()) instance.window.hide()
+    instance.isVisible = true
+    this.emitStateChange(instance)
+  }
+
+  detachInstance(id: string): void {
+    const instance = this.instances.get(id)
+    if (!instance?.embeddedHost) return
+
+    const host = instance.embeddedHost
+    const closedHandler = (instance as { embeddedHostClosedHandler?: () => void }).embeddedHostClosedHandler
+    if (closedHandler && !host.isDestroyed()) {
+      host.removeListener('closed', closedHandler)
+    }
+    ;(instance as { embeddedHostClosedHandler?: () => void }).embeddedHostClosedHandler = undefined
+    if (!host.isDestroyed()) host.removeBrowserView(instance.pageView)
+    instance.embeddedHost = null
+
+    if (!instance.window.isDestroyed()) {
+      instance.window.addBrowserView(instance.pageView)
+      this.layoutAllViews(instance)
+    }
+    instance.isVisible = false
     this.emitStateChange(instance)
   }
 
@@ -2116,6 +2195,12 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     }
 
     runCleanup('closePopupsForParent', () => this.closePopupsForParent(instance.id, 'parent_destroy'))
+    runCleanup('detachEmbeddedView', () => {
+      if (instance.embeddedHost && !instance.embeddedHost.isDestroyed()) {
+        instance.embeddedHost.removeBrowserView(instance.pageView)
+      }
+      instance.embeddedHost = null
+    })
     runCleanup('applyAgentControlLock', () => this.applyAgentControlLock(instance, false))
     runCleanup('updateNativeOverlayState', () => this.updateNativeOverlayState(instance))
     runCleanup('cdpDetach', () => instance.cdp.detach())
@@ -2125,6 +2210,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
   }
 
   private layoutPageView(instance: BrowserInstance): void {
+    if (instance.embeddedHost) return
     const [width, height] = instance.window.getContentSize()
     instance.pageView.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width, height: Math.max(100, height - TOOLBAR_HEIGHT) })
     instance.pageView.setAutoResize({ width: true, height: true })

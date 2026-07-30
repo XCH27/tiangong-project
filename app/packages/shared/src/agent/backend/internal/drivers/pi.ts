@@ -121,6 +121,7 @@ function toModelDefinitions(models: RawCopilotModel[]): ModelDefinition[] {
     provider: 'pi' as const,
     contextWindow: m.contextWindow || 200_000,
     supportsThinking: !!(m.supportedReasoningEfforts && m.supportedReasoningEfforts.length > 0),
+    supportedReasoningEfforts: m.supportedReasoningEfforts,
   }));
 }
 

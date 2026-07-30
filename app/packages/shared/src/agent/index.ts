@@ -6,6 +6,7 @@ export * from './conversation-summary.ts';
 export { PiAgent, PiBackend } from './pi-agent.ts';
 export * from './errors.ts';
 export * from './options.ts';
+export * from './work-mode.ts';
 
 // Export session-scoped-tools - tools scoped to a specific session
 export {
@@ -139,6 +140,7 @@ export {
   type BackendConfig,
   type PermissionCallback,
   type PlanCallback,
+  type EnterPlanCallback,
   type AuthCallback,
   type SourceChangeCallback,
   type SourceActivationCallback,

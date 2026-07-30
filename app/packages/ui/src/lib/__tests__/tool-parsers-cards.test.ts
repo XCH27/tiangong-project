@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test'
 import type { ActivityItem } from '../../components/chat/TurnCard'
-import { extractOverlayCards } from '../tool-parsers'
+import { extractOverlayCards, extractOverlayData } from '../tool-parsers'
 import type { OverlayData } from '../tool-parsers'
 
 function makeActivity(overrides: Partial<ActivityItem>): ActivityItem {
@@ -88,6 +88,33 @@ describe('extractOverlayCards', () => {
     expect((output?.data as OverlayData).type).toBe('generic')
     if (output?.data.type === 'generic') {
       expect(output.data.content).toBe(markdownText)
+    }
+  })
+
+  it('does not expose host file actions when a Read result has no source path', () => {
+    const output = extractOverlayData(makeActivity({
+      toolName: 'Read',
+      toolInput: {},
+      content: 'generated content without a backing path',
+    }))
+
+    expect(output?.type).toBe('code')
+    if (output?.type === 'code') {
+      expect(output.filePathActions).toBe(false)
+    }
+  })
+
+  it('preserves host file actions when a Read result has a real source path', () => {
+    const output = extractOverlayData(makeActivity({
+      toolName: 'Read',
+      toolInput: { file_path: '/workspace/README.md' },
+      content: '# Backed by a real file',
+    }))
+
+    expect(output?.type).toBe('code')
+    if (output?.type === 'code') {
+      expect(output.filePath).toBe('/workspace/README.md')
+      expect(output.filePathActions).toBe(true)
     }
   })
 })

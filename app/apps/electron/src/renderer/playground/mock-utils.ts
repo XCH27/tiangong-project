@@ -1,7 +1,6 @@
 import type {
   FileAttachment,
   LoadedSource,
-  PermissionMode,
   MessagingPlatformRuntimeInfo,
   WhatsAppUiEvent,
 } from '../../shared/types'
@@ -218,6 +217,11 @@ export const mockElectronAPI = {
     return null // Let FileReader API handle it
   },
 
+  readUserAttachment: async (path: string) => {
+    console.log('[Playground] readUserAttachment called:', path)
+    return null
+  },
+
   generateThumbnail: async (base64: string, mimeType: string) => {
     console.log('[Playground] generateThumbnail called')
     return null // Skip thumbnails in playground
@@ -304,6 +308,26 @@ export const mockElectronAPI = {
     console.log('[Playground] getPendingPlanExecution called:', sessionId)
     return null
   },
+
+  getGitWorkingTree: async (_sessionId: string) => ({
+    rootPath: '/playground',
+    branch: 'main',
+    headSha: 'playground-head',
+    upstream: null,
+    ahead: 0,
+    behind: 0,
+    isDirty: false,
+    changes: [],
+    worktrees: [
+      {
+        path: '/playground',
+        branch: 'main',
+        headSha: 'playground-head',
+        bare: false,
+        main: true,
+      },
+    ],
+  }),
 
   getSendMessageKey: async () => 'enter',
   getSpellCheck: async () => true,
@@ -805,10 +829,6 @@ export const mockInputCallbacks = {
 
   onFocusChange: (focused: boolean) => {
     console.log('[Playground] Focus changed:', focused)
-  },
-
-  onPermissionModeChange: (mode: PermissionMode) => {
-    console.log('[Playground] Permission mode changed:', mode)
   },
 
   onSourcesChange: (slugs: string[]) => {

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { slugify } from "@/lib/slugify"
 import { Input } from "../ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
-import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspacePrimaryButton, AddWorkspaceSecondaryButton } from "./primitives"
+import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspacePrimaryButton } from "./primitives"
 import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 
 const CREATE_NEW_VALUE = '__create_new__'
@@ -182,8 +182,22 @@ export function AddWorkspaceStep_ConnectRemote({
   )
 
   const showCreateMode = !isReconnectMode && (isCreateNew || isFreshServer)
-  const buttonLabel = isReconnectMode ? 'Reconnect' : showCreateMode ? 'Create and Connect' : 'Connect'
-  const buttonLoadingLabel = isReconnectMode ? 'Reconnecting...' : showCreateMode ? 'Creating...' : 'Connecting...'
+  const buttonLabel = isReconnectMode
+    ? t('common.reconnect')
+    : showCreateMode
+      ? t('workspace.createWorkspace')
+      : t('common.connect')
+  const isTesting = testState === 'testing'
+  const needsConnectionTest = testState !== 'ok'
+  const primaryButtonLabel = needsConnectionTest
+    ? t('common.continue')
+    : buttonLabel
+  const primaryButtonLoadingLabel = isTesting
+    ? t('common.loading')
+    : t('common.connecting')
+  const primaryButtonDisabled = needsConnectionTest
+    ? !serverUrl || !token || isTesting || isCreating
+    : !canConnect
 
   return (
     <AddWorkspaceContainer>
@@ -198,13 +212,13 @@ export function AddWorkspaceStep_ConnectRemote({
         )}
       >
         <ArrowLeft className="h-4 w-4" />
-        Back
+        {t('common.back')}
       </button>
 
       <AddWorkspaceStepHeader
         title={isReconnectMode ? t("workspace.reconnect", { name: reconnectWorkspace!.name }) : t("workspace.connectRemote")}
         description={isReconnectMode
-          ? "Update the server URL or token to restore the connection."
+          ? t("workspace.connectRemoteDesc")
           : t("workspace.connectRemoteDesc")}
       />
 
@@ -212,7 +226,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {/* Server URL */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            Server URL
+            {t('common.url')}
           </label>
           <div className="bg-background shadow-minimal rounded-lg">
             <Input
@@ -229,7 +243,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {/* Token */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            Token
+            {t('workspace.serverAuthToken')}
           </label>
           <div className="bg-background shadow-minimal rounded-lg">
             <Input
@@ -243,33 +257,32 @@ export function AddWorkspaceStep_ConnectRemote({
           </div>
         </div>
 
-        {/* Test Connection */}
-        <div className="flex items-center gap-3">
-          <AddWorkspaceSecondaryButton
-            onClick={handleTestConnection}
-            disabled={!serverUrl || !token || testState === 'testing' || isCreating}
-          >
-            {testState === 'testing' ? 'Testing...' : 'Test Connection'}
-          </AddWorkspaceSecondaryButton>
+        {/* Connection result is progressive disclosure: the primary action
+            validates first, then the same slot advances to connect/create. */}
+        {(testState === 'ok' || testState === 'error') && (
+          <div className="flex min-h-5 items-center gap-2" aria-live="polite">
           {testState === 'ok' && !isFreshServer && (
             <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
               <CheckCircle className="h-3.5 w-3.5" />
-              Connected{serverVersion ? ` — v${serverVersion}` : ''}
+              {t('settings.ai.connectedProviders')}
+              {serverVersion ? ` · v${serverVersion}` : ''}
             </span>
           )}
           {testState === 'ok' && isFreshServer && (
             <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
               <CheckCircle className="h-3.5 w-3.5" />
-              Connected{serverVersion ? ` — v${serverVersion}` : ''} — no workspaces yet
+              {t('settings.ai.connectedProviders')}
+              {serverVersion ? ` · v${serverVersion}` : ''}
             </span>
           )}
           {testState === 'error' && (
             <span className="flex items-center gap-1 text-xs text-destructive">
               <XCircle className="h-3.5 w-3.5" />
-              {testError || 'Failed'}
+              {testError || t('common.failed')}
             </span>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Old server warning */}
         {testState === 'ok' && !serverVersion && (
@@ -355,12 +368,14 @@ export function AddWorkspaceStep_ConnectRemote({
 
         {/* Connect / Create and Connect */}
         <AddWorkspacePrimaryButton
-          onClick={handleConnect}
-          disabled={!canConnect}
-          loading={isCreating}
-          loadingText={buttonLoadingLabel}
+          onClick={
+            needsConnectionTest ? handleTestConnection : handleConnect
+          }
+          disabled={primaryButtonDisabled}
+          loading={isCreating || isTesting}
+          loadingText={primaryButtonLoadingLabel}
         >
-          {buttonLabel}
+          {primaryButtonLabel}
         </AddWorkspacePrimaryButton>
       </div>
     </AddWorkspaceContainer>

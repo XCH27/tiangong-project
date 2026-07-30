@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react"
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useSetAtom } from "jotai"
 import { isToday, isYesterday, format, startOfDay } from "date-fns"
@@ -46,7 +46,6 @@ interface SessionListProps {
   onUnflag?: (sessionId: string) => void
   onArchive?: (sessionId: string) => void
   onUnarchive?: (sessionId: string) => void
-  onMarkUnread: (sessionId: string) => void
   onSessionStatusChange: (sessionId: string, state: SessionStatusId) => void
   onRename: (sessionId: string, name: string) => void
   /** Called when Enter is pressed to focus chat input for a specific session */
@@ -110,6 +109,8 @@ interface SessionListProps {
    * always landed under 对话.
    */
   onNewSession?: () => void
+  /** Reports the canonical non-paginated list affected by list-wide actions. */
+  onBulkActionItemsChange?: (items: readonly SessionMeta[]) => void
 }
 
 // Re-export SessionStatusId for use by parent components
@@ -138,7 +139,6 @@ export function SessionList({
   onUnflag,
   onArchive,
   onUnarchive,
-  onMarkUnread,
   onSessionStatusChange,
   onRename,
   onFocusChatInput,
@@ -165,6 +165,7 @@ export function SessionList({
   hasPendingPrompt,
   activeChatMatchInfo,
   onNewSession,
+  onBulkActionItemsChange,
 }: SessionListProps) {
   const { t, i18n } = useTranslation()
   const setSendToWorkspace = useSetAtom(sendToWorkspaceAtom)
@@ -264,6 +265,7 @@ export function SessionList({
     contentSearchResults,
     matchingFilterItems,
     otherResultItems,
+    bulkActionItems,
     exceededSearchLimit,
     flatItems,
     hasMore,
@@ -283,6 +285,10 @@ export function SessionList({
     groupingMode,
     scrollViewportRef,
   })
+
+  useLayoutEffect(() => {
+    onBulkActionItemsChange?.(bulkActionItems)
+  }, [bulkActionItems, onBulkActionItemsChange])
 
   const rowData = useMemo(() => {
     if (isSearchMode) {
@@ -724,7 +730,6 @@ export function SessionList({
     onUnflag: onUnflag ? handleUnflagWithToast : undefined,
     onArchive: onArchive ? handleArchiveWithToast : undefined,
     onUnarchive: onUnarchive ? handleUnarchiveWithToast : undefined,
-    onMarkUnread,
     onDelete: handleDeleteWithToast,
     onLabelsChange,
     projects,
@@ -748,7 +753,7 @@ export function SessionList({
     handleRenameClick, onSessionStatusChange,
     onFlag, handleFlagWithToast, onUnflag, handleUnflagWithToast,
     onArchive, handleArchiveWithToast, onUnarchive, handleUnarchiveWithToast,
-    onMarkUnread, handleDeleteWithToast, onLabelsChange,
+    handleDeleteWithToast, onLabelsChange,
     projects, onSetProjectId,
     handleSelectSessionById, handleOpenInNewWindow, setSendToWorkspace, handleFocusZone, handleKeyDown,
     sessionStatuses, flatLabels, labels, resolvedSearchQuery,

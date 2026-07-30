@@ -37,9 +37,11 @@ extended, never rebuilt beside it.
 
 The committed application is a Craft v0.11.1-derived implementation tree pinned to the
 **v0.10.5 product/interaction baseline**. Release state has exactly one edit point: the **R0 row
-in [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md)** — landing complete 2026-07-26 (test/typecheck/
-i18n/doc gates green); remaining, owner-owned: the `fleet-baseline-r0` tag and the owner
-walkthrough (R0-C7). Landed since on the same branch (2026-07-26): the R1 Project-is-the-boundary
+in [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md)** — R0 is **not** complete. The earlier
+"2026-07-26 landing complete, tree clean, gates green" claim is retracted: the working tree holds
+~367 uncommitted paths, and the gate that reported green was checking 3 of 703 test files while
+`typecheck:all` could not pass at all. The gate was repaired 2026-07-30; the working-tree triage
+and the owner tag/walkthrough remain. Landed since on the same branch (2026-07-26): the R1 Project-is-the-boundary
 shell (`2d08364f7`, with follow-up fix/revert churn under the owner walkthrough), R2 independence
 slices C2–C5 (updater, sharing, docs links, OAuth/Slack relays — all
 `wired but not visually checked`; see [`docs/specs/R2-independence.md`](docs/specs/R2-independence.md)),

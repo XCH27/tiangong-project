@@ -89,7 +89,7 @@ function SectionHeader({ label }: { label: string }) {
 }
 
 /** Collapsible group header with chevron toggle and item count when collapsed */
-function CollapsibleGroupHeader({
+export function CollapsibleGroupHeader({
   label,
   isCollapsed,
   itemCount,
@@ -104,24 +104,31 @@ function CollapsibleGroupHeader({
   onCollapseAll?: () => void
   onExpandAll?: () => void
 }) {
+  const trigger = (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full py-2 px-4 flex items-center gap-1.5 cursor-pointer group/header relative"
+    >
+      <div className="absolute inset-y-0.5 left-2 right-2 rounded-[6px] group-hover/header:bg-foreground/2 transition-colors pointer-events-none" />
+      <ChevronRight
+        className={cn(
+          "h-3 w-3 text-muted-foreground/60 transition-transform relative",
+          !isCollapsed && "rotate-90"
+        )}
+      />
+      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground relative">
+        {label}{isCollapsed && itemCount > 0 && <> · <span className="text-muted-foreground/50">{itemCount}</span></>}
+      </span>
+    </button>
+  )
+
+  if (!onCollapseAll && !onExpandAll) return trigger
+
   return (
     <ContextMenu modal>
       <ContextMenuTrigger asChild>
-        <button
-          onClick={onToggle}
-          className="w-full py-2 px-4 flex items-center gap-1.5 cursor-pointer group/header relative"
-        >
-          <div className="absolute inset-y-0.5 left-2 right-2 rounded-[6px] group-hover/header:bg-foreground/2 transition-colors pointer-events-none" />
-          <ChevronRight
-            className={cn(
-              "h-3 w-3 text-muted-foreground/60 transition-transform relative",
-              !isCollapsed && "rotate-90"
-            )}
-          />
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground relative">
-            {label}{isCollapsed && <> · <span className="text-muted-foreground/50">{itemCount}</span></>}
-          </span>
-        </button>
+        {trigger}
       </ContextMenuTrigger>
       <StyledContextMenuContent>
         <StyledContextMenuItem onClick={onToggle}>

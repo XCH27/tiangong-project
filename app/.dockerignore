@@ -42,7 +42,6 @@ Thumbs.db
 
 # Top-level docs (not resource docs used by server)
 /docs/
-apps/online-docs/
 README*.md
 CONTRIBUTING*.md
 CHANGELOG*.md

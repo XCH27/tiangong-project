@@ -4,6 +4,8 @@ import {
   buildCompoundRoute,
   parseRouteToNavigationState,
   buildRouteFromNavigationState,
+  parseRightSidebarParam,
+  buildRightSidebarParam,
 } from '../route-parser'
 import { routes } from '../routes'
 import { isSessionsNavigation } from '../types'
@@ -46,6 +48,14 @@ describe('route-parser: label filter routes', () => {
     // Mirrors parseSessionIdFromRoute's segment logic (panel-stack.ts).
     const segments = 'label/task/session/abc123?stray=x'.split('?')[0].split('/')
     expect(segments[segments.indexOf('session') + 1]).toBe('abc123')
+  })
+})
+
+describe('route-parser: right workbench', () => {
+  it('round-trips the workbench as the single right-sidebar route authority', () => {
+    const panel = parseRightSidebarParam('workbench')
+    expect(panel).toEqual({ type: 'workbench' })
+    expect(buildRightSidebarParam(panel)).toBe('workbench')
   })
 })
 

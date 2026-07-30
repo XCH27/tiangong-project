@@ -7,9 +7,9 @@ const home = homedir()
 const tmp = tmpdir()
 
 describe('validateFilePath', () => {
-  it('allows paths inside home directory', async () => {
+  it('allows paths inside home directory when explicitly allowed', async () => {
     const path = join(home, 'Documents', 'test.txt')
-    const result = await validateFilePath(path)
+    const result = await validateFilePath(path, [home])
     expect(result).toContain('test.txt')
   })
 
@@ -25,6 +25,13 @@ describe('validateFilePath', () => {
     await expect(validateFilePath(path)).rejects.toThrow('Access denied')
   })
 
+  it('denies paths inside home directory when home is not explicitly allowed', async () => {
+    // Security contract: homedir() is NOT a default allowed root.
+    // Callers must explicitly pass it via additionalAllowedDirs.
+    const path = join(home, 'Documents', 'test.txt')
+    await expect(validateFilePath(path)).rejects.toThrow('Access denied')
+  })
+
   it('allows paths inside additionalAllowedDirs', async () => {
     const projectDir = sep === '\\' ? 'D:\\Projects\\myapp' : '/opt/projects/myapp'
     const path = join(projectDir, 'src', 'main.ts')
@@ -32,15 +39,15 @@ describe('validateFilePath', () => {
     expect(result).toContain('main.ts')
   })
 
-  it('still allows homedir paths when additionalAllowedDirs are provided', async () => {
+  it('still allows homedir paths when explicitly passed in additionalAllowedDirs', async () => {
     const path = join(home, 'test.txt')
-    const result = await validateFilePath(path, ['/some/other/dir'])
+    const result = await validateFilePath(path, [home, '/some/other/dir'])
     expect(result).toContain('test.txt')
   })
 
   it('blocks sensitive files even inside allowed dirs', async () => {
     const path = join(home, '.ssh', 'id_rsa')
-    await expect(validateFilePath(path)).rejects.toThrow('sensitive')
+    await expect(validateFilePath(path, [home])).rejects.toThrow('sensitive')
   })
 
   it('sensitive patterns match Windows backslash separators', () => {
@@ -55,12 +62,12 @@ describe('validateFilePath', () => {
 
   it('blocks .env files', async () => {
     const path = join(home, 'project', '.env')
-    await expect(validateFilePath(path)).rejects.toThrow('sensitive')
+    await expect(validateFilePath(path, [home])).rejects.toThrow('sensitive')
   })
 
   it('blocks credentials.json', async () => {
     const path = join(home, 'project', 'credentials.json')
-    await expect(validateFilePath(path)).rejects.toThrow('sensitive')
+    await expect(validateFilePath(path, [home])).rejects.toThrow('sensitive')
   })
 
   it('blocks .pem files even inside additionalAllowedDirs', async () => {
@@ -69,8 +76,8 @@ describe('validateFilePath', () => {
     await expect(validateFilePath(path, [projectDir])).rejects.toThrow('sensitive')
   })
 
-  it('expands tilde paths', async () => {
-    const result = await validateFilePath('~/test-file.txt')
+  it('expands tilde paths when home is explicitly allowed', async () => {
+    const result = await validateFilePath('~/test-file.txt', [home])
     expect(result).toContain(home)
   })
 
@@ -81,7 +88,7 @@ describe('validateFilePath', () => {
   it('filters out falsy values in additionalAllowedDirs', async () => {
     const path = join(home, 'test.txt')
     // Should not throw even with undefined/empty values in the array
-    const result = await validateFilePath(path, ['', undefined as unknown as string])
+    const result = await validateFilePath(path, [home, '', undefined as unknown as string])
     expect(result).toContain('test.txt')
   })
 })

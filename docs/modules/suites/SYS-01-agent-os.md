@@ -3,7 +3,7 @@
 **Rows:** CORE-01..11, EXEC-01..08, EXEC-10..11, EXEC-13..14, ORCH-03..04, ORCH-06..09.
 **Development order:** R0–R6 spine; R9/R14–R18 integration. **Owner:** foundation integration.
 **Depends on:** Craft v0.10.5 product/interaction behavior, current app authorities, and selectively
-admitted v0.11.1 fixes/backend mechanisms. **Consumers:** every other suite.
+admitted v0.11.2 fixes/backend mechanisms. **Consumers:** every other suite.
 **Authority:** Craft Session/Task/Permission remain current truth; SYS-01 integrates R4 Action and
 R11 Job contracts only after real callers extract them. No parallel stores.
 

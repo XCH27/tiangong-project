@@ -71,6 +71,21 @@ export interface LabelConfig {
    * Multiple rules = multiple ways to trigger (evaluated in order, all matches collected).
    */
   autoRules?: AutoLabelRule[];
+
+  /**
+   * Role of this label in the catalog (Decision E10 — one label store).
+   * Omit or `functional` = organize/filter/automate only.
+   * `identity` = session role guidance via systemPromptPreset.
+   * Identity assignment is still session `labels[]` — no second identity store.
+   * Skill/Source/permission bindings are not implemented; do not store fake bind fields.
+   */
+  kind?: 'functional' | 'identity';
+
+  /**
+   * For identity labels: text injected when building agent context for a session
+   * that carries this label id. Does not grant tools or bypass the permission path.
+   */
+  systemPromptPreset?: string;
 }
 
 /**
@@ -93,15 +108,22 @@ export interface CreateLabelInput {
   color?: EntityColor;
   parentId?: string; // Target parent label ID (null = root)
   valueType?: 'string' | 'number' | 'date' | 'link';
+  kind?: 'functional' | 'identity';
+  systemPromptPreset?: string;
 }
 
 /**
- * Input for updating an existing label (name, color, valueType — cannot change ID or hierarchy)
+ * Input for updating an existing label (cannot change ID or hierarchy position).
  */
 export interface UpdateLabelInput {
   name?: string;
-  color?: EntityColor;
-  valueType?: 'string' | 'number' | 'date' | 'link';
+  /** Pass null to clear color */
+  color?: EntityColor | null;
+  /** Pass empty string / falsy via '' to clear valueType */
+  valueType?: 'string' | 'number' | 'date' | 'link' | '';
+  kind?: 'functional' | 'identity';
+  /** Pass empty string to clear */
+  systemPromptPreset?: string;
 }
 
 /**

@@ -27,6 +27,13 @@ export interface SessionScopedToolCallbacks {
   onPlanSubmitted?: (planPath: string) => void;
 
   /**
+   * Called when the agent enters Plan phase via EnterPlan tool.
+   * Does not pause execution; SessionManager projects workMode=plan.
+   * Return `{ activated: false }` when already in Plan.
+   */
+  onEnterPlan?: (reason?: string) => { activated: boolean } | void;
+
+  /**
    * Called when authentication is requested via OAuth/credential tools.
    * The auth UI should be shown and execution paused.
    */
@@ -53,6 +60,8 @@ export interface SessionScopedToolCallbacks {
 
   /** Set labels on a session (defaults to current). */
   setSessionLabelsFn?: (sessionId: string | undefined, labels: string[]) => void | Promise<void>;
+  /** Set or clear the durable goal on a session (defaults to current). */
+  setSessionGoalFn?: (sessionId: string | undefined, goal: string | null) => void | Promise<void>;
   /** Set status on a session (defaults to current). */
   setSessionStatusFn?: (sessionId: string | undefined, status: string) => void | Promise<void>;
   /** Get detailed info about a session (defaults to current). */

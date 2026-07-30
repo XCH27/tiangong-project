@@ -143,22 +143,28 @@ export function SessionItem({
       menuContent={
         <SessionMenu
           item={item}
-          sessionStatuses={ctx.sessionStatuses}
-          labels={ctx.labels}
-          onLabelsChange={ctx.onLabelsChange ? (ls) => ctx.onLabelsChange!(item.id, ls) : undefined}
           onRename={() => ctx.onRenameClick(item.id, title)}
           onFlag={() => ctx.onFlag?.(item.id)}
           onUnflag={() => ctx.onUnflag?.(item.id)}
           onArchive={() => ctx.onArchive?.(item.id)}
           onUnarchive={() => ctx.onUnarchive?.(item.id)}
-          onMarkUnread={() => ctx.onMarkUnread(item.id)}
-          onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
-          onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
           hasRemoteWorkspaces={hasRemoteWorkspaces}
           onDelete={() => ctx.onDelete(item.id)}
           projects={ctx.projects}
           onSetProjectId={ctx.onSetProjectId ? (pid) => ctx.onSetProjectId!(item.id, pid) : undefined}
+          sessionStatuses={ctx.sessionStatuses}
+          onSessionStatusChange={
+            ctx.onSessionStatusChange
+              ? (state) => ctx.onSessionStatusChange(item.id, state)
+              : undefined
+          }
+          labels={ctx.labels}
+          onLabelsChange={
+            ctx.onLabelsChange
+              ? (next) => ctx.onLabelsChange!(item.id, next)
+              : undefined
+          }
         />
       }
       contextMenuContent={ctx.isMultiSelectActive && isInMultiSelect ? <BatchSessionMenu /> : undefined}
@@ -170,20 +176,28 @@ export function SessionItem({
           trigger={null}
           title={title}
           item={item}
-          sessionStatuses={ctx.sessionStatuses}
-          labels={ctx.labels}
           hasRemoteWorkspaces={hasRemoteWorkspaces}
-          onLabelsChange={ctx.onLabelsChange ? (ls) => ctx.onLabelsChange!(item.id, ls) : undefined}
           onRename={() => ctx.onRenameClick(item.id, title)}
           onFlag={() => ctx.onFlag?.(item.id)}
           onUnflag={() => ctx.onUnflag?.(item.id)}
           onArchive={() => ctx.onArchive?.(item.id)}
           onUnarchive={() => ctx.onUnarchive?.(item.id)}
-          onMarkUnread={() => ctx.onMarkUnread(item.id)}
-          onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
-          onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
           onDelete={() => ctx.onDelete(item.id)}
+          projects={ctx.projects}
+          onSetProjectId={ctx.onSetProjectId ? (pid) => ctx.onSetProjectId!(item.id, pid) : undefined}
+          sessionStatuses={ctx.sessionStatuses}
+          onSessionStatusChange={
+            ctx.onSessionStatusChange
+              ? (state) => ctx.onSessionStatusChange(item.id, state)
+              : undefined
+          }
+          labels={ctx.labels}
+          onLabelsChange={
+            ctx.onLabelsChange
+              ? (next) => ctx.onLabelsChange!(item.id, next)
+              : undefined
+          }
         />
       )}
       icon={
@@ -265,7 +279,7 @@ export function SessionItem({
           <Flag className="h-3.5 w-3.5 text-info" />
         </div>
       ) : item.lastMessageAt ? (
-        <span className="text-[11px] text-foreground/40 whitespace-nowrap">
+        <span className="text-[11px] text-foreground/40 whitespace-nowrap tabular-nums">
           {formatDistanceToNowStrict(new Date(item.lastMessageAt), { locale: shortTimeLocale as Locale, roundingMethod: 'floor' })}
         </span>
       ) : undefined}

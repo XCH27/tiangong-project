@@ -16,11 +16,6 @@ export const browserInstancesAtom = atom<BrowserInstanceInfo[]>(
   (get) => Array.from(get(browserInstancesMapAtom).values())
 )
 
-/** Derived: count of active browser instances */
-export const browserInstanceCountAtom = atom<number>(
-  (get) => get(browserInstancesMapAtom).size
-)
-
 /**
  * Filter browser instances to those visible in the given workspace context.
  *

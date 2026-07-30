@@ -44,6 +44,9 @@ describe('session persistence header conflict helpers', () => {
       isFlagged: false,
       sessionStatus: 'todo',
       permissionMode: 'allow-all',
+      workMode: 'execute',
+      workModeSelection: 'manual',
+      executionPermissionMode: 'allow-all',
       hasUnread: true,
       lastReadMessageId: 'm-local',
       messageCount: 99,
@@ -56,6 +59,9 @@ describe('session persistence header conflict helpers', () => {
       isFlagged: true,
       sessionStatus: 'needs-review',
       permissionMode: 'safe',
+      workMode: 'plan',
+      workModeSelection: 'auto',
+      executionPermissionMode: 'ask',
       hasUnread: false,
       lastReadMessageId: 'm-disk',
       messageCount: 1,
@@ -69,6 +75,9 @@ describe('session persistence header conflict helpers', () => {
     expect(merged.isFlagged).toBe(true)
     expect(merged.sessionStatus).toBe('needs-review')
     expect(merged.permissionMode).toBe('safe')
+    expect(merged.workMode).toBe('plan')
+    expect(merged.workModeSelection).toBe('auto')
+    expect(merged.executionPermissionMode).toBe('ask')
     expect(merged.hasUnread).toBe(false)
     expect(merged.lastReadMessageId).toBe('m-disk')
 

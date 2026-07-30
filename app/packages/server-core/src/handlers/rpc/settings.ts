@@ -3,6 +3,10 @@ import { dirname } from 'path'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import { getPreferencesPath, getSessionDraft, setSessionDraft, deleteSessionDraft, getAllSessionDrafts, getWorkspaceByNameOrId, getDefaultThinkingLevel, setDefaultThinkingLevel } from '@craft-agent/shared/config'
 import { isValidThinkingLevel, normalizeThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
+import {
+  isExecutionPermissionMode,
+  isWorkModeOption,
+} from '@craft-agent/shared/agent/work-mode'
 
 const VALID_THINKING_LEVELS_LIST = THINKING_LEVEL_IDS.map(id => `'${id}'`).join(', ')
 import { getWorkspaceOrThrow } from '@craft-agent/server-core/handlers'
@@ -83,11 +87,11 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
     deps.platform.logger.info(`Session ${sessionId} model updated to: ${model}${connection ? ` (connection: ${connection})` : ''}`)
   })
 
-  // Open native folder dialog for selecting working directory (routed to client)
+  // Open native folder dialog (working directory, attach folder, project pick — routed to client)
   server.handle(RPC_CHANNELS.dialog.OPEN_FOLDER, async (ctx) => {
     const result = await requestClientOpenFileDialog(server, ctx.clientId, {
       properties: ['openDirectory', 'createDirectory'],
-      title: 'Select Working Directory',
+      title: 'Select Folder',
     })
     return result.canceled ? null : result.filePaths[0]
   })
@@ -111,6 +115,9 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
     return {
       name: config?.name,
       model: config?.defaults?.model,
+      defaultWorkMode: config?.defaults?.defaultWorkMode,
+      executionPermissionMode: config?.defaults?.executionPermissionMode,
+      cyclableWorkModes: config?.defaults?.cyclableWorkModes,
       permissionMode: config?.defaults?.permissionMode,
       cyclablePermissionModes: config?.defaults?.cyclablePermissionModes,
       thinkingLevel: normalizeThinkingLevel(config?.defaults?.thinkingLevel),
@@ -129,7 +136,20 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
       : value
 
     // Validate key is a known workspace setting
-    const validKeys = ['name', 'model', 'enabledSourceSlugs', 'permissionMode', 'cyclablePermissionModes', 'thinkingLevel', 'workingDirectory', 'localMcpEnabled', 'defaultLlmConnection']
+    const validKeys = [
+      'name',
+      'model',
+      'enabledSourceSlugs',
+      'defaultWorkMode',
+      'executionPermissionMode',
+      'cyclableWorkModes',
+      'permissionMode',
+      'cyclablePermissionModes',
+      'thinkingLevel',
+      'workingDirectory',
+      'localMcpEnabled',
+      'defaultLlmConnection',
+    ]
     if (!validKeys.includes(key)) {
       throw new Error(`Invalid workspace setting key: ${key}. Valid keys: ${validKeys.join(', ')}`)
     }
@@ -146,6 +166,20 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
       const validation = isValidWorkingDirectory(String(normalizedValue))
       if (!validation.valid) {
         throw new Error(validation.reason!)
+      }
+    }
+
+    if (key === 'defaultWorkMode' && !isWorkModeOption(normalizedValue)) {
+      throw new Error(`Invalid default work mode: ${String(normalizedValue)}`)
+    }
+    if (key === 'executionPermissionMode' && !isExecutionPermissionMode(normalizedValue)) {
+      throw new Error(`Invalid execution permission mode: ${String(normalizedValue)}`)
+    }
+    if (key === 'cyclableWorkModes') {
+      const rawModes = Array.isArray(normalizedValue) ? normalizedValue : []
+      const modes = rawModes.filter(isWorkModeOption)
+      if (modes.length < 2 || modes.length !== rawModes.length) {
+        throw new Error('Cyclable work modes must contain at least two valid modes')
       }
     }
 

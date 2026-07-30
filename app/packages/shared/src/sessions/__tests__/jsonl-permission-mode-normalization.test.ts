@@ -81,4 +81,37 @@ describe('session jsonl: permission mode normalization', () => {
     expect(loaded?.permissionMode).toBe('safe');
     expect(loaded?.previousPermissionMode).toBe('allow-all');
   });
+
+  it('preserves work phase selection and the remembered execution approval posture', () => {
+    const sessionDir = mkdtempSync(join(tmpdir(), 'session-work-mode-'));
+    tempDirs.push(sessionDir);
+
+    const sessionFile = join(sessionDir, 'session.jsonl');
+    const header = {
+      id: 's3',
+      workspaceRootPath: '/tmp/ws',
+      createdAt: Date.now(),
+      lastUsedAt: Date.now(),
+      messageCount: 0,
+      tokenUsage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        contextTokens: 0,
+        costUsd: 0,
+      },
+      permissionMode: 'safe',
+      workMode: 'plan',
+      workModeSelection: 'auto',
+      executionPermissionMode: 'ask',
+    };
+
+    writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, 'utf-8');
+
+    const loaded = readSessionHeader(sessionFile);
+    expect(loaded?.workMode).toBe('plan');
+    expect(loaded?.workModeSelection).toBe('auto');
+    expect(loaded?.executionPermissionMode).toBe('ask');
+    expect(loaded?.permissionMode).toBe('safe');
+  });
 });

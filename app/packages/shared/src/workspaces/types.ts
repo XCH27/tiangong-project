@@ -12,6 +12,10 @@
  */
 
 import type { PermissionMode } from '../agent/mode-manager.ts';
+import type {
+  ExecutionPermissionMode,
+  WorkModeOption,
+} from '../agent/work-mode.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 
 /**
@@ -43,7 +47,15 @@ export interface WorkspaceConfig {
     /** Default LLM connection for new sessions (slug). Overrides global default. */
     defaultLlmConnection?: string;
     enabledSourceSlugs?: string[]; // Sources to enable by default
+    /** Default user-visible work mode for new sessions. Missing means legacy permissionMode semantics. */
+    defaultWorkMode?: WorkModeOption;
+    /** Approval posture remembered for Execute mode. */
+    executionPermissionMode?: ExecutionPermissionMode;
+    /** Work modes included in Shift+Tab cycling (minimum 2). */
+    cyclableWorkModes?: WorkModeOption[];
+    /** @deprecated Compatibility projection for workspaces created before work modes. */
     permissionMode?: PermissionMode; // Default permission mode ('safe', 'ask', 'allow-all')
+    /** @deprecated Replaced by cyclableWorkModes. */
     cyclablePermissionModes?: PermissionMode[]; // Which modes can be cycled with SHIFT+TAB (min 2, default: all 3)
     workingDirectory?: string;
     thinkingLevel?: ThinkingLevel; // Default thinking level for new sessions (default: 'medium')

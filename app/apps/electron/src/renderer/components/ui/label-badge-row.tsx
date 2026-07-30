@@ -22,6 +22,8 @@ import type { LabelConfig } from '@craft-agent/shared/labels'
 import { resolveEntityColor } from '@craft-agent/shared/colors'
 import { useTheme } from '@/context/ThemeContext'
 import { cn } from '@/lib/utils'
+import { getLocalizedLabelName } from '@/utils/label-display-name'
+import { useTranslation } from 'react-i18next'
 
 export interface LabelBadgeRowProps {
   /** Applied session labels (encoded strings like "bug" or "priority::3") */
@@ -30,6 +32,8 @@ export interface LabelBadgeRowProps {
   labels: LabelConfig[]
   /** Called when a label value is changed — receives the updated full sessionLabels array */
   onLabelsChange?: (updatedLabels: string[]) => void
+  /** Render the same badge vocabulary without opening the edit/remove popover. */
+  readOnly?: boolean
   /** Additional className for the container */
   className?: string
 }
@@ -56,9 +60,11 @@ export function LabelBadgeRow({
   sessionLabels,
   labels,
   onLabelsChange,
+  readOnly = false,
   className,
 }: LabelBadgeRowProps) {
   const { isDark } = useTheme()
+  const { t } = useTranslation()
 
   // Track which badge's popover is open (by index)
   const [openIndex, setOpenIndex] = React.useState<number | null>(null)
@@ -91,9 +97,29 @@ export function LabelBadgeRow({
         // If no config found, create a minimal fallback so the badge still renders
         const resolvedConfig: LabelConfig = config ?? { id: parsed.id, name: parsed.id }
         const displayValue = parsed.rawValue ? formatDisplayValue(parsed.rawValue, resolvedConfig.valueType) : undefined
+        const displayName = getLocalizedLabelName(t, resolvedConfig)
         const resolvedColor = resolvedConfig.color
           ? resolveEntityColor(resolvedConfig.color, isDark)
           : 'var(--foreground)'
+        const badge = (
+          <MetadataBadge
+            label={displayName}
+            value={displayValue}
+            onValueClick={resolvedConfig.valueType === 'link' && parsed.rawValue
+              ? () => openLabelLink(parsed.rawValue!)
+              : undefined}
+            icon={<LabelIcon label={resolvedConfig} size="lg" />}
+            valueHintIcon={resolvedConfig.valueType ? <LabelValueTypeIcon valueType={resolvedConfig.valueType} /> : undefined}
+            badgeColor={resolvedColor}
+            interactive={!readOnly}
+            isActive={!readOnly && openIndex === index}
+            showChevron={!readOnly}
+          />
+        )
+
+        if (readOnly) {
+          return <React.Fragment key={`${parsed.id}-${index}`}>{badge}</React.Fragment>
+        }
 
         return (
           <LabelValuePopover
@@ -105,17 +131,7 @@ export function LabelBadgeRow({
             onValueChange={(newValue) => handleValueChange(index, parsed.id, newValue)}
             onRemove={() => handleRemove(index)}
           >
-            <MetadataBadge
-              label={resolvedConfig.name}
-              value={displayValue}
-              onValueClick={resolvedConfig.valueType === 'link' && parsed.rawValue ? () => openLabelLink(parsed.rawValue!) : undefined}
-              icon={<LabelIcon label={resolvedConfig} size="lg" />}
-              valueHintIcon={resolvedConfig.valueType ? <LabelValueTypeIcon valueType={resolvedConfig.valueType} /> : undefined}
-              badgeColor={resolvedColor}
-              interactive
-              isActive={openIndex === index}
-              showChevron
-            />
+            {badge}
           </LabelValuePopover>
         )
       })}

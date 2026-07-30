@@ -59,8 +59,8 @@ BRAND_NAMES="Craft|Claude|Anthropic|OpenAI|MCP|Mermaid|LaTeX|Markdown|GitHub|Web
 
 # Path exclusions for files that are not part of the i18n system:
 # - playground/registry/.test.* — internal scaffolding, not user-facing
-# - apps/marketing, apps/online-docs — English-only public sites
-EXCLUDE_PATHS='playground\|registry\|\.test\.\|apps/marketing/\|apps/online-docs/'
+# - apps/marketing — English-only public site
+EXCLUDE_PATHS='playground\|registry\|\.test\.\|apps/marketing/'
 
 # ─── File list ───────────────────────────────────────────────────────────────
 if [ "$mode" = "staged" ]; then

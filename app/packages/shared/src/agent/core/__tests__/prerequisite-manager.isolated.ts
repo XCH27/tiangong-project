@@ -20,6 +20,10 @@ mock.module('node:fs', () => ({
   readFileSync: originalExistsSync,
 }));
 
+mock.module('../../../config/storage.ts', () => ({
+  getBrowserToolEnabled: () => true,
+}));
+
 const WORKSPACE_ROOT = '/test/workspace';
 
 function guidePath(slug: string): string {
@@ -94,11 +98,11 @@ describe('PrerequisiteManager', () => {
       expect(result.allowed).toBe(true);
     });
 
-    it('matches native browser tools and blocks until browser docs are read', () => {
+    it('matches the built-in browser tool and blocks until browser docs are read', () => {
       const docsPath = browserDocPath();
       mockExistsPaths.add(docsPath);
 
-      const result = manager.checkPrerequisites('browser_snapshot');
+      const result = manager.checkPrerequisites('browser_tool');
       expect(result.allowed).toBe(false);
       expect(result.blockReason).toContain(docsPath);
     });
@@ -298,11 +302,11 @@ describe('PrerequisiteManager', () => {
       const docsPath = browserDocPath();
       mockExistsPaths.add(docsPath);
 
-      expect(manager.checkPrerequisites('browser_open').allowed).toBe(false);
-      expect(manager.checkPrerequisites('browser_open').allowed).toBe(false);
+      expect(manager.checkPrerequisites('browser_tool').allowed).toBe(false);
+      expect(manager.checkPrerequisites('browser_tool').allowed).toBe(false);
 
       manager.trackReadTool({ file_path: docsPath });
-      expect(manager.checkPrerequisites('browser_open').allowed).toBe(true);
+      expect(manager.checkPrerequisites('browser_tool').allowed).toBe(true);
     });
   });
 

@@ -228,19 +228,24 @@ export function DesktopAppMenu({
             {t("menu.help")}
           </StyledDropdownMenuSubTrigger>
           <StyledDropdownMenuSubContent>
-            {HELP_LINKS.map((link) => {
+            {HELP_LINKS.map((link, index) => {
               const Icon = getIcon(link.icon)
               return (
-                <StyledDropdownMenuItem
-                  key={link.id}
-                  onClick={() => window.electronAPI.openUrl(link.url)}
-                >
-                  {Icon && <Icon className="h-3.5 w-3.5" />}
-                  {t(link.labelKey)}
-                  <Icons.ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
-                </StyledDropdownMenuItem>
+                <Fragment key={link.id}>
+                  {index > 0 && HELP_LINKS[index - 1].group !== link.group && (
+                    <StyledDropdownMenuSeparator />
+                  )}
+                  <StyledDropdownMenuItem
+                    onClick={() => window.electronAPI.openUrl(link.url)}
+                  >
+                    {Icon && <Icon className="h-3.5 w-3.5" />}
+                    {t(link.labelKey)}
+                    <Icons.ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+                  </StyledDropdownMenuItem>
+                </Fragment>
               )
             })}
+            <StyledDropdownMenuSeparator />
             <StyledDropdownMenuItem onClick={onOpenKeyboardShortcuts}>
               <Icons.Keyboard className="h-3.5 w-3.5" />
               {t(ROOT_MENU.keyboardShortcuts.labelKey)}

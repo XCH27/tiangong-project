@@ -10,7 +10,7 @@
  *    for separate-port deployments or development.
  */
 
-import { join, extname } from 'node:path'
+import { join, resolve, sep, extname } from 'node:path'
 import {
   RateLimiter,
   initPasswordHash,
@@ -182,6 +182,8 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
 
   const rateLimiter = new RateLimiter(5, 60_000)
   const cleanupTimer = setInterval(() => rateLimiter.cleanup(), 120_000)
+  // Don't keep the Node.js event loop alive solely for rate-limiter cleanup.
+  cleanupTimer.unref?.()
 
   const loginPassword = password || secret
   const trustedProxySet = new Set(trustedProxies ?? [])
@@ -225,7 +227,11 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
 
     // ── Static assets that login page needs (no auth) ──
     if (path === '/favicon.ico' || path.startsWith('/login-assets/')) {
-      const file = Bun.file(join(webuiDir, path))
+      const safePath = resolve(webuiDir, path)
+      if (!safePath.startsWith(resolve(webuiDir) + sep) && safePath !== resolve(webuiDir)) {
+        return new Response('Forbidden', { status: 403 })
+      }
+      const file = Bun.file(safePath)
       if (await file.exists()) {
         return new Response(file, {
           headers: { 'Content-Type': getMimeType(path) },
@@ -383,7 +389,11 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
 
     // ── Serve SPA static files ──
     if (path !== '/') {
-      const file = Bun.file(join(webuiDir, path))
+      const safePath = resolve(webuiDir, path)
+      if (!safePath.startsWith(resolve(webuiDir) + sep) && safePath !== resolve(webuiDir)) {
+        return new Response('Forbidden', { status: 403 })
+      }
+      const file = Bun.file(safePath)
       if (await file.exists()) {
         return new Response(file, {
           headers: { 'Content-Type': getMimeType(path) },

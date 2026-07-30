@@ -25,6 +25,7 @@ import {
   Trash2,
   ExternalLink,
   FolderKanban,
+  Folder,
   Cloud,
 } from 'lucide-react'
 import { useMenuComponents } from '@/components/ui/menu-context'
@@ -241,7 +242,7 @@ export function SidebarMenu({
       <>
         {onAddProject && (
           <MenuItem onClick={onAddProject}>
-            <Plus className="h-3.5 w-3.5" />
+            <Folder className="h-3.5 w-3.5" />
             <span className="flex-1">{t("sidebar.newProjectLocal")}</span>
           </MenuItem>
         )}

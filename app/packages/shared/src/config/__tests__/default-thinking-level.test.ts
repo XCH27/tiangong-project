@@ -51,6 +51,9 @@ function setupWorkspaceConfigDir() {
         richToolDescriptions: true,
       },
       workspaceDefaults: {
+        defaultWorkMode: 'auto',
+        executionPermissionMode: 'ask',
+        cyclableWorkModes: ['auto', 'explore', 'plan', 'execute'],
         thinkingLevel: 'off',
         permissionMode: 'ask',
         cyclablePermissionModes: ['safe', 'ask', 'allow-all'],

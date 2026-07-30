@@ -35,9 +35,9 @@ import type {
   SessionModelChangedEvent,
   LLMConnectionChangedEvent,
   UserMessageEvent,
+  QueuedMessageRemovedEvent,
+  SessionRevertedEvent,
   MessageAnnotationsUpdatedEvent,
-  SessionSharedEvent,
-  SessionUnsharedEvent,
   AuthRequestEvent,
   AuthCompletedEvent,
   UsageUpdateEvent,
@@ -455,6 +455,9 @@ export function handlePermissionModeChanged(
       type: 'permission_mode_changed',
       sessionId: event.sessionId,
       permissionMode: event.permissionMode,
+      workMode: event.workMode,
+      workModeSelection: event.workModeSelection,
+      executionPermissionMode: event.executionPermissionMode,
       previousPermissionMode: event.previousPermissionMode,
       transitionDisplay: event.transitionDisplay,
       modeVersion: event.modeVersion,
@@ -594,6 +597,43 @@ export function handleUserMessage(
   }
 }
 
+/** Keep every renderer window aligned with the Session-owned delivery queue. */
+export function handleQueuedMessageRemoved(
+  state: SessionState,
+  event: QueuedMessageRemovedEvent,
+): ProcessResult {
+  return {
+    state: {
+      ...state,
+      session: {
+        ...state.session,
+        messages: state.session.messages.filter((message) =>
+          message.id !== event.messageId && message.id !== event.optimisticMessageId,
+        ),
+      },
+    },
+    effects: [],
+  }
+}
+
+export function handleSessionReverted(
+  state: SessionState,
+  event: SessionRevertedEvent,
+): ProcessResult {
+  return {
+    state: {
+      session: {
+        ...state.session,
+        messages: event.messages,
+        tokenUsage: event.tokenUsage,
+        isProcessing: false,
+      },
+      streaming: null,
+    },
+    effects: [],
+  }
+}
+
 /**
  * Handle message_annotations_updated - update annotations on a specific message.
  */
@@ -700,9 +740,9 @@ export function handleSessionStatusChanged(
 }
 
 /**
- * Handle session_metadata_changed - merge programmatic metadata changes (taskNodeCount,
- * kanbanColumn, and the taskDraft→taskSlug promotion on orchestrator adoption) that don't
- * propagate via the header-signature file watch.
+ * Handle session_metadata_changed - merge programmatic metadata changes (goal,
+ * taskNodeCount, kanbanColumn, and task promotion fields) that need an immediate
+ * renderer projection in addition to header persistence.
  */
 export function handleSessionMetadataChanged(
   state: SessionState,
@@ -854,49 +894,6 @@ export function handlePlanSubmitted(
 }
 
 /**
- * Handle session_shared - session was shared to viewer
- */
-export function handleSessionShared(
-  state: SessionState,
-  event: SessionSharedEvent
-): ProcessResult {
-  const { session, streaming } = state
-
-  return {
-    state: {
-      session: {
-        ...session,
-        sharedUrl: event.sharedUrl,
-      },
-      streaming,
-    },
-    effects: [],
-  }
-}
-
-/**
- * Handle session_unshared - session share was revoked
- */
-export function handleSessionUnshared(
-  state: SessionState,
-  _event: SessionUnsharedEvent
-): ProcessResult {
-  const { session, streaming } = state
-
-  return {
-    state: {
-      session: {
-        ...session,
-        sharedUrl: undefined,
-        sharedId: undefined,
-      },
-      streaming,
-    },
-    effects: [],
-  }
-}
-
-/**
  * Handle auth_request - add auth-request message to session
  * This is the unified auth flow - execution is paused until auth completes
  */
@@ -963,7 +960,7 @@ export function handleAuthCompleted(
 
 /**
  * Handle usage_update - real-time context usage during processing
- * Merges usage update into existing tokenUsage (preserves outputTokens, costUsd, etc.)
+ * Replaces current-request accounting while preserving session-level output and cost.
  */
 export function handleUsageUpdate(
   state: SessionState,
@@ -971,15 +968,19 @@ export function handleUsageUpdate(
 ): ProcessResult {
   const { session, streaming } = state
 
-  // Merge usage update into existing tokenUsage, providing defaults for required fields
+  const outputTokens = session.tokenUsage?.outputTokens ?? 0
   const updatedTokenUsage = {
     inputTokens: event.tokenUsage.inputTokens,
-    outputTokens: session.tokenUsage?.outputTokens ?? 0,
-    totalTokens: session.tokenUsage?.totalTokens ?? 0,
+    outputTokens,
+    totalTokens: event.tokenUsage.inputTokens + outputTokens,
     contextTokens: session.tokenUsage?.contextTokens ?? 0,
     costUsd: session.tokenUsage?.costUsd ?? 0,
-    ...(session.tokenUsage?.cacheReadTokens !== undefined && { cacheReadTokens: session.tokenUsage.cacheReadTokens }),
-    ...(session.tokenUsage?.cacheCreationTokens !== undefined && { cacheCreationTokens: session.tokenUsage.cacheCreationTokens }),
+    ...(event.tokenUsage.cacheReadTokens !== undefined && {
+      cacheReadTokens: event.tokenUsage.cacheReadTokens,
+    }),
+    ...(event.tokenUsage.cacheCreationTokens !== undefined && {
+      cacheCreationTokens: event.tokenUsage.cacheCreationTokens,
+    }),
     ...(event.tokenUsage.contextWindow && { contextWindow: event.tokenUsage.contextWindow }),
   }
 

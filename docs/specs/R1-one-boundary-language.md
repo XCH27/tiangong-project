@@ -114,6 +114,14 @@ Every v0.11-derived delta receives one verdict before implementation:
 10. **Future task center stays one projection.** A later Claude/Codex-style task center may combine
     selected Session, Task and Job state through existing authorities. It is not a Trello-style
     board and never becomes another conversation store.
+11. **Global search is one projection, not another home.** The top-bar search command and
+    `Cmd/Ctrl+K` project existing Session metadata/content, Project folders/files, Settings and
+    shell destinations into one transient result list.
+    - ✅ Session content uses the existing Session search path; Project files use the existing
+      filesystem search path; Settings and navigation results resolve to canonical routes.
+    - ✅ Selecting a Session, route or file opens the existing destination or file preview.
+    - ❌ A persisted search index, second Session store, duplicate Settings registry or search-only
+      content authority.
 
 ## Slice order
 
@@ -196,11 +204,11 @@ Implementation notes that prevent current-code traps:
 
 | Surface ID | R1 treatment | Existing authority | Owner checkpoint |
 |---|---|---|---|
-| P-01 | restore/simplify shell, Projects + Conversations over one list, context-bound create | navigation + Session state | sidebar in both languages, wide/narrow |
+| P-01 | restore/simplify shell, Projects + Conversations over one list, context-bound create, global search command | navigation + Session state + existing search/filesystem paths | sidebar and global search in both languages, wide/narrow |
 | P-02 | one progressive New Task composer and preserved Session actions | SessionManager + existing composer/menu | new/open/running/error/archive flows |
 | P-03 | one Project switcher; documents/assets/settings home without Session copy | Workspace RPC | empty/populated/offline Project |
 | P-05 | label definitions remain in Settings | settings + label store | create/rename/delete label |
-| P-06 | search/label/archive filter the one list | search/labels/Session commands | empty/result/archived/restore |
+| P-06 | search/label/archive filter the one list; global search projects Sessions, Projects/files, Settings and routes | search/filesystem/labels/Session commands | empty/result/partial-error/archived/restore |
 
 P-04 Board is not an R1 acceptance surface. Existing Board code is classified by the source review
 and may remain dormant for later backend reuse, but its presence is not a usable product claim.
@@ -217,6 +225,7 @@ and may remain dormant for later backend reuse, but its presence is not a usable
 | Label definitions | Settings | Session menu only assigns/removes |
 | Archive/recovery | Session menu + archived list state | no separate conversation authority |
 | Session actions | one shared action definition | compact/full renderers may differ visually but use the same commands |
+| Global search | top-bar command + `Cmd/Ctrl+K` | results project existing Session, Project/filesystem, Settings and route authorities |
 
 ## Acceptance criteria
 
@@ -234,6 +243,8 @@ and may remain dormant for later backend reuse, but its presence is not a usable
 | R1-C10 | Composer preserves existing advanced controls on demand and introduces no second editor authority | component test |
 | R1-C11 | i18n parity/sorted/coverage/string checks and scoped typechecks pass | repository commands |
 | R1-C12 | Owner accepts zh-Hans/English shell, Projects/Conversations scopes, Project home, composer, labels and archive flows | owner walkthrough |
+| R1-C13 | Top-bar search and `Cmd/Ctrl+K` find and open existing Sessions, Project files/folders, Settings and shell destinations without adding persistence | targeted model tests + real Electron smoke |
+| R1-C14 | The existing composer mode entry supports Auto or a manual Explore/Plan/Execute phase; the default privileged-action approval policy is configured in the existing Permissions settings for new Sessions; both project through the single permission gate, persist on the Session, and plan approval never grants bypass implicitly | shared work-mode tests + Session persistence test + Electron typecheck |
 
 ## Explicit donor and later-work decisions
 

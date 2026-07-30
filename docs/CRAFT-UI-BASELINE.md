@@ -178,12 +178,14 @@ the existing component path plus locale tests when layout is unaffected.
    shared tokens. Name any retained later-upstream behavior and why it passes P2.
 3. Check every icon in the changed group from component props/tokens for source, size, stroke, color,
    slot, hover, focus, and disabled state.
-4. Render the changed state at the relevant view matrix. Compare anchor and result at the same
+4. Run `cd app && bun run lint:ui-contract`; direct Radix imports from product surfaces and
+   off-contract added values must be removed before rendering.
+5. Render the changed state at the relevant view matrix. Compare anchor and result at the same
    viewport/theme/state; fix padding, type, color, radius, icon, focus and overflow differences not
    named in the intentional delta.
-5. Preserve unrelated Craft behaviors such as context menus, relative time, labels, keyboard focus,
+6. Preserve unrelated Craft behaviors such as context menus, relative time, labels, keyboard focus,
    drag/drop, and loading/error states unless the owner explicitly removes them.
-6. Extend the existing playground registry for a new/reworked reusable component or state; do not
+7. Extend the existing playground registry for a new/reworked reusable component or state; do not
    fork a playground-only copy of production UI.
 
 ## Human acceptance

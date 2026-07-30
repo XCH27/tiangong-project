@@ -63,6 +63,7 @@ export interface BroadcastEventMap {
 
   // Copilot device code event
   [RPC_CHANNELS.copilot.DEVICE_CODE]: [data: { userCode: string; verificationUri: string }]
+  [RPC_CHANNELS.xai.DEVICE_CODE]: [data: { userCode: string; verificationUri: string }]
 
   // Menu events (per-window, no payload)
   [RPC_CHANNELS.menu.NEW_CHAT]: []

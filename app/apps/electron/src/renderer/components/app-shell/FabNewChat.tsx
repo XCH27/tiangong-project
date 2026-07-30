@@ -28,7 +28,7 @@ export function FabNewChat({ onClick, className }: FabNewChatProps) {
       onClick={onClick}
       aria-label={t("menu.newChat")}
       className={cn(
-        "fixed right-4 z-30 size-14 rounded-full",
+        "fixed right-4 z-panel size-14 rounded-full",
         "bg-accent text-white",
         "flex items-center justify-center",
         "shadow-modal-small",

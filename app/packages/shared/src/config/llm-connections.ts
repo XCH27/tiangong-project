@@ -14,6 +14,8 @@
 import {
   type ModelDefinition,
   ANTHROPIC_MODELS,
+  getModelById,
+  modelSupportsFastMode,
   normalizeDeprecatedModelId,
 } from './models';
 import type { CredentialManager } from '../credentials/manager.ts';
@@ -92,9 +94,13 @@ export type LlmAuthType =
 /**
  * Ownership mode for a connection's model list.
  * - automaticallySyncedFromProvider: provider defaults are synced automatically.
- * - userDefined3Tier: user-picked Best/Balanced/Fast list is preserved.
+ * - userSelected: the user's enabled model set is preserved.
+ * - userDefined3Tier: legacy persisted value; treated as userSelected.
  */
-export type ModelSelectionMode = 'automaticallySyncedFromProvider' | 'userDefined3Tier';
+export type ModelSelectionMode =
+  | 'automaticallySyncedFromProvider'
+  | 'userSelected'
+  | 'userDefined3Tier';
 
 /**
  * Protocol for custom API endpoints.
@@ -161,9 +167,20 @@ export interface LlmConnection {
   defaultModel?: string;
 
   /**
+   * Optional model for low-cost internal work such as title generation,
+   * summaries, and mini-agent calls. When omitted, Fleet resolves a suitable
+   * small model from this connection's enabled model catalog.
+   *
+   * This is intentionally one override rather than separate title/summary
+   * authorities: those jobs share the same economy policy.
+   */
+  utilityModel?: string;
+
+  /**
    * Ownership mode for the model list.
    * - automaticallySyncedFromProvider: provider defaults are kept in sync.
-   * - userDefined3Tier: preserve user-selected Best/Balanced/Fast list.
+   * - userSelected: preserve the user's enabled model set.
+   * - userDefined3Tier: legacy persisted value with the same preservation semantics.
    */
   modelSelectionMode?: ModelSelectionMode;
 
@@ -259,9 +276,9 @@ export function isDeniedMiniModelId(modelId: string, piAuthProvider?: string): b
  * Used for mini agent, title generation, and mini completions.
  */
 export function getMiniModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
 ): string | undefined {
-  return findSmallModel(connection);
+  return resolveUtilityModel(connection);
 }
 
 /**
@@ -272,8 +289,21 @@ export function getMiniModel(
  * Used for response summarization and API tool summarization.
  */
 export function getSummarizationModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
 ): string | undefined {
+  return resolveUtilityModel(connection);
+}
+
+function resolveUtilityModel(
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
+): string | undefined {
+  const explicit = connection.utilityModel?.trim();
+  if (explicit && connection.models?.some((model) => {
+    const id = typeof model === 'string' ? model : model.id;
+    return id === explicit && !isDeniedMiniModelId(id, connection.piAuthProvider);
+  })) {
+    return explicit;
+  }
   return findSmallModel(connection);
 }
 
@@ -561,6 +591,76 @@ export function modelSupportsImages(
   return connection.customEndpoint?.supportsImages ?? false;
 }
 
+function modelIdsMatch(left: string, right: string): boolean {
+  const normalize = (value: string) => normalizeDeprecatedModelId(
+    value.startsWith('pi/') ? value.slice(3) : value,
+  );
+  return normalize(left) === normalize(right);
+}
+
+/**
+ * Resolve capability metadata for the effective model on one connection.
+ *
+ * Connection-owned discovery wins over the static registry so runtime-refreshed
+ * Pi catalogs remain authoritative. String-only custom endpoint entries carry
+ * no capability metadata and deliberately resolve to `undefined`; callers must
+ * not guess reasoning, speed, image, or context capabilities for them.
+ */
+export function resolveConnectionModelDefinition(
+  connection: Pick<LlmConnection, 'providerType' | 'piAuthProvider' | 'models'> | null | undefined,
+  modelId: string | null | undefined,
+): ModelDefinition | undefined {
+  if (!modelId) return undefined;
+
+  const connectionEntry = connection?.models?.find((candidate) =>
+    modelIdsMatch(typeof candidate === 'string' ? candidate : candidate.id, modelId),
+  );
+  if (connectionEntry && typeof connectionEntry !== 'string') return connectionEntry;
+
+  if (connection) {
+    const discovered = getModelsForProviderType(connection.providerType, connection.piAuthProvider)
+      .find(candidate => modelIdsMatch(candidate.id, modelId));
+    if (discovered) return discovered;
+
+    // Compatible/custom endpoints own their capability declarations. A model
+    // name that happens to match a built-in provider model is not evidence that
+    // this transport accepts the same effort, speed, or multimodal parameters.
+    if (isCompatProvider(connection.providerType)) return undefined;
+
+    // Persisted first-party connections may still carry model lists as string
+    // IDs. Falling through to the built-in registry is safe for those provider
+    // types, but never for compatible endpoints.
+    if (connectionEntry) {
+      return getModelById(modelId)
+        ?? getModelById(modelId.startsWith('pi/') ? modelId.slice(3) : `pi/${modelId}`);
+    }
+  }
+
+  return getModelById(modelId)
+    ?? getModelById(modelId.startsWith('pi/') ? modelId.slice(3) : `pi/${modelId}`);
+}
+
+/**
+ * Fast mode is a transport capability, not only a model label.
+ *
+ * Fleet applies a provider-advertised request fragment through its Anthropic
+ * or OpenAI protocol adapter. Compatible endpoints remain excluded because a
+ * matching model name does not prove that their transport accepts the mode.
+ */
+export function connectionSupportsFastMode(
+  connection: Pick<LlmConnection, 'providerType' | 'piAuthProvider' | 'models'> | null | undefined,
+  modelId: string | null | undefined,
+): boolean {
+  if (!connection || (connection.providerType !== 'anthropic' && connection.providerType !== 'pi')) {
+    return false;
+  }
+  const definition = resolveConnectionModelDefinition(connection, modelId);
+  if (!modelSupportsFastMode(definition)) return false;
+  // Static first-party Anthropic definitions retain the built-in adapter
+  // fallback. Dynamic Pi models require an exact provider mode declaration.
+  return connection.providerType === 'anthropic' || definition?.runtimeModes?.fast !== undefined;
+}
+
 /**
  * Get the default model list for a provider type from the registry.
  * For *_compat providers, returns empty array - those should use connection.models instead.
@@ -614,6 +714,7 @@ export const PI_PREFERRED_DEFAULTS: Record<string, string[]> = {
   // April 2026 — and are deliberately excluded from defaults.
   google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview'],
   deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+  xai: ['grok-build-0.1', 'grok-4.5', 'grok-4.3', 'grok-code-fast-1'],
   'github-copilot': ['claude-sonnet-4-6', 'gpt-5', 'o4-mini', 'claude-haiku-4-5'],
   'amazon-bedrock': ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
 };
@@ -708,6 +809,40 @@ export function isSessionConnectionUnavailable(
 ): boolean {
   if (!sessionConnection) return false
   return !connections.some(c => c.slug === sessionConnection)
+}
+
+/**
+ * Recover a stored session after a provider connection was recreated under a
+ * provider-native slug. A unique model match is safe; ambiguous matches remain
+ * unavailable so the UI never silently routes a session to the wrong account.
+ */
+export function resolveStoredSessionConnectionSlug(
+  sessionConnection: string | undefined,
+  sessionModel: string | undefined,
+  connections: Pick<LlmConnectionWithStatus, 'slug' | 'models' | 'defaultModel'>[],
+): string | undefined {
+  if (!sessionConnection) return undefined
+  if (connections.some(connection => connection.slug === sessionConnection)) {
+    return sessionConnection
+  }
+  if (!sessionModel) return undefined
+
+  const normalize = (modelId: string) =>
+    modelId.startsWith('pi/') ? modelId.slice(3) : modelId
+  const target = normalize(sessionModel)
+  const matches = connections.filter((connection) => {
+    if (
+      connection.defaultModel
+      && normalize(connection.defaultModel) === target
+    ) {
+      return true
+    }
+    return connection.models?.some((model) =>
+      normalize(typeof model === 'string' ? model : model.id) === target
+    ) ?? false
+  })
+
+  return matches.length === 1 ? matches[0]?.slug : undefined
 }
 
 /**

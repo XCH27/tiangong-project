@@ -9,7 +9,7 @@ import { readFileAttachment, validateImageForClaudeAPI, IMAGE_LIMITS } from '@cr
 import { getSessionAttachmentsPath, validateSessionId } from '@craft-agent/shared/sessions'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { resizeImageForAPI, inspectImageBuffer } from '@craft-agent/server-core/services'
-import { sanitizeFilename, validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
+import { sanitizeFilename, validateFilePath, getWorkspaceAllowedDirs, resolveCallerWorkspaceId } from '@craft-agent/server-core/handlers'
 import { MarkItDown } from 'markitdown-js'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -29,11 +29,41 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.fs.LIST_DIRECTORY,
 ] as const
 
+/** Block the same sensitive paths even for user-consent attachment reads. */
+function isSensitiveUserPath(filePath: string): boolean {
+  const sensitivePatterns = [
+    /\.ssh[\\/]/,
+    /\.gnupg[\\/]/,
+    /\.aws[\\/]credentials/,
+    /\.config[\\/]gcloud/,
+    /\.env$/,
+    /\.env\./,
+    /credentials\.json$/,
+    /secrets?\./i,
+    /\.pem$/,
+    /\.key$/,
+    /id_rsa/,
+    /id_ecdsa/,
+    /id_ed25519/,
+    /\.bash_history$/,
+    /\.zsh_history$/,
+    /\.sh_history$/,
+    /\.npmrc$/,
+    /\.pypirc$/,
+    /\.netrc$/,
+    /\.gitconfig$/,
+    /\.docker[\\/]config\.json$/,
+    /\.kube[\\/]config$/,
+    /\.config[\\/]gh[\\/]hosts\.yml$/,
+  ]
+  return sensitivePatterns.some((pattern) => pattern.test(filePath))
+}
+
 export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): void {
   // Read a file (with path validation to prevent traversal attacks)
   server.handle(RPC_CHANNELS.file.READ, async (ctx, path: string) => {
     try {
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const workspaceId = resolveCallerWorkspaceId(ctx, deps)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
       const content = await readFile(safePath, 'utf-8')
       return content
@@ -53,7 +83,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
   // Returns data:{mime};base64,{content} — used by ImagePreviewOverlay and markdown image blocks.
   server.handle(RPC_CHANNELS.file.READ_DATA_URL, async (ctx, path: string) => {
     try {
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const workspaceId = resolveCallerWorkspaceId(ctx, deps)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
       const buffer = await readFile(safePath)
       const ext = safePath.split('.').pop()?.toLowerCase() ?? ''
@@ -85,7 +115,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
   // Returns a PNG data URL resized to fit within maxSize×maxSize.
   server.handle(RPC_CHANNELS.file.READ_PREVIEW_DATA_URL, async (ctx, path: string, maxSize = 64) => {
     try {
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const workspaceId = resolveCallerWorkspaceId(ctx, deps)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
       const size = Number.isFinite(maxSize) ? Math.max(16, Math.min(256, Math.floor(maxSize))) : 64
       const preview = await deps.platform.imageProcessor.process(safePath, {
@@ -105,7 +135,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
   // The WS transport codec preserves Uint8Array payloads over JSON envelopes.
   server.handle(RPC_CHANNELS.file.READ_BINARY, async (ctx, path: string) => {
     try {
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const workspaceId = resolveCallerWorkspaceId(ctx, deps)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
       const buffer = await readFile(safePath)
       // Return as Uint8Array (serializes to ArrayBuffer over IPC)
@@ -117,7 +147,9 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
     }
   })
 
-  // Open native file dialog for selecting files to attach (routed to client)
+  // Open native file dialog for selecting files to attach (routed to client).
+  // Craft original: files only. Folders are the same attachment surface via drag-drop
+  // (path-bearing File entries), not a second openDirectory picker mode.
   server.handle(RPC_CHANNELS.file.OPEN_DIALOG, async (ctx) => {
     const result = await requestClientOpenFileDialog(server, ctx.clientId, {
       properties: ['openFile', 'multiSelections'],
@@ -135,7 +167,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
   // Read file and return as FileAttachment with Quick Look thumbnail
   server.handle(RPC_CHANNELS.file.READ_ATTACHMENT, async (ctx, path: string) => {
     try {
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const workspaceId = resolveCallerWorkspaceId(ctx, deps)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
       // Use shared utility that handles file type detection, encoding, etc.
       const attachment = await readFileAttachment(safePath)
@@ -163,14 +195,18 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
   })
 
   // Read a user-attached file (bypasses workspace-dir validation).
-  // Used only by renderer draft hydration: the path was written to drafts.json by a
-  // previous user-initiated OS-picker / Finder-drag attach, so the path implies consent.
-  // NOT exposed to agent code — no equivalent MCP tool. Kept separate from readFileAttachment
-  // on purpose to preserve the agent-facing read's narrow trust boundary.
+  // Used by composer attach + draft hydration: the path was chosen via OS picker / drag,
+  // so the path implies consent. NOT exposed to agent code — no equivalent MCP tool.
+  // Kept separate from readFileAttachment on purpose to preserve the agent-facing trust boundary.
   const USER_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
   server.handle(RPC_CHANNELS.file.READ_USER_ATTACHMENT, async (_ctx, path: string) => {
     try {
       if (!path || typeof path !== 'string' || !isAbsolute(path)) return null
+      // Consent model allows any absolute user-picked path, but never secrets.
+      if (isSensitiveUserPath(path)) {
+        deps.platform.logger.warn('[readUserAttachment] blocked sensitive path')
+        return null
+      }
       const info = await stat(path).catch(() => null)
       if (!info || !info.isFile()) return null
       if (info.size > USER_ATTACHMENT_MAX_BYTES) {
@@ -222,8 +258,8 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
         throw new Error('Cannot attach empty file')
       }
 
-      // Get workspace slug from the calling window
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      // Prefer host-registered workspace over client-declared workspaceId
+      const workspaceId = resolveCallerWorkspaceId(ctx, deps)
       if (!workspaceId) {
         throw new Error('Cannot determine workspace for attachment storage')
       }
@@ -441,9 +477,14 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
   // Parallel BFS walk that skips ignored directories BEFORE entering them,
   // avoiding reading node_modules/etc. contents entirely. Uses withFileTypes
   // to get entry types without separate stat calls.
-  server.handle(RPC_CHANNELS.fs.SEARCH, async (_ctx, basePath: string, query: string) => {
+  server.handle(RPC_CHANNELS.fs.SEARCH, async (ctx, basePath: string, query: string) => {
     deps.platform.logger.info('[FS_SEARCH] called:', basePath, query)
     const MAX_RESULTS = 50
+
+    // Validate basePath is within an allowed directory (workspace root or home).
+    // Prevents arbitrary directory enumeration by remote clients.
+    const workspaceId = resolveCallerWorkspaceId(ctx, deps)
+    const safeBasePath = await validateFilePath(basePath, getWorkspaceAllowedDirs(workspaceId))
 
     // Directories to never recurse into
     const SKIP_DIRS = new Set([
@@ -465,7 +506,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
 
         const dirResults = await Promise.all(
           queue.map(async (relDir) => {
-            const absDir = relDir ? join(basePath, relDir) : basePath
+            const absDir = relDir ? join(safeBasePath, relDir) : safeBasePath
             try {
               return { relDir, entries: await readdir(absDir, { withFileTypes: true }) }
             } catch {
@@ -499,7 +540,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
             if (lowerName.includes(lowerQuery) || lowerRelative.includes(lowerQuery)) {
               results.push({
                 name,
-                path: join(basePath, relativePath),
+                path: join(safeBasePath, relativePath),
                 type: isDir ? 'directory' : 'file',
                 relativePath,
               })
@@ -540,6 +581,12 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
 
     // Normalize (collapses .. segments, trailing slashes, etc.)
     const resolved = resolve(dirPath)
+
+    // Block sensitive directories even for folder picker — prevents remote
+    // clients from enumerating ~/.ssh, ~/.gnupg, ~/.aws, etc.
+    if (isSensitiveUserPath(resolved) || isSensitiveUserPath(resolved + '/')) {
+      throw new Error('Access denied: cannot list sensitive directory')
+    }
 
     // Read entries, filter to directories
     const raw = await readdir(resolved, { withFileTypes: true })

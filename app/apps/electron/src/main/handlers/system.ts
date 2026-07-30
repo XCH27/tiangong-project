@@ -238,7 +238,11 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
     try {
       const expanded = path.startsWith('~') ? path.replace(/^~/, homedir()) : path
       const absolutePath = resolve(expanded)
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      // Prefer host-registered workspace over client-declared workspaceId.
+      const hostWs = ctx.webContentsId != null
+        ? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId) ?? null
+        : null
+      const workspaceId = hostWs ?? ctx.workspaceId
       const safePath = await validateFilePath(absolutePath, getWorkspaceAllowedDirs(workspaceId))
       const result = await requestClientOpenPath(server, ctx.clientId, safePath)
       if (result.error) throw new Error(result.error)
@@ -253,7 +257,10 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
     try {
       const expanded = path.startsWith('~') ? path.replace(/^~/, homedir()) : path
       const absolutePath = resolve(expanded)
-      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const hostWs = ctx.webContentsId != null
+        ? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId) ?? null
+        : null
+      const workspaceId = hostWs ?? ctx.workspaceId
       const safePath = await validateFilePath(absolutePath, getWorkspaceAllowedDirs(workspaceId))
       await requestClientShowInFolder(server, ctx.clientId, safePath)
     } catch (error) {

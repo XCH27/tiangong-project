@@ -13,7 +13,6 @@ export interface SessionListContextValue {
   onUnflag?: (sessionId: string) => void
   onArchive?: (sessionId: string) => void
   onUnarchive?: (sessionId: string) => void
-  onMarkUnread: (sessionId: string) => void
   onDelete: (sessionId: string, skipConfirmation?: boolean) => Promise<boolean>
   onLabelsChange?: (sessionId: string, labels: string[]) => void
   /** Set or clear the project binding for a session (null = unbind) */

@@ -452,6 +452,9 @@ export default function App() {
       next.set(sessionId, {
         ...current,
         permissionMode: state.permissionMode,
+        workMode: state.workMode ?? current.workMode,
+        workModeSelection: state.workModeSelection ?? current.workModeSelection,
+        executionPermissionMode: state.executionPermissionMode ?? current.executionPermissionMode,
         permissionModeVersion: state.modeVersion,
       })
       return next
@@ -482,13 +485,34 @@ export default function App() {
         ...defaultSessionOptions,
         ...current,
         permissionMode: session.permissionMode ?? defaultSessionOptions.permissionMode,
+        workMode: session.workMode ?? defaultSessionOptions.workMode,
+        workModeSelection: session.workModeSelection ?? defaultSessionOptions.workModeSelection,
+        executionPermissionMode: session.executionPermissionMode ?? defaultSessionOptions.executionPermissionMode,
         thinkingLevel: session.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+        fastMode: session.fastMode ?? false,
       }
 
+      // Keep an entry whenever the session carries work-phase or non-default
+      // gate/thinking state. Execute+ask must not be treated as "default empty"
+      // just because permissionMode happens to match a fallback string.
+      const hasWorkModeState =
+        session.workMode !== undefined
+        || session.workModeSelection !== undefined
+        || session.executionPermissionMode !== undefined
       const hasNonDefaultMode = merged.permissionMode !== defaultSessionOptions.permissionMode
+        || merged.workMode !== defaultSessionOptions.workMode
+        || merged.workModeSelection !== defaultSessionOptions.workModeSelection
+        || merged.executionPermissionMode !== defaultSessionOptions.executionPermissionMode
       const hasNonDefaultThinking = merged.thinkingLevel !== DEFAULT_THINKING_LEVEL
+      const hasFastMode = merged.fastMode
 
-      if (!hasNonDefaultMode && !hasNonDefaultThinking && merged.permissionModeVersion == null) {
+      if (
+        !hasWorkModeState
+        && !hasNonDefaultMode
+        && !hasNonDefaultThinking
+        && !hasFastMode
+        && merged.permissionModeVersion == null
+      ) {
         next.delete(session.id)
       } else {
         next.set(session.id, merged)
@@ -533,12 +557,23 @@ export default function App() {
       // Initialize unified sessionOptions from session data
       const optionsMap = new Map<string, SessionOptions>()
       for (const s of loadedSessions) {
-        const hasNonDefaultMode = s.permissionMode && s.permissionMode !== 'ask'
+        const hasWorkModeState =
+          s.workMode !== undefined
+          || s.workModeSelection !== undefined
+          || s.executionPermissionMode !== undefined
+        const hasNonDefaultMode = s.permissionMode !== undefined
+          && s.permissionMode !== defaultSessionOptions.permissionMode
         const hasNonDefaultThinking = s.thinkingLevel && s.thinkingLevel !== DEFAULT_THINKING_LEVEL
-        if (hasNonDefaultMode || hasNonDefaultThinking) {
+        const hasFastMode = s.fastMode === true
+        if (hasNonDefaultMode || hasWorkModeState || hasNonDefaultThinking || hasFastMode) {
           optionsMap.set(s.id, {
-            permissionMode: s.permissionMode ?? 'ask',
+            ...defaultSessionOptions,
+            permissionMode: s.permissionMode ?? defaultSessionOptions.permissionMode,
+            workMode: s.workMode ?? defaultSessionOptions.workMode,
+            workModeSelection: s.workModeSelection ?? defaultSessionOptions.workModeSelection,
+            executionPermissionMode: s.executionPermissionMode ?? defaultSessionOptions.executionPermissionMode,
             thinkingLevel: s.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+            fastMode: s.fastMode ?? false,
           })
         }
       }
@@ -874,6 +909,9 @@ export default function App() {
             if (typeof effect.modeVersion === 'number' && effect.changedAt && effect.changedBy) {
               applyPermissionModeState(effect.sessionId, {
                 permissionMode: effect.permissionMode,
+                workMode: effect.workMode,
+                workModeSelection: effect.workModeSelection,
+                executionPermissionMode: effect.executionPermissionMode,
                 modeVersion: effect.modeVersion,
                 changedAt: effect.changedAt,
                 changedBy: effect.changedBy,
@@ -883,7 +921,13 @@ export default function App() {
               setSessionOptions(prevOpts => {
                 const next = new Map(prevOpts)
                 const current = next.get(effect.sessionId) ?? defaultSessionOptions
-                next.set(effect.sessionId, { ...current, permissionMode: effect.permissionMode })
+                next.set(effect.sessionId, {
+                  ...current,
+                  permissionMode: effect.permissionMode,
+                  workMode: effect.workMode ?? current.workMode,
+                  workModeSelection: effect.workModeSelection ?? current.workModeSelection,
+                  executionPermissionMode: effect.executionPermissionMode ?? current.executionPermissionMode,
+                })
                 return next
               })
               void reconcilePermissionModeState(effect.sessionId)
@@ -1191,8 +1235,9 @@ export default function App() {
       // (closures would retain the full sessions array with all messages)
       const metaMap = store.get(sessionMetaMapAtom)
       const meta = metaMap.get(sessionId)
-      // Session is empty if it has no lastFinalMessageId (no assistant responses) and no name (set on first user message)
-      const isEmpty = !meta || (!meta.lastFinalMessageId && !meta.name)
+      // Empty = never first-sent (same rule as list visibility / auto-delete)
+      const isEmpty = !meta
+        || (!meta.lastFinalMessageId && !meta.name && !meta.preview && (meta.messageCount ?? 0) === 0)
 
       if (!isEmpty) {
         const confirmed = await window.electronAPI.showDeleteSessionConfirmation(meta?.name || 'Untitled')
@@ -1260,12 +1305,6 @@ export default function App() {
       }
     })
     window.electronAPI.sessionCommand(sessionId, { type: 'markRead' })
-  }, [updateSessionById])
-
-  const handleMarkSessionUnread = useCallback((sessionId: string) => {
-    // Set hasUnread flag (primary source of truth for NEW badge)
-    updateSessionById(sessionId, { hasUnread: true, lastReadMessageId: undefined })
-    window.electronAPI.sessionCommand(sessionId, { type: 'markUnread' })
   }, [updateSessionById])
 
   const handleSessionStatusChange = useCallback((sessionId: string, state: SessionStatus) => {
@@ -1449,6 +1488,9 @@ export default function App() {
    * Handles persistence and backend sync for each option type.
    */
   const handleSessionOptionsChange = useCallback((sessionId: string, updates: SessionOptionUpdates) => {
+    // Preserve the previous value before the optimistic renderer projection so
+    // a rejected runtime update can be rolled back precisely.
+    const previousOptions = sessionOptions.get(sessionId) ?? defaultSessionOptions
     setSessionOptions(prev => {
       const next = new Map(prev)
       const current = next.get(sessionId) ?? defaultSessionOptions
@@ -1461,9 +1503,39 @@ export default function App() {
       // Sync permission mode change with backend
       window.electronAPI.sessionCommand(sessionId, { type: 'setPermissionMode', mode: updates.permissionMode })
     }
+    if (updates.workModeSelection !== undefined || updates.workMode !== undefined) {
+      const current = sessionOptions.get(sessionId) ?? defaultSessionOptions
+      window.electronAPI.sessionCommand(sessionId, {
+        type: 'setWorkMode',
+        selection: updates.workModeSelection ?? current.workModeSelection,
+        mode: updates.workMode ?? current.workMode,
+      })
+    }
+    if (updates.executionPermissionMode !== undefined) {
+      window.electronAPI.sessionCommand(sessionId, {
+        type: 'setExecutionPermissionMode',
+        mode: updates.executionPermissionMode,
+      })
+    }
     if (updates.thinkingLevel !== undefined) {
       // Sync thinking level change with backend (session-level, persisted)
       window.electronAPI.sessionCommand(sessionId, { type: 'setThinkingLevel', level: updates.thinkingLevel })
+    }
+    if (updates.fastMode !== undefined) {
+      const previousFastMode = previousOptions.fastMode
+      void window.electronAPI.sessionCommand(sessionId, { type: 'setFastMode', enabled: updates.fastMode })
+        .catch(() => {
+          // The backend refuses a live-runtime change. Restore the only
+          // renderer projection instead of leaving an optimistic false state.
+          setSessionOptions(prev => {
+            const next = new Map(prev)
+            const latest = next.get(sessionId) ?? defaultSessionOptions
+            if (latest.fastMode === updates.fastMode) {
+              next.set(sessionId, mergeSessionOptions(latest, { fastMode: previousFastMode }))
+            }
+            return next
+          })
+        })
     }
   }, [sessionOptions])
 
@@ -1858,7 +1930,6 @@ export default function App() {
     onArchiveSession: handleArchiveSession,
     onUnarchiveSession: handleUnarchiveSession,
     onMarkSessionRead: handleMarkSessionRead,
-    onMarkSessionUnread: handleMarkSessionUnread,
     onSetActiveViewingSession: handleSetActiveViewingSession,
     onSessionStatusChange: handleSessionStatusChange,
     onDeleteSession: handleDeleteSession,
@@ -1901,7 +1972,6 @@ export default function App() {
     handleArchiveSession,
     handleUnarchiveSession,
     handleMarkSessionRead,
-    handleMarkSessionUnread,
     handleSetActiveViewingSession,
     handleSessionStatusChange,
     handleDeleteSession,
@@ -2060,15 +2130,14 @@ export default function App() {
           )}
 
           {/* Main UI - always rendered, splash fades away to reveal it */}
-          <div
-            className="h-full flex flex-col text-foreground"
-            style={{ paddingTop: 'var(--topbar-height)' }}
-          >
+          <div className="h-full flex flex-col text-foreground">
             {showTransportConnectionBanner && connectionState && (
-              <TransportConnectionBanner
-                state={connectionState}
-                onRetry={handleReconnectTransport}
-              />
+              <div className="shrink-0" style={{ paddingTop: 'var(--topbar-height)' }}>
+                <TransportConnectionBanner
+                  state={connectionState}
+                  onRetry={handleReconnectTransport}
+                />
+              </div>
             )}
             <div className="flex-1 min-h-0">
               {sessionLoadError ? (

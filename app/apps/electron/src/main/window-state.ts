@@ -1,5 +1,5 @@
-import { writeFileSync, existsSync, mkdirSync } from 'fs'
-import { readJsonFileSync } from '@craft-agent/shared/utils/files'
+import { existsSync, mkdirSync } from 'fs'
+import { atomicWriteFileSync, readJsonFileSync } from '@craft-agent/shared/utils/files'
 import { mainLog } from './logger'
 import { join } from 'path'
 import { homedir } from 'os'
@@ -42,7 +42,7 @@ export function saveWindowState(state: WindowState): void {
       mkdirSync(CONFIG_DIR, { recursive: true })
     }
 
-    writeFileSync(WINDOW_STATE_FILE, JSON.stringify(state, null, 2), 'utf-8')
+    atomicWriteFileSync(WINDOW_STATE_FILE, JSON.stringify(state, null, 2))
     mainLog.info('[WindowState] Saved window state:', state.windows.length, 'windows')
   } catch (error) {
     mainLog.error('[WindowState] Failed to save window state:', error)
@@ -70,7 +70,10 @@ export function loadWindowState(): WindowState | null {
     mainLog.info('[WindowState] Loaded window state:', state.windows.length, 'windows')
     return state
   } catch (error) {
-    mainLog.error('[WindowState] Failed to load window state:', error)
+    mainLog.error(
+      '[WindowState] Failed to load window state:',
+      error instanceof Error ? error.message : String(error),
+    )
     return null
   }
 }
@@ -81,7 +84,7 @@ export function loadWindowState(): WindowState | null {
 export function clearWindowState(): void {
   try {
     if (existsSync(WINDOW_STATE_FILE)) {
-      writeFileSync(WINDOW_STATE_FILE, JSON.stringify({ windows: [] }, null, 2), 'utf-8')
+      atomicWriteFileSync(WINDOW_STATE_FILE, JSON.stringify({ windows: [] }, null, 2))
       mainLog.info('[WindowState] Cleared window state')
     }
   } catch (error) {

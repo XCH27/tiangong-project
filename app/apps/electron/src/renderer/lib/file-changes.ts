@@ -89,3 +89,44 @@ export function getFirstFileChangeIdForActivity(activityId: string, changes: Fil
     change.id.startsWith(`${activityId}-`),
   )?.id
 }
+
+export interface FileChangeSummary {
+  fileCount: number
+  additions: number
+  deletions: number
+}
+
+function countTextLines(text: string): number {
+  if (!text) return 0
+  return text.split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1).length
+}
+
+/**
+ * Summarize the same authoritative Edit/Write activity data used by the diff
+ * overlay. This deliberately does not run a second git scan: the composer chip
+ * and the overlay must describe the same session-owned changes.
+ */
+export function summarizeFileChanges(changes: FileChange[]): FileChangeSummary {
+  const files = new Set<string>()
+  let additions = 0
+  let deletions = 0
+
+  for (const change of changes) {
+    if (change.error) continue
+    files.add(change.filePath)
+
+    if (change.unifiedDiff) {
+      for (const line of change.unifiedDiff.split(/\r?\n/)) {
+        if (line.startsWith('+++') || line.startsWith('---')) continue
+        if (line.startsWith('+')) additions += 1
+        if (line.startsWith('-')) deletions += 1
+      }
+      continue
+    }
+
+    additions += countTextLines(change.modified)
+    deletions += countTextLines(change.original)
+  }
+
+  return { fileCount: files.size, additions, deletions }
+}

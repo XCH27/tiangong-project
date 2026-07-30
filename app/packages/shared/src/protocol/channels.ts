@@ -193,6 +193,7 @@ export const RPC_CHANNELS = {
     LIST_WITH_STATUS: 'LLM_Connection:listWithStatus',
     GET: 'LLM_Connection:get',
     GET_API_KEY: 'LLM_Connection:getApiKey',
+    GET_SUBSCRIPTION_QUOTA: 'LLM_Connection:getSubscriptionQuota',
     SAVE: 'LLM_Connection:save',
     DELETE: 'LLM_Connection:delete',
     TEST: 'LLM_Connection:test',
@@ -215,8 +216,16 @@ export const RPC_CHANNELS = {
     LOGOUT: 'copilot:logout',
     DEVICE_CODE: 'copilot:deviceCode',
   },
+  xai: {
+    START_OAUTH: 'xai:startOAuth',
+    CANCEL_OAUTH: 'xai:cancelOAuth',
+    GET_AUTH_STATUS: 'xai:getAuthStatus',
+    LOGOUT: 'xai:logout',
+    DEVICE_CODE: 'xai:deviceCode',
+  },
   settings: {
     SETUP_LLM_CONNECTION: 'settings:setupLlmConnection',
+    DISCOVER_LLM_MODELS: 'settings:discoverLlmModels',
     TEST_LLM_CONNECTION_SETUP: 'settings:testLlmConnectionSetup',
     GET_DEFAULT_THINKING_LEVEL: 'settings:getDefaultThinkingLevel',
     SET_DEFAULT_THINKING_LEVEL: 'settings:setDefaultThinkingLevel',
@@ -287,6 +296,7 @@ export const RPC_CHANNELS = {
   labels: {
     LIST: 'labels:list',
     CREATE: 'labels:create',
+    UPDATE: 'labels:update',
     DELETE: 'labels:delete',
     CHANGED: 'labels:changed',
   },
@@ -350,6 +360,12 @@ export const RPC_CHANNELS = {
   },
   git: {
     GET_BRANCH: 'git:getBranch',
+    GET_WORKING_TREE: 'git:getWorkingTree',
+    GET_FILE_DIFF: 'git:getFileDiff',
+  },
+  terminal: {
+    RUN_COMMAND: 'terminal:runCommand',
+    HANDSHAKE_RUNTIMES: 'terminal:handshakeRuntimes',
   },
   gitbash: {
     CHECK: 'gitbash:check',
@@ -366,6 +382,8 @@ export const RPC_CHANNELS = {
     RELOAD: 'browser-pane:reload',
     STOP: 'browser-pane:stop',
     FOCUS: 'browser-pane:focus',
+    EMBED: 'browser-pane:embed',
+    DETACH: 'browser-pane:detach',
     SNAPSHOT: 'browser-pane:snapshot',
     CLICK: 'browser-pane:click',
     FILL: 'browser-pane:fill',

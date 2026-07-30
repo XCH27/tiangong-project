@@ -346,6 +346,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.unarchiveSession(sessionId)
       case 'rename':
         return sessionManager.renameSession(sessionId, command.name)
+      case 'setGoal':
+        return sessionManager.setSessionGoal(sessionId, command.goal)
       case 'setSessionStatus':
         return sessionManager.setSessionStatus(sessionId, command.state)
       case 'markRead':
@@ -357,12 +359,18 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.setActiveViewingSession(sessionId, command.workspaceId)
       case 'setPermissionMode':
         return sessionManager.setSessionPermissionMode(sessionId, command.mode)
+      case 'setWorkMode':
+        return sessionManager.setSessionWorkMode(sessionId, command.selection, command.mode)
+      case 'setExecutionPermissionMode':
+        return sessionManager.setSessionExecutionPermissionMode(sessionId, command.mode)
       case 'setThinkingLevel':
         // Validate thinking level before passing to session manager
         if (!isValidThinkingLevel(command.level)) {
           throw new Error(`Invalid thinking level: ${command.level}. Valid values: ${VALID_THINKING_LEVELS_LIST}`)
         }
         return sessionManager.setSessionThinkingLevel(sessionId, command.level)
+      case 'setFastMode':
+        return sessionManager.setSessionFastMode(sessionId, command.enabled)
       case 'updateWorkingDirectory':
         return sessionManager.updateWorkingDirectory(sessionId, command.dir)
       case 'setSources':
@@ -385,12 +393,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         const sessionPath = sessionManager.getSessionPath(sessionId)
         return sessionPath ? { success: true, path: sessionPath } : { success: false }
       }
-      case 'shareToViewer':
-        return sessionManager.shareToViewer(sessionId)
-      case 'updateShare':
-        return sessionManager.updateShare(sessionId)
-      case 'revokeShare':
-        return sessionManager.revokeShare(sessionId)
       case 'refreshTitle':
         log.info(`IPC: refreshTitle received for session ${sessionId}`)
         return sessionManager.refreshTitle(sessionId)
@@ -413,6 +415,10 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.removeMessageAnnotation(sessionId, command.messageId, command.annotationId)
       case 'updateAnnotation':
         return sessionManager.updateMessageAnnotation(sessionId, command.messageId, command.annotationId, command.patch)
+      case 'removeQueuedMessage':
+        return sessionManager.removeQueuedMessage(sessionId, command.messageId)
+      case 'revertToUserMessage':
+        return sessionManager.revertToUserMessage(sessionId, command.messageId)
       default: {
         const _exhaustive: never = command
         throw new Error(`Unknown session command: ${JSON.stringify(command)}`)

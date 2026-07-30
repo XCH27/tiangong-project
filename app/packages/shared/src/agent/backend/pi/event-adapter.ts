@@ -410,6 +410,8 @@ export class PiEventAdapter extends BaseEventAdapter {
             type: 'usage_update',
             usage: {
               inputTokens: normalizedUsage.inputTokens,
+              cacheReadTokens: normalizedUsage.cacheReadTokens,
+              cacheCreationTokens: normalizedUsage.cacheCreationTokens,
               contextWindow: this.contextWindow,
             },
           };

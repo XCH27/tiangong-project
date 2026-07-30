@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useTranslation } from "react-i18next"
+import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   Paperclip,
@@ -11,11 +11,24 @@ import {
   ChevronUp,
   AlertCircle,
   Image as ImageIcon,
+  Plus,
+  Zap,
+  Lightbulb,
+  Target,
+  Cloud,
+  GitBranch,
+  Monitor,
 } from 'lucide-react'
-import { Icon_Home, Spinner } from '@craft-agent/ui'
+import { Icon_Folder, Spinner } from '@craft-agent/ui'
 
 import * as storage from '@/lib/local-storage'
 import { Button } from '@/components/ui/button'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import {
   InlineSlashCommand,
   useInlineSlashCommand,
@@ -27,19 +40,18 @@ import {
   type MentionItem,
   type MentionItemType,
 } from '@/components/ui/mention-menu'
-import {
-  InlineLabelMenu,
-  useInlineLabelMenu,
-} from '@/components/ui/label-menu'
+import { InlineLabelMenu, useInlineLabelMenu } from '@/components/ui/label-menu'
 import type { LabelConfig } from '@craft-agent/shared/labels'
 import { parseMentions } from '@/lib/mentions'
-import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-text-input'
+import {
+  RichTextInput,
+  type RichTextInputHandle,
+} from '@/components/ui/rich-text-input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuSub,
-  DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu'
 import {
   StyledDropdownMenuContent,
@@ -49,12 +61,18 @@ import {
   StyledDropdownMenuSubContent,
 } from '@/components/ui/styled-dropdown'
 import { cn } from '@/lib/utils'
+import { navigate, routes } from '@/lib/navigate'
 import { coerceInputText } from '@/lib/input-text'
 import { isMac } from '@/lib/platform'
 import { applySmartTypography } from '@/lib/smart-typography'
 import { AttachmentPreview } from '../AttachmentPreview'
 import { ImageSupportWarningBanner } from './ImageSupportWarningBanner'
-import { ANTHROPIC_MODELS, getModelShortName, getModelDisplayName, getModelContextWindow, type ModelDefinition } from '@config/models'
+import {
+  ANTHROPIC_MODELS,
+  getModelDisplayName,
+  getModelContextWindow,
+  type ModelDefinition,
+} from '@config/models'
 import {
   resolveEffectiveConnectionSlug,
   isCompatProvider,
@@ -63,36 +81,66 @@ import {
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
 import { EditPopover, getEditConfig } from '@/components/ui/EditPopover'
 import { SourceAvatar } from '@/components/ui/source-avatar'
-import { SourceSelectorPopover } from '@/components/ui/SourceSelectorPopover'
-import { CompactSourceSelector } from '@/components/ui/CompactSourceSelector'
-import { CompactWorkingDirectorySelector } from '@/components/ui/CompactWorkingDirectorySelector'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
-import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
-import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
+import type {
+  FileAttachment,
+  LoadedSource,
+  LoadedSkill,
+  Workspace,
+} from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
+import { type ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
 import { buildPlanApprovalMessage } from '../plan-approval-message'
 import { shouldHandleScopedInputEvent } from './input-event-guards'
-import { clearPendingFocusForSession, consumePendingFocusForSession } from './focus-input-events'
+import {
+  clearPendingFocusForSession,
+  consumePendingFocusForSession,
+} from './focus-input-events'
 import {
   getRecentWorkingDirs,
   addRecentWorkingDir,
 } from './working-directory-history'
-import { WorkingDirectorySelector, formatPathForDisplay } from './WorkingDirectorySelector'
-import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
 import { CompactModelSelector } from './CompactModelSelector'
+import { CompactThinkingSelector } from './CompactThinkingSelector'
+import { ThinkingSelector } from './ThinkingSelector'
+import { ModelPickerList } from './ModelPickerList'
 import {
+  buildModelPickerGroups,
   formatTokenCount,
-  groupConnectionsByProvider,
+  getConnectionModels,
   stripPiPrefixForDisplay,
+  type ModelPickerItem,
 } from './model-picker-helpers'
 import { useModelVisionToggle } from './useModelVisionToggle'
+import { defaultSessionOptions } from '@/hooks/useSessionOptions'
+import type { WorkMode } from '@craft-agent/shared/agent/work-mode'
+import type { SubscriptionQuotaSnapshot } from '@craft-agent/shared/protocol'
+import { AGENTS_PLUGIN_NAME } from '@craft-agent/shared/skills/types'
+import { McpIcon } from '@/components/icons/McpIcon'
+import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
+import {
+  hasKnownContextUsage,
+  projectContextUsage,
+  resolveContextWindow,
+} from './context-usage'
+import {
+  deriveExecutionTargets,
+  filterWorkspacesForExecutionTarget,
+  getExecutionTargetId,
+  getRemoteTargetDisplayName,
+} from './execution-context-options'
+import type { ExecutionTarget } from './execution-context-options'
+import { type ContextBreakdownSegment } from './context-breakdown'
 
-function formatFollowUpChipText(text: string, fallback: string, maxLength = 50): string {
+function formatFollowUpChipText(
+  text: string,
+  fallback: string,
+  maxLength = 50,
+): string {
   const normalized = text.replace(/\s+/g, ' ').trim()
   if (!normalized) return fallback
 
@@ -100,7 +148,6 @@ function formatFollowUpChipText(text: string, fallback: string, maxLength = 50):
     ? `${normalized.slice(0, maxLength - 1).trimEnd()}…`
     : normalized
 }
-
 
 /** Platform-specific modifier key for keyboard shortcuts */
 const cmdKey = isMac ? '⌘' : 'Ctrl'
@@ -111,8 +158,8 @@ const cmdKey = isMac ? '⌘' : 'Ctrl'
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -135,7 +182,11 @@ export interface FreeFormInputProps {
   /** Whether the session is currently processing */
   isProcessing?: boolean
   /** Callback when message is submitted (skillSlugs from @mentions) */
-  onSubmit: (message: string, attachments?: FileAttachment[], skillSlugs?: string[]) => void
+  onSubmit: (
+    message: string,
+    attachments?: FileAttachment[],
+    skillSlugs?: string[],
+  ) => void
   /** Callback to stop processing. Pass silent=true to skip "Response interrupted" message */
   onStop?: (silent?: boolean) => void
   /** External ref for the input */
@@ -149,11 +200,11 @@ export interface FreeFormInputProps {
   thinkingLevel?: ThinkingLevel
   /** Callback when thinking level changes */
   onThinkingLevelChange?: (level: ThinkingLevel) => void
+  /** Provider low-latency mode for this session. */
+  fastMode?: boolean
+  onFastModeChange?: (enabled: boolean) => void
   // Advanced options
   permissionMode?: PermissionMode
-  onPermissionModeChange?: (mode: PermissionMode) => void
-  /** Enabled permission modes for Shift+Tab cycling (min 2 modes) */
-  enabledModes?: PermissionMode[]
   // Controlled input value (for persisting across mode switches and conversation changes)
   /** Current input value - if provided, component becomes controlled */
   inputValue?: string
@@ -192,6 +243,11 @@ export interface FreeFormInputProps {
   workingDirectory?: string
   /** Callback when working directory changes */
   onWorkingDirectoryChange?: (path: string) => void
+  /** Change the execution workspace for an empty session. */
+  onExecutionWorkspaceChange?: (
+    workspaceId: string,
+    workspace?: Workspace,
+  ) => void
   /** Session folder path (for "Reset to Session Root" option) */
   sessionFolderPath?: string
   /** Session ID for scoping events like approve-plan */
@@ -210,11 +266,24 @@ export interface FreeFormInputProps {
     inputTokens?: number
     /** Model's context window size in tokens */
     contextWindow?: number
+    /** Accumulated output tokens for the session */
+    outputTokens?: number
+    /** Input tokens served from the provider cache */
+    cacheReadTokens?: number
+    /** Input tokens written to the provider cache */
+    cacheCreationTokens?: number
+    /** Provider-reported accumulated session cost */
+    costUsd?: number
+    /** Estimated visible-message composition, scaled to the exact input total. */
+    breakdown?: ContextBreakdownSegment[]
   }
   /** Follow-up annotations shown as context chips above the input */
   followUpItems?: FollowUpInputItem[]
   /** Callback when user clicks a follow-up chip body */
-  onFollowUpClick?: (item: FollowUpInputItem, anchor?: { x: number; y: number }) => void
+  onFollowUpClick?: (
+    item: FollowUpInputItem,
+    anchor?: { x: number; y: number },
+  ) => void
   /** Callback when user clicks the follow-up index badge */
   onFollowUpIndexClick?: (item: FollowUpInputItem) => void
   /**
@@ -269,9 +338,9 @@ export function FreeFormInput({
   onModelChange,
   thinkingLevel = 'medium',
   onThinkingLevelChange,
+  fastMode = false,
+  onFastModeChange,
   permissionMode = 'ask',
-  onPermissionModeChange,
-  enabledModes = ['safe', 'ask', 'allow-all'],
   inputValue,
   onInputChange,
   attachmentsValue,
@@ -289,9 +358,10 @@ export function FreeFormInput({
   workspaceId,
   workingDirectory,
   onWorkingDirectoryChange,
+  onExecutionWorkspaceChange,
   sessionFolderPath,
   sessionId,
-  currentSessionStatus,
+  currentSessionStatus: _currentSessionStatus,
   disableSend = false,
   isEmptySession = false,
   contextStatus,
@@ -309,30 +379,51 @@ export function FreeFormInput({
   const { t } = useTranslation()
 
   // Default rotating placeholders for onboarding/empty state (i18n-aware)
-  const defaultPlaceholders = React.useMemo(() => [
-    t("chatInput.placeholder.workOn"),
-    t("chatInput.placeholder.shiftTab"),
-    t("chatInput.placeholder.mention"),
-    t("chatInput.placeholder.labels"),
-    t("chatInput.placeholder.newLine"),
-    t("chatInput.placeholder.sidebar", { key: cmdKey }),
-    t("chatInput.placeholder.focusMode", { key: cmdKey }),
-  ], [t])
-
-  const effectivePlaceholderProp = placeholder ?? defaultPlaceholders
+  const defaultPlaceholders = React.useMemo(
+    () => [
+      t('chatInput.placeholder.workOn'),
+      t('chatInput.placeholder.addContext'),
+      t('chatInput.placeholder.mention'),
+      t('chatInput.placeholder.labels'),
+      t('chatInput.placeholder.newLine'),
+      t('chatInput.placeholder.sidebar', { key: cmdKey }),
+      t('chatInput.placeholder.focusMode', { key: cmdKey }),
+    ],
+    [t],
+  )
 
   // Read connection default model, connections, and workspace info from context.
   // Uses optional variant so playground (no provider) doesn't crash.
   const appShellCtx = useOptionalAppShellContext()
-  const llmConnections = appShellCtx?.llmConnections ?? []
+  const llmConnections = React.useMemo(
+    () => appShellCtx?.llmConnections ?? [],
+    [appShellCtx?.llmConnections],
+  )
   const workspaceDefaultConnection = appShellCtx?.workspaceDefaultLlmConnection
+  const workModeOptions = sessionId
+    ? (appShellCtx?.sessionOptions.get(sessionId) ?? defaultSessionOptions)
+    : defaultSessionOptions
+  const setWorkMode = React.useCallback(
+    (selection: 'auto' | 'manual', mode?: WorkMode) => {
+      if (!sessionId) return
+      appShellCtx?.onSessionOptionsChange(sessionId, {
+        workModeSelection: selection,
+        ...(mode ? { workMode: mode } : {}),
+      })
+    },
+    [appShellCtx, sessionId],
+  )
 
   // Derive connectionDefaultModel per-session from the effective connection.
   // Only non-null for compat providers (custom endpoints with fixed models).
   // Standard providers (anthropic, pi) → null → normal model picker.
   const connectionDefaultModel = React.useMemo(() => {
-    const effectiveSlug = resolveEffectiveConnectionSlug(currentConnection, workspaceDefaultConnection, llmConnections)
-    const conn = llmConnections.find(c => c.slug === effectiveSlug)
+    const effectiveSlug = resolveEffectiveConnectionSlug(
+      currentConnection,
+      workspaceDefaultConnection,
+      llmConnections,
+    )
+    const conn = llmConnections.find((c) => c.slug === effectiveSlug)
     if (!conn) return null
     if (!isCompatProvider(conn.providerType)) return null
     // Allow model switching when connection has multiple models
@@ -357,29 +448,30 @@ export function FreeFormInput({
     if (connectionUnavailable) return []
 
     // Determine effective connection using the canonical fallback chain
-    const effectiveSlug = resolveEffectiveConnectionSlug(currentConnection, workspaceDefaultConnection, llmConnections)
-    const connection = llmConnections.find(c => c.slug === effectiveSlug)
+    const effectiveSlug = resolveEffectiveConnectionSlug(
+      currentConnection,
+      workspaceDefaultConnection,
+      llmConnections,
+    )
+    const connection = llmConnections.find((c) => c.slug === effectiveSlug)
 
     if (!connection) {
       return ANTHROPIC_MODELS // Safety net — shouldn't happen
     }
 
-    return connection.models || ANTHROPIC_MODELS
-  }, [llmConnections, currentConnection, workspaceDefaultConnection, connectionUnavailable])
-
-  const availableThinkingLevels = THINKING_LEVELS
-
-  // Disable thinking selector when the current model explicitly doesn't support it
-  const thinkingDisabled = React.useMemo(() => {
-    const model = availableModels.find(m => typeof m !== 'string' && m.id === currentModel)
-    return typeof model !== 'string' && model?.supportsThinking === false
-  }, [availableModels, currentModel])
+    return getConnectionModels(connection)
+  }, [
+    llmConnections,
+    currentConnection,
+    workspaceDefaultConnection,
+    connectionUnavailable,
+  ])
 
   // Get display name for current model (full name, not short name)
   const currentModelDisplayName = React.useMemo(() => {
     const modelToDisplay = connectionDefaultModel ?? currentModel
-    const model = availableModels.find(m =>
-      typeof m === 'string' ? m === modelToDisplay : m.id === modelToDisplay
+    const model = availableModels.find((m) =>
+      typeof m === 'string' ? m === modelToDisplay : m.id === modelToDisplay,
     )
     if (!model) {
       // Fallback: use helper function to format unknown model IDs nicely
@@ -391,46 +483,133 @@ export function FreeFormInput({
     // never goes blank.
     return model.name ?? stripPiPrefixForDisplay(model.id)
   }, [availableModels, currentModel, connectionDefaultModel])
+  const selectedModelId = connectionDefaultModel ?? currentModel
 
-  // Group connections by provider type for hierarchical dropdown.
-  // Each provider (Anthropic, Pi) can have multiple connections (API Key, OAuth, etc.)
-  const connectionsByProvider = React.useMemo(
-    () => groupConnectionsByProvider(llmConnections),
+  const allModelPickerGroups = React.useMemo(
+    () => buildModelPickerGroups(llmConnections),
     [llmConnections],
   )
 
   // Find current connection details for display
   const currentConnectionDetails = React.useMemo(() => {
     if (!currentConnection) return null
-    return llmConnections.find(c => c.slug === currentConnection) ?? null
+    return llmConnections.find((c) => c.slug === currentConnection) ?? null
   }, [llmConnections, currentConnection])
 
   // Effective connection: canonical fallback chain (session → workspace default → global default → first)
-  const effectiveConnection = resolveEffectiveConnectionSlug(currentConnection, workspaceDefaultConnection, llmConnections)
+  const effectiveConnection = resolveEffectiveConnectionSlug(
+    currentConnection,
+    workspaceDefaultConnection,
+    llmConnections,
+  )
 
   // Effective connection details (with fallbacks) for model list
   // Unlike currentConnectionDetails which is null when no explicit connection is set,
   // this resolves to the actual connection being used (including workspace default)
   const effectiveConnectionDetails = React.useMemo(() => {
     if (!effectiveConnection) return null
-    return llmConnections.find(c => c.slug === effectiveConnection) ?? null
+    return llmConnections.find((c) => c.slug === effectiveConnection) ?? null
   }, [llmConnections, effectiveConnection])
+  const [subscriptionQuota, setSubscriptionQuota] =
+    React.useState<SubscriptionQuotaSnapshot | null>(null)
+  const quotaConnectionSlug =
+    effectiveConnectionDetails?.authType === 'oauth'
+      ? effectiveConnectionDetails.slug
+      : undefined
 
+  React.useEffect(() => {
+    let active = true
+    setSubscriptionQuota(null)
+    if (
+      !quotaConnectionSlug ||
+      typeof window === 'undefined' ||
+      !window.electronAPI
+    ) {
+      return () => {
+        active = false
+      }
+    }
+    void window.electronAPI
+      .getSubscriptionQuota(quotaConnectionSlug)
+      .then((snapshot) => {
+        if (active) setSubscriptionQuota(snapshot)
+      })
+      .catch(() => {
+        if (active) setSubscriptionQuota(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [quotaConnectionSlug])
 
-  // Access sessionStatuses and onSessionStatusChange from context for the # menu state picker
-  const sessionStatuses = appShellCtx?.sessionStatuses ?? []
-  const onSessionStatusChange = appShellCtx?.onSessionStatusChange
-  // Resolve workspace rootPath for "Add New Label" deep link
+  // A started session remains bound to its connection. Empty sessions may
+  // switch provider/account, but both states use the same flat model inventory.
+  const visibleModelPickerGroups = React.useMemo(
+    () =>
+      pickerMode === 'switcher'
+        ? allModelPickerGroups
+        : allModelPickerGroups.filter(
+            (group) => group.connection.slug === effectiveConnection,
+          ),
+    [allModelPickerGroups, effectiveConnection, pickerMode],
+  )
+
+  // Workspace project root — label deep-links, WD chip identity (no dual "My Workspace" chip).
   const workspaceRootPath = React.useMemo(() => {
-    if (!appShellCtx || !workspaceId) return null
-    return appShellCtx.workspaces.find(w => w.id === workspaceId)?.rootPath ?? null
+    if (!appShellCtx || !workspaceId) return undefined
+    const match = appShellCtx.workspaces.find(
+      (w) =>
+        w.id === workspaceId ||
+        w.remoteServer?.remoteWorkspaceId === workspaceId,
+    )
+    return match?.rootPath
   }, [appShellCtx, workspaceId])
+  const executionWorkspace = React.useMemo(() => {
+    if (!appShellCtx || !workspaceId) return undefined
+    return appShellCtx.workspaces.find(
+      (w) =>
+        w.id === workspaceId ||
+        w.remoteServer?.remoteWorkspaceId === workspaceId,
+    )
+  }, [appShellCtx, workspaceId])
+  const executionTargets = React.useMemo(
+    () => deriveExecutionTargets(appShellCtx?.workspaces ?? []),
+    [appShellCtx?.workspaces],
+  )
+  const workspaceExecutionTargetId = executionWorkspace
+    ? getExecutionTargetId(executionWorkspace)
+    : 'local'
+  const [executionTargetId, setExecutionTargetId] = React.useState<
+    ExecutionTarget['id']
+  >(workspaceExecutionTargetId)
+  React.useEffect(() => {
+    setExecutionTargetId(workspaceExecutionTargetId)
+  }, [executionWorkspace?.id, workspaceExecutionTargetId])
+  const executionTargetWorkspaces = React.useMemo(
+    () =>
+      filterWorkspacesForExecutionTarget(
+        appShellCtx?.workspaces ?? [],
+        executionTargetId,
+      ),
+    [appShellCtx?.workspaces, executionTargetId],
+  )
+  const selectedExecutionWorkspace =
+    executionWorkspace &&
+    getExecutionTargetId(executionWorkspace) === executionTargetId
+      ? executionWorkspace
+      : undefined
+  const remoteTargetCount = executionTargets.filter(
+    (target) => target.kind === 'remote',
+  ).length
 
   // Workspace slug for SDK skill qualification (server-computed)
   // SDK expects "workspaceSlug:skillSlug" format, NOT UUID
   const workspaceSlug = React.useMemo(() => {
     if (!appShellCtx || !workspaceId) return workspaceId
-    return appShellCtx.workspaces.find(w => w.id === workspaceId)?.slug ?? workspaceId
+    return (
+      appShellCtx.workspaces.find((w) => w.id === workspaceId)?.slug ??
+      workspaceId
+    )
   }, [appShellCtx, workspaceId])
 
   // Read panel focus state from context (for multi-panel unfocused styling)
@@ -440,24 +619,30 @@ export function FreeFormInput({
   // Shuffle placeholder order once per mount so each session feels fresh.
   // In compact mode, suppress desktop-keyboard guidance that is noisy or misleading
   // on narrow/mobile-like layouts.
-  const placeholderOptions = React.useMemo(() => {
-    if (!Array.isArray(placeholder)) return placeholder
-    if (!compactMode) return placeholder
-    return placeholder.filter((entry) => {
+  const effectivePlaceholderProp = React.useMemo(() => {
+    const candidate = placeholder ?? defaultPlaceholders
+    if (!Array.isArray(candidate)) return candidate
+    if (!compactMode) return candidate
+    return candidate.filter((entry) => {
       const lower = entry.toLowerCase()
-      return !lower.includes('shift + tab')
-        && !lower.includes('shift + return')
-        && !lower.includes('toggle the sidebar')
-        && !lower.includes('focus mode')
-        && !lower.includes('⌘')
-        && !lower.includes('ctrl')
+      return (
+        !lower.includes('shift + tab') &&
+        !lower.includes('shift + return') &&
+        !lower.includes('toggle the sidebar') &&
+        !lower.includes('focus mode') &&
+        !lower.includes('⌘') &&
+        !lower.includes('ctrl')
+      )
     })
-  }, [placeholder, compactMode])
+  }, [placeholder, defaultPlaceholders, compactMode])
 
   // Hide placeholder entirely when panel is unfocused in multi-panel layout
   const shuffledPlaceholder = React.useMemo(
-    () => Array.isArray(effectivePlaceholderProp) ? shuffleArray(effectivePlaceholderProp) : effectivePlaceholderProp,
-    [] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally shuffle only on mount
+    () =>
+      Array.isArray(effectivePlaceholderProp)
+        ? shuffleArray(effectivePlaceholderProp)
+        : effectivePlaceholderProp,
+    [effectivePlaceholderProp],
   )
   const effectivePlaceholder = isFocusedPanel ? shuffledPlaceholder : ''
 
@@ -465,7 +650,9 @@ export function FreeFormInput({
   // Sync FROM parent on mount/change (for restoring drafts)
   // Sync TO parent on blur/submit (debounced persistence)
   const [input, setInput] = React.useState(() => coerceInputText(inputValue))
-  const [attachments, setAttachments] = React.useState<FileAttachment[]>(attachmentsValue ?? [])
+  const [attachments, setAttachments] = React.useState<FileAttachment[]>(
+    attachmentsValue ?? [],
+  )
 
   // Ref to track current attachments for use in event handlers (avoids stale closure issues)
   const attachmentsRef = React.useRef<FileAttachment[]>([])
@@ -479,7 +666,7 @@ export function FreeFormInput({
   // the parent and risk persisting A's attachments under B's sessionId.
   const attachmentsRefsKey = React.useMemo(() => {
     if (!attachmentsValue) return ''
-    return attachmentsValue.map(a => a.path).join('|')
+    return attachmentsValue.map((a) => a.path).join('|')
   }, [attachmentsValue])
   const prevAttachmentsRefsKey = React.useRef(attachmentsRefsKey)
   const skipPersistRef = React.useRef(true) // treat initial mount as a prop-seed
@@ -505,14 +692,16 @@ export function FreeFormInput({
   }, [attachments])
 
   // Optimistic state for source selection - updates UI immediately before IPC round-trip completes
-  const [optimisticSourceSlugs, setOptimisticSourceSlugs] = React.useState(enabledSourceSlugs)
+  const [optimisticSourceSlugs, setOptimisticSourceSlugs] =
+    React.useState(enabledSourceSlugs)
 
   // Sync from prop when server state changes (reconciles after IPC or on external updates)
   // Use content comparison (not reference) to avoid infinite loops with empty arrays
   const prevEnabledSourceSlugsRef = React.useRef(enabledSourceSlugs)
   React.useEffect(() => {
     const prev = prevEnabledSourceSlugsRef.current
-    const changed = enabledSourceSlugs.length !== prev.length ||
+    const changed =
+      enabledSourceSlugs.length !== prev.length ||
       enabledSourceSlugs.some((slug, i) => slug !== prev[i])
 
     if (changed) {
@@ -534,14 +723,17 @@ export function FreeFormInput({
 
   // Debounced sync to parent (saves draft without blocking typing)
   const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
-  const syncToParent = React.useCallback((value: string) => {
-    if (!onInputChange) return
-    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current)
-    syncTimeoutRef.current = setTimeout(() => {
-      onInputChange(value)
-      prevInputValueRef.current = value
-    }, 300) // Debounce 300ms
-  }, [onInputChange])
+  const syncToParent = React.useCallback(
+    (value: string) => {
+      if (!onInputChange) return
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current)
+      syncTimeoutRef.current = setTimeout(() => {
+        onInputChange(value)
+        prevInputValueRef.current = value
+      }, 300) // Debounce 300ms
+    },
+    [onInputChange],
+  )
 
   // Sync immediately on unmount to preserve input across mode switches
   // Also cleanup any pending debounced sync
@@ -562,14 +754,17 @@ export function FreeFormInput({
 
   const [isDraggingOver, setIsDraggingOver] = React.useState(false)
   const [loadingCount, setLoadingCount] = React.useState(0)
-  const [sourceDropdownOpen, setSourceDropdownOpen] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
   const [inputMaxHeight, setInputMaxHeight] = React.useState(540)
   const [modelDropdownOpen, setModelDropdownOpen] = React.useState(false)
+  const [addSkillPopoverOpen, setAddSkillPopoverOpen] = React.useState(false)
+  const [addMcpPopoverOpen, setAddMcpPopoverOpen] = React.useState(false)
 
   // Input settings (loaded from config)
   const [autoCapitalisation, setAutoCapitalisation] = React.useState(true)
-  const [sendMessageKey, setSendMessageKey] = React.useState<'enter' | 'cmd-enter'>('enter')
+  const [sendMessageKey, setSendMessageKey] = React.useState<
+    'enter' | 'cmd-enter'
+  >('enter')
   const [spellCheck, setSpellCheck] = React.useState(false)
 
   // Load input settings on mount
@@ -608,7 +803,6 @@ export function FreeFormInput({
 
   const dragCounterRef = React.useRef(0)
   const containerRef = React.useRef<HTMLDivElement>(null)
-  const sourceButtonRef = React.useRef<HTMLButtonElement>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // Merge refs for RichTextInput
@@ -621,9 +815,18 @@ export function FreeFormInput({
   // Listen for craft:insert-text events (generic mechanism for inserting text into input)
   // Used by components that want to pre-fill the input with text
   React.useEffect(() => {
-    const handleInsertText = (e: CustomEvent<{ text: string; sessionId?: string }>) => {
+    const handleInsertText = (
+      e: CustomEvent<{ text: string; sessionId?: string }>,
+    ) => {
       const targetSessionId = e.detail?.sessionId
-      if (!shouldHandleScopedInputEvent({ sessionId, isFocusedPanel, targetSessionId })) return
+      if (
+        !shouldHandleScopedInputEvent({
+          sessionId,
+          isFocusedPanel,
+          targetSessionId,
+        })
+      )
+        return
 
       const text = coerceInputText(e.detail?.text)
       setInput(text)
@@ -636,8 +839,15 @@ export function FreeFormInput({
       }, 0)
     }
 
-    window.addEventListener('craft:insert-text', handleInsertText as EventListener)
-    return () => window.removeEventListener('craft:insert-text', handleInsertText as EventListener)
+    window.addEventListener(
+      'craft:insert-text',
+      handleInsertText as EventListener,
+    )
+    return () =>
+      window.removeEventListener(
+        'craft:insert-text',
+        handleInsertText as EventListener,
+      )
   }, [sessionId, isFocusedPanel, syncToParent, richInputRef])
 
   const clearInputDraft = React.useCallback(() => {
@@ -662,8 +872,9 @@ export function FreeFormInput({
     source?: string
   }
 
-  // Listen for craft:approve-plan events (used by ResponseCard's Accept Plan button)
-  // This disables safe mode AND submits the message in one action
+  // Listen for craft:approve-plan events (used by ResponseCard's Accept Plan button).
+  // The server owns the Plan → Execute transition and preserves the configured
+  // execution approval posture.
   // Only process events for this session (sessionId must match)
   React.useEffect(() => {
     const handleApprovePlan = (e: CustomEvent<PlanApprovalEventDetail>) => {
@@ -674,29 +885,35 @@ export function FreeFormInput({
 
       const shouldIncludeDraft = e.detail?.includeDraftInput !== false
       const draftInput = shouldIncludeDraft ? consumeInputDraftSnapshot() : ''
-      const text = buildPlanApprovalMessage({
-        planPath: e.detail?.planPath,
-        draftInput,
-      })
-
-      // Switch to allow-all (Auto) mode if in Explore mode (allow execution without prompts)
-      // Only switch if currently in safe mode - if user is in 'ask' mode, respect their choice
-      if (permissionMode === 'safe') {
-        onPermissionModeChange?.('allow-all')
-      }
+      const text = buildPlanApprovalMessage(
+        {
+          planPath: e.detail?.planPath,
+          draftInput,
+        },
+        t,
+      )
 
       onSubmit(text, undefined)
     }
 
-    window.addEventListener('craft:approve-plan', handleApprovePlan as EventListener)
-    return () => window.removeEventListener('craft:approve-plan', handleApprovePlan as EventListener)
-  }, [sessionId, permissionMode, onPermissionModeChange, onSubmit, consumeInputDraftSnapshot])
+    window.addEventListener(
+      'craft:approve-plan',
+      handleApprovePlan as EventListener,
+    )
+    return () =>
+      window.removeEventListener(
+        'craft:approve-plan',
+        handleApprovePlan as EventListener,
+      )
+  }, [sessionId, onSubmit, consumeInputDraftSnapshot])
 
   // Listen for craft:approve-plan-with-compact events (Accept & Compact option)
   // This compacts the conversation first, then executes the plan.
   // The pending state is persisted to survive page reloads (CMD+R).
   React.useEffect(() => {
-    const handleApprovePlanWithCompact = async (e: CustomEvent<PlanApprovalEventDetail>) => {
+    const handleApprovePlanWithCompact = async (
+      e: CustomEvent<PlanApprovalEventDetail>,
+    ) => {
       // Only handle if this event is for our session
       if (e.detail?.sessionId && e.detail.sessionId !== sessionId) {
         return
@@ -704,12 +921,9 @@ export function FreeFormInput({
 
       const planPath = e.detail?.planPath
       const shouldIncludeDraft = e.detail?.includeDraftInput !== false
-      const draftInputSnapshot = shouldIncludeDraft ? consumeInputDraftSnapshot() : ''
-
-      // Switch to allow-all (Auto) mode if in Explore mode
-      if (permissionMode === 'safe') {
-        onPermissionModeChange?.('allow-all')
-      }
+      const draftInputSnapshot = shouldIncludeDraft
+        ? consumeInputDraftSnapshot()
+        : ''
 
       // Persist the pending plan execution state BEFORE sending /compact.
       // This allows reload recovery if CMD+R happens during compaction.
@@ -726,19 +940,27 @@ export function FreeFormInput({
 
       // Set up a one-time listener for compaction complete.
       // This handles the normal case (no reload during compaction).
-      const handleCompactionComplete = async (compactEvent: CustomEvent<{ sessionId?: string }>) => {
+      const handleCompactionComplete = async (
+        compactEvent: CustomEvent<{ sessionId?: string }>,
+      ) => {
         // Only handle if this is for our session
         if (compactEvent.detail?.sessionId !== sessionId) {
           return
         }
 
         // Remove the listener (one-time use)
-        window.removeEventListener('craft:compaction-complete', handleCompactionComplete as unknown as EventListener)
+        window.removeEventListener(
+          'craft:compaction-complete',
+          handleCompactionComplete as unknown as EventListener,
+        )
 
-        const executionMessage = buildPlanApprovalMessage({
-          planPath,
-          draftInput: draftInputSnapshot,
-        })
+        const executionMessage = buildPlanApprovalMessage(
+          {
+            planPath,
+            draftInput: draftInputSnapshot,
+          },
+          t,
+        )
         onSubmit(executionMessage, undefined)
 
         // Clear the pending state since we just sent the execution message
@@ -749,12 +971,22 @@ export function FreeFormInput({
         }
       }
 
-      window.addEventListener('craft:compaction-complete', handleCompactionComplete as unknown as EventListener)
+      window.addEventListener(
+        'craft:compaction-complete',
+        handleCompactionComplete as unknown as EventListener,
+      )
     }
 
-    window.addEventListener('craft:approve-plan-with-compact', handleApprovePlanWithCompact as unknown as EventListener)
-    return () => window.removeEventListener('craft:approve-plan-with-compact', handleApprovePlanWithCompact as unknown as EventListener)
-  }, [sessionId, permissionMode, onPermissionModeChange, onSubmit, consumeInputDraftSnapshot])
+    window.addEventListener(
+      'craft:approve-plan-with-compact',
+      handleApprovePlanWithCompact as unknown as EventListener,
+    )
+    return () =>
+      window.removeEventListener(
+        'craft:approve-plan-with-compact',
+        handleApprovePlanWithCompact as unknown as EventListener,
+      )
+  }, [sessionId, onSubmit, consumeInputDraftSnapshot])
 
   // Reload recovery: Check for pending plan execution on mount.
   // If the page reloaded after compaction completed (awaitingCompaction = false),
@@ -767,18 +999,26 @@ export function FreeFormInput({
 
     const isExpectedReconnectError = (error: unknown): boolean => {
       const message = error instanceof Error ? error.message : String(error)
-      return message.includes('Connection closed')
-        || message.includes('Client disconnected')
-        || message.includes('transport')
-        || message.includes('socket')
+      return (
+        message.includes('Connection closed') ||
+        message.includes('Client disconnected') ||
+        message.includes('transport') ||
+        message.includes('socket')
+      )
     }
 
     const executePendingPlan = async () => {
       if (hasExecuted) return
 
       try {
-        const pending = await window.electronAPI.getPendingPlanExecution(sessionId)
-        if (!pending || pending.awaitingCompaction || pending.executionDispatched) return
+        const pending =
+          await window.electronAPI.getPendingPlanExecution(sessionId)
+        if (
+          !pending ||
+          pending.awaitingCompaction ||
+          pending.executionDispatched
+        )
+          return
 
         // Mark dispatched before sending so reload recovery does not double-submit
         // the same plan if onSubmit succeeds but cleanup fails during a reconnect.
@@ -789,10 +1029,13 @@ export function FreeFormInput({
         // Compaction completed but we never sent the execution message (page reloaded).
         // Send it now and clear the pending state.
         hasExecuted = true
-        const executionMessage = buildPlanApprovalMessage({
-          planPath: pending.planPath,
-          draftInput: pending.draftInputSnapshot,
-        })
+        const executionMessage = buildPlanApprovalMessage(
+          {
+            planPath: pending.planPath,
+            draftInput: pending.draftInputSnapshot,
+          },
+          t,
+        )
         onSubmit(executionMessage, undefined)
 
         await window.electronAPI.sessionCommand(sessionId, {
@@ -800,7 +1043,10 @@ export function FreeFormInput({
         })
       } catch (error) {
         if (!isExpectedReconnectError(error)) {
-          console.error('[FreeFormInput] Failed to resume pending plan execution:', error)
+          console.error(
+            '[FreeFormInput] Failed to resume pending plan execution:',
+            error,
+          )
         }
       }
     }
@@ -810,16 +1056,24 @@ export function FreeFormInput({
 
     // Also listen for compaction-complete in case CMD+R happened during compaction.
     // When compaction finishes after reload, this listener will trigger execution.
-    const handleCompactionComplete = async (e: CustomEvent<{ sessionId: string }>) => {
+    const handleCompactionComplete = async (
+      e: CustomEvent<{ sessionId: string }>,
+    ) => {
       if (e.detail?.sessionId !== sessionId) return
       // Small delay to ensure markCompactionComplete has been called
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
       executePendingPlan()
     }
 
-    window.addEventListener('craft:compaction-complete', handleCompactionComplete as unknown as EventListener)
+    window.addEventListener(
+      'craft:compaction-complete',
+      handleCompactionComplete as unknown as EventListener,
+    )
     return () => {
-      window.removeEventListener('craft:compaction-complete', handleCompactionComplete as unknown as EventListener)
+      window.removeEventListener(
+        'craft:compaction-complete',
+        handleCompactionComplete as unknown as EventListener,
+      )
     }
   }, [sessionId, onSubmit])
 
@@ -828,7 +1082,14 @@ export function FreeFormInput({
     const handleFocusInput = (e: Event) => {
       const detail = (e as CustomEvent<{ sessionId?: string }>).detail
       const targetSessionId = detail?.sessionId
-      if (!shouldHandleScopedInputEvent({ sessionId, isFocusedPanel, targetSessionId })) return
+      if (
+        !shouldHandleScopedInputEvent({
+          sessionId,
+          isFocusedPanel,
+          targetSessionId,
+        })
+      )
+        return
 
       if (targetSessionId) {
         clearPendingFocusForSession(targetSessionId)
@@ -839,14 +1100,15 @@ export function FreeFormInput({
       if (lastCaretPositionRef.current !== null) {
         richInputRef.current?.setSelectionRange(
           lastCaretPositionRef.current,
-          lastCaretPositionRef.current
+          lastCaretPositionRef.current,
         )
         lastCaretPositionRef.current = null
       }
     }
 
     window.addEventListener('craft:focus-input', handleFocusInput)
-    return () => window.removeEventListener('craft:focus-input', handleFocusInput)
+    return () =>
+      window.removeEventListener('craft:focus-input', handleFocusInput)
   }, [sessionId, isFocusedPanel, richInputRef])
 
   // Recover queued focus requests after session switch/mount races.
@@ -861,7 +1123,7 @@ export function FreeFormInput({
   // Get the next available number for a pasted file prefix (e.g., pasted-image-1, pasted-image-2)
   const getNextPastedNumber = (
     prefix: 'image' | 'text' | 'file',
-    existingAttachments: FileAttachment[]
+    existingAttachments: FileAttachment[],
   ): number => {
     const pattern = new RegExp(`^pasted-${prefix}-(\\d+)\\.`)
     let maxNum = 0
@@ -876,21 +1138,35 @@ export function FreeFormInput({
 
   // Listen for craft:paste-files events (for global paste when input not focused)
   React.useEffect(() => {
-    const handlePasteFiles = async (e: CustomEvent<{ files: File[]; sessionId?: string }>) => {
+    const handlePasteFiles = async (
+      e: CustomEvent<{ files: File[]; sessionId?: string }>,
+    ) => {
       if (disabled) return
 
       const targetSessionId = e.detail?.sessionId
-      if (!shouldHandleScopedInputEvent({ sessionId, isFocusedPanel, targetSessionId })) return
+      if (
+        !shouldHandleScopedInputEvent({
+          sessionId,
+          isFocusedPanel,
+          targetSessionId,
+        })
+      )
+        return
 
       const { files } = e.detail
       if (!files || files.length === 0) return
 
-      setLoadingCount(prev => prev + files.length)
+      setLoadingCount((prev) => prev + files.length)
 
       // Pre-assign sequential names using ref to avoid race conditions
       let nextImageNum = getNextPastedNumber('image', attachmentsRef.current)
-      const fileNames: string[] = files.map(file => {
-        if (!file.name || file.name === 'image.png' || file.name === 'image.jpg' || file.name === 'blob') {
+      const fileNames: string[] = files.map((file) => {
+        if (
+          !file.name ||
+          file.name === 'image.png' ||
+          file.name === 'image.jpg' ||
+          file.name === 'blob'
+        ) {
           const ext = file.type.split('/')[1] || 'png'
           return `pasted-image-${nextImageNum++}.${ext}`
         }
@@ -901,47 +1177,58 @@ export function FreeFormInput({
         try {
           const attachment = await readFileAsAttachment(files[i], fileNames[i])
           if (attachment) {
-            setAttachments(prev => [...prev, attachment])
+            setAttachments((prev) => [...prev, attachment])
           }
         } catch (error) {
           console.error('[FreeFormInput] Failed to process pasted file:', error)
         }
-        setLoadingCount(prev => prev - 1)
+        setLoadingCount((prev) => prev - 1)
       }
 
       // Focus the input after adding attachments
       richInputRef.current?.focus()
     }
 
-    window.addEventListener('craft:paste-files', handlePasteFiles as unknown as EventListener)
-    return () => window.removeEventListener('craft:paste-files', handlePasteFiles as unknown as EventListener)
+    window.addEventListener(
+      'craft:paste-files',
+      handlePasteFiles as unknown as EventListener,
+    )
+    return () =>
+      window.removeEventListener(
+        'craft:paste-files',
+        handlePasteFiles as unknown as EventListener,
+      )
   }, [disabled, sessionId, isFocusedPanel, richInputRef])
 
-  // Build active commands list for slash command menu
+  // Active agent for slash menu highlight (OpenCode: build | plan only)
   const activeCommands = React.useMemo(() => {
-    const active: SlashCommandId[] = []
-    // Add the currently active permission mode
-    if (permissionMode === 'safe') active.push('safe')
-    else if (permissionMode === 'ask') active.push('ask')
-    else if (permissionMode === 'allow-all') active.push('allow-all')
-    return active
-  }, [permissionMode])
+    const agent = workModeOptions.workMode === 'plan' ? 'plan' : 'execute'
+    return [agent] as SlashCommandId[]
+  }, [workModeOptions.workMode])
 
-  // Handle slash command selection (mode/feature commands)
-  const handleSlashCommand = React.useCallback((commandId: SlashCommandId) => {
-    if (commandId === 'safe') onPermissionModeChange?.('safe')
-    else if (commandId === 'ask') onPermissionModeChange?.('ask')
-    else if (commandId === 'allow-all') onPermissionModeChange?.('allow-all')
-    else if (commandId === 'compact' && !isProcessing) onSubmit('/compact', undefined)
-  }, [onPermissionModeChange, isProcessing, onSubmit])
+  // Handle slash command selection (OpenCode agent + compact)
+  const handleSlashCommand = React.useCallback(
+    (commandId: SlashCommandId) => {
+      if (commandId === 'plan') setWorkMode('manual', 'plan')
+      else if (commandId === 'auto') setWorkMode('auto', 'execute')
+      else if (commandId === 'execute') setWorkMode('manual', 'execute')
+      else if (commandId === 'explore') setWorkMode('manual', 'explore')
+      else if (commandId === 'compact' && !isProcessing)
+        onSubmit('/compact', undefined)
+    },
+    [setWorkMode, isProcessing, onSubmit],
+  )
 
   // Handle folder selection from slash command menu
-  const handleSlashFolderSelect = React.useCallback((path: string) => {
-    if (onWorkingDirectoryChange) {
-      setRecentFolders(addRecentWorkingDir(path, workspaceId))
-      onWorkingDirectoryChange(path)
-    }
-  }, [onWorkingDirectoryChange, workspaceId])
+  const handleSlashFolderSelect = React.useCallback(
+    (path: string) => {
+      if (onWorkingDirectoryChange) {
+        setRecentFolders(addRecentWorkingDir(path, workspaceId))
+        onWorkingDirectoryChange(path)
+      }
+    },
+    [onWorkingDirectoryChange, workspaceId],
+  )
 
   // Get recent folders and home directory for slash menu and mention menu
   const [recentFolders, setRecentFolders] = React.useState<string[]>([])
@@ -965,20 +1252,23 @@ export function FreeFormInput({
   })
 
   // Handle mention selection (sources, skills, files)
-  const handleMentionSelect = React.useCallback((item: MentionItem) => {
-    // For sources: enable the source immediately
-    if (item.type === 'source' && item.source && onSourcesChange) {
-      const slug = item.source.config.slug
-      if (!optimisticSourceSlugs.includes(slug)) {
-        const newSlugs = [...optimisticSourceSlugs, slug]
-        setOptimisticSourceSlugs(newSlugs)
-        onSourcesChange(newSlugs)
+  const handleMentionSelect = React.useCallback(
+    (item: MentionItem) => {
+      // For sources: enable the source immediately
+      if (item.type === 'source' && item.source && onSourcesChange) {
+        const slug = item.source.config.slug
+        if (!optimisticSourceSlugs.includes(slug)) {
+          const newSlugs = [...optimisticSourceSlugs, slug]
+          setOptimisticSourceSlugs(newSlugs)
+          onSourcesChange(newSlugs)
+        }
       }
-    }
 
-    // Files via @ mention in text are sufficient context for the agent.
-    // Skills also don't need special handling beyond text insertion.
-  }, [optimisticSourceSlugs, onSourcesChange])
+      // Files via @ mention in text are sufficient context for the agent.
+      // Skills also don't need special handling beyond text insertion.
+    },
+    [optimisticSourceSlugs, onSourcesChange],
+  )
 
   // Inline mention hook (for skills, sources, and files)
   const inlineMention = useInlineMention({
@@ -992,39 +1282,45 @@ export function FreeFormInput({
   })
 
   // Inline label menu hook (for #labels)
-  const handleLabelSelect = React.useCallback((labelId: string) => {
-    onLabelAdd?.(labelId)
-  }, [onLabelAdd])
+  const handleLabelSelect = React.useCallback(
+    (labelId: string) => {
+      onLabelAdd?.(labelId)
+    },
+    [onLabelAdd],
+  )
 
+  // Labels only in # menu — session status ("todo" etc.) is set from session
+  // menu / list / task board, not the chat composer (avoids dual authority).
   const inlineLabel = useInlineLabelMenu({
     inputRef: richInputRef,
     labels,
     sessionLabels,
     onSelect: handleLabelSelect,
-    sessionStatuses,
-    activeStateId: currentSessionStatus,
   })
 
   // "Add New Label" handler: cleans up the #trigger text and opens a controlled
   // EditPopover so the user can describe the label before the agent creates it.
   const [addLabelPopoverOpen, setAddLabelPopoverOpen] = React.useState(false)
   const [addLabelPrefill, setAddLabelPrefill] = React.useState('')
-  const handleAddLabel = React.useCallback((prefill: string) => {
-    if (!workspaceRootPath) return
+  const handleAddLabel = React.useCallback(
+    (prefill: string) => {
+      if (!workspaceRootPath) return
 
-    // Remove the #trigger text from input
-    const cleaned = inlineLabel.handleSelect('')
-    setInput(cleaned)
-    syncToParent(cleaned)
-    inlineLabel.close()
+      // Remove the #trigger text from input
+      const cleaned = inlineLabel.handleSelect('')
+      setInput(cleaned)
+      syncToParent(cleaned)
+      inlineLabel.close()
 
-    // Store the prefill text (e.g., "Test" from "#Test") to pre-fill the popover
-    // Format: "Add new label {prefill}" so user can just press enter or modify
-    setAddLabelPrefill(prefill ? t('labels.addNewLabel', { prefill }) : '')
+      // Store the prefill text (e.g., "Test" from "#Test") to pre-fill the popover
+      // Format: "Add new label {prefill}" so user can just press enter or modify
+      setAddLabelPrefill(prefill ? t('labels.addNewLabel', { prefill }) : '')
 
-    // Open the EditPopover for label creation
-    setAddLabelPopoverOpen(true)
-  }, [workspaceRootPath, inlineLabel, syncToParent, t])
+      // Open the EditPopover for label creation
+      setAddLabelPopoverOpen(true)
+    },
+    [workspaceRootPath, inlineLabel, syncToParent, t],
+  )
 
   // Memoize the add-label config so the EditPopover doesn't recreate on every render
   const addLabelEditConfig = React.useMemo(() => {
@@ -1066,26 +1362,83 @@ export function FreeFormInput({
     try {
       const attachment = await readFileAsAttachment(file, overrideName)
       if (attachment) {
-        setAttachments(prev => [...prev, attachment])
+        setAttachments((prev) => [...prev, attachment])
       }
     } catch (error) {
       console.error('[FreeFormInput] Failed to read file:', error)
     }
-    setLoadingCount(prev => prev - 1)
+    setLoadingCount((prev) => prev - 1)
   }
 
-  // File attachment handlers
+  // File attachment handlers — Craft original: hidden <input type="file"> + FileReader.
   const handleAttachClick = () => {
     if (disabled) return
     fileInputRef.current?.click()
   }
 
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleToggleSourceSlug = React.useCallback(
+    (slug: string) => {
+      if (!onSourcesChange) return
+      const isEnabled = optimisticSourceSlugs.includes(slug)
+      const newSlugs = isEnabled
+        ? optimisticSourceSlugs.filter((s) => s !== slug)
+        : [...optimisticSourceSlugs, slug]
+      setOptimisticSourceSlugs(newSlugs)
+      onSourcesChange(newSlugs)
+    },
+    [onSourcesChange, optimisticSourceSlugs],
+  )
+
+  const handleAddSkill = React.useCallback(
+    (skill: LoadedSkill) => {
+      const pluginName =
+        skill.source === 'workspace' ? workspaceSlug : AGENTS_PLUGIN_NAME
+      const qualifiedName = pluginName
+        ? `${pluginName}:${skill.slug}`
+        : skill.slug
+      const spacer = input.length > 0 && !input.endsWith(' ') ? ' ' : ''
+      const next = `${input}${spacer}[skill:${qualifiedName}] `
+      setInput(next)
+      syncToParent(next)
+      requestAnimationFrame(() => {
+        richInputRef.current?.focus()
+        richInputRef.current?.setSelectionRange(next.length, next.length)
+      })
+    },
+    [input, richInputRef, syncToParent, workspaceSlug],
+  )
+
+  const insertComposerPrefix = React.useCallback(
+    (prefix: string) => {
+      const spacer = input.length > 0 && !input.endsWith(' ') ? ' ' : ''
+      const next = `${input}${spacer}${prefix}`
+      setInput(next)
+      syncToParent(next)
+      requestAnimationFrame(() => {
+        richInputRef.current?.focus()
+        richInputRef.current?.setSelectionRange(next.length, next.length)
+      })
+    },
+    [input, richInputRef, syncToParent],
+  )
+
+  const mcpSources = React.useMemo(
+    () => sources.filter((source) => source.config.type === 'mcp'),
+    [sources],
+  )
+  const otherSources = React.useMemo(
+    () => sources.filter((source) => source.config.type !== 'mcp'),
+    [sources],
+  )
+
+  const handleFileInputChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
     const fileList = Array.from(files)
-    setLoadingCount(prev => prev + fileList.length)
+    setLoadingCount((prev) => prev + fileList.length)
 
     for (const file of fileList) {
       await processFileAttachment(file)
@@ -1096,7 +1449,7 @@ export function FreeFormInput({
   }
 
   const handleRemoveAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index))
+    setAttachments((prev) => prev.filter((_, i) => i !== index))
   }
 
   // Drag and drop handlers
@@ -1123,13 +1476,17 @@ export function FreeFormInput({
     e.stopPropagation()
   }
 
-  // Helper to read a File using FileReader API
-  const readFileAsAttachment = async (file: File, overrideName?: string): Promise<FileAttachment | null> => {
+  // Helper to read a File using FileReader API (Craft original).
+  const readFileAsAttachment = async (
+    file: File,
+    overrideName?: string,
+  ): Promise<FileAttachment | null> => {
     // Capture the absolute OS path at attach time. Works for <input type="file"> and
     // OS drag-drop; returns null for clipboard paste and web-drag (no disk origin).
     // When null, the draft layer falls back to persisting content inline (Track C).
-    const realPath = hasElectronAPI ? window.electronAPI.getFilePath?.(file) ?? null : null
-
+    const realPath = hasElectronAPI
+      ? (window.electronAPI.getFilePath?.(file) ?? null)
+      : null
     return new Promise((resolve) => {
       const reader = new FileReader()
       reader.onload = async () => {
@@ -1140,7 +1497,9 @@ export function FreeFormInput({
         let binary = ''
         const chunkSize = 8192
         for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)))
+          binary += String.fromCharCode(
+            ...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)),
+          )
         }
         const base64 = btoa(binary)
 
@@ -1148,8 +1507,16 @@ export function FreeFormInput({
         const fileName = overrideName || file.name
         if (file.type.startsWith('image/')) type = 'image'
         else if (file.type === 'application/pdf') type = 'pdf'
-        else if (file.type.includes('text') || fileName.match(/\.(txt|md|json|js|ts|tsx|py|css|html)$/i)) type = 'text'
-        else if (file.type.includes('officedocument') || fileName.match(/\.(docx?|xlsx?|pptx?)$/i)) type = 'office'
+        else if (
+          file.type.includes('text') ||
+          fileName.match(/\.(txt|md|json|js|ts|tsx|py|css|html)$/i)
+        )
+          type = 'text'
+        else if (
+          file.type.includes('officedocument') ||
+          fileName.match(/\.(docx?|xlsx?|pptx?)$/i)
+        )
+          type = 'office'
 
         const mimeType = file.type || 'application/octet-stream'
 
@@ -1162,7 +1529,10 @@ export function FreeFormInput({
         let thumbnailBase64: string | undefined
         if (hasElectronAPI) {
           try {
-            const thumb = await window.electronAPI.generateThumbnail(base64, mimeType)
+            const thumb = await window.electronAPI.generateThumbnail(
+              base64,
+              mimeType,
+            )
             if (thumb) thumbnailBase64 = thumb
           } catch {
             // Thumbnail generation is optional, continue without it
@@ -1196,12 +1566,17 @@ export function FreeFormInput({
     e.preventDefault()
 
     const files = Array.from(clipboardItems)
-    setLoadingCount(prev => prev + files.length)
+    setLoadingCount((prev) => prev + files.length)
 
     // Pre-assign sequential names using ref to avoid race conditions
     let nextImageNum = getNextPastedNumber('image', attachmentsRef.current)
-    const fileNames: string[] = files.map(file => {
-      if (!file.name || file.name === 'image.png' || file.name === 'image.jpg' || file.name === 'blob') {
+    const fileNames: string[] = files.map((file) => {
+      if (
+        !file.name ||
+        file.name === 'image.png' ||
+        file.name === 'image.jpg' ||
+        file.name === 'blob'
+      ) {
         const ext = file.type.split('/')[1] || 'png'
         return `pasted-image-${nextImageNum++}.${ext}`
       }
@@ -1225,7 +1600,7 @@ export function FreeFormInput({
       text: text,
       size: new Blob([text]).size,
     }
-    setAttachments(prev => [...prev, attachment])
+    setAttachments((prev) => [...prev, attachment])
     // Focus input after adding attachment
     richInputRef.current?.focus()
   }, []) // No deps needed - uses ref
@@ -1247,20 +1622,53 @@ export function FreeFormInput({
 
   // Submit message - backend handles queueing and interruption
   const submitMessage = React.useCallback(() => {
-    const hasContent = input.trim() || attachments.length > 0 || followUpItems.length > 0
+    const hasContent =
+      input.trim() || attachments.length > 0 || followUpItems.length > 0
     if (!hasContent || disabled) return false
 
     // Tutorial may disable sending to guide user through specific steps
     if (disableSend) return false
 
+    const trimmedInput = input.trim()
+    const goalCommand = trimmedInput.match(/^\/goal(?:\s+([\s\S]*))?$/i)
+    if (
+      goalCommand &&
+      sessionId &&
+      attachments.length === 0 &&
+      followUpItems.length === 0
+    ) {
+      const requestedGoal = goalCommand[1]?.trim()
+      // `/goal clear` is the explicit removal path. A bare `/goal` stays in the
+      // composer so the user can finish the command instead of silently clearing.
+      if (!requestedGoal) {
+        richInputRef.current?.focus()
+        return false
+      }
+      const nextGoal =
+        requestedGoal.toLowerCase() === 'clear' ? null : requestedGoal
+      void window.electronAPI
+        .sessionCommand(sessionId, { type: 'setGoal', goal: nextGoal })
+        .catch((error) =>
+          console.error('Failed to update session goal:', error),
+        )
+      setInput('')
+      if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current)
+      onInputChange?.('')
+      prevInputValueRef.current = ''
+      requestAnimationFrame(() => richInputRef.current?.focus())
+      return true
+    }
+
     // Parse all @mentions (skills, sources, folders)
-    const skillSlugs = skills.map(s => s.slug)
-    const sourceSlugs = sources.map(s => s.config.slug)
+    const skillSlugs = skills.map((s) => s.slug)
+    const sourceSlugs = sources.map((s) => s.config.slug)
     const mentions = parseMentions(input, skillSlugs, sourceSlugs)
 
     // Enable any mentioned sources that aren't already enabled
     if (mentions.sources.length > 0 && onSourcesChange) {
-      const newSlugs = [...new Set([...optimisticSourceSlugs, ...mentions.sources])]
+      const newSlugs = [
+        ...new Set([...optimisticSourceSlugs, ...mentions.sources]),
+      ]
       if (newSlugs.length > optimisticSourceSlugs.length) {
         setOptimisticSourceSlugs(newSlugs)
         onSourcesChange(newSlugs)
@@ -1272,7 +1680,7 @@ export function FreeFormInput({
     onSubmit(
       input.trim(),
       attachmentSnapshot.length > 0 ? attachmentSnapshot : undefined,
-      mentions.skills.length > 0 ? mentions.skills : undefined
+      mentions.skills.length > 0 ? mentions.skills : undefined,
     )
     setInput('')
     setAttachments([])
@@ -1288,18 +1696,46 @@ export function FreeFormInput({
     })
 
     return true
-  }, [input, attachments, followUpItems, disabled, disableSend, onInputChange, onAttachmentsChange, onSubmit, skills, sources, optimisticSourceSlugs, onSourcesChange, onWorkingDirectoryChange, homeDir])
+  }, [
+    input,
+    attachments,
+    followUpItems,
+    disabled,
+    disableSend,
+    sessionId,
+    onInputChange,
+    onAttachmentsChange,
+    onSubmit,
+    skills,
+    sources,
+    optimisticSourceSlugs,
+    onSourcesChange,
+  ])
 
   // Listen for craft:submit-input events (simulate pressing the Send button)
   React.useEffect(() => {
     const handleSubmitInput = (e: CustomEvent<{ sessionId?: string }>) => {
       const targetSessionId = e.detail?.sessionId
-      if (!shouldHandleScopedInputEvent({ sessionId, isFocusedPanel, targetSessionId })) return
+      if (
+        !shouldHandleScopedInputEvent({
+          sessionId,
+          isFocusedPanel,
+          targetSessionId,
+        })
+      )
+        return
       submitMessage()
     }
 
-    window.addEventListener('craft:submit-input', handleSubmitInput as EventListener)
-    return () => window.removeEventListener('craft:submit-input', handleSubmitInput as EventListener)
+    window.addEventListener(
+      'craft:submit-input',
+      handleSubmitInput as EventListener,
+    )
+    return () =>
+      window.removeEventListener(
+        'craft:submit-input',
+        handleSubmitInput as EventListener,
+      )
   }, [sessionId, isFocusedPanel, submitMessage])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1320,8 +1756,16 @@ export function FreeFormInput({
     // Don't submit when mention menu is open AND has visible content
     if (inlineMention.isOpen) {
       // Only intercept navigation/selection keys if menu actually shows items or is loading
-      const hasVisibleContent = inlineMention.sections.some(s => s.items.length > 0) || inlineMention.isSearching
-      if (hasVisibleContent && (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const hasVisibleContent =
+        inlineMention.sections.some((s) => s.items.length > 0) ||
+        inlineMention.isSearching
+      if (
+        hasVisibleContent &&
+        (e.key === 'Enter' ||
+          e.key === 'Tab' ||
+          e.key === 'ArrowUp' ||
+          e.key === 'ArrowDown')
+      ) {
         // These keys are handled by the InlineMentionMenu component
         return
       }
@@ -1334,7 +1778,12 @@ export function FreeFormInput({
 
     // Don't submit when slash command menu is open - let it handle the Enter key
     if (inlineSlash.isOpen) {
-      if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (
+        e.key === 'Enter' ||
+        e.key === 'Tab' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown'
+      ) {
         // These keys are handled by the InlineSlashCommand component
         return
       }
@@ -1347,7 +1796,12 @@ export function FreeFormInput({
 
     // Don't submit when label menu is open - let it handle navigation keys
     if (inlineLabel.isOpen) {
-      if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      if (
+        e.key === 'Enter' ||
+        e.key === 'Tab' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown'
+      ) {
         return
       }
       if (e.key === 'Escape') {
@@ -1363,18 +1817,32 @@ export function FreeFormInput({
     // - 'cmd-enter': ⌘/Ctrl+Enter sends (Enter for newline)
     if (sendMessageKey === 'enter') {
       // Enter sends, Shift+Enter adds newline
-      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.nativeEvent.isComposing) {
+      if (
+        e.key === 'Enter' &&
+        !e.shiftKey &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.nativeEvent.isComposing
+      ) {
         e.preventDefault()
         submitMessage()
       }
       // Also allow Cmd/Ctrl+Enter to send (power user shortcut)
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+      if (
+        e.key === 'Enter' &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.nativeEvent.isComposing
+      ) {
         e.preventDefault()
         submitMessage()
       }
     } else {
       // cmd-enter mode: ⌘/Ctrl+Enter sends, plain Enter adds newline
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) {
+      if (
+        e.key === 'Enter' &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.nativeEvent.isComposing
+      ) {
         e.preventDefault()
         submitMessage()
       }
@@ -1392,130 +1860,160 @@ export function FreeFormInput({
   }
 
   // Handle input changes from RichTextInput
-  const handleInputChange = React.useCallback((value: string) => {
-    const nextValue = coerceInputText(value)
-    // Get previous input value before updating state
-    const prevValue = inputRef.current
+  const handleInputChange = React.useCallback(
+    (value: string) => {
+      const nextValue = coerceInputText(value)
+      // Get previous input value before updating state
+      const prevValue = inputRef.current
 
-    setInput(nextValue)
-    syncToParent(nextValue) // Debounced sync to parent for draft persistence
+      setInput(nextValue)
+      syncToParent(nextValue) // Debounced sync to parent for draft persistence
 
-    // Sync source selection when mentions are removed from input
-    if (onSourcesChange) {
-      const sourceSlugs = sources.map(s => s.config.slug)
+      // Sync source selection when mentions are removed from input
+      if (onSourcesChange) {
+        const sourceSlugs = sources.map((s) => s.config.slug)
 
-      // Parse mentions from previous and current input
-      const prevMentions = parseMentions(prevValue, [], sourceSlugs)
-      const currMentions = parseMentions(nextValue, [], sourceSlugs)
+        // Parse mentions from previous and current input
+        const prevMentions = parseMentions(prevValue, [], sourceSlugs)
+        const currMentions = parseMentions(nextValue, [], sourceSlugs)
 
-      // Remove sources that were mentioned before but not anymore
-      const removedSources = prevMentions.sources.filter(slug => !currMentions.sources.includes(slug))
-      if (removedSources.length > 0) {
-        const newSlugs = optimisticSourceSlugs.filter(slug => !removedSources.includes(slug))
-        setOptimisticSourceSlugs(newSlugs)
-        onSourcesChange(newSlugs)
+        // Remove sources that were mentioned before but not anymore
+        const removedSources = prevMentions.sources.filter(
+          (slug) => !currMentions.sources.includes(slug),
+        )
+        if (removedSources.length > 0) {
+          const newSlugs = optimisticSourceSlugs.filter(
+            (slug) => !removedSources.includes(slug),
+          )
+          setOptimisticSourceSlugs(newSlugs)
+          onSourcesChange(newSlugs)
+        }
       }
-    }
-  }, [syncToParent, sources, optimisticSourceSlugs, onSourcesChange])
+    },
+    [syncToParent, sources, optimisticSourceSlugs, onSourcesChange],
+  )
 
   // Handle input with cursor position (for menu detection)
-  const handleRichInput = React.useCallback((value: string, cursorPosition: number) => {
-    const nextValue = coerceInputText(value)
+  const handleRichInput = React.useCallback(
+    (value: string, cursorPosition: number) => {
+      const nextValue = coerceInputText(value)
 
-    // Update inline slash command state
-    inlineSlash.handleInputChange(nextValue, cursorPosition)
+      // Update inline slash command state
+      inlineSlash.handleInputChange(nextValue, cursorPosition)
 
-    // Update inline mention state (for @mentions - skills, sources, folders)
-    inlineMention.handleInputChange(nextValue, cursorPosition)
+      // Update inline mention state (for @mentions - skills, sources, folders)
+      inlineMention.handleInputChange(nextValue, cursorPosition)
 
-    // Update inline label state (for #labels)
-    inlineLabel.handleInputChange(nextValue, cursorPosition)
+      // Update inline label state (for #labels)
+      inlineLabel.handleInputChange(nextValue, cursorPosition)
 
-    // Auto-capitalize first letter (but not for slash commands, @mentions, or #labels)
-    // Only if autoCapitalisation setting is enabled
-    let newValue = nextValue
-    if (autoCapitalisation && nextValue.length > 0 && nextValue.charAt(0) !== '/' && nextValue.charAt(0) !== '@' && nextValue.charAt(0) !== '#') {
-      const capitalizedFirst = nextValue.charAt(0).toUpperCase()
-      if (capitalizedFirst !== nextValue.charAt(0)) {
-        newValue = capitalizedFirst + nextValue.slice(1)
+      // Auto-capitalize first letter (but not for slash commands, @mentions, or #labels)
+      // Only if autoCapitalisation setting is enabled
+      let newValue = nextValue
+      if (
+        autoCapitalisation &&
+        nextValue.length > 0 &&
+        nextValue.charAt(0) !== '/' &&
+        nextValue.charAt(0) !== '@' &&
+        nextValue.charAt(0) !== '#'
+      ) {
+        const capitalizedFirst = nextValue.charAt(0).toUpperCase()
+        if (capitalizedFirst !== nextValue.charAt(0)) {
+          newValue = capitalizedFirst + nextValue.slice(1)
+          // Set cursor position BEFORE state update so it's used when useEffect syncs the value
+          richInputRef.current?.setSelectionRange(
+            cursorPosition,
+            cursorPosition,
+          )
+          setInput(newValue)
+          syncToParent(newValue)
+          return
+        }
+      }
+
+      // Apply smart typography (-> to →, etc.)
+      const typography = applySmartTypography(nextValue, cursorPosition)
+      if (typography.replaced) {
+        newValue = typography.text
         // Set cursor position BEFORE state update so it's used when useEffect syncs the value
-        richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
+        richInputRef.current?.setSelectionRange(
+          typography.cursor,
+          typography.cursor,
+        )
         setInput(newValue)
         syncToParent(newValue)
-        return
       }
-    }
-
-    // Apply smart typography (-> to →, etc.)
-    const typography = applySmartTypography(nextValue, cursorPosition)
-    if (typography.replaced) {
-      newValue = typography.text
-      // Set cursor position BEFORE state update so it's used when useEffect syncs the value
-      richInputRef.current?.setSelectionRange(typography.cursor, typography.cursor)
-      setInput(newValue)
-      syncToParent(newValue)
-    }
-  }, [inlineSlash, inlineMention, inlineLabel, syncToParent, autoCapitalisation])
+    },
+    [inlineSlash, inlineMention, inlineLabel, syncToParent, autoCapitalisation],
+  )
 
   // Handle inline slash command selection (removes the /command text)
-  const handleInlineSlashCommandSelect = React.useCallback((commandId: SlashCommandId) => {
-    const newValue = inlineSlash.handleSelectCommand(commandId)
-    setInput(newValue)
-    syncToParent(newValue)
-    richInputRef.current?.focus()
-  }, [inlineSlash, syncToParent])
+  const handleInlineSlashCommandSelect = React.useCallback(
+    (commandId: SlashCommandId) => {
+      const newValue = inlineSlash.handleSelectCommand(commandId)
+      setInput(newValue)
+      syncToParent(newValue)
+      richInputRef.current?.focus()
+    },
+    [inlineSlash, syncToParent],
+  )
 
   // Handle inline slash folder selection (inserts a directory badge)
-  const handleInlineSlashFolderSelect = React.useCallback((path: string) => {
-    const newValue = inlineSlash.handleSelectFolder(path)
-    setInput(newValue)
-    syncToParent(newValue)
-    richInputRef.current?.focus()
-  }, [inlineSlash, syncToParent])
+  const handleInlineSlashFolderSelect = React.useCallback(
+    (path: string) => {
+      const newValue = inlineSlash.handleSelectFolder(path)
+      setInput(newValue)
+      syncToParent(newValue)
+      richInputRef.current?.focus()
+    },
+    [inlineSlash, syncToParent],
+  )
 
   // Handle inline mention selection (inserts appropriate mention text)
-  const handleInlineMentionSelect = React.useCallback((item: MentionItem) => {
-    const { value: newValue, cursorPosition } = inlineMention.handleSelect(item)
-    setInput(newValue)
-    syncToParent(newValue)
-    // Focus input and restore cursor position after badge renders
-    setTimeout(() => {
-      richInputRef.current?.focus()
-      richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
-    }, 0)
-  }, [inlineMention, syncToParent])
+  const handleInlineMentionSelect = React.useCallback(
+    (item: MentionItem) => {
+      const { value: newValue, cursorPosition } =
+        inlineMention.handleSelect(item)
+      setInput(newValue)
+      syncToParent(newValue)
+      // Focus input and restore cursor position after badge renders
+      setTimeout(() => {
+        richInputRef.current?.focus()
+        richInputRef.current?.setSelectionRange(cursorPosition, cursorPosition)
+      }, 0)
+    },
+    [inlineMention, syncToParent],
+  )
 
   // Handle inline label selection (removes the #label text from input)
-  const handleInlineLabelSelect = React.useCallback((labelId: string) => {
-    const newValue = inlineLabel.handleSelect(labelId)
-    setInput(newValue)
-    syncToParent(newValue)
-    richInputRef.current?.focus()
-  }, [inlineLabel, syncToParent])
-
-  // Handle inline state selection from # menu (removes #text, changes session state)
-  const handleInlineStateSelect = React.useCallback((stateId: string) => {
-    const newValue = inlineLabel.handleSelect('')
-    setInput(newValue)
-    syncToParent(newValue)
-    if (sessionId) {
-      onSessionStatusChange?.(sessionId, stateId)
-    }
-    richInputRef.current?.focus()
-  }, [inlineLabel, syncToParent, sessionId, onSessionStatusChange])
+  const handleInlineLabelSelect = React.useCallback(
+    (labelId: string) => {
+      const newValue = inlineLabel.handleSelect(labelId)
+      setInput(newValue)
+      syncToParent(newValue)
+      richInputRef.current?.focus()
+    },
+    [inlineLabel, syncToParent],
+  )
 
   const followUpLayoutKey = React.useMemo(
-    () => followUpItems.map(item => [
-      item.id,
-      item.index ?? '',
-      item.noteLabel,
-      item.selectedText,
-      item.color ?? '',
-    ].join('::')).join('|'),
-    [followUpItems]
+    () =>
+      followUpItems
+        .map((item) =>
+          [
+            item.id,
+            item.index ?? '',
+            item.noteLabel,
+            item.selectedText,
+            item.color ?? '',
+          ].join('::'),
+        )
+        .join('|'),
+    [followUpItems],
   )
   const previousFollowUpLayoutKeyRef = React.useRef<string | null>(null)
-  const [animateFollowUpLayout, setAnimateFollowUpLayout] = React.useState(false)
+  const [animateFollowUpLayout, setAnimateFollowUpLayout] =
+    React.useState(false)
 
   React.useEffect(() => {
     const previous = previousFollowUpLayoutKeyRef.current
@@ -1531,75 +2029,331 @@ export function FreeFormInput({
     return () => window.clearTimeout(timer)
   }, [followUpLayoutKey])
 
-  const hasContent = input.trim() || attachments.length > 0 || followUpItems.length > 0
+  const hasContent =
+    input.trim() || attachments.length > 0 || followUpItems.length > 0
+  const [repositorySnapshot, setRepositorySnapshot] = React.useState<
+    import('../../../../shared/types').GitWorkingTreeSnapshot | null
+  >(null)
+  const [projectPickerOpen, setProjectPickerOpen] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!isEmptySession || compactMode || !sessionId || !workingDirectory) {
+      setRepositorySnapshot(null)
+      return
+    }
+    let cancelled = false
+    window.electronAPI
+      .getGitWorkingTree(sessionId)
+      .then((snapshot) => {
+        if (!cancelled) setRepositorySnapshot(snapshot)
+      })
+      .catch(() => {
+        if (!cancelled) setRepositorySnapshot(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [compactMode, isEmptySession, sessionId, workingDirectory])
 
   // Pre-flight image-support check: warn when staged images would be silently
   // stripped by Pi SDK because the active custom-endpoint model is text-only.
   // Gate on pi_compat — built-in catalogs (anthropic/pi) are owned by the SDK
   // and we can't repair them from the UI here.
-  const hasStagedImages = attachments.some(a => a.type === 'image' || a.mimeType?.startsWith('image/'))
+  const hasStagedImages = attachments.some(
+    (a) => a.type === 'image' || a.mimeType?.startsWith('image/'),
+  )
   const showVisionWarning =
-    hasStagedImages
-    && !!effectiveConnectionDetails
-    && isCompatProvider(effectiveConnectionDetails.providerType)
-    && !modelSupportsImages(effectiveConnectionDetails, currentModel)
+    hasStagedImages &&
+    !!effectiveConnectionDetails &&
+    isCompatProvider(effectiveConnectionDetails.providerType) &&
+    !modelSupportsImages(effectiveConnectionDetails, currentModel)
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div
-        ref={containerRef}
-        className={cn(
-          'overflow-hidden transition-all',
-          // Container styling - only when not wrapped by InputContainer
-          !unstyled && 'rounded-[16px] shadow-middle',
-          !unstyled && 'bg-background',
-          isDraggingOver && 'ring-2 ring-foreground ring-offset-2 ring-offset-background bg-foreground/5'
+    <div
+      ref={containerRef}
+      className={cn(
+        'overflow-hidden transition-all',
+        !unstyled && 'rounded-[12px] bg-background shadow-middle',
+        isDraggingOver &&
+          'ring-2 ring-foreground ring-offset-2 ring-offset-background bg-foreground/5',
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Empty-session execution context expands from the composer surface and
+          participates in its measured height. Project folder, execution target,
+          and worktree are separate projections over the existing Workspace and
+          working-directory authorities; this surface owns no persisted state. */}
+      {isEmptySession &&
+        !compactMode &&
+        onWorkingDirectoryChange &&
+        appShellCtx && (
+          <Popover open={projectPickerOpen} onOpenChange={setProjectPickerOpen}>
+            <div className="bg-muted">
+              <div className="flex min-w-0 items-center gap-1 px-3 py-2">
+                <PopoverTrigger asChild>
+                  <FreeFormInputContextBadge
+                    icon={<Icon_Folder className="h-4 w-4" />}
+                    label={
+                      selectedExecutionWorkspace?.name ?? t('chat.chooseFolder')
+                    }
+                    isExpanded
+                    hasSelection={!!selectedExecutionWorkspace}
+                    showChevron
+                    isOpen={projectPickerOpen}
+                    aria-expanded={projectPickerOpen}
+                    className="order-1"
+                  />
+                </PopoverTrigger>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <FreeFormInputContextBadge
+                    icon={
+                      executionTargetId === 'local' ? (
+                        <Monitor className="h-4 w-4" />
+                      ) : (
+                        <Cloud className="h-4 w-4" />
+                      )
+                    }
+                    label={t(
+                      executionTargetId === 'local'
+                        ? 'composer.execution.local'
+                        : 'composer.execution.remote',
+                    )}
+                    isExpanded
+                    hasSelection
+                    showChevron
+                    className="order-2"
+                  />
+                </DropdownMenuTrigger>
+                <StyledDropdownMenuContent
+                  side="top"
+                  align="start"
+                  sideOffset={8}
+                  className="min-w-[220px]"
+                >
+                  {executionTargets.map((target) => {
+                    const selected = target.id === executionTargetId
+                    return (
+                      <StyledDropdownMenuItem
+                        key={target.id}
+                        onSelect={() => {
+                          if (!selected) {
+                            setExecutionTargetId(target.id)
+                            setProjectPickerOpen(false)
+                          }
+                        }}
+                      >
+                        {target.kind === 'local' ? (
+                          <Monitor className="h-4 w-4" />
+                        ) : (
+                          <Cloud className="h-4 w-4" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate">
+                          {t(
+                            target.kind === 'local'
+                              ? 'composer.execution.local'
+                              : 'composer.execution.remote',
+                          )}
+                        </span>
+                        {target.kind === 'remote' && remoteTargetCount > 1 && (
+                          <span className="max-w-[140px] truncate text-xs text-muted-foreground">
+                            {getRemoteTargetDisplayName(target.url)}
+                          </span>
+                        )}
+                        {selected && <Check className="h-4 w-4" />}
+                      </StyledDropdownMenuItem>
+                    )
+                  })}
+                  {appShellCtx.onRequestProjectCreation && (
+                    <>
+                      <StyledDropdownMenuSeparator className="my-1" />
+                      <StyledDropdownMenuItem
+                        onSelect={() =>
+                          appShellCtx.onRequestProjectCreation?.(
+                            'remote',
+                            (workspace) => {
+                              onExecutionWorkspaceChange?.(
+                                workspace.id,
+                                workspace,
+                              )
+                            },
+                          )
+                        }
+                      >
+                        <Cloud className="h-4 w-4" />
+                        <span>{t('workspace.connectRemote')}</span>
+                      </StyledDropdownMenuItem>
+                    </>
+                  )}
+                </StyledDropdownMenuContent>
+              </DropdownMenu>
+
+              {selectedExecutionWorkspace &&
+              repositorySnapshot &&
+              repositorySnapshot.worktrees.length > 1 ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <FreeFormInputContextBadge
+                      icon={<GitBranch className="h-4 w-4" />}
+                      label={
+                        repositorySnapshot.worktrees.find(
+                          (entry) => entry.path === workingDirectory,
+                        )?.branch ?? t('chat.worktree')
+                      }
+                      isExpanded
+                      hasSelection
+                      showChevron
+                      className="order-3"
+                    />
+                  </DropdownMenuTrigger>
+                  <StyledDropdownMenuContent
+                    side="top"
+                    align="start"
+                    sideOffset={8}
+                    className="min-w-[260px]"
+                  >
+                    {repositorySnapshot.worktrees
+                      .filter((entry) => !entry.bare)
+                      .map((entry) => (
+                        <StyledDropdownMenuItem
+                          key={entry.path}
+                          onSelect={() => onWorkingDirectoryChange(entry.path)}
+                        >
+                          <GitBranch className="h-4 w-4" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {entry.branch ?? entry.path}
+                          </span>
+                          {entry.path === workingDirectory && (
+                            <Check className="h-4 w-4" />
+                          )}
+                        </StyledDropdownMenuItem>
+                      ))}
+                  </StyledDropdownMenuContent>
+                </DropdownMenu>
+              ) : selectedExecutionWorkspace && repositorySnapshot?.branch ? (
+                <FreeFormInputContextBadge
+                  icon={<GitBranch className="h-4 w-4" />}
+                  label={repositorySnapshot.branch}
+                  isExpanded
+                  hasSelection
+                  interactive={false}
+                  className="order-3"
+                />
+              ) : null}
+              </div>
+              <PopoverContent
+                side="top"
+                align="start"
+                sideOffset={8}
+                className="w-[min(360px,calc(100vw-24px))] p-1"
+                onOpenAutoFocus={(event) => event.preventDefault()}
+              >
+                <div
+                  className="max-h-[280px] overflow-y-auto"
+                  aria-label={t('chat.chooseFolder')}
+                >
+                  <div className="space-y-1">
+                    {executionTargetWorkspaces.map((workspace) => {
+                      const selected =
+                        workspace.id === selectedExecutionWorkspace?.id
+                      return (
+                        <button
+                          key={workspace.id}
+                          type="button"
+                          aria-pressed={selected}
+                          className={cn(
+                            'relative flex min-h-8 w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[13px] outline-none',
+                            'hover:bg-foreground/[0.05] focus-visible:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring',
+                            selected && 'bg-foreground/[0.05]',
+                          )}
+                          onClick={() => {
+                            setProjectPickerOpen(false)
+                            if (!selected)
+                              onExecutionWorkspaceChange?.(workspace.id)
+                          }}
+                        >
+                          <Icon_Folder className="h-3.5 w-3.5 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">
+                            {workspace.name}
+                          </span>
+                          {selected && <Check className="h-3.5 w-3.5" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {executionTargetId === 'local' &&
+                  appShellCtx.onRequestProjectCreation ? (
+                    <div className="mt-1 border-t border-border/60 pt-1">
+                      <button
+                        type="button"
+                        className="relative flex min-h-8 w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[13px] outline-none hover:bg-foreground/[0.05] focus-visible:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                        onClick={() => {
+                          setProjectPickerOpen(false)
+                          appShellCtx.onRequestProjectCreation?.(
+                            'local',
+                            (workspace) => {
+                              onExecutionWorkspaceChange?.(
+                                workspace.id,
+                                workspace,
+                              )
+                            },
+                          )
+                        }}
+                      >
+                        <Icon_Folder className="h-3.5 w-3.5 shrink-0" />
+                        <span>{t('workspace.openFolder')}</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </PopoverContent>
+            </div>
+          </Popover>
         )}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {/* Inline Slash Command Autocomplete */}
-        <InlineSlashCommand
-          open={inlineSlash.isOpen}
-          onOpenChange={(open) => !open && inlineSlash.close()}
-          sections={inlineSlash.sections}
-          activeCommands={activeCommands}
-          onSelectCommand={handleInlineSlashCommandSelect}
-          onSelectFolder={handleInlineSlashFolderSelect}
-          filter={inlineSlash.filter}
-          position={inlineSlash.position}
-        />
 
-        {/* Inline Mention Autocomplete (skills, sources, files) */}
-        <InlineMentionMenu
-          open={inlineMention.isOpen}
-          onOpenChange={(open) => !open && inlineMention.close()}
-          sections={inlineMention.sections}
-          onSelect={handleInlineMentionSelect}
-          filter={inlineMention.filter}
-          position={inlineMention.position}
-          workspaceId={workspaceId}
-          maxWidth={280}
-          isSearching={inlineMention.isSearching}
-        />
+      <form onSubmit={handleSubmit}>
+        <div className="overflow-hidden transition-all">
+          {/* Inline Slash Command Autocomplete */}
+          <InlineSlashCommand
+            open={inlineSlash.isOpen}
+            onOpenChange={(open) => !open && inlineSlash.close()}
+            sections={inlineSlash.sections}
+            activeCommands={activeCommands}
+            onSelectCommand={handleInlineSlashCommandSelect}
+            onSelectFolder={handleInlineSlashFolderSelect}
+            filter={inlineSlash.filter}
+            position={inlineSlash.position}
+          />
 
-        {/* Inline Label & State Autocomplete (#labels / #states) */}
-        <InlineLabelMenu
-          open={inlineLabel.isOpen}
-          onOpenChange={(open) => !open && inlineLabel.close()}
-          items={inlineLabel.items}
-          onSelect={handleInlineLabelSelect}
-          onAddLabel={handleAddLabel}
-          filter={inlineLabel.filter}
-          position={inlineLabel.position}
-          states={inlineLabel.states}
-          activeStateId={inlineLabel.activeStateId}
-          onSelectState={handleInlineStateSelect}
-        />
+          {/* Inline Mention Autocomplete (skills, sources, files) */}
+          <InlineMentionMenu
+            open={inlineMention.isOpen}
+            onOpenChange={(open) => !open && inlineMention.close()}
+            sections={inlineMention.sections}
+            onSelect={handleInlineMentionSelect}
+            filter={inlineMention.filter}
+            position={inlineMention.position}
+            workspaceId={workspaceId}
+            maxWidth={280}
+            isSearching={inlineMention.isSearching}
+          />
 
-        {/* Controlled EditPopover for "Add New Label" — opens when user selects
+          {/* Inline Label Autocomplete (#labels only — status lives in session/list/board) */}
+          <InlineLabelMenu
+            open={inlineLabel.isOpen}
+            onOpenChange={(open) => !open && inlineLabel.close()}
+            items={inlineLabel.items}
+            onSelect={handleInlineLabelSelect}
+            onAddLabel={handleAddLabel}
+            filter={inlineLabel.filter}
+            position={inlineLabel.position}
+          />
+
+          {/* Controlled EditPopover for "Add New Label" — opens when user selects
             the option from the # menu with no matches.
             Spread the full config so optional fields like `inlineExecution`,
             `displayLabel`, and `displayLabelKey` reach the popover. The previous
@@ -1607,906 +2361,961 @@ export function FreeFormInput({
             fall back to the same-window deep-link path; that worked inside
             Electron but launched the desktop app from the WebUI via `craftagents://`.
             Match the AppShell pattern (which already uses spread). */}
-        {addLabelEditConfig && (
-          <EditPopover
-            trigger={<span className="absolute top-0 left-0 w-0 h-0 overflow-hidden" />}
-            open={addLabelPopoverOpen}
-            onOpenChange={setAddLabelPopoverOpen}
-            {...addLabelEditConfig}
-            defaultValue={addLabelPrefill}
-            secondaryAction={workspaceRootPath ? {
-              label: 'Edit File',
-              filePath: `${workspaceRootPath}/labels/config.json`,
-            } : undefined}
-            side="top"
-            align="start"
-          />
-        )}
+          {addLabelEditConfig && (
+            <EditPopover
+              trigger={
+                <span className="absolute top-0 left-0 w-0 h-0 overflow-hidden" />
+              }
+              open={addLabelPopoverOpen}
+              onOpenChange={setAddLabelPopoverOpen}
+              {...addLabelEditConfig}
+              defaultValue={addLabelPrefill}
+              secondaryAction={
+                workspaceRootPath
+                  ? {
+                      label: 'Edit File',
+                      filePath: `${workspaceRootPath}/labels/config.json`,
+                    }
+                  : undefined
+              }
+              side="top"
+              align="start"
+            />
+          )}
 
-        {/* Pre-flight image-support warning — only for pi_compat connections
+          {workspaceRootPath && (
+            <>
+              <EditPopover
+                trigger={
+                  <span className="absolute top-0 left-0 h-0 w-0 overflow-hidden" />
+                }
+                open={addSkillPopoverOpen}
+                onOpenChange={setAddSkillPopoverOpen}
+                {...getEditConfig('add-skill', workspaceRootPath)}
+                side="top"
+                align="start"
+              />
+              <EditPopover
+                trigger={
+                  <span className="absolute top-0 left-0 h-0 w-0 overflow-hidden" />
+                }
+                open={addMcpPopoverOpen}
+                onOpenChange={setAddMcpPopoverOpen}
+                {...getEditConfig('add-source-mcp', workspaceRootPath)}
+                side="top"
+                align="start"
+              />
+            </>
+          )}
+
+          {/* Pre-flight image-support warning — only for pi_compat connections
             where the renderer can both detect text-only models and offer to
             flip the per-model supportsImages override on the spot. */}
-        {showVisionWarning && effectiveConnectionDetails && (
-          <ImageSupportWarningBanner
-            modelName={currentModelDisplayName}
-            onEnable={() => handleToggleModelVision(effectiveConnectionDetails.slug, currentModel, true)}
-          />
-        )}
-
-        {/* Attachment Preview */}
-        <AttachmentPreview
-          attachments={attachments}
-          onRemove={handleRemoveAttachment}
-          disabled={disabled}
-          loadingCount={loadingCount}
-        />
-
-        {/* Follow-up context chips */}
-        <AnimatePresence initial={false}>
-          {followUpItems.length > 0 && (
-            <motion.div
-              key="follow-up-chips"
-              layout={animateFollowUpLayout}
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.18, ease: [0.2, 0, 0.2, 1] }}
-              className="overflow-hidden"
-            >
-              <motion.div layout={animateFollowUpLayout} className="px-3 pt-3.5 pb-0">
-                <motion.div layout={animateFollowUpLayout} className="flex flex-wrap gap-1">
-                  <AnimatePresence initial={false}>
-                    {followUpItems.map((item, idx) => {
-                      const chipIndex = item.index ?? idx + 1
-                      const tooltipText = item.selectedText.trim() || t('chat.selectedText')
-                      const selectedExcerpt = formatFollowUpChipText(item.selectedText, t('chat.selectedText'), 50)
-                      const noteExcerpt = formatFollowUpChipText(item.noteLabel, t('chat.followUp'), 50)
-
-                      return (
-                        <motion.button
-                          key={item.id}
-                          type="button"
-                          layout={animateFollowUpLayout}
-                          initial={{ opacity: 0, y: 6, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                          transition={{ duration: 0.16, ease: [0.2, 0, 0.2, 1] }}
-                          className="inline-flex max-w-full items-center gap-1.5 overflow-hidden rounded-[6px] bg-foreground/2 pl-1.5 pr-2 py-1 text-[13px] text-foreground/80 select-none transition-colors hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                          onClick={(event) => {
-                            const rect = event.currentTarget.getBoundingClientRect()
-                            onFollowUpClick?.(item, {
-                              x: rect.left + rect.width / 2,
-                              y: rect.top - 8,
-                            })
-                          }}
-                        >
-                          <Tooltip delayDuration={250}>
-                            <TooltipTrigger asChild>
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                className="inline-flex h-4 min-w-4 cursor-pointer items-center justify-center rounded-[4px] bg-background px-0.5 text-[10px] font-medium text-foreground shadow-minimal focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                onMouseDown={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                }}
-                                onClick={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  onFollowUpIndexClick?.(item)
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
-                                    event.stopPropagation()
-                                    onFollowUpIndexClick?.(item)
-                                  }
-                                }}
-                              >
-                                {chipIndex}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[420px] break-words text-xs">
-                              {tooltipText}
-                            </TooltipContent>
-                          </Tooltip>
-                          <span className="min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap pr-0.5 text-left">
-                            <span className="italic text-foreground/60">{selectedExcerpt}</span>
-                            <span className="mx-1 text-foreground/40">·</span>
-                            <span>{noteExcerpt}</span>
-                          </span>
-                        </motion.button>
-                      )
-                    })}
-                  </AnimatePresence>
-                </motion.div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Rich Text Input with inline mention badges */}
-        {/* In compact mode, hide input while the agent is processing — until the
-            user clicks / hovers the collapsed bar to expand it back. */}
-        {!isCollapsedInCompact && (
-        <RichTextInput
-          ref={richInputRef}
-          value={input}
-          onChange={handleInputChange}
-          onInput={handleRichInput}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onLongTextPaste={handleLongTextPaste}
-          onFocus={() => { setIsFocused(true); onFocusChange?.(true) }}
-          onBlur={() => {
-            // Save caret position before losing focus (for restoration via craft:focus-input)
-            lastCaretPositionRef.current = richInputRef.current?.selectionStart ?? null
-            setIsFocused(false)
-            onFocusChange?.(false)
-          }}
-          placeholder={effectivePlaceholder}
-          disabled={disabled}
-          skills={skills}
-          sources={sources}
-          workspaceId={workspaceSlug}
-          className="pl-5 pr-4 pt-4 pb-3 overflow-y-auto min-h-[88px]"
-          style={{ maxHeight: inputMaxHeight }}
-          data-tutorial="chat-input"
-          spellCheck={spellCheck}
-        />
-        )}
-
-        {/* Bottom Row: Controls - wrapped in relative container for status slot overlay */}
-        <div className="relative">
-          {/* Status slot overlay - escape interrupt (highest priority), browser status, etc. */}
-          <ToolbarStatusSlot
-            showEscapeOverlay={isProcessing && showEscapeOverlay}
-            sessionId={sessionId}
-          />
-
-          <div className={cn("flex items-center gap-1 px-2 py-2", !compactMode && "border-t border-border/50")}>
-          {/* Hidden file input for attach button (shared by compact and desktop) */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileInputChange}
-          />
-
-          {/* Compact mode: permission mode drawer + standard icon badges for attach/sources/working dir.
-              Wrapper absorbs all squeeze so the model label truncates first and the send button stays
-              anchored to the right (craft-agents-oss#798). overflow-hidden is safe — Radix Drawer /
-              dropdowns inside render via portals, so they aren't clipped. */}
-          {compactMode && (
-          <div className="flex items-center gap-1 min-w-0 shrink overflow-hidden">
-          {onPermissionModeChange && (
-            <CompactPermissionModeSelector
-              permissionMode={permissionMode}
-              onPermissionModeChange={onPermissionModeChange}
+          {showVisionWarning && effectiveConnectionDetails && (
+            <ImageSupportWarningBanner
+              modelName={currentModelDisplayName}
+              onEnable={() =>
+                handleToggleModelVision(
+                  effectiveConnectionDetails.slug,
+                  currentModel,
+                  true,
+                )
+              }
             />
           )}
-          {enableCompactModelPicker && (
-            <CompactModelSelector
-              currentModel={currentModel}
-              currentConnection={currentConnection}
-              onModelChange={onModelChange}
-              onConnectionChange={onConnectionChange}
-              thinkingLevel={thinkingLevel}
-              onThinkingLevelChange={onThinkingLevelChange}
-              isEmptySession={isEmptySession}
-              connectionUnavailable={connectionUnavailable}
-              contextStatus={contextStatus}
-            />
-          )}
-          <FreeFormInputContextBadge
-            icon={<Paperclip className="h-4 w-4" />}
-            label={attachments.length > 0
-              ? t("chat.filesCount", { count: attachments.length })
-              : t("chat.attach")
-            }
-            isExpanded={false}
-            hasSelection={attachments.length > 0}
-            showChevron={false}
-            onClick={handleAttachClick}
-            tooltip={t("chat.attachFilesTooltip")}
+
+          {/* Attachment Preview */}
+          <AttachmentPreview
+            attachments={attachments}
+            onRemove={handleRemoveAttachment}
             disabled={disabled}
-          />
-          {onSourcesChange && (
-            <div className="relative shrink min-w-0">
-              <FreeFormInputContextBadge
-                buttonRef={sourceButtonRef}
-                icon={
-                  optimisticSourceSlugs.length === 0 ? (
-                    <DatabaseZap className="h-4 w-4" />
-                  ) : (
-                    <div className="flex items-center -ml-0.5">
-                      {(() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        const displaySources = enabledSources.slice(0, 3)
-                        const remainingCount = enabledSources.length - 3
-                        return (
-                          <>
-                            {displaySources.map((source, index) => (
-                              <div
-                                key={source.config.slug}
-                                className={cn("relative h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center", index > 0 && "-ml-1")}
-                                style={{ zIndex: index + 1 }}
-                              >
-                                <SourceAvatar source={source} size="xs" />
-                              </div>
-                            ))}
-                            {remainingCount > 0 && (
-                              <div
-                                className="-ml-1 h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center text-[8px] font-medium text-muted-foreground"
-                                style={{ zIndex: displaySources.length + 1 }}
-                              >
-                                +{remainingCount}
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )
-                }
-                label={
-                  optimisticSourceSlugs.length === 0
-                    ? t("chat.sourcesTooltip")
-                    : (() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        if (enabledSources.length === 1) return enabledSources[0].config.name
-                        return t("chat.sourcesCount", { count: enabledSources.length })
-                      })()
-                }
-                isExpanded={false}
-                hasSelection={optimisticSourceSlugs.length > 0}
-                showChevron={false}
-                isOpen={sourceDropdownOpen}
-                disabled={disabled}
-                onClick={() => setSourceDropdownOpen(prev => !prev)}
-                tooltip={t("chat.sourcesTooltip")}
-              />
-              <CompactSourceSelector
-                open={sourceDropdownOpen}
-                onOpenChange={setSourceDropdownOpen}
-                sources={sources}
-                selectedSlugs={optimisticSourceSlugs}
-                onToggleSlug={(slug) => {
-                  const isEnabled = optimisticSourceSlugs.includes(slug)
-                  const newSlugs = isEnabled
-                    ? optimisticSourceSlugs.filter(currentSlug => currentSlug !== slug)
-                    : [...optimisticSourceSlugs, slug]
-                  setOptimisticSourceSlugs(newSlugs)
-                  onSourcesChange?.(newSlugs)
-                }}
-              />
-            </div>
-          )}
-          {onWorkingDirectoryChange && (
-            <CompactWorkingDirectorySelector
-              workingDirectory={workingDirectory}
-              onWorkingDirectoryChange={onWorkingDirectoryChange}
-              sessionFolderPath={sessionFolderPath}
-              isEmptySession={false}
-              workspaceId={workspaceId}
-            />
-          )}
-          </div>
-          )}
-
-          {/* Desktop: full badges row with labels and working directory */}
-          {!compactMode && (
-          <div className="flex items-center gap-1 min-w-32 shrink overflow-hidden">
-          {/* 1. Attach Files Badge */}
-          <FreeFormInputContextBadge
-            icon={<Paperclip className="h-4 w-4" />}
-            label={attachments.length > 0
-              ? t("chat.filesCount", { count: attachments.length })
-              : t("chat.attachFiles")
-            }
-            isExpanded={isEmptySession}
-            hasSelection={attachments.length > 0}
-            showChevron={false}
-            onClick={handleAttachClick}
-            tooltip={t("chat.attachFilesTooltip")}
-            disabled={disabled}
+            loadingCount={loadingCount}
           />
 
-          {/* 2. Source Selector Badge - only show if onSourcesChange is provided */}
-          {onSourcesChange && (
-            <div className="relative shrink min-w-0 overflow-hidden">
-              <FreeFormInputContextBadge
-                buttonRef={sourceButtonRef}
-                icon={
-                  optimisticSourceSlugs.length === 0 ? (
-                    <DatabaseZap className="h-4 w-4" />
-                  ) : (
-                    <div className="flex items-center -ml-0.5">
-                      {(() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        const displaySources = enabledSources.slice(0, 3)
-                        const remainingCount = enabledSources.length - 3
-                        return (
-                          <>
-                            {displaySources.map((source, index) => (
-                              <div
-                                key={source.config.slug}
-                                className={cn("relative h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center", index > 0 && "-ml-1")}
-                                style={{ zIndex: index + 1 }}
-                              >
-                                <SourceAvatar source={source} size="xs" />
-                              </div>
-                            ))}
-                            {remainingCount > 0 && (
-                              <div
-                                className="-ml-1 h-5 w-5 rounded-[4px] bg-background shadow-minimal flex items-center justify-center text-[8px] font-medium text-muted-foreground"
-                                style={{ zIndex: displaySources.length + 1 }}
-                              >
-                                +{remainingCount}
-                              </div>
-                            )}
-                          </>
-                        )
-                      })()}
-                    </div>
-                  )
-                }
-                label={
-                  optimisticSourceSlugs.length === 0
-                    ? t("chat.chooseSources")
-                    : (() => {
-                        const enabledSources = sources.filter(s => optimisticSourceSlugs.includes(s.config.slug))
-                        if (enabledSources.length === 1) return enabledSources[0].config.name
-                        if (enabledSources.length === 2) return enabledSources.map(s => s.config.name).join(', ')
-                        return t("chat.sourcesCount", { count: enabledSources.length })
-                      })()
-                }
-                isExpanded={isEmptySession}
-                hasSelection={optimisticSourceSlugs.length > 0}
-                showChevron={true}
-                isOpen={sourceDropdownOpen}
-                disabled={disabled}
-                data-tutorial="source-selector-button"
-                onClick={() => setSourceDropdownOpen(prev => !prev)}
-                tooltip={t("chat.sourcesTooltip")}
-              />
-
-              <SourceSelectorPopover
-                open={sourceDropdownOpen}
-                onOpenChange={setSourceDropdownOpen}
-                anchorRef={sourceButtonRef}
-                sources={sources}
-                selectedSlugs={optimisticSourceSlugs}
-                onToggleSlug={(slug) => {
-                  const isEnabled = optimisticSourceSlugs.includes(slug)
-                  const newSlugs = isEnabled
-                    ? optimisticSourceSlugs.filter(currentSlug => currentSlug !== slug)
-                    : [...optimisticSourceSlugs, slug]
-                  setOptimisticSourceSlugs(newSlugs)
-                  onSourcesChange?.(newSlugs)
-                }}
-              />
-            </div>
-          )}
-
-          {/* 3. Working Directory Selector Badge */}
-          {onWorkingDirectoryChange && (
-            <WorkingDirectoryBadge
-              workingDirectory={workingDirectory}
-              onWorkingDirectoryChange={onWorkingDirectoryChange}
-              sessionFolderPath={sessionFolderPath}
-              isEmptySession={isEmptySession}
-              workspaceId={workspaceId}
-            />
-          )}
-          </div>
-          )}
-
-          {/* Spacer — doubles as a tap / hover target while the input is
-              collapsed during processing in compact mode, so the user can
-              type a follow-up without waiting for the agent to finish. */}
-          {isCollapsedInCompact ? (
-            <button
-              type="button"
-              onClick={onRequestExpand}
-              onMouseEnter={onRequestExpand}
-              aria-label={t('chat.tapToType')}
-              className="flex-1 h-7 mx-1 flex items-center justify-center text-foreground/30 hover:text-foreground/60 transition-colors cursor-pointer rounded-[6px] hover:bg-foreground/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <ChevronUp className="h-4 w-4" />
-            </button>
-          ) : (
-            <div className="flex-1" />
-          )}
-
-          {/* Right side: Model + Send - never shrink so they're always visible */}
-          <div className="flex items-center shrink-0">
-          {/* 5. Model/Connection Selector - Hidden in compact mode (EditPopover embedding) */}
-          {!compactMode && (
-          <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={cn(
-                      "input-toolbar-btn inline-flex items-center h-7 px-1.5 gap-0.5 text-[13px] shrink-0 rounded-[6px] hover:bg-foreground/5 transition-colors select-none",
-                      modelDropdownOpen && "bg-foreground/5",
-                      connectionUnavailable && "text-destructive",
-                    )}
+          {/* Follow-up annotation chips (Craft chip band — annotation follow-ups only) */}
+          <AnimatePresence initial={false}>
+            {followUpItems.length > 0 && (
+              <motion.div
+                key="composer-context-chips"
+                layout={animateFollowUpLayout}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0.2, 1] }}
+                className="overflow-hidden"
+              >
+                <motion.div
+                  layout={animateFollowUpLayout}
+                  className="px-3 pt-3.5 pb-0"
+                >
+                  <motion.div
+                    layout={animateFollowUpLayout}
+                    className="flex flex-wrap gap-1"
                   >
-                    {connectionUnavailable ? (
-                      <>
-                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                        {t('common.unavailable')}
-                      </>
-                    ) : (
-                      <>
-                        {effectiveConnectionDetails && llmConnections.length > 1 && storage.get(storage.KEYS.showConnectionIcons, true) && <ConnectionIcon connection={effectiveConnectionDetails} size={14} showTooltip />}
-                        {currentModelDisplayName}
-                        {pickerMode !== 'locked-single' && <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />}
-                      </>
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {t('common.model')}
-              </TooltipContent>
-            </Tooltip>
-            <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[260px]">
-              {/* Connection unavailable message */}
-              {pickerMode === 'unavailable' ? (
-                <div className="flex flex-col items-center justify-center py-6 px-4 text-center">
-                  <AlertCircle className="h-8 w-8 text-destructive mb-2" />
-                  <div className="font-medium text-sm mb-1">{t('chat.connectionUnavailable')}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {t('chat.connectionUnavailableDescription')}
-                  </div>
-                </div>
-              ) : pickerMode === 'locked-single' && connectionDefaultModel ? (
-                (() => {
-                  // Single-model pi_compat connection on a non-empty session (or
-                  // when there's only one connection, so no switcher to show).
-                  // Model row is disabled (locked to this session); vision toggle
-                  // remains interactive.
-                  const showVisionToggle =
-                    !!effectiveConnectionDetails && isCompatProvider(effectiveConnectionDetails.providerType)
-                  const visionOn = showVisionToggle && modelSupportsImages(effectiveConnectionDetails!, connectionDefaultModel)
-                  return (
-                    <StyledDropdownMenuItem
-                      disabled
-                      className="flex items-center justify-between px-2 py-2 rounded-lg"
-                    >
-                      <div className="text-left">
-                        <div className="font-medium text-sm">{stripPiPrefixForDisplay(connectionDefaultModel)}</div>
-                        <div className="text-xs text-muted-foreground">{t('chat.connectionDefault')}</div>
-                      </div>
-                      <div className="flex items-center gap-1 ml-3 shrink-0">
-                        {showVisionToggle && effectiveConnectionDetails && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                aria-label={visionOn
-                                  ? t('chat.modelPicker.supportsImagesOn')
-                                  : t('chat.modelPicker.supportsImagesOff')}
-                                className="inline-flex items-center justify-center p-1 rounded pointer-events-auto opacity-100 hover:bg-foreground/5 cursor-pointer"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleToggleModelVision(effectiveConnectionDetails.slug, connectionDefaultModel, !visionOn)
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    handleToggleModelVision(effectiveConnectionDetails.slug, connectionDefaultModel, !visionOn)
-                                  }
-                                }}
-                              >
-                                <ImageIcon className={cn(
-                                  "h-3.5 w-3.5",
-                                  visionOn ? "text-foreground/70" : "text-foreground/30"
-                                )} />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {visionOn
-                                ? t('chat.modelPicker.supportsImagesOn')
-                                : t('chat.modelPicker.supportsImagesOff')}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        <Check className="h-3 w-3 text-foreground" />
-                      </div>
-                    </StyledDropdownMenuItem>
-                  )
-                })()
-              ) : pickerMode === 'switcher' ? (
-                /* Hierarchical view: Provider → Connection → Models (empty session with multiple connections — lets the user switch BEFORE the first message locks the connection) */
-                connectionsByProvider.map(([providerName, connections], index) => (
-                  <React.Fragment key={providerName}>
-                    {/* Provider group label */}
-                    <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide select-none">
-                      {providerName}
-                    </div>
-                    {connections.map((conn) => {
-                      const isCurrentConnection = effectiveConnection === conn.slug
-                      const isAuthenticated = conn.isAuthenticated
-                      return (
-                        <DropdownMenuSub key={conn.slug}>
-                          <StyledDropdownMenuSubTrigger
-                            disabled={!isAuthenticated}
-                            className={cn(
-                              "flex items-center justify-between px-2 py-2 rounded-lg",
-                              isCurrentConnection && "bg-foreground/5"
-                            )}
+                    <AnimatePresence initial={false}>
+                      {followUpItems.map((item, idx) => {
+                        const chipIndex = item.index ?? idx + 1
+                        const tooltipText =
+                          item.selectedText.trim() || t('chat.selectedText')
+                        const selectedExcerpt = formatFollowUpChipText(
+                          item.selectedText,
+                          t('chat.selectedText'),
+                          50,
+                        )
+                        const noteExcerpt = formatFollowUpChipText(
+                          item.noteLabel,
+                          t('chat.followUp'),
+                          50,
+                        )
+
+                        return (
+                          <motion.button
+                            key={item.id}
+                            type="button"
+                            layout={animateFollowUpLayout}
+                            initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                            transition={{
+                              duration: 0.16,
+                              ease: [0.2, 0, 0.2, 1],
+                            }}
+                            className="inline-flex max-w-full items-center gap-1.5 overflow-hidden rounded-[6px] bg-foreground/2 pl-1.5 pr-2 py-1 text-[13px] text-foreground/80 select-none transition-colors hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            onClick={(event) => {
+                              const rect =
+                                event.currentTarget.getBoundingClientRect()
+                              onFollowUpClick?.(item, {
+                                x: rect.left + rect.width / 2,
+                                y: rect.top - 8,
+                              })
+                            }}
                           >
-                            <div className="text-left flex-1">
-                              <div className="font-medium text-sm flex items-center gap-1.5">
-                                <ConnectionIcon connection={conn} size={14} />
-                                {conn.name}
-                                {isCurrentConnection && <Check className="h-3 w-3 text-foreground" />}
-                              </div>
-                              {!isAuthenticated && (
-                                <div className="text-xs text-muted-foreground">{t('settings.ai.notAuthenticated')}</div>
-                              )}
-                            </div>
-                          </StyledDropdownMenuSubTrigger>
-                          {isAuthenticated && (
-                            <StyledDropdownMenuSubContent className="min-w-[220px]">
-                              {/* Show models for this connection - use provider-specific models as fallback */}
-                              {(conn.models || ANTHROPIC_MODELS).map((model) => {
-                                const modelId = typeof model === 'string' ? model : model.id
-                                const modelName = typeof model === 'string'
-                                  ? stripPiPrefixForDisplay(getModelShortName(model))
-                                  : (model.name ?? stripPiPrefixForDisplay(model.id))
-                                const isSelectedModel = isCurrentConnection && currentModel === modelId
-                                const showVisionToggle = isCompatProvider(conn.providerType)
-                                const visionOn = showVisionToggle && modelSupportsImages(conn, modelId)
-                                return (
-                                  <StyledDropdownMenuItem
-                                    key={modelId}
-                                    onSelect={() => {
-                                      // If selecting a different connection, update both connection and model
-                                      if (!isCurrentConnection && onConnectionChange) {
-                                        onConnectionChange(conn.slug)
-                                      }
-                                      // Always pass connection with model for proper persistence
-                                      onModelChange(modelId, conn.slug)
-                                    }}
-                                    className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                                  >
-                                    <div className="font-medium text-sm">{modelName}</div>
-                                    <div className="flex items-center gap-1 ml-3 shrink-0">
-                                      {showVisionToggle && (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span
-                                              role="button"
-                                              tabIndex={0}
-                                              aria-label={visionOn
-                                                ? t('chat.modelPicker.supportsImagesOn')
-                                                : t('chat.modelPicker.supportsImagesOff')}
-                                              className="inline-flex items-center justify-center p-1 rounded hover:bg-foreground/5 cursor-pointer"
-                                              onClick={(e) => {
-                                                e.preventDefault()
-                                                e.stopPropagation()
-                                                handleToggleModelVision(conn.slug, modelId, !visionOn)
-                                              }}
-                                              onKeyDown={(e) => {
-                                                if (e.key === 'Enter' || e.key === ' ') {
-                                                  e.preventDefault()
-                                                  e.stopPropagation()
-                                                  handleToggleModelVision(conn.slug, modelId, !visionOn)
-                                                }
-                                              }}
-                                            >
-                                              <ImageIcon className={cn(
-                                                "h-3.5 w-3.5",
-                                                visionOn ? "text-foreground/70" : "text-foreground/30"
-                                              )} />
-                                            </span>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            {visionOn
-                                              ? t('chat.modelPicker.supportsImagesOn')
-                                              : t('chat.modelPicker.supportsImagesOff')}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                      {isSelectedModel && (
-                                        <Check className="h-3 w-3 text-foreground" />
-                                      )}
-                                    </div>
-                                  </StyledDropdownMenuItem>
-                                )
-                              })}
-                            </StyledDropdownMenuSubContent>
-                          )}
-                        </DropdownMenuSub>
-                      )
-                    })}
-                    {index < connectionsByProvider.length - 1 && (
-                      <StyledDropdownMenuSeparator className="my-1" />
-                    )}
-                  </React.Fragment>
-                ))
-              ) : (
-                /* Flat model list (single connection or session started) */
-                <>
-                  {/* Indicator showing which connection is being used */}
-                  {!isEmptySession && currentConnectionDetails && llmConnections.length > 1 && (
-                    <>
-                      <div className="flex items-center gap-2 px-2 py-1.5 text-xs select-none text-muted-foreground">
-                        <span>{t('chat.usingConnection', { name: currentConnectionDetails.name })}</span>
-                      </div>
-                      <StyledDropdownMenuSeparator className="my-1" />
-                    </>
-                  )}
-                  {/* Model options based on effective connection's provider type */}
-                  {availableModels.map((model) => {
-                    const modelId = typeof model === 'string' ? model : model.id
-                    const modelName = typeof model === 'string'
-                      ? stripPiPrefixForDisplay(getModelShortName(model))
-                      : (model.name ?? stripPiPrefixForDisplay(model.id))
-                    const isSelected = currentModel === modelId
-                    const descriptionKey = typeof model !== 'string' && 'descriptionKey' in model ? (model.descriptionKey as string) : undefined
-                    const description = descriptionKey ? t(descriptionKey) : (typeof model !== 'string' && 'description' in model ? (model.description as string) : '')
-                    const showVisionToggle =
-                      !!effectiveConnectionDetails && isCompatProvider(effectiveConnectionDetails.providerType)
-                    const visionOn = showVisionToggle && modelSupportsImages(effectiveConnectionDetails!, modelId)
-                    return (
-                      <StyledDropdownMenuItem
-                        key={modelId}
-                        onSelect={() => onModelChange(modelId, effectiveConnection)}
-                        className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                      >
-                        <div className="text-left">
-                          <div className="font-medium text-sm">{modelName}</div>
-                          {description && (
-                            <div className="text-xs text-muted-foreground">{description}</div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 ml-3 shrink-0">
-                          {showVisionToggle && effectiveConnectionDetails && (
-                            <Tooltip>
+                            <Tooltip delayDuration={250}>
                               <TooltipTrigger asChild>
                                 <span
                                   role="button"
                                   tabIndex={0}
-                                  aria-label={visionOn
-                                    ? t('chat.modelPicker.supportsImagesOn')
-                                    : t('chat.modelPicker.supportsImagesOff')}
-                                  className="inline-flex items-center justify-center p-1 rounded hover:bg-foreground/5 cursor-pointer"
-                                  onClick={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    handleToggleModelVision(effectiveConnectionDetails.slug, modelId, !visionOn)
+                                  className="inline-flex h-4 min-w-4 cursor-pointer items-center justify-center rounded-[4px] bg-background px-0.5 text-[10px] font-medium text-foreground shadow-minimal focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                  onMouseDown={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
                                   }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault()
-                                      e.stopPropagation()
-                                      handleToggleModelVision(effectiveConnectionDetails.slug, modelId, !visionOn)
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    onFollowUpIndexClick?.(item)
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (
+                                      event.key === 'Enter' ||
+                                      event.key === ' '
+                                    ) {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      onFollowUpIndexClick?.(item)
                                     }
                                   }}
                                 >
-                                  <ImageIcon className={cn(
-                                    "h-3.5 w-3.5",
-                                    visionOn ? "text-foreground/70" : "text-foreground/30"
-                                  )} />
+                                  {chipIndex}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>
-                                {visionOn
-                                  ? t('chat.modelPicker.supportsImagesOn')
-                                  : t('chat.modelPicker.supportsImagesOff')}
+                              <TooltipContent
+                                side="top"
+                                className="max-w-[420px] break-words text-xs"
+                              >
+                                {tooltipText}
                               </TooltipContent>
                             </Tooltip>
-                          )}
-                          {isSelected && (
-                            <Check className="h-3 w-3 text-foreground" />
-                          )}
-                        </div>
-                      </StyledDropdownMenuItem>
-                    )
-                  })}
-                </>
-              )}
-
-              {/* Thinking level selector — only shown when thinking levels are available
-                  (Claude supports extended thinking, OpenAI backends may not) */}
-              {availableThinkingLevels.length > 0 && (
-                <>
-                  <StyledDropdownMenuSeparator className="my-1" />
-
-                  <DropdownMenuSub>
-                    <StyledDropdownMenuSubTrigger disabled={thinkingDisabled} className={cn("flex items-center justify-between px-2 py-2 rounded-lg", thinkingDisabled && "opacity-50 cursor-not-allowed")}>
-                      <div className="text-left flex-1">
-                        <div className="font-medium text-sm">{t(getThinkingLevelNameKey(thinkingLevel))}</div>
-                        <div className="text-xs text-muted-foreground">{thinkingDisabled ? t('thinking.notSupported') : t('thinking.extendedDesc')}</div>
-                      </div>
-                    </StyledDropdownMenuSubTrigger>
-                    <StyledDropdownMenuSubContent className="min-w-[220px]">
-                      {availableThinkingLevels.map(({ id, nameKey, descriptionKey }) => {
-                        const isSelected = thinkingLevel === id
-                        return (
-                          <StyledDropdownMenuItem
-                            key={id}
-                            onSelect={() => onThinkingLevelChange?.(id)}
-                            className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                          >
-                            <div className="text-left">
-                              <div className="font-medium text-sm">{t(nameKey)}</div>
-                              <div className="text-xs text-muted-foreground">{t(descriptionKey)}</div>
-                            </div>
-                            {isSelected && (
-                              <Check className="h-3 w-3 text-foreground shrink-0 ml-3" />
-                            )}
-                          </StyledDropdownMenuItem>
+                            <span className="min-w-0 max-w-full overflow-hidden text-ellipsis whitespace-nowrap pr-0.5 text-left">
+                              <span className="italic text-foreground/60">
+                                {selectedExcerpt}
+                              </span>
+                              <span className="mx-1 text-foreground/40">·</span>
+                              <span>{noteExcerpt}</span>
+                            </span>
+                          </motion.button>
                         )
                       })}
-                    </StyledDropdownMenuSubContent>
-                  </DropdownMenuSub>
-                </>
-              )}
+                    </AnimatePresence>
+                  </motion.div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Context usage footer - only show when we have token data */}
-              {contextStatus?.inputTokens != null && contextStatus.inputTokens > 0 && (
-                <>
-                  <StyledDropdownMenuSeparator className="my-1" />
-                  <div className="px-2 py-1.5 select-none">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{t('chat.context')}</span>
-                      <span className="flex items-center gap-1.5">
-                        {contextStatus.isCompacting && (
-                          <Spinner className="h-3 w-3" />
-                        )}
-                        {t('chat.tokensUsed', { displayCount: formatTokenCount(contextStatus.inputTokens) })}
-                      </span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </StyledDropdownMenuContent>
-          </DropdownMenu>
+          {/* Rich Text Input with inline mention badges */}
+          {/* In compact mode, hide input while the agent is processing — until the
+            user clicks / hovers the collapsed bar to expand it back. */}
+          {!isCollapsedInCompact && (
+            <RichTextInput
+              ref={richInputRef}
+              value={input}
+              onChange={handleInputChange}
+              onInput={handleRichInput}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onLongTextPaste={handleLongTextPaste}
+              onFocus={() => {
+                setIsFocused(true)
+                onFocusChange?.(true)
+              }}
+              onBlur={() => {
+                // Save caret position before losing focus (for restoration via craft:focus-input)
+                lastCaretPositionRef.current =
+                  richInputRef.current?.selectionStart ?? null
+                setIsFocused(false)
+                onFocusChange?.(false)
+              }}
+              placeholder={effectivePlaceholder}
+              disabled={disabled}
+              skills={skills}
+              sources={sources}
+              workspaceId={workspaceSlug}
+              className="pl-5 pr-4 pt-4 pb-3 overflow-y-auto min-h-[88px]"
+              style={{ maxHeight: inputMaxHeight }}
+              data-tutorial="chat-input"
+              spellCheck={spellCheck}
+            />
           )}
 
-          {/* 5.5 Context Usage Warning Badge - shows when approaching auto-compaction threshold */}
-          {(() => {
-            // Calculate usage percentage based on compaction threshold (~77.5% of context window),
-            // not the full context window - this gives users meaningful warnings before compaction kicks in.
-            // SDK triggers compaction at ~155k tokens for a 200k context window.
-            // Falls back to known per-model context window when SDK hasn't reported usage yet.
-            const effectiveContextWindow = contextStatus?.contextWindow || getModelContextWindow(currentModel)
-            const compactionThreshold = effectiveContextWindow
-              ? Math.round(effectiveContextWindow * 0.775)
-              : null
-            const usagePercent = contextStatus?.inputTokens && compactionThreshold
-              ? Math.min(99, Math.round((contextStatus.inputTokens / compactionThreshold) * 100))
-              : null
-            // Show badge when >= 80% of compaction threshold AND not currently compacting
-            // Hide for Codex and Copilot models which don't support context compaction
-            const showWarning = usagePercent !== null && usagePercent >= 80 && !contextStatus?.isCompacting
+          {/* Bottom Row: Controls - wrapped in relative container for status slot overlay */}
+          <div className="relative">
+            {/* Status slot overlay - escape interrupt (highest priority), browser status, etc. */}
+            <ToolbarStatusSlot
+              showEscapeOverlay={isProcessing && showEscapeOverlay}
+              sessionId={sessionId}
+            />
 
-            if (!showWarning) return null
+            <div
+              className={cn(
+                'flex items-center gap-1 px-2 py-2',
+                !compactMode && 'border-t border-border/50',
+              )}
+            >
+              {/* Hidden file input for attach button (shared by compact and desktop) */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFileInputChange}
+              />
 
-            const handleCompactClick = () => {
-              if (!isProcessing) {
-                onSubmit('/compact', [])
-              }
-            }
-
-            return (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleCompactClick}
-                    disabled={isProcessing}
-                    className="inline-flex items-center h-6 px-2 text-[12px] font-medium bg-info/10 rounded-[6px] shadow-tinted select-none cursor-pointer hover:bg-info/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      '--shadow-color': 'var(--info-rgb)',
-                      color: 'color-mix(in oklab, var(--info) 30%, var(--foreground))',
-                    } as React.CSSProperties}
+              {/* One progressive-disclosure Add entry. Every row delegates to the
+              existing attachment, working-directory, source, skill or Session
+              work-mode authority; the menu owns no duplicate state. */}
+              <div className="relative flex items-center gap-1 min-w-0 shrink">
+                <DropdownMenu>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="secondary"
+                          aria-label={t('composer.add.title')}
+                          disabled={disabled}
+                          className="composer-round-action h-7 w-7 shrink-0 rounded-full"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      className="flex items-center gap-2"
+                    >
+                      <span>{t('composer.add.title')}</span>
+                      <KbdGroup>
+                        <Kbd>@</Kbd>
+                        <Kbd>/</Kbd>
+                      </KbdGroup>
+                    </TooltipContent>
+                  </Tooltip>
+                  <StyledDropdownMenuContent
+                    side="top"
+                    align="start"
+                    sideOffset={8}
+                    className="min-w-[220px]"
                   >
-                    {usagePercent}%
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {isProcessing
-                    ? `${usagePercent}% context used — wait for current operation`
-                    : `${usagePercent}% context used — click to compact`
-                  }
-                </TooltipContent>
-              </Tooltip>
-            )
-          })()}
+                    <StyledDropdownMenuItem onSelect={handleAttachClick}>
+                      <Paperclip className="h-4 w-4" />
+                      <span>{t('chat.attachFilesTooltip')}</span>
+                    </StyledDropdownMenuItem>
 
-          {/* 6. Send/Stop Button - Always show stop when processing */}
-          {isProcessing ? (
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              aria-label={t('chat.stopResponse')}
-              className="send-btn h-7 w-7 rounded-full shrink-0 hover:bg-foreground/15 active:bg-foreground/20 ml-2"
-              onClick={() => handleStop(false)}
-            >
-              <Square className="h-3 w-3 fill-current" />
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              size="icon"
-              aria-label={t('shortcuts.sendMessage')}
-              className="send-btn h-7 w-7 rounded-full shrink-0 ml-2"
-              disabled={!hasContent || disabled || disableSend}
-              data-tutorial="send-button"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </Button>
-          )}
-          </div>
+                    {sessionId && (
+                      <StyledDropdownMenuItem
+                        onSelect={() => insertComposerPrefix('/goal ')}
+                      >
+                        <Target className="h-4 w-4" />
+                        <span className="flex-1">{t('composer.add.goal')}</span>
+                        <span className="text-xs text-foreground/40">
+                          {t('composer.add.goalDescription')}
+                        </span>
+                      </StyledDropdownMenuItem>
+                    )}
+
+                    {sessionId && (
+                      <StyledDropdownMenuItem
+                        onSelect={() => {
+                          const planActive = workModeOptions.workMode === 'plan'
+                          setWorkMode(
+                            planActive ? 'auto' : 'manual',
+                            planActive ? 'execute' : 'plan',
+                          )
+                        }}
+                      >
+                        <Lightbulb className="h-4 w-4" />
+                        <span className="flex-1">{t('composer.add.plan')}</span>
+                        <span className="text-xs text-foreground/40">
+                          {t('composer.add.planDescription')}
+                        </span>
+                        {workModeOptions.workMode === 'plan' && (
+                          <Check className="h-4 w-4" />
+                        )}
+                      </StyledDropdownMenuItem>
+                    )}
+
+                    <StyledDropdownMenuSeparator className="my-1" />
+
+                    {(skills.length > 0 || workspaceRootPath) && (
+                      <DropdownMenuSub>
+                        <StyledDropdownMenuSubTrigger>
+                          <Zap className="h-4 w-4" />
+                          <span>{t('sidebar.skills')}</span>
+                        </StyledDropdownMenuSubTrigger>
+                        <StyledDropdownMenuSubContent className="min-w-[220px] max-h-[280px] overflow-y-auto">
+                          {skills.map((skill) => (
+                            <StyledDropdownMenuItem
+                              key={skill.slug}
+                              onSelect={() => handleAddSkill(skill)}
+                            >
+                              <span className="min-w-0 truncate">
+                                {skill.metadata.name}
+                              </span>
+                            </StyledDropdownMenuItem>
+                          ))}
+                          {skills.length > 0 && workspaceRootPath && (
+                            <StyledDropdownMenuSeparator className="my-1" />
+                          )}
+                          {workspaceRootPath && (
+                            <StyledDropdownMenuItem
+                              onSelect={() =>
+                                setTimeout(
+                                  () => setAddSkillPopoverOpen(true),
+                                  0,
+                                )
+                              }
+                            >
+                              <Plus className="h-4 w-4" />
+                              <span>{t('sidebarMenu.addSkill')}</span>
+                            </StyledDropdownMenuItem>
+                          )}
+                        </StyledDropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    )}
+
+                    {(mcpSources.length > 0 || workspaceRootPath) && (
+                      <DropdownMenuSub>
+                        <StyledDropdownMenuSubTrigger>
+                          <McpIcon className="h-4 w-4" />
+                          <span>{t('composer.add.mcpServers')}</span>
+                        </StyledDropdownMenuSubTrigger>
+                        <StyledDropdownMenuSubContent className="min-w-[240px] max-h-[280px] overflow-y-auto">
+                          {mcpSources.map((source) => {
+                            const selected = optimisticSourceSlugs.includes(
+                              source.config.slug,
+                            )
+                            return (
+                              <StyledDropdownMenuItem
+                                key={source.config.slug}
+                                onSelect={() =>
+                                  handleToggleSourceSlug(source.config.slug)
+                                }
+                              >
+                                <SourceAvatar source={source} size="xs" />
+                                <span className="min-w-0 flex-1 truncate">
+                                  {source.config.name}
+                                </span>
+                                {selected && <Check className="h-4 w-4" />}
+                              </StyledDropdownMenuItem>
+                            )
+                          })}
+                          {mcpSources.length > 0 && workspaceRootPath && (
+                            <StyledDropdownMenuSeparator className="my-1" />
+                          )}
+                          {workspaceRootPath && (
+                            <StyledDropdownMenuItem
+                              onSelect={() =>
+                                setTimeout(() => setAddMcpPopoverOpen(true), 0)
+                              }
+                            >
+                              <Plus className="h-4 w-4" />
+                              <span>{t('editPopover.label.addMcpServer')}</span>
+                            </StyledDropdownMenuItem>
+                          )}
+                        </StyledDropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    )}
+
+                    {otherSources.length > 0 && (
+                      <StyledDropdownMenuSeparator className="my-1" />
+                    )}
+
+                    {onSourcesChange && otherSources.length > 0 && (
+                      <DropdownMenuSub>
+                        <StyledDropdownMenuSubTrigger>
+                          <DatabaseZap className="h-4 w-4" />
+                          <span>{t('chat.sourcesTooltip')}</span>
+                        </StyledDropdownMenuSubTrigger>
+                        <StyledDropdownMenuSubContent className="min-w-[240px] max-h-[280px] overflow-y-auto">
+                          {otherSources.map((source) => {
+                            const selected = optimisticSourceSlugs.includes(
+                              source.config.slug,
+                            )
+                            return (
+                              <StyledDropdownMenuItem
+                                key={source.config.slug}
+                                onSelect={() =>
+                                  handleToggleSourceSlug(source.config.slug)
+                                }
+                              >
+                                <SourceAvatar source={source} size="xs" />
+                                <span className="min-w-0 flex-1 truncate">
+                                  {source.config.name}
+                                </span>
+                                {selected && <Check className="h-4 w-4" />}
+                              </StyledDropdownMenuItem>
+                            )
+                          })}
+                        </StyledDropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    )}
+                  </StyledDropdownMenuContent>
+                </DropdownMenu>
+
+                {compactMode && enableCompactModelPicker && (
+                  <>
+                    <CompactModelSelector
+                      currentModel={currentModel}
+                      currentConnection={currentConnection}
+                      onModelChange={onModelChange}
+                      onConnectionChange={onConnectionChange}
+                      isEmptySession={isEmptySession}
+                      connectionUnavailable={connectionUnavailable}
+                      contextStatus={contextStatus}
+                    />
+                    <CompactThinkingSelector
+                      currentModel={currentModel}
+                      currentConnection={currentConnection}
+                      thinkingLevel={thinkingLevel}
+                      onThinkingLevelChange={onThinkingLevelChange}
+                      fastMode={fastMode}
+                      onFastModeChange={onFastModeChange}
+                      isProcessing={isProcessing}
+                      isEmptySession={isEmptySession}
+                      connectionUnavailable={connectionUnavailable}
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Spacer — doubles as a tap / hover target while the input is
+              collapsed during processing in compact mode, so the user can
+              type a follow-up without waiting for the agent to finish. */}
+              {isCollapsedInCompact ? (
+                <button
+                  type="button"
+                  onClick={onRequestExpand}
+                  onMouseEnter={onRequestExpand}
+                  aria-label={t('chat.tapToType')}
+                  className="flex-1 h-7 mx-1 flex items-center justify-center text-foreground/30 hover:text-foreground/60 transition-colors cursor-pointer rounded-[6px] hover:bg-foreground/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </button>
+              ) : (
+                <div className="order-2 flex-1" />
+              )}
+
+              {/* OpenCode ordering: model + reasoning follow the add control;
+                  context and send stay pinned to the far edge. */}
+              <div className="contents">
+                {!compactMode && (
+                  <DropdownMenu
+                    open={modelDropdownOpen}
+                    onOpenChange={setModelDropdownOpen}
+                  >
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              'input-toolbar-btn inline-flex h-7 shrink-0 items-center gap-0.5 rounded-[6px] px-1.5 text-[13px] transition-colors hover:bg-foreground/5',
+                              modelDropdownOpen && 'bg-foreground/5',
+                              connectionUnavailable && 'text-destructive',
+                            )}
+                          >
+                            {connectionUnavailable ? (
+                              <>
+                                <AlertCircle className="size-3.5 shrink-0" />
+                                {t('common.unavailable')}
+                              </>
+                            ) : (
+                              <>
+                                {effectiveConnectionDetails &&
+                                  storage.get(
+                                    storage.KEYS.showConnectionIcons,
+                                    true,
+                                  ) && (
+                                    <ConnectionIcon
+                                      connection={effectiveConnectionDetails}
+                                      size={14}
+                                      showTooltip
+                                    />
+                                  )}
+                                <span className="max-w-[180px] truncate">
+                                  {currentModelDisplayName}
+                                </span>
+                                {pickerMode !== 'locked-single' && (
+                                  <ChevronDown className="size-3 shrink-0 opacity-50" />
+                                )}
+                              </>
+                            )}
+                          </button>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        {t('common.model')}
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <StyledDropdownMenuContent
+                      side="top"
+                      align="end"
+                      sideOffset={8}
+                      className="w-[320px] max-w-[calc(100vw-24px)] p-1.5"
+                    >
+                      {pickerMode === 'unavailable' ? (
+                        <div className="flex flex-col items-center px-4 py-6 text-center">
+                          <AlertCircle className="mb-2 size-8 text-destructive" />
+                          <div className="mb-1 text-sm font-medium">
+                            {t('chat.connectionUnavailable')}
+                          </div>
+                          <div className="mb-3 text-xs text-muted-foreground">
+                            {t('chat.connectionUnavailableDescription')}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModelDropdownOpen(false)
+                              navigate(routes.view.settings('ai'))
+                            }}
+                            className="text-xs text-foreground/70 underline hover:text-foreground"
+                          >
+                            {t('chat.modelPicker.openAiSettings')}
+                          </button>
+                        </div>
+                      ) : (
+                        <ModelPickerList
+                          groups={visibleModelPickerGroups}
+                          currentConnection={effectiveConnection}
+                          currentModel={selectedModelId}
+                          onSelect={(connectionSlug, modelId) => {
+                            if (
+                              connectionSlug !== effectiveConnection &&
+                              onConnectionChange
+                            ) {
+                              onConnectionChange(connectionSlug)
+                            }
+                            onModelChange(modelId, connectionSlug)
+                            setModelDropdownOpen(false)
+                          }}
+                          onManageModels={() => {
+                            setModelDropdownOpen(false)
+                            navigate(routes.view.settings('ai'))
+                          }}
+                          renderItemAction={(item: ModelPickerItem) => {
+                            if (!isCompatProvider(item.connection.providerType))
+                              return null
+                            const visionOn = modelSupportsImages(
+                              item.connection,
+                              item.modelId,
+                            )
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    aria-label={
+                                      visionOn
+                                        ? t('chat.modelPicker.supportsImagesOn')
+                                        : t(
+                                            'chat.modelPicker.supportsImagesOff',
+                                          )
+                                    }
+                                    className="inline-flex size-7 items-center justify-center rounded-[6px] hover:bg-foreground/5"
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      handleToggleModelVision(
+                                        item.connection.slug,
+                                        item.modelId,
+                                        !visionOn,
+                                      )
+                                    }}
+                                  >
+                                    <ImageIcon
+                                      className={cn(
+                                        'size-3.5',
+                                        visionOn
+                                          ? 'text-foreground/70'
+                                          : 'text-foreground/30',
+                                      )}
+                                    />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {visionOn
+                                    ? t('chat.modelPicker.supportsImagesOn')
+                                    : t('chat.modelPicker.supportsImagesOff')}
+                                </TooltipContent>
+                              </Tooltip>
+                            )
+                          }}
+                          className="max-h-[360px]"
+                        />
+                      )}
+                    </StyledDropdownMenuContent>
+                  </DropdownMenu>
+                )}
+                {!compactMode && (
+                  <ThinkingSelector
+                    currentModel={currentModel}
+                    currentConnection={currentConnection}
+                    thinkingLevel={thinkingLevel}
+                    onThinkingLevelChange={onThinkingLevelChange}
+                    fastMode={fastMode}
+                    onFastModeChange={onFastModeChange}
+                    isProcessing={isProcessing}
+                    connectionUnavailable={connectionUnavailable}
+                  />
+                )}
+
+                {/* Provider-normalized current context. Cache counters are already part
+              of inputTokens and must not be added a second time. */}
+                {(() => {
+                  const effectiveContextWindow = resolveContextWindow(
+                    contextStatus?.contextWindow,
+                    selectedModelId,
+                    availableModels,
+                    getModelContextWindow(selectedModelId),
+                  )
+                  const usage = projectContextUsage(
+                    contextStatus?.inputTokens,
+                    effectiveContextWindow,
+                  )
+                  if (!hasKnownContextUsage(usage)) return null
+                  const usagePercent = Math.round(usage.percent)
+                  const canCompact =
+                    usagePercent >= 62 &&
+                    !isProcessing &&
+                    !contextStatus?.isCompacting
+                  const cacheReadTokens = Math.max(
+                    0,
+                    contextStatus?.cacheReadTokens ?? 0,
+                  )
+                  const cacheCreationTokens = Math.max(
+                    0,
+                    contextStatus?.cacheCreationTokens ?? 0,
+                  )
+                  const uncachedInputTokens = Math.max(
+                    0,
+                    usage.currentInputTokens -
+                      cacheReadTokens -
+                      cacheCreationTokens,
+                  )
+                  const inputSegments = [
+                    {
+                      label: t('chat.contextUncachedInput'),
+                      value: uncachedInputTokens,
+                      color: 'var(--foreground)',
+                    },
+                    {
+                      label: t('chat.contextCacheRead'),
+                      value: cacheReadTokens,
+                      color: 'var(--success)',
+                    },
+                    {
+                      label: t('chat.contextCacheWrite'),
+                      value: cacheCreationTokens,
+                      color: 'var(--info)',
+                    },
+                  ].filter((segment) => segment.value > 0)
+                  const compositionColors: Record<
+                    ContextBreakdownSegment['key'],
+                    string
+                  > = {
+                    user: 'var(--success)',
+                    assistant: 'var(--info)',
+                    tool: 'var(--foreground)',
+                    other:
+                      'color-mix(in oklab, var(--foreground) 38%, transparent)',
+                  }
+                  const compositionLabels: Record<
+                    ContextBreakdownSegment['key'],
+                    string
+                  > = {
+                    user: t('chat.contextBreakdownUser'),
+                    assistant: t('chat.contextBreakdownAssistant'),
+                    tool: t('chat.contextBreakdownTool'),
+                    other: t('chat.contextBreakdownOther'),
+                  }
+                  const composition = contextStatus?.breakdown ?? []
+
+                  return (
+                    <Popover>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className={cn(
+                                'order-3 relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
+                                'text-foreground/60 transition-colors hover:bg-foreground/5',
+                              )}
+                              aria-label={t('chat.contextUsage', {
+                                percent: usagePercent,
+                              })}
+                            >
+                              <span
+                                aria-hidden
+                                className="absolute h-4 w-4 rounded-full"
+                                style={{
+                                  background: `conic-gradient(var(--foreground) ${usage.percent * 3.6}deg, color-mix(in oklab, var(--foreground) 14%, transparent) 0deg)`,
+                                }}
+                              />
+                              <span
+                                aria-hidden
+                                className="absolute h-3 w-3 rounded-full bg-background"
+                              />
+                            </button>
+                          </PopoverTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {t('chat.contextUsageDetail', {
+                            percent: usagePercent,
+                            tokens: formatTokenCount(usage.currentInputTokens),
+                          })}
+                        </TooltipContent>
+                      </Tooltip>
+                      <PopoverContent
+                        side="top"
+                        align="end"
+                        sideOffset={8}
+                        className="w-[340px] max-w-[calc(100vw-24px)] p-3"
+                        onOpenAutoFocus={(event) => event.preventDefault()}
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <div className="text-sm font-semibold">
+                            {t('chat.contextUsageTitle')}
+                          </div>
+                          <div className="text-xs tabular-nums text-muted-foreground">
+                            {formatTokenCount(usage.currentInputTokens)}
+                            {' / '}
+                            {formatTokenCount(usage.contextWindow)}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t('chat.contextUsage', { percent: usagePercent })}
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10">
+                          <div
+                            className="h-full rounded-full bg-foreground/60"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, usage.percent))}%`,
+                            }}
+                          />
+                        </div>
+                        {composition.length > 0 && (
+                          <div className="mt-3 border-t border-border/50 pt-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-xs font-medium">
+                                {t('chat.contextBreakdownTitle')}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {t('chat.contextBreakdownEstimated')}
+                              </div>
+                            </div>
+                            <div className="mt-2 space-y-1.5">
+                              {composition.map((segment) => (
+                                <div
+                                  key={segment.key}
+                                  className="flex items-center gap-2 text-xs"
+                                >
+                                  <span
+                                    aria-hidden
+                                    className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+                                    style={{
+                                      background:
+                                        compositionColors[segment.key],
+                                    }}
+                                  />
+                                  <span className="min-w-0 flex-1 text-muted-foreground">
+                                    {compositionLabels[segment.key]}
+                                    {segment.messageCount !== undefined &&
+                                      ` ${t('chat.contextBreakdownMessages', {
+                                        count: segment.messageCount,
+                                      })}`}
+                                  </span>
+                                  <span className="tabular-nums">
+                                    {formatTokenCount(segment.tokens)}
+                                    {' · '}
+                                    {segment.inputSharePercent}%
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                              {t('chat.contextBreakdownNote')}
+                            </div>
+                          </div>
+                        )}
+                        {subscriptionQuota?.status === 'ready' &&
+                          subscriptionQuota.windows.length > 0 && (
+                            <div className="mt-3 border-t border-border/50 pt-3">
+                              <div className="text-xs font-medium">
+                                {t('chat.planUsageTitle')}
+                              </div>
+                              <div className="mt-2 space-y-3">
+                                {subscriptionQuota.windows.map((window) => (
+                                  <div key={window.id}>
+                                    <div className="flex items-center justify-between gap-3 text-xs">
+                                      <span className="text-muted-foreground">
+                                        {t(
+                                          `chat.planUsagePeriod.${window.period}`,
+                                        )}
+                                      </span>
+                                      <span className="tabular-nums">
+                                        {Math.round(window.usedPercent)}%
+                                      </span>
+                                    </div>
+                                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-foreground/10">
+                                      <div
+                                        className="h-full rounded-full bg-foreground/60"
+                                        style={{
+                                          width: `${window.usedPercent}%`,
+                                        }}
+                                      />
+                                    </div>
+                                    {window.resetAt && (
+                                      <div className="mt-1 text-[11px] text-muted-foreground">
+                                        {t('chat.planUsageResets', {
+                                          time: new Intl.DateTimeFormat(
+                                            undefined,
+                                            {
+                                              month: 'short',
+                                              day: 'numeric',
+                                              hour: 'numeric',
+                                              minute: '2-digit',
+                                            },
+                                          ).format(window.resetAt),
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        <div className="mt-3 text-xs font-medium">
+                          {t('chat.contextAccountingTitle')}
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {inputSegments.map((segment) => (
+                            <div
+                              key={segment.label}
+                              className="flex items-center gap-2 text-xs"
+                            >
+                              <span
+                                aria-hidden
+                                className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+                                style={{ background: segment.color }}
+                              />
+                              <span className="min-w-0 flex-1 text-muted-foreground">
+                                {segment.label}
+                              </span>
+                              <span className="tabular-nums">
+                                {formatTokenCount(segment.value)}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="flex items-center justify-between gap-3 border-t border-border/50 pt-2 text-xs">
+                            <span className="text-muted-foreground">
+                              {t('chat.contextOutput')}
+                            </span>
+                            <span className="tabular-nums">
+                              {formatTokenCount(
+                                Math.max(0, contextStatus?.outputTokens ?? 0),
+                              )}
+                            </span>
+                          </div>
+                          {effectiveConnectionDetails?.authType !== 'oauth' && (
+                            <div className="flex items-center justify-between gap-3 text-xs">
+                              <span className="text-muted-foreground">
+                                {t('chat.contextCost')}
+                              </span>
+                              <span className="tabular-nums">
+                                ${(contextStatus?.costUsd ?? 0).toFixed(4)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {canCompact && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSubmit('/compact', [])
+                            }}
+                            className="mt-3 h-8 w-full rounded-[6px] bg-foreground/[0.07] px-3 text-xs font-medium transition-colors hover:bg-foreground/10"
+                          >
+                            {t('chat.contextCompactAction')}
+                          </button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  )
+                })()}
+
+                {/* 6. Send/Stop Button - Always show stop when processing */}
+                {isProcessing ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    aria-label={t('chat.stopResponse')}
+                    className="composer-round-action order-3 h-7 w-7 rounded-full shrink-0 active:bg-foreground/20 ml-2"
+                    onClick={() => handleStop(false)}
+                  >
+                    <Square className="h-3 w-3 fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    size="icon"
+                    aria-label={t('shortcuts.sendMessage')}
+                    className="composer-round-action order-3 h-7 w-7 rounded-full shrink-0 ml-2"
+                    disabled={!hasContent || disabled || disableSend}
+                    data-tutorial="send-button"
+                  >
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </form>
-  )
-}
-
-/**
- * WorkingDirectoryBadge - chat-input trigger for the shared WorkingDirectorySelector.
- *
- * Renders the context-badge trigger; the picker popover + folder state machine
- * live in {@link WorkingDirectorySelector} so the Tasks editor reuses the same
- * picker (and can supply its own trigger).
- */
-function WorkingDirectoryBadge({
-  workingDirectory,
-  onWorkingDirectoryChange,
-  sessionFolderPath,
-  isEmptySession = false,
-  workspaceId,
-}: {
-  workingDirectory?: string
-  onWorkingDirectoryChange: (path: string) => void
-  sessionFolderPath?: string
-  isEmptySession?: boolean
-  workspaceId?: string
-}) {
-  const { t } = useTranslation()
-  return (
-    <WorkingDirectorySelector
-      workingDirectory={workingDirectory}
-      onWorkingDirectoryChange={onWorkingDirectoryChange}
-      sessionFolderPath={sessionFolderPath}
-      workspaceId={workspaceId}
-      renderTrigger={({ open, hasFolder, folderName, workingDirectory: wd, homeDir, gitBranch }) => (
-        <span className="shrink min-w-0 overflow-hidden">
-          <FreeFormInputContextBadge
-            icon={<Icon_Home className="h-4 w-4" />}
-            label={folderName ?? t('chat.workInFolder')}
-            isExpanded={isEmptySession}
-            hasSelection={hasFolder}
-            showChevron={true}
-            isOpen={open}
-            tooltip={
-              hasFolder ? (
-                <span className="flex flex-col gap-0.5">
-                  <span className="font-medium">{t("chat.workingDirectory")}</span>
-                  <span className="text-xs opacity-70">{formatPathForDisplay(wd, homeDir)}</span>
-                  {gitBranch && <span className="text-xs opacity-70">{t("chat.onBranch", { branch: gitBranch })}</span>}
-                </span>
-              ) : t("chat.chooseWorkingDirectory")
-            }
-          />
-        </span>
-      )}
-    />
+      </form>
+    </div>
   )
 }

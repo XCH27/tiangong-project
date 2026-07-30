@@ -61,6 +61,9 @@ mock.module('@craft-agent/shared/config', () => ({
   getWorkspaces: () => [workspace],
   loadConfigDefaults: () => ({
     workspaceDefaults: {
+      defaultWorkMode: 'auto',
+      executionPermissionMode: 'ask',
+      cyclableWorkModes: ['auto', 'explore', 'plan', 'execute'],
       permissionMode: 'ask',
       thinkingLevel: 'medium',
     },
@@ -71,6 +74,12 @@ mock.module('@craft-agent/shared/config', () => ({
   getToolIconsDir: () => '/tmp/tool-icons',
   getMiniModel: () => 'claude-haiku-4-5-20251001',
   getDefaultThinkingLevel: () => 'medium',
+  getPersistedUiLanguage: () => undefined,
+  resolveTitleLanguageName: () => undefined,
+  resolveMidStreamBehavior: () => 'queue',
+  defaultMidStreamBehavior: () => 'queue',
+  resetManagedAnthropicAuthEnvVars: () => {},
+  loadPreferences: () => ({}),
   ConfigWatcher: class ConfigWatcher {
     constructor(..._args: unknown[]) {}
     start() {}
@@ -107,6 +116,7 @@ mock.module('@craft-agent/shared/config', () => ({
   touchLlmConnection: async () => {},
   isCompatProvider: () => false,
   isAnthropicProvider: () => true,
+  modelSupportsImages: () => true,
 }))
 
 mock.module('@craft-agent/shared/workspaces', () => ({

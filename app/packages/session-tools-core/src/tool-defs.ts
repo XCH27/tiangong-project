@@ -18,6 +18,7 @@ import type { ToolResult } from './types.ts';
 
 // Handlers
 import { handleSubmitPlan } from './handlers/submit-plan.ts';
+import { handleEnterPlan } from './handlers/enter-plan.ts';
 import { handleConfigValidate } from './handlers/config-validate.ts';
 import { handleSkillValidate } from './handlers/skill-validate.ts';
 import { handleMermaidValidate } from './handlers/mermaid-validate.ts';
@@ -35,6 +36,7 @@ import { handleScriptSandbox } from './handlers/script-sandbox.ts';
 import { handleRenderTemplate } from './handlers/render-template.ts';
 import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.ts';
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
+import { handleSetSessionGoal } from './handlers/set-session-goal.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
@@ -48,6 +50,13 @@ import { handleListMessagingChannels, handleUnbindMessagingChannel } from './han
 
 export const SubmitPlanSchema = z.object({
   planPath: z.string().describe('Absolute path to the plan markdown file you wrote'),
+});
+
+export const EnterPlanSchema = z.object({
+  reason: z
+    .string()
+    .optional()
+    .describe('Optional short reason for entering Plan (e.g. ambiguous approach, large scope)'),
 });
 
 export const ConfigValidateSchema = z.object({
@@ -185,6 +194,11 @@ export const SetSessionLabelsSchema = z.object({
   labels: z.array(z.string()).describe('Labels to set (replaces all existing labels)'),
 });
 
+export const SetSessionGoalSchema = z.object({
+  sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
+  goal: z.string().nullable().describe('Durable session objective. Pass null or an empty string to clear it.'),
+});
+
 export const SetSessionStatusSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
   status: z.string().describe('Status to set (e.g., "todo", "in_progress", "done")'),
@@ -230,16 +244,46 @@ export const UnbindMessagingChannelSchema = z.object({
 // ============================================================
 
 export const TOOL_DESCRIPTIONS = {
-  SubmitPlan: `Submit a plan for user review.
+  // Aligned with OpenCode plan_exit + Grok exit_plan_mode: human approval before implement.
+  SubmitPlan: `Submit a completed plan for user review and approval to implement.
 
-Call this after you have written your plan to a markdown file using the Write tool.
-The plan will be displayed to the user in a special formatted view.
+Call this after you have written a complete plan markdown file (Write tool → plansFolderPath).
+This is the exit from Plan phase (OpenCode plan_exit / Grok exit_plan_mode).
 
-**IMPORTANT:** After calling this tool:
-- Execution will be **automatically paused** to present the plan to the user
-- No further tool calls or text output will be processed after this tool returns
-- The conversation will resume when the user responds (accept, modify, or reject the plan)
-- Do NOT include any text or tool calls after SubmitPlan - they will not be executed`,
+Call when:
+- The plan file is complete and you are confident it is ready to implement
+- Clarifying questions (if any) are resolved
+
+Do NOT call:
+- Before the plan file exists or is finalized
+- If the user still wants to refine the plan
+
+**IMPORTANT after this tool:**
+- Execution is **paused** for user review (accept / revise / reject)
+- No further tool calls or text after SubmitPlan will run
+- On accept, the session continues in Execute (Build/Agent) under the existing permission policy`,
+
+  // Aligned with Grok enter_plan_mode + OpenCode plan_enter description (build stays default).
+  EnterPlan: `Enter the Plan work phase mid-turn without pausing the turn (Grok enter_plan_mode).
+
+The default phase is Execute (OpenCode build / Agent): search and edit freely under permissions.
+Use EnterPlan only when planning first is better than implementing immediately.
+
+Call this tool when:
+- The user's request is complex and would benefit from planning first
+- The approach is genuinely ambiguous (multiple reasonable architectures)
+- The user explicitly asks for a plan
+
+Do NOT call this tool:
+- For simple, straightforward tasks (typo, small UI fix, single-file change)
+- When the user wants immediate implementation
+- When already in Plan (call is a no-op)
+
+After this tool returns:
+- Session becomes Plan (read-only except the governed plan artifact)
+- Continue investigating; write the plan under plansFolderPath
+- Call SubmitPlan when ready for user approval to implement
+- Do not mutate project files except the plan artifact`,
 
   config_validate: `Validate Craft Agent configuration files.
 
@@ -458,7 +502,12 @@ Use this to share anything that would help improve the product — issues you hi
   set_session_labels: `Set labels on the current session or a specific session by ID. Replaces all existing labels.
 
 Use this to tag sessions for filtering or to trigger label-based automations (LabelAdd/LabelRemove events).
+Identity labels may be selected automatically when one configured role clearly matches the work; a coordinating Agent may assign one to another session with sessionId. Read session info first and preserve unrelated labels because this operation replaces the full array.
 Pass an empty array to clear all labels. Omit sessionId to target the current session.`,
+
+  set_session_goal: `Set or clear the durable goal of the current session or a specific session by ID.
+
+Use this when the user establishes a persistent objective that should remain active across turns, or when a coordinating Agent assigns an explicit objective to another session. Do not invent a goal from casual conversation. Pass null to clear it. Omit sessionId to target the current session.`,
 
   set_session_status: `Set the status of the current session or a specific session by ID (e.g., "todo", "in_progress").
 
@@ -548,6 +597,7 @@ export type SessionToolDef = RegistrySessionToolDef | BackendSessionToolDef;
 
 export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'SubmitPlan', description: TOOL_DESCRIPTIONS.SubmitPlan, inputSchema: SubmitPlanSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSubmitPlan },
+  { name: 'EnterPlan', description: TOOL_DESCRIPTIONS.EnterPlan, inputSchema: EnterPlanSchema, executionMode: 'registry', safeMode: 'allow', handler: handleEnterPlan },
   { name: 'config_validate', description: TOOL_DESCRIPTIONS.config_validate, inputSchema: ConfigValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleConfigValidate },
   { name: 'skill_validate', description: TOOL_DESCRIPTIONS.skill_validate, inputSchema: SkillValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleSkillValidate },
   { name: 'mermaid_validate', description: TOOL_DESCRIPTIONS.mermaid_validate, inputSchema: MermaidValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleMermaidValidate },
@@ -569,6 +619,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'browser_tool', description: TOOL_DESCRIPTIONS.browser_tool, inputSchema: BrowserToolSchema, executionMode: 'backend', safeMode: 'allow', handler: null },
   // Session self-management tools (registry — use context callbacks to reach SessionManager)
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
+  { name: 'set_session_goal', description: TOOL_DESCRIPTIONS.set_session_goal, inputSchema: SetSessionGoalSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionGoal },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },

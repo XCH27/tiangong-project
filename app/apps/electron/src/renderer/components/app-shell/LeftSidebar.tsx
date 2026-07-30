@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import * as React from "react"
 import { AnimatePresence, motion } from "motion/react"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, Folder, FolderOpen } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -61,6 +61,8 @@ export interface SidebarContextMenuConfig {
   onAddCloudProject?: () => void
   /** Handler for "Manage projects" — keeps the project detail surface reachable */
   onManageProjects?: () => void
+  /** Handler for opening settings of one project (workspace) row */
+  onOpenProjectSettings?: () => void
   /** Handler for removing one project (workspace) */
   onRemoveProject?: () => void
   /** Source type filter for "Learn More" link - determines which docs page to open */
@@ -86,7 +88,7 @@ export interface LinkItem {
   id: string            // Unique ID for navigation (e.g., 'nav:allSessions')
   title: string
   label?: string        // Optional badge (e.g., count)
-  icon: LucideIcon | React.ReactNode  // LucideIcon or custom React element
+  icon?: LucideIcon | React.ReactNode  // LucideIcon or custom React element
   iconColor?: string    // Optional color class for the icon
   /** Whether the icon responds to color (uses currentColor). Default true for Lucide icons. */
   iconColorable?: boolean
@@ -108,11 +110,21 @@ export interface LinkItem {
   // Optional element rendered after the title (e.g., label type icon), revealed on hover
   afterTitle?: React.ReactNode
   /**
+   * Always-visible trailing meta at rest (e.g. relative time on session leaves).
+   * When `trailingAction` is present, mirrors EntityRow: meta hides on row hover so
+   * the ⋯ action can take the same slot (session-list parity).
+   */
+  trailingMeta?: React.ReactNode
+  /** Session identity labels, rendered with the shared SessionBadges projection. */
+  badges?: React.ReactNode
+  /**
    * Interactive row action rendered as a *sibling overlay* of the row button, never nested inside
    * it — a button inside a button breaks keyboard traversal and hit-testing. Occupies the 24 px
    * action slot from `docs/UI-SPEC.md` §4 and stays keyboard reachable while hover-revealed.
    */
   trailingAction?: React.ReactNode
+  /** Number of fixed 24 px action slots occupied by trailingAction. */
+  trailingActionSlots?: 1 | 2
 }
 
 export interface SeparatorItem {
@@ -219,6 +231,7 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                         onAddProject={link.contextMenu.onAddProject}
                         onAddCloudProject={link.contextMenu.onAddCloudProject}
                         onManageProjects={link.contextMenu.onManageProjects}
+                        onOpenProjectSettings={link.contextMenu.onOpenProjectSettings}
                         onRemoveProject={link.contextMenu.onRemoveProject}
                         sourceType={link.contextMenu.sourceType}
                         onConfigureViews={link.contextMenu.onConfigureViews}
@@ -249,7 +262,8 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                     <div
                       data-touch-reveal="true"
                       className={cn(
-                        "absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 w-6 items-center justify-center",
+                        "absolute right-1 top-1/2 z-10 -translate-y-1/2 flex h-6 items-center justify-center",
+                        link.trailingActionSlots === 2 ? "w-12" : "w-6",
                         // opacity-0 alone still hit-tests — gate pointer events until revealed
                         "pointer-events-none opacity-0 transition-opacity duration-150",
                         "group-hover/section:pointer-events-auto group-hover/section:opacity-100",
@@ -406,6 +420,7 @@ function SortableStatusList({
                         onAddProject={item.contextMenu.onAddProject}
                         onAddCloudProject={item.contextMenu.onAddCloudProject}
                         onManageProjects={item.contextMenu.onManageProjects}
+                        onOpenProjectSettings={item.contextMenu.onOpenProjectSettings}
                         onRemoveProject={item.contextMenu.onRemoveProject}
                         sourceType={item.contextMenu.sourceType}
                         onConfigureViews={item.contextMenu.onConfigureViews}
@@ -497,8 +512,14 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
           // Density: normal for all primary trees; compact only when caller opts in (labels)
           link.compact ? "py-[3px]" : "py-[5px]",
           "px-2",
-          // Reserve the 24 px action slot so the title truncates instead of sliding under "+"
-          link.trailingAction && "pr-7",
+          // Reserve the 24 px action slot only when there is no in-flow trailing meta.
+          // Session leaves: relative time holds the right edge; ⋯ overlays that same slot
+          // on hover (invisible, not removed — layout stays). A permanent pr-7 left a dead
+          // ellipsis gap to the right of every timestamp.
+          // Project/section rows: "+" only — need the reserve so the title truncates cleanly.
+          link.trailingAction
+            && (link.trailingMeta == null || link.trailingMeta === '')
+            && (link.trailingActionSlots === 2 ? "pr-14" : "pr-7"),
           link.variant === "default"
             ? "bg-foreground/[0.07]"
             // Hover / open states — same tokens for every ghost row at every depth
@@ -510,62 +531,85 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
           extraClassName,
         )}
       >
-        {/* Icon container with hover toggle for expandable items */}
-        <span className="relative h-3.5 w-3.5 shrink-0 flex items-center justify-center">
-          {link.expandable && !isOverlay ? (
-            <>
-              {/* Main icon - hidden on hover */}
-              <span className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity duration-150">
-                {renderIcon(link)}
-              </span>
-              {/* Toggle chevron - shown on hover. Expand only; never the row's navigate action. */}
-              <span
-                className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
-                data-no-dnd="true"
-                data-touch-reveal="true"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  link.onToggle?.()
-                }}
-              >
-                <ChevronRight
+        {link.icon != null && (
+          /* Icon container with hover toggle for expandable items. */
+          <span className={cn(
+            "relative h-3.5 w-3.5 shrink-0 flex items-center justify-center",
+            link.badges && "mt-0.5",
+          )}>
+            {link.expandable && !isOverlay ? (
+              <>
+                <span className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity duration-150">
+                  {renderIcon(link)}
+                </span>
+                <span
                   className={cn(
-                    "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                    link.expanded && "rotate-90"
+                    "absolute inset-0 flex items-center justify-center cursor-pointer",
+                    "pointer-events-none opacity-0 transition-opacity duration-150",
+                    "group-hover:pointer-events-auto group-hover:opacity-100",
                   )}
-                />
-              </span>
-            </>
-          ) : (
-            renderIcon(link)
-          )}
-        </span>
-        {/* flex-1 + min-w-0 + truncate: the title owns the flexible middle, so trailing
-          * badges/actions stay pinned to the row's right edge regardless of text length
-          * and track the panel edge during divider drags (UI-SPEC §4; owner 2026-07-26). */}
-        <span className="min-w-0 flex-1 truncate text-left">{link.title}</span>
-        {/* After-title / count: same reveal language on every row (button hover OR section hover) */}
-        {link.afterTitle && (
-          <span
-            data-touch-reveal="true"
-            className="ml-auto opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100"
-          >
-            {link.afterTitle}
-          </span>
-        )}
-        {link.label && (
-          <span
-            data-touch-reveal="true"
-            className={cn(
-              link.afterTitle ? 'ml-0' : 'ml-auto',
-              'text-xs text-foreground/30 opacity-0 transition-opacity duration-150',
-              'group-hover:opacity-100 group-hover/section:opacity-100',
-              'group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100',
+                  data-no-dnd="true"
+                  data-touch-reveal="true"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    link.onToggle?.()
+                  }}
+                >
+                  <ChevronRight
+                    className={cn(
+                      "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                      link.expanded && "rotate-90"
+                    )}
+                  />
+                </span>
+              </>
+            ) : (
+              renderIcon(link)
             )}
-          >
-            {link.label}
           </span>
         )}
+        <div className="min-w-0 flex-1 flex flex-col gap-1 text-left">
+          <div className="flex min-w-0 items-center gap-1">
+            <span className="min-w-0 flex-1 truncate">{link.title}</span>
+            {link.trailingMeta != null && link.trailingMeta !== '' && (
+              <span
+                className={cn(
+                  'ml-auto shrink-0 text-[11px] text-foreground/40 whitespace-nowrap tabular-nums',
+                  'flex items-center justify-end',
+                  link.trailingAction && 'min-w-6',
+                  link.trailingAction && [
+                    'group-hover/section:invisible',
+                    'group-data-[state=open]:invisible',
+                    'group-has-[[data-state=open]]/section:invisible',
+                  ],
+                )}
+              >
+                {link.trailingMeta}
+              </span>
+            )}
+            {link.afterTitle && (
+              <span
+                data-touch-reveal="true"
+                className="shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100"
+              >
+                {link.afterTitle}
+              </span>
+            )}
+            {link.label && (
+              <span
+                data-touch-reveal="true"
+                className="shrink-0 text-xs text-foreground/30 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100"
+              >
+                {link.label}
+              </span>
+            )}
+          </div>
+          {link.badges && (
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto scrollbar-hide">
+              {link.badges}
+            </div>
+          )}
+        </div>
       </button>
     )
   }
@@ -573,12 +617,25 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
 SidebarButton.displayName = 'SidebarButton'
 
 /**
+ * Folder rows reuse the same Folder / FolderOpen pair as "Show in Finder"
+ * (open folder icon) so expanded vs collapsed is visible at rest.
+ */
+function resolveSidebarIcon(link: LinkItem): LucideIcon | React.ReactNode {
+  if (link.expandable && (link.icon === Folder || link.icon === FolderOpen)) {
+    return link.expanded ? FolderOpen : Folder
+  }
+  return link.icon
+}
+
+/**
  * Helper to render icon - either component (function/forwardRef) or React element.
  * Colors are always applied via inline style (resolved CSS color strings from EntityColor).
  */
 function renderIcon(link: LinkItem) {
-  const isComponent = typeof link.icon === 'function' ||
-    (typeof link.icon === 'object' && link.icon !== null && 'render' in link.icon)
+  const icon = resolveSidebarIcon(link)
+  if (icon == null) return null
+  const isComponent = typeof icon === 'function' ||
+    (typeof icon === 'object' && icon !== null && 'render' in icon)
   // Default color for items without explicit iconColor (foreground at 60% opacity)
   const defaultColor = 'color-mix(in oklch, var(--foreground) 60%, transparent)'
 
@@ -587,7 +644,7 @@ function renderIcon(link: LinkItem) {
   const applyColor = link.iconColorable !== false
 
   if (isComponent) {
-    const Icon = link.icon as LucideIcon
+    const Icon = icon as LucideIcon
     return (
       <Icon
         className="h-3.5 w-3.5"
@@ -597,7 +654,7 @@ function renderIcon(link: LinkItem) {
   }
 
   // React element — clone with size + optional color
-  const element = link.icon as React.ReactElement<{ className?: string; style?: React.CSSProperties }>
+  const element = icon as React.ReactElement<{ className?: string; style?: React.CSSProperties }>
   return React.cloneElement(element, {
     className: cn("h-3.5 w-3.5", element.props.className),
     style: applyColor

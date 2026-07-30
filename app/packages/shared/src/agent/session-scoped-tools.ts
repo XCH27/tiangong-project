@@ -235,6 +235,10 @@ export function getSessionScopedTools(
         const callbacks = getSessionScopedToolCallbacks(sessionId);
         callbacks?.onPlanSubmitted?.(planPath);
       },
+      onEnterPlan: (reason?: string) => {
+        const callbacks = getSessionScopedToolCallbacks(sessionId);
+        return callbacks?.onEnterPlan?.(reason);
+      },
       onAuthRequest: (request: unknown) => {
         const callbacks = getSessionScopedToolCallbacks(sessionId);
         callbacks?.onAuthRequest?.(request as AuthRequest);

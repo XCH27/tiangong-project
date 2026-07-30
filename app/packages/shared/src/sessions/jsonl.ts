@@ -158,9 +158,22 @@ export function writeSessionJsonl(sessionFile: string, session: StoredSession): 
 
   const tmpFile = sessionFile + '.tmp';
   writeFileSync(tmpFile, lines.join('\n') + '\n');
-  // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
-  try { unlinkSync(sessionFile); } catch { /* ignore if doesn't exist */ }
-  renameSync(tmpFile, sessionFile);
+  // POSIX `renameSync` atomically replaces an existing target. Windows'
+  // `renameSync` fails with EEXIST/EPERM when the target exists, so fall
+  // back to unlink-then-rename only there. The previous implementation
+  // unlinked first on ALL platforms, opening a window where neither the
+  // old nor the new file existed — a crash in that window lost data.
+  try {
+    renameSync(tmpFile, sessionFile);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST' || code === 'EPERM') {
+      try { unlinkSync(sessionFile); } catch { /* target already gone */ }
+      renameSync(tmpFile, sessionFile);
+    } else {
+      throw err;
+    }
+  }
 }
 
 /**

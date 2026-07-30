@@ -35,6 +35,7 @@ export type {
   BackendHostRuntimeContext,
   PermissionCallback,
   PlanCallback,
+  EnterPlanCallback,
   AuthCallback,
   SourceChangeCallback,
   SourceActivationCallback,
@@ -44,6 +45,7 @@ export type {
   LlmAuthType,
   LlmProviderType,
   PostInitResult,
+  BackendRuntimeUpdate,
 } from './types.ts';
 
 // Enums need to be exported as values, not just types

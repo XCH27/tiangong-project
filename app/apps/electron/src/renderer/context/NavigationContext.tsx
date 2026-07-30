@@ -50,7 +50,7 @@ import {
   type ParsedRoute,
 } from '../../shared/route-parser'
 import { routes, type Route, type ViewRoute } from '../../shared/routes'
-import { parsePermissionMode } from '@craft-agent/shared/agent/mode-types'
+import { parseWorkModeRequest } from '@craft-agent/shared/agent/work-mode'
 import { NAVIGATE_EVENT, type NavigateOptions } from '../lib/navigate'
 import { normalizePanelRouteForReconcile } from './navigation-reconcile'
 import { buildSemanticHistoryKey, canRunInitialRestore } from './navigation-history'
@@ -496,7 +496,14 @@ export function NavigationProvider({
       for (const prevId of prevVisibleSessionIdsRef.current) {
         if (!currentIds.has(prevId)) {
           const meta = store.get(sessionMetaMapAtom).get(prevId)
-          const isEmpty = meta && !meta.lastFinalMessageId && !meta.name && !meta.isProcessing
+          // Same empty rule as list visibility: no first send → delete on leave.
+          // Keep draft text so navigating away does not discard typed input.
+          const isEmpty = meta
+            && !meta.lastFinalMessageId
+            && !meta.name
+            && !meta.preview
+            && !meta.isProcessing
+            && (meta.messageCount ?? 0) === 0
           const hasDraft = getDraft?.(prevId)?.trim()
           if (isEmpty && !hasDraft) {
             onAutoDeleteEmptySession(prevId)
@@ -732,9 +739,11 @@ export function NavigationProvider({
         case 'new-session': {
           const createOptions: import('../../shared/types').CreateSessionOptions = {}
           if (parsed.params.mode) {
-            const parsedMode = parsePermissionMode(parsed.params.mode)
-            if (parsedMode) {
-              createOptions.permissionMode = parsedMode
+            const modeRequest = parseWorkModeRequest(parsed.params.mode)
+            if (modeRequest) {
+              createOptions.workModeSelection = modeRequest.workModeSelection
+              createOptions.workMode = modeRequest.workMode
+              createOptions.executionPermissionMode = modeRequest.executionPermissionMode
             }
           }
           if (parsed.params.workdir) {
@@ -903,15 +912,25 @@ export function NavigationProvider({
 
         case 'set-mode':
           if (parsed.id && parsed.params.mode) {
-            const parsedMode = parsePermissionMode(parsed.params.mode)
-            if (!parsedMode) {
-              console.warn('[Navigation] Invalid permission mode:', parsed.params.mode)
+            const modeRequest = parseWorkModeRequest(parsed.params.mode)
+            if (!modeRequest) {
+              console.warn('[Navigation] Invalid work mode:', parsed.params.mode)
               break
             }
             await window.electronAPI.sessionCommand(
               parsed.id,
-              { type: 'setPermissionMode', mode: parsedMode }
+              {
+                type: 'setWorkMode',
+                selection: modeRequest.workModeSelection,
+                mode: modeRequest.workMode,
+              }
             )
+            if (modeRequest.executionPermissionMode) {
+              await window.electronAPI.sessionCommand(parsed.id, {
+                type: 'setExecutionPermissionMode',
+                mode: modeRequest.executionPermissionMode,
+              })
+            }
           }
           break
 
@@ -1250,10 +1269,11 @@ export function NavigationProvider({
 
   const toggleRightSidebar = useCallback((panel?: RightSidebarPanel) => {
     const currentSidebar = rightSidebarRef.current
-    const newPanel = panel || (currentSidebar && currentSidebar.type !== 'none'
-      ? { type: 'none' as const }
-      : { type: 'none' as const })
-    updateRightSidebar(newPanel)
+    if (panel) {
+      updateRightSidebar(panel)
+    } else if (currentSidebar && currentSidebar.type !== 'none') {
+      updateRightSidebar({ type: 'none' })
+    }
   }, [updateRightSidebar])
 
   // =========================================================================

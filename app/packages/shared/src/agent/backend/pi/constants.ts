@@ -10,22 +10,17 @@ import type { ThinkingLevel } from '../../thinking-levels.ts';
 
 /**
  * Map Craft's {@link ThinkingLevel} to Pi's `ThinkingLevel`.
- * Pi's ceiling is `xhigh`; Craft's `max` saturates there.
- *
- * Owner decision (docs/02-DECISIONS.md E9, 2026-07-11): the product keeps one
- * thinking-level vocabulary and each backend adapts it to what the SDK/model
- * actually supports — saturate at the provider ceiling, never send a level the
- * installed SDK's type does not accept. `max` may only pass through 1:1 after
- * a published pi SDK release whose `ThinkingLevel` includes `'max'` (none
- * exists as of 0.80.6) and an owner-approved dependency bump.
+ * The installed Pi SDK exposes the full official model-effort vocabulary.
+ * Per-model discovery still decides which subset reaches the selector.
  */
 export const THINKING_TO_PI: Record<ThinkingLevel, PiThinkingLevel> = {
   off: 'off',
+  minimal: 'minimal',
   low: 'low',
   medium: 'medium',
   high: 'high',
   xhigh: 'xhigh',
-  max: 'xhigh',
+  max: 'max',
 };
 
 /**

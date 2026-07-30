@@ -11,7 +11,8 @@ interface PanelHeaderCenterButtonProps extends React.ButtonHTMLAttributes<HTMLBu
 }
 
 export const PanelHeaderCenterButton = forwardRef<HTMLButtonElement, PanelHeaderCenterButtonProps>(
-  ({ icon, tooltip, className, ...props }, ref) => {
+  ({ icon, tooltip, className, onClick, ...props }, ref) => {
+    const ariaDisabled = props['aria-disabled'] === true || props['aria-disabled'] === 'true'
     const button = (
       <button
         ref={ref}
@@ -24,9 +25,21 @@ export const PanelHeaderCenterButton = forwardRef<HTMLButtonElement, PanelHeader
           "opacity-70 hover:opacity-100",
           "transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           "disabled:pointer-events-none disabled:opacity-50",
+          // `disabled` kills pointer events, so a disabled trigger can never
+          // show the tooltip that would explain *why* it is unavailable. Use
+          // `aria-disabled` for controls that need to stay hoverable; it reads
+          // the same to assistive tech and keeps the explanation reachable.
+          "aria-disabled:opacity-50 aria-disabled:cursor-default",
           className
         )}
         {...props}
+        onClick={(event) => {
+          if (ariaDisabled) {
+            event.preventDefault()
+            return
+          }
+          onClick?.(event)
+        }}
       >
         {icon}
       </button>

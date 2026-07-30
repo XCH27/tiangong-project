@@ -150,6 +150,32 @@ describe('startup migration (integration)', () => {
     expect(connection.defaultModel).toBe(migratedModels[0])
   })
 
+  it('preserves unknown IDs in a user-selected model set', () => {
+    const { configDir, workspaceRoot, configPath } = setupWorkspaceConfigDir()
+    const selectedModels = ['pi/claude-sonnet-4-6', 'pi/claude-next-preview']
+
+    writeRootConfig(configPath, workspaceRoot, [
+      {
+        slug: 'pi-api-key',
+        name: 'Craft Agents Backend (Anthropic)',
+        providerType: 'pi',
+        authType: 'api_key',
+        piAuthProvider: 'anthropic',
+        modelSelectionMode: 'userSelected',
+        createdAt: Date.now(),
+        models: selectedModels,
+        defaultModel: selectedModels[0],
+      },
+    ])
+
+    runMigration(configDir)
+
+    const connection = readPiApiKeyConnection(configPath)
+    expect(connection.modelSelectionMode).toBe('userSelected')
+    expect(connection.models).toEqual(selectedModels)
+    expect(connection.defaultModel).toBe(selectedModels[0])
+  })
+
   it('normalizes auto mode model set back to provider defaults', () => {
     const { configDir, workspaceRoot, configPath } = setupWorkspaceConfigDir()
 

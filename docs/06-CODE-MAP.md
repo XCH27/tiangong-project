@@ -15,8 +15,8 @@
   deltas are listed in [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md).
 - **Product/interaction baseline:** `源码参考/software/craft-agents-oss-v0.10.5/` at official tag
   `v0.10.5` / commit `c9d9a26f`.
-- **Selective-update reference:** `源码参考/software/craft-agents-oss/` at official tag `v0.11.1` /
-  commit `4289b160`; compare independent fixes/backend mechanisms, never merge wholesale.
+- **Selective-update reference:** `源码参考/software/craft-agents-oss/` at official tag `v0.11.2` /
+  commit `a60ebc1a5a7c`; compare independent fixes/backend mechanisms, never merge wholesale.
 
 ## Reference roots (do not mix their authority)
 
@@ -24,8 +24,8 @@
 |---|---|---|
 | Fleet product authority | `docs/` numbered set + `specs/` | Decisions, boundaries, route, code entries |
 | Product/interaction baseline | `源码参考/software/craft-agents-oss-v0.10.5/` | Exact Craft v0.10.5 behavior for shell, navigation, composer, menus and Session actions |
-| Selective-update implementation | `源码参考/software/craft-agents-oss/` | Exact Craft v0.11.1 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
-| Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.11.1 |
+| Selective-update implementation | `源码参考/software/craft-agents-oss/` | Exact Craft v0.11.2 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
+| Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.11.2 |
 | Mirror index and provenance | `源码参考/craft-docs/README.md`, `SYNC-MANIFEST.txt` | Locate source docs, verify downloaded bytes, known Craft-operated service list |
 | Owner design notes | `docs/design-library/` | Owner intent; open the relevant note after checking code |
 | UI component kits | local `UI参考/` | Optional untracked samples for human study; not build input |
@@ -44,7 +44,7 @@ refresh is upstream intake, not permission to change application behavior.
 | Shared domain code | `app/packages/shared/src/` |
 | Shared UI package | `app/packages/ui/src/` |
 | CLI app | `app/apps/cli/` |
-| Web UI / viewer | `app/apps/webui/`, `app/apps/viewer/` |
+| Web UI | `app/apps/webui/` |
 
 ## File size: a navigability constraint, not a style preference
 
@@ -128,7 +128,7 @@ UI → handler → persistence → recovery.
 
 | Concern | Current code entry | Fleet direction |
 |---|---|---|
-| Session sharing/viewer upload | `app/packages/shared/src/branding.ts`; `app/packages/server-core/src/sessions/SessionManager.ts`; `app/apps/electron/src/renderer/pages/ChatPage.tsx`; `app/apps/viewer/` | **EXTEND/REPLACE:** local export + optional configurable/self-hosted viewer; never silently upload |
+| Session export | `app/packages/server-core/src/sessions/SessionManager.ts`; `app/apps/electron/src/renderer/pages/ChatPage.tsx` | **REUSE:** local export only; the online sharing/viewer path was removed by owner decision |
 | Upstream version awareness | `packages/shared/src/version/manifest.ts`; official tags/release notes | **REUSE:** detect and review upstream releases for selective porting |
 | Fleet binary updater | `app/apps/electron/src/main/auto-update.ts`; `app/apps/electron/electron-builder.yml` | **EXTEND/REPLACE:** Fleet-controlled or user-configured signed channel; disable install honestly until it exists |
 | Help and Docs MCP | `packages/shared/src/docs/`; `packages/session-mcp-server/src/index.ts`; Electron menu/help links | **EXTEND:** bundled/local mirror first; online Craft links only when visibly external |
@@ -144,9 +144,22 @@ UI → handler → persistence → recovery.
 | Typecheck shared | `bun run typecheck:shared` |
 | Typecheck electron | `bun run typecheck:electron` |
 | Typecheck everything | `bun run typecheck:all` |
-| Targeted shared tests | `bun run test:shared:all` |
-| Dev gate (typecheck + shared + doc-tools tests) | `bun run validate:dev` |
+| Targeted shared tests | `bun run test:shared:all` (3 files — a smoke check, **not** a gate) |
+| Whole suite (703 files, isolated) | `bun run test` |
+| Only tests affected by your changes | `bun run test:changed` |
+| Iteration gate (typecheck:all + changed tests) | `bun run validate:quick` |
+| Dev gate (ui-contract + typecheck:all + **whole suite** + doc-tools) | `bun run validate:dev` |
 | CI gate (dev + i18n parity/sorted/coverage) | `bun run validate:ci` |
+
+> **Corrected 2026-07-30.** `validate:dev` previously ran `test:shared:all` — 3 of the repository's
+> 703 test files (0.4%). The whole suite existed (`scripts/test-all.sh`, already correctly using
+> `--isolate` plus a per-process pass for `*.isolated.ts`) but was bound only to `bun run test` and
+> was in no gate. Separately, `typecheck:all` could not pass at all: `packages/ui/tsconfig.json`
+> declared `rootDir: ./src` while its `paths` resolved `@craft-agent/core` into `../core/src`,
+> making every such import a TS6059 error — in a package that is never built by tsc (its
+> `main`/`types`/`exports` all point at raw `src/`). Both are fixed; all 13 workspaces typecheck
+> clean. Bun is pinned to `1.3.14` via `packageManager`/`engines` and in CI, because `--isolate`
+> and `--changed` require 1.3.13+.
 | Launch real app (dev) | `bun run electron:dev` |
 | Build + start | `bun run electron:start` |
 

@@ -299,8 +299,9 @@ export interface SystemPromptOptions {
  * System prompt preset types for different agent contexts.
  * - 'default': Full Craft Agent system prompt
  * - 'mini': Focused prompt for quick configuration edits
+ * - 'framework': Compact, tool-driven prompt for multi-provider Pi sessions
  */
-export type SystemPromptPreset = 'default' | 'mini';
+export type SystemPromptPreset = 'default' | 'mini' | 'framework';
 
 /**
  * Get a focused system prompt for mini agents (quick edit tasks).
@@ -329,6 +330,28 @@ ${workspaceContext}
 ## Available Tools
 Use Read, Edit, Write tools for file operations.
 Use config_validate to verify changes match the expected schema.
+`;
+}
+
+/**
+ * Compact provider-neutral prompt for the Pi adapter.
+ *
+ * Tool schemas, current session state, active sources, selected skills, project
+ * context, and permission enforcement are supplied by their owning modules.
+ * Repeating those manuals here wastes context and makes the harness harder for
+ * different model families to follow.
+ */
+export function getFrameworkSystemPrompt(backendName = 'Fleet model adapter'): string {
+  return `You are Fleet, a general-purpose desktop agent powered through ${backendName}.
+
+Work from the user's request and the capabilities actually supplied to this session.
+- Use tools when they materially advance the task; never invent unavailable tools.
+- Treat the tool permission path and current session state as authoritative.
+- Load a skill, source guide, project instruction, or detailed reference only when the task requires it.
+- Keep project-specific facts in the provided project context instead of guessing.
+- Make reversible in-scope progress autonomously; ask only when a missing decision would materially change the outcome.
+- Be concise about routine work and explicit about results, errors, and remaining limitations.
+- Do not add unrelated features, hidden policy, or provider-specific behavior.
 `;
 }
 
@@ -378,7 +401,9 @@ export function getSystemPrompt(
   // Note: Date/time context is now added to user messages instead of system prompt
   // to enable prompt caching. The system prompt stays static and cacheable.
   // Safe Mode context is also in user messages for the same reason.
-  const basePrompt = getCraftAssistantPrompt(workspaceRootPath, backendName, resolvedIncludeCoAuthoredBy);
+  const basePrompt = preset === 'framework'
+    ? getFrameworkSystemPrompt(backendName)
+    : getCraftAssistantPrompt(workspaceRootPath, backendName, resolvedIncludeCoAuthoredBy);
   const fullPrompt = `${basePrompt}${preferences}${projectBlock}${debugContext}${projectContextFiles}`;
 
   debug('[getSystemPrompt] full prompt length:', fullPrompt.length);
@@ -744,12 +769,13 @@ Co-Authored-By: Craft Agent <agents-noreply@craft.do>
 
 Current mode is in \`<session_state>\`, along with last mode-transition metadata when available (for example: \`modeTransition\`, \`modeChangedBy\`, \`modeChangedAt\`, \`modeVersion\`). \`plansFolderPath\` shows the **exact path** where you can write plan files. \`dataFolderPath\` shows where you can write data files (e.g. \`transform_data\` output). In Explore mode, writes are only allowed to these two folders — writes to any other location will be blocked.
 
-**${PERMISSION_MODE_CONFIG['safe'].displayName} mode:** Read, search, and explore freely. Use \`SubmitPlan\` when ready to implement - the user sees an "Accept Plan" button to transition to execution. 
+**${PERMISSION_MODE_CONFIG['safe'].displayName} mode:** Read, search, and explore freely. Use \`EnterPlan\` when the approach is ambiguous or the change is broad (switches into Plan without pausing). Use \`SubmitPlan\` when the plan markdown is ready — the user sees an "Accept Plan" button to transition to execution.
 Be decisive: when you have enough context, present your approach and ask "Ready for a plan?" or write it directly. This will help the user move forward.
 
 !!Important!! - Before executing a plan you need to present it to the user via SubmitPlan tool.
 When presenting a plan via SubmitPlan the system will interrupt your current run and wait for user confirmation. Expect, and prepare for this.
 Never try to execute a plan without submitting it first - it will fail, especially if user is in ${PERMISSION_MODE_CONFIG['safe'].displayName} mode.
+\`EnterPlan\` does **not** pause the turn — continue investigating, write the plan file, then call SubmitPlan.
 
 **CRITICAL:** You MUST write plan files to the **exact \`plansFolderPath\`** and data files to the **exact \`dataFolderPath\`** from \`<session_state>\`. These folders already exist (created by the system). Writes to any other path (including the parent session folder) will be blocked.
 **Do NOT** write to \`.copilot-config/\`, \`session-state/\`, or any other directory — those paths will be rejected. Use ONLY \`plansFolderPath\` or \`dataFolderPath\`.

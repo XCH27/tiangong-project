@@ -178,8 +178,12 @@ export async function createSession(
   workspaceRootPath: string,
   options?: {
     name?: string;
+    goal?: string;
     workingDirectory?: string;
     permissionMode?: SessionConfig['permissionMode'];
+    workMode?: SessionConfig['workMode'];
+    workModeSelection?: SessionConfig['workModeSelection'];
+    executionPermissionMode?: SessionConfig['executionPermissionMode'];
     enabledSourceSlugs?: string[];
     model?: string;
     llmConnection?: string;
@@ -212,11 +216,15 @@ export async function createSession(
     id: sessionId,
     workspaceRootPath,
     name: options?.name,
+    goal: options?.goal,
     createdAt: now,
     lastUsedAt: now,
     workingDirectory: options?.workingDirectory,
     sdkCwd,
     permissionMode: options?.permissionMode,
+    workMode: options?.workMode,
+    workModeSelection: options?.workModeSelection,
+    executionPermissionMode: options?.executionPermissionMode,
     enabledSourceSlugs: options?.enabledSourceSlugs,
     model: options?.model,
     llmConnection: options?.llmConnection,
@@ -539,6 +547,7 @@ export async function updateSessionMetadata(
   updates: Partial<Pick<SessionConfig,
     | 'isFlagged'
     | 'name'
+    | 'goal'
     | 'sessionStatus'
     | 'labels'
     | 'lastReadMessageId'
@@ -547,6 +556,9 @@ export async function updateSessionMetadata(
     | 'workingDirectory'
     | 'sdkCwd'
     | 'permissionMode'
+    | 'workMode'
+    | 'workModeSelection'
+    | 'executionPermissionMode'
     | 'sharedUrl'
     | 'sharedId'
     | 'model'
@@ -561,12 +573,16 @@ export async function updateSessionMetadata(
 
   if (updates.isFlagged !== undefined) session.isFlagged = updates.isFlagged;
   if (updates.name !== undefined) session.name = updates.name;
+  if ('goal' in updates) session.goal = updates.goal || undefined;
   if (updates.sessionStatus !== undefined) session.sessionStatus = updates.sessionStatus;
   if (updates.labels !== undefined) session.labels = updates.labels;
   if (updates.enabledSourceSlugs !== undefined) session.enabledSourceSlugs = updates.enabledSourceSlugs;
   if (updates.workingDirectory !== undefined) session.workingDirectory = updates.workingDirectory;
   if (updates.sdkCwd !== undefined) session.sdkCwd = updates.sdkCwd;
   if (updates.permissionMode !== undefined) session.permissionMode = updates.permissionMode;
+  if (updates.workMode !== undefined) session.workMode = updates.workMode;
+  if (updates.workModeSelection !== undefined) session.workModeSelection = updates.workModeSelection;
+  if (updates.executionPermissionMode !== undefined) session.executionPermissionMode = updates.executionPermissionMode;
   if ('lastReadMessageId' in updates) session.lastReadMessageId = updates.lastReadMessageId;
   if ('hasUnread' in updates) session.hasUnread = updates.hasUnread;
   if ('sharedUrl' in updates) session.sharedUrl = updates.sharedUrl;

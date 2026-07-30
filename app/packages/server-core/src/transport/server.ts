@@ -117,6 +117,33 @@ export interface WsRpcServerOptions {
 
 const transportLog = createLogger('ws-rpc-server')
 
+/**
+ * Sanitize error messages before sending them to clients. Known filesystem
+ * error codes are replaced with fixed copy to avoid leaking sensitive paths
+ * or internal host information. Other messages pass through unchanged.
+ */
+export function sanitizeErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'ENOENT') return 'File or directory not found'
+    if (code === 'EACCES' || code === 'EPERM') return 'Permission denied'
+    if (code === 'EISDIR') return 'Expected a file but found a directory'
+    if (code === 'ENOTDIR') return 'Expected a directory but found a file'
+    if (code === 'ENOSPC') return 'Insufficient disk space'
+    if (code === 'EROFS') return 'Filesystem is read-only'
+    if (code === 'EBUSY') return 'Resource is busy'
+    if (code === 'EMFILE') return 'Too many open files'
+    if (code === 'ENAMETOOLONG') return 'File name is too long'
+    // Unrecognized filesystem error codes — don't leak the original message
+    // which may contain server paths or internal structure.
+    if (typeof code === 'string' && code.startsWith('E')) {
+      return 'Filesystem error'
+    }
+    return err.message
+  }
+  return String(err)
+}
+
 // ---------------------------------------------------------------------------
 // WsRpcServer
 // ---------------------------------------------------------------------------
@@ -662,13 +689,14 @@ export class WsRpcServer implements RpcServer {
       webContentsId: client.webContentsId,
     }
 
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
     try {
       const result = await Promise.race([
         handler(ctx, ...(args ?? [])),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`)),
-            WsRpcServer.HANDLER_TIMEOUT_MS),
-        ),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`)),
+            WsRpcServer.HANDLER_TIMEOUT_MS)
+        }),
       ])
       const response: MessageEnvelope = {
         id,
@@ -678,10 +706,12 @@ export class WsRpcServer implements RpcServer {
       }
       this.safeSend(client.ws, serializeEnvelope(response))
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = sanitizeErrorMessage(err)
       const rawCode = (err as { code?: unknown } | null)?.code
       const code: ErrorCode = isErrorCode(rawCode) ? rawCode : 'HANDLER_ERROR'
       this.sendResponseError(client.ws, id, channel, code, message)
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId)
     }
   }
 
@@ -708,6 +738,8 @@ export class WsRpcServer implements RpcServer {
         client.ws.ping()
       }
     }, HEARTBEAT_INTERVAL_MS)
+    // Don't keep the Node.js event loop alive solely for heartbeat pings.
+    this.heartbeatTimer.unref?.()
   }
 
   // -------------------------------------------------------------------------

@@ -73,7 +73,12 @@ describe('PiEventAdapter', () => {
       const usageUpdate = messageEvents.find(event => event.type === 'usage_update');
       expect(usageUpdate).toEqual({
         type: 'usage_update',
-        usage: { inputTokens: 1400, contextWindow: 200000 },
+        usage: {
+          inputTokens: 1400,
+          cacheReadTokens: 300,
+          cacheCreationTokens: 100,
+          contextWindow: 200000,
+        },
       });
 
       const complete = collect(adapter.adaptEvent({ type: 'agent_end' } as any))[0];

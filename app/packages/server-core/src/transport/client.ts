@@ -188,6 +188,7 @@ export class WsRpcClient implements RpcClient {
         this.pending.delete(id)
         reject(new Error(`Request timeout: ${channel} (${this.requestTimeout}ms)`))
       }, this.requestTimeout)
+      timeout.unref?.()
 
       this.pending.set(id, { resolve, reject, timeout })
 
@@ -391,6 +392,7 @@ export class WsRpcClient implements RpcClient {
         this.ws?.close()
       }
     }, this.connectTimeout)
+    this.connectTimer.unref?.()
 
     const ws = this.createWebSocket(this.url)
     this.ws = ws
@@ -799,6 +801,7 @@ export class WsRpcClient implements RpcClient {
       this.reconnectTimer = null
       this.connect()
     }, delay)
+    this.reconnectTimer.unref?.()
   }
 
   private scheduleBackoffReset(): void {
@@ -807,6 +810,7 @@ export class WsRpcClient implements RpcClient {
       this.backoffResetTimer = null
       this.reconnectAttempt = 0
     }, 10_000)
+    this.backoffResetTimer.unref?.()
   }
 
   /** Best-effort send that skips closing/closed sockets and swallows send races. */
@@ -834,6 +838,7 @@ export class WsRpcClient implements RpcClient {
         this.trySendEnvelope(this.ws, ack)
       }
     }, SEQUENCE_ACK_INTERVAL_MS)
+    this.ackTimer.unref?.()
   }
 
   private createReadyPromise(): void {

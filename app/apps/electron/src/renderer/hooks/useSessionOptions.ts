@@ -11,6 +11,7 @@
  */
 
 import type { PermissionMode } from '../../shared/types'
+import type { ExecutionPermissionMode, WorkMode, WorkModeSelection } from '@craft-agent/shared/agent/work-mode'
 import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
 
@@ -20,16 +21,29 @@ import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-level
 export interface SessionOptions {
   /** Permission mode ('safe', 'ask', 'allow-all') */
   permissionMode: PermissionMode
+  workMode: WorkMode
+  workModeSelection: WorkModeSelection
+  executionPermissionMode: ExecutionPermissionMode
   /** Monotonic version from backend permission mode state (used to ignore stale events) */
   permissionModeVersion?: number
   /** Session-level thinking level — sticky, persisted. See {@link ThinkingLevel}. */
   thinkingLevel: ThinkingLevel
+  /** Provider low-latency mode; only surfaced when the selected model supports it. */
+  fastMode: boolean
 }
 
-/** Default values for new sessions */
+/**
+ * Defaults for new sessions before server hydrate.
+ * OpenCode: default primary agent is build (= Execute). Manual lock matches
+ * composer agent select. executionPermissionMode is Execute-time approval only.
+ */
 export const defaultSessionOptions: SessionOptions = {
-  permissionMode: 'ask', // Default to ask mode (prompt for permissions)
-  thinkingLevel: DEFAULT_THINKING_LEVEL, // Default to 'medium' level
+  permissionMode: 'ask',
+  workMode: 'execute',
+  workModeSelection: 'auto',
+  executionPermissionMode: 'ask',
+  thinkingLevel: DEFAULT_THINKING_LEVEL,
+  fastMode: false,
 }
 
 /** Type for partial updates to session options */
@@ -46,4 +60,3 @@ export function mergeSessionOptions(
     ...updates,
   }
 }
-

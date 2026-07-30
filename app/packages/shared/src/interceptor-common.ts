@@ -9,7 +9,7 @@
  * - Config reading (richToolDescriptions, extendedPromptCache settings)
  */
 
-import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, appendFileSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, appendFileSync, mkdirSync, statSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -42,8 +42,9 @@ export const LOG_FILE = join(LOG_DIR, 'interceptor.log');
 // Ensure log directory exists at module load
 try {
   if (!existsSync(LOG_DIR)) {
-    mkdirSync(LOG_DIR, { recursive: true });
+    mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
   }
+  chmodSync(LOG_DIR, 0o700);
 } catch {
   // Ignore - logging will silently fail if dir can't be created
 }
@@ -56,8 +57,13 @@ try {
     if (Date.now() - stat.mtimeMs > MAX_LOG_AGE_MS) {
       const prevLog = LOG_FILE + '.prev';
       renameSync(LOG_FILE, prevLog);
+      chmodSync(prevLog, 0o600);
+    } else {
+      chmodSync(LOG_FILE, 0o600);
     }
   }
+  const previousLog = LOG_FILE + '.prev';
+  if (existsSync(previousLog)) chmodSync(previousLog, 0o600);
 } catch {
   // Ignore — rotation is best-effort
 }
@@ -77,7 +83,8 @@ export function debugLog(...args: unknown[]) {
     return String(a);
   }).join(' ')}`;
   try {
-    appendFileSync(LOG_FILE, message + '\n');
+    appendFileSync(LOG_FILE, message + '\n', { encoding: 'utf8', mode: 0o600 });
+    chmodSync(LOG_FILE, 0o600);
   } catch {
     // Silently fail if can't write to log file
   }

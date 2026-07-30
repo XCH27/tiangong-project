@@ -57,7 +57,7 @@ clone_repo() {
     fi
 
     if [ "$name" = "craft-agents-oss" ]; then
-        git clone --depth 1 --branch v0.11.1 --detach "$repo" "$target_dir/$name" || echo "FAIL craft baseline"
+        git clone --depth 1 --branch v0.11.2 --detach "$repo" "$target_dir/$name" || echo "FAIL craft baseline"
         return
     fi
 

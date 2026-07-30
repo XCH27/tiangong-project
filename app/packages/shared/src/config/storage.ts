@@ -22,6 +22,11 @@ import type { PermissionMode } from '../agent/mode-manager.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 import { isValidThinkingLevel, normalizeThinkingLevel } from '../agent/thinking-levels.ts';
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
+import {
+  isExecutionPermissionMode,
+  isWorkModeOption,
+  WORK_MODE_OPTIONS,
+} from '../agent/work-mode.ts';
 import { type ConfigDefaults } from './config-defaults-schema.ts';
 import { isValidThemeFile } from './validators.ts';
 
@@ -128,6 +133,11 @@ const FALLBACK_CONFIG_DEFAULTS: ConfigDefaults = {
   },
   workspaceDefaults: {
     thinkingLevel: 'medium',
+    defaultWorkMode: 'auto',
+    executionPermissionMode: 'ask',
+    // Fixed cycle order for Shift+Tab; no longer user-configured.
+    cyclableWorkModes: [...WORK_MODE_OPTIONS],
+    // Legacy gate default; new sessions project from work mode + executionPermissionMode.
     permissionMode: 'ask',
     cyclablePermissionModes: ['safe', 'ask', 'allow-all'],
     localMcpServers: { enabled: true },
@@ -196,6 +206,20 @@ export function loadConfigDefaults(): ConfigDefaults {
 
   defaults.workspaceDefaults.cyclablePermissionModes =
     normalizedCyclable.length >= 2 ? normalizedCyclable : [...PERMISSION_MODE_ORDER];
+
+  if (!isWorkModeOption(defaults.workspaceDefaults.defaultWorkMode)) {
+    defaults.workspaceDefaults.defaultWorkMode = 'auto';
+  }
+  if (!isExecutionPermissionMode(defaults.workspaceDefaults.executionPermissionMode)) {
+    defaults.workspaceDefaults.executionPermissionMode = 'ask';
+  }
+  const normalizedWorkModes = Array.isArray(defaults.workspaceDefaults.cyclableWorkModes)
+    ? defaults.workspaceDefaults.cyclableWorkModes.filter(isWorkModeOption)
+    : [];
+  defaults.workspaceDefaults.cyclableWorkModes =
+    [...new Set(normalizedWorkModes)].length >= 2
+      ? [...new Set(normalizedWorkModes)]
+      : [...WORK_MODE_OPTIONS];
 
   return defaults;
 }
@@ -926,140 +950,9 @@ function ensureWorkspaceDir(workspaceId: string): string {
 // Re-export types from core for convenience
 export type { StoredAttachment, StoredMessage } from '@craft-agent/core/types';
 
-export interface WorkspaceConversation {
-  messages: StoredMessage[];
-  tokenUsage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    contextTokens: number;
-    costUsd: number;
-    cacheReadTokens?: number;
-    cacheCreationTokens?: number;
-  };
-  savedAt: number;
-}
-
-// Save workspace conversation (messages + token usage)
-export function saveWorkspaceConversation(
-  workspaceId: string,
-  messages: StoredMessage[],
-  tokenUsage: WorkspaceConversation['tokenUsage']
-): void {
-  const dir = ensureWorkspaceDir(workspaceId);
-  const filePath = join(dir, 'conversation.json');
-
-  const conversation: WorkspaceConversation = {
-    messages,
-    tokenUsage,
-    savedAt: Date.now(),
-  };
-
-  try {
-    writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
-  } catch (e) {
-    // Handle cyclic structures or other serialization errors
-    console.error(`[storage] [CYCLIC STRUCTURE] Failed to save workspace conversation:`, e);
-    console.error(`[storage] Message count: ${messages.length}, message types: ${messages.map(m => m.type).join(', ')}`);
-    // Try to save with sanitized messages
-    try {
-      const sanitizedMessages = messages.map((m, i) => {
-        let safeToolInput = m.toolInput;
-        if (m.toolInput) {
-          try {
-            JSON.stringify(m.toolInput);
-          } catch (inputErr) {
-            console.error(`[storage] [CYCLIC STRUCTURE] in message ${i} toolInput (tool: ${m.toolName}), keys: ${Object.keys(m.toolInput).join(', ')}, error: ${inputErr}`);
-            safeToolInput = { error: '[non-serializable input]' };
-          }
-        }
-        return { ...m, toolInput: safeToolInput };
-      });
-      const sanitizedConversation: WorkspaceConversation = {
-        messages: sanitizedMessages,
-        tokenUsage,
-        savedAt: Date.now(),
-      };
-      writeFileSync(filePath, JSON.stringify(sanitizedConversation, null, 2), 'utf-8');
-      console.error(`[storage] Saved sanitized workspace conversation successfully`);
-    } catch (e2) {
-      console.error(`[storage] Failed to save even sanitized workspace conversation:`, e2);
-    }
-  }
-}
-
-// Load workspace conversation
-export function loadWorkspaceConversation(workspaceId: string): WorkspaceConversation | null {
-  const filePath = join(WORKSPACES_DIR, workspaceId, 'conversation.json');
-
-  try {
-    if (!existsSync(filePath)) {
-      return null;
-    }
-    return readJsonFileSync<WorkspaceConversation>(filePath);
-  } catch {
-    return null;
-  }
-}
-
 // Get workspace data directory path
 export function getWorkspaceDataPath(workspaceId: string): string {
   return join(WORKSPACES_DIR, workspaceId);
-}
-
-// Clear workspace conversation
-export function clearWorkspaceConversation(workspaceId: string): void {
-  const filePath = join(WORKSPACES_DIR, workspaceId, 'conversation.json');
-  if (existsSync(filePath)) {
-    writeFileSync(filePath, '{}', 'utf-8');
-  }
-
-  // Also clear any active plan (plans are session-scoped)
-  clearWorkspacePlan(workspaceId);
-}
-
-// ============================================
-// Plan Storage (Session-Scoped)
-// Plans are stored per-workspace and cleared with /clear
-// ============================================
-
-/**
- * Save a plan for a workspace.
- * Plans are session-scoped - they persist during the session but are
- * cleared when the user runs /clear or starts a new session.
- */
-export function saveWorkspacePlan(workspaceId: string, plan: Plan): void {
-  const dir = ensureWorkspaceDir(workspaceId);
-  const filePath = join(dir, 'plan.json');
-  writeFileSync(filePath, JSON.stringify(plan, null, 2), 'utf-8');
-}
-
-/**
- * Load the current plan for a workspace.
- * Returns null if no plan exists.
- */
-export function loadWorkspacePlan(workspaceId: string): Plan | null {
-  const filePath = join(WORKSPACES_DIR, workspaceId, 'plan.json');
-
-  try {
-    if (!existsSync(filePath)) {
-      return null;
-    }
-    return readJsonFileSync<Plan>(filePath);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Clear the plan for a workspace.
- * Called when user runs /clear or cancels a plan.
- */
-export function clearWorkspacePlan(workspaceId: string): void {
-  const filePath = join(WORKSPACES_DIR, workspaceId, 'plan.json');
-  if (existsSync(filePath)) {
-    rmSync(filePath);
-  }
 }
 
 // ============================================
@@ -1755,7 +1648,11 @@ function backfillAllConnectionModels(config: StoredConfig): boolean {
           connection.models = defaultModels;
           changed = true;
         }
-      } else {
+      } else if (mode === 'userDefined3Tier') {
+        // Legacy three-slot configurations are repaired against the bundled
+        // provider catalog during migration. New userSelected sets deliberately
+        // keep unknown IDs: they may have come from a provider catalog newer
+        // than the bundled runtime or from the explicit custom-ID escape hatch.
         const currentIds = normalizeModelIds(connection.models);
         if (providerDefaultModelIds.length > 0) {
           const allowedIds = new Set(providerDefaultModelIds);
@@ -2681,7 +2578,7 @@ export function updateLlmConnection(slug: string, updates: Partial<Omit<LlmConne
   const toModelIds = (models?: Array<{ id: string } | string>): string[] =>
     (models ?? []).map(m => typeof m === 'string' ? m : m.id);
 
-  connections[index] = {
+  const updated: LlmConnection = {
     // Preserve required fields from existing
     slug: existing.slug,
     name: updates.name ?? existing.name,
@@ -2693,6 +2590,7 @@ export function updateLlmConnection(slug: string, updates: Partial<Omit<LlmConne
     baseUrl: updates.baseUrl !== undefined ? updates.baseUrl : existing.baseUrl,
     models: updates.models !== undefined ? updates.models : existing.models,
     defaultModel: updates.defaultModel !== undefined ? updates.defaultModel : existing.defaultModel,
+    utilityModel: updates.utilityModel !== undefined ? updates.utilityModel : existing.utilityModel,
     modelSelectionMode: updates.modelSelectionMode !== undefined ? updates.modelSelectionMode : existing.modelSelectionMode,
     // Pi auth provider
     piAuthProvider: updates.piAuthProvider !== undefined ? updates.piAuthProvider : existing.piAuthProvider,
@@ -2710,12 +2608,21 @@ export function updateLlmConnection(slug: string, updates: Partial<Omit<LlmConne
     lastUsedAt: updates.lastUsedAt !== undefined ? updates.lastUsedAt : existing.lastUsedAt,
   };
 
-  const updated = connections[index]!;
+  // A SAVE request may carry the complete connection even when the user did
+  // not change anything. Avoid rewriting config.json in that case: the
+  // ConfigWatcher treats every write as a real change and fans it out to all
+  // clients and live sessions.
+  if (JSON.stringify(existing) === JSON.stringify(updated)) {
+    return true;
+  }
+
+  connections[index] = updated;
   if (updated.providerType === 'pi') {
     const beforeModelIds = toModelIds(existing.models);
     const afterModelIds = toModelIds(updated.models);
     const changed =
       existing.defaultModel !== updated.defaultModel ||
+      existing.utilityModel !== updated.utilityModel ||
       existing.modelSelectionMode !== updated.modelSelectionMode ||
       !modelSetEquals(beforeModelIds, afterModelIds);
 

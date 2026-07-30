@@ -14,84 +14,32 @@ import { atomFamily } from 'jotai-family'
 import type { Session, Message } from '../../shared/types'
 
 /**
- * Session metadata for list display (lightweight, no messages)
- * Used by SessionList to avoid re-rendering on message changes
+ * Session metadata for list display (lightweight, no messages).
+ *
+ * SINGLE AUTHORITY (NON-NEGOTIABLES §2): this type is *derived* from the wire
+ * `Session` DTO, never hand-copied. A hand-maintained duplicate silently drifts
+ * — before this was derived, ten fields the server sends (`workMode`,
+ * `workModeSelection`, `executionPermissionMode`, `goal`, `thinkingLevel`,
+ * `currentStatus`, `sessionFolderPath`, `supportsBranching`, `workspaceName`,
+ * `messages`) were missing here, so features that shipped end-to-end on the
+ * backend were dead in the renderer while `tsc` stayed green.
+ *
+ * Deriving makes that class of bug a compile error instead of a silent drop:
+ * add a field to `Session` and it is available here automatically; remove one
+ * and every reader breaks loudly.
+ *
+ * Three deliberate relaxations, each because a list row can legitimately exist
+ * before the server has stamped the field: `lastMessageAt` and `isProcessing`
+ * (not yet scheduled), and `workspaceName` (a denormalized display convenience
+ * — `workspaceId` is the identity, and rows built locally resolve the name from
+ * the workspace store instead).
  */
-export interface SessionMeta {
-  id: string
-  name?: string
-  /** Preview of first user message (for title fallback) */
-  preview?: string
-  workspaceId: string
-  lastMessageAt?: number
-  isProcessing?: boolean
-  isFlagged?: boolean
-  lastReadMessageId?: string
-  workingDirectory?: string
-  enabledSourceSlugs?: string[]
-  /** Shared viewer URL (if shared via viewer) */
-  sharedUrl?: string
-  /** Shared session ID in viewer (for revoke) */
-  sharedId?: string
-  /** ID of the last final (non-intermediate) assistant message - for unread detection */
-  lastFinalMessageId?: string
-  /**
-   * Explicit unread flag - single source of truth for NEW badge.
-   * Set to true when assistant message completes while user is NOT viewing.
-   * Set to false when user views the session (and not processing).
-   */
-  hasUnread?: boolean
-  /** Labels for filtering (additive tags, many-per-session) */
-  labels?: string[]
-  /** Permission mode ('safe', 'ask', 'allow-all') — used by view expressions */
-  permissionMode?: string
-  /** Session status for filtering */
-  sessionStatus?: string
-  /** Role/type of the last message (for badge display without loading messages) */
-  lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
-  /** Whether an async operation is ongoing (sharing, updating share, revoking, title regeneration) */
-  isAsyncOperationOngoing?: boolean
-  /** @deprecated Use isAsyncOperationOngoing instead */
-  isRegeneratingTitle?: boolean
-  /** Model override for this session */
-  model?: string
-  /** LLM connection slug for this session */
-  llmConnection?: string
-  /** Token usage stats (from JSONL header, available without loading messages) */
-  tokenUsage?: {
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-    costUsd: number
-    contextTokens: number
+export type SessionMeta =
+  Omit<Session, 'messages' | 'lastMessageAt' | 'isProcessing' | 'workspaceName'> & {
+    lastMessageAt?: number
+    isProcessing?: boolean
+    workspaceName?: string
   }
-  /** When the session was created (ms timestamp) */
-  createdAt?: number
-  /** Total number of messages in this session */
-  messageCount?: number
-  /** When true, session is hidden from session list (e.g., mini edit sessions) */
-  hidden?: boolean
-  /** Whether this session is archived */
-  isArchived?: boolean
-  /** Timestamp when session was archived (for retention policy) */
-  archivedAt?: number
-  /** Workspace-scoped project id this session is bound to (undefined = unbound) */
-  projectId?: string
-  /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task) */
-  parentSessionId?: string
-  /** Kanban board column id ('todo' | 'in-progress' | 'done'); independent of sessionStatus */
-  kanbanColumn?: string
-  /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes) */
-  taskSlug?: string
-  /** Tasks Conductor: id of the run that spawned this child session (Conductor-owned children only) */
-  taskRunId?: string
-  /** Tasks Conductor: id of the DAG node this child session executes (Conductor-owned children only) */
-  taskNodeId?: string
-  /** Tasks Conductor: total DAG node count (orchestrator only) — stable board progress denominator while children spawn lazily */
-  taskNodeCount?: number
-  /** Tasks Conductor: a generate-time draft orchestrator, hidden from the board until adopted by createTask. */
-  taskDraft?: boolean
-}
 
 /**
  * Find the last final (non-intermediate) assistant or plan message ID
@@ -113,26 +61,22 @@ function findLastFinalMessageId(messages: Message[]): string | undefined {
 export function extractSessionMeta(session: Session): SessionMeta {
   const messages = session.messages || []
 
-  // Destructure fields that don't exist on SessionMeta or need overrides
-  const {
-    messages: _msgs, sessionFolderPath: _sf, supportsBranching: _sb,
-    workspaceName: _wn, thinkingLevel: _tl, currentStatus: _cs,
-    isAsyncOperationOngoing, isRegeneratingTitle,
-    messageCount, lastFinalMessageId: sessionLastFinal,
-    ...sessionFields
-  } = session
+  // Drop only `messages` — the one genuinely heavy field this projection exists
+  // to shed. Everything else rides through untouched, so a new `Session` field
+  // reaches the renderer without a second edit here. No `as SessionMeta` cast:
+  // the return type is checked, which is what makes drift a build failure.
+  const { messages: _messages, ...rest } = session
 
   return {
-    ...sessionFields,
-    lastFinalMessageId: sessionLastFinal ?? findLastFinalMessageId(messages),
+    ...rest,
+    lastFinalMessageId: session.lastFinalMessageId ?? findLastFinalMessageId(messages),
     // Math.max, not ??: streaming appends grow `messages` without touching the
     // session's `messageCount` field, so a defined-but-stale count (stamped at
     // load/creation) must never shadow the live length. Meta-only sessions
     // (empty `messages`) keep the server/header count.
-    messageCount: Math.max(messageCount ?? 0, messages.length),
-    isAsyncOperationOngoing: isAsyncOperationOngoing ?? isRegeneratingTitle,
-    isRegeneratingTitle,
-  } as SessionMeta
+    messageCount: Math.max(session.messageCount ?? 0, messages.length),
+    isAsyncOperationOngoing: session.isAsyncOperationOngoing ?? session.isRegeneratingTitle,
+  }
 }
 
 /**
@@ -168,12 +112,6 @@ export const loadedSessionsAtom = atom<Set<string>>(new Set<string>())
  * Module-level map since it tracks in-flight promises, not React state.
  */
 const sessionLoadingPromises = new Map<string, Promise<Session | null>>()
-
-/**
- * Currently active session ID - the session displayed in the main content area
- * This replaces the tab-based session selection
- */
-export const activeSessionIdAtom = atom<string | null>(null)
 
 // NOTE: sessionsAtom REMOVED to fix memory leak
 // The sessions array with messages was being retained by Jotai's internal state.
@@ -245,53 +183,6 @@ export const replaceLoadedSessionAtom = atom(
       const newLoadedSessions = new Set(loadedSessions)
       newLoadedSessions.add(session.id)
       set(loadedSessionsAtom, newLoadedSessions)
-    }
-  }
-)
-
-/**
- * Action atom: append message to session (for streaming)
- * Optimized to only update the specific session
- * Note: Does NOT update lastMessageAt - caller must handle timestamp updates
- * to avoid session list jumping on intermediate/tool messages
- */
-export const appendMessageAtom = atom(
-  null,
-  (get, set, sessionId: string, message: Message) => {
-    const sessionAtom = sessionAtomFamily(sessionId)
-    const session = get(sessionAtom)
-    if (session) {
-      set(sessionAtom, {
-        ...session,
-        messages: [...session.messages, message],
-        // Don't update lastMessageAt here - only user messages and final responses should update it
-      })
-    }
-  }
-)
-
-/**
- * Action atom: update streaming content for a session
- * For text_delta events - appends to the last streaming message
- */
-export const updateStreamingContentAtom = atom(
-  null,
-  (get, set, sessionId: string, content: string, turnId?: string) => {
-    const sessionAtom = sessionAtomFamily(sessionId)
-    const session = get(sessionAtom)
-    if (!session) return
-
-    const messages = [...session.messages]
-    const lastMsg = messages[messages.length - 1]
-
-    // Append to existing streaming message
-    if (lastMsg?.role === 'assistant' && lastMsg.isStreaming &&
-        (!turnId || lastMsg.turnId === turnId)) {
-      messages[messages.length - 1] = {
-        ...lastMsg,
-        content: lastMsg.content + content,
-      }
-      set(sessionAtom, { ...session, messages })
     }
   }
 )
@@ -477,79 +368,6 @@ export const removeSessionAtom = atom(
     // Clean up additional atom families to prevent memory leaks
     // These store per-session UI state that should be garbage collected
     backgroundTasksAtomFamily.remove(sessionId)
-  }
-)
-
-/**
- * Action atom: sync React state to per-session atoms
- *
- * This is the key to the hybrid approach:
- * - React state (sessions array) remains the source of truth
- * - This atom syncs changes to per-session atoms automatically
- * - Components using useSession(id) get isolated updates
- * - Jotai's referential equality prevents unnecessary re-renders
- *
- * IMPORTANT: During streaming, the atom is the source of truth.
- * Streaming events (text_delta, tool_start, tool_result) update atoms directly
- * and bypass React state for performance. We must NOT overwrite atoms for
- * sessions that are processing, or we lose streaming data (tool calls, text).
- * Once a "handoff" event (complete, error, etc.) occurs, React state catches up
- * and sync works normally again.
- */
-export const syncSessionsToAtomsAtom = atom(
-  null,
-  (get, set, sessions: Session[]) => {
-    const loadedSessions = get(loadedSessionsAtom)
-
-    // Update each session atom
-    for (const session of sessions) {
-      const sessionAtom = sessionAtomFamily(session.id)
-      const atomSession = get(sessionAtom)
-
-      // CRITICAL: If the atom's session is processing, it has streaming updates
-      // that React state doesn't know about yet. Don't overwrite - atom is
-      // source of truth during streaming. The handoff event will reconcile.
-      if (atomSession?.isProcessing) {
-        continue
-      }
-
-      // CRITICAL: If session messages were lazy-loaded, atom has full messages
-      // but React state may have empty array. Only skip if React would lose messages.
-      // Allow sync when React has MORE messages (e.g., user just sent a message).
-      if (loadedSessions.has(session.id) && atomSession) {
-        const atomMessageCount = atomSession.messages?.length ?? 0
-        const reactMessageCount = session.messages?.length ?? 0
-        // Skip sync only if React has fewer messages (would lose data)
-        if (reactMessageCount < atomMessageCount) {
-          continue
-        }
-      }
-
-      // Only update if the session object is different (referential check)
-      // This prevents unnecessary re-renders when the session hasn't changed
-      if (atomSession !== session) {
-        set(sessionAtom, session)
-      }
-    }
-
-    // Update metadata map for list display
-    // Note: We still update metadata from React state, which is fine because
-    // metadata doesn't include messages - the streaming content we're protecting
-    const metaMap = new Map<string, SessionMeta>()
-    for (const session of sessions) {
-      const meta = extractSessionMeta(session)
-      // Preserve isProcessing from atom if atom is processing
-      // React state may have stale isProcessing: false during streaming
-      const atomSession = get(sessionAtomFamily(session.id))
-      if (atomSession?.isProcessing) {
-        meta.isProcessing = true
-      }
-      metaMap.set(session.id, meta)
-    }
-    set(sessionMetaMapAtom, metaMap)
-
-    // Update ordered IDs (preserve order from React state)
-    set(sessionIdsAtom, sessions.map(s => s.id))
   }
 )
 

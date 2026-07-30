@@ -60,6 +60,10 @@ interface DataTableProps<TData, TValue> {
   getSubRows?: (row: TData) => TData[] | undefined
   /** Initial expanded state (default: all expanded when getSubRows is provided) */
   defaultExpanded?: boolean
+  /** Optional class on each body row (e.g. selection highlight) */
+  getRowClassName?: (row: TData) => string | undefined
+  /** Optional whole-row click (expand chevrons should stopPropagation) */
+  onRowClick?: (row: TData) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -77,6 +81,8 @@ export function DataTable<TData, TValue>({
   pageSize = 50,
   getSubRows,
   defaultExpanded = true,
+  getRowClassName,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -201,6 +207,11 @@ export function DataTable<TData, TValue>({
             <TableRow
               key={row.id}
               data-state={row.getIsSelected() && 'selected'}
+              className={cn(
+                getRowClassName?.(row.original),
+                onRowClick && 'cursor-pointer',
+              )}
+              onClick={onRowClick ? () => onRowClick(row.original) : undefined}
             >
               {row.getVisibleCells().map((cell) => {
                 const meta = cell.column.columnDef.meta as

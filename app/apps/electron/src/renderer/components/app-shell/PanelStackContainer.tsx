@@ -35,6 +35,7 @@ import { CompactPanelTransition } from './CompactPanelTransition'
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
+  PANEL_SIDEBAR_GAP,
   PANEL_STACK_VERTICAL_OVERFLOW,
   RADIUS_EDGE,
   RADIUS_INNER,
@@ -122,13 +123,14 @@ export function PanelStackContainer({
       <div
         ref={scrollRef}
         data-mobile-menu-root="true"
+        data-compact="true"
         className="flex-1 min-w-0 relative panel-scroll @container/shell"
         style={{
           paddingBlock: PANEL_STACK_VERTICAL_OVERFLOW,
           marginBlock: -PANEL_STACK_VERTICAL_OVERFLOW,
-          marginBottom: -6,
-          paddingBottom: 6,
-          '--compact-panel-stack-top': `${PANEL_STACK_VERTICAL_OVERFLOW + COMPACT_PANEL_TOP_GAP}px`,
+          marginBottom: -PANEL_EDGE_INSET,
+          paddingBottom: PANEL_EDGE_INSET,
+          '--compact-panel-stack-top': `calc(var(--topbar-height) + ${PANEL_STACK_VERTICAL_OVERFLOW + COMPACT_PANEL_TOP_GAP}px)`,
         } as React.CSSProperties}
       >
         {/* Navigator slot — full width, slides left to -30% when detail focused. */}
@@ -176,7 +178,9 @@ export function PanelStackContainer({
   }
 
   // === DESKTOP BRANCH ===
-  // Same flex-row layout as before; behavior is unchanged.
+  // AppShell supplies the window-edge insets, including the small optical top
+  // compensation for the downward-biased panel shadow. This stack only adds
+  // shadow room via padding + negative margin.
   return (
     <div
       ref={scrollRef}
@@ -187,8 +191,8 @@ export function PanelStackContainer({
         overflowY: 'hidden',
         paddingBlock: PANEL_STACK_VERTICAL_OVERFLOW,
         marginBlock: -PANEL_STACK_VERTICAL_OVERFLOW,
-        marginBottom: -6,
-        paddingBottom: 6,
+        marginBottom: -PANEL_EDGE_INSET,
+        paddingBottom: PANEL_EDGE_INSET,
         paddingRight: 8,
         marginRight: -8,
       }}
@@ -206,7 +210,7 @@ export function PanelStackContainer({
           initial={false}
           animate={{
             width: hasSidebar ? sidebarWidth : 0,
-            marginRight: hasSidebar ? 0 : -PANEL_GAP,
+            marginRight: hasSidebar ? PANEL_SIDEBAR_GAP - PANEL_GAP : -PANEL_GAP,
             opacity: hasSidebar ? 1 : 0,
           }}
           transition={transition}

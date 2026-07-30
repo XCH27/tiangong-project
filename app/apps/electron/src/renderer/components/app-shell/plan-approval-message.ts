@@ -1,4 +1,4 @@
-import i18n from 'i18next'
+import type { TFunction } from 'i18next'
 import { coerceInputText } from '@/lib/input-text'
 
 export interface BuildPlanApprovalMessageOptions {
@@ -11,13 +11,16 @@ function normalizeDraftInput(input?: string): string {
   return coerceInputText(input).trim()
 }
 
-export function buildPlanApprovalMessage(options: BuildPlanApprovalMessageOptions = {}): string {
+export function buildPlanApprovalMessage(
+  options: BuildPlanApprovalMessageOptions = {},
+  t: TFunction,
+): string {
   const draftInput = normalizeDraftInput(options.draftInput)
 
-  const sections: string[] = [i18n.t('plan.approved')]
+  const sections: string[] = [t('plan.approved')]
 
   if (draftInput.length > 0) {
-    sections.push(['---', `**${i18n.t('plan.additionalUserContext')}**`, draftInput].join('\n\n'))
+    sections.push(['---', `**${t('plan.additionalUserContext')}**`, draftInput].join('\n\n'))
   }
 
   return sections.join('\n\n')

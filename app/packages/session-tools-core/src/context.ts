@@ -56,6 +56,15 @@ export interface SessionToolCallbacks {
    * Codex: sends __CALLBACK__ message to stderr
    */
   onAuthRequest(request: AuthRequest): void;
+
+  /**
+   * Called when the agent requests the Plan work phase mid-turn.
+   * Does not pause execution — agent continues and later uses SubmitPlan.
+   * Return `{ activated: false }` when already in Plan (Grok-style idempotent activate).
+   * Claude: calls onEnterPlan on the agent → SessionManager.setSessionWorkMode(plan)
+   * Codex/Pi: sends __CALLBACK__ message to stderr when available
+   */
+  onEnterPlan?(reason?: string): { activated: boolean } | void;
 }
 
 // ============================================================
@@ -313,6 +322,9 @@ export interface SessionToolContext {
   /** Set labels on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionLabels?(sessionId: string | undefined, labels: string[]): void | Promise<void>;
 
+  /** Set or clear the durable goal on a session. Defaults to current session. */
+  setSessionGoal?(sessionId: string | undefined, goal: string | null): void | Promise<void>;
+
   /** Set status on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionStatus?(sessionId: string | undefined, status: string): void | Promise<void>;
 
@@ -444,6 +456,7 @@ export interface ResolvedStatusResult {
 export interface SessionInfo {
   id: string;
   name: string;
+  goal?: string;
   labels: string[];
   status: string;
   permissionMode: string;

@@ -182,6 +182,13 @@ function createCodexContext(config: SessionConfig): SessionToolContext {
         planPath,
       });
     },
+    onEnterPlan: (reason?: string) => {
+      sendCallback({
+        __callback__: 'enter_plan',
+        sessionId,
+        reason,
+      });
+    },
     onAuthRequest: (request: AuthRequest) => {
       sendCallback({
         __callback__: 'auth_request',
@@ -520,7 +527,7 @@ async function main() {
     }
   );
 
-  // R2-C1: keep the Craft-operated default pending owner decision; "off" skips the upstream.
+  // R2-C1: docs tools are optional and connect only to an explicitly configured endpoint.
   const docsMcpUrl = getDocsMcpUrl();
   if (docsMcpUrl) {
     await connectDocsUpstream(docsMcpUrl);

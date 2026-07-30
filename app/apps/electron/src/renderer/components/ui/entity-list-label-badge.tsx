@@ -15,9 +15,17 @@ interface EntityListLabelBadgeProps {
   rawValue?: string
   sessionLabels: string[]
   onLabelsChange?: (updatedLabels: string[]) => void
+  /** Visual-only projection for rows whose parent already owns activation. */
+  readOnly?: boolean
 }
 
-export function EntityListLabelBadge({ label, rawValue, sessionLabels, onLabelsChange }: EntityListLabelBadgeProps) {
+export function EntityListLabelBadge({
+  label,
+  rawValue,
+  sessionLabels,
+  onLabelsChange,
+  readOnly = false,
+}: EntityListLabelBadgeProps) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation()
   const { isDark } = useTheme()
@@ -25,6 +33,51 @@ export function EntityListLabelBadge({ label, rawValue, sessionLabels, onLabelsC
   const displayValue = rawValue ? formatDisplayValue(rawValue, label.valueType) : undefined
   const isLink = label.valueType === 'link' && !!rawValue
   const displayName = getLocalizedLabelName(t, label)
+
+  const badge = (
+    <div
+      role={readOnly ? undefined : "button"}
+      tabIndex={readOnly ? undefined : 0}
+      title={displayValue ? `${displayName} · ${displayValue}` : displayName}
+      className={cn(
+        "shrink-0 h-[18px] max-w-[120px] px-1.5 text-[10px] font-medium rounded flex items-center whitespace-nowrap gap-0.5 overflow-hidden",
+        !readOnly && "cursor-pointer",
+      )}
+      onMouseDown={readOnly ? undefined : (e) => { e.stopPropagation(); e.preventDefault() }}
+      style={color ? {
+        backgroundColor: `color-mix(in srgb, ${color} 6%, transparent)`,
+        color: `color-mix(in srgb, ${color} 75%, var(--foreground))`,
+      } : {
+        backgroundColor: 'rgba(var(--foreground-rgb), 0.05)',
+        color: 'rgba(var(--foreground-rgb), 0.8)',
+      }}
+    >
+      <span className="truncate min-w-0">{displayName}</span>
+      {displayValue ? (
+        <>
+          <span className="shrink-0" style={{ opacity: 0.4 }}>·</span>
+          <span
+            className={cn(
+              'font-normal truncate min-w-0',
+              isLink && !readOnly && 'cursor-pointer hover:underline underline-offset-2',
+            )}
+            style={{ opacity: isLink ? 0.9 : 0.75 }}
+            title={isLink ? rawValue : undefined}
+            onClick={isLink && !readOnly ? (e) => { e.stopPropagation(); openLabelLink(rawValue!) } : undefined}
+          >{displayValue}</span>
+        </>
+      ) : (
+        label.valueType && (
+          <>
+            <span className="shrink-0" style={{ opacity: 0.4 }}>·</span>
+            <LabelValueTypeIcon valueType={label.valueType} size={10} />
+          </>
+        )
+      )}
+    </div>
+  )
+
+  if (readOnly) return badge
 
   return (
     <LabelValuePopover
@@ -48,40 +101,7 @@ export function EntityListLabelBadge({ label, rawValue, sessionLabels, onLabelsC
         onLabelsChange?.(updated)
       }}
     >
-      <div
-        role="button"
-        tabIndex={0}
-        title={displayValue ? `${displayName} · ${displayValue}` : displayName}
-        className="shrink-0 h-[18px] max-w-[120px] px-1.5 text-[10px] font-medium rounded flex items-center whitespace-nowrap gap-0.5 cursor-pointer overflow-hidden"
-        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault() }}
-        style={color ? {
-          backgroundColor: `color-mix(in srgb, ${color} 6%, transparent)`,
-          color: `color-mix(in srgb, ${color} 75%, var(--foreground))`,
-        } : {
-          backgroundColor: 'rgba(var(--foreground-rgb), 0.05)',
-          color: 'rgba(var(--foreground-rgb), 0.8)',
-        }}
-      >
-        <span className="truncate min-w-0">{displayName}</span>
-        {displayValue ? (
-          <>
-            <span className="shrink-0" style={{ opacity: 0.4 }}>·</span>
-            <span
-              className={cn('font-normal truncate min-w-0', isLink && 'cursor-pointer hover:underline underline-offset-2')}
-              style={{ opacity: isLink ? 0.9 : 0.75 }}
-              title={isLink ? rawValue : undefined}
-              onClick={isLink ? (e) => { e.stopPropagation(); openLabelLink(rawValue!) } : undefined}
-            >{displayValue}</span>
-          </>
-        ) : (
-          label.valueType && (
-            <>
-              <span className="shrink-0" style={{ opacity: 0.4 }}>·</span>
-              <LabelValueTypeIcon valueType={label.valueType} size={10} />
-            </>
-          )
-        )}
-      </div>
+      {badge}
     </LabelValuePopover>
   )
 }

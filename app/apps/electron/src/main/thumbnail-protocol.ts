@@ -141,8 +141,19 @@ export function registerThumbnailHandler(): void {
       const filePath = decodeURIComponent(url.pathname.slice(1))
 
       // Basic validation: must be an absolute path (works on all platforms)
-      if (!filePath || !isAbsolute(filePath)) {
+      if (!filePath || !isAbsolute(filePath) || filePath.includes('..')) {
         return new Response(null, { status: 400 })
+      }
+
+      // Reject sensitive paths (defense-in-depth against thumbnail-based file enumeration)
+      const SENSITIVE_PATTERNS = [
+        /\.ssh[\\/]/, /\.gnupg[\\/]/, /\.aws[\\/]/, /\.config[\\/]gcloud/,
+        /\.env$/, /\.env\./, /credentials$/, /\.pem$/, /\.key$/,
+        /id_rsa/, /id_ecdsa/, /id_ed25519/,
+      ]
+      const normalized = filePath.replace(/\\/g, '/')
+      if (SENSITIVE_PATTERNS.some((p) => p.test(normalized))) {
+        return new Response(null, { status: 403 })
       }
 
       // Check file extension is previewable

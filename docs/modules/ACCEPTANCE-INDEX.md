@@ -36,7 +36,7 @@ with a concrete code path, evidence command and status. They are intentionally n
 | EXEC-09-A | Remote disconnect and grant revocation prevent further execution with honest status | transport test |
 | EXEC-10-A | An automation invokes governed actions and records schedule/run outcome in existing history | scheduler smoke |
 | EXEC-11-A | Channel failure/reconnect is isolated from local core and scoped to a workspace | adapter test |
-| EXEC-12-A | Share/invite/revoke changes explicit grants and records public side effects before commit | owner checkpoint |
+| EXEC-12-A | Invite/collaborative grant changes explicit grants and records public side effects before commit | owner checkpoint |
 | EXEC-13-A | Git/branch/PR actions are attributed, permissioned, reviewable and cannot replace the Task/Session authority | Git fixture + permission trace |
 | EXEC-14-A | One Craft-owned effective prompt/tool projection is versioned, scoped and attributable; profile changes cannot silently weaken policy or create a second harness | prompt/profile fixture + policy regression |
 | INTEL-01-A | Context projection lists included/excluded evidence and can be compared before sending | projection fixture |

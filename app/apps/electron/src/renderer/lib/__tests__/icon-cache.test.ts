@@ -9,6 +9,7 @@
  * - All consumers must handle null gracefully without crashing
  */
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { svgToThemedDataUrl, themeSvgContent } from '../icon-cache'
 
 // ============================================================================
 // Mock Setup
@@ -103,212 +104,104 @@ describe('icon-cache null handling', () => {
 })
 
 // ============================================================================
-// Pure Function Tests for Null Guards
+// Icon cache map operations
 // ============================================================================
 
-describe('null guard patterns', () => {
-  /**
-   * Test the null guard pattern used in icon-cache.ts:
-   *
-   * ```ts
-   * const result = await window.electronAPI.readWorkspaceImage(...)
-   * if (!result) {
-   *   return null
-   * }
-   * // Continue processing...
-   * ```
-   */
-
-  it('null check pattern correctly handles null', () => {
-    const result: string | null = null
-
-    // This is the pattern used in the code
-    if (!result) {
-      expect(true).toBe(true) // We should reach here
-      return
-    }
-
-    // Should not reach here
-    expect(true).toBe(false)
+describe('icon cache map operations', () => {
+  it('clearIconCaches empties the iconCache map', async () => {
+    const { iconCache, clearIconCaches } = await import('../icon-cache')
+    iconCache.set('test-key', 'data:image/svg+xml;base64,abc')
+    expect(iconCache.size).toBeGreaterThan(0)
+    clearIconCaches()
+    expect(iconCache.size).toBe(0)
   })
 
-  it('null check pattern correctly handles empty string', () => {
-    const result: string | null = ''
-
-    // Empty string is falsy, so this should also return early
-    // This is the correct behavior - empty content is invalid
-    if (!result) {
-      expect(true).toBe(true)
-      return
-    }
-
-    expect(true).toBe(false)
+  it('sourceIconCache provides get/set/delete/clear', async () => {
+    const { sourceIconCache, clearSourceIconCaches } = await import('../icon-cache')
+    sourceIconCache.set('source-1', 'icon-data')
+    expect(sourceIconCache.get('source-1')).toBe('icon-data')
+    sourceIconCache.delete('source-1')
+    expect(sourceIconCache.get('source-1')).toBeUndefined()
+    clearSourceIconCaches()
   })
 
-  it('null check pattern allows valid content through', () => {
-    const result: string | null = '<svg></svg>'
-
-    if (!result) {
-      expect(true).toBe(false) // Should not reach here
-      return
-    }
-
-    // Should reach here with valid content
-    expect(result).toBe('<svg></svg>')
-  })
-
-  /**
-   * Test the continue pattern used in WorkspaceSettingsPage.tsx:
-   *
-   * ```ts
-   * for (const ext of ICON_EXTENSIONS) {
-   *   const iconData = await window.electronAPI.readWorkspaceImage(...)
-   *   if (!iconData) {
-   *     continue  // Try next extension
-   *   }
-   *   // Use iconData...
-   * }
-   * ```
-   */
-
-  it('continue pattern skips null values and tries next', () => {
-    const extensions = ['.svg', '.png', '.jpg']
-    const mockResults: Record<string, string | null> = {
-      '.svg': null,
-      '.png': 'data:image/png;base64,...',
-      '.jpg': null,
-    }
-
-    let foundIcon: string | null = null
-
-    for (const ext of extensions) {
-      const result = mockResults[ext]
-      if (!result) {
-        continue // Try next extension
-      }
-      foundIcon = result
-      break
-    }
-
-    expect(foundIcon).toBe('data:image/png;base64,...')
-  })
-
-  it('continue pattern returns null when all extensions fail', () => {
-    const extensions = ['.svg', '.png', '.jpg']
-    const mockResults: Record<string, string | null> = {
-      '.svg': null,
-      '.png': null,
-      '.jpg': null,
-    }
-
-    let foundIcon: string | null = null
-
-    for (const ext of extensions) {
-      const result = mockResults[ext]
-      if (!result) {
-        continue
-      }
-      foundIcon = result
-      break
-    }
-
-    expect(foundIcon).toBeNull()
+  it('skillIconCache provides get/set/delete/clear', async () => {
+    const { skillIconCache, clearSkillIconCaches } = await import('../icon-cache')
+    skillIconCache.set('skill-1', 'icon-data')
+    expect(skillIconCache.get('skill-1')).toBe('icon-data')
+    skillIconCache.delete('skill-1')
+    expect(skillIconCache.get('skill-1')).toBeUndefined()
+    clearSkillIconCaches()
   })
 })
 
 // ============================================================================
-// SVG Processing with Null Safety
+// SVG Processing — real function tests
 // ============================================================================
 
-describe('SVG processing null safety', () => {
-  /**
-   * Test that SVG operations handle null correctly.
-   * The bug was: svgToThemedDataUrl(null) would crash.
-   */
-
-  it('should not call SVG processing on null content', () => {
-    const content: string | null = null
-
-    // This is the safe pattern
-    if (!content) {
-      // Don't process, return null
-      expect(true).toBe(true)
-      return
-    }
-
-    // SVG processing would happen here
-    // This should not be reached with null content
-    expect(true).toBe(false)
+describe('themeSvgContent', () => {
+  it('replaces currentColor with the provided foreground color', () => {
+    const svg = '<svg><path fill="currentColor" d="M0 0"/></svg>'
+    const result = themeSvgContent(svg, '#ff0000')
+    expect(result).toContain('#ff0000')
+    expect(result).not.toContain('currentColor')
   })
 
-  it('should process valid SVG content', () => {
-    const content: string | null = '<svg><circle/></svg>'
+  it('adds fill attribute to SVG root when missing', () => {
+    const svg = '<svg><circle/></svg>'
+    const result = themeSvgContent(svg, '#abc')
+    expect(result).toMatch(/<svg[^>]*fill="#abc"/)
+  })
 
-    if (!content) {
-      expect(true).toBe(false) // Should not reach
-      return
-    }
+  it('does not override an existing fill attribute', () => {
+    const svg = '<svg fill="none"><circle/></svg>'
+    const result = themeSvgContent(svg, '#abc')
+    expect(result).toContain('fill="none"')
+    expect(result).not.toContain('fill="#abc"')
+  })
+})
 
-    // Safe to process
-    expect(content.includes('<svg')).toBe(true)
+describe('svgToThemedDataUrl', () => {
+  it('produces a base64 data URL from SVG content', () => {
+    const svg = '<svg><circle/></svg>'
+    const result = svgToThemedDataUrl(svg, '#fff')
+    expect(result).toMatch(/^data:image\/svg\+xml;base64,/)
+  })
+
+  it('decodes back to themed SVG content', () => {
+    const svg = '<svg><path fill="currentColor"/></svg>'
+    const result = svgToThemedDataUrl(svg, '#00ff00')
+    const base64Part = result.replace(/^data:image\/svg\+xml;base64,/, '')
+    const decoded = atob(base64Part)
+    expect(decoded).toContain('#00ff00')
+    expect(decoded).not.toContain('currentColor')
   })
 })
 
 // ============================================================================
-// String Method Null Safety
+// SVG content edge cases
 // ============================================================================
 
-describe('string method null safety', () => {
-  /**
-   * Test that string methods are not called on null.
-   * The bug was: null.includes(), null.startsWith() would crash.
-   */
-
-  it('.includes() on null throws TypeError', () => {
-    const content: string | null = null
-
-    expect(() => {
-      // This is what was crashing - intentionally unsafe cast for testing
-      ;(content as unknown as string).includes('currentColor')
-    }).toThrow(TypeError)
+describe('themeSvgContent edge cases', () => {
+  it('handles SVG with multiple currentColor references', () => {
+    const svg = '<svg><path fill="currentColor"/><circle stroke="currentColor"/></svg>'
+    const result = themeSvgContent(svg, '#abc')
+    expect(result).not.toContain('currentColor')
+    expect(result.match(/#abc/g)?.length).toBe(2)
   })
 
-  it('.startsWith() on null throws TypeError', () => {
-    const content: string | null = null
-
-    expect(() => {
-      // Intentionally unsafe cast for testing
-      ;(content as unknown as string).startsWith('data:')
-    }).toThrow(TypeError)
+  it('handles case-insensitive currentColor', () => {
+    const svg = '<svg><path fill="CURRENTCOLOR"/></svg>'
+    const result = themeSvgContent(svg, '#abc')
+    expect(result).not.toMatch(/currentColor/i)
+    expect(result).toContain('#abc')
   })
 
-  it('null check prevents .includes() crash', () => {
-    // Test with a function that may return null to prevent TypeScript narrowing
-    const getContent = (): string | null => null
-    const content = getContent()
-
-    // Safe pattern - null check prevents crash
-    if (content) {
-      const hasColor = content.includes('currentColor')
-      expect(hasColor).toBeDefined()
-    } else {
-      // Null was handled safely
-      expect(true).toBe(true)
-    }
-  })
-
-  it('null check prevents .startsWith() crash', () => {
-    // Test with a function that may return null to prevent TypeScript narrowing
-    const getContent = (): string | null => null
-    const content = getContent()
-
-    // Safe pattern - null check prevents crash
-    if (content) {
-      const isDataUrl = content.startsWith('data:')
-      expect(isDataUrl).toBeDefined()
-    } else {
-      // Null was handled safely
-      expect(true).toBe(true)
-    }
+  it('preserves SVG structure when theming', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0"/></svg>'
+    const result = themeSvgContent(svg, '#abc')
+    expect(result).toContain('xmlns="http://www.w3.org/2000/svg"')
+    expect(result).toContain('viewBox="0 0 24 24"')
+    expect(result).toContain('d="M0 0"')
   })
 })

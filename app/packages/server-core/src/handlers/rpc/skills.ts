@@ -4,6 +4,7 @@ import { RPC_CHANNELS, type SkillFile } from '@craft-agent/shared/protocol'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import { assertCallerWorkspaceBound } from '../utils'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.skills.GET,
@@ -15,7 +16,8 @@ export const HANDLED_CHANNELS = [
 
 export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): void {
   // Get all skills for a workspace (and optionally project-level skills from workingDirectory)
-  server.handle(RPC_CHANNELS.skills.GET, async (_ctx, workspaceId: string, workingDirectory?: string) => {
+  server.handle(RPC_CHANNELS.skills.GET, async (ctx, workspaceId: string, workingDirectory?: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     deps.platform.logger?.info(`SKILLS_GET: Loading skills for workspace: ${workspaceId}${workingDirectory ? `, workingDirectory: ${workingDirectory}` : ''}`)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) {
@@ -34,7 +36,8 @@ export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): vo
   })
 
   // Get files in a skill directory
-  server.handle(RPC_CHANNELS.skills.GET_FILES, async (_ctx, workspaceId: string, skillSlug: string) => {
+  server.handle(RPC_CHANNELS.skills.GET_FILES, async (ctx, workspaceId: string, skillSlug: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) {
       deps.platform.logger?.error(`SKILLS_GET_FILES: Workspace not found: ${workspaceId}`)
@@ -83,7 +86,8 @@ export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): vo
   })
 
   // Delete a skill from a workspace
-  server.handle(RPC_CHANNELS.skills.DELETE, async (_ctx, workspaceId: string, skillSlug: string) => {
+  server.handle(RPC_CHANNELS.skills.DELETE, async (ctx, workspaceId: string, skillSlug: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
 
@@ -93,7 +97,8 @@ export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): vo
   })
 
   // Open skill SKILL.md in editor
-  server.handle(RPC_CHANNELS.skills.OPEN_EDITOR, async (_ctx, workspaceId: string, skillSlug: string) => {
+  server.handle(RPC_CHANNELS.skills.OPEN_EDITOR, async (ctx, workspaceId: string, skillSlug: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
     if (workspace.remoteServer) throw new Error('Open in editor is not available for remote workspaces')
@@ -106,7 +111,8 @@ export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): vo
   })
 
   // Open skill folder in Finder/Explorer
-  server.handle(RPC_CHANNELS.skills.OPEN_FINDER, async (_ctx, workspaceId: string, skillSlug: string) => {
+  server.handle(RPC_CHANNELS.skills.OPEN_FINDER, async (ctx, workspaceId: string, skillSlug: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
     if (workspace.remoteServer) throw new Error('Show in Finder is not available for remote workspaces')

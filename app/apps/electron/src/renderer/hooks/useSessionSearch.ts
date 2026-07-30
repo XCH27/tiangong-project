@@ -7,6 +7,7 @@ import type { LabelConfig } from "@craft-agent/shared/labels"
 import { fuzzyScore } from "@craft-agent/shared/search"
 import { getSessionTitle, getSessionStatus } from "@/utils/session"
 import type { SessionMeta } from "@/atoms/sessions"
+import { resolveBulkReadSessions } from "@/lib/session-list-read"
 import type { ViewConfig } from "@craft-agent/shared/views"
 import type { SessionFilter } from "@/context/NavigationContext"
 
@@ -74,6 +75,8 @@ export interface UseSessionSearchResult {
   // Filtered + grouped results
   matchingFilterItems: SessionMeta[]
   otherResultItems: SessionMeta[]
+  /** Complete canonical list affected by list-wide actions (not render pagination). */
+  bulkActionItems: readonly SessionMeta[]
   exceededSearchLimit: boolean
 
   // Render-ready outputs
@@ -497,6 +500,12 @@ export function useSessionSearch({
     return { matchingFilterItems: matching, otherResultItems: others, exceededSearchLimit: exceeded }
   }, [searchFilteredItems, currentFilter, evaluateViews, isSearchMode, statusFilter, labelFilterMap, labelConfigs, searchQuery])
 
+  const bulkActionItems = useMemo(() => resolveBulkReadSessions({
+    isSearchMode,
+    preSearchSessions: searchFilteredItems,
+    searchResultSessions: [...matchingFilterItems, ...otherResultItems],
+  }), [isSearchMode, searchFilteredItems, matchingFilterItems, otherResultItems])
+
   // --- Pagination ---
 
   useEffect(() => {
@@ -558,6 +567,7 @@ export function useSessionSearch({
     contentSearchResults,
     matchingFilterItems,
     otherResultItems,
+    bulkActionItems,
     exceededSearchLimit,
     flatItems,
     dateGroups,

@@ -2,16 +2,19 @@ import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import { assertCallerWorkspaceBound } from '../utils'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.labels.LIST,
   RPC_CHANNELS.labels.CREATE,
+  RPC_CHANNELS.labels.UPDATE,
   RPC_CHANNELS.labels.DELETE,
 ] as const
 
-export function registerLabelsHandlers(server: RpcServer, _deps: HandlerDeps): void {
+export function registerLabelsHandlers(server: RpcServer, deps: HandlerDeps): void {
   // List all labels for a workspace
-  server.handle(RPC_CHANNELS.labels.LIST, async (_ctx, workspaceId: string) => {
+  server.handle(RPC_CHANNELS.labels.LIST, async (ctx, workspaceId: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
 
@@ -20,7 +23,8 @@ export function registerLabelsHandlers(server: RpcServer, _deps: HandlerDeps): v
   })
 
   // Create a new label in a workspace
-  server.handle(RPC_CHANNELS.labels.CREATE, async (_ctx, workspaceId: string, input: import('@craft-agent/shared/labels').CreateLabelInput) => {
+  server.handle(RPC_CHANNELS.labels.CREATE, async (ctx, workspaceId: string, input: import('@craft-agent/shared/labels').CreateLabelInput) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
 
@@ -30,8 +34,26 @@ export function registerLabelsHandlers(server: RpcServer, _deps: HandlerDeps): v
     return label
   })
 
+  // Update label fields (name/color/valueType/kind/systemPromptPreset) without moving hierarchy
+  server.handle(RPC_CHANNELS.labels.UPDATE, async (
+    ctx,
+    workspaceId: string,
+    labelId: string,
+    input: import('@craft-agent/shared/labels').UpdateLabelInput,
+  ) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
+    const workspace = getWorkspaceByNameOrId(workspaceId)
+    if (!workspace) throw new Error('Workspace not found')
+
+    const { updateLabel } = await import('@craft-agent/shared/labels/crud')
+    const label = updateLabel(workspace.rootPath, labelId, input)
+    pushTyped(server, RPC_CHANNELS.labels.CHANGED, { to: 'workspace', workspaceId }, workspaceId)
+    return label
+  })
+
   // Delete a label (and descendants) from a workspace
-  server.handle(RPC_CHANNELS.labels.DELETE, async (_ctx, workspaceId: string, labelId: string) => {
+  server.handle(RPC_CHANNELS.labels.DELETE, async (ctx, workspaceId: string, labelId: string) => {
+    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error('Workspace not found')
 

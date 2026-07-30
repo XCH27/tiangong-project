@@ -82,9 +82,10 @@ action class through permissions, budgets, and evidence.
    validation; agents own judgment inside locked contracts ([`13-ORCHESTRATION.md`](13-ORCHESTRATION.md)).
 4. **Projections never own state.** Canvas cards, Board columns, digests are views; commands route
    through governed actions (E5).
-5. **Craft-first, selective upstream intake.** Fleet uses Craft v0.10.5 as its product/interaction
-   baseline and admits later fixes or backend mechanisms only through the current app authorities —
-   never a second app (P2), never a second authority (03 §1).
+5. **Craft-first, best-of admission.** Fleet reuses Craft authorities in the current `app/` tree.
+   Compare pinned Craft trees and later evidence; **admit the better interaction, fix, or backend
+   mechanism** that still lands on one authority — never a second app (P2), never a second authority
+   (03 §1), never wholesale tree merge.
 6. **One user-visible boundary: Project = Workspace** (P6).
 
 ### 4.1 Design causality: every mechanism must name the problem it solves
@@ -105,7 +106,7 @@ without this causal chain is incomplete.
 | Long conversations and context compaction bury the Goal, repeat completed research, or pass raw transcripts between Agents | Project a bounded current contract into `TaskBrief`; return criterion outcomes and evidence/artifact references in `RunReport`; recover from authoritative Session events rather than transcript memory | Stable, small projections keep the active objective salient while source evidence remains recoverable without flooding every model turn | C3/C6/C11; [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) §2; [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md) | `not implemented` as the full delegation contract |
 | Multiple Agents duplicate work, overwrite shared paths, recursively review each other, or let a cancelled/replaced run report into the current task | One criterion owner, one writer per occupied path, bounded delegation, shared team budgets, and an attempt/dispatch identity on every command, heartbeat and result; cancellation or contract revision fences out the old attempt | Deterministic ownership, input serialization and stale-result rejection remain kernel state; Agents contribute bounded judgment instead of inventing a second coordination system through conversation | C3/C5/C6/C11; [`07-PLAYBOOK.md`](07-PLAYBOOK.md); [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) §2 | `not implemented` as a complete multi-Agent control loop |
 | API models expose exact token/cost events, subscription lanes may expose only quotas, and external CLIs may hide internal tool calls; treating them as identical makes budgets and cancellation dishonest | One runtime-adapter contract normalizes declared capability, lifecycle, usage confidence, failure, approval, cancellation, and stop semantics; model-independent limits cover elapsed time, state changes, tool calls, and retries | The execution contract remains provider-neutral while each lane reports what it actually knows; opaque pricing never becomes permission for an unbounded run | C2/C11, E3/E12; [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) §2; [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md) | `not implemented` across all CLI/API/subscription lanes |
-| Frontend Agents infer responsive behavior or visual language from a screenshot, then gradually replace Craft's structure with local guesses | Clean Craft v0.10.5 interaction baseline, explicit visual anchor + intentional delta, canonical components/tokens, page-state matrix, and rendered comparison before visual acceptance | The Agent must explain every deviation from a stable source and verify the rendered result across named states instead of treating one screenshot or passing test as design truth | G6; [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md); [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) | `not implemented` as a fully enforced visual gate |
+| Frontend Agents infer responsive behavior or visual language from a screenshot, then gradually replace Craft's structure with local guesses | Explicit visual anchor from the best admitted Craft surface + intentional delta, canonical components/tokens, page-state matrix, and rendered comparison before visual acceptance | The Agent must explain every deviation from the chosen anchor and verify the rendered result across named states instead of treating one screenshot or passing test as design truth | G6; [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md); [`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) | `not implemented` as a fully enforced visual gate |
 
 The anti-drift response deliberately combines **phase control** and **loop detection**. A targeted
 fix normally follows reproduce → localize → one coherent change → targeted verification; a declared
@@ -148,8 +149,8 @@ the original Craft Agents interface instead of inventing surfaces from scratch. 
 are preserved once in [`design-library/OWNER-VOICE.md`](design-library/OWNER-VOICE.md) as OV-002
 and OV-003.
 
-Operationally: the visual and interaction baseline is clean Craft v0.10.5; default UI work restores,
-simplifies or optimizes an existing surface, while v0.11 UI remains comparison evidence only. A new
+Operationally: default UI work restores, simplifies, or optimizes an existing surface, **preferring
+the better Craft candidate** (any pin) that fits Fleet's one-boundary product shape. A new
 surface must justify itself (P5) and lives inside the shell. The primary create action is **New
 Task**, global and per Project, but Sessions remain the R1 work-list authority (P10); the user meets
 exactly one boundary concept — Project = folder (P6). **Easy to
@@ -191,8 +192,7 @@ hard (D5, F2). Dependencies: traceable artifact flow and the shared execution pa
 ## 8. The honest line
 
 Everything above §3 is **target value — hypotheses to be earned, not facts already true.** What is
-verified today is a Craft v0.11.1-derived implementation tree under active convergence toward the
-v0.10.5 product/interaction baseline; the current
+verified today is a Craft v0.11.x-derived implementation tree under active R1 boundary work; the current
 per-capability truth lives in [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md),
 [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md), and [`05-ROADMAP.md`](05-ROADMAP.md). This document
 set exists precisely because a previous version let the vision outrun the code. State the final

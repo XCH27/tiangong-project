@@ -110,6 +110,9 @@ function createMockWindow(opts?: { width?: number; height?: number; minWidth?: n
       if (!listeners[event]) listeners[event] = []
       listeners[event].push(wrapped)
     },
+    removeListener: (event: string, cb: Function) => {
+      listeners[event] = (listeners[event] || []).filter(fn => fn !== cb)
+    },
     _emit: (event: string, ...args: any[]) => {
       for (const cb of listeners[event] || []) cb(...args)
     },
@@ -128,6 +131,7 @@ function createMockWindow(opts?: { width?: number; height?: number; minWidth?: n
     }),
     setBrowserView: mock((_view: any) => {}),
     addBrowserView: mock((_view: any) => {}),
+    removeBrowserView: mock((_view: any) => {}),
     setTopBrowserView: mock((_view: any) => {}),
     getContentSize: mock(() => [contentWidth, contentHeight]),
     setContentSize: mock((width: number, height: number) => {
@@ -185,6 +189,9 @@ mock.module('electron', () => ({
       },
       on: mock((_event: string, _cb: any) => {}),
     })),
+  },
+  webContents: {
+    fromId: mock(() => null),
   },
 }))
 
@@ -327,6 +334,51 @@ describe('BrowserPaneManager', () => {
     manager.createInstance('d1')
     manager.destroyInstance('d1')
     expect(manager.listInstances()).toHaveLength(0)
+  })
+
+  it('reparents the page view into the workbench host and restores it on detach', () => {
+    manager.createInstance('embedded-1', { show: false })
+    const instance = (manager as any).instances.get('embedded-1')
+    const host = createMockWindow({ width: 640, height: 720 })
+
+    manager.embedInstance('embedded-1', host as any, {
+      x: 800.4,
+      y: 40.7,
+      width: 399.8,
+      height: 679.2,
+    })
+
+    expect(instance.window.removeBrowserView).toHaveBeenCalledWith(instance.pageView)
+    expect(host.addBrowserView).toHaveBeenCalledWith(instance.pageView)
+    expect(instance.pageView.setBounds).toHaveBeenLastCalledWith({
+      x: 800,
+      y: 41,
+      width: 400,
+      height: 679,
+    })
+
+    manager.detachInstance('embedded-1')
+
+    expect(host.removeBrowserView).toHaveBeenCalledWith(instance.pageView)
+    expect(instance.window.addBrowserView).toHaveBeenCalledWith(instance.pageView)
+  })
+
+  it('restores the page view to its own window when the workbench host closes', () => {
+    manager.createInstance('embedded-host-close', { show: false })
+    const instance = (manager as any).instances.get('embedded-host-close')
+    const host = createMockWindow({ width: 640, height: 720 })
+
+    manager.embedInstance('embedded-host-close', host as any, {
+      x: 0, y: 0, width: 400, height: 600,
+    })
+    expect(instance.embeddedHost).toBe(host)
+
+    // The renderer's unmount cleanup never runs on a forced window destroy.
+    host.isDestroyed = mock(() => true)
+    host._emit('closed')
+
+    expect(instance.embeddedHost).toBeNull()
+    expect(instance.window.addBrowserView).toHaveBeenCalledWith(instance.pageView)
   })
 
   it('destroys instance via toolbar destroy IPC handler', async () => {

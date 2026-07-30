@@ -100,8 +100,8 @@ const RULES: PrerequisiteRule[] = [
   // and skipped entirely when the built-in browser tool is disabled.
   {
     toolMatcher: (toolName: string) =>
-      getBrowserToolEnabled() &&
-      (toolName === 'browser_tool' || toolName === 'mcp__session__browser_tool'),
+      (toolName === 'browser_tool' || toolName === 'mcp__session__browser_tool') &&
+      getBrowserToolEnabled(),
     resolveRequiredPath: () => {
       return existsSync(BROWSER_TOOLS_DOC_PATH) ? BROWSER_TOOLS_DOC_PATH : null;
     },

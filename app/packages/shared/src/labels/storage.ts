@@ -203,4 +203,3 @@ export function isValidLabelIdFormat(labelId: string): boolean {
   return SLUG_PATTERN.test(labelId);
 }
 
-

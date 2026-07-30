@@ -48,6 +48,8 @@ export function createLabel(
     name: input.name,
     color: input.color,
     ...(input.valueType && { valueType: input.valueType }),
+    ...(input.kind === 'identity' && { kind: 'identity' as const }),
+    ...(input.systemPromptPreset?.trim() && { systemPromptPreset: input.systemPromptPreset.trim() }),
   };
 
   if (input.parentId) {
@@ -169,9 +171,24 @@ export function updateLabel(
   }
 
   if (updates.name !== undefined) label.name = updates.name;
-  if (updates.color !== undefined) label.color = updates.color;
+  if (updates.color !== undefined) {
+    if (updates.color === null) delete label.color;
+    else label.color = updates.color;
+  }
   // valueType: set to new value, or delete to revert to boolean label
-  if (updates.valueType !== undefined) label.valueType = updates.valueType || undefined;
+  if (updates.valueType !== undefined) {
+    if (!updates.valueType) delete label.valueType;
+    else label.valueType = updates.valueType;
+  }
+  if (updates.kind !== undefined) {
+    if (updates.kind === 'functional') delete label.kind;
+    else label.kind = updates.kind;
+  }
+  if (updates.systemPromptPreset !== undefined) {
+    const text = updates.systemPromptPreset.trim();
+    if (text) label.systemPromptPreset = text;
+    else delete label.systemPromptPreset;
+  }
 
   saveLabelConfig(workspaceRootPath, config);
   return label;

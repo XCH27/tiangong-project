@@ -11,8 +11,9 @@
 
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-const scriptDir = dirname(new URL(import.meta.url).pathname);
+const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
 
 function getPackageVersion(filePath: string): string {
@@ -63,4 +64,3 @@ function main(): void {
 }
 
 main();
-

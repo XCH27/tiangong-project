@@ -9,6 +9,7 @@ import type { SettingsMenuItem } from '../../../shared/menu-schema'
 export interface AppMenuProps {
   onNewChat: () => void
   onNewWindow?: () => void
+  onOpenGlobalSearch: () => void
   onOpenSettings: () => void
   /** Navigate to a specific settings subpage */
   onOpenSettingsSubpage: (subpage: SettingsMenuItem['id']) => void

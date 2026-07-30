@@ -21,12 +21,33 @@ import type { ModelDefinition } from './models.ts';
 // PI MODEL DISCOVERY
 // ============================================
 
+const FLEET_REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+const PI_STANDARD_REASONING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high'] as const;
+
 /**
  * Convert a Pi SDK Model to our ModelDefinition format.
  */
-function piModelToDefinition(m: Model<Api>): ModelDefinition {
+export function piModelToDefinition(m: Model<Api>): ModelDefinition {
   const lastPart = m.name.split(/[\s-]/).pop() ?? m.name;
   const shortName = m.name.length > 20 ? lastPart : m.name;
+  const explicitlyRejectsReasoningEffort = !!m.compat
+    && 'supportsReasoningEffort' in m.compat
+    && m.compat.supportsReasoningEffort === false;
+  const supportsReasoningEffort = m.reasoning && !explicitlyRejectsReasoningEffort;
+  const supportedReasoningEfforts = supportsReasoningEffort
+    ? FLEET_REASONING_LEVELS.filter(level => {
+        const mappedValue = m.thinkingLevelMap?.[level];
+        // Pi's contract supplies provider defaults for standard levels through
+        // `high` when a map key is absent. `xhigh` and `max` are opt-in and
+        // require a non-null explicit entry.
+        if (PI_STANDARD_REASONING_LEVELS.includes(
+          level as (typeof PI_STANDARD_REASONING_LEVELS)[number],
+        )) {
+          return mappedValue !== null;
+        }
+        return mappedValue !== undefined && mappedValue !== null;
+      })
+    : [];
 
   return {
     id: `pi/${m.id}`,
@@ -35,7 +56,11 @@ function piModelToDefinition(m: Model<Api>): ModelDefinition {
     description: `${m.provider} model via Craft Agents Backend`,
     provider: 'pi',
     contextWindow: m.contextWindow,
-    supportsThinking: m.reasoning,
+    // `reasoning` means that the model reasons. It does not mean the provider
+    // accepts a request-level effort control. xAI, for example, exposes
+    // separate reasoning/non-reasoning model IDs and rejects reasoning_effort.
+    supportsThinking: supportedReasoningEfforts.length > 0,
+    supportedReasoningEfforts,
   };
 }
 

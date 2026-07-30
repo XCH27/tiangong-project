@@ -340,6 +340,15 @@ export interface TurnCardProps {
   isLastResponse?: boolean
   /** Session folder path for stripping from file paths in tool display */
   sessionFolderPath?: string
+  /** Model and elapsed time metadata shown below the response. */
+  modelName?: string
+  durationMs?: number
+  workMode?: 'explore' | 'plan' | 'execute'
+  fileChangeSummary?: {
+    fileCount: number
+    additions: number
+    deletions: number
+  }
   /** Display mode: 'detailed' shows all info, 'informative' hides MCP/API names and params */
   displayMode?: 'informative' | 'detailed'
   /** Animate response appearance (for playground demos) */
@@ -1481,7 +1490,7 @@ function clearAnnotationMarks(root: HTMLElement): void {
   annotatedInlineCodeNodes.forEach((codeNode) => {
     codeNode.removeAttribute('data-ca-annotation-inline-code')
     codeNode.style.backgroundColor = ''
-    codeNode.style.boxShadow = ''
+    codeNode.classList.remove('shadow-none')
   })
 
   const marks = root.querySelectorAll('span[data-ca-annotation-id]')
@@ -1556,7 +1565,7 @@ function applyTextHighlightRange(
     if (inlineCodeParent) {
       inlineCodeParent.setAttribute('data-ca-annotation-inline-code', 'true')
       inlineCodeParent.style.backgroundColor = annotationColorToCss(annotation.style?.color)
-      inlineCodeParent.style.boxShadow = 'none'
+      inlineCodeParent.classList.add('shadow-none')
     }
 
     const mark = document.createElement('span')
@@ -2749,6 +2758,34 @@ function TodoList({ todos }: TodoListProps) {
 // Main Component
 // ============================================================================
 
+function formatTurnDuration(ms: number, language?: string): string {
+  if (!Number.isFinite(ms) || ms < 0) return '--'
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (language?.startsWith('zh')) {
+    return [
+      hours > 0 ? `${hours}小时` : null,
+      minutes > 0 ? `${minutes}分` : null,
+      `${seconds}秒`,
+    ].filter(Boolean).join(' ')
+  }
+  if (language?.startsWith('ja')) {
+    return [
+      hours > 0 ? `${hours}時間` : null,
+      minutes > 0 ? `${minutes}分` : null,
+      `${seconds}秒`,
+    ].filter(Boolean).join(' ')
+  }
+
+  return [
+    hours > 0 ? `${hours}h` : null,
+    minutes > 0 ? `${minutes}m` : null,
+    `${seconds}s`,
+  ].filter(Boolean).join(' ')
+}
+
 /**
  * TurnCard - Email-like display for one assistant turn
  *
@@ -2784,6 +2821,10 @@ export const TurnCard = React.memo(function TurnCard({
   onAcceptPlanWithCompact,
   isLastResponse,
   sessionFolderPath,
+  modelName,
+  durationMs,
+  workMode,
+  fileChangeSummary,
   displayMode = 'detailed',
   animateResponse = false,
   compactMode = false,
@@ -2797,6 +2838,7 @@ export const TurnCard = React.memo(function TurnCard({
   openAnnotationRequest,
   annotationInteractionMode = 'interactive',
 }: TurnCardProps) {
+  const { t } = useTranslation()
   // Derive the turn phase from props using the state machine.
   // This provides a single source of truth for lifecycle state,
   // replacing the old ad-hoc boolean combinations.
@@ -2953,7 +2995,7 @@ export const TurnCard = React.memo(function TurnCard({
   const isThinking = shouldShowThinkingIndicator(turnPhase, isBuffering)
 
   return (
-    <div className="space-y-1">
+    <div className="group/turn space-y-1">
       {/* Activity Section - excluded from search highlighting (matches ripgrep behavior) */}
       {hasActivities && (
         <div className="group select-none" data-search-exclude="true">
@@ -3232,6 +3274,34 @@ export const TurnCard = React.memo(function TurnCard({
           />
         </div>
       )}
+      {(workMode || modelName || durationMs !== undefined || fileChangeSummary?.fileCount) && isComplete && (
+        <div
+          className={cn(
+            "mt-1 flex min-h-6 flex-wrap items-center gap-x-2 gap-y-0.5 px-2 text-[11px] text-muted-foreground/60",
+            "opacity-0",
+            "transition-opacity duration-100",
+            "group-hover/turn:opacity-100 group-hover/turn:text-muted-foreground",
+            "group-focus-within/turn:opacity-100 group-focus-within/turn:text-muted-foreground",
+          )}
+          data-touch-reveal="true"
+        >
+          <span className="tabular-nums">
+            {[
+              workMode ? t(`mode.work.${workMode}`) : null,
+              modelName || null,
+              durationMs !== undefined ? formatTurnDuration(durationMs, i18n.resolvedLanguage) : null,
+            ].filter(Boolean).join(' · ')}
+          </span>
+          {!!fileChangeSummary?.fileCount && (
+            <>
+              <span aria-hidden>·</span>
+              <span>{t('composer.changes.files', { count: fileChangeSummary.fileCount })}</span>
+              <span className="text-success">+{fileChangeSummary.additions}</span>
+              <span className="text-destructive">−{fileChangeSummary.deletions}</span>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }, (prev, next) => {
@@ -3256,6 +3326,13 @@ export const TurnCard = React.memo(function TurnCard({
 
   // Re-render if compactMode changed (affects ResponseCard footer rendering)
   if (prev.compactMode !== next.compactMode) return false
+
+  // Request metadata is persisted independently from the Session's current
+  // selectors, so historical rows must update when it is hydrated.
+  if (prev.modelName !== next.modelName) return false
+  if (prev.durationMs !== next.durationMs) return false
+  if (prev.workMode !== next.workMode) return false
+  if (prev.fileChangeSummary !== next.fileChangeSummary) return false
 
   // Re-render if annotation interaction mode changed (interactive vs tooltip-only)
   if (prev.annotationInteractionMode !== next.annotationInteractionMode) return false

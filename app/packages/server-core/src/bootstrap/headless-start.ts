@@ -1,6 +1,7 @@
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs'
 import { uptime as osUptime } from 'node:os'
 import { join } from 'node:path'
+import { timingSafeEqual } from 'node:crypto'
 import { OAuthFlowStore } from '@craft-agent/shared/auth'
 import { ensureConfigDir, loadStoredConfig, saveConfig } from '@craft-agent/shared/config'
 import { CONFIG_DIR } from '@craft-agent/shared/config/paths'
@@ -85,7 +86,7 @@ const MIN_TOKEN_LENGTH = 16
  * Reject tokens that are trivially weak. Runs at startup before the server
  * accepts connections so a bad token never reaches the wire.
  */
-function validateTokenEntropy(token: string): { ok: boolean; warning?: string; error?: string } {
+export function validateTokenEntropy(token: string): { ok: boolean; warning?: string; error?: string } {
   if (token.length < MIN_TOKEN_LENGTH) {
     return { ok: false, error: `Token too short (${token.length} chars, minimum ${MIN_TOKEN_LENGTH}). Use a cryptographically random value.` }
   }
@@ -299,7 +300,12 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
     host: rpcHost,
     port: rpcPort,
     requireAuth: true,
-    validateToken: async (t) => t === serverToken,
+    validateToken: async (t) => {
+      const a = Buffer.from(String(t))
+      const b = Buffer.from(serverToken)
+      if (a.length !== b.length) return false
+      return timingSafeEqual(a, b)
+    },
     validateSessionCookie: options.validateSessionCookie,
     serverId: options.serverId ?? 'headless',
     serverVersion: options.serverVersion,

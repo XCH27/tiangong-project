@@ -34,6 +34,7 @@ import type {
   ChatOptions,
   PermissionCallback,
   PlanCallback,
+  EnterPlanCallback,
   AuthCallback,
   SourceChangeCallback,
   SourceActivationCallback,
@@ -253,6 +254,7 @@ export abstract class BaseAgent implements AgentBackend {
   // ============================================================
   onPermissionRequest: PermissionCallback | null = null;
   onPlanSubmitted: PlanCallback | null = null;
+  onEnterPlan: EnterPlanCallback | null = null;
   onAuthRequest: AuthCallback | null = null;
   onSourceChange: SourceChangeCallback | null = null;
   onSourcesListChange: ((sources: LoadedSource[]) => void) | null = null;
@@ -425,6 +427,8 @@ export abstract class BaseAgent implements AgentBackend {
    * CALLBACKS FIRED:
    * - SubmitPlan → this.onPlanSubmitted(planPath)
    *   → Electron reads plan file, shows plan card, calls interruptForHandoff(PlanSubmitted)
+   * - EnterPlan → this.onEnterPlan(reason)
+   *   → SessionManager projects workMode=plan (no abort; agent continues)
    * - Auth tools → this.onAuthRequest(authRequest)
    *   → Electron shows auth dialog, calls interruptForHandoff(AuthRequest)
    */
@@ -441,6 +445,15 @@ export abstract class BaseAgent implements AgentBackend {
     if (toolName === 'SubmitPlan' && args.planPath) {
       this.debug(`SubmitPlan completed: ${args.planPath}`);
       this.onPlanSubmitted?.(args.planPath as string);
+      return;
+    }
+
+    // EnterPlan — switch work phase to Plan without pausing the turn.
+    // (In-process handlers already invoke onEnterPlan; this path is for MCP completion.)
+    if (toolName === 'EnterPlan') {
+      const reason = typeof args.reason === 'string' ? args.reason : undefined;
+      this.debug(`EnterPlan completed${reason ? `: ${reason}` : ''}`);
+      this.onEnterPlan?.(reason);
       return;
     }
 

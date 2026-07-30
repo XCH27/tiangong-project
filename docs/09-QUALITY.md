@@ -35,7 +35,14 @@ external side effects, and broad interactive journey audits still require explic
 5. **Non-interactive smoke:** when the slice could plausibly break boot or a core surface, verify
    the app starts and logs no new fatal errors (dev launch, capture output, quit). No clicking.
 6. **Full gates:** `validate:dev` at the integration point when shared packages/contracts changed;
-   `validate:ci` belongs to CI unless a local CI-equivalent check is explicitly needed.
+   `validate:ci` belongs to CI unless a local CI-equivalent check is explicitly needed. Use
+   `validate:quick` (typecheck + `bun test --changed`) while iterating — it is a convenience, not a
+   substitute for the integration-point gate.
+
+> **A gate only counts what it runs.** Until 2026-07-30 `validate:dev` ran 3 of 703 test files and
+> `typecheck:all` could not pass at all, so "gates green" was reported for months against a check
+> that measured almost nothing. When you add a test area, wire it into a gate in the same slice; a
+> suite that no gate invokes is documentation, not verification.
 
 Do not run the full suite for a bounded change. Do not micro-test every edit — validate after a
 coherent slice.
@@ -76,6 +83,7 @@ preview-gated page's *design* (layout, states, wording) while its status remains
 | Session tools | `packages/session-tools-core/src/**/__tests__/` | `bun test` in package |
 | Renderer components | `app/apps/electron/src/renderer/**/__tests__/` | `bun test <path>` |
 | i18n parity/coverage | lint scripts | `bun run lint:i18n:*` |
+| Incremental UI contract | renderer additions + shared primitive import seam | `bun run lint:ui-contract` |
 | Cross-package gates | — | `validate:dev` / `validate:ci` |
 
 Keep this table honest: if a new test area appears (e.g. smoke scripts under `app/scripts/`), add

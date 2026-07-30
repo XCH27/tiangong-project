@@ -44,7 +44,6 @@ function createMockContext(overrides: Partial<SessionListContextValue> = {}): Se
   return {
     onRenameClick: () => {},
     onSessionStatusChange: () => {},
-    onMarkUnread: () => {},
     onDelete: async () => true,
     onSelectSessionById: () => {},
     onOpenInNewWindow: () => {},

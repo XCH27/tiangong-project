@@ -745,6 +745,9 @@ export class ClaudeAgent extends BaseAgent {
   // Callback when a plan is submitted - set by application to display plan message
   public onPlanSubmitted: ((planPath: string) => void) | null = null;
 
+  // Callback when agent enters Plan phase mid-turn (no abort)
+  public onEnterPlan: ((reason?: string) => { activated: boolean } | void) | null = null;
+
   // Callback when authentication is requested (unified auth flow)
   // This follows the SubmitPlan pattern:
   // 1. Tool calls onAuthRequest
@@ -844,6 +847,10 @@ export class ClaudeAgent extends BaseAgent {
       onPlanSubmitted: (planPath) => {
         this.onDebug?.(`[ClaudeAgent] onPlanSubmitted received: ${planPath}`);
         this.onPlanSubmitted?.(planPath);
+      },
+      onEnterPlan: (reason) => {
+        this.onDebug?.(`[ClaudeAgent] onEnterPlan received${reason ? `: ${reason}` : ''}`);
+        return this.onEnterPlan?.(reason);
       },
       onAuthRequest: (request) => {
         this.onDebug?.(`[ClaudeAgent] onAuthRequest received: ${request.sourceSlug} (type: ${request.type})`);
@@ -1094,7 +1101,7 @@ export class ClaudeAgent extends BaseAgent {
       const fullMcpServers: Options['mcpServers'] = {
         // Session-scoped tools (SubmitPlan, source_test, update_user_preferences, transform_data, etc.)
         session: getSessionScopedTools(sessionId, this.workspaceRootPath),
-        // R2-C1: keep the Craft-operated default pending owner decision; "off" omits this server.
+        // R2-C1: docs tools are optional and require an explicitly configured endpoint.
         ...(docsMcpUrl ? {
           'craft-agents-docs': {
             type: 'http' as const,

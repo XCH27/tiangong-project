@@ -16,15 +16,19 @@ import { z } from 'zod';
 /**
  * Available permission modes (internal storage keys).
  *
- * UI-facing canonical names are:
+ * Legacy route/session aliases are:
  * - explore  -> safe
  * - ask      -> ask
  * - execute  -> allow-all
+ *
+ * New UI work phases live in work-mode.ts. In particular, the Execute work
+ * phase does not imply allow-all; this mapping remains only for compatibility
+ * with persisted permission values and older deep links.
  */
 export type PermissionMode = 'safe' | 'ask' | 'allow-all';
 
 /**
- * Canonical mode names used in user-facing/session-state surfaces.
+ * Legacy canonical permission aliases.
  */
 export type PermissionModeCanonical = 'explore' | 'ask' | 'execute';
 

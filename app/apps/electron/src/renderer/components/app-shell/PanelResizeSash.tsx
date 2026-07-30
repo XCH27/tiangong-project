@@ -11,7 +11,7 @@
  * - Measures sibling panel widths from the DOM on drag start (no width props needed)
  */
 
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useSetAtom, useAtomValue } from 'jotai'
 import { panelStackAtom, resizePanelsAtom } from '@/atoms/panel-stack'
 import { useResizeGradient } from '@/hooks/useResizeGradient'
@@ -43,6 +43,15 @@ export function PanelResizeSash({
   const startLeftWidthRef = useRef(0)
   const startRightWidthRef = useRef(0)
   const combinedProportionRef = useRef(0)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
+
+  // Clean up global listeners if component unmounts during a drag
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.()
+      dragCleanupRef.current = null
+    }
+  }, [])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -97,12 +106,14 @@ export function PanelResizeSash({
       document.removeEventListener('mouseup', handleMouseUp)
       document.body.style.userSelect = ''
       document.body.style.cursor = ''
+      dragCleanupRef.current = null
     }
 
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
+    dragCleanupRef.current = handleMouseUp
   }, [leftIndex, rightIndex, panelStack, resizePanels, handlers, ref])
 
   const handleDoubleClick = useCallback(() => {

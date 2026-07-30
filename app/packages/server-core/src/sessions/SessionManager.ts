@@ -10,6 +10,18 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { randomUUID } from 'node:crypto'
 import { type AgentEvent, setPermissionMode, hydratePreviousPermissionMode, getPermissionModeDiagnostics, type PermissionMode, unregisterSessionScopedToolCallbacks, mergeSessionScopedToolCallbacks, AbortReason, type AuthRequest, type AuthResult, type CredentialAuthRequest, type BrowserPaneFns, generateConversationSummary, resolveKeepBackgroundTasksAlive } from '@craft-agent/shared/agent'
 import {
+  deriveLegacyWorkModeState,
+  formatWorkModeInstruction,
+  projectPermissionMode,
+  resolveAutomaticWorkMode,
+  resolveInitialWorkModeState,
+  resolvePlanApprovalTransition,
+  shouldApplyAutomaticWorkMode,
+  type ExecutionPermissionMode,
+  type WorkMode,
+  type WorkModeSelection,
+} from '@craft-agent/shared/agent/work-mode'
+import {
   resolveSessionConnection,
   createBackendFromConnection,
   resolveBackendContext,
@@ -20,7 +32,19 @@ import {
   type BackendHostRuntimeContext,
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
-import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
+import {
+  getLlmConnection,
+  getLlmConnections,
+  getDefaultLlmConnection,
+  getDefaultThinkingLevel,
+  getThinkingLevelsForModel,
+  connectionSupportsFastMode,
+  resetManagedAnthropicAuthEnvVars,
+  resolveConnectionModelDefinition,
+  resolveMidStreamBehavior,
+  getPersistedUiLanguage,
+  resolveTitleLanguageName,
+} from '@craft-agent/shared/config'
 import type { MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
@@ -34,6 +58,7 @@ import {
   migrateLegacyCredentials,
   migrateLegacyLlmConnectionsConfig,
   migrateOrphanedDefaultConnections,
+  getModelById,
   MODEL_REGISTRY,
   type Workspace,
   type WorkspaceInfo,
@@ -97,12 +122,25 @@ import { extractLabelId, resolveSessionLabels, findTaskItemLabelId } from '@craf
 import { ensureLabelsExist, ensureTaskItemLabel } from '@craft-agent/shared/labels/crud'
 import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
-import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAttachmentsForModelInput } from './runtime-config'
+import { buildBackendRuntimeSignature, buildRestartRequiredSignature, buildBackendRuntimeUpdate, filterAttachmentsForModelInput } from './runtime-config'
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
 import { resizeImageForAPI, resizeIconBuffer } from '@craft-agent/server-core/services'
 export { sanitizeForTitle }
+
+function normalizeThinkingLevelForModel(
+  connection: ReturnType<typeof resolveSessionConnection>,
+  modelId: string | undefined,
+  requested: ThinkingLevel | undefined,
+): ThinkingLevel {
+  const modelDefinition = resolveConnectionModelDefinition(connection, modelId)
+  const levels = getThinkingLevelsForModel(modelDefinition)
+  if (levels.length === 0) return 'off'
+  if (requested && levels.some(level => level.id === requested)) return requested
+  if (levels.some(level => level.id === 'medium')) return 'medium'
+  return levels[0]!.id
+}
 
 // Module-level platform ref — set once during init via setSessionPlatform()
 let _platform: PlatformServices | null = null
@@ -812,6 +850,8 @@ interface ManagedSession {
   // See: packages/shared/src/agent/tool-matching.ts
   // Session name (user-defined or AI-generated)
   name?: string
+  /** Persistent objective injected into every turn until cleared. */
+  goal?: string
   isFlagged: boolean
   /** Whether this session is archived */
   isArchived?: boolean
@@ -821,6 +861,10 @@ interface ManagedSession {
   permissionMode?: PermissionMode
   /** Previous permission mode (preserved across restarts for session_state modeTransition context) */
   previousPermissionMode?: PermissionMode
+  /** User-visible phase. The existing permission mode remains the tool-gate authority. */
+  workMode?: WorkMode
+  workModeSelection?: WorkModeSelection
+  executionPermissionMode?: ExecutionPermissionMode
   /** Centralized MCP client pool for this session's source connections */
   mcpPool?: McpClientPool
   /** HTTP MCP server exposing pool tools to external SDK subprocesses */
@@ -828,17 +872,7 @@ interface ManagedSession {
   // SDK session ID for conversation continuity
   sdkSessionId?: string
   // Token usage for display
-  tokenUsage?: {
-    inputTokens: number
-    outputTokens: number
-    totalTokens: number
-    contextTokens: number
-    costUsd: number
-    cacheReadTokens?: number
-    cacheCreationTokens?: number
-    /** Model's context window size in tokens (from SDK modelUsage) */
-    contextWindow?: number
-  }
+  tokenUsage?: TokenUsage
   // Session status (user-controlled) - determines open vs closed
   // Dynamic status ID referencing workspace status config
   sessionStatus?: string
@@ -887,6 +921,8 @@ interface ManagedSession {
   connectionLocked?: boolean
   // Thinking level for this session ('off', 'think', 'max')
   thinkingLevel?: ThinkingLevel
+  /** Provider low-latency mode. Runtime is recreated before the next turn. */
+  fastMode?: boolean
   // System prompt preset for mini agents ('default' | 'mini')
   systemPromptPreset?: 'default' | 'mini' | string
   // Role/type of the last message (for badge display without loading messages)
@@ -1094,6 +1130,16 @@ export function createManagedSession(
     // Caller overrides (permissionMode defaults, thinkingLevel, messagesLoaded, etc.)
     ...overrides,
   } as ManagedSession
+
+  // Sessions persisted before work modes existed retain their exact behavior.
+  // New callers can pass explicit fields in overrides to opt into Auto.
+  if (!managed.workMode || !managed.workModeSelection || !managed.executionPermissionMode) {
+    const legacy = deriveLegacyWorkModeState(managed.permissionMode ?? 'ask')
+    managed.workMode ??= legacy.workMode
+    managed.workModeSelection ??= legacy.workModeSelection
+    managed.executionPermissionMode ??= legacy.executionPermissionMode
+    managed.permissionMode ??= legacy.permissionMode
+  }
 
   if (managed.branchFromMessageId && !managed.branchContextStrategy) {
     managed.branchContextStrategy = managed.branchFromSdkSessionId
@@ -1523,6 +1569,47 @@ export class SessionManager implements ISessionManager {
     if (managed.name !== header.name) {
       managed.name = header.name
       this.sendEvent({ type: 'name_changed', sessionId, name: header.name }, managed.workspace.id)
+      changed = true
+    }
+
+    // Persistent objective (no separate authority: the session header is canonical).
+    if (managed.goal !== header.goal) {
+      managed.goal = header.goal
+      this.sendEvent({
+        type: 'session_metadata_changed',
+        sessionId,
+        changes: { goal: header.goal },
+      }, managed.workspace.id)
+      changed = true
+    }
+
+    // Work mode and its permission projection are one externally persisted
+    // metadata unit. Reconcile them together so another window cannot leave the
+    // visible phase and the effective tool gate out of sync.
+    if (
+      header.permissionMode &&
+      (
+        managed.permissionMode !== header.permissionMode ||
+        managed.workMode !== header.workMode ||
+        managed.workModeSelection !== header.workModeSelection ||
+        managed.executionPermissionMode !== header.executionPermissionMode
+      )
+    ) {
+      const fallback = deriveLegacyWorkModeState(header.permissionMode)
+      managed.permissionMode = header.permissionMode
+      managed.workMode = header.workMode ?? fallback.workMode
+      managed.workModeSelection = header.workModeSelection ?? fallback.workModeSelection
+      managed.executionPermissionMode = header.executionPermissionMode ?? fallback.executionPermissionMode
+      setPermissionMode(sessionId, header.permissionMode, { changedBy: 'restore' })
+      managed.agent?.setPermissionMode(header.permissionMode)
+      this.sendEvent({
+        type: 'permission_mode_changed',
+        sessionId,
+        permissionMode: header.permissionMode,
+        workMode: managed.workMode,
+        workModeSelection: managed.workModeSelection,
+        executionPermissionMode: managed.executionPermissionMode,
+      }, managed.workspace.id)
       changed = true
     }
 
@@ -2611,10 +2698,22 @@ export class SessionManager implements ISessionManager {
     const wsConfig = loadWorkspaceConfig(workspaceRootPath)
     const globalDefaults = loadConfigDefaults()
 
-    // Read permission mode from workspace config, fallback to global defaults
-    const defaultPermissionMode = options?.permissionMode
-      ?? wsConfig?.defaults?.permissionMode
-      ?? globalDefaults.workspaceDefaults.permissionMode
+    const initialWorkModeState = resolveInitialWorkModeState({
+      requested: {
+        workModeSelection: options?.workModeSelection,
+        workMode: options?.workMode,
+        executionPermissionMode: options?.executionPermissionMode,
+        permissionMode: options?.permissionMode,
+      },
+      workspaceDefaults: wsConfig?.defaults,
+      fallbackPermissionMode: globalDefaults.workspaceDefaults.permissionMode,
+    })
+    const {
+      workModeSelection: initialWorkModeSelection,
+      workMode: initialWorkMode,
+      executionPermissionMode: initialExecutionPermissionMode,
+      permissionMode: initialPermissionMode,
+    } = initialWorkModeState
 
     const userDefaultWorkingDir = wsConfig?.defaults?.workingDirectory || undefined
     // Resolve thinking level with caller-first precedence, matching permissionMode above:
@@ -2894,7 +2993,11 @@ export class SessionManager implements ISessionManager {
     // Use storage layer to create and persist the session
     const storedSession = await createStoredSession(workspaceRootPath, {
       name: options?.name,
-      permissionMode: defaultPermissionMode,
+      goal: options?.goal,
+      permissionMode: initialPermissionMode,
+      workMode: initialWorkMode,
+      workModeSelection: initialWorkModeSelection,
+      executionPermissionMode: initialExecutionPermissionMode,
       workingDirectory: resolvedWorkingDir,
       hidden: options?.hidden,
       sessionStatus: options?.sessionStatus,
@@ -2979,6 +3082,11 @@ export class SessionManager implements ISessionManager {
     // Reuse precomputed target context so branch validation and session construction share the same target identity.
     const resolvedContext = targetBackendContext
     const resolvedModel = resolvedContext.resolvedModel
+    const resolvedThinkingLevel = normalizeThinkingLevelForModel(
+      resolvedContext.connection,
+      resolvedModel,
+      defaultThinkingLevel,
+    )
 
     // Log mini agent session creation
     if (options?.systemPromptPreset === 'mini' || options?.model) {
@@ -2988,11 +3096,15 @@ export class SessionManager implements ISessionManager {
     const isBranch = !!validatedBranch
 
     const managed = createManagedSession(storedSession, workspace, {
-      permissionMode: defaultPermissionMode,
+      permissionMode: initialPermissionMode,
+      workMode: initialWorkMode,
+      workModeSelection: initialWorkModeSelection,
+      executionPermissionMode: initialExecutionPermissionMode,
       workingDirectory: resolvedWorkingDir,
       model: resolvedModel,
       llmConnection: options?.llmConnection,
-      thinkingLevel: defaultThinkingLevel,
+      thinkingLevel: resolvedThinkingLevel,
+      fastMode: false,
       systemPromptPreset: options?.systemPromptPreset,
       enabledSourceSlugs: defaultEnabledSourceSlugs,
       branchFromMessageId: validatedBranch?.sourceMessageId,
@@ -3266,28 +3378,11 @@ export class SessionManager implements ISessionManager {
     let refreshed = false
     if (managed.agent?.updateRuntimeConfig) {
       try {
-        refreshed = await managed.agent.updateRuntimeConfig({
-          model: backendContext.resolvedModel,
-          providerType: connection?.providerType,
+        refreshed = await managed.agent.updateRuntimeConfig(buildBackendRuntimeUpdate({
+          connection,
+          resolvedModel: backendContext.resolvedModel,
           authType: backendContext.authType,
-          runtime: connection ? {
-            baseUrl: connection.baseUrl,
-            piAuthProvider: connection.piAuthProvider,
-            customEndpoint: connection.customEndpoint,
-            customModels: connection.models?.map(model => {
-              if (typeof model === 'string') return model
-              const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined
-              if (model.contextWindow || supportsImages !== undefined) {
-                return {
-                  id: model.id,
-                  ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-                  ...(supportsImages !== undefined ? { supportsImages } : {}),
-                }
-              }
-              return model.id
-            }),
-          } : undefined,
-        })
+        }))
       } catch (error) {
         sessionLog.warn(`Runtime config in-place refresh failed for ${managed.id}: ${error instanceof Error ? error.message : error}`)
       }
@@ -3417,11 +3512,19 @@ export class SessionManager implements ISessionManager {
 
       // Per-session env overrides
       const miniModel = connection ? (getMiniModel(connection) ?? connection.defaultModel) : undefined
+      const selectedModelDefinition = resolveConnectionModelDefinition(connection, managed.model)
+      const fastRuntimeMode = managed.fastMode
+        ? selectedModelDefinition?.runtimeModes?.fast
+        : undefined
       const envOverrides: Record<string, string> = {
         CRAFT_WORKSPACE_PATH: managed.workspace.rootPath,
         // Pass mini model to SDK subprocess so built-in tools like WebFetch
         // use the correct model for summarization (instead of hardcoded Haiku)
         ...(miniModel ? { ANTHROPIC_DEFAULT_HAIKU_MODEL: miniModel } : {}),
+        ...(managed.fastMode ? { CRAFT_FAST_MODE: '1' } : {}),
+        ...(fastRuntimeMode
+          ? { CRAFT_MODEL_RUNTIME_MODE: JSON.stringify(fastRuntimeMode) }
+          : {}),
       }
       managed.envOverrides = envOverrides
 
@@ -3447,6 +3550,7 @@ export class SessionManager implements ISessionManager {
         permissionMode: managed.permissionMode,
         previousPermissionMode: managed.previousPermissionMode,
         projectId: managed.projectId,
+        fastMode: managed.fastMode,
       }
 
       const onSdkSessionIdUpdate = (sdkSessionId: string) => {
@@ -4085,6 +4189,9 @@ export class SessionManager implements ISessionManager {
           type: 'permission_mode_changed',
           sessionId: managed.id,
           permissionMode: managed.permissionMode,
+          workMode: managed.workMode,
+          workModeSelection: managed.workModeSelection,
+          executionPermissionMode: managed.executionPermissionMode,
           modeVersion: diagnostics.modeVersion,
           changedBy: diagnostics.lastChangedBy,
           changedAt: diagnostics.lastChangedAt,
@@ -4093,10 +4200,23 @@ export class SessionManager implements ISessionManager {
         }, managed.workspace.id)
       }
 
+      // EnterPlan — Grok activate_from_tool: mid-turn Plan, no abort, idempotent.
+      // OpenCode build→plan is opt-in; default agent stays Execute until this fires.
+      managed.agent.onEnterPlan = (reason) => {
+        if (managed.workMode === 'plan') {
+          sessionLog.info(`EnterPlan no-op (already plan) for session ${managed.id}`)
+          return { activated: false }
+        }
+        sessionLog.info(`EnterPlan for session ${managed.id}${reason ? `: ${reason}` : ''}`)
+        this.setSessionWorkMode(managed.id, managed.workModeSelection ?? 'auto', 'plan')
+        return { activated: true }
+      }
+
       // Wire up onPlanSubmitted to add plan message to conversation
       managed.agent.onPlanSubmitted = async (planPath) => {
         sessionLog.info(`Plan submitted for session ${managed.id}:`, planPath)
         try {
+          this.setSessionWorkMode(managed.id, managed.workModeSelection ?? 'auto', 'plan')
           // Read the plan file content
           const planContent = await readFile(planPath, 'utf-8')
 
@@ -4286,6 +4406,9 @@ export class SessionManager implements ISessionManager {
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
           await this.setSessionLabels(sessionId ?? managed.id, labels)
         },
+        setSessionGoalFn: async (sessionId: string | undefined, goal: string | null) => {
+          await this.setSessionGoal(sessionId ?? managed.id, goal)
+        },
         setSessionStatusFn: async (sessionId: string | undefined, status: string) => {
           await this.setSessionStatus(sessionId ?? managed.id, status as SessionStatus)
         },
@@ -4296,6 +4419,7 @@ export class SessionManager implements ISessionManager {
           return {
             id: session.id,
             name: session.name ?? session.id,
+            goal: session.goal,
             labels: session.labels ?? [],
             status: session.sessionStatus ?? 'todo',
             permissionMode: session.permissionMode ?? 'ask',
@@ -4765,10 +4889,9 @@ export class SessionManager implements ISessionManager {
 
   /**
    * Dispatch a plan approval for a session, equivalent to the desktop
-   * "Accept plan" button. Switches the session out of Explore mode (safe)
-   * into allow-all if needed so the plan can execute without per-tool
-   * prompts, then sends the approval message through the normal sendMessage
-   * path.
+   * "Accept plan" button. Approval changes the work phase to Execute but
+   * retains the session's execution approval posture; it never grants bypass
+   * permission by implication.
    */
   async acceptPlan(sessionId: string, _planPath?: string): Promise<void> {
     const managed = this.sessions.get(sessionId)
@@ -4777,191 +4900,16 @@ export class SessionManager implements ISessionManager {
       return
     }
 
-    if (managed.permissionMode === 'safe') {
-      this.setSessionPermissionMode(sessionId, 'allow-all')
-    }
+    const next = resolvePlanApprovalTransition({
+      workMode: managed.workMode ?? 'plan',
+      workModeSelection: managed.workModeSelection ?? 'auto',
+      executionPermissionMode: managed.executionPermissionMode ?? 'ask',
+      permissionMode: managed.permissionMode ?? 'safe',
+    })
+    managed.executionPermissionMode = next.executionPermissionMode
+    this.setSessionWorkMode(sessionId, next.workModeSelection, next.workMode)
 
     await this.sendMessage(sessionId, PLAN_APPROVAL_MESSAGE)
-  }
-
-  // ============================================
-  // Session Sharing
-  // ============================================
-
-  /**
-   * Share session to the web viewer
-   * Uploads session data and returns shareable URL
-   */
-  async shareToViewer(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) {
-      return { success: false, error: 'Session not found' }
-    }
-
-    // Signal async operation start for shimmer effect
-    managed.isAsyncOperationOngoing = true
-    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
-
-    try {
-      // Load session directly from disk (already in correct format)
-      const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
-      if (!storedSession) {
-        return { success: false, error: 'Session file not found' }
-      }
-
-      const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
-      const viewerUrl = getShareViewerUrl()
-      if (!viewerUrl) {
-        return { success: false, error: 'Online sharing is not configured. Set FLEET_SHARE_VIEWER_URL to a viewer you own; local export remains available.' }
-      }
-      const response = await fetch(`${viewerUrl}/s/api`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(storedSession)
-      })
-
-      if (!response.ok) {
-        sessionLog.error(`Share failed with status ${response.status}`)
-        if (response.status === 413) {
-          return { success: false, error: 'Session file is too large to share' }
-        }
-        return { success: false, error: 'Failed to upload session' }
-      }
-
-      const data = await response.json() as { id: string; url: string }
-
-      // Store shared info in session
-      managed.sharedUrl = data.url
-      managed.sharedId = data.id
-      const workspaceRootPath = managed.workspace.rootPath
-      await updateSessionMetadata(workspaceRootPath, sessionId, {
-        sharedUrl: data.url,
-        sharedId: data.id,
-      })
-
-      sessionLog.info(`Session ${sessionId} shared at ${data.url}`)
-      // Notify all windows for this workspace
-      this.sendEvent({ type: 'session_shared', sessionId, sharedUrl: data.url }, managed.workspace.id)
-      return { success: true, url: data.url }
-    } catch (error) {
-      sessionLog.error('Share error:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    } finally {
-      // Signal async operation end
-      managed.isAsyncOperationOngoing = false
-      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
-    }
-  }
-
-  /**
-   * Update an existing shared session
-   * Re-uploads session data to the same URL
-   */
-  async updateShare(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) {
-      return { success: false, error: 'Session not found' }
-    }
-    if (!managed.sharedId) {
-      return { success: false, error: 'Session not shared' }
-    }
-
-    // Signal async operation start for shimmer effect
-    managed.isAsyncOperationOngoing = true
-    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
-
-    try {
-      // Load session directly from disk (already in correct format)
-      const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
-      if (!storedSession) {
-        return { success: false, error: 'Session file not found' }
-      }
-
-      const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
-      const viewerUrl = getShareViewerUrl()
-      if (!viewerUrl) {
-        return { success: false, error: 'Online sharing is not configured, so the shared copy cannot be updated from here.' }
-      }
-      const response = await fetch(`${viewerUrl}/s/api/${managed.sharedId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(storedSession)
-      })
-
-      if (!response.ok) {
-        sessionLog.error(`Update share failed with status ${response.status}`)
-        if (response.status === 413) {
-          return { success: false, error: 'Session file is too large to share' }
-        }
-        return { success: false, error: 'Failed to update shared session' }
-      }
-
-      sessionLog.info(`Session ${sessionId} share updated at ${managed.sharedUrl}`)
-      return { success: true, url: managed.sharedUrl }
-    } catch (error) {
-      sessionLog.error('Update share error:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    } finally {
-      // Signal async operation end
-      managed.isAsyncOperationOngoing = false
-      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
-    }
-  }
-
-  /**
-   * Revoke a shared session
-   * Deletes from viewer and clears local shared state
-   */
-  async revokeShare(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) {
-      return { success: false, error: 'Session not found' }
-    }
-    if (!managed.sharedId) {
-      return { success: false, error: 'Session not shared' }
-    }
-
-    // Signal async operation start for shimmer effect
-    managed.isAsyncOperationOngoing = true
-    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
-
-    try {
-      const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
-      const viewerUrl = getShareViewerUrl()
-      if (!viewerUrl) {
-        return { success: false, error: 'Online sharing is not configured, so the remote shared copy cannot be revoked from here.' }
-      }
-      const response = await fetch(
-        `${viewerUrl}/s/api/${managed.sharedId}`,
-        { method: 'DELETE' }
-      )
-
-      if (!response.ok) {
-        sessionLog.error(`Revoke failed with status ${response.status}`)
-        return { success: false, error: 'Failed to revoke share' }
-      }
-
-      // Clear shared info
-      delete managed.sharedUrl
-      delete managed.sharedId
-      const workspaceRootPath = managed.workspace.rootPath
-      await updateSessionMetadata(workspaceRootPath, sessionId, {
-        sharedUrl: undefined,
-        sharedId: undefined,
-      })
-
-      sessionLog.info(`Session ${sessionId} share revoked`)
-      // Notify all windows for this workspace
-      this.sendEvent({ type: 'session_unshared', sessionId }, managed.workspace.id)
-      return { success: true }
-    } catch (error) {
-      sessionLog.error('Revoke error:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    } finally {
-      // Signal async operation end
-      managed.isAsyncOperationOngoing = false
-      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
-    }
   }
 
   // ============================================
@@ -5203,6 +5151,22 @@ export class SessionManager implements ISessionManager {
     }
   }
 
+  async setSessionGoal(sessionId: string, goal: string | null): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+
+    const normalizedGoal = goal?.trim() || undefined
+    if (managed.goal === normalizedGoal) return
+
+    managed.goal = normalizedGoal
+    this.persistSession(managed)
+    this.sendEvent({
+      type: 'session_metadata_changed',
+      sessionId,
+      changes: { goal: normalizedGoal },
+    }, managed.workspace.id)
+  }
+
   /**
    * Regenerate the session title based on recent messages.
    * Uses the last few user messages to capture what the session has evolved into.
@@ -5401,14 +5365,33 @@ export class SessionManager implements ISessionManager {
         updates.llmConnection = connection
       }
       await updateSessionMetadata(managed.workspace.rootPath, sessionId, updates)
+      // Fast mode is only meaningful for models that advertise it.  Clear a
+      // persisted fast flag when switching away so a later model change cannot
+      // silently resurrect an old transport choice.
+      const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+      const sessionConn = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
+      const effectiveModel = model ?? wsConfig?.defaults?.model ?? sessionConn?.defaultModel
+      if (managed.fastMode && !connectionSupportsFastMode(sessionConn, effectiveModel)) {
+        managed.fastMode = false
+        sessionLog.info(`[updateSessionModel] Cleared unsupported fast mode for ${effectiveModel ?? 'unresolved model'}`)
+      }
+      const normalizedThinkingLevel = normalizeThinkingLevelForModel(
+        sessionConn,
+        effectiveModel,
+        managed.thinkingLevel,
+      )
+      if (normalizedThinkingLevel !== managed.thinkingLevel) {
+        managed.thinkingLevel = normalizedThinkingLevel
+        managed.agent?.setThinkingLevel(normalizedThinkingLevel)
+        sessionLog.info(
+          `[updateSessionModel] Normalized thinking level to ${normalizedThinkingLevel} for ${effectiveModel ?? 'unresolved model'}`,
+        )
+      }
+      this.persistSession(managed)
       // Update agent model if it already exists (takes effect on next query)
       if (managed.agent) {
-        // Fallback chain: session model > workspace default > connection default
-        const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
-        const sessionConn = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
-        const effectiveModel = model ?? wsConfig?.defaults?.model ?? sessionConn?.defaultModel!
         sessionLog.info(`[updateSessionModel] Calling agent.setModel(${effectiveModel}) [agent exists=${!!managed.agent}, connectionLocked=${managed.connectionLocked}]`)
-        managed.agent.setModel(effectiveModel)
+        if (effectiveModel) managed.agent.setModel(effectiveModel)
       } else {
         sessionLog.info(`[updateSessionModel] No agent yet, model will apply on next agent creation`)
       }
@@ -5627,31 +5610,6 @@ export class SessionManager implements ISessionManager {
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
-    // Revoke share if session was shared (prevent orphaned viewer copies)
-    if (managed.sharedId) {
-      try {
-        const { getShareViewerUrl } = await import('@craft-agent/shared/branding')
-        const viewerUrl = getShareViewerUrl()
-        if (!viewerUrl) {
-          // No configured target: deletion proceeds locally; the remote copy (if any)
-          // is unreachable from here and stays whatever it was.
-          sessionLog.warn(`Share target not configured; skipping remote revoke for deleted session ${sessionId}`)
-        } else {
-          const response = await fetch(
-            `${viewerUrl}/s/api/${managed.sharedId}`,
-            { method: 'DELETE', signal: AbortSignal.timeout(5000) }
-          )
-          if (!response.ok) {
-            sessionLog.warn(`Failed to revoke share for ${sessionId}: HTTP ${response.status}`)
-          } else {
-            sessionLog.info(`Revoked share for deleted session ${sessionId}`)
-          }
-        }
-      } catch (error) {
-        sessionLog.warn(`Failed to revoke share for ${sessionId}:`, error)
-      }
-    }
-
     // Clean up delta flush timers to prevent orphaned timers
     const timer = this.deltaFlushTimers.get(sessionId)
     if (timer) {
@@ -5768,6 +5726,30 @@ export class SessionManager implements ISessionManager {
     }
     this.setLastMessageClientId(sessionId, rpcContext?.callerClientId)
 
+    // Auto phase routing (Grok/Cursor style): strong signals switch phase;
+    // ambiguous follow-ups stick so users are not forced to re-select modes.
+    // Plan approval always lands in Execute. Queued/hidden turns do not re-route.
+    if (message.startsWith(PLAN_APPROVAL_MESSAGE) && !managed.isProcessing) {
+      this.setSessionWorkMode(
+        sessionId,
+        managed.workModeSelection ?? 'auto',
+        'execute',
+      )
+    } else if (managed.workModeSelection === 'auto' && !managed.isProcessing && !options?.hidden) {
+      const resolution = resolveAutomaticWorkMode(message, {
+        currentWorkMode: managed.workMode,
+      })
+      if (shouldApplyAutomaticWorkMode(managed.workMode, resolution)) {
+        this.setSessionWorkMode(sessionId, 'auto', resolution.workMode)
+        sessionLog.info('Auto work mode resolved', {
+          sessionId,
+          workMode: resolution.workMode,
+          reason: resolution.reason,
+          permissionMode: managed.permissionMode,
+        })
+      }
+    }
+
     // Source-activation auto-retry dedup (craft-agents-oss#804). When the server
     // has just scheduled or committed a "[<slug> activated]" retry, drop a matching
     // duplicate that arrives from a legacy renderer still running the client-side
@@ -5785,6 +5767,17 @@ export class SessionManager implements ISessionManager {
 
     // Ensure messages are loaded before we try to add new ones
     await this.ensureMessagesLoaded(managed)
+
+    // Capture the effective request context once. Historical transcript rows
+    // must describe the model/connection that handled this request, not whatever
+    // selectors happen to be active when the Session is viewed later.
+    const requestBackendContext = resolveBackendContext({
+      sessionConnectionSlug: managed.llmConnection,
+      workspaceDefaultConnectionSlug: loadWorkspaceConfig(managed.workspace.rootPath)?.defaults?.defaultLlmConnection,
+      managedModel: managed.model,
+    })
+    const requestModel = requestBackendContext.resolvedModel
+    const requestConnection = requestBackendContext.connection?.slug ?? managed.llmConnection
 
     // If currently processing, behavior depends on the connection's
     // `midStreamBehavior` (resolved via {@link resolveMidStreamBehavior},
@@ -5819,21 +5812,25 @@ export class SessionManager implements ISessionManager {
         connectionSlug: connection?.slug,
       })
 
+      const delivery = resolveMidStreamDeliveryOutcome(behavior, steered)
+
       // Create user message for UI
       const userMessage: Message = {
         id: generateMessageId(),
         role: 'user',
         content: message,
         timestamp: this.monotonic(),
+        requestModel,
+        requestConnection,
+        requestWorkMode: managed.workMode,
         attachments: storedAttachments,
         badges: options?.badges,
+        isQueued: delivery.shouldQueue,
         // Hidden system-generated messages reach the model but never render as a
         // transcript bubble (e.g. background-task-completion nudge).
         ...(options?.hidden ? { hidden: true } : {}),
       }
       managed.messages.push(userMessage)
-
-      const delivery = resolveMidStreamDeliveryOutcome(behavior, steered)
 
       // Emit to UI — 'accepted' iff a steer succeeded; 'queued' otherwise
       // (covers both queue-direct and queue-after-abort paths).
@@ -5884,6 +5881,9 @@ export class SessionManager implements ISessionManager {
         role: 'user',
         content: message,
         timestamp: this.monotonic(),
+        requestModel,
+        requestConnection,
+        requestWorkMode: managed.workMode,
         attachments: storedAttachments, // Include for persistence (has thumbnailBase64)
         badges: options?.badges,  // Include content badges (sources, skills with embedded icons)
         // Hidden system-generated messages reach the model but never render as a
@@ -6147,6 +6147,10 @@ export class SessionManager implements ISessionManager {
       if (managed.wasInterrupted) {
         effectiveMessage = `${message}\n\n<system-reminder>The previous assistant response was interrupted by the user and may be incomplete. Do not repeat or continue the interrupted response unless asked. Focus on the new message above.</system-reminder>`
         managed.wasInterrupted = false
+      }
+      effectiveMessage = `${effectiveMessage}\n\n<system-reminder>${formatWorkModeInstruction(managed.workMode ?? 'explore')}</system-reminder>`
+      if (managed.goal) {
+        effectiveMessage = `${effectiveMessage}\n\n<system-reminder>The current session goal is: ${managed.goal}\nKeep this objective in view across turns. Do not claim it is complete until the requested outcome and verification are actually complete.</system-reminder>`
       }
 
       const messageBackendContext = resolveBackendContext({
@@ -6435,6 +6439,151 @@ export class SessionManager implements ISessionManager {
 
     // NOTE: We don't clear isProcessing or send complete event here anymore.
     // The event loop will drain remaining events and call onProcessingStopped when done.
+  }
+
+  /**
+   * Remove one pending follow-up from the existing per-session FIFO queue.
+   * The queue and persisted transcript are updated together so the composer
+   * queue is a view of the real delivery authority, not a renderer-only list.
+   */
+  async removeQueuedMessage(sessionId: string, messageId: string): Promise<string | undefined> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return undefined
+
+    const queueIndex = managed.messageQueue.findIndex((item) =>
+      item.messageId === messageId || item.optimisticMessageId === messageId,
+    )
+    if (queueIndex < 0) return undefined
+
+    const [removed] = managed.messageQueue.splice(queueIndex, 1)
+    const canonicalMessageId = removed?.messageId
+    managed.messages = managed.messages.filter((message) =>
+      message.id !== canonicalMessageId && message.id !== messageId,
+    )
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.sendEvent({
+      type: 'queued_message_removed',
+      sessionId,
+      messageId: canonicalMessageId ?? messageId,
+      ...(removed?.optimisticMessageId ? { optimisticMessageId: removed.optimisticMessageId } : {}),
+    }, managed.workspace.id)
+    return removed?.message
+  }
+
+  /**
+   * Revert a completed conversation turn at the Session authority.
+   *
+   * The selected user message and everything after it are removed together.
+   * The next backend runtime is forked from the preceding final assistant
+   * message when a provider anchor is available; otherwise the retained
+   * transcript is seeded into a fresh runtime. This keeps the renderer,
+   * persisted transcript, and provider context on the same boundary.
+   */
+  async revertToUserMessage(sessionId: string, messageId: string): Promise<string | undefined> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return undefined
+    if (managed.isProcessing || managed.messageQueue.length > 0) {
+      throw new Error('Wait for the current response and queued messages before reverting.')
+    }
+
+    await this.ensureMessagesLoaded(managed)
+    const targetIndex = managed.messages.findIndex(message =>
+      message.id === messageId && message.role === 'user' && !message.isQueued,
+    )
+    if (targetIndex < 0) return undefined
+
+    const target = managed.messages[targetIndex]
+    if (!target) return undefined
+    const retainedMessages = managed.messages.slice(0, targetIndex)
+    const branchMessage = retainedMessages.findLast(message =>
+      (message.role === 'assistant' && !message.isIntermediate) || message.role === 'plan',
+    )
+    const parentSdkSessionId = managed.sdkSessionId
+    const sessionPath = getSessionStoragePath(managed.workspace.rootPath, sessionId)
+    let branchAnchor: string | undefined
+
+    if (branchMessage && parentSdkSessionId) {
+      const backendContext = resolveBackendContext({
+        sessionConnectionSlug: managed.llmConnection,
+        workspaceDefaultConnectionSlug: loadWorkspaceConfig(managed.workspace.rootPath)?.defaults?.defaultLlmConnection,
+        managedModel: managed.model,
+      })
+      if (backendContext.provider === 'pi') {
+        branchAnchor = await getPiTurnAnchor(sessionPath, branchMessage.id)
+      } else if (backendContext.provider === 'anthropic') {
+        const anchor = await getClaudeTurnAnchor(sessionPath, branchMessage.id)
+        if (
+          anchor?.sdkSessionId === parentSdkSessionId
+          && anchor.sdkMessageUuid
+          && isClaudeMessageUuid(anchor.sdkMessageUuid)
+        ) {
+          branchAnchor = anchor.sdkMessageUuid
+        }
+      } else {
+        branchAnchor = branchMessage.turnId
+      }
+    }
+
+    await this.disposeManagedAgentRuntime(managed, 'conversation reverted')
+    managed.messages = retainedMessages
+    managed.messageQueue = []
+    managed.sdkSessionId = undefined
+    managed.lastFinalMessageId = this.getLastFinalAssistantMessageId(retainedMessages)
+    managed.lastMessageRole = retainedMessages.findLast(message =>
+      message.role === 'user'
+      || message.role === 'assistant'
+      || message.role === 'plan'
+      || message.role === 'tool'
+      || message.role === 'error'
+    )?.role as ManagedSession['lastMessageRole']
+    managed.lastMessageAt = retainedMessages.at(-1)?.timestamp ?? target.timestamp
+    managed.tokenUsage = {
+      outputTokens: managed.tokenUsage?.outputTokens ?? 0,
+      totalTokens: managed.tokenUsage?.totalTokens ?? 0,
+      costUsd: managed.tokenUsage?.costUsd ?? 0,
+      contextWindow: managed.tokenUsage?.contextWindow,
+      inputTokens: 0,
+      contextTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    }
+
+    if (branchMessage && parentSdkSessionId && branchAnchor) {
+      managed.branchContextStrategy = 'sdk-fork'
+      managed.branchFromMessageId = branchMessage.id
+      managed.branchFromSdkSessionId = parentSdkSessionId
+      managed.branchFromSessionPath = sessionPath
+      managed.branchFromSdkCwd = managed.sdkCwd
+      managed.branchFromSdkTurnId = branchAnchor
+      managed.branchSeedApplied = undefined
+    } else if (branchMessage) {
+      managed.branchContextStrategy = 'seeded-fresh-session'
+      managed.branchFromMessageId = branchMessage.id
+      managed.branchFromSdkSessionId = undefined
+      managed.branchFromSessionPath = undefined
+      managed.branchFromSdkCwd = undefined
+      managed.branchFromSdkTurnId = undefined
+      managed.branchSeedApplied = false
+    } else {
+      managed.branchContextStrategy = undefined
+      managed.branchFromMessageId = undefined
+      managed.branchFromSdkSessionId = undefined
+      managed.branchFromSessionPath = undefined
+      managed.branchFromSdkCwd = undefined
+      managed.branchFromSdkTurnId = undefined
+      managed.branchSeedApplied = undefined
+    }
+
+    this.persistSession(managed)
+    await this.flushSession(managed.id)
+    this.sendEvent({
+      type: 'session_reverted',
+      sessionId,
+      messages: managed.messages,
+      tokenUsage: managed.tokenUsage,
+    }, managed.workspace.id)
+    return target.content
   }
 
   /**
@@ -7021,9 +7170,22 @@ export class SessionManager implements ISessionManager {
   /**
    * Set the permission mode for a session ('safe', 'ask', 'allow-all')
    */
-  setSessionPermissionMode(sessionId: string, mode: PermissionMode): void {
+  setSessionPermissionMode(
+    sessionId: string,
+    mode: PermissionMode,
+    options?: { preserveWorkMode?: boolean },
+  ): void {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      if (!options?.preserveWorkMode) {
+        if (mode === 'safe') {
+          managed.workMode = 'explore'
+        } else {
+          managed.workMode = 'execute'
+          managed.executionPermissionMode = mode
+        }
+        managed.workModeSelection = 'manual'
+      }
       const previousManagedMode = managed.permissionMode ?? 'ask'
       const diagnosticsBefore = getPermissionModeDiagnostics(sessionId)
       const previousEffectiveMode = diagnosticsBefore.permissionMode
@@ -7073,6 +7235,9 @@ export class SessionManager implements ISessionManager {
         type: 'permission_mode_changed',
         sessionId: managed.id,
         permissionMode: mode,
+        workMode: managed.workMode,
+        workModeSelection: managed.workModeSelection,
+        executionPermissionMode: managed.executionPermissionMode,
         modeVersion: diagnostics.modeVersion,
         changedBy: diagnostics.lastChangedBy,
         changedAt: diagnostics.lastChangedAt,
@@ -7085,17 +7250,82 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Change the visible work phase while projecting it through the existing
+   * permission authority. Auto may supply its newly resolved effective mode;
+   * selecting Auto in the UI without one preserves the current phase until the
+   * next user turn.
+   */
+  setSessionWorkMode(
+    sessionId: string,
+    selection: WorkModeSelection,
+    mode?: WorkMode,
+  ): void {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    if (selection === 'manual' && !mode) {
+      throw new Error('Manual work mode requires an explicit mode')
+    }
+
+    managed.workModeSelection = selection
+    if (mode) managed.workMode = mode
+    managed.workMode ??= 'explore'
+    managed.executionPermissionMode ??= 'ask'
+
+    const effectivePermissionMode = projectPermissionMode(
+      managed.workMode,
+      managed.executionPermissionMode,
+    )
+    const permissionChanged = managed.permissionMode !== effectivePermissionMode
+    this.setSessionPermissionMode(sessionId, effectivePermissionMode, { preserveWorkMode: true })
+
+    // setSessionPermissionMode emits when the effective gate changes. Emit here
+    // only when selection/phase changed without a gate change.
+    if (!permissionChanged) {
+      this.sendEvent({
+        type: 'permission_mode_changed',
+        sessionId: managed.id,
+        permissionMode: managed.permissionMode ?? effectivePermissionMode,
+        workMode: managed.workMode,
+        workModeSelection: managed.workModeSelection,
+        executionPermissionMode: managed.executionPermissionMode,
+      }, managed.workspace.id)
+    }
+    this.persistSession(managed)
+  }
+
+  setSessionExecutionPermissionMode(
+    sessionId: string,
+    mode: ExecutionPermissionMode,
+  ): void {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return
+    managed.executionPermissionMode = mode
+
+    if (managed.workMode === 'execute') {
+      this.setSessionPermissionMode(sessionId, mode, { preserveWorkMode: true })
+      return
+    }
+
+    // Explore and Plan remain read-only; only the remembered Execute posture
+    // changes. Reuse the existing event so renderer reconciliation has one path.
+    this.sendEvent({
+      type: 'permission_mode_changed',
+      sessionId: managed.id,
+      permissionMode: managed.permissionMode ?? 'safe',
+      workMode: managed.workMode,
+      workModeSelection: managed.workModeSelection,
+      executionPermissionMode: mode,
+    }, managed.workspace.id)
+    this.persistSession(managed)
+  }
+
+  /**
    * Get authoritative permission mode diagnostics for a session.
    * Used by renderer to reconcile optimistic/stale mode state.
    */
-  getSessionPermissionModeState(sessionId: string): {
-    permissionMode: PermissionMode
-    previousPermissionMode?: PermissionMode
-    transitionDisplay?: string
-    modeVersion: number
-    changedAt: string
-    changedBy: 'user' | 'system' | 'restore' | 'automation' | 'unknown'
-  } | null {
+  getSessionPermissionModeState(
+    sessionId: string,
+  ): import('@craft-agent/shared/protocol').PermissionModeState | null {
     const managed = this.sessions.get(sessionId)
     if (!managed) return null
 
@@ -7128,6 +7358,9 @@ export class SessionManager implements ISessionManager {
 
     return {
       permissionMode: diagnostics.permissionMode,
+      workMode: managed.workMode,
+      workModeSelection: managed.workModeSelection,
+      executionPermissionMode: managed.executionPermissionMode,
       previousPermissionMode: diagnostics.previousPermissionMode,
       transitionDisplay: diagnostics.transitionDisplay,
       modeVersion: diagnostics.modeVersion,
@@ -7455,6 +7688,23 @@ export class SessionManager implements ISessionManager {
   setSessionThinkingLevel(sessionId: string, level: ThinkingLevel): void {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+      const connection = resolveSessionConnection(
+        managed.llmConnection,
+        wsConfig?.defaults?.defaultLlmConnection,
+      )
+      const modelId = managed.model ?? wsConfig?.defaults?.model ?? connection?.defaultModel
+      const allowedLevels = getThinkingLevelsForModel(
+        resolveConnectionModelDefinition(connection, modelId),
+      )
+      const isSupported = allowedLevels.some(candidate => candidate.id === level)
+      // `off` remains a valid internal reset when a model exposes no selectable
+      // effort. Other values must be part of the selected model's catalog.
+      if (!isSupported && !(level === 'off' && allowedLevels.length === 0)) {
+        throw new Error(
+          `Thinking level ${level} is not supported by the selected model${modelId ? `: ${modelId}` : ''}`,
+        )
+      }
       // Update thinking level in managed session
       managed.thinkingLevel = level
 
@@ -7467,6 +7717,27 @@ export class SessionManager implements ISessionManager {
       // Persist to disk
       this.persistSession(managed)
     }
+  }
+
+  /** Fast mode is process configuration; recreate the backend for the next turn. */
+  async setSessionFastMode(sessionId: string, enabled: boolean): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed || managed.fastMode === enabled) return
+    if (managed.isProcessing) {
+      throw new Error('Fast mode cannot change while the session is processing')
+    }
+    if (enabled) {
+      const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+      const connection = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
+      const modelId = managed.model ?? wsConfig?.defaults?.model ?? connection?.defaultModel
+      if (!connectionSupportsFastMode(connection, modelId)) {
+        throw new Error(`Fast mode is not supported by the selected model${modelId ? `: ${modelId}` : ''}`)
+      }
+    }
+    managed.fastMode = enabled
+    await this.disposeManagedAgentRuntime(managed, 'fast mode changed')
+    this.persistSession(managed)
+    sessionLog.info(`Session ${sessionId}: fast mode ${enabled ? 'enabled' : 'disabled'}`)
   }
 
   /**
@@ -8346,8 +8617,13 @@ export class SessionManager implements ISessionManager {
               costUsd: 0,
             }
           }
-          // Update only inputTokens (current context size) - other fields accumulate on complete
+          // Current-request fields replace the previous request's values. Session-level
+          // output and cost still settle on complete.
           managed.tokenUsage.inputTokens = event.usage.inputTokens
+          managed.tokenUsage.totalTokens =
+            event.usage.inputTokens + managed.tokenUsage.outputTokens
+          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens
+          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
           }
@@ -8358,6 +8634,8 @@ export class SessionManager implements ISessionManager {
             sessionId: managed.id,
             tokenUsage: {
               inputTokens: event.usage.inputTokens,
+              cacheReadTokens: event.usage.cacheReadTokens,
+              cacheCreationTokens: event.usage.cacheCreationTokens,
               contextWindow: event.usage.contextWindow,
             },
           }, workspaceId)
@@ -8673,9 +8951,13 @@ export class SessionManager implements ISessionManager {
     return {
       sourceSessionId: managed.id,
       name: managed.name,
+      goal: managed.goal,
       sessionStatus: managed.sessionStatus,
       labels: managed.labels,
       permissionMode: managed.permissionMode,
+      workMode: managed.workMode,
+      workModeSelection: managed.workModeSelection,
+      executionPermissionMode: managed.executionPermissionMode,
       summary,
     }
   }
@@ -8690,7 +8972,11 @@ export class SessionManager implements ISessionManager {
 
     const session = await this.createSession(workspaceId, {
       name: payload.name,
+      goal: payload.goal,
       permissionMode: payload.permissionMode,
+      workMode: payload.workMode,
+      workModeSelection: payload.workModeSelection,
+      executionPermissionMode: payload.executionPermissionMode,
       sessionStatus: payload.sessionStatus,
       labels: payload.labels,
     })
@@ -8809,6 +9095,9 @@ export class SessionManager implements ISessionManager {
       isFlagged: header.isFlagged,
       permissionMode: header.permissionMode,
       previousPermissionMode: header.previousPermissionMode,
+      workMode: header.workMode,
+      workModeSelection: header.workModeSelection,
+      executionPermissionMode: header.executionPermissionMode,
       sessionStatus: header.sessionStatus,
       labels: header.labels,
       enabledSourceSlugs: header.enabledSourceSlugs,
@@ -8817,6 +9106,7 @@ export class SessionManager implements ISessionManager {
       llmConnection: header.llmConnection,
       connectionLocked: header.connectionLocked,
       thinkingLevel: header.thinkingLevel,
+      fastMode: header.fastMode,
       hidden: header.hidden,
       transferredSessionSummary: header.transferredSessionSummary,
       transferredSessionSummaryApplied: header.transferredSessionSummaryApplied,

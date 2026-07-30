@@ -12,11 +12,11 @@
 - **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and
   the bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
 - **P2 — Build on Craft without inheriting every upstream product change.** The committed `app/`
-  remains the one implementation tree. Pinned Craft v0.10.5 is the product/interaction baseline;
-  pinned v0.11.1 is a selective-update reference. Port an independent fix or backend mechanism only
-  after a code comparison proves that it preserves the v0.10.5 work model and Fleet's authorities.
-  Never merge either checkout wholesale or create a second app. (2026-07-08; superseded baseline
-  policy, owner direction 2026-07-21)
+  remains the one implementation tree. Pinned Craft releases and hosted docs are comparison
+  candidates: admit the better interaction, fix, or backend mechanism only after code comparison
+  proves it preserves Fleet's one Project boundary and existing authorities. Never merge a checkout
+  wholesale or create a second app. (2026-07-08; revised by owner direction 2026-07-21 and
+  2026-07-28)
 - **P3 — Retain the Craft shell.** The spatial canvas is a first-class *project surface* hosted
   inside the shell, not a replacement shell. (2026-07-09)
 - **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription. (2026-07-08)
@@ -57,12 +57,21 @@
   direct remote access must work without `agents.craft.do`, `mcp.craft.do`, or any Craft
   account/server. Each inherited cloud hook migrates capability-by-capability: prefer local;
   otherwise user-configured/self-hosted endpoint; retain Craft services only as explicit optional
-  connectors; otherwise honestly disabled. Upstream sharing currently uploads full sessions to
+  connectors; otherwise honestly disabled. Upstream sharing previously uploaded (removed 2026-07-26) full sessions to
   Craft's viewer API — never present it as Fleet-native. **Upstream intake stays open:** track
   official tags/release notes/source to port fixes selectively; but Fleet's binary updater must use
   a Fleet-controlled/user-configured channel (installing an official Craft binary over Fleet would
   erase the fork) or disable cleanly. Spec: [`specs/R2-independence.md`](specs/R2-independence.md).
   (owner direction, amended 2026-07-12)
+
+### P8-rev (2026-07-26): Online sharing removed
+
+**Decision**: Remove online sharing/viewer functionality entirely (ChatPage share button, session-menu share item, shareToViewer/updateShare/revokeShare, session_shared/session_unshared events, apps/viewer).
+
+**Rationale**: Default-visible controls with no actual behavior violate 03-NON-NEGOTIABLES.md §2. Owner decision 2026-07-26.
+
+**Impact**: EXEC-12 implementation status updated; P-28 surface removed; viewer boundary retained as forward guard in 03-NON-NEGOTIABLES.md.
+
 - **P9 — "Cloud mode" is a user-owned remote execution profile, not a Fleet cloud service.** A cloud
   target is the same Fleet runtime on user/team-controlled hardware, reached via P7 transport.
   Execution location (`this device / self-hosted cloud`) and workspace isolation
@@ -266,14 +275,45 @@
   product visibly queues, suspends, degrades, or hands off — it does not freeze or silently drop
   work. Exact thresholds are benchmark outputs. (owner concern; see
   [`design-library/OWNER-VOICE.md`](design-library/OWNER-VOICE.md) OV-002; 2026-07-11)
-- **E9 — Thinking-intensity levels adapt per model; ungradable models are handled honestly.** The
+- **E9 — Reasoning and runtime modes adapt per model; unsupported distinctions stay hidden.** The
   owner requires automatic per-model adaptation and honest handling of models that expose no
-  gradable reasoning control (exact quote: `OWNER-VOICE.md` OV-006). One thinking-level vocabulary
-  (Craft's `off…max`); each backend/model adapter maps it
-  to what the provider actually supports — saturating, collapsing to on/off, or hiding the selector
-  — and never claims a level was applied when it wasn't. Never emit a level the installed SDK's type
-  does not accept. First application: `THINKING_TO_PI` saturates `max → 'xhigh'` (pi SDK 0.80.6).
-  (owner, 2026-07-11)
+  gradable reasoning control (exact quote: `OWNER-VOICE.md` OV-006). Discovery records the exact
+  provider- or CLI-advertised values for each model. Fleet may translate their labels for display
+  and normalize an exact equivalent into its persisted vocabulary, but it must not invent a tier,
+  silently saturate `max` to a lower value, or treat every provider `variant` as reasoning effort.
+  Toggle-only reasoning becomes an honest on/off control. Speed, service tier, tool profile and
+  other provider modes remain separate runtime-mode data even when the compact UI places them in
+  the same menu. An adapter emits only a value accepted by the installed SDK/protocol and records
+  the applied provider-native value; otherwise the control is hidden. The old Pi
+  `THINKING_TO_PI.max → xhigh` mapping is legacy request compatibility, not a display capability and
+  must never expose a false `max` choice. (owner, 2026-07-11; corrected 2026-07-30)
+- **E9a — “One authority / one design language” constrains implementation, not the size of a UI
+  correction.** Provider, subscription, model, reasoning, speed, and quota configuration may be
+  regrouped, added, or removed inside the existing Settings home when that makes the real workflow
+  shorter. The result must reuse Fleet/Craft settings primitives and the existing connection,
+  credential, model-capability, and usage authorities; it must not preserve a weak screen merely to
+  avoid visual change, and it must not introduce a parallel provider catalog, model preference
+  store, credential path, or styling vocabulary. Model selection and reasoning selection remain
+  separate controls. Reasoning choices and speed controls are projected from the selected model's
+  actual capabilities and are hidden when unsupported. Provider setup and reauthentication should
+  complete in Settings with progressive disclosure rather than navigating through the first-run
+  onboarding experience. OpenCode Desktop is the primary workflow reference for the provider,
+  model, reasoning, context-usage, and review surfaces: admit its flatter searchable inventories,
+  in-place configuration, and capability-driven controls where they shorten Fleet's workflow.
+  Existing Fleet composition is not grandfathered; redundant menus, nested pickers, and weak
+  information architecture should be removed rather than cosmetically preserved. Admission still
+  re-skins the workflow with Fleet/Craft primitives and keeps Fleet's backend stores as the only
+  authorities.
+
+  “Follow OpenCode” is a best-of admission rule, not permission to copy its state architecture or
+  every pixel. Live provider/CLI discovery outranks the OpenCode catalog; the catalog may enrich or
+  backfill missing metadata but never override a live denial. Low-risk selection and connection
+  editing stay inline or in a menu on the current page. OAuth handoff, the operating-system folder
+  picker, destructive confirmation, credential recovery and any flow too large to remain
+  understandable may use the existing dialog/drawer/system surface. There is no per-connection
+  “default model”; one app/Project new-task default may exist outside the connection editor, and an
+  explicit Session choice always wins. A speed mode is never duplicated as another model ID.
+  (owner clarification, 2026-07-29; boundary review 2026-07-30)
 - **E10 — Identity labels are a built-in product concept; display language is not identity.** The
   existing Craft label store is the single authority. Untouched starter labels localize at
   render/search time; user-created or renamed labels stay verbatim. Future Skill/Source/permission

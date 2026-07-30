@@ -1,5 +1,5 @@
-/** Stable built-in identity-label catalog shared by UI and future capability bindings. */
-export const SYSTEM_IDENTITY_LABELS = {
+/** Stable built-in label catalog used only to localize untouched starter names. */
+export const SYSTEM_LABELS = {
   automation: { id: 'automation', defaultName: 'Automation', nameKey: 'labels.default.automation' },
   bug: { id: 'bug', defaultName: 'Bug', nameKey: 'labels.default.bug' },
   code: { id: 'code', defaultName: 'Code', nameKey: 'labels.default.code' },
@@ -12,8 +12,8 @@ export const SYSTEM_IDENTITY_LABELS = {
   writing: { id: 'writing', defaultName: 'Writing', nameKey: 'labels.default.writing' },
 } as const
 
-export type SystemIdentityLabelId = keyof typeof SYSTEM_IDENTITY_LABELS
+export type SystemLabelId = keyof typeof SYSTEM_LABELS
 
-export function getSystemIdentityLabel(id: string) {
-  return SYSTEM_IDENTITY_LABELS[id as SystemIdentityLabelId]
+export function getSystemLabel(id: string) {
+  return SYSTEM_LABELS[id as SystemLabelId]
 }

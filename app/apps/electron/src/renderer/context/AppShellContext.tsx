@@ -17,7 +17,6 @@ import type {
   PermissionRequest,
   CredentialRequest,
   CredentialResponse,
-  PermissionMode,
   SessionStatus,
   LoadedSource,
   LoadedSkill,
@@ -25,6 +24,7 @@ import type {
   TestAutomationResult,
 } from '../../shared/types'
 import type { SessionStatus as SessionStatusConfig } from '@/config/session-status-config'
+import type { ExecutionPermissionMode, WorkMode, WorkModeSelection } from '@craft-agent/shared/agent/work-mode'
 import type { SessionOptions, SessionOptionUpdates } from '../hooks/useSessionOptions'
 import { defaultSessionOptions } from '../hooks/useSessionOptions'
 import { sessionAtomFamily } from '../atoms/sessions'
@@ -73,8 +73,6 @@ export interface AppShellContextType {
     /** Session fields carried from the creator — fallback when the meta map hasn't loaded it yet. */
     session?: { workingDirectory?: string; workspaceId?: string }
   }) => void
-  /** Enabled permission modes for Shift+Tab cycling */
-  enabledModes?: PermissionMode[]
   /** Dynamic todo states from workspace config (provided by AppShell, defaults to empty) */
   sessionStatuses?: SessionStatusConfig[]
 
@@ -91,7 +89,7 @@ export interface AppShellContextType {
   onArchiveSession: (sessionId: string) => void
   onUnarchiveSession: (sessionId: string) => void
   onMarkSessionRead: (sessionId: string) => void
-  onMarkSessionUnread: (sessionId: string) => void
+
   /** Track which session user is viewing (for unread state machine) */
   onSetActiveViewingSession: (sessionId: string) => void
   onSessionStatusChange: (sessionId: string, state: SessionStatus) => void
@@ -120,6 +118,12 @@ export interface AppShellContextType {
   // Workspace
   onSelectWorkspace: (id: string, openInNewWindow?: boolean) => void | Promise<void>
   onRefreshWorkspaces?: () => void
+  /** Open the existing Project creation flow and return the created Workspace
+   *  to the requesting surface. This adds no second Project authority. */
+  onRequestProjectCreation?: (
+    kind: 'local' | 'remote',
+    onCreated: (workspace: Workspace) => void,
+  ) => void
 
   // App actions
   onOpenSettings: () => void
@@ -245,14 +249,15 @@ export function usePendingCredential(sessionId: string): CredentialRequest | und
  * This is the primary way components should access session options.
  *
  * Usage:
- *   const { options, setPermissionMode } = useSessionOptionsFor(sessionId)
- *   setPermissionMode('safe')
+ *   const { options, setWorkMode } = useSessionOptionsFor(sessionId)
+ *   setWorkMode('manual', 'explore')
  */
 export function useSessionOptionsFor(sessionId: string): {
   options: SessionOptions
   setOption: <K extends keyof SessionOptions>(key: K, value: SessionOptions[K]) => void
   setOptions: (updates: SessionOptionUpdates) => void
-  setPermissionMode: (mode: PermissionMode) => void
+  setWorkMode: (selection: WorkModeSelection, mode?: WorkMode) => void
+  setExecutionPermissionMode: (mode: ExecutionPermissionMode) => void
   isSafeModeActive: () => boolean
 } {
   const { sessionOptions, onSessionOptionsChange } = useAppShellContext()
@@ -270,8 +275,15 @@ export function useSessionOptionsFor(sessionId: string): {
     onSessionOptionsChange(sessionId, updates)
   }, [sessionId, onSessionOptionsChange])
 
-  const setPermissionMode = useCallback((mode: PermissionMode) => {
-    setOption('permissionMode', mode)
+  const setWorkMode = useCallback((selection: WorkModeSelection, mode?: WorkMode) => {
+    setOptions({
+      workModeSelection: selection,
+      ...(mode ? { workMode: mode } : {}),
+    })
+  }, [setOptions])
+
+  const setExecutionPermissionMode = useCallback((mode: ExecutionPermissionMode) => {
+    setOption('executionPermissionMode', mode)
   }, [setOption])
 
   const isSafeModeActive = useCallback(() => {
@@ -282,7 +294,8 @@ export function useSessionOptionsFor(sessionId: string): {
     options,
     setOption,
     setOptions,
-    setPermissionMode,
+    setWorkMode,
+    setExecutionPermissionMode,
     isSafeModeActive,
   }
 }

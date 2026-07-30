@@ -90,7 +90,12 @@ const LlmConnectionSchema = z.object({
   baseUrl: z.string().optional(),
   models: z.array(z.union([z.string(), z.object({ id: z.string() }).passthrough()])).optional(),
   defaultModel: z.string().optional(),
-  modelSelectionMode: z.enum(['automaticallySyncedFromProvider', 'userDefined3Tier']).optional(),
+  utilityModel: z.string().optional(),
+  modelSelectionMode: z.enum([
+    'automaticallySyncedFromProvider',
+    'userSelected',
+    'userDefined3Tier',
+  ]).optional(),
   customEndpoint: CustomEndpointSchema.optional(),
   createdAt: z.number(),
   // Allow additional fields (codexPath, awsRegion, gcpProjectId, etc.)
@@ -1145,6 +1150,16 @@ const BaseLabelConfigSchema = z.object({
   valueType: z.enum(['string', 'number', 'date', 'link']).optional(),
   /** Auto-label rules: regex patterns that scan messages and apply labels automatically */
   autoRules: z.array(AutoLabelRuleSchema).optional(),
+  /**
+   * Identity facet (Decision E10): functional organize/filter vs identity role guidance.
+   * Omit or "functional" = no role inject. "identity" may carry systemPromptPreset.
+   */
+  kind: z.enum(['functional', 'identity']).optional(),
+  /**
+   * Role guidance injected when session carries this label id (kind=identity).
+   * Does not grant tools or bypass the permission path.
+   */
+  systemPromptPreset: z.string().optional(),
 });
 
 // Recursive schema: LabelConfig can have children which are also LabelConfigs.
@@ -1156,6 +1171,8 @@ type LabelConfigSchemaType = z.ZodType<{
   icon?: string;
   valueType?: 'string' | 'number' | 'date' | 'link';
   autoRules?: Array<{ pattern: string; flags?: string; valueTemplate?: string; description?: string }>;
+  kind?: 'functional' | 'identity';
+  systemPromptPreset?: string;
   children?: LabelConfigSchemaType[];
 }>;
 

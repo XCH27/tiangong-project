@@ -58,7 +58,6 @@ export function SessionListMobilePreview({
             onUnflag={log('onUnflag')}
             onArchive={log('onArchive')}
             onUnarchive={log('onUnarchive')}
-            onMarkUnread={log('onMarkUnread')}
             onSessionStatusChange={log('onSessionStatusChange')}
             onRename={log('onRename')}
             onFocusChatInput={log('onFocusChatInput')}

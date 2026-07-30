@@ -4,13 +4,13 @@ import { Command as CommandPrimitive } from 'cmdk'
 import { Check, Minimize2 } from 'lucide-react'
 import { Icon_Folder } from '@craft-agent/ui'
 import { cn } from '@/lib/utils'
-import { PERMISSION_MODE_CONFIG, PERMISSION_MODE_ORDER, type PermissionMode } from '@craft-agent/shared/agent/modes'
+import { PERMISSION_MODE_CONFIG, type PermissionMode } from '@craft-agent/shared/agent/modes'
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type SlashCommandId = PermissionMode | 'compact'
+export type SlashCommandId = 'auto' | 'explore' | 'plan' | 'execute' | 'compact'
 
 /** Union type for all item types in the slash menu */
 export type SlashItemType = 'command' | 'folder'
@@ -79,14 +79,18 @@ function PermissionModeIcon({ mode, className }: PermissionModeIconProps) {
 // Icon size constant
 const MENU_ICON_SIZE = 'h-3.5 w-3.5'
 
-// Generate permission mode commands from centralized config
-const permissionModeCommands: SlashCommand[] = PERMISSION_MODE_ORDER.map(mode => {
-  const config = PERMISSION_MODE_CONFIG[mode]
+// Plan is an explicit command/action. The normal Agent path stays automatic;
+// Execute and Explore are phases chosen by that path, not persistent composer peers.
+const agentDefinitions: Array<{ id: 'plan'; iconMode: PermissionMode; label: string }> = [
+  { id: 'plan', iconMode: 'safe', label: 'plan' },
+]
+const agentCommands: SlashCommand[] = agentDefinitions.map(({ id, iconMode, label }) => {
+  const config = PERMISSION_MODE_CONFIG[iconMode]
   return {
-    id: mode,
-    label: config.displayName,
+    id,
+    label,
     description: config.description,
-    icon: <PermissionModeIcon mode={mode} className={MENU_ICON_SIZE} />,
+    icon: <PermissionModeIcon mode={iconMode} className={MENU_ICON_SIZE} />,
   }
 })
 
@@ -98,12 +102,12 @@ const compactCommand: SlashCommand = {
 }
 
 export const DEFAULT_SLASH_COMMANDS: SlashCommand[] = [
-  ...permissionModeCommands,
+  ...agentCommands,
   compactCommand,
 ]
 
 export const DEFAULT_SLASH_COMMAND_GROUPS: CommandGroup[] = [
-  { id: 'modes', commands: permissionModeCommands },
+  { id: 'agents', commands: agentCommands },
 ]
 
 // ============================================================================
@@ -162,11 +166,13 @@ function flattenSections(sections: SlashSection[]): (SlashCommand | SlashFolderI
 // Shared: Command Item Content
 // ============================================================================
 
-const MODE_COMMAND_IDS = new Set<string>(['safe', 'ask', 'allow-all'])
+const MODE_COMMAND_IDS = new Set<string>(['auto', 'explore', 'plan', 'execute'])
 
 function CommandItemContent({ command, isActive }: { command: SlashCommand; isActive: boolean }) {
   const { t } = useTranslation()
-  const label = MODE_COMMAND_IDS.has(command.id) ? t(`mode.${command.id}`, command.label) : command.label
+  const label = MODE_COMMAND_IDS.has(command.id)
+    ? t(command.id === 'auto' ? 'mode.auto' : `mode.work.${command.id}`, command.label)
+    : command.label
   return (
     <>
       <div className="shrink-0 text-muted-foreground">{command.icon}</div>
@@ -567,14 +573,13 @@ export function useInlineSlashCommand({
   const sections = React.useMemo((): SlashSection[] => {
     const result: SlashSection[] = []
 
-    // Modes section
+    // OpenCode-style agents (build / plan) + compact command
     result.push({
-      id: 'modes',
-      label: 'Modes',
-      items: permissionModeCommands,
+      id: 'agents',
+      label: 'Agents',
+      items: agentCommands,
     })
 
-    // Commands section
     result.push({
       id: 'commands',
       label: 'Commands',

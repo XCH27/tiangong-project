@@ -253,6 +253,14 @@ export interface Message {
   role: MessageRole;
   content: string;
   timestamp: number;
+  /**
+   * Request context captured when a user message is accepted.
+   * Historical rows must not read the Session's current selectors because
+   * those may change after the message was sent.
+   */
+  requestModel?: string;
+  requestConnection?: string;
+  requestWorkMode?: 'explore' | 'plan' | 'execute';
   // Tool-specific fields
   toolName?: string;
   toolUseId?: string;
@@ -346,6 +354,10 @@ export interface StoredMessage {
   type: MessageRole;
   content: string;
   timestamp?: number;
+  /** Per-message request context used by transcript metadata. */
+  requestModel?: string;
+  requestConnection?: string;
+  requestWorkMode?: 'explore' | 'plan' | 'execute';
   // Tool-specific fields
   toolName?: string;
   toolUseId?: string;
@@ -429,6 +441,8 @@ export interface TokenUsage {
   costUsd: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Active model's context-window size. May change when the model changes. */
+  contextWindow?: number;
 }
 
 /**
@@ -581,7 +595,11 @@ export type AgentEvent =
   | { type: 'workflow_agent_completed'; workflowId: string; agentId: string; turnId?: string }
   | { type: 'shell_killed'; shellId: string; turnId?: string }
   | { type: 'source_activated'; sourceSlug: string; originalMessage: string }
-  | { type: 'usage_update'; usage: Pick<AgentEventUsage, 'inputTokens' | 'contextWindow'> }
+  | {
+      type: 'usage_update';
+      usage: Pick<AgentEventUsage, 'inputTokens' | 'contextWindow'> &
+        Partial<Pick<AgentEventUsage, 'cacheReadTokens' | 'cacheCreationTokens'>>;
+    }
   | { type: 'steer_undelivered'; message: string };
 
 /**

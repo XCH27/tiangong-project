@@ -111,6 +111,7 @@ export const BUILT_IN_TOOLS = new Set([
   'NotebookEdit',
   'KillShell',
   'SubmitPlan',
+  'EnterPlan',
   'Skill',
   'SlashCommand',
   'TaskStop',

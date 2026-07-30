@@ -92,6 +92,16 @@ describe('deriveSelectionFlags', () => {
     expect(flags.folderName).toBe('project')
   })
 
+  it('returns "no folder" when workingDirectory equals project/workspace root', () => {
+    const flags = deriveSelectionFlags(
+      '/Users/alice/.craft-agent/workspaces/My Workspace',
+      '/Users/alice/session',
+      '/Users/alice/.craft-agent/workspaces/My Workspace',
+    )
+    expect(flags.hasFolder).toBe(false)
+    expect(flags.folderName).toBeUndefined()
+  })
+
   it('showReset is true when a custom folder differs from session root', () => {
     const flags = deriveSelectionFlags(
       '/Users/alice/code/project',

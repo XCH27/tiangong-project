@@ -104,4 +104,30 @@ describe('mid-stream queue runtime invariants', () => {
     expect(processingEvent?.optimisticMessageId).toBe('optimistic-user')
     expect(sendMessage).toHaveBeenCalledTimes(1)
   })
+
+  it('removes one queued message from both delivery and transcript authorities', async () => {
+    const sessionId = 'queue-remove'
+    const managed = buildSession(sessionId)
+    managed.messages = [
+      { id: 'queued-a', role: 'user', content: 'first', timestamp: 1, isQueued: true },
+      { id: 'queued-b', role: 'user', content: 'second', timestamp: 2, isQueued: true },
+    ]
+    managed.messageQueue.push(
+      { message: 'first', messageId: 'queued-a', optimisticMessageId: 'optimistic-a' },
+      { message: 'second', messageId: 'queued-b' },
+    )
+    const events: any[] = []
+    sm.setEventSink((_channel, _target, event) => events.push(event))
+    ;(sm as unknown as { persistSession: () => void }).persistSession = () => {}
+    ;(sm as unknown as { flushSession: () => Promise<void> }).flushSession = async () => {}
+
+    await expect(sm.removeQueuedMessage(sessionId, 'optimistic-a')).resolves.toBe('first')
+    expect(managed.messageQueue.map((item) => item.messageId)).toEqual(['queued-b'])
+    expect(managed.messages.map((message) => message.id)).toEqual(['queued-b'])
+    expect(events.at(-1)).toMatchObject({
+      type: 'queued_message_removed',
+      messageId: 'queued-a',
+      optimisticMessageId: 'optimistic-a',
+    })
+  })
 })

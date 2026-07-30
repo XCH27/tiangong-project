@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Clock } from 'lucide-react'
+import { Check, Clock, Copy, Undo2 } from 'lucide-react'
 import type { StoredAttachment, ContentBadge } from '@craft-agent/core'
 import { normalizePath } from '@craft-agent/core/utils'
 import { cn } from '../../lib/utils'
@@ -321,6 +321,12 @@ export interface UserMessageBubbleProps {
   isQueued?: boolean
   /** Compact mode - reduces padding for popover embedding */
   compactMode?: boolean
+  /** Request metadata captured with this message. */
+  timestamp?: number
+  modelName?: string
+  workMode?: 'explore' | 'plan' | 'execute'
+  /** Available only when the backend can safely retract this message. */
+  onRetract?: () => void | Promise<void>
 }
 
 /** Minimum visible duration of the "Queued" chip. Both backends ack
@@ -338,9 +344,14 @@ export function UserMessageBubble({
   badges,
   isQueued,
   compactMode,
+  timestamp,
+  modelName,
+  workMode,
+  onRetract,
 }: UserMessageBubbleProps) {
   const { t } = useTranslation()
   const hasAttachments = attachments && attachments.length > 0
+  const [copied, setCopied] = useState(false)
 
   // Show the queued chip while `isQueued` is true AND for at least
   // QUEUED_MIN_VISIBLE_MS after it first became true — even if the backend
@@ -409,8 +420,27 @@ export function UserMessageBubble({
     displayContent = displayContent.trim()
   }
 
+  const metadata = [
+    workMode ? t(`mode.work.${workMode}`) : null,
+    modelName || null,
+    timestamp !== undefined
+      ? new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(timestamp)
+      : null,
+  ].filter((value): value is string => !!value)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // Clipboard availability is owned by the host. Keep the transcript action
+      // non-destructive and leave its state unchanged when access is denied.
+    }
+  }
+
   return (
-    <div className={cn("flex flex-col items-end gap-3 w-full", className)}>
+    <div className={cn("group/user-message flex flex-col items-end gap-3 w-full", className)}>
       {/* Attachment preview row - stored attachments with thumbnails */}
       {hasAttachments && (
         <div className="flex gap-2 justify-end max-w-[80%] flex-wrap">
@@ -513,6 +543,39 @@ export function UserMessageBubble({
             </Markdown>
           )
         }
+      </div>
+      <div
+        className={cn(
+          "-mt-2 flex min-h-6 items-center justify-end gap-1.5 px-1",
+          "text-[11px] text-muted-foreground/60",
+          "opacity-0 transition-opacity duration-100",
+          "group-hover/user-message:opacity-100 group-focus-within/user-message:opacity-100",
+        )}
+        data-touch-reveal="true"
+      >
+        {metadata.length > 0 && (
+          <span className="mr-1 tabular-nums">{metadata.join(' · ')}</span>
+        )}
+        {onRetract && (
+          <button
+            type="button"
+            onClick={() => void onRetract()}
+            className="flex h-6 w-6 items-center justify-center rounded-[6px] hover:bg-foreground/5 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            aria-label={t('common.revert')}
+            title={t('common.revert')}
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => void handleCopy()}
+          className="flex h-6 w-6 items-center justify-center rounded-[6px] hover:bg-foreground/5 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label={t('common.copy')}
+          title={t('common.copy')}
+        >
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        </button>
       </div>
     </div>
   )
