@@ -127,4 +127,22 @@ export {
   MAX_BUNDLE_SIZE_BYTES,
 } from './bundle.ts';
 
+// Message revert (file-level rollback; distinct from conversation branching)
+export type {
+  SnapshotId,
+  TurnSnapshot,
+  RevertPlan,
+  StagedRevert,
+  RevertBlockedReason,
+  RevertAvailability,
+  RevertSummary,
+} from './revert-model.ts';
+export {
+  planRevert,
+  planRestoreBeforeRevert,
+  mergeRevertRestores,
+  revertAvailability,
+  summarizeStagedRevert,
+} from './revert-model.ts';
+
 

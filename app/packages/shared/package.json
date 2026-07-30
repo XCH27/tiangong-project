@@ -25,6 +25,7 @@
     "./docs": "./src/docs/index.ts",
     "./docs/doc-links": "./src/docs/doc-links.ts",
     "./config/types": "./src/config/types.ts",
+    "./git/snapshot-plan": "./src/git/snapshot-plan.ts",
     "./credentials": "./src/credentials/index.ts",
     "./mcp": "./src/mcp/index.ts",
     "./prompts": "./src/prompts/index.ts",
