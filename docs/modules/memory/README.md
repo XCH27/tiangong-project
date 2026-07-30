@@ -108,8 +108,14 @@ project-partition entries are not retrievable from another Project.
 
 ## Reality and activation sequence
 
-No memory files, index or consolidation pass exist yet (`rg -n "memory|MEMORY.md|consolidation"
-app/packages app/apps`). Activation order: (1) define the file layout + entry tag format and let
+**Updated 2026-07-30.** The *contract* now exists and is typechecked; no file, index or pass does.
+`packages/shared/src/memory/memory-scope.ts` fixes who may write which layer, what a delegate
+returns instead of writing, and what each role may read (H16–H18);
+`packages/shared/src/memory/foreign-memory.ts` fixes what happens to material imported from other
+agent products (H27); `packages/shared/src/labels/memory-curator-kit.ts` is the consolidation loop
+as an expert kit, with Hermes' ageing and trigger defaults. This packet's layer model is unchanged
+and remains the authority for the file layout; what it did not cover — delegation — is settled in
+those modules. Build the store behind them rather than designing a second one. Activation order: (1) define the file layout + entry tag format and let
 agents write working notes/`MEMORY.md` through existing file tools (alongside R3); (2) add the
 retrieval session tool over existing search; (3) add injection budgets + visible truncation and the
 P-31 share display (with TE1 fields); (4) add the idle consolidation pass with its log; (5) add

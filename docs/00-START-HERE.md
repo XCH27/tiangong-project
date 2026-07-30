@@ -113,9 +113,14 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
   slices; status vocabulary remains honest (`wired but not visually checked` until owner walkthrough
   accepts `usable`). Evidence: R1 shell, R2 independence slices, v0.11.2 mid-stream/task-notification
   fixes, R7 canvas preview, and the R1 overlap execution map under `design-library/`.
-- **Fleet capability:** every differentiating Fleet loop — governed cross-caller actions, versioned
-  artifact handoff, bounded delegation, adaptive organization, canvas/workflows, layered agent
-  memory — is `not implemented`. Craft's inherited capabilities are real and listed in
+- **Fleet capability:** the differentiating loops have a **landed, typechecked domain layer and
+  almost no wiring** (Decisions H1–H28, 2026-07-30). Expert kits, skill routing, delegation routing
+  and cost, artifact-history routing, git snapshot rules, memory scope and foreign import, CLI-agent
+  connection, terminal admission and derived session activity all exist as pure modules with tests;
+  none of them is reachable from a surface yet. Treat them as *designed and proven in isolation*,
+  never as shipped: `06-CODE-MAP.md` names each module and what remains unbuilt behind it. Governed
+  cross-caller actions, versioned artifact handoff, canvas and workflows remain `not implemented`
+  outright. Craft's inherited capabilities are real and listed in
   [`08-CRAFT-CAPABILITY-MAP.md`](08-CRAFT-CAPABILITY-MAP.md).
 - **Harness direction:** Decisions E12/E13 retain Craft as the sole product kernel and treat Pi-light
   as a measured execution profile. TE1 observes current calls; prompt/tool reduction waits for the

@@ -53,10 +53,24 @@ export type MemorySensitivity = 'normal' | 'sensitive' | 'raw_path' | 'uncertain
 
 // ── Who may write ───────────────────────────────────────────────────────────
 
+/**
+ * Position in a delegation, not a kind of session.
+ *
+ * `captain` and `delegate` describe a *relationship* that exists for the
+ * duration of one delegation: any session becomes a captain the moment it
+ * delegates, and the same session is a delegate to whoever spawned it. There is
+ * no captain mode to enter, no manager agent to configure, and nothing in the UI
+ * should offer one — a session that delegates is an ordinary conversation whose
+ * turn happened to call `spawn_session`.
+ *
+ * Naming these as user-facing roles would recreate the thing expert kits
+ * removed: a decision the user has to make up front, about a capability that is
+ * always available.
+ */
 export type MemoryWriteRole =
-  /** The session a human is talking to. Writes working notes freely. */
+  /** Holds the human conversation. Writes working notes freely. */
   | 'captain'
-  /** A delegated sub-session. Returns a report; writes no durable memory. */
+  /** Spawned by another session. Returns a report; writes no durable memory. */
   | 'delegate'
   /** The idle consolidation pass. The only writer of curated layers. */
   | 'consolidation'

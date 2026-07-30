@@ -423,8 +423,11 @@
   只有任务才可以方便在对话和项目之间通用" (only "task" travels between Conversations and
   Projects). Routing semantics: a task created **without** choosing a local/cloud folder lands in
   对话 (Conversations); choosing a folder routes it into 项目 (Projects). Recorded owner
-  direction for later releases (not an R1 work item): 管理Agent (management agents) will be
-  Conversations-scoped tasks — no project binding, so they may read across projects. UI copy,
+  direction for later releases (not an R1 work item): ~~管理Agent (management agents) will be
+  Conversations-scoped tasks — no project binding, so they may read across projects.~~
+  **Superseded by H28 (2026-07-30): there is no management agent.** Delegation is a relationship any
+  session enters by calling `spawn_session`, not a configured class; a session needing to read across
+  projects is an ordinary Conversations-scoped task whose expert kit declares those sources. UI copy,
   menu labels and the seven locale files converge on this noun; entity/code names (Session)
   stay unchanged — this is product vocabulary, not a data-model rename. (2026-07-26)
 - **G9 — Mark All Read returns in the session-list header menu.** The v0.10.5 capability lost its
@@ -745,3 +748,36 @@
   promoting with no sources, is rejected — a consolidation log exists so a person can disagree with a
   pass they were not present for, and "merged 3 entries" is a receipt rather than an explanation.
   Contract: `packages/shared/src/labels/memory-curator-kit.ts`. (2026-07-30)
+- **H27 — Foreign memory is never imported as memory; foreign history is imported as an archive.**
+  Every competing product ships "import your Claude / Cursor / Coze memories". It is the wrong
+  feature here, and not because it is hard. Another product's curated memory is a set of claims *it*
+  judged durable, distilled for *its* retrieval, phrased for *its* prompt, under assumptions about
+  what its agent could see and do. Three consequences make adoption unsafe. They **encode a different
+  tool surface** — "prefers the terminal for file edits" is a fact about an agent that had a terminal
+  and no file tools; it is a workaround, not a preference, and here it is simply wrong. They **carry
+  no evidence pointer this system can follow**, so they violate D5's requirement that every retained
+  entry point back into session evidence and can never be checked, corrected or argued with. And they
+  are **already lossy** — someone else's summariser discarded the context needed to decide whether
+  the claim still holds. What is valuable is the raw history underneath: conversations, project
+  records, decisions actually taken. That is evidence, and the curator can derive Fleet-shaped claims
+  from it with real pointers. So: `conversation-history` and `project-records` import as a searchable
+  archive to mine; `curated-memory` and `agent-instructions` import as read-only documents, quotable
+  with attribution and never adopted as fact. `mayAdoptAsMemory()` returns `false` unconditionally and
+  exists so the next person to ask finds the decision rather than the gap. A mined claim needs three
+  independent occurrences **and must not appear verbatim in its source** — lifting a good sentence out
+  of somebody's chat log and storing it as memory is the exact failure the module prevents, and it is
+  easy to commit by accident when the original phrasing is already good. Mined claims carry their
+  `archiveId`, so dropping an import drops what was derived from it and a revocable import stays
+  revocable. Contract: `packages/shared/src/memory/foreign-memory.ts`. (2026-07-30)
+- **H28 — There is no manager agent and no captain role. Delegation is a relationship, not a class.**
+  Earlier planning assumed a "管理 Agent" — a Conversations-scoped session configured to coordinate
+  others — and a captain/delegate distinction the user would choose between. Expert kits, kit-declared
+  sources, capability-and-cost routing and scoped memory remove the need for both. **Any session
+  becomes a captain the moment it delegates**, and the same session is a delegate to whatever spawned
+  it; the relationship lasts exactly as long as one delegation. There is no mode to enter, nothing to
+  configure, and the UI must not offer either — a session that delegates is an ordinary conversation
+  whose turn happened to call `spawn_session`. Naming these as user-facing roles would recreate
+  precisely what kits removed: a decision the user has to make up front about a capability that was
+  always available. `MemoryWriteRole`'s `captain` / `delegate` values are positions in a delegation
+  and are documented as such at the type. Supersedes the management-agent direction recorded under
+  G8. (2026-07-30)

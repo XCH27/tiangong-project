@@ -117,7 +117,9 @@ a neighbor.
 | session-scoped Agent tools | `SESSION_TOOL_DEFS` and handlers | tool registry, not the complete cross-caller invocation layer |
 | project/workspace bytes and permissions | Craft Workspace filesystem paths and `permissions.json` | preserve; no second permission tree |
 | settings, credentials, sources, skills | existing Craft stores and managers | reuse |
-| R5/R8/R9/R11 artifacts, workflows, memory and jobs | no Fleet authority exists yet | define the smallest authority at its ordered row when an implemented real loop needs it |
+| R5/R8/R11 artifacts, workflows and jobs | no Fleet authority exists yet | define the smallest authority at its ordered row when an implemented real loop needs it |
+| R9 memory | **contract landed, no store yet** — `packages/shared/src/memory/` fixes scope, promotion, foreign import and tool facts (H16–H18, H27); no memory file, index or consolidation pass exists | build the store behind the landed contract; do not design a second one |
+| Expert kits and delegation | **contract landed, unwired** — `packages/shared/src/labels/`, `agent/delegation-routing.ts` (H10–H21) | `LabelConfig.expertKit` is the store; no second kit registry |
 
 ## 5. Safety and compliance (hard)
 

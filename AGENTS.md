@@ -62,6 +62,42 @@ routing table below and read only what the task touches.
 - Continue through reversible in-scope work. At a checkpoint, finish safe preparation and request
   the smallest owner decision; never widen the Goal or mark partial work complete.
 
+## The agent platform, in one page (Decisions H1–H28)
+
+Read this before designing anything that touches kits, delegation, memory, git or
+cost. It is the shape the 2026-07-30 design pass settled on, and the reasoning for
+each line is in `02-DECISIONS.md` under the cited ID. **The domain layer is landed
+and typechecked; almost none of it is wired.** `06-CODE-MAP.md` names every module
+and what is still unbuilt.
+
+**One sentence:** an expert kit declares a specialist, routing decides what enters
+the window, delegation reaches other specialists by capability and cost, and
+consolidation turns what happened into what is known.
+
+| Concept | What it is | The trap it exists to avoid |
+|---|---|---|
+| **Expert kit** (H13, H15) | A label with a real payload: skills, sources, tools, a requested permission mode. Grew out of identity labels — `kind: 'identity'` is deprecated but readable forever (H23) | Giving every session every tool. Accuracy degrades past ~10–15 tools; selection accuracy collapses toward 13% on large sets. It is a tax paid every turn, not untidiness |
+| **Catalog vs active** (H19, H21) | A kit's catalog is **unbounded**. The budget measures only what routing put in the window | Trimming capability to pass a check. A kit cut to fit is a worse kit; routing makes size free |
+| **Skill routing** (H20) | Triggers select, exclusions are decisive, successors are offered not loaded | Asking the model to pick from 28 long descriptions — that *is* the attention cost being avoided |
+| **Delegation** (H10, H11, H28) | Requirement first, then cheapest that satisfies, escalate only on mechanical failure. Shown inline in the conversation | "Cheap for simple" is unimplementable: complexity is not observable up front. And there is **no captain role and no manager agent** — delegating is something any conversation does |
+| **Memory** (H16–H18) | Delegates return findings and write nothing; only consolidation writes curated layers; tool memory records the *fact*, not the call | Five delegates writing five accounts of one event — an echo chamber with source pointers attached |
+| **Foreign import** (H27) | History imports as a searchable archive. Curated memory never imports as memory | Another product's claims describe *its* tool surface and carry no evidence this system can follow |
+| **Artifact history** (H1–H4) | Routed by kind: text→git tree, media→content store, canvas/timeline→operation log. Attribution is orthogonal and required by all three | Reaching for git because it is already there. One video at a time makes a repository unusable |
+| **Git snapshots** (03 §4) | Write objects; never move HEAD, index, a ref, a branch, a tag or a stash | An agent silently committing or stashing under a user — the worst thing this capability can do |
+| **Cost** (H12) | Published rates, cache read/write priced separately, context tiers, subscription flagged not free | Collapsing cache into "input" ranks a cache-heavy agent as expensive — backwards, since agent work is iterative |
+| **CLI agents** (H6–H8) | ACP over stdio; resolved binary paths recorded; detection separate from configuration | Regexing `--help` and reading another program's private cache. Bare command names fail for every version-manager install |
+| **Session activity** (H5) | Derived, live, never clicked. `sessionStatus` stays the manual label | An icon answering "what did someone file this as" while the session is actively running |
+
+Three things a newcomer gets wrong, stated plainly:
+
+1. **Do not add a capability limit to save tokens.** Capability is the product;
+   cost is for the architecture to absorb (H21).
+2. **Do not create a role for something every session can already do.** No
+   captain mode, no manager agent, no "delegation session" type (H28).
+3. **Do not report a boundary by failing silently.** Every refusal in this layer
+   names its reason so a surface can explain itself — that pattern is deliberate
+   and repeated (workbench toggle, connect form, revert, install, promotion).
+
 ## Routing table
 
 | Your task involves… | Read |
