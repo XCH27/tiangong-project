@@ -556,3 +556,43 @@
   What the captain is *offered* is capabilities and a cost tier rather than a model list: a captain
   given ids picks by name recognition, and the cheap tier is only ever chosen when it is described
   by what it is good at rather than by what it lacks. (2026-07-30)
+- **H12 — Model pricing is real data, not a hand-assigned tier.** `delegation-routing` sorted by a
+  `CostTier` someone typed in, while `ModelDefinition` carries context window, modalities, reasoning
+  efforts and runtime modes — and no price, so nothing could answer "what did that turn cost". The
+  shape follows models.dev (which is what OpenCode normalizes against) because two parts of real
+  pricing are easy to model wrongly. **Cache reads and writes are priced separately and not
+  proportionally**: a write typically costs more than fresh input and a read a fraction of one, so
+  collapsing them into "input" makes a cache-heavy agent look expensive and a cache-cold one cheap —
+  exactly backwards for deciding what to delegate. **Price changes with context length**: several
+  providers charge more above 200k, and a flat rate silently under-reports the long-context turns
+  that cost the most. Subscription usage computes its equivalent metered cost and is flagged rather
+  than reported as free — it consumes an allowance the user already paid for — and it sorts ahead of
+  metered options at equal capability, because an unused allowance is money already spent. Unknown
+  pricing sorts *last*: it cannot be shown to be cheap, and guessing in its favour is how an
+  expensive model becomes the silent default. Contract:
+  `packages/shared/src/config/model-pricing.ts`. (2026-07-30)
+- **H13 — An identity label is a loadout, and attention is the budget it spends.** `LabelConfig`
+  already has `kind: 'identity'` and carries one thing — a `systemPromptPreset` — with its own
+  comment recording the gap: *"Skill/Source/permission bindings are not implemented"*. So an identity
+  is a paragraph of text and every session sees the same tools whatever role it is playing. That is
+  wrong for a measurable reason: agent accuracy degrades once tool counts pass roughly 10–15 and
+  tool-selection accuracy collapses toward 13% on large tool sets, because functions blur together
+  in attention and irrelevant parameter descriptions occupy working memory that should be spent on
+  the request. OpenAI's guidance is under 20 tools per turn; Anthropic documents degradation past
+  30–50. Giving every session every tool is therefore not generosity, it is an accuracy tax paid
+  every turn. The published remedy is specialisation — the 2026 HTAA framing is an orchestrator plus
+  specialists carrying 5–10 focused tools each — which is exactly what an identity label describes.
+  Thresholds are recorded as `TOOL_BUDGET` (focused ≤10, crowded ≤15, over-budget >15) and skills and
+  sources count against the same budget, because they arrive in the same window and compete for the
+  same attention. An over-budget role is told to **split**, not trim: trimming loses capability while
+  splitting keeps it and hands the parts to agents that can each hold their share. Contract:
+  `packages/shared/src/labels/identity-loadout.ts`. (2026-07-30)
+- **H14 — A loadout narrows what an agent sees; it never widens what it may do.** Grants stay on the
+  permission path (`03-NON-NEGOTIABLES.md` §1). `requestedPermissionMode` is a *request* the
+  permission path may answer more narrowly, and a session carrying several identity labels takes the
+  **narrowest** requested mode, not the widest — combining roles must never be a way to accumulate
+  permission that neither role was given. Loadouts resolve against the live registries and report
+  what no longer exists rather than silently becoming a weaker role. This is what closes the loop:
+  identity defines the specialist, the tool budget says when a role must split, delegation reaches
+  the specialist instead of growing the current one, and permission decides what any of them may
+  actually do. (2026-07-30)

@@ -71,7 +71,9 @@
     "./artifacts/history-backend": "./src/artifacts/history-backend.ts",
     "./cli-agents/cli-agent-connection": "./src/cli-agents/cli-agent-connection.ts",
     "./terminal/terminal-capability": "./src/terminal/terminal-capability.ts",
-    "./agent/delegation-routing": "./src/agent/delegation-routing.ts"
+    "./agent/delegation-routing": "./src/agent/delegation-routing.ts",
+    "./config/model-pricing": "./src/config/model-pricing.ts",
+    "./labels/identity-loadout": "./src/labels/identity-loadout.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",
