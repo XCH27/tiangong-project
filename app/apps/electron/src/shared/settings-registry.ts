@@ -46,6 +46,11 @@ export const SETTINGS_PAGES = [
     descriptionKey: 'settings.ai.description',
   },
   {
+    id: 'expert-kits' as const,
+    labelKey: 'settings.expertKits.title',
+    descriptionKey: 'settings.expertKits.description',
+  },
+  {
     id: 'terminal' as const,
     labelKey: 'settings.terminal.title',
     descriptionKey: 'settings.terminal.description',

@@ -16,6 +16,7 @@ import type { SettingsSubpage } from '../../../shared/settings-registry'
 
 import AppSettingsPage from './AppSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
+import ExpertKitsSettingsPage from './ExpertKitsSettingsPage'
 import TerminalSettingsPage from './TerminalSettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
 import InputSettingsPage from './InputSettingsPage'
@@ -35,6 +36,7 @@ import ArchivedSettingsPage from './ArchivedSettingsPage'
 export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = {
   app: AppSettingsPage,
   ai: AiSettingsPage,
+  'expert-kits': ExpertKitsSettingsPage,
   terminal: TerminalSettingsPage,
   appearance: AppearanceSettingsPage,
   input: InputSettingsPage,

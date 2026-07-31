@@ -75,6 +75,7 @@ export const SETTINGS_ICONS: Record<
 > = {
   app: AppSettingsIcon,
   ai: AiSettingsIcon,
+  'expert-kits': LabelsIcon,
   terminal: TerminalSettingsIcon,
   appearance: AppearanceIcon,
   input: InputIcon,
