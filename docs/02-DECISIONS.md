@@ -781,3 +781,36 @@
   always available. `MemoryWriteRole`'s `captain` / `delegate` values are positions in a delegation
   and are documented as such at the type. Supersedes the management-agent direction recorded under
   G8. (2026-07-30)
+- **H29 — A cost with no rate behind it is reported as unknown, never as zero.** `SessionTokenUsage.costUsd`
+  carries three different meanings behind one number: Claude and Pi backends write a real figure from the
+  provider; `sessions/storage.ts` initialises it to `0`; and every OpenAI-compatible endpoint leaves it at
+  that `0`, because the OpenAI response body has no cost field to copy. That last case is not an edge —
+  it is all seven CN providers, every custom base URL and every discovered model, so in a mixed setup the
+  *majority* of sessions report `$0.00`. Summing that field gives a total that is confident, wrong, and
+  **systematically low**, and it is low in precisely the place a user most needs the truth: the unpriced
+  sessions are the custom endpoints where spend is least visible. So every figure travels with its
+  provenance — `reported` | `derived` | `subscription` | `unknown` — and `unknown` is *not a number*, which
+  forces the caller to render it as unknown. A reported `0` is believed only when the session moved no
+  tokens; otherwise it is the storage default showing through and we derive instead. `derived` is
+  deliberately not called "estimated": the arithmetic is exact, what is uncertain is whether the published
+  rate is the rate this account is billed at. Subscription usage is valued but summed apart, because adding
+  an allowance draw to a metered charge produces a total that matches no bill. Contracts:
+  `packages/shared/src/config/session-cost.ts`, `usage-rollup.ts`. (2026-07-31)
+- **H30 — Rate coverage is measured in tokens, never in sessions.** A usage total assembled from a few
+  priced sessions and many unpriced ones needs to say how much of itself is real. Counting that as a
+  fraction of *sessions* inverts the answer whenever size and pricing correlate — one unpriced session that
+  moved two million tokens against thirty priced ones that moved a thousand each reads as 97% covered and is
+  actually 2%. Tokens are the unit of both cost and attention, so tokens are what rank and what measure.
+  The Usage page states coverage whenever any of it is unpriced, and prefixes the spend figure with
+  "at least". (2026-07-31)
+- **H31 — Users state rates for their own endpoints; the fix lives where the gap is noticed.** Since an
+  OpenAI-compatible endpoint reports no cost, the only route to a real number is the user saying what they
+  pay. Rates are stored as `LlmConnection.modelPricing`, a map keyed by model ID **beside** `models` rather
+  than a field inside it, because that array holds bare strings as well as full definitions and pricing a
+  string entry would mean synthesising a whole `ModelDefinition` around it — a half-invented definition is a
+  worse thing to persist than a separate map. A stated rate always beats the bundled registry: for a custom
+  endpoint the registry is guessing and the user is reading a contract. Only a connection that actually
+  lists the model may hold its rate, or a stray entry would misprice a model that connection never served.
+  The editor is on the Usage page next to the "no rate" it fixes, not in AI settings; four fields, because
+  collapsing cache into input is the standard way a self-built cost display goes wrong, and agent work is
+  overwhelmingly cache-heavy. (2026-07-31)

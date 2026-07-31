@@ -18,6 +18,7 @@ import {
   modelSupportsFastMode,
   normalizeDeprecatedModelId,
 } from './models';
+import type { ModelPricing } from './model-pricing.ts';
 import type { CredentialManager } from '../credentials/manager.ts';
 
 // ============================================================
@@ -165,6 +166,21 @@ export interface LlmConnection {
 
   /** Default model for this connection */
   defaultModel?: string;
+
+  /**
+   * User-stated rates, keyed by model ID.
+   *
+   * OpenAI-compatible responses carry no cost field, so for every custom
+   * endpoint — which is all seven CN providers, every self-hosted model and
+   * every proxy — nothing in the system can price a turn unless the user says
+   * what they are paying. Without this the usage view reports `$0.00` for the
+   * majority of a mixed setup, which is not a small inaccuracy: it is confident
+   * and always low.
+   *
+   * Kept beside `models` rather than inside it because that array holds bare
+   * strings as well as full definitions.
+   */
+  modelPricing?: Record<string, ModelPricing>;
 
   /**
    * Optional model for low-cost internal work such as title generation,

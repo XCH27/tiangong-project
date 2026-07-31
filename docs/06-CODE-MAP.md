@@ -137,6 +137,8 @@ repository and the executor's only job is to refuse anything the plan did not au
 | CLI agent connection (ACP + catalog + binary resolution) | `packages/shared/src/cli-agents/cli-agent-connection.ts` | Replaces three hand-written probes; `legacy-probe` marks what has not migrated |
 | Terminal capability and command admission | `packages/shared/src/terminal/terminal-capability.ts` | Classifies before running so `vim` is refused instead of hanging for 30s |
 | Model pricing (cache tiers, context tiers, subscription) | `packages/shared/src/config/model-pricing.ts` | models.dev shape; unknown pricing sorts last so it cannot become the silent default |
+| Cost of a session, with provenance | `packages/shared/src/config/session-cost.ts` | `reported` / `derived` / `subscription` / **`unknown`** — unknown is not a number, so `$0.00` can never stand in for "nobody told us" |
+| Usage rolled up by model, project, day | `packages/shared/src/config/usage-rollup.ts` | Coverage is measured in **tokens, not sessions**; quiet days stay as gaps |
 | Expert kits and the attention budget | `packages/shared/src/labels/expert-kit.ts` | Budget governs the **active** set, not the catalog; union takes the *narrowest* permission request |
 | Skill routing inside a kit | `packages/shared/src/labels/skill-routing.ts` | Triggers + decisive exclusions + offered successors; `auditCatalog` catches what makes routing feel broken |
 | Expert-kit gallery (browse, cards, install admission) | `packages/shared/src/labels/kit-gallery.ts` | Catalog size never warns; missing connectors refuse, missing routing warns |

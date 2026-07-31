@@ -441,6 +441,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   app: 'ToggleRight',
   ai: 'Sparkles',
   'expert-kits': 'Boxes',
+  usage: 'ChartColumn',
   terminal: 'SquareTerminal',
   appearance: 'Palette',
   input: 'Keyboard',

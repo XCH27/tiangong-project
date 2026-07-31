@@ -5,6 +5,8 @@ export * from './models.ts';
 export * from './models-pi.ts';
 export * from './provider-catalog.ts';
 export * from './model-pricing.ts';
+export * from './session-cost.ts';
+export * from './usage-rollup.ts';
 export * from './model-fetcher.ts';
 export * from './preferences.ts';
 export * from './storage.ts';

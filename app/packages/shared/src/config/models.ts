@@ -4,6 +4,7 @@ import {
   type ThinkingLevel,
   type ThinkingLevelDefinition,
 } from '../agent/thinking-levels.ts';
+import type { ModelPricing } from './model-pricing.ts';
 
 /**
  * Centralized Model Registry
@@ -149,6 +150,16 @@ export interface ModelDefinition {
    * `supportsImages`.
    */
   inputModalities?: readonly ('text' | 'image' | 'audio' | 'video' | 'pdf')[];
+  /**
+   * Published rates for this exact model.
+   *
+   * Optional and unresolved by default, because for most of the registry it
+   * genuinely is unknown: a custom OpenAI-compatible endpoint has whatever
+   * price its operator charges, and a discovered model arrives with no price at
+   * all. Absent means "nobody told us", which `session-cost.ts` reports as
+   * unknown — distinct from zero, which would read as free.
+   */
+  pricing?: ModelPricing;
 }
 
 export interface ModelRuntimeMode {

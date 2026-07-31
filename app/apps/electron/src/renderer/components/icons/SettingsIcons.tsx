@@ -8,6 +8,7 @@
 
 import {
   Archive,
+  ChartColumn,
   Folder,
   Keyboard,
   MessageSquare,
@@ -64,6 +65,9 @@ export const PreferencesIcon = ({ className }: IconProps) => (
 export const ArchivedSettingsIcon = ({ className }: IconProps) => (
   <Archive className={className} />
 )
+export const UsageIcon = ({ className }: IconProps) => (
+  <ChartColumn className={className} />
+)
 
 /**
  * Map of settings subpage IDs to their icon components.
@@ -76,6 +80,7 @@ export const SETTINGS_ICONS: Record<
   app: AppSettingsIcon,
   ai: AiSettingsIcon,
   'expert-kits': LabelsIcon,
+  usage: UsageIcon,
   terminal: TerminalSettingsIcon,
   appearance: AppearanceIcon,
   input: InputIcon,
