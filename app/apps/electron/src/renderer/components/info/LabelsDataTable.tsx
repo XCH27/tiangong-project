@@ -16,6 +16,7 @@ import { LabelIcon } from '@/components/ui/label-icon'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import type { LabelConfig } from '@craft-agent/shared/labels'
+import { normalizeLabelKind } from '@craft-agent/shared/labels/kind-normalize'
 import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 interface LabelsDataTableProps {
@@ -27,7 +28,7 @@ interface LabelsDataTableProps {
   /** Settings: highlight + click to edit */
   selectedLabelId?: string | null
   onLabelSelect?: (labelId: string) => void
-  /** Show purpose column (functional / identity) */
+  /** Show kind column (functional / expert) */
   showPurposeColumn?: boolean
   className?: string
 }
@@ -109,14 +110,16 @@ function getColumns(
   if (showPurposeColumn) {
     columns.push({
       id: 'kind',
-      header: () => <span className="p-1.5 pl-2.5">{t('settings.labels.kindHeader')}</span>,
-      accessorFn: (row) => (row.kind === 'identity' ? 'identity' : 'functional'),
+      header: () => <span className="p-1.5 pl-2.5">{t('settings.expertKits.kindHeader')}</span>,
+      // Never compare `kind` directly — `identity` is the legacy spelling of
+      // `expert` and `kind-normalize` is the single place allowed to know it.
+      accessorFn: (row) => normalizeLabelKind(row.kind),
       cell: ({ row }) => (
         <div className="p-1.5 pl-2.5">
           <Info_Badge color="muted" className="whitespace-nowrap">
-            {row.original.kind === 'identity'
-              ? t('settings.labels.kindIdentity')
-              : t('settings.labels.kindFunctional')}
+            {normalizeLabelKind(row.original.kind) === 'expert'
+              ? t('settings.expertKits.kindExpert')
+              : t('settings.expertKits.kindFunctional')}
           </Info_Badge>
         </div>
       ),

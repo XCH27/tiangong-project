@@ -18,21 +18,21 @@ afterEach(() => {
   rmSync(workspaceRoot, { recursive: true, force: true })
 })
 
-describe('identity fields on LabelConfig', () => {
+describe('expert-kit fields on LabelConfig', () => {
   it('create and update kind + systemPromptPreset', () => {
     const created = createLabel(workspaceRoot, {
       name: 'Reviewer',
-      kind: 'identity',
+      kind: 'expert',
       systemPromptPreset: 'Review carefully.',
     })
-    expect(created.kind).toBe('identity')
+    expect(created.kind).toBe('expert')
     expect(created.systemPromptPreset).toBe('Review carefully.')
 
     const updated = updateLabel(workspaceRoot, created.id, {
       systemPromptPreset: 'Focus on risks.',
     })
     expect(updated.systemPromptPreset).toBe('Focus on risks.')
-    expect(updated.kind).toBe('identity')
+    expect(updated.kind).toBe('expert')
 
     const reloaded = flattenLabels(loadLabelConfig(workspaceRoot).labels).find(
       (l) => l.id === created.id,
@@ -43,27 +43,27 @@ describe('identity fields on LabelConfig', () => {
   it('clearing prompt removes field; functional clears kind', () => {
     const created = createLabel(workspaceRoot, {
       name: 'Code',
-      kind: 'identity',
+      kind: 'expert',
       systemPromptPreset: 'Write code.',
     })
     updateLabel(workspaceRoot, created.id, { systemPromptPreset: '' })
     let label = flattenLabels(loadLabelConfig(workspaceRoot).labels).find((l) => l.id === created.id)!
     expect(label.systemPromptPreset).toBeUndefined()
-    expect(label.kind).toBe('identity')
+    expect(label.kind).toBe('expert')
 
     updateLabel(workspaceRoot, created.id, { kind: 'functional' })
     label = flattenLabels(loadLabelConfig(workspaceRoot).labels).find((l) => l.id === created.id)!
     expect(label.kind).toBeUndefined()
   })
 
-  it('config_validate accepts identity fields', () => {
+  it('config_validate accepts expert-kit fields', () => {
     const json = JSON.stringify({
       version: 1,
       labels: [
         {
           id: 'research',
           name: 'Research',
-          kind: 'identity',
+          kind: 'expert',
           systemPromptPreset: 'Review risks.',
         },
       ],

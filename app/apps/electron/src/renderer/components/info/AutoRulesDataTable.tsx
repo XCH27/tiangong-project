@@ -223,7 +223,7 @@ export function AutoRulesDataTable({
         data={rows}
         searchable={searchable ? { placeholder: t("table.searchRules") } : false}
         maxHeight={maxHeight}
-        emptyContent={t("settings.labels.noAutoApplyRules")}
+        emptyContent={t("settings.expertKits.noAutoApplyRules")}
         floatingAction={fullscreenButton}
         className={cn(fullscreen && 'group', className)}
       />
@@ -241,7 +241,7 @@ export function AutoRulesDataTable({
             columns={columns}
             data={rows}
             searchable={searchable ? { placeholder: t("table.searchRules") } : false}
-            emptyContent={t("settings.labels.noAutoApplyRules")}
+            emptyContent={t("settings.expertKits.noAutoApplyRules")}
           />
         </DataTableOverlay>
       )}

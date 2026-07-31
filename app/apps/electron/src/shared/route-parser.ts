@@ -673,8 +673,12 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
       return { navigator: 'settings', subpage: 'workspace' }
     case 'permissions':
       return { navigator: 'settings', subpage: 'permissions' }
+    // `labels` is the retired spelling of this surface (Decision H21). The old
+    // deep link keeps resolving so existing bookmarks and docs do not 404 — it
+    // simply lands on the page that absorbed it.
     case 'labels':
-      return { navigator: 'settings', subpage: 'labels' }
+    case 'expert-kits':
+      return { navigator: 'settings', subpage: 'expert-kits' }
     case 'shortcuts':
       return { navigator: 'settings', subpage: 'shortcuts' }
     case 'preferences':

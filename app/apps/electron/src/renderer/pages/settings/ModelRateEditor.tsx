@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, X } from 'lucide-react'
-import type { ModelPricing, TokenRates } from '@craft-agent/shared/config'
+import type { ModelPricing, TokenRates } from '@craft-agent/shared/config/model-pricing'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 
 /**
  * Typing in what a model costs.
@@ -71,15 +72,17 @@ export function ModelRateEditor({ modelId, initial, onCancel, onSave }: ModelRat
   }
 
   return (
-    <div className="space-y-3 border-t border-border bg-muted/20 px-3 py-3">
-      <div className="text-xs text-muted-foreground">
+    // Inline expansion inside the existing card, not a dialog: reversible
+    // compact editing is the inline case (UI-SPEC §8, "inline versus dialog").
+    <div className="space-y-3 border-t border-border px-4 py-3">
+      <div className="text-xs text-foreground/60">
         {t('settings.usage.rateFor', { model: modelId })}
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {FIELDS.map((field) => (
           <label key={field} className="flex flex-col gap-1">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-[11px] text-foreground/50">
               {t(`settings.usage.rate.${field}`)}
             </span>
             <Input
@@ -99,17 +102,12 @@ export function ModelRateEditor({ modelId, initial, onCancel, onSave }: ModelRat
         ))}
       </div>
 
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={subscription}
-          onChange={(event) => setSubscription(event.target.checked)}
-          className="h-3.5 w-3.5"
-        />
-        {/*
-          Subscription usage is valued but not charged, so it is summed apart.
-          Folding an allowance draw into spend produces a total matching no bill.
-        */}
+      {/*
+        Subscription usage is valued but not charged, so it is summed apart.
+        Folding an allowance draw into spend produces a total matching no bill.
+      */}
+      <label className="flex items-center gap-2 text-xs text-foreground/60">
+        <Switch checked={subscription} onCheckedChange={setSubscription} />
         <span>{t('settings.usage.rate.subscription')}</span>
       </label>
 
@@ -122,7 +120,7 @@ export function ModelRateEditor({ modelId, initial, onCancel, onSave }: ModelRat
           <X className="mr-1 h-3.5 w-3.5" />
           {t('common.cancel')}
         </Button>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[11px] text-foreground/50">
           {t('settings.usage.rate.perMillion')}
         </span>
       </div>

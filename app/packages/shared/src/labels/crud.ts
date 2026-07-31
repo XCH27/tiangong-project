@@ -48,7 +48,10 @@ export function createLabel(
     name: input.name,
     color: input.color,
     ...(input.valueType && { valueType: input.valueType }),
-    ...(input.kind === 'identity' && { kind: 'identity' as const }),
+    // Only `expert` is ever written. `functional` is the absence of the field,
+    // so a plain tag stays a plain record on disk, and `identity` — the retired
+    // spelling — stays readable but can no longer be created.
+    ...(input.kind === 'expert' && { kind: 'expert' as const }),
     ...(input.systemPromptPreset?.trim() && { systemPromptPreset: input.systemPromptPreset.trim() }),
   };
 

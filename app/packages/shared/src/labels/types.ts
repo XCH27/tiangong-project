@@ -19,6 +19,15 @@
 import type { EntityColor } from '../colors/types.ts'
 
 /**
+ * The two kinds that may be written.
+ *
+ * Declared here rather than in `kind-normalize.ts` so the write-input types can
+ * reference it without the data module importing its own normalizer; the
+ * normalizer re-exports it, so callers still have one import site.
+ */
+export type NormalizedLabelKind = 'functional' | 'expert';
+
+/**
  * Auto-label rule: regex pattern that scans user messages and automatically
  * applies labels with extracted values.
  *
@@ -130,7 +139,14 @@ export interface CreateLabelInput {
   color?: EntityColor;
   parentId?: string; // Target parent label ID (null = root)
   valueType?: 'string' | 'number' | 'date' | 'link';
-  kind?: 'functional' | 'identity';
+  /**
+   * Write paths accept `expert`, never `identity`.
+   *
+   * `LabelConfig` still reads `identity` because config files on disk contain
+   * it, but nothing should be able to *create* more of it — that is what makes
+   * the rename finish rather than accumulate a second spelling forever.
+   */
+  kind?: NormalizedLabelKind;
   systemPromptPreset?: string;
 }
 
@@ -143,7 +159,8 @@ export interface UpdateLabelInput {
   color?: EntityColor | null;
   /** Pass empty string / falsy via '' to clear valueType */
   valueType?: 'string' | 'number' | 'date' | 'link' | '';
-  kind?: 'functional' | 'identity';
+  /** Write paths accept `expert`, never `identity`. See {@link CreateLabelInput}. */
+  kind?: NormalizedLabelKind;
   /** Pass empty string to clear */
   systemPromptPreset?: string;
 }

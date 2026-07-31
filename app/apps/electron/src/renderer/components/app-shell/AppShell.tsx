@@ -3285,7 +3285,7 @@ function AppShellContent({
                                   />
                                 )}
                                 <StyledDropdownMenuSeparator />
-                                <StyledDropdownMenuItem onClick={() => navigate(routes.view.settings('labels'))}>
+                                <StyledDropdownMenuItem onClick={() => navigate(routes.view.settings('expert-kits'))}>
                                   <Settings className="h-3.5 w-3.5" />
                                   <span className="flex-1">{t("sidebarMenu.editLabels")}</span>
                                 </StyledDropdownMenuItem>

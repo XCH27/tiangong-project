@@ -1,23 +1,30 @@
 /**
- * Identity helpers for session labels (docs/33: identity lives on LabelConfig).
+ * Expert-kit helpers for session labels.
+ *
+ * The file name and `collectIdentityLabels` keep the retired spelling because
+ * renaming an exported symbol is a separate, wider change; the *behaviour* is
+ * already correct. What matters is that the kind test goes through
+ * `isExpertLabel` rather than comparing `kind` directly — a direct comparison is
+ * how a label created after the rename silently stops counting.
  *
  * Browser-safe: constants + pure functions only (no Node fs).
  * Catalog truth remains labels/config.json; assignment remains session.labels[].
  */
 
 import type { LabelConfig } from './types.ts'
+import { isExpertLabel } from './kind-normalize.ts'
 
 /** Bare label id without optional `::value` suffix. */
 export function labelIdOf(rawLabel: string): string {
   return rawLabel.split('::')[0] ?? rawLabel
 }
 
-/** Recursively collect labels marked kind === 'expert' || label.kind === 'identity'. */
+/** Recursively collect every expert kit in the tree. */
 export function collectIdentityLabels(labels: readonly LabelConfig[]): LabelConfig[] {
   const out: LabelConfig[] = []
   const walk = (list: readonly LabelConfig[]): void => {
     for (const label of list) {
-      if (label.kind === 'expert' || label.kind === 'identity') out.push(label)
+      if (isExpertLabel(label)) out.push(label)
       if (label.children?.length) walk(label.children)
     }
   }

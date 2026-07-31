@@ -5,7 +5,7 @@ import {
   activityTone,
   deriveSessionActivity,
   type SessionActivity,
-} from '@craft-agent/shared/sessions'
+} from '@craft-agent/shared/sessions/session-activity'
 import type { SessionMeta } from '@/atoms/sessions'
 import { cn } from '@/lib/utils'
 
@@ -42,27 +42,43 @@ export function SessionActivityDot({ item }: { item: SessionMeta }) {
       aria-label={t(`sessionActivity.${activity}`)}
       title={t(`sessionActivity.${activity}`)}
       className={cn(
+        // 8px dot in the corner of a status icon. `rounded-full` is the status
+        // dot case in UI-SPEC §5; the background ring separates it from whatever
+        // the icon underneath is doing.
         'pointer-events-none absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full',
         'ring-2 ring-background',
         toneClass(activityTone(activity)),
-        activityIsAnimated(activity) && 'animate-pulse',
+        // Motion is functional (§9). Only a running session pulses, and it stops
+        // entirely under prefers-reduced-motion rather than degrading to a
+        // faster or subtler animation — a person who asked for no motion is not
+        // asking for less of it.
+        activityIsAnimated(activity) && 'animate-pulse motion-reduce:animate-none',
       )}
     />
   )
 }
 
 /**
- * Tone, not a colour value, so themes own the palette. Nothing here is muted:
- * every state this renders describes something that happened or is happening,
- * and dimming those makes a working session look like an empty one.
+ * Tone → theme colour.
+ *
+ * The theme has exactly six base colours (UI-SPEC §1) and four of them are
+ * reserved for real state: `accent` brand, `info` warning, `success` confirmed,
+ * `destructive` failed. Every state this dot renders *is* real state, so each
+ * maps onto a reserved colour and none needs a new one. Reaching for
+ * `bg-amber-500` here — as this file previously did — adds a seventh colour that
+ * no theme controls, so it stops responding to light/dark and to any theme the
+ * user picks, while looking correct in exactly the one theme it was written in.
  */
 function toneClass(tone: ReturnType<typeof activityTone>): string {
   switch (tone) {
-    case 'attention': return 'bg-amber-500'
-    case 'danger': return 'bg-red-500'
-    case 'active': return 'bg-blue-500'
-    case 'success': return 'bg-emerald-500'
-    case 'neutral': return 'bg-muted-foreground'
+    // Waiting on the human: the same colour Ask mode uses, because it is the
+    // same fact — the machine has stopped and needs an answer.
+    case 'attention': return 'bg-info'
+    case 'danger': return 'bg-destructive'
+    // Running is brand, not warning: it is the app doing its job.
+    case 'active': return 'bg-accent'
+    case 'success': return 'bg-success'
+    case 'neutral': return 'bg-foreground/40'
     default: return tone satisfies never
   }
 }

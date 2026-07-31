@@ -1,4 +1,4 @@
-import type { LabelConfig } from './types'
+import type { LabelConfig, NormalizedLabelKind } from './types'
 
 /**
  * One place that knows expert kits used to be identity labels.
@@ -14,7 +14,7 @@ import type { LabelConfig } from './types'
  */
 
 /** The vocabulary new code writes and reasons about. */
-export type NormalizedLabelKind = 'functional' | 'expert'
+export type { NormalizedLabelKind }
 
 /**
  * `undefined` means functional: the field was added after the label store

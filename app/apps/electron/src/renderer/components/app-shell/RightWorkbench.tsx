@@ -85,6 +85,7 @@ import {
 } from '@/components/ui/styled-dropdown'
 import { cn } from '@/lib/utils'
 import { observeOpenOverlay } from '@/lib/open-overlay-observer'
+import { isExpertLabel } from '@craft-agent/shared/labels/kind-normalize'
 import { getLocalizedLabelName } from '@/utils/label-display-name'
 import { RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
 import { PanelHeader } from './PanelHeader'
@@ -246,11 +247,15 @@ function TaskBoardModule({
     const enabled = new Set(session?.enabledSourceSlugs ?? [])
     return sources.filter((source) => enabled.has(source.config.slug))
   }, [session?.enabledSourceSlugs, sources])
-  const activeIdentityLabels = React.useMemo(() => {
+  const activeExpertKits = React.useMemo(() => {
     const byId = new Map(flattenLabels(labels).map((label) => [label.id, label]))
     return [...new Set((session?.labels ?? []).map(extractLabelId))]
       .map((id) => byId.get(id))
-      .filter((label): label is LabelConfig => label?.kind === 'identity')
+      // `isExpertLabel`, not `kind === 'identity'`. The direct comparison was
+      // written before `expert` existed and silently excluded every kit created
+      // after the rename — the panel stayed empty and looked like the session
+      // simply had no kits on it.
+      .filter((label): label is LabelConfig => label !== undefined && isExpertLabel(label))
   }, [labels, session?.labels])
   const referencedSources = React.useMemo(() => {
     const items = new Map<string, {
@@ -303,12 +308,12 @@ function TaskBoardModule({
     extensions:
       usedSkillNames.length > 0
       || enabledSources.length > 0
-      || activeIdentityLabels.length > 0,
+      || activeExpertKits.length > 0,
     memory: Boolean(memory),
     sources: referencedSources.length > 0,
   }), [
     enabledSources.length,
-    activeIdentityLabels.length,
+    activeExpertKits.length,
     memory,
     referencedSources.length,
     todos.length,
@@ -419,13 +424,13 @@ function TaskBoardModule({
         sectionKey="extensions"
         title={t('rightWorkbench.taskBoard.extensions')}
         open={openSections.has('extensions')}
-        itemCount={usedSkillNames.length + enabledSources.length + activeIdentityLabels.length}
+        itemCount={usedSkillNames.length + enabledSources.length + activeExpertKits.length}
         fillAvailable={useEqualHeightLayout}
         onToggle={handleSectionToggle}
       >
         {usedSkillNames.length === 0
           && enabledSources.length === 0
-          && activeIdentityLabels.length === 0 ? (
+          && activeExpertKits.length === 0 ? (
           <SectionEmpty
             icon={<Blocks />}
             title={t('rightWorkbench.taskBoard.extensions')}
@@ -463,7 +468,7 @@ function TaskBoardModule({
                 buttonProps={READ_ONLY_ENTITY_BUTTON_PROPS}
               />
             ))}
-            {activeIdentityLabels.map((label, index) => (
+            {activeExpertKits.map((label, index) => (
               <EntityRow
                 key={`identity:${label.id}`}
                 icon={<Tag className="text-foreground/50" />}

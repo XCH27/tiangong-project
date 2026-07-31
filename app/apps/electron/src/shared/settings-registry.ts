@@ -81,11 +81,6 @@ export const SETTINGS_PAGES = [
     descriptionKey: 'settings.permissions.description',
   },
   {
-    id: 'labels' as const,
-    labelKey: 'settings.labels.title',
-    descriptionKey: 'settings.labels.description',
-  },
-  {
     id: 'messaging' as const,
     labelKey: 'settings.messaging.title',
     descriptionKey: 'settings.messaging.description',

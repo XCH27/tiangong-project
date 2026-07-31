@@ -814,3 +814,48 @@
   The editor is on the Usage page next to the "no rate" it fixes, not in AI settings; four fields, because
   collapsing cache into input is the standard way a self-built cost display goes wrong, and agent work is
   overwhelmingly cache-heavy. (2026-07-31)
+- **H32 — There is one settings page over the label store, and it is Expert kits.** The rename to
+  expert kits (H21) changed the type and the vocabulary and then stopped: a separate read-only
+  "Expert kits" page was added beside the existing "Labels" page, over the same
+  `labels/config.json`. Two categories for one store is the [`UI-SPEC.md`](UI-SPEC.md) §11.6
+  violation stated exactly — a settings category added where an existing surface could host it — and
+  it did something worse than duplicate: it left the retired word in navigation, so from the outside
+  the rename looked like it had never happened. The CRUD page absorbed the kit view; the `labels`
+  category is gone; the `settings.labels.*` key namespace is gone; the `/labels` deep link resolves
+  to the surviving page so existing bookmarks do not break. **A functional label and an expert kit
+  are the same record** — one carries a payload — so they are edited in one place rather than behind
+  a decision the user has to make before they have seen either. (2026-07-31)
+- **H33 — Write paths accept `expert`; only reads still understand `identity`.** H21 widened
+  `LabelConfig.kind` to include `expert` and left `CreateLabelInput` / `UpdateLabelInput` at
+  `'functional' | 'identity'`. The new kind was therefore readable and **unwritable** — every UI
+  control that appeared to set it was typed against an input that rejected it, and `crud.ts` still
+  wrote `identity` unconditionally. A rename that only lands on the read side is not a rename; it is
+  a second spelling with extra steps. `NormalizedLabelKind` is now declared in `labels/types.ts`
+  (where the data lives, so the input types can reference it without importing their own normalizer)
+  and re-exported from `kind-normalize.ts` so callers keep one import site. `identity` stays readable
+  forever — config on disk contains it, and rewriting a user's store on read is how a reader bug
+  becomes a data bug. (2026-07-31)
+- **H34 — The UI guard now rejects raw palette colours, because that is what it missed.**
+  `check-ui-contract.ts` enforced opacity, radius, type, elevation and stroke width, and said nothing
+  about colour — so `bg-amber-500`, `bg-emerald-500`, `bg-blue-500`, `text-amber-600` and `bg-primary`
+  all shipped through it green, in production surfaces, against a spec (§1, §11.1) that names six
+  colours and forbids a seventh. A palette literal is worse than a wrong shade: it does not
+  participate in theming at all, so it looks right in whichever theme it was written in and wrong in
+  every other, including the light/dark pair. `primary` is a special case worth naming — it is not a
+  token in this theme, it is the shadcn default every model reaches for, and `bg-primary` renders as
+  a fallback rather than failing, so it survives review while responding to nothing. The playground
+  is exempt from the colour rules only, because its swatch demos render palette colours *as content*
+  and failing those would push someone toward disabling the rule rather than fixing a real surface.
+  (2026-07-31)
+- **H35 — Motion has values now, not one sentence.** UI-SPEC §9 gave two durations and no curve,
+  which is not enough to decide anything with, so each surface needing a third case invented one.
+  [`design-library/22-motion.md`](design-library/22-motion.md) adds the frequency test that decides
+  *whether* to animate (an action taken a hundred times a day gets no animation, ever — which is why
+  nothing on a session row transitions), `ease-out` with `cubic-bezier(0.22, 1, 0.36, 1)` for enter
+  and exit and never `ease-in`, per-surface durations under a 300 ms ceiling, and the rules that are
+  not about timing: never `transition-all`, only `transform`/`opacity`, never enter from `scale(0)`,
+  origin-aware popovers, `active:scale-[0.97]` on pressables, transitions rather than keyframes for
+  anything retriggerable. Derived from Emil Kowalski's design-engineering skill, transitions.dev's
+  motion tokens and Impeccable's detectors — and §6 of that file records where Fleet **overrules**
+  them (no springs, no stagger, no bounce), because those references are written for product apps in
+  general and this is a workbench. (2026-07-31)

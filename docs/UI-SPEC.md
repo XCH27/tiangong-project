@@ -280,7 +280,11 @@ ordinary connection editing.
 - **A visible control has real behavior.** Loading/error/recovery states and the same underlying
   authority as every other caller. See §10.
 - **Motion is functional.** `duration-150` for opacity, `duration-200` for transform. No entrance
-  animations, no parallax, no spring physics. Respect `prefers-reduced-motion`.
+  animations, no parallax, no spring physics. Respect `prefers-reduced-motion`. The decidable
+  rest — the frequency test that decides *whether* to animate at all, the easing curves, the
+  per-surface durations, and the anti-patterns — is
+  [`design-library/22-motion.md`](design-library/22-motion.md). Two durations and no curve was
+  not enough to decide with, so every surface needing a third case invented one.
 
 ## 10. Required states
 

@@ -119,7 +119,8 @@ Three things a newcomer gets wrong, stated plainly:
 | Multi-agent, Git/delivery, templates, reporting | `docs/07-PLAYBOOK.md` |
 | Tests, verification, acceptance split | `docs/09-QUALITY.md` |
 | UI structure, which component to start from, review method | `docs/CRAFT-UI-BASELINE.md` |
-| **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, motion, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
+| **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
+| **Anything that moves** — whether to animate at all, easing, duration, press feedback | `docs/design-library/22-motion.md` |
 | Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |
 | Starting a big feature | `docs/FEATURE-REGISTRY.md` (register your boundary) |
 | Upstream Craft behavior/docs | `源码参考/craft-docs/`, Craft pins `源码参考/software/craft-agents-oss-v0.10.5/` and `源码参考/software/craft-agents-oss/` (best-of candidates, not “do-not-sync” lists) |
@@ -132,3 +133,30 @@ one authority; implement every affected layer (UI, logic, state, error, recovery
 sufficient ladder; update only canonical facts that changed; report with the fixed status vocabulary and
 hand rendered look-and-feel to the owner. Do not micro-test every edit, do not parallelize linear work,
 and do not grow documentation faster than implementation.
+
+## Before you write UI
+
+Two files are not optional, and skipping them is the most expensive mistake available in this repo —
+it produces code that typechecks, renders, passes review, and is wrong in every theme but the one it
+was written in.
+
+1. [`docs/UI-SPEC.md`](docs/UI-SPEC.md) — the values. Six colours and no seventh; the opacity ladder;
+   type, radius, elevation and icon slots; the shared primitives you must not re-create; the states
+   every surface ships.
+2. [`docs/design-library/22-motion.md`](docs/design-library/22-motion.md) — whether to animate at all
+   (an action taken a hundred times a day gets nothing), then easing, duration and press feedback.
+
+Then run the guard on your diff:
+
+```bash
+cd app && bun run lint:ui-contract
+```
+
+It checks tokens, radius, type, elevation, stroke width and — since 2026-07-31 — raw Tailwind palette
+colours and `bg-primary`. It does **not** check motion, shared-primitive reuse, or whether you shipped
+the required states; those are yours to verify.
+
+Three external skills encode craft this repo does not: `npx skills add emilkowalski/skills`,
+`npx skills add Jakubantalik/transitions.dev`, `npx impeccable install`. They are advisory. Where any
+of them disagrees with `UI-SPEC.md`, UI-SPEC wins — they are written for product apps in general, and
+this is a workbench.

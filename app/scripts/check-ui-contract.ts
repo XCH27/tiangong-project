@@ -116,7 +116,48 @@ const forbiddenPatterns: Array<{ pattern: RegExp; reason: string }> = [
     pattern: /\bstrokeWidth\s*=/,
     reason: 'use the icon component default instead of a per-use stroke width',
   },
+  /*
+   * Raw Tailwind palette colours.
+   *
+   * UI-SPEC §1 gives the theme exactly six base colours and §11.1 forbids a
+   * seventh, but until 2026-07-31 nothing enforced it — `bg-amber-500`,
+   * `bg-emerald-500`, `bg-blue-500` and `text-amber-600` all shipped through a
+   * green guard. They are worse than a wrong shade: a palette literal does not
+   * participate in theming at all, so it looks correct in whichever theme it was
+   * written in and wrong in every other, including the light/dark pair.
+   *
+   * Named a colour that a real state needs? Use the reserved one — `accent`
+   * brand, `info` warning, `success` confirmed, `destructive` failed. Decoration
+   * uses `foreground` at a §3 opacity.
+   */
+  {
+    pattern:
+      /\b(?:bg|text|border|ring|fill|stroke|from|via|to)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/,
+    reason:
+      'raw Tailwind palette colour — the theme has six base colours (UI-SPEC §1); use accent/info/success/destructive for state or foreground/N for decoration',
+  },
+  /*
+   * `primary` is not a token in this theme. It is the shadcn default that every
+   * model reaches for, and `bg-primary` renders as a fallback rather than
+   * failing, so it survives review while responding to nothing.
+   */
+  {
+    pattern: /\b(?:bg|text|border|ring)-primary(?:\/|\b)/,
+    reason: 'there is no `primary` token in this theme — use `accent`',
+  },
 ]
+
+/**
+ * The playground is a component sandbox, not a product surface.
+ *
+ * Its swatch demos render palette colours *as content* — a toast-variant row
+ * whose whole job is to show what amber looks like. Failing those would push
+ * whoever hits it toward disabling the rule rather than fixing a real surface,
+ * which is how a guard stops being trusted. Product code has no such excuse.
+ */
+const exemptFromColorRules = (file: string) => file.includes('/renderer/playground/')
+
+const colorRulePrefixes = ['raw Tailwind palette colour', 'there is no `primary` token']
 
 const violations: string[] = []
 
@@ -131,9 +172,12 @@ for (const added of addedLines) {
   }
 
   for (const { pattern, reason } of forbiddenPatterns) {
-    if (pattern.test(added.text)) {
-      violations.push(`${added.file}:${added.line} ${reason}\n  ${added.text.trim()}`)
-    }
+    if (!pattern.test(added.text)) continue
+    if (
+      exemptFromColorRules(added.file)
+      && colorRulePrefixes.some((prefix) => reason.startsWith(prefix))
+    ) continue
+    violations.push(`${added.file}:${added.line} ${reason}\n  ${added.text.trim()}`)
   }
 }
 
