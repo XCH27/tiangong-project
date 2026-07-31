@@ -11,13 +11,86 @@ import type {
 const execFileAsync = promisify(execFile)
 const TIMEOUT_MS = 12_000
 
+/**
+ * Resolve a command before running it.
+ *
+ * Every probe below used to call `execFile('claude', …)` with a bare name. A
+ * desktop app launched from Finder or the Dock does not inherit the shell PATH,
+ * so anyone who installed through nvm, fnm, mise, asdf, volta or Homebrew-on-ARM
+ * was told the tool is not installed while it sat in their terminal. This is the
+ * single most common false negative on this page (Decision H8).
+ *
+ * Order is deliberate: the inherited PATH first because it is free, then the
+ * login shell because it reflects the version manager's current selection, then
+ * well-known locations, which may be a shim for a version the user removed.
+ */
+const resolvedCommands = new Map<string, string | null>()
+
+async function resolveCommand(command: string): Promise<string | null> {
+  const cached = resolvedCommands.get(command)
+  if (cached !== undefined) return cached
+
+  const resolved = await findCommand(command)
+  resolvedCommands.set(command, resolved)
+  return resolved
+}
+
+async function findCommand(command: string): Promise<string | null> {
+  const which = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    const result = await execFileAsync(which, [command], { encoding: 'utf8', timeout: 3_000 })
+    const first = result.stdout.split(/\r?\n/).find((line) => line.trim())
+    if (first) return first.trim()
+  } catch {
+    // Not on the inherited PATH; that is the common case, not an error.
+  }
+
+  if (process.platform !== 'win32') {
+    // A login shell sources the user's profile, which is where a version manager
+    // puts its shims.
+    const shell = process.env.SHELL || '/bin/zsh'
+    try {
+      const result = await execFileAsync(shell, ['-l', '-c', `command -v ${command}`], {
+        encoding: 'utf8',
+        timeout: 5_000,
+      })
+      const found = result.stdout.trim()
+      if (found) return found
+    } catch {
+      // Fall through to the guessed locations.
+    }
+  }
+
+  const home = homedir()
+  for (const candidate of [
+    join(home, '.local/bin', command),
+    join(home, '.bun/bin', command),
+    join(home, '.volta/bin', command),
+    join(home, '.cargo/bin', command),
+    `/opt/homebrew/bin/${command}`,
+    `/usr/local/bin/${command}`,
+    join(home, '.npm-global/bin', command),
+  ]) {
+    try {
+      await execFileAsync(candidate, ['--version'], { encoding: 'utf8', timeout: 3_000 })
+      return candidate
+    } catch {
+      // Keep looking.
+    }
+  }
+
+  return null
+}
+
 function cleanVersion(output: string): string | undefined {
   const value = output.trim()
   return value || undefined
 }
 
 async function versionOf(command: string): Promise<string | undefined> {
-  const result = await execFileAsync(command, ['--version'], {
+  const resolved = await resolveCommand(command)
+  if (!resolved) throw new Error(`${command} not found`)
+  const result = await execFileAsync(resolved, ['--version'], {
     encoding: 'utf8',
     timeout: 5_000,
     maxBuffer: 64_000,
@@ -83,7 +156,9 @@ export function parseOpenCodeVerboseModels(
 
 async function probeOpenCode(): Promise<CliRuntimeHandshake> {
   const version = await versionOf('opencode')
-  const result = await execFileAsync('opencode', ['models', '--verbose'], {
+  const resolved = await resolveCommand('opencode')
+  if (!resolved) throw new Error('opencode not found')
+  const result = await execFileAsync(resolved, ['models', '--verbose'], {
     encoding: 'utf8',
     timeout: TIMEOUT_MS,
     maxBuffer: 8_000_000,
@@ -110,8 +185,10 @@ interface CodexProtocolModel {
 }
 
 async function readCodexModels(): Promise<CodexProtocolModel[]> {
+  const codexPath = await resolveCommand('codex')
+  if (!codexPath) throw new Error('codex not found')
   return await new Promise((resolve, reject) => {
-    const child = spawn('codex', ['app-server', '--stdio'], {
+    const child = spawn(codexPath, ['app-server', '--stdio'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     let stdout = ''
@@ -251,10 +328,13 @@ export function parseClaudeCachedModels(
 async function probeClaudeCode(): Promise<CliRuntimeHandshake> {
   const [version, help, cacheText] = await Promise.all([
     versionOf('claude'),
-    execFileAsync('claude', ['--help'], {
+    resolveCommand('claude').then((resolved) => {
+      if (!resolved) throw new Error('claude not found')
+      return execFileAsync(resolved, ['--help'], {
       encoding: 'utf8',
       timeout: 5_000,
-      maxBuffer: 1_000_000,
+        maxBuffer: 1_000_000,
+      })
     }).then((result) => result.stdout),
     readFile(join(homedir(), '.claude.json'), 'utf8').catch(() => '{}'),
   ])

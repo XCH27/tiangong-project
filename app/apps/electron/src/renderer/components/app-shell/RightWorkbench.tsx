@@ -1,4 +1,7 @@
 import * as React from 'react'
+import { ReviewFileTree } from './workbench/review/ReviewFileTree'
+import { ONE_SHOT_CAPABILITY, admitCommand } from '@craft-agent/shared/terminal/terminal-capability'
+import { filterReviewDiffs, fromGitWorkingTree } from './workbench/review/review-diff-model'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import {
@@ -736,6 +739,14 @@ function ReviewModule({
       })
   }, [sessionId])
 
+  // The panel renders one normalized shape and never branches on where a diff
+  // came from; today that is the working tree, and session snapshots join the
+  // same list when they exist (Decision H1 line in review-diff-model).
+  const reviewDiffs = React.useMemo(
+    () => filterReviewDiffs(fromGitWorkingTree(snapshot?.files ?? []), filter),
+    [snapshot, filter],
+  )
+
   const refresh = React.useCallback(() => {
     const requestId = ++requestIdRef.current
     if (!sessionId || !workingDirectory) {
@@ -838,27 +849,13 @@ function ReviewModule({
               className="h-7 text-xs"
             />
           </div>
-          <ScrollArea className="max-h-40 shrink-0 border-b border-foreground/10 py-1">
-            {snapshot?.files
-              .filter((file) => file.path.toLowerCase().includes(filter.trim().toLowerCase()))
-              .map((file, index) => (
-              <EntityRow
-                key={file.path}
-                icon={<FileCode className="text-foreground/50" />}
-                title={file.path.split('/').pop() || file.path}
-                subtitle={file.path.includes('/') ? file.path : undefined}
-                titleTrailing={(
-                  <span className="whitespace-nowrap">
-                    {file.additions > 0 && <span className="text-success">+{file.additions}</span>}
-                    {file.deletions > 0 && <span className="ml-1 text-destructive">−{file.deletions}</span>}
-                    {file.additions === 0 && file.deletions === 0 && t(getGitFileStatusKey(file))}
-                  </span>
-                )}
-                showSeparator={index > 0}
-                isSelected={activePath === file.path}
-                onClick={() => selectFile(file.path)}
-              />
-            ))}
+          <ScrollArea className="max-h-52 shrink-0 border-b border-foreground/10">
+            <ReviewFileTree
+              diffs={reviewDiffs}
+              selectedPath={activePath}
+              onSelect={selectFile}
+              emptyLabel={t('rightWorkbench.review.clean')}
+            />
           </ScrollArea>
           <div className="min-h-0 flex-1 bg-background">
             {diffLoading ? (
@@ -925,6 +922,26 @@ function TerminalModule({
   const run = async () => {
     const value = command.trim()
     if (!value || !sessionId || !workingDirectory || running) return
+
+    // The backend is `execFile` with a 30s timeout and no PTY, so an interactive
+    // program blocks until it is killed and a long build is killed before it can
+    // print anything. Both used to present as thirty seconds of nothing followed
+    // by an empty result. Classify first and say which boundary was hit
+    // (Decision H9).
+    const admission = admitCommand(value, ONE_SHOT_CAPABILITY)
+    if (!admission.admitted) {
+      setCommand('')
+      setHistory((items) => [...items, {
+        command: value,
+        result: {
+          output: t(`rightWorkbench.terminal.refused.${admission.reason}`),
+          exitCode: -1,
+          timedOut: false,
+        },
+      }])
+      return
+    }
+
     const contextGeneration = contextGenerationRef.current
     setCommand('')
     setRunning(true)
