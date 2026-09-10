@@ -74,6 +74,8 @@ export { handleSetSessionGoal } from './set-session-goal.ts';
 export type { SetSessionGoalArgs } from './set-session-goal.ts';
 export { handleSetSessionStatus } from './set-session-status.ts';
 export type { SetSessionStatusArgs } from './set-session-status.ts';
+export { handleAcceptDeliverable } from './accept-deliverable.ts';
+export type { AcceptDeliverableArgs } from './accept-deliverable.ts';
 export { handleGetSessionInfo } from './get-session-info.ts';
 export type { GetSessionInfoArgs } from './get-session-info.ts';
 export { handleListSessions } from './list-sessions.ts';

@@ -40,3 +40,20 @@ export {
   CONFIG_DIR,
   DEFAULT_WORKSPACES_DIR,
 } from './storage.ts';
+
+export {
+  DELIVERABLES_DIR,
+  DELIVERABLE_FORMAT,
+  acceptDeliverable,
+  detectWorkspaceRecovery,
+  formatDeliverableDocument,
+  parseDeliverableDocument,
+  sha256Text,
+} from './deliverable-acceptance.ts';
+export type {
+  AcceptDeliverableInput,
+  AcceptDeliverableResult,
+  DeliverableEvidenceRef,
+  DeliverableProvenance,
+  DeliverableRecovery,
+} from './deliverable-acceptance.ts';

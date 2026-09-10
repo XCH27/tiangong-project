@@ -38,6 +38,7 @@ import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
 import { handleSetSessionGoal } from './handlers/set-session-goal.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
+import { handleAcceptDeliverable } from './handlers/accept-deliverable.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleListBackgroundTasks } from './handlers/list-background-tasks.ts';
@@ -202,6 +203,14 @@ export const SetSessionGoalSchema = z.object({
 export const SetSessionStatusSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
   status: z.string().describe('Status to set (e.g., "todo", "in_progress", "done")'),
+});
+
+export const AcceptDeliverableSchema = z.object({
+  sourcePath: z.string().describe('Project-relative path of the accepted file to copy into deliverables/.'),
+  evidence: z.array(z.object({
+    kind: z.enum(['file', 'session-evidence', 'url']).describe('Evidence kind'),
+    id: z.string().describe('Evidence id or path'),
+  })).optional().describe('Optional evidence refs recorded in the provenance header.'),
 });
 
 export const GetSessionInfoSchema = z.object({
@@ -516,6 +525,12 @@ Omit sessionId to target the current session.
 
 IMPORTANT: never move a task into a closed status (such as "done" or "cancelled") yourself — closing a task is the user's decision, made on the board. You may prepare and hand off work by setting an open status like "needs-review"; the user reviews and closes it. Closed-status calls are rejected.`,
 
+  accept_deliverable: `Copy an accepted Project file into deliverables/ with a provenance header (R3 acceptance).
+
+Call this when the owner accepts a revision. The helper writes <project>/deliverables/<basename> as header + original bytes. Path escape, missing source, and overwrite of a different file return an explicit error and write nothing.
+
+After a successful copy this tool may set the open status "needs-review" and add an "accepted" label only if that label already exists in the catalog. It never creates labels and never sets done or cancelled — closing the task is the user's decision.`,
+
   get_session_info: `Get metadata about the current session or a specific session by ID.
 
 Returns labels, status, name, permission mode, projectId (if the session is bound to a project), workingDirectory, and other details.
@@ -621,6 +636,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
   { name: 'set_session_goal', description: TOOL_DESCRIPTIONS.set_session_goal, inputSchema: SetSessionGoalSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionGoal },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
+  { name: 'accept_deliverable', description: TOOL_DESCRIPTIONS.accept_deliverable, inputSchema: AcceptDeliverableSchema, executionMode: 'registry', safeMode: 'block', handler: handleAcceptDeliverable },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
   { name: 'list_background_tasks', description: TOOL_DESCRIPTIONS.list_background_tasks, inputSchema: ListBackgroundTasksSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListBackgroundTasks },
