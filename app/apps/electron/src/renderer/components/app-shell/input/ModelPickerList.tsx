@@ -163,6 +163,13 @@ export function ModelPickerList({
                     {group.connection.name}
                   </span>
                 )}
+                {group.connection.isAuthenticated === false && (
+                  <span className="truncate text-[11px] text-destructive/80">
+                    {t('chat.modelPicker.needsCredentialsShort', {
+                      defaultValue: 'No key',
+                    })}
+                  </span>
+                )}
                 <span className="ml-auto text-xs text-foreground/40">
                   {group.items.length}
                 </span>
@@ -181,6 +188,11 @@ export function ModelPickerList({
                   const selected =
                     currentConnection === item.connection.slug &&
                     currentModel === item.modelId
+                  // Match Craft: unauthenticated connections are visible but not selectable.
+                  // Selecting them previously looked like a dead click then failed on send.
+                  const needsCredentials =
+                    item.connection.isAuthenticated === false
+                  const canSelect = selectable && !needsCredentials
                   const definition =
                     typeof item.model === 'string' ? undefined : item.model
                   const reasoningLevels =
@@ -206,21 +218,35 @@ export function ModelPickerList({
                           : 'min-h-8 rounded-[6px]',
                         selected
                           ? 'bg-foreground/5'
-                          : 'hover:bg-foreground/[0.05]',
+                          : canSelect && 'hover:bg-foreground/[0.05]',
+                        needsCredentials && 'opacity-50',
                       )}
                     >
                       <Tooltip delayDuration={0}>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
-                            disabled={!selectable}
-                            onClick={() =>
-                              selectable &&
-                              onSelect(item.connection.slug, item.modelId)
+                            disabled={!canSelect}
+                            title={
+                              needsCredentials
+                                ? t('chat.modelPicker.needsCredentials', {
+                                    defaultValue:
+                                      'No API key for this connection. Open AI settings to add one.',
+                                  })
+                                : undefined
                             }
+                            onClick={() => {
+                              if (needsCredentials) {
+                                onManageModels?.()
+                                return
+                              }
+                              if (canSelect) {
+                                onSelect(item.connection.slug, item.modelId)
+                              }
+                            }}
                             className={cn(
                               'flex min-w-0 flex-1 items-center gap-2 text-left outline-none',
-                              !selectable && 'cursor-default',
+                              !canSelect && 'cursor-default',
                               variant === 'catalog'
                                 ? 'px-2 py-2.5'
                                 : 'px-2 py-1.5',

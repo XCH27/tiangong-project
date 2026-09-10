@@ -86,6 +86,7 @@ import { InlineProviderConnect } from "@/components/apisetup/InlineProviderConne
 import type { AddModelSubmission } from "@/components/apisetup/add-model-model";
 import { toSelectedModelPayload } from "@/components/apisetup/model-selection";
 import { RenameDialog } from "@/components/ui/rename-dialog";
+import { useKeyedAutoClearTimers } from "./use-auto-clear-timers";
 import { useAppShellContext } from "@/context/AppShellContext";
 import {
   getModelShortName,
@@ -99,10 +100,6 @@ import {
   type MidStreamBehavior,
 } from "@config/llm-connections";
 import { toast } from "sonner";
-import claudeIcon from "@/assets/provider-icons/claude.svg";
-import openaiIcon from "@/assets/provider-icons/openai.svg";
-import copilotIcon from "@/assets/provider-icons/copilot.svg";
-import { getProviderIcon } from "@/lib/provider-icons";
 import { ModelPickerList } from "@/components/app-shell/input/ModelPickerList";
 import { buildModelPickerGroups } from "@/components/app-shell/input/model-picker-helpers";
 import {
@@ -229,14 +226,14 @@ function CredentialHealthBanner({
   if (issues.length === 0) return null;
 
   return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 mb-6">
+    <div className="rounded-lg border border-info/30 bg-info/5 p-4 mb-6">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+        <AlertTriangle className="h-5 w-5 text-info flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-medium text-amber-700 dark:text-amber-400">
+          <h4 className="text-sm font-medium text-info">
             {t("settings.ai.credentialIssue")}
           </h4>
-          <p className="mt-1 text-sm text-amber-600 dark:text-amber-300/80">
+          <p className="mt-1 text-sm text-info/80">
             {getHealthIssueMessage(issues[0], t)}
           </p>
         </div>
@@ -244,7 +241,7 @@ function CredentialHealthBanner({
           variant="outline"
           size="sm"
           onClick={onReauthenticate}
-          className="flex-shrink-0 border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+          className="flex-shrink-0 border-info/30 text-info hover:bg-info/10"
         >
           {t("settings.ai.reAuthenticate")}
         </Button>
@@ -432,7 +429,7 @@ function ConnectionRow({
                     className="inline-flex items-center"
                     aria-label={t("settings.ai.duplicateAccount")}
                   >
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                    <AlertTriangle className="h-3.5 w-3.5 text-info" />
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -1033,31 +1030,25 @@ function InlineProviderSetup({
       id: "claude",
       label: t("onboarding.providerSelect.claudeProMax"),
       description: t("onboarding.providerSelect.claudeProMaxDesc"),
-      icon: <img src={claudeIcon} alt="" className="size-4 rounded-[4px]" />,
+      icon: <ProviderBrandIcon providerId="anthropic" size={16} className="rounded-[4px]" />,
     },
     {
       id: "chatgpt",
       label: t("onboarding.providerSelect.codexChatGPT"),
       description: t("onboarding.providerSelect.codexChatGPTDesc"),
-      icon: <img src={openaiIcon} alt="" className="size-4 rounded-[4px]" />,
+      icon: <ProviderBrandIcon providerId="openai" size={16} className="rounded-[4px]" />,
     },
     {
       id: "copilot",
       label: t("onboarding.providerSelect.githubCopilot"),
       description: t("onboarding.providerSelect.githubCopilotDesc"),
-      icon: <img src={copilotIcon} alt="" className="size-4 rounded-[4px]" />,
+      icon: <ProviderBrandIcon providerId="github-copilot" size={16} className="rounded-[4px]" />,
     },
     {
       id: "grok",
       label: t("settings.ai.grokSubscription"),
       description: t("settings.ai.grokSubscriptionDesc"),
-      icon: (
-        <img
-          src={getProviderIcon("pi", null, "xai") ?? ""}
-          alt=""
-          className="size-4 rounded-[4px]"
-        />
-      ),
+      icon: <ProviderBrandIcon providerId="pi" piAuthProvider="xai" size={16} className="rounded-[4px]" />,
     },
     {
       id: "api_key",
@@ -1268,6 +1259,9 @@ export default function AiSettingsPage() {
     >
   >({});
 
+  // Keyed auto-clear timers for transient validation badges (cleared on unmount)
+  const scheduleValidationClear = useKeyedAutoClearTimers();
+
   // Credential health state (for startup warning banner)
   const [credentialHealthIssues, setCredentialHealthIssues] = useState<
     CredentialHealthIssue[]
@@ -1455,17 +1449,40 @@ export default function AiSettingsPage() {
     setEditInitialValues(undefined);
   }, [closeApiSetup, apiSetupOnboarding]);
 
-  // Handler for re-authenticate button in credential health banner
+  // Handler for re-authenticate button in credential health banner.
+  // Must land on the correct credential form for the connection's authType —
+  // never leave the user on provider-select, and never start ChatGPT OAuth for
+  // an api_key connection (that was a common "click does nothing / wrong OAuth" path).
   const handleReauthenticate = useCallback(() => {
-    // Open API setup for the default connection (or first connection if available)
     const defaultConn =
       llmConnections.find((c) => c.isDefault) || llmConnections[0];
-    if (defaultConn) {
-      openApiSetup(defaultConn.slug);
-    } else {
+    if (!defaultConn) {
       openApiSetup();
+      return;
     }
-  }, [llmConnections, openApiSetup]);
+
+    openApiSetup(defaultConn.slug);
+    apiSetupOnboarding.reset();
+
+    if (defaultConn.authType === "oauth") {
+      const method =
+        defaultConn.providerType === "pi"
+          ? defaultConn.piAuthProvider === "github-copilot"
+            ? "pi_copilot_oauth"
+            : defaultConn.piAuthProvider === "xai"
+              ? "pi_xai_oauth"
+              : "pi_chatgpt_oauth"
+          : "claude_oauth";
+      void apiSetupOnboarding.handleStartOAuth(method, defaultConn.slug);
+      return;
+    }
+
+    // api_key / api_key_with_endpoint — jump straight to the key form
+    setIsDirectEdit(true);
+    apiSetupOnboarding.jumpToCredentials(
+      getApiKeyMethodForConnection(defaultConn),
+    );
+  }, [llmConnections, openApiSetup, apiSetupOnboarding]);
 
   // Connection action handlers
   const handleRenameClick = useCallback(
@@ -1614,7 +1631,7 @@ export default function AiSettingsPage() {
             [slug]: { state: "success" },
           }));
           // Auto-clear success state after 3 seconds
-          setTimeout(() => {
+          scheduleValidationClear(slug, () => {
             setValidationStates((prev) => ({
               ...prev,
               [slug]: { state: "idle" },
@@ -1626,7 +1643,7 @@ export default function AiSettingsPage() {
             [slug]: { state: "error", error: result.error },
           }));
           // Auto-clear error state after 5 seconds
-          setTimeout(() => {
+          scheduleValidationClear(slug, () => {
             setValidationStates((prev) => ({
               ...prev,
               [slug]: { state: "idle" },
@@ -1638,7 +1655,7 @@ export default function AiSettingsPage() {
           ...prev,
           [slug]: { state: "error", error: t("settings.ai.validationFailed") },
         }));
-        setTimeout(() => {
+        scheduleValidationClear(slug, () => {
           setValidationStates((prev) => ({
             ...prev,
             [slug]: { state: "idle" },
@@ -1646,7 +1663,7 @@ export default function AiSettingsPage() {
         }, 5000);
       }
     },
-    [t],
+    [t, scheduleValidationClear],
   );
 
   // Update a connection's mid-stream send behavior (steer vs queue).

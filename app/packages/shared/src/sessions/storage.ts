@@ -28,6 +28,7 @@ import { generateUniqueSessionId } from './slug-generator.ts';
 import { toPortablePath, expandPath } from '../utils/paths.ts';
 import { sanitizeSessionId } from './validation.ts';
 import { perf } from '../utils/perf.ts';
+import { recoverAtomicWriteSync } from '../utils/files.ts';
 import type {
   SessionConfig,
   StoredSession,
@@ -342,6 +343,7 @@ export function loadSession(workspaceRootPath: string, sessionId: string): Store
   const end = perf.start('session.loadSession', { sessionId });
 
   const jsonlPath = getSessionFilePath(workspaceRootPath, sessionId);
+  recoverAtomicWriteSync(jsonlPath);
   if (existsSync(jsonlPath)) {
     const session = readSessionJsonl(jsonlPath);
     if (session) {
@@ -378,6 +380,8 @@ export function listSessions(workspaceRootPath: string): SessionMetadata[] {
       const sessionDir = join(sessionsDir, sessionId);
       const jsonlFile = join(sessionDir, 'session.jsonl');
 
+      recoverAtomicWriteSync(jsonlFile);
+
       // Clean up orphaned .tmp files from crashed atomic writes.
       // These are harmless but waste disk space.
       const tmpFile = jsonlFile + '.tmp';
@@ -390,6 +394,24 @@ export function listSessions(workspaceRootPath: string): SessionMetadata[] {
         if (header) {
           const metadata = headerToMetadata(header, workspaceRootPath);
           if (metadata) sessions.push(metadata);
+        }
+      } else {
+        // Orphan session directory with no jsonl (crashed create, partial delete).
+        // Skip listing it so the UI never offers a click that loads nothing.
+        // Best-effort: remove empty shells that only contain subdirs we create by default.
+        try {
+          const children = readdirSync(sessionDir);
+          const onlyScaffold = children.every((name) =>
+            ['plans', 'attachments', 'long_responses', 'data', 'downloads', 'tmp'].includes(name),
+          );
+          if (onlyScaffold || children.length === 0) {
+            // Leave non-empty orphans (user files) alone; only drop pure scaffold shells.
+            if (children.length === 0) {
+              try { rmSync(sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
+            }
+          }
+        } catch {
+          // ignore cleanup failures
         }
       }
     }

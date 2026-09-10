@@ -100,14 +100,14 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   const first = segments[0]
 
-  // Kanban board — standalone route. A view of all sessions in board mode.
-  // Encoded as its own prefix (not `allSessions/board`) so it never collides
-  // with the positional `{filter}/session/{id}` detail parsing below.
+  // Kanban board — standalone route. Product-gated off (R1 list is the home):
+  // still accept the URL but resolve as the normal session list so deep links
+  // and stale history cannot mount a half-finished Board surface.
   if (first === 'board') {
     return {
       navigator: 'sessions',
       sessionFilter: { kind: 'allSessions' },
-      viewMode: 'board',
+      viewMode: 'list',
       details: null,
     }
   }

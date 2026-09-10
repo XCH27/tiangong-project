@@ -853,6 +853,21 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     flowId: string
   }> => {
     cleanupExpiredChatGptFlows()
+
+    // Refuse ChatGPT OAuth for API-key connections (e.g. DeepSeek). Starting this
+    // flow for the wrong authType produces silent token-exchange failures and
+    // looks like "connect button does nothing".
+    const existing = getLlmConnection(connectionSlug)
+    if (
+      existing &&
+      (existing.authType === 'api_key' || existing.authType === 'api_key_with_endpoint')
+    ) {
+      throw new Error(
+        `Connection "${connectionSlug}" uses API key authentication, not ChatGPT OAuth. ` +
+          'Open Settings → AI, edit the connection, and paste a valid API key.',
+      )
+    }
+
     const { prepareChatGptOAuth } = await import('@craft-agent/shared/auth')
 
     const prepared = prepareChatGptOAuth()

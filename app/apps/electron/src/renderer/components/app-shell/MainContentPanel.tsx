@@ -43,6 +43,7 @@ import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
 import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
+import { BOARD_VIEW_ENABLED } from '@/lib/product-surface'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -379,8 +380,10 @@ export function MainContentPanel({
 
   // Chats navigator - show chat, multi-select panel, or empty state
   if (isSessionsNavigation(navState)) {
-    // Board view: full-width Kanban over all sessions (placement independent of status)
-    if (navState.viewMode === 'board') {
+    // Board view is product-gated (R1: list is the home). When disabled, fall
+    // through to the normal session path so stale viewMode=board cannot mount
+    // a half-finished Kanban that looks clickable but incomplete.
+    if (BOARD_VIEW_ENABLED && navState.viewMode === 'board') {
       return wrapWithStoplight(
         <Panel variant="grow" className={className}>
           <KanbanBoardContainer />
