@@ -6,14 +6,9 @@ node_modules/
 __pycache__/
 *.pyc
 
-# Local source-reference checkouts live here; only the index/docs around them
-# should be tracked by the Fleet repo.
-/源码参考/software/*/
-/源码参考/plugins/*/
-
-# Optional local visual-reference library. Product docs may point to it as
-# auxiliary material, but it is not a Fleet build input or tracked source.
-/UI参考/
+# External reference root /Volumes/AIGC/天工参考/ (symlinked locally)
+/源码参考
+/UI参考
 
 .cursor/
 .evolver/
