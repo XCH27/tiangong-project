@@ -123,6 +123,7 @@ import { filterSessionStatuses as filterLabelMenuStates } from "@/components/ui/
 import { createLabelMenuItems, filterItems as filterLabelMenuItems, type LabelMenuItem } from "@/components/ui/label-menu-utils"
 import { flattenLabels, getDescendantIds, getLabelDisplayName, extractLabelId, findLabelById, sortLabelsForDisplay, matchesLabelFilter } from "@craft-agent/shared/labels"
 import type { LabelConfig } from "@craft-agent/shared/labels"
+import { normalizeLabelKind } from "@craft-agent/shared/labels/kind-normalize"
 import { resolveEntityColor } from "@craft-agent/shared/colors"
 import * as storage from "@/lib/local-storage"
 import { toast } from "sonner"
@@ -947,6 +948,14 @@ function AppShellContent({
 
   // Load labels from workspace config
   const { labels: labelConfigs } = useLabels(activeWorkspace?.id || null)
+
+  // Kits are expert-kind labels. Counted here so the sidebar row can say how
+  // many there are, the way Skills and Data sources already do — a row with no
+  // count reads as a link, one with a count reads as a place with contents.
+  const expertKitCount = useMemo(
+    () => flattenLabels(labelConfigs).filter((label) => normalizeLabelKind(label.kind) === 'expert').length,
+    [labelConfigs],
+  )
   const displayLabelConfigs = useMemo(() => sortLabelsForDisplay(labelConfigs), [labelConfigs])
   const flatDisplayLabelConfigs = useMemo(
     () => flattenLabels(displayLabelConfigs),
@@ -2719,6 +2728,19 @@ function AppShellContent({
                         type: 'skills',
                         onAddSkill: openAddSkill,
                       },
+                    },
+                    {
+                      // Expert kits sat only in Settings, three levels from the
+                      // sidebar that already lists Skills and Data sources — the
+                      // two things a kit is made of. A capability reachable only
+                      // through a settings page is a capability most people
+                      // never find.
+                      id: "nav:expertKits",
+                      title: t("sidebar.expertKits"),
+                      label: String(expertKitCount),
+                      icon: Layers,
+                      variant: "ghost",
+                      onClick: () => handleSettingsClick('expert-kits'),
                     },
                     {
                       id: "nav:automations",

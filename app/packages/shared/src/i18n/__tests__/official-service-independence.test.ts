@@ -17,8 +17,13 @@ describe('remote workspace service independence', () => {
     }
   })
 
-  it('makes the self-hosted direct connection explicit in Simplified Chinese', () => {
-    expect(zhHans['workspace.connectRemote']).toBe('连接自托管服务')
-    expect(zhHans['workspace.connectRemoteDesc']).toBe('直连由你托管的远程工作区服务。')
+  it('still says the remote machine is one the user runs', () => {
+    // P8 is about the claim, not the sentence. The title is now the shared
+    // vocabulary for this capability ("remote connection" — the same thing other
+    // products call it), so the self-hosted point lives in the description, and
+    // this asserts the point rather than pinning a string a copy edit may
+    // legitimately change.
+    expect(zhHans['workspace.connectRemoteDesc']).toMatch(/你自己运行|自托管|你托管/)
+    expect(en['workspace.connectRemoteDesc']).toMatch(/you run yourself|self-hosted|you host/i)
   })
 })
