@@ -167,29 +167,17 @@ craft-cli --validate-server
 
 When no `--url` is provided, `--validate-server` automatically spawns a local headless server (same as the `run` command), runs the validation, and shuts it down.
 
-Runs a 21-step integration test covering the full server lifecycle including source and skill creation:
+Runs the integration sequence defined by `getValidateSteps()` (currently 40 steps). Coverage is
+grouped by behavior so this guide does not drift every time a step is inserted:
 
-1. Connect + handshake
-2. `credentials:healthCheck`
-3. `system:versions`
-4. `system:homeDir`
-5. `workspaces:get`
-6. `sessions:get`
-7. `LLM_Connection:list`
-8. `sources:get`
-9. `sessions:create` (temporary `__cli-validate-*` session)
-10. `sessions:getMessages`
-11. Send message + stream (text response)
-12. Send message + tool use (Bash tool)
-13. `sources:create` (temporary Cat Facts API source)
-14. Send + source mention (uses the created source)
-15. Send + skill create (writes SKILL.md via Bash)
-16. `skills:get` (verify skill appears)
-17. Send + skill mention (invokes the created skill)
-18. `skills:delete` (cleanup)
-19. `sources:delete` (cleanup)
-20. `sessions:delete` (cleanup)
-21. Disconnect
+- connection, credential health, versions, home directory, workspaces, sessions, models, and sources;
+- session creation, history, streamed response, tool use, branching, branch verification, and cleanup;
+- label creation plus session-tool label/info/list operations;
+- source creation, public and header-auth MCP probes, source mention, and cleanup;
+- skill creation, discovery, mention, and cleanup;
+- automation creation, status trigger, resulting session/label verification, webhook success/failure,
+  execution timestamp, and cleanup;
+- disconnect.
 
 **Note:** This test mutates workspace state — it creates and deletes a temporary session, source, and skill. All resources are cleaned up on completion. Continues on failure and reports a summary. Use `--json` for machine-readable output.
 

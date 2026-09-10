@@ -116,8 +116,17 @@ export async function spawnServer(opts?: SpawnServerOptions): Promise<SpawnedSer
             url,
             token,
             stop: async () => {
+              // SIGTERM first, but don't wait forever — a wedged server must
+              // not hang the CLI. Escalate to SIGKILL after 5s.
               proc.kill('SIGTERM')
-              await proc.exited
+              const timedOut = await Promise.race([
+                proc.exited.then(() => false),
+                new Promise<true>((r) => setTimeout(() => r(true), 5_000)),
+              ])
+              if (timedOut) {
+                proc.kill('SIGKILL')
+                await proc.exited
+              }
             },
           })
           return

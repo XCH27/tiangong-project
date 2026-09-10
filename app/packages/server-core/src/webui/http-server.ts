@@ -46,6 +46,8 @@ const MIME_TYPES: Record<string, string> = {
   '.map': 'application/json',
 }
 
+export const INTERNAL_PEER_IP_HEADER = 'x-craft-internal-peer-ip'
+
 function getMimeType(path: string): string {
   return MIME_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream'
 }
@@ -58,16 +60,22 @@ function getForwardedValue(req: Request, key: 'proto' | 'host'): string | null {
   return match?.[1]?.trim() || null
 }
 
-function getRequestProto(req: Request): string {
-  return req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
-    || getForwardedValue(req, 'proto')
-    || new URL(req.url).protocol.replace(/:$/, '')
+function getRequestProto(req: Request, trustForwardedHeaders: boolean): string {
+  if (trustForwardedHeaders) {
+    return req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+      || getForwardedValue(req, 'proto')
+      || new URL(req.url).protocol.replace(/:$/, '')
+  }
+  return new URL(req.url).protocol.replace(/:$/, '')
 }
 
-function getRequestHost(req: Request): string | null {
-  return req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
-    || getForwardedValue(req, 'host')
-    || req.headers.get('host')
+function getRequestHost(req: Request, trustForwardedHeaders: boolean): string | null {
+  if (trustForwardedHeaders) {
+    return req.headers.get('x-forwarded-host')?.split(',')[0]?.trim()
+      || getForwardedValue(req, 'host')
+      || req.headers.get('host')
+  }
+  return req.headers.get('host')
 }
 
 function formatHostWithPort(host: string, port: number): string {
@@ -81,24 +89,29 @@ function formatHostWithPort(host: string, port: number): string {
   }
 }
 
-export function shouldUseSecureCookies(req: Request, secureCookies?: boolean): boolean {
+export function shouldUseSecureCookies(
+  req: Request,
+  secureCookies?: boolean,
+  trustForwardedHeaders = false,
+): boolean {
   if (secureCookies != null) return secureCookies
-  return getRequestProto(req) === 'https'
+  return getRequestProto(req, trustForwardedHeaders) === 'https'
 }
 
 export interface ResolveWebSocketUrlOptions {
   publicWsUrl?: string
   wsProtocol: 'ws' | 'wss'
   wsPort: number
+  trustForwardedHeaders?: boolean
 }
 
 export function resolveWebSocketUrl(
   req: Request,
-  { publicWsUrl, wsProtocol, wsPort }: ResolveWebSocketUrlOptions,
+  { publicWsUrl, wsProtocol, wsPort, trustForwardedHeaders = false }: ResolveWebSocketUrlOptions,
 ): string {
   if (publicWsUrl) return publicWsUrl
 
-  const host = getRequestHost(req)
+  const host = getRequestHost(req, trustForwardedHeaders)
   if (host) {
     return `${wsProtocol}://${formatHostWithPort(host, wsPort)}`
   }
@@ -140,9 +153,8 @@ export interface WebuiHandlerOptions {
   /** OAuth callback deps — when provided, enables /api/oauth/callback route. */
   oauthCallbackDeps?: OAuthCallbackDeps
   /**
-   * Trusted proxy IPs/CIDRs. When set, proxy headers (x-forwarded-for, x-forwarded-proto)
-   * are only trusted from these sources. When empty/unset, proxy headers are ignored
-   * and 'direct' is used as the rate-limit key.
+   * Exact trusted proxy IP addresses. Forwarded headers are ignored unless the adapter-recorded
+   * direct peer matches one of these addresses.
    */
   trustedProxies?: string[]
 }
@@ -186,25 +198,35 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
   cleanupTimer.unref?.()
 
   const loginPassword = password || secret
-  const trustedProxySet = new Set(trustedProxies ?? [])
+  const normalizeIp = (ip: string) => ip.startsWith('::ffff:') ? ip.slice('::ffff:'.length) : ip
+  const trustedProxySet = new Set((trustedProxies ?? []).map(normalizeIp))
 
   // Hash the login password at startup (async, but resolves before first auth attempt in practice)
   const passwordReady = initPasswordHash(loginPassword)
 
-  /** Extract client IP — only trusts proxy headers when trustedProxies is configured. */
+  function getPeerIp(req: Request): string {
+    return normalizeIp(req.headers.get(INTERNAL_PEER_IP_HEADER) ?? 'direct')
+  }
+
+  function shouldTrustForwardedHeaders(req: Request): boolean {
+    return trustedProxySet.has(getPeerIp(req))
+  }
+
+  /** Extract client IP — forwarded identity is accepted only from the configured direct peer. */
   function getClientIp(req: Request): string {
-    if (trustedProxySet.size > 0) {
+    if (shouldTrustForwardedHeaders(req)) {
       return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
         ?? req.headers.get('x-real-ip')
-        ?? 'direct'
+        ?? getPeerIp(req)
     }
-    return 'direct'
+    return getPeerIp(req)
   }
 
   async function fetch(req: Request): Promise<Response> {
     const url = new URL(req.url)
     const path = url.pathname
-    const useSecureCookies = shouldUseSecureCookies(req, secureCookies)
+    const trustForwardedHeaders = shouldTrustForwardedHeaders(req)
+    const useSecureCookies = shouldUseSecureCookies(req, secureCookies, trustForwardedHeaders)
 
     // ── Health endpoint (no auth) ──
     if (path === '/health') {
@@ -265,9 +287,12 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
       }
 
       if (!await verifyPassword(body.password)) {
+        rateLimiter.recordFailure(ip)
         logger.warn(`[webui] Failed auth attempt from ${ip}`)
         return Response.json({ error: 'Invalid credentials' }, { status: 401 })
       }
+
+      rateLimiter.recordSuccess(ip)
 
       const jwt = await createSessionToken(secret)
       logger.info(`[webui] Successful auth from ${ip}`)
@@ -293,6 +318,11 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
     // ── OAuth callback (no cookie auth — state param is CSRF protection) ──
     // Receives redirect from the relay (or directly from OAuth provider for MCP sources).
     // Completes the token exchange server-side and renders a success/error page.
+    if (path === '/api/oauth/callback' && req.method === 'GET' && !options.oauthCallbackDeps) {
+      // Deps not wired yet (server still starting) — say so explicitly instead
+      // of falling through to the SPA fallback, which reads as a broken 404.
+      return new Response('OAuth callback unavailable — server not ready', { status: 503 })
+    }
     if (path === '/api/oauth/callback' && req.method === 'GET' && options.oauthCallbackDeps) {
       const code = url.searchParams.get('code')
       const state = url.searchParams.get('state')
@@ -358,7 +388,7 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
       }
       return Response.json({
-        wsUrl: resolveWebSocketUrl(req, { publicWsUrl, wsProtocol, wsPort }),
+        wsUrl: resolveWebSocketUrl(req, { publicWsUrl, wsProtocol, wsPort, trustForwardedHeaders }),
       })
     }
 
@@ -438,7 +468,11 @@ export async function startWebuiHttpServer(
 
   const server = Bun.serve({
     port,
-    fetch: handler.fetch,
+    fetch: (req, bunServer) => {
+      const headers = new Headers(req.headers)
+      headers.set(INTERNAL_PEER_IP_HEADER, bunServer.requestIP(req)?.address ?? 'direct')
+      return handler.fetch(new Request(req, { headers }))
+    },
   })
 
   const boundPort = server.port ?? port

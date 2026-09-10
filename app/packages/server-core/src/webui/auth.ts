@@ -135,7 +135,7 @@ export class RateLimiter {
     this.maxGlobalAttempts = maxGlobalAttempts
   }
 
-  /** Returns true if the request should be allowed, false if rate-limited. */
+  /** Returns true if the request should be allowed, without counting successes as failures. */
   check(ip: string): boolean {
     const now = Date.now()
 
@@ -145,21 +145,40 @@ export class RateLimiter {
       this.globalWindowStart = now
     }
 
-    // Global rate limit — blocks everyone if too many total attempts
-    this.globalAttempts++
-    if (this.globalAttempts > this.maxGlobalAttempts) return false
+    // Global rate limit — blocks everyone if too many total failures
+    if (this.globalAttempts >= this.maxGlobalAttempts) return false
 
     // Per-IP rate limit
     const entry = this.entries.get(ip)
 
     if (!entry || now - entry.windowStart > this.windowMs) {
-      this.entries.set(ip, { attempts: 1, windowStart: now })
       return true
     }
 
+    return entry.attempts < this.maxAttempts
+  }
+
+  /** Record one failed authentication attempt after credential verification fails. */
+  recordFailure(ip: string): void {
+    const now = Date.now()
+
+    if (now - this.globalWindowStart > this.windowMs) {
+      this.globalAttempts = 0
+      this.globalWindowStart = now
+    }
+    this.globalAttempts++
+
+    const entry = this.entries.get(ip)
+    if (!entry || now - entry.windowStart > this.windowMs) {
+      this.entries.set(ip, { attempts: 1, windowStart: now })
+      return
+    }
     entry.attempts++
-    if (entry.attempts > this.maxAttempts) return false
-    return true
+  }
+
+  /** A successful login clears the caller's local failure history. */
+  recordSuccess(ip: string): void {
+    this.entries.delete(ip)
   }
 
   /** Periodic cleanup of stale entries (call on a timer). */

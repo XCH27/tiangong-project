@@ -1,10 +1,9 @@
-# Craft Agents Windows Installer
-# Usage: irm https://agents.craft.do/install-app.ps1 | iex
+# Fleet Windows Installer (requires an owner-approved Fleet release endpoint)
 
 & {
 $ErrorActionPreference = "Stop"
 
-$VERSIONS_URL = "https://agents.craft.do/electron"
+$VERSIONS_URL = $env:FLEET_INSTALL_VERSIONS_URL
 $DOWNLOAD_DIR = "$env:TEMP\craft-agent-install"
 $APP_NAME = "Craft Agents"
 
@@ -13,6 +12,10 @@ function Write-Info { Write-Host "> $args" -ForegroundColor Blue }
 function Write-Success { Write-Host "> $args" -ForegroundColor Green }
 function Write-Warn { Write-Host "! $args" -ForegroundColor Yellow }
 function Write-Err { Write-Host "x $args" -ForegroundColor Red; exit 1 }
+
+if (-not $VERSIONS_URL) {
+    Write-Err "Fleet has no default binary release channel. Set FLEET_INSTALL_VERSIONS_URL to an owner-approved Fleet manifest endpoint."
+}
 
 # Check for Windows
 if ($env:OS -ne "Windows_NT") {

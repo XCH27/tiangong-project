@@ -1,6 +1,12 @@
 # Craft Agent CLI Guide
 
-`craft-agent` is the preferred interface for managing workspace config domains such as labels, sources, skills, and automations.
+> Fleet status: `not implemented`. The inherited command reference is retained for compatibility
+> design only. Current Fleet builds fail explicitly instead of running a missing package. Use the
+> app for configuration or `craft-cli` for supported server RPC commands; do not rely on the
+> commands below until the feature is implemented through the existing domain authorities.
+
+The planned `craft-agent` interface manages workspace config domains such as labels, sources,
+skills, and automations.
 
 ## Usage
 

@@ -64,23 +64,18 @@ Yes. That's the core idea behind agent-native software. You describe what you wa
 
 ## Installation
 
-### One-Line Install (Recommended)
+### Fleet distribution status
 
-**macOS / Linux:**
-```bash
-curl -fsSL https://agents.craft.do/install-app.sh | bash
-```
-
-**Windows (PowerShell):**
-```powershell
-irm https://agents.craft.do/install-app.ps1 | iex
-```
+Fleet does not have a public binary release channel yet. The inherited Craft installer endpoints
+install upstream Craft Agents builds and must not be used as Fleet installers. Build Fleet from
+source until a Fleet-controlled signed channel is available.
 
 ### Build from Source
 
+From this Fleet checkout:
+
 ```bash
-git clone https://github.com/lukilabs/craft-agents-oss.git
-cd craft-agents-oss
+cd app
 bun install
 bun run electron:start
 ```
@@ -194,6 +189,7 @@ In thin-client mode, the desktop app renders the UI but all session logic, tool 
 | `CRAFT_RPC_TLS_KEY` | No | — | Path to PEM private key file (required with cert) |
 | `CRAFT_RPC_TLS_CA` | No | — | Path to PEM CA chain file (optional, for client cert verification) |
 | `CRAFT_DEBUG` | No | `false` | Enable debug logging |
+| `CRAFT_WEBUI_TRUSTED_PROXIES` | No | — | Comma-separated exact reverse-proxy IPs allowed to supply forwarded client/protocol/host headers |
 
 ### TLS (Recommended for Remote Access)
 
@@ -227,7 +223,7 @@ docker run -d \
   -p 9100:9100 \
   -e CRAFT_SERVER_TOKEN=<token> \
   -e CRAFT_RPC_HOST=0.0.0.0 \
-  -v craft-data:/root/.craft-agent \
+  -v craft-data:/home/craftagents/.craft-agent \
   craft-agents-server
 ```
 
@@ -241,7 +237,7 @@ docker run -d \
   -e CRAFT_RPC_TLS_CERT=/certs/cert.pem \
   -e CRAFT_RPC_TLS_KEY=/certs/key.pem \
   -v ./certs:/certs:ro \
-  -v craft-data:/root/.craft-agent \
+  -v craft-data:/home/craftagents/.craft-agent \
   craft-agents-server
 ```
 

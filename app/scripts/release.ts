@@ -16,8 +16,9 @@ import { $ } from 'bun';
 import { parseArgs } from 'util';
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-const scriptDir = dirname(new URL(import.meta.url).pathname);
+const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(scriptDir);
 const releaseNotesDir = join(repoRoot, 'apps/electron/resources/release-notes');
 
@@ -97,11 +98,7 @@ function updatePackageJson(filePath: string, version: string): boolean {
 }
 
 function syncAllPackageJsons(version: string): number {
-  const packageFiles = [
-    join(repoRoot, 'package.json'),
-    ...readdirSync(join(repoRoot, 'apps')).map((dir) => join(repoRoot, 'apps', dir, 'package.json')),
-    ...readdirSync(join(repoRoot, 'packages')).map((dir) => join(repoRoot, 'packages', dir, 'package.json')),
-  ].filter((f) => existsSync(f));
+  const packageFiles = getPackageFiles();
 
   let updated = 0;
   for (const file of packageFiles) {
@@ -115,11 +112,33 @@ function syncAllPackageJsons(version: string): number {
   return updated;
 }
 
+function getPackageFiles(): string[] {
+  return [
+    join(repoRoot, 'package.json'),
+    ...readdirSync(join(repoRoot, 'apps')).map((dir) => join(repoRoot, 'apps', dir, 'package.json')),
+    ...readdirSync(join(repoRoot, 'packages')).map((dir) => join(repoRoot, 'packages', dir, 'package.json')),
+  ].filter((f) => existsSync(f));
+}
+
+async function ensureCleanWorktree(): Promise<void> {
+  const status = (await $`cd ${repoRoot} && git status --porcelain=v1 --untracked-files=all`.text()).trim();
+  if (!status) return;
+
+  console.error('Error: release requires a completely clean Git working tree and index.');
+  console.error('Resolve, commit, or intentionally drop every change before releasing.');
+  const entries = status.split('\n');
+  for (const entry of entries.slice(0, 20)) {
+    console.error(`  ${entry}`);
+  }
+  if (entries.length > 20) console.error(`  ... and ${entries.length - 20} more`);
+  process.exit(1);
+}
+
 async function ensureMainBranch(): Promise<void> {
   // Check current branch
   const branch = (await $`git rev-parse --abbrev-ref HEAD`.text()).trim();
   if (branch !== 'main') {
-    console.error(`Error: --tag requires being on the 'main' branch`);
+    console.error(`Error: release requires being on the 'main' branch`);
     console.error(`  Current branch: ${branch}`);
     console.error(`  Run: git checkout main`);
     process.exit(1);
@@ -171,8 +190,9 @@ async function main(): Promise<void> {
   const dryRun = values['dry-run'] ?? false;
   const ossOnly = values['oss-only'] ?? false;
 
-  // Enforce main branch when creating tags
-  if (values.tag && !dryRun) {
+  // Every state-changing release operation requires an attributable clean main.
+  if (!dryRun) {
+    await ensureCleanWorktree();
     await ensureMainBranch();
   }
 
@@ -256,7 +276,8 @@ async function main(): Promise<void> {
 
   // 2. Create git commit
   console.log('\nCreating git commit...');
-  await $`cd ${repoRoot} && git add -A`;
+  const packageFiles = getPackageFiles();
+  await $`cd ${repoRoot} && git add -- ${packageFiles}`;
   await $`cd ${repoRoot} && git commit -m ${"chore: release v" + newVersion + "\n\nCo-Authored-By: Craft Agent <agents-noreply@craft.do>"}`;
   console.log(`  ✓ Created commit`);
 
@@ -295,7 +316,7 @@ async function main(): Promise<void> {
   if (!values.push) {
     console.log('\nNext steps:');
     console.log(`  git push origin ${values.tag ? '&& git push --tags' : ''}`);
-    console.log('  # Then trigger CI build via GitHub Actions');
+    console.log('  # Build and verify artifacts with the owner-approved Fleet release process');
   }
 }
 
@@ -303,4 +324,3 @@ main().catch((err) => {
   console.error('Error:', err.message);
   process.exit(1);
 });
-

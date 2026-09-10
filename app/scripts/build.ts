@@ -145,6 +145,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  if ((values.latest || values.script) && !values.upload) {
+    console.error('ERROR: --latest and --script require --upload');
+    process.exit(1);
+  }
+
+  if (values.upload && !existsSync(join(rootDir, 'scripts', 'upload.ts'))) {
+    console.error('ERROR: Fleet artifact upload is not implemented (scripts/upload.ts is absent).');
+    console.error('Build without --upload until an owner-approved Fleet release channel exists.');
+    process.exit(1);
+  }
+
   const config: BuildConfig = {
     platform,
     arch,
@@ -230,4 +241,3 @@ async function main(): Promise<void> {
 }
 
 main();
-

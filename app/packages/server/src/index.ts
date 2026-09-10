@@ -21,6 +21,7 @@
  *   CRAFT_WEBUI_PASSWORD       — optional shorter password for web login (falls back to CRAFT_SERVER_TOKEN)
  *   CRAFT_WEBUI_SECURE_COOKIE  — optional true/false override for the session cookie Secure flag
  *   CRAFT_WEBUI_WS_URL         — optional browser-facing ws:// or wss:// URL returned by /api/config
+ *   CRAFT_WEBUI_TRUSTED_PROXIES — optional comma-separated exact proxy IPs allowed to set forwarded headers
  *   CRAFT_MESSAGING_WA_WORKER  — absolute path to worker.cjs (default: packages/messaging-whatsapp-worker/dist/worker.cjs)
  *   CRAFT_MESSAGING_NODE_BIN   — Node binary used to spawn the WhatsApp worker (default: node)
  */
@@ -116,6 +117,10 @@ const webuiDir = process.env.CRAFT_WEBUI_DIR || undefined
 const webuiEnabled = webuiDir && existsSync(webuiDir)
 const webuiSecureCookies = parseOptionalBooleanEnv('CRAFT_WEBUI_SECURE_COOKIE', process.env.CRAFT_WEBUI_SECURE_COOKIE)
 const webuiWsUrl = parseOptionalWebSocketUrl('CRAFT_WEBUI_WS_URL', process.env.CRAFT_WEBUI_WS_URL)
+const webuiTrustedProxies = process.env.CRAFT_WEBUI_TRUSTED_PROXIES
+  ?.split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
 const serverToken = process.env.CRAFT_SERVER_TOKEN
 
 // ---------------------------------------------------------------------------
@@ -141,6 +146,7 @@ if (webuiEnabled && serverToken) {
     password: process.env.CRAFT_WEBUI_PASSWORD || undefined,
     secureCookies: webuiSecureCookies,
     publicWsUrl: webuiWsUrl,
+    trustedProxies: webuiTrustedProxies,
     wsProtocol: rpcProtocol,
     // WebUI is served on the same port as WS — wsPort matches the RPC port
     wsPort: rpcPort,

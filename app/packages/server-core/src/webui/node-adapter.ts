@@ -8,6 +8,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { INTERNAL_PEER_IP_HEADER } from './http-server'
 
 type WebHandler = (req: Request) => Promise<Response> | Response
 
@@ -49,6 +50,9 @@ async function handleRequest(
   for (let i = 0; i < raw.length; i += 2) {
     headers.append(raw[i], raw[i + 1])
   }
+  // Always overwrite any inbound value: only the transport adapter may assert
+  // the direct peer used for trusted-proxy decisions.
+  headers.set(INTERNAL_PEER_IP_HEADER, nodeReq.socket.remoteAddress ?? 'direct')
 
   let body: Buffer | null = null
   if (nodeReq.method !== 'GET' && nodeReq.method !== 'HEAD') {
