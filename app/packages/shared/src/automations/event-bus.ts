@@ -164,6 +164,8 @@ export class WorkspaceEventBus implements EventBus {
   private readonly handlers: Map<AutomationEvent, Set<EventHandler<AutomationEvent>>> = new Map();
   private readonly anyHandlers: Set<AnyEventHandler> = new Set();
   private readonly rateCounts: Map<AutomationEvent, RateWindow> = new Map();
+  /** Per-event count of triggers dropped by the rate limiter (surfaced for diagnostics). */
+  private readonly droppedCounts: Map<AutomationEvent, number> = new Map();
   private disposed = false;
 
   constructor(workspaceId: string) {
@@ -173,7 +175,8 @@ export class WorkspaceEventBus implements EventBus {
 
   /**
    * Emit an event to all registered handlers.
-   * Handlers are called in parallel, errors are caught and logged.
+   * Handlers run in parallel and emit resolves after every handler settles.
+   * Errors are caught per handler so one consumer cannot suppress another.
    */
   async emit<T extends AutomationEvent>(event: T, payload: EventPayloadMap[T]): Promise<void> {
     if (this.disposed) {
@@ -190,8 +193,9 @@ export class WorkspaceEventBus implements EventBus {
     }
     const limit = getRateLimit(event);
     if (rateWindow.count >= limit) {
+      this.droppedCounts.set(event, (this.droppedCounts.get(event) ?? 0) + 1);
       log.warn(
-        `[EventBus] Rate limit: ${event} fired ${rateWindow.count} times in ${Math.round((now - rateWindow.windowStart) / 1000)}s (limit: ${limit}/min), dropping`
+        `[EventBus] Rate limit: ${event} fired ${rateWindow.count} times in ${Math.round((now - rateWindow.windowStart) / 1000)}s (limit: ${limit}/min), dropping (total dropped: ${this.droppedCounts.get(event)})`
       );
       return;
     }
@@ -204,8 +208,10 @@ export class WorkspaceEventBus implements EventBus {
     const eventHandlers = this.handlers.get(event) ?? new Set();
     const anyHandlersCopy = new Set(this.anyHandlers);
 
-    // Execute event-specific handlers
-    const eventPromises = Array.from(eventHandlers).map(async (handler) => {
+    // Keep handlers parallel, but preserve emit's durability/backpressure
+    // contract. Webhook history and retry-queue writes happen in handlers;
+    // returning before they settle makes an awaited emit unsafe at shutdown.
+    const eventPromises = Array.from(eventHandlers, async (handler) => {
       try {
         await handler(payload);
       } catch (error) {
@@ -213,8 +219,7 @@ export class WorkspaceEventBus implements EventBus {
       }
     });
 
-    // Execute any-event handlers
-    const anyPromises = Array.from(anyHandlersCopy).map(async (handler) => {
+    const anyPromises = Array.from(anyHandlersCopy, async (handler) => {
       try {
         await handler(event, payload as BaseEventPayload);
       } catch (error) {
@@ -222,10 +227,19 @@ export class WorkspaceEventBus implements EventBus {
       }
     });
 
-    // Wait for all handlers to complete
     await Promise.all([...eventPromises, ...anyPromises]);
 
     log.debug(`[EventBus] Emitted: ${event} (${eventHandlers.size} handlers, ${anyHandlersCopy.size} any-handlers)`);
+  }
+
+  /**
+   * Number of events dropped by the rate limiter, per event type (or total).
+   */
+  getDroppedCount(event?: AutomationEvent): number {
+    if (event) return this.droppedCounts.get(event) ?? 0;
+    let total = 0;
+    for (const count of this.droppedCounts.values()) total += count;
+    return total;
   }
 
   /**
@@ -287,6 +301,7 @@ export class WorkspaceEventBus implements EventBus {
     this.handlers.clear();
     this.anyHandlers.clear();
     this.rateCounts.clear();
+    this.droppedCounts.clear();
     this.disposed = true;
   }
 

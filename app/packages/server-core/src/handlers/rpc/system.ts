@@ -278,24 +278,43 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
 
     try {
       const branch = (await runGitInDirectoryOrNull(['symbolic-ref', '--short', 'HEAD'])) || null
-      const status = await runGitInDirectory(['-c', 'core.quotepath=false', 'status', '--short'])
+      // Treat Git output as a machine protocol. `status --short` is intended
+      // for humans and can inherit ANSI colour from the user's Git config;
+      // line splitting also corrupts valid filenames containing newlines.
+      // Disabling rename detection keeps each porcelain-v1 record to one path.
+      const status = await runGitInDirectory([
+        '-c', 'color.status=false',
+        '-c', 'core.quotepath=false',
+        'status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames',
+      ])
       const files = status
-        .split('\n')
+        .split('\0')
         .filter(Boolean)
-        .map((line) => ({
-          indexStatus: line[0] ?? ' ',
-          workingTreeStatus: line[1] ?? ' ',
-          path: line.slice(3),
-          additions: 0,
-          deletions: 0,
-        }))
+        .map((record) => {
+          if (record.length < 4 || record[2] !== ' ') {
+            throw new Error('Git returned an invalid porcelain status record')
+          }
+          return {
+            indexStatus: record[0] ?? ' ',
+            workingTreeStatus: record[1] ?? ' ',
+            path: record.slice(3),
+            additions: 0,
+            deletions: 0,
+          }
+        })
 
       const fileByPath = new Map(files.map((file) => [file.path, file]))
       const applyNumstat = (numstat: string) => {
-        for (const line of numstat.split('\n')) {
-          if (!line) continue
-          const [added, deleted, ...pathParts] = line.split('\t')
-          const path = pathParts.join('\t')
+        for (const record of numstat.split('\0')) {
+          if (!record) continue
+          const firstSeparator = record.indexOf('\t')
+          const secondSeparator = record.indexOf('\t', firstSeparator + 1)
+          if (firstSeparator < 0 || secondSeparator < 0) {
+            throw new Error('Git returned an invalid numstat record')
+          }
+          const added = record.slice(0, firstSeparator)
+          const deleted = record.slice(firstSeparator + 1, secondSeparator)
+          const path = record.slice(secondSeparator + 1)
           const file = fileByPath.get(path)
           if (!file) continue
           file.additions += added === '-' ? 0 : Number.parseInt(added, 10) || 0
@@ -303,10 +322,12 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
         }
       }
       applyNumstat(await runGitInDirectory([
-        '-c', 'core.quotepath=false', 'diff', '--cached', '--numstat', '--no-renames',
+        '-c', 'color.ui=false', '-c', 'core.quotepath=false',
+        'diff', '--cached', '--numstat', '-z', '--no-renames',
       ]))
       applyNumstat(await runGitInDirectory([
-        '-c', 'core.quotepath=false', 'diff', '--numstat', '--no-renames',
+        '-c', 'color.ui=false', '-c', 'core.quotepath=false',
+        'diff', '--numstat', '-z', '--no-renames',
       ]))
       const worktreePorcelain = await runGitInDirectoryOrNull(['worktree', 'list', '--porcelain'])
       const worktrees = (worktreePorcelain ?? '').split(/\n\n+/).filter(Boolean).map((block) => {

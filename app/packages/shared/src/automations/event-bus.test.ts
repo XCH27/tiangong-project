@@ -24,6 +24,32 @@ describe('WorkspaceEventBus', () => {
   });
 
   describe('emit', () => {
+    it('does not resolve until durable handlers finish', async () => {
+      let release!: () => void;
+      const durableWrite = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let emitResolved = false;
+      bus.on('LabelAdd', async () => {
+        await durableWrite;
+      });
+
+      const emitted = bus.emit('LabelAdd', {
+        sessionId: 'session-1',
+        workspaceId: 'test-workspace',
+        timestamp: Date.now(),
+        label: 'test-label',
+      }).then(() => {
+        emitResolved = true;
+      });
+
+      await Promise.resolve();
+      expect(emitResolved).toBe(false);
+      release();
+      await emitted;
+      expect(emitResolved).toBe(true);
+    });
+
     it('should emit events to registered handlers', async () => {
       const handler = jest.fn();
       bus.on('LabelAdd', handler);

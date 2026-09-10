@@ -6,9 +6,11 @@
  */
 
 import { useCallback, useContext, useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import * as Icons from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
+import { toast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -34,6 +36,7 @@ import { BrowserTabBadge } from './BrowserTabBadge'
 import type { BrowserInstanceInfo } from '../../../shared/types'
 import { getHostname } from './utils'
 import { navigate, routes } from '@/lib/navigate'
+import { getBrowserActionErrorMessage, runConfirmedBrowserAction } from './browser-action'
 
 const DEFAULT_MAX_VISIBLE_BADGES = 3
 
@@ -48,6 +51,7 @@ export function BrowserTabStrip({
   instancesOverride,
   maxVisibleBadges = DEFAULT_MAX_VISIBLE_BADGES,
 }: BrowserTabStripProps) {
+  const { t } = useTranslation()
   // Filter the badge strip to the workspace currently in focus. Remote-connected
   // workspaces have a different `remoteWorkspaceId` (what the remote agent
   // stamps onto its tabs) than the local `activeWorkspaceId` (what locally-
@@ -185,20 +189,29 @@ export function BrowserTabStrip({
     }
   }, [orderedInstances, activeInstanceId, setActiveInstanceId])
 
-  const focusBrowserWindow = useCallback((instance: BrowserInstanceInfo) => {
-    setActiveInstanceId(instance.id)
-    if (instancesOverride) return
+  const focusBrowserWindow = useCallback(async (instance: BrowserInstanceInfo) => {
+    if (instancesOverride) {
+      setActiveInstanceId(instance.id)
+      return
+    }
 
     const browserPaneApi = window.electronAPI?.browserPane
     if (!browserPaneApi) {
       console.warn('[BrowserTabStrip] browserPane API unavailable for focus action')
+      toast.error(t('rightWorkbench.browser.focusFailed'))
       return
     }
 
-    void browserPaneApi.focus(instance.id).catch((error) => {
-      console.warn(`[BrowserTabStrip] Failed to focus browser window ${instance.id}:`, error)
-    })
-  }, [instancesOverride, setActiveInstanceId])
+    const result = await runConfirmedBrowserAction(
+      () => browserPaneApi.focus(instance.id),
+      () => setActiveInstanceId(instance.id),
+    )
+    if (!result.ok) {
+      const message = getBrowserActionErrorMessage(result.error)
+      console.warn(`[BrowserTabStrip] Failed to focus browser window ${instance.id}:`, result.error)
+      toast.error(t('rightWorkbench.browser.focusFailed'), { description: message })
+    }
+  }, [instancesOverride, setActiveInstanceId, t])
 
   const openSessionUsingWindow = useCallback((instance: BrowserInstanceInfo) => {
     const sessionId = instance.boundSessionId ?? instance.ownerSessionId
@@ -217,25 +230,38 @@ export function BrowserTabStrip({
     }))
   }, [nav, sessionMetaMap])
 
-  const terminateBrowserWindow = useCallback((instance: BrowserInstanceInfo) => {
-    if (!instancesOverride) {
-      const browserPaneApi = window.electronAPI?.browserPane
-      if (!browserPaneApi) {
-        console.warn('[BrowserTabStrip] browserPane API unavailable for terminate action')
-      } else {
-        void browserPaneApi.destroy(instance.id).catch((error) => {
-          console.warn(`[BrowserTabStrip] Failed to terminate browser window ${instance.id}:`, error)
-        })
-      }
-      removeInstance(instance.id)
-    }
-
+  const confirmBrowserRemoved = useCallback((instance: BrowserInstanceInfo) => {
+    if (!instancesOverride) removeInstance(instance.id)
     setActiveInstanceId((prev) => {
       if (prev !== instance.id) return prev
       const remaining = instancesRef.current.filter((item) => item.id !== instance.id)
       return remaining[0]?.id ?? null
     })
   }, [instancesOverride, removeInstance, setActiveInstanceId])
+
+  const terminateBrowserWindow = useCallback(async (instance: BrowserInstanceInfo) => {
+    if (instancesOverride) {
+      confirmBrowserRemoved(instance)
+      return
+    }
+
+    const browserPaneApi = window.electronAPI?.browserPane
+    if (!browserPaneApi) {
+      console.warn('[BrowserTabStrip] browserPane API unavailable for terminate action')
+      toast.error(t('rightWorkbench.browser.terminateFailed'))
+      return
+    }
+
+    const result = await runConfirmedBrowserAction(
+      () => browserPaneApi.destroy(instance.id),
+      () => confirmBrowserRemoved(instance),
+    )
+    if (!result.ok) {
+      const message = getBrowserActionErrorMessage(result.error)
+      console.warn(`[BrowserTabStrip] Failed to terminate browser window ${instance.id}:`, result.error)
+      toast.error(t('rightWorkbench.browser.terminateFailed'), { description: message })
+    }
+  }, [confirmBrowserRemoved, instancesOverride, t])
 
   const renderBrowserActions = useCallback((instance: BrowserInstanceInfo) => {
     const canUseLiveWindowActions = !instancesOverride

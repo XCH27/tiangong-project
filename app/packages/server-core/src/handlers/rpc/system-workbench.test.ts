@@ -98,6 +98,7 @@ describe('right workbench core handlers', () => {
     const directory = mkdtempSync(join(tmpdir(), 'craft-workbench-git-'))
     tempDirectories.push(directory)
     execFileSync('git', ['init', '--quiet'], { cwd: directory })
+    execFileSync('git', ['config', 'color.status', 'always'], { cwd: directory })
     writeFileSync(join(directory, 'workbench.txt'), 'review me\n')
     execFileSync('git', ['add', 'workbench.txt'], { cwd: directory })
 
@@ -122,8 +123,31 @@ describe('right workbench core handlers', () => {
     expect(fileDiff?.path).toBe('workbench.txt')
     expect(fileDiff?.diff).toContain('+review me')
     expect(fileDiff?.truncated).toBe(false)
-    expect(execFileSync('git', ['status', '--short'], { cwd: directory, encoding: 'utf-8' }))
+    expect(execFileSync('git', ['-c', 'color.status=false', 'status', '--short'], { cwd: directory, encoding: 'utf-8' }))
       .toBe('A  workbench.txt\n')
+  })
+
+  it('preserves tabs, newlines, spaces, and Unicode in Git status paths and numstat', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'craft-workbench-git-paths-'))
+    tempDirectories.push(directory)
+    execFileSync('git', ['init', '--quiet'], { cwd: directory })
+    execFileSync('git', ['config', 'color.status', 'always'], { cwd: directory })
+    const unusualPath = 'review \tline\n名.txt'
+    writeFileSync(join(directory, unusualPath), 'first\nsecond\n')
+    execFileSync('git', ['add', '--', unusualPath], { cwd: directory })
+
+    const handler = createHandlers(directory).get(RPC_CHANNELS.git.GET_WORKING_TREE)
+    expect(handler).toBeDefined()
+    const snapshot = await handler!(ctx, 'session-1')
+
+    expect(snapshot?.files).toEqual([{
+      indexStatus: 'A',
+      workingTreeStatus: ' ',
+      path: unusualPath,
+      additions: 2,
+      deletions: 0,
+    }])
+    expect(snapshot?.totals).toEqual({ additions: 2, deletions: 0 })
   })
 
   it('rejects Git diff paths that escape the repository', async () => {
