@@ -235,16 +235,21 @@ export class MessagingGateway {
   // Adapter registration
   // -------------------------------------------------------------------------
 
-  registerAdapter(adapter: PlatformAdapter): void {
+  async registerAdapter(adapter: PlatformAdapter): Promise<void> {
     const existing = this.adapters.get(adapter.platform)
     if (existing) {
-      existing.destroy().catch((err) => {
+      // Await the old adapter's teardown before installing the replacement —
+      // fire-and-forget destroy lets two live connections (polling loops,
+      // websockets) overlap on the same platform.
+      try {
+        await existing.destroy()
+      } catch (err) {
         this.log.warn('failed to destroy existing adapter during replacement', {
           event: 'adapter_replace_destroy_failed',
           platform: adapter.platform,
           error: err,
         })
-      })
+      }
     }
     this.adapters.set(adapter.platform, adapter)
     if (this.started) {
@@ -623,6 +628,22 @@ export class MessagingGateway {
     // the approval once compaction finishes.
     const binding = this.bindingStore.findByChannel(platform, press.channelId, press.threadId)
     if (!binding) return
+
+    // Sweep expired entries before inserting — if compaction never completes
+    // (crash, abort), finishPendingCompactAccept never runs and the entry
+    // would otherwise live in the map forever.
+    if (this.pendingCompactAccepts.size > 0) {
+      const now = Date.now()
+      for (const [sid, e] of this.pendingCompactAccepts) {
+        if (now - e.createdAt > COMPACT_ACCEPT_TTL_MS) {
+          this.pendingCompactAccepts.delete(sid)
+          this.log.warn('swept stale compact-accept entry', {
+            event: 'plan_compact_accept_swept',
+            sessionId: sid,
+          })
+        }
+      }
+    }
 
     this.pendingCompactAccepts.set(entry.sessionId, {
       token,

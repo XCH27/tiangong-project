@@ -7,13 +7,13 @@
 
 import {
   readFileSync,
-  writeFileSync,
   mkdirSync,
   existsSync,
   copyFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { DEFAULT_MESSAGING_CONFIG, type MessagingConfig, type MessagingLogger } from './types'
+import { writeJsonFileAtomic } from './atomic-write'
 
 const NOOP_LOGGER: MessagingLogger = {
   info: () => {},
@@ -99,7 +99,7 @@ export class ConfigStore {
   private save(): void {
     try {
       if (!existsSync(this.dirPath)) mkdirSync(this.dirPath, { recursive: true })
-      writeFileSync(this.filePath, JSON.stringify(this.config, null, 2), 'utf-8')
+      writeJsonFileAtomic(this.filePath, this.config)
     } catch (err) {
       this.log.error('failed to save messaging config', {
         event: 'config_save_failed',

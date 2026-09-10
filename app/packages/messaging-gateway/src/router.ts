@@ -12,6 +12,7 @@
 import type { ISessionManager } from '@craft-agent/server-core/handlers'
 import { readFileAttachment } from '@craft-agent/shared/utils'
 import type { FileAttachment } from '@craft-agent/shared/protocol'
+import { unlinkSync } from 'node:fs'
 import {
   evaluateBindingAccess,
   executeRejection,
@@ -96,7 +97,6 @@ export class Router {
           undefined, // SendMessageOptions
         )
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : 'Unknown error'
         this.log.error('failed to route inbound chat message', {
           event: 'message_route_failed',
           platform: msg.platform,
@@ -108,7 +108,7 @@ export class Router {
         })
         await adapter.sendText(
           msg.channelId,
-          `Failed to send message to session: ${errorMsg}`,
+          'Failed to send your message to the session. Check the desktop app for details.',
           { threadId: msg.threadId },
         )
       }
@@ -164,10 +164,21 @@ export class Router {
     const built: FileAttachment[] = []
     for (const a of msg.attachments) {
       if (!a.localPath) continue
-      const att = readFileAttachment(a.localPath) as FileAttachment | null
-      if (!att) continue
-      if (a.fileName) att.name = a.fileName
-      built.push(att)
+      try {
+        const att = readFileAttachment(a.localPath) as FileAttachment | null
+        if (!att) continue
+        if (a.fileName) att.name = a.fileName
+        built.push(att)
+      } finally {
+        // Adapters stage blobs in os.tmpdir(); the base64/utf-8 payload is
+        // fully materialized by readFileAttachment, so the temp file is
+        // dead weight (and a disk leak) from here on.
+        try {
+          unlinkSync(a.localPath)
+        } catch {
+          // best-effort — temp dir sweeps eventually
+        }
+      }
     }
     return built.length > 0 ? built : undefined
   }

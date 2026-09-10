@@ -91,6 +91,10 @@ interface WorkspaceState {
   runtime: Record<PlatformType, MessagingPlatformRuntimeInfo>
 }
 
+type PlatformConfigMap = {
+  [P in PlatformType]: NonNullable<MessagingConfig['platforms'][P]>
+}
+
 export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   private readonly workspaces = new Map<string, WorkspaceState>()
   private readonly pairing = new PairingCodeManager()
@@ -692,10 +696,12 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     )
 
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    state.configStore.update({
-      enabled: true,
-      platforms: { lark: { enabled: true, domain: creds.domain } },
-    })
+    this.patchPlatformConfig(
+      workspaceId,
+      'lark',
+      { enabled: true, domain: creds.domain },
+      { ensureMessagingEnabled: true },
+    )
 
     this.setPlatformRuntime(workspaceId, state, 'lark', {
       configured: true,
@@ -850,12 +856,14 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       }),
     })
 
-    state.gateway.registerAdapter(adapter)
+    await state.gateway.registerAdapter(adapter)
     if (options.persistConfig) {
-      state.configStore.update({
-        enabled: true,
-        platforms: { whatsapp: { enabled: true, selfChatMode } },
-      })
+      this.patchPlatformConfig(
+        workspaceId,
+        'whatsapp',
+        { enabled: true, selfChatMode },
+        { ensureMessagingEnabled: true },
+      )
     }
     await state.gateway.start()
     this.log.info('WhatsApp adapter started', {
@@ -1075,7 +1083,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         // non-fatal
       }
 
-      state.gateway.registerAdapter(adapter)
+      await state.gateway.registerAdapter(adapter)
       this.setPlatformRuntime(workspaceId, state, 'lark', {
         configured: true,
         connected: true,
@@ -1211,6 +1219,30 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   // -------------------------------------------------------------------------
 
   /**
+   * Patch one platform config without replacing fields the caller does not
+   * own. Access policy and adapter credentials/lifecycle settings share the
+   * same platform object, so every platform write must converge here.
+   */
+  private patchPlatformConfig<P extends PlatformType>(
+    workspaceId: string,
+    platform: P,
+    patch: Partial<PlatformConfigMap[P]>,
+    options: { ensureMessagingEnabled?: boolean } = {},
+  ): MessagingConfig {
+    const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
+    const cfg = state.configStore.get()
+    const current = (cfg.platforms[platform] ?? { enabled: true }) as PlatformConfigMap[P]
+    const next = { ...current, ...patch } as PlatformConfigMap[P]
+    return state.configStore.update({
+      enabled: options.ensureMessagingEnabled ? true : cfg.enabled,
+      platforms: {
+        ...cfg.platforms,
+        [platform]: next,
+      },
+    })
+  }
+
+  /**
    * Patch the Telegram platform config preserving any fields the caller
    * doesn't touch. Critical: every Telegram config write MUST go through
    * this helper — direct `configStore.update({ platforms: { telegram: {...} } })`
@@ -1227,16 +1259,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     patch: Partial<NonNullable<MessagingConfig['platforms']['telegram']>>,
     options: { ensureMessagingEnabled?: boolean } = {},
   ): MessagingConfig {
-    const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    const cfg = state.configStore.get()
-    const tg = cfg.platforms.telegram ?? { enabled: true }
-    return state.configStore.update({
-      enabled: options.ensureMessagingEnabled ? true : cfg.enabled,
-      platforms: {
-        ...cfg.platforms,
-        telegram: { ...tg, ...patch },
-      },
-    })
+    return this.patchPlatformConfig(workspaceId, 'telegram', patch, options)
   }
 
   /**
@@ -1249,18 +1272,18 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     platform: PlatformType,
     candidate: PlatformOwner,
   ): Promise<PlatformOwner[]> {
-    if (platform !== 'telegram') return []
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
     const cfg = state.configStore.get()
-    const currentOwners = cfg.platforms.telegram?.owners ?? []
+    const platformConfig = cfg.platforms[platform]
+    const currentOwners = platformConfig?.owners ?? []
     if (currentOwners.length > 0) return currentOwners
 
     const nextOwners: PlatformOwner[] = [candidate]
     // Workspaces that haven't picked an explicit access mode default
     // to `owner-only` once an owner exists. Existing 'open' workspaces
     // are respected (the operator chose to stay public).
-    this.patchTelegramConfig(workspaceId, {
-      accessMode: cfg.platforms.telegram?.accessMode ?? 'owner-only',
+    this.patchPlatformConfig(workspaceId, platform, {
+      accessMode: platformConfig?.accessMode ?? 'owner-only',
       owners: nextOwners,
     })
     this.log.info('seeded first owner', {
@@ -1273,9 +1296,8 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   }
 
   getPlatformOwners(workspaceId: string, platform: PlatformType): PlatformOwner[] {
-    if (platform !== 'telegram') return []
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    return state.configStore.get().platforms.telegram?.owners ?? []
+    return state.configStore.get().platforms[platform]?.owners ?? []
   }
 
   setPlatformOwners(
@@ -1283,19 +1305,15 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     platform: PlatformType,
     owners: PlatformOwner[],
   ): PlatformOwner[] {
-    if (platform !== 'telegram') {
-      throw new Error('Owner lists are only supported on Telegram in this build.')
-    }
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    this.patchTelegramConfig(workspaceId, { owners: dedupeOwners(owners) })
+    this.patchPlatformConfig(workspaceId, platform, { owners: dedupeOwners(owners) })
     this.emitBindingChanged(workspaceId)
-    return state.configStore.get().platforms.telegram?.owners ?? []
+    return state.configStore.get().platforms[platform]?.owners ?? []
   }
 
   getPlatformAccessMode(workspaceId: string, platform: PlatformType): PlatformAccessMode {
-    if (platform !== 'telegram') return 'open'
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    return state.configStore.get().platforms.telegram?.accessMode ?? 'open'
+    return state.configStore.get().platforms[platform]?.accessMode ?? 'open'
   }
 
   setPlatformAccessMode(
@@ -1303,10 +1321,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     platform: PlatformType,
     mode: PlatformAccessMode,
   ): void {
-    if (platform !== 'telegram') {
-      throw new Error('Access mode is only supported on Telegram in this build.')
-    }
-    this.patchTelegramConfig(workspaceId, { accessMode: mode })
+    this.patchPlatformConfig(workspaceId, platform, { accessMode: mode })
 
     // Lock-down semantics: switching the workspace to `owner-only` must
     // also close any binding that's still in `open` mode, otherwise the
@@ -1314,23 +1329,23 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     // bindings remain public — exactly the false-sense-of-security UX
     // the feature is supposed to prevent.
     if (mode === 'owner-only') {
-      this.migrateOpenBindingsToInherit(workspaceId)
+      this.migrateOpenBindingsToInherit(workspaceId, platform)
     }
 
     this.emitBindingChanged(workspaceId)
   }
 
   /**
-   * Walk all Telegram bindings and flip any with `accessMode === 'open'`
-   * to `inherit` (the safe default). Used when locking down the workspace.
-   * Telegram-only — other platforms don't yet have per-binding access.
+   * Walk bindings for the platform being locked down and flip any with
+   * `accessMode === 'open'` to `inherit` (the safe default). Other platforms
+   * are deliberately untouched.
    */
-  private migrateOpenBindingsToInherit(workspaceId: string): void {
+  private migrateOpenBindingsToInherit(workspaceId: string, platform: PlatformType): void {
     const state = this.workspaces.get(workspaceId)
     if (!state) return
     const store = state.gateway.getBindingStore()
     for (const b of store.getAll()) {
-      if (b.platform !== 'telegram') continue
+      if (b.platform !== platform) continue
       if (b.config.accessMode !== 'open') continue
       store.updateBindingConfig(b.id, { accessMode: 'inherit', allowedSenderIds: [] })
     }
@@ -1376,9 +1391,6 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     userId: string,
     entryKey?: { reason?: PendingSender['reason']; bindingId?: string },
   ): { owners: PlatformOwner[]; bindingId?: string } {
-    if (platform !== 'telegram') {
-      throw new Error('Owner lists are only supported on Telegram in this build.')
-    }
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
     const pending = state.gateway.getPendingStore().list(platform)
     const match = pending.find((p) =>
@@ -1425,13 +1437,14 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         bindingId,
       })
       this.emitBindingChanged(workspaceId)
-      const owners = state.configStore.get().platforms.telegram?.owners ?? []
+      const owners = state.configStore.get().platforms[platform]?.owners ?? []
       return { owners, bindingId }
     }
 
     // reason === 'not-owner': promote to workspace owner.
     const cfg = state.configStore.get()
-    const existing = cfg.platforms.telegram?.owners ?? []
+    const platformConfig = cfg.platforms[platform]
+    const existing = platformConfig?.owners ?? []
     if (existing.some((o) => o.userId === userId)) {
       state.gateway.getPendingStore().dismiss(platform, userId)
       return { owners: existing }
@@ -1445,10 +1458,9 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         addedAt: Date.now(),
       },
     ]
-    const tg = cfg.platforms.telegram
-    this.patchTelegramConfig(workspaceId, {
+    this.patchPlatformConfig(workspaceId, platform, {
       owners: nextOwners,
-      accessMode: tg?.accessMode ?? 'owner-only',
+      accessMode: platformConfig?.accessMode ?? 'owner-only',
     })
     // Dismiss every pending row for this sender — they're now an owner,
     // so any binding-allow-list rejects pending against them have been

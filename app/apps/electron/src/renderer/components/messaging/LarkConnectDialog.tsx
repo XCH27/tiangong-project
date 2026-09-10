@@ -178,7 +178,7 @@ export function LarkConnectDialog({
             </Button>
 
             {test.state === 'success' && (
-              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-1 text-xs text-success">
                 <Check className="h-3.5 w-3.5" />
                 {t('settings.messaging.lark.testOk')}
               </span>

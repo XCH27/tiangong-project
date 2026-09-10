@@ -497,6 +497,13 @@ export interface MessagingConfig {
        * the expected UX for new users.
        */
       selfChatMode?: boolean
+      /**
+       * Workspace-level access policy, same semantics as Telegram's.
+       * Missing field = `'open'` for back-compat.
+       */
+      accessMode?: PlatformAccessMode
+      /** WhatsApp sender ids permitted to drive the bot at workspace level. */
+      owners?: PlatformOwner[]
     }
     lark?: {
       enabled: boolean
@@ -508,6 +515,13 @@ export interface MessagingConfig {
        *  - `feishu` → open.feishu.cn (China)
        */
       domain?: 'lark' | 'feishu'
+      /**
+       * Workspace-level access policy, same semantics as Telegram's.
+       * Missing field = `'open'` for back-compat.
+       */
+      accessMode?: PlatformAccessMode
+      /** Lark user ids permitted to drive the bot at workspace level. */
+      owners?: PlatformOwner[]
     }
   }
 }
