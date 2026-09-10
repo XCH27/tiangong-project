@@ -1,6 +1,7 @@
 import { join } from 'path'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { RPC_CHANNELS, type SkillFile } from '@craft-agent/shared/protocol'
+import type { SkillScope } from '@craft-agent/shared/skills'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -10,6 +11,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.skills.GET,
   RPC_CHANNELS.skills.GET_FILES,
   RPC_CHANNELS.skills.DELETE,
+  RPC_CHANNELS.skills.MOVE_SCOPE,
   RPC_CHANNELS.skills.OPEN_EDITOR,
   RPC_CHANNELS.skills.OPEN_FINDER,
 ] as const
@@ -95,6 +97,42 @@ export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): vo
     deleteSkill(workspace.rootPath, skillSlug)
     deps.platform.logger?.info(`Deleted skill: ${skillSlug}`)
   })
+
+  // Move a skill between scopes. The scope a skill lives at is the scope it
+  // applies at, so this is the only way to answer "make this one global".
+  server.handle(
+    RPC_CHANNELS.skills.MOVE_SCOPE,
+    async (
+      ctx,
+      workspaceId: string,
+      skillSlug: string,
+      fromScope: SkillScope,
+      toScope: SkillScope,
+      workingDirectory?: string,
+    ) => {
+      assertCallerWorkspaceBound(ctx, deps, workspaceId)
+      const workspace = getWorkspaceByNameOrId(workspaceId)
+      if (!workspace) throw new Error('Workspace not found')
+
+      // A thin client may pass its own local path, which does not exist on this
+      // server — the same guard SKILLS_GET applies.
+      const effectiveWorkingDir = workingDirectory && existsSync(workingDirectory)
+        ? workingDirectory
+        : undefined
+
+      const { moveSkillScope } = await import('@craft-agent/shared/skills')
+      const result = moveSkillScope({
+        slug: skillSlug,
+        from: fromScope,
+        to: toScope,
+        roots: { workspaceRoot: workspace.rootPath, projectRoot: effectiveWorkingDir },
+      })
+      // Refusals are returned, not thrown: "a skill with that name is already
+      // there" is an answer the surface should render, not a stack trace.
+      deps.platform.logger?.info(`SKILLS_MOVE_SCOPE: ${skillSlug} ${fromScope}->${toScope}: ${result.message}`)
+      return result
+    },
+  )
 
   // Open skill SKILL.md in editor
   server.handle(RPC_CHANNELS.skills.OPEN_EDITOR, async (ctx, workspaceId: string, skillSlug: string) => {

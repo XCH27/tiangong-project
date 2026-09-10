@@ -30,6 +30,12 @@ import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { getDocUrl } from '@craft-agent/shared/docs/doc-links'
 import { useAppShellContext, useActiveWorkspace } from '@/context/AppShellContext'
@@ -116,28 +122,28 @@ export default function ExpertKitsSettingsPage() {
   // resolve them against, so the page loads it and follows changes — a skill
   // added on disk must make a kit's "not installed" warning disappear without a
   // restart, or the warning teaches users to distrust it.
-  React.useEffect(() => {
+  const refreshSkills = React.useCallback(() => {
     if (!activeWorkspaceId) {
       setInstalledSkills([])
       return
     }
-    let cancelled = false
     void window.electronAPI
       .getSkills(activeWorkspaceId)
-      .then((skills) => {
-        if (!cancelled) setInstalledSkills(skills ?? [])
-      })
-      .catch(() => {
-        if (!cancelled) setInstalledSkills([])
-      })
+      .then((skills) => setInstalledSkills(skills ?? []))
+      .catch(() => setInstalledSkills([]))
+  }, [activeWorkspaceId])
+
+  React.useEffect(() => {
+    refreshSkills()
+    if (!activeWorkspaceId) return
+    // A move rewrites files the watcher also reports, so the explicit refresh
+    // after a move and this subscription can both fire. Re-reading is cheap and
+    // idempotent; missing the update is not.
     const unsubscribe = window.electronAPI.onSkillsChanged?.((changedWorkspaceId, skills) => {
       if (changedWorkspaceId === activeWorkspaceId) setInstalledSkills(skills ?? [])
     })
-    return () => {
-      cancelled = true
-      unsubscribe?.()
-    }
-  }, [activeWorkspaceId])
+    return () => unsubscribe?.()
+  }, [activeWorkspaceId, refreshSkills])
 
   const rootPath = activeWorkspace?.rootPath || ''
   const labelsConfigPath = rootPath ? `${rootPath}/labels/config.json` : null
@@ -402,6 +408,7 @@ export default function ExpertKitsSettingsPage() {
                           disabled={busy}
                           isDark={isDark}
                           installedSkills={installedSkills}
+                          onSkillsChanged={refreshSkills}
                           onPatch={(updates) => persist(selected.id, updates)}
                           onDelete={handleDelete}
                         />
@@ -467,6 +474,7 @@ function LabelEditor({
   installedSkills,
   onPatch,
   onDelete,
+  onSkillsChanged,
 }: {
   label: LabelConfig
   disabled?: boolean
@@ -474,6 +482,7 @@ function LabelEditor({
   installedSkills: readonly LoadedSkill[]
   onPatch: (updates: UpdateLabelInput) => void
   onDelete: () => void
+  onSkillsChanged: () => void
 }) {
   const { t } = useTranslation()
   const [name, setName] = React.useState(label.name)
@@ -605,6 +614,7 @@ function LabelEditor({
           installedSkills={installedSkills}
           disabled={disabled}
           onPatch={onPatch}
+          onSkillsChanged={onSkillsChanged}
         />
       )}
     </SettingsCard>
@@ -630,11 +640,13 @@ function KitPayload({
   installedSkills,
   disabled,
   onPatch,
+  onSkillsChanged,
 }: {
   label: LabelConfig
   installedSkills: readonly LoadedSkill[]
   disabled?: boolean
   onPatch: (updates: UpdateLabelInput) => void
+  onSkillsChanged: () => void
 }) {
   const { t } = useTranslation()
 
@@ -693,11 +705,84 @@ function KitPayload({
         unresolved={unresolved}
         disabled={disabled}
         onPatch={onPatch}
+        onSkillsChanged={onSkillsChanged}
       />
       <p className="text-xs leading-relaxed text-foreground/40">
         {t('settings.expertKits.payloadHint')}
       </p>
     </div>
+  )
+}
+
+/**
+ * A skill's scope, shown where it matters and changeable there.
+ *
+ * The badge was read-only, which left "make this one global" with no answer
+ * anywhere in the product. Moving is a real file operation, so the menu reports
+ * what happened rather than assuming: a refusal ("a skill with that name is
+ * already there") is an answer this surface renders, and a move that leaves the
+ * global scope says so, because `~/.agents/skills` is shared with other agent
+ * tools on this machine and they lose the skill too.
+ */
+function SkillScopeMenu({
+  skill,
+  disabled,
+  onMoved,
+}: {
+  skill: LoadedSkill
+  disabled?: boolean
+  onMoved: () => void
+}) {
+  const { t } = useTranslation()
+  const { activeWorkspaceId } = useAppShellContext()
+  const [busy, setBusy] = React.useState(false)
+
+  const move = React.useCallback(
+    async (to: LoadedSkill['source']) => {
+      if (!activeWorkspaceId || to === skill.source) return
+      const api = window.electronAPI.moveSkillScope
+      if (!api) return
+      setBusy(true)
+      try {
+        const result = await api(activeWorkspaceId, skill.slug, skill.source, to)
+        if (result?.ok) toast.success(result.message)
+        else toast.error(result?.message ?? t('settings.expertKits.saveFailed'))
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t('settings.expertKits.saveFailed'))
+      } finally {
+        setBusy(false)
+        onMoved()
+      }
+    },
+    [activeWorkspaceId, onMoved, skill.slug, skill.source, t],
+  )
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled || busy}>
+        <button
+          type="button"
+          // Sibling control, never nested inside the toggle's own hit area.
+          onClick={(event) => event.stopPropagation()}
+          className="shrink-0 rounded-[4px] outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-medium">
+            {t(SKILL_SCOPE_KEY[skill.source])}
+          </Badge>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {(['global', 'workspace', 'project'] as const).map((scope) => (
+          <DropdownMenuItem
+            key={scope}
+            disabled={scope === skill.source}
+            onSelect={() => void move(scope)}
+          >
+            {t(SKILL_SCOPE_KEY[scope])}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -723,12 +808,14 @@ function KitSkillsPicker({
   unresolved,
   disabled,
   onPatch,
+  onSkillsChanged,
 }: {
   label: LabelConfig
   installedSkills: readonly LoadedSkill[]
   unresolved: readonly string[]
   disabled?: boolean
   onPatch: (updates: UpdateLabelInput) => void
+  onSkillsChanged: () => void
 }) {
   const { t } = useTranslation()
   const declared = React.useMemo(
@@ -781,9 +868,11 @@ function KitSkillsPicker({
                   {/* Where a skill lives is where it applies, and that is not
                       guessable from its name: global reaches every workspace,
                       workspace only this one, project only this folder. */}
-                  <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px] font-medium">
-                    {t(SKILL_SCOPE_KEY[skill.source])}
-                  </Badge>
+                  <SkillScopeMenu
+                    skill={skill}
+                    disabled={disabled}
+                    onMoved={onSkillsChanged}
+                  />
                 </span>
               }
               description={skill.metadata.description}

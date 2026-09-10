@@ -61,7 +61,8 @@ export type { LoadedSource, FolderSourceConfig, SourceConnectionStatus };
 
 // Skill types
 import type { LoadedSkill, SkillMetadata } from '@craft-agent/shared/skills/types';
-export type { LoadedSkill, SkillMetadata };
+import type { SkillScope, SkillScopeResult } from '@craft-agent/shared/skills/scope';
+export type { LoadedSkill, SkillMetadata, SkillScope, SkillScopeResult };
 
 // Resource bundle types (cross-workspace export/import)
 import type { ExportResourcesOptions, ExportResult, ResourceImportMode, ResourceBundle, ResourceImportResult } from '@craft-agent/shared/resources';
@@ -570,6 +571,18 @@ export interface ElectronAPI {
   getSkills(workspaceId: string, workingDirectory?: string): Promise<LoadedSkill[]>
   getSkillFiles?(workspaceId: string, skillSlug: string): Promise<SkillFile[]>
   deleteSkill(workspaceId: string, skillSlug: string): Promise<void>
+  /**
+   * Move a skill between scopes. Resolves with a refusal rather than rejecting
+   * when the target name is taken or the source is missing — those are answers
+   * the surface renders, not errors.
+   */
+  moveSkillScope?(
+    workspaceId: string,
+    skillSlug: string,
+    fromScope: SkillScope,
+    toScope: SkillScope,
+    workingDirectory?: string,
+  ): Promise<SkillScopeResult>
   openSkillInEditor(workspaceId: string, skillSlug: string): Promise<void>
   openSkillInFinder(workspaceId: string, skillSlug: string): Promise<void>
 

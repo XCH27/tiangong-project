@@ -284,6 +284,7 @@ export const RPC_CHANNELS = {
     GET: 'skills:get',
     GET_FILES: 'skills:getFiles',
     DELETE: 'skills:delete',
+    MOVE_SCOPE: 'skills:moveScope',
     OPEN_EDITOR: 'skills:openEditor',
     OPEN_FINDER: 'skills:openFinder',
     CHANGED: 'skills:changed',
