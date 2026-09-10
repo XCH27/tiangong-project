@@ -6,7 +6,10 @@ import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
 import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
 import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
-import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
+import {
+  defaultSessionOptions,
+  mergeSessionOptions,
+} from './hooks/useSessionOptions'
 import { generateMessageId } from '../shared/types'
 import { useEventProcessor } from './event-processor'
 import type { AgentEvent, Effect } from './event-processor'
@@ -35,6 +38,8 @@ import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallb
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
 import { initRendererPerf } from './lib/perf'
+import { normalizeSessionConnectionsOnce as runNormalizeSessionConnections } from './lib/session-connection-normalize'
+import { runSessionOptionChange } from './hooks/session-options-sync'
 
 const PROJECT_OVERVIEW_SESSION_SCOPE = {
   scope: 'local-project-overview',
@@ -81,6 +86,7 @@ import { useTransportConnectionState } from '@/hooks/useTransportConnectionState
 import { useStaleSessionRecovery } from '@/hooks/useStaleSessionRecovery'
 import { TransportConnectionBanner, shouldShowTransportConnectionBanner } from '@/components/app-shell/TransportConnectionBanner'
 import { getFileManagerName } from '@/lib/platform'
+import { optimisticSessionCommand } from '@/lib/optimistic-session-command'
 import { rendererLog } from '@/lib/logger'
 import { ActionRegistryProvider } from '@/actions'
 import { toast } from 'sonner'
@@ -412,12 +418,18 @@ export default function App() {
   // theme for dark-only themes in light system mode
   const { shikiTheme, isDark } = useTheme({ appTheme })
 
-  // Ref for sessionOptions to access current value in event handlers without re-registering
+  // Ref for sessionOptions — must stay in lockstep with every optimistic write
+  // (not only after useEffect), or rapid successive toggles read a stale previous.
   const sessionOptionsRef = useRef(sessionOptions)
-  // Keep ref in sync with state
   useEffect(() => {
     sessionOptionsRef.current = sessionOptions
   }, [sessionOptions])
+
+  /** Commit options map to both React state and the ref in one path. */
+  const commitSessionOptionsMap = useCallback((next: Map<string, SessionOptions>) => {
+    sessionOptionsRef.current = next
+    setSessionOptions(next)
+  }, [])
 
   const applyPermissionModeState = useCallback((sessionId: string, state: PermissionModeState, source: 'event' | 'reconcile') => {
     setSessionOptions(prev => {
@@ -490,6 +502,7 @@ export default function App() {
         executionPermissionMode: session.executionPermissionMode ?? defaultSessionOptions.executionPermissionMode,
         thinkingLevel: session.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
         fastMode: session.fastMode ?? false,
+        runtimeMode: session.runtimeMode ?? null,
       }
 
       // Keep an entry whenever the session carries work-phase or non-default
@@ -505,12 +518,14 @@ export default function App() {
         || merged.executionPermissionMode !== defaultSessionOptions.executionPermissionMode
       const hasNonDefaultThinking = merged.thinkingLevel !== DEFAULT_THINKING_LEVEL
       const hasFastMode = merged.fastMode
+      const hasRuntimeMode = Boolean(merged.runtimeMode)
 
       if (
         !hasWorkModeState
         && !hasNonDefaultMode
         && !hasNonDefaultThinking
         && !hasFastMode
+        && !hasRuntimeMode
         && merged.permissionModeVersion == null
       ) {
         next.delete(session.id)
@@ -544,6 +559,34 @@ export default function App() {
     }
   }, [clearStreamingState, replaceLoadedSession, syncSessionOptionsFromSession, reconcilePermissionModeState, store])
 
+  // One-shot legacy connection remaps per process. Main chat and side-task
+  // ChatPage must not both write setSessionModel merely because they mounted.
+  // alreadyNormalized = finished success; inFlight = concurrent load/refresh join.
+  const normalizedConnectionSessionsRef = useRef(new Set<string>())
+  const connectionNormalizeInFlightRef = useRef(new Map<string, Promise<void>>())
+
+  const normalizeSessionConnectionsOnce = useCallback(async (
+    sessions: Array<{ id: string; model?: string; llmConnection?: string; workspaceId?: string }>,
+    connections: LlmConnectionWithStatus[],
+  ) => {
+    await runNormalizeSessionConnections({
+      sessions,
+      connections,
+      alreadyNormalized: normalizedConnectionSessionsRef.current,
+      inFlight: connectionNormalizeInFlightRef.current,
+      windowWorkspaceId,
+      setSessionModel: (sessionId, workspaceId, model, connection) =>
+        window.electronAPI.setSessionModel(sessionId, workspaceId, model, connection),
+      onFailure: (message, sessionId) => {
+        toast.error(t('toast.sessionConnectionNormalizeFailed', {
+          defaultValue: 'Could not update session connection: {{reason}}',
+          reason: message,
+        }))
+        console.error('[App] Failed to normalize session connection:', sessionId, message)
+      },
+    })
+  }, [windowWorkspaceId, t])
+
   const loadSessionsFromServer = useCallback(async () => {
     setSessionLoadError(null)
 
@@ -565,7 +608,8 @@ export default function App() {
           && s.permissionMode !== defaultSessionOptions.permissionMode
         const hasNonDefaultThinking = s.thinkingLevel && s.thinkingLevel !== DEFAULT_THINKING_LEVEL
         const hasFastMode = s.fastMode === true
-        if (hasNonDefaultMode || hasWorkModeState || hasNonDefaultThinking || hasFastMode) {
+        const hasRuntimeMode = Boolean(s.runtimeMode)
+        if (hasNonDefaultMode || hasWorkModeState || hasNonDefaultThinking || hasFastMode || hasRuntimeMode) {
           optionsMap.set(s.id, {
             ...defaultSessionOptions,
             permissionMode: s.permissionMode ?? defaultSessionOptions.permissionMode,
@@ -574,6 +618,7 @@ export default function App() {
             executionPermissionMode: s.executionPermissionMode ?? defaultSessionOptions.executionPermissionMode,
             thinkingLevel: s.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
             fastMode: s.fastMode ?? false,
+            runtimeMode: s.runtimeMode ?? null,
           })
         }
       }
@@ -582,6 +627,19 @@ export default function App() {
       await Promise.allSettled(
         loadedSessions.map((s) => reconcilePermissionModeState(s.id))
       )
+
+      // One-shot connection remaps once sessions are known (connections may load later too).
+      if (llmConnections.length > 0) {
+        await normalizeSessionConnectionsOnce(
+          loadedSessions.map((s) => ({
+            id: s.id,
+            model: s.model,
+            llmConnection: s.llmConnection,
+            workspaceId: s.workspaceId,
+          })),
+          llmConnections,
+        )
+      }
 
       setSessionsLoaded(true)
 
@@ -609,7 +667,14 @@ export default function App() {
       setSessionLoadError(formatSessionLoadFailure(err))
       setSessionsLoaded(true)
     }
-  }, [initializeSessions, initialSessionId, reconcilePermissionModeState, windowWorkspaceId])
+  }, [
+    initializeSessions,
+    initialSessionId,
+    reconcilePermissionModeState,
+    windowWorkspaceId,
+    llmConnections,
+    normalizeSessionConnectionsOnce,
+  ])
 
   const refreshSessionListMetadataFromServer = useCallback(async (options: SessionListRefreshOptions = {}): Promise<Map<string, SessionMeta> | null> => {
     const {
@@ -701,7 +766,16 @@ export default function App() {
       const settings = await window.electronAPI.getWorkspaceSettings(windowWorkspaceId)
       setWorkspaceDefaultLlmConnection(settings?.defaultLlmConnection)
     }
-  }, [resolveDefaultConnectionSlug, windowWorkspaceId])
+    // Deduplicated migration after connections are known.
+    const metaMap = store.get(sessionMetaMapAtom)
+    const sessions = [...metaMap.values()].map((meta) => ({
+      id: meta.id,
+      model: meta.model,
+      llmConnection: meta.llmConnection,
+      workspaceId: meta.workspaceId,
+    }))
+    await normalizeSessionConnectionsOnce(sessions, connections)
+  }, [resolveDefaultConnectionSlug, windowWorkspaceId, store, normalizeSessionConnectionsOnce])
 
   // Handle onboarding completion
   const handleOnboardingComplete = useCallback(async () => {
@@ -1258,24 +1332,36 @@ export default function App() {
   }, [removeSession])
 
   const handleFlagSession = useCallback((sessionId: string) => {
-    updateSessionById(sessionId, { isFlagged: true })
-    window.electronAPI.sessionCommand(sessionId, { type: 'flag' })
-  }, [updateSessionById])
+    optimisticSessionCommand(sessionId, { type: 'flag' }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))?.isFlagged
+      updateSessionById(sessionId, { isFlagged: true })
+      return () => updateSessionById(sessionId, { isFlagged: prev ?? false })
+    })
+  }, [updateSessionById, store])
 
   const handleUnflagSession = useCallback((sessionId: string) => {
-    updateSessionById(sessionId, { isFlagged: false })
-    window.electronAPI.sessionCommand(sessionId, { type: 'unflag' })
-  }, [updateSessionById])
+    optimisticSessionCommand(sessionId, { type: 'unflag' }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))?.isFlagged
+      updateSessionById(sessionId, { isFlagged: false })
+      return () => updateSessionById(sessionId, { isFlagged: prev ?? false })
+    })
+  }, [updateSessionById, store])
 
   const handleArchiveSession = useCallback((sessionId: string) => {
-    updateSessionById(sessionId, { isArchived: true, archivedAt: Date.now() })
-    window.electronAPI.sessionCommand(sessionId, { type: 'archive' })
-  }, [updateSessionById])
+    optimisticSessionCommand(sessionId, { type: 'archive' }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))
+      updateSessionById(sessionId, { isArchived: true, archivedAt: Date.now() })
+      return () => updateSessionById(sessionId, { isArchived: prev?.isArchived ?? false, archivedAt: prev?.archivedAt })
+    })
+  }, [updateSessionById, store])
 
   const handleUnarchiveSession = useCallback((sessionId: string) => {
-    updateSessionById(sessionId, { isArchived: false, archivedAt: undefined })
-    window.electronAPI.sessionCommand(sessionId, { type: 'unarchive' })
-  }, [updateSessionById])
+    optimisticSessionCommand(sessionId, { type: 'unarchive' }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))
+      updateSessionById(sessionId, { isArchived: false, archivedAt: undefined })
+      return () => updateSessionById(sessionId, { isArchived: prev?.isArchived ?? false, archivedAt: prev?.archivedAt })
+    })
+  }, [updateSessionById, store])
 
   /**
    * Set which session user is actively viewing (for unread state machine).
@@ -1283,39 +1369,56 @@ export default function App() {
    * whether to mark new assistant messages as unread.
    */
   const handleSetActiveViewingSession = useCallback((sessionId: string) => {
-    // Optimistic UI update: clear hasUnread immediately
-    updateSessionById(sessionId, { hasUnread: false })
     // Tell main process user is viewing this session. Use the session's own workspace
     // (cross-project lists can surface sessions from other folders); fall back to the
     // window's workspace when the meta isn't loaded.
     const metaWorkspaceId = store.get(sessionMetaMapAtom).get(sessionId)?.workspaceId
-    window.electronAPI.sessionCommand(sessionId, { type: 'setActiveViewing', workspaceId: metaWorkspaceId ?? windowWorkspaceId ?? '' })
+    // Optimistic UI update: clear hasUnread immediately (rolled back on failure)
+    optimisticSessionCommand(sessionId, { type: 'setActiveViewing', workspaceId: metaWorkspaceId ?? windowWorkspaceId ?? '' }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))?.hasUnread
+      updateSessionById(sessionId, { hasUnread: false })
+      return () => updateSessionById(sessionId, { hasUnread: prev ?? false })
+    })
   }, [updateSessionById, windowWorkspaceId, store])
 
   const handleMarkSessionRead = useCallback((sessionId: string) => {
     // Update hasUnread flag (primary source of truth for NEW badge)
     // Also update lastReadMessageId for backwards compatibility
-    updateSessionById(sessionId, (s) => {
-      const lastFinalId = s.messages.findLast(
-        m => (m.role === 'assistant' || m.role === 'plan') && !m.isIntermediate
-      )?.id
-      return {
-        hasUnread: false,
-        ...(lastFinalId ? { lastReadMessageId: lastFinalId } : {}),
-      }
+    optimisticSessionCommand(sessionId, { type: 'markRead' }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))
+      updateSessionById(sessionId, (s) => {
+        const lastFinalId = s.messages.findLast(
+          m => (m.role === 'assistant' || m.role === 'plan') && !m.isIntermediate
+        )?.id
+        return {
+          hasUnread: false,
+          ...(lastFinalId ? { lastReadMessageId: lastFinalId } : {}),
+        }
+      })
+      return () => updateSessionById(sessionId, {
+        hasUnread: prev?.hasUnread ?? false,
+        lastReadMessageId: prev?.lastReadMessageId,
+      })
     })
-    window.electronAPI.sessionCommand(sessionId, { type: 'markRead' })
-  }, [updateSessionById])
+  }, [updateSessionById, store])
 
   const handleSessionStatusChange = useCallback((sessionId: string, state: SessionStatus) => {
-    updateSessionById(sessionId, { sessionStatus: state })
-    window.electronAPI.sessionCommand(sessionId, { type: 'setSessionStatus', state })
-  }, [updateSessionById])
+    optimisticSessionCommand(sessionId, { type: 'setSessionStatus', state }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))?.sessionStatus
+      updateSessionById(sessionId, { sessionStatus: state })
+      return () => updateSessionById(sessionId, { sessionStatus: prev })
+    })
+  }, [updateSessionById, store])
 
   const handleRenameSession = useCallback((sessionId: string, name: string) => {
-    updateSessionById(sessionId, { name })
-    window.electronAPI.sessionCommand(sessionId, { type: 'rename', name })
-  }, [updateSessionById])
+    optimisticSessionCommand(sessionId, { type: 'rename', name }, () => {
+      const prev = store.get(sessionAtomFamily(sessionId))?.name
+      updateSessionById(sessionId, { name })
+      return () => {
+        if (prev !== undefined) updateSessionById(sessionId, { name: prev })
+      }
+    })
+  }, [updateSessionById, store])
 
   const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
     try {
@@ -1485,59 +1588,28 @@ export default function App() {
 
   /**
    * Unified handler for all session option changes.
-   * Handles persistence and backend sync for each option type.
+   * Optimistic UI, then await independent backend commands. Failed commands
+   * roll back only their keys (partial success stays aligned with the backend).
+   * Returns a Promise so tests and callers can await; event handlers may ignore it.
    */
-  const handleSessionOptionsChange = useCallback((sessionId: string, updates: SessionOptionUpdates) => {
-    // Preserve the previous value before the optimistic renderer projection so
-    // a rejected runtime update can be rolled back precisely.
-    const previousOptions = sessionOptions.get(sessionId) ?? defaultSessionOptions
-    setSessionOptions(prev => {
-      const next = new Map(prev)
-      const current = next.get(sessionId) ?? defaultSessionOptions
-      next.set(sessionId, mergeSessionOptions(current, updates))
-      return next
+  const handleSessionOptionsChange = useCallback(async (
+    sessionId: string,
+    updates: SessionOptionUpdates,
+  ): Promise<void> => {
+    await runSessionOptionChange({
+      sessionId,
+      updates,
+      getMap: () => sessionOptionsRef.current,
+      setMap: commitSessionOptionsMap,
+      sessionCommand: (id, command) => window.electronAPI.sessionCommand(id, command),
+      onFailure: (message) => {
+        toast.error(t('toast.sessionOptionUpdateFailed', {
+          defaultValue: 'Could not update session options: {{reason}}',
+          reason: message,
+        }))
+      },
     })
-
-    // Handle persistence/backend for specific options
-    if (updates.permissionMode !== undefined) {
-      // Sync permission mode change with backend
-      window.electronAPI.sessionCommand(sessionId, { type: 'setPermissionMode', mode: updates.permissionMode })
-    }
-    if (updates.workModeSelection !== undefined || updates.workMode !== undefined) {
-      const current = sessionOptions.get(sessionId) ?? defaultSessionOptions
-      window.electronAPI.sessionCommand(sessionId, {
-        type: 'setWorkMode',
-        selection: updates.workModeSelection ?? current.workModeSelection,
-        mode: updates.workMode ?? current.workMode,
-      })
-    }
-    if (updates.executionPermissionMode !== undefined) {
-      window.electronAPI.sessionCommand(sessionId, {
-        type: 'setExecutionPermissionMode',
-        mode: updates.executionPermissionMode,
-      })
-    }
-    if (updates.thinkingLevel !== undefined) {
-      // Sync thinking level change with backend (session-level, persisted)
-      window.electronAPI.sessionCommand(sessionId, { type: 'setThinkingLevel', level: updates.thinkingLevel })
-    }
-    if (updates.fastMode !== undefined) {
-      const previousFastMode = previousOptions.fastMode
-      void window.electronAPI.sessionCommand(sessionId, { type: 'setFastMode', enabled: updates.fastMode })
-        .catch(() => {
-          // The backend refuses a live-runtime change. Restore the only
-          // renderer projection instead of leaving an optimistic false state.
-          setSessionOptions(prev => {
-            const next = new Map(prev)
-            const latest = next.get(sessionId) ?? defaultSessionOptions
-            if (latest.fastMode === updates.fastMode) {
-              next.set(sessionId, mergeSessionOptions(latest, { fastMode: previousFastMode }))
-            }
-            return next
-          })
-        })
-    }
-  }, [sessionOptions])
+  }, [t, commitSessionOptionsMap])
 
   // Handle input draft changes per session with debounced persistence
   const draftSaveTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -1627,6 +1699,11 @@ export default function App() {
       sessionDraftsRef.current.set(sessionId, nextDraft)
     }
     schedulePersistDraft(sessionId)
+    // Notify mounted ChatPages so externally injected drafts (deep links,
+    // notifications, shortcuts) are picked up without polling.
+    window.dispatchEvent(new CustomEvent('craft:draft-changed', {
+      detail: { sessionId, text },
+    }))
   }, [schedulePersistDraft])
 
   const handleAttachmentsChange = useCallback((sessionId: string, attachments: FileAttachment[]) => {
@@ -1730,6 +1807,18 @@ export default function App() {
   // Centralized link interceptor: classifies file types and decides whether to
   // show an in-app preview overlay or open externally. Replaces the old
   // handleOpenFile/handleOpenUrl that always opened in external apps.
+  const handleRevealInFinder = useCallback(async (path: string) => {
+    try {
+      await window.electronAPI.showInFolder(path)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      console.error('Failed to show in folder:', error)
+      toast.error(t('toast.failedToReveal', { fileManager: getFileManagerName() }), {
+        description: message,
+      })
+    }
+  }, [t])
+
   const linkInterceptor = useLinkInterceptor({
     openFileExternal: async (path) => {
       try {
@@ -1759,17 +1848,7 @@ export default function App() {
         })
       }
     },
-    showInFolder: async (path) => {
-      try {
-        await window.electronAPI.showInFolder(path)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        console.error('Failed to show in folder:', error)
-        toast.error(t("toast.failedToReveal", { fileManager: getFileManagerName() }), {
-          description: message,
-        })
-      }
-    },
+    showInFolder: handleRevealInFinder,
     readFile: (path) => window.electronAPI.readFile(path),
     readFileDataUrl: (path) => window.electronAPI.readFileDataUrl(path),
     readFileBinary: (path) => window.electronAPI.readFileBinary(path),
@@ -2006,16 +2085,14 @@ export default function App() {
     // Read file as binary Uint8Array (used by PDF preview blocks)
     onReadFileBinary: (path: string) => window.electronAPI.readFileBinary(path),
     // Reveal a file in the system file manager (Finder on macOS, Explorer on Windows, etc.)
-    onRevealInFinder: (path: string) => {
-      window.electronAPI.showInFolder(path).catch(() => {})
-    },
+    onRevealInFinder: handleRevealInFinder,
     // Platform-specific file manager name for UI labels
     fileManagerName: getFileManagerName(),
     // Hide/show macOS traffic lights when fullscreen overlays are open
     onSetTrafficLightsVisible: (visible: boolean) => {
       window.electronAPI.setTrafficLightsVisible(visible)
     },
-  }), [handleOpenFile, handleOpenUrl, linkInterceptor.openFileExternal])
+  }), [handleOpenFile, handleOpenUrl, handleRevealInFinder, linkInterceptor.openFileExternal])
 
   // Loading state - show splash screen
   if (appState === 'loading') {
