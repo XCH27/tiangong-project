@@ -12,6 +12,7 @@ import {
   type ExecutionPermissionMode,
 } from '@craft-agent/shared/agent/work-mode'
 import { defaultSessionOptions } from '@/hooks/useSessionOptions'
+import { currentContextTokens } from './input/context-usage'
 
 interface SessionInfoPopoverProps {
   sessionId: string
@@ -116,8 +117,9 @@ function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId
     sessionOptions.get(sessionId)?.executionPermissionMode
       ?? defaultSessionOptions.executionPermissionMode
   const tokenUsage = session?.tokenUsage
-  const contextPercent = tokenUsage?.contextWindow && tokenUsage.contextWindow > 0
-    ? Math.min(100, (tokenUsage.inputTokens / tokenUsage.contextWindow) * 100)
+  const currentContext = currentContextTokens(tokenUsage)
+  const contextPercent = tokenUsage?.contextWindow && tokenUsage.contextWindow > 0 && currentContext != null
+    ? Math.min(100, (currentContext / tokenUsage.contextWindow) * 100)
     : null
   const [name, setName] = React.useState('')
   const renameTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -192,7 +194,7 @@ function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <div>
               <div className="text-muted-foreground">{t('chat.contextCurrent')}</div>
-              <div className="font-medium">{formatInfoTokens(tokenUsage.inputTokens)}</div>
+              <div className="font-medium">{formatInfoTokens(currentContext ?? 0)}</div>
             </div>
             <div>
               <div className="text-muted-foreground">{t('chat.contextWindow')}</div>

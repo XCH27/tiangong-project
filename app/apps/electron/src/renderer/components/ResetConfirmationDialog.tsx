@@ -76,8 +76,8 @@ export function ResetConfirmationDialog({
           <li>{t("dialog.reset.preferences")}</li>
         </ul>
 
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-md p-3 text-sm">
-          <strong className="text-amber-600 dark:text-amber-400">{t("dialog.reset.backupWarning")}</strong>
+        <div className="bg-info/5 border border-info/30 rounded-md p-3 text-sm">
+          <strong className="text-info">{t("dialog.reset.backupWarning")}</strong>
           <p className="text-muted-foreground mt-1">
             {t("dialog.reset.cannotUndo")}
           </p>

@@ -36,7 +36,7 @@ export function AutomationCard({
   return (
     <div
       className={cn(
-        'rounded-[8px] bg-background shadow-minimal overflow-hidden transition-all',
+        'rounded-[8px] bg-background shadow-minimal overflow-hidden transition-[color,background-color,box-shadow]',
         !automation.enabled && 'opacity-50',
         className
       )}

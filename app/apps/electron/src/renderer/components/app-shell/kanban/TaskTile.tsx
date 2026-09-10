@@ -5,7 +5,7 @@ import { useAtomValue } from 'jotai'
 import { formatDistanceToNowStrict, type Locale } from 'date-fns'
 import { DEFAULT_MODEL, getModelShortName } from '@config/models'
 import { cn } from '@/lib/utils'
-import { getProviderIcon } from '@/lib/provider-icons'
+import { ProviderBrandIcon } from '@/components/icons/ProviderBrandIcon'
 import { shortTimeLocale } from '@/utils/session'
 import { kanbanLivePulseAtom } from '@/atoms/kanban'
 import { useKanbanColumnColors } from '@/hooks/useKanbanColumnColors'
@@ -32,16 +32,6 @@ import { ModelChip } from './ModelChip'
 import { SubtaskRow } from './SubtaskRow'
 import { SubtaskProgress } from './SubtaskProgress'
 import type { KanbanModelProviderGroup, KanbanProject, KanbanTask } from './types'
-
-/**
- * Brand icon for a provider key. Providers with a bundled SVG (anthropic,
- * openai) resolve directly; others (google, mistral, xai, groq, deepseek, …)
- * resolve through the Pi auth-provider path, which covers both the remaining
- * SVGs and the favicon fallback for icon-less providers.
- */
-function resolveProviderIcon(provider: string): string | null {
-  return getProviderIcon(provider) ?? getProviderIcon('pi', null, provider)
-}
 
 interface TaskTileProps {
   task: KanbanTask
@@ -198,7 +188,7 @@ export function TaskTile({
               <span />
             )}
             {task.isFlagged && (
-              <Flag className="h-3.5 w-3.5 shrink-0 fill-amber-500 text-amber-500" aria-hidden />
+              <Flag className="h-3.5 w-3.5 shrink-0 fill-info text-info" aria-hidden />
             )}
           </div>
         )}
@@ -423,7 +413,7 @@ function AddSubtask({
 
   const selectedGroup = modelGroups?.find(g => g.models.some(m => m.id === model))
   const selectedName = options.find(o => o.id === model)?.name ?? getModelShortName(model)
-  const selectedIcon = selectedGroup ? resolveProviderIcon(selectedGroup.provider) : null
+  const selectedProvider = selectedGroup?.provider
 
   const submit = () => {
     const title = draft.trim()
@@ -483,8 +473,8 @@ function AddSubtask({
                 type="button"
                 className="inline-flex min-w-0 items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-1 text-[11px] font-medium text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
               >
-                {selectedIcon ? (
-                  <img src={selectedIcon} alt="" className="h-3 w-3 shrink-0 rounded-[2px]" aria-hidden />
+                {selectedProvider ? (
+                  <ProviderBrandIcon providerId={selectedProvider} size={12} className="shrink-0 rounded-[2px]" aria-hidden />
                 ) : (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" aria-hidden />
                 )}
@@ -497,14 +487,7 @@ function AddSubtask({
                 <React.Fragment key={group.provider}>
                   {gi > 0 && <DropdownMenuSeparator />}
                   <DropdownMenuLabel className="flex items-center gap-1.5 text-[11px] text-foreground/50">
-                    {resolveProviderIcon(group.provider) && (
-                      <img
-                        src={resolveProviderIcon(group.provider)!}
-                        alt=""
-                        className="h-3 w-3 rounded-[2px]"
-                        aria-hidden
-                      />
-                    )}
+                    <ProviderBrandIcon providerId={group.provider} size={12} className="rounded-[2px]" aria-hidden />
                     {group.label}
                   </DropdownMenuLabel>
                   {group.models.map(opt => (

@@ -113,7 +113,7 @@ export function GitBashWarning({
                 {t("onboarding.gitBash.useThisPath")}
               </Button>
               {errorMessage && (
-                <p className="text-xs text-red-500">{errorMessage}</p>
+                <p className="text-xs text-destructive">{errorMessage}</p>
               )}
             </div>
           ) : (

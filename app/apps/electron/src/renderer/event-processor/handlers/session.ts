@@ -973,7 +973,10 @@ export function handleUsageUpdate(
     inputTokens: event.tokenUsage.inputTokens,
     outputTokens,
     totalTokens: event.tokenUsage.inputTokens + outputTokens,
-    contextTokens: session.tokenUsage?.contextTokens ?? 0,
+    // The event's inputTokens is the current-request snapshot — keep
+    // contextTokens in sync so currentContextTokens never serves a stale
+    // value loaded from disk.
+    contextTokens: event.tokenUsage.inputTokens,
     costUsd: session.tokenUsage?.costUsd ?? 0,
     ...(event.tokenUsage.cacheReadTokens !== undefined && {
       cacheReadTokens: event.tokenUsage.cacheReadTokens,

@@ -26,11 +26,11 @@ import { extractLabelId } from "@craft-agent/shared/labels"
 const PLATFORM_PILL: Record<'telegram' | 'whatsapp', { label: string; colorClass: string }> = {
   telegram: {
     label: 'Telegram',
-    colorClass: 'bg-sky-500/10 text-sky-600 dark:bg-sky-400/15 dark:text-sky-300',
+    colorClass: 'bg-info/10 text-info',
   },
   whatsapp: {
     label: 'WhatsApp',
-    colorClass: 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300',
+    colorClass: 'bg-success/10 text-success',
   },
 }
 
@@ -205,7 +205,7 @@ export function SessionItem({
           <SessionStatusIcon item={item} />
           <div className={cn(
             "flex items-center justify-center overflow-hidden gap-1",
-            "transition-all duration-200 ease-out",
+            "transition-opacity duration-200 ease-out",
             (item.isProcessing || hasUnreadMeta(item) || item.lastMessageRole === 'plan' || hasPendingPrompt)
               ? "opacity-100 ml-0"
               : "!w-0 opacity-0 -ml-[10px]"
@@ -262,14 +262,11 @@ export function SessionItem({
       titleTrailing={hasMatch ? (
         <span
           className={cn(
-            "inline-flex items-center justify-center min-w-[24px] px-1 py-0.5 rounded-[6px] text-[10px] font-medium tabular-nums leading-tight whitespace-nowrap shadow-tinted",
+            "inline-flex items-center justify-center min-w-[24px] px-1 py-0.5 rounded-[6px] text-[10px] font-medium tabular-nums leading-tight whitespace-nowrap",
             isSelected
-              ? "bg-yellow-300/50 border border-yellow-500 text-yellow-900"
-              : "bg-yellow-300/10 border border-yellow-600/20 text-yellow-800"
+              ? "bg-info/20 border border-info text-info"
+              : "bg-info/10 border border-info/30 text-info"
           )}
-          style={{
-            '--shadow-color': isSelected ? '234, 179, 8' : '133, 77, 14',
-          } as React.CSSProperties}
           title={`Matches found (${nextHotkey} next, ${prevHotkey} prev)`}
         >
           {chatMatchCount}

@@ -525,22 +525,37 @@ export function useSessionSearch({
 
   // Scroll-based pagination: listen for scroll on the actual ScrollArea viewport
   // (IntersectionObserver with root=null doesn't detect scroll inside Radix ScrollArea)
+  //
+  // The ref may not be populated when this effect first runs (viewport mounts
+  // after the hook, or conditionally). Resolve it into state, retrying after
+  // paint, so the scroll listener can never silently never-attach.
+  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (!hasMore) return
-    const viewport = scrollViewportRef?.current
-    if (!viewport) return
+    const el = scrollViewportRef?.current
+    if (el) {
+      setViewportEl(el)
+      return
+    }
+    const rafId = requestAnimationFrame(() => {
+      setViewportEl(scrollViewportRef?.current ?? null)
+    })
+    return () => cancelAnimationFrame(rafId)
+  }, [scrollViewportRef, hasMore])
+
+  useEffect(() => {
+    if (!hasMore || !viewportEl) return
 
     const check = () => {
-      const { scrollTop, scrollHeight, clientHeight } = viewport
+      const { scrollTop, scrollHeight, clientHeight } = viewportEl
       if (scrollHeight - scrollTop - clientHeight < 200) {
         loadMore()
       }
     }
 
     check() // fill viewport on mount / after group expand
-    viewport.addEventListener('scroll', check, { passive: true })
-    return () => viewport.removeEventListener('scroll', check)
-  }, [hasMore, loadMore, displayLimit, scrollViewportRef])
+    viewportEl.addEventListener('scroll', check, { passive: true })
+    return () => viewportEl.removeEventListener('scroll', check)
+  }, [hasMore, loadMore, displayLimit, viewportEl])
 
   // --- Derived render data ---
 

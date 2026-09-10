@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-import { Check, CreditCard, Key, Cpu } from "lucide-react"
+import { Check, Key } from "lucide-react"
+import { ProviderBrandIcon } from "@/components/icons/ProviderBrandIcon"
 import { StepFormLayout, BackButton, ContinueButton } from "./primitives"
 import type { LlmAuthType, LlmProviderType } from "@craft-agent/shared/config/llm-connections"
 
@@ -64,11 +65,11 @@ interface ApiSetupOption {
 }
 
 const API_SETUP_ICONS: Record<ApiSetupMethod, React.ReactNode> = {
-  claude_oauth: <CreditCard className="size-4" />,
+  claude_oauth: <ProviderBrandIcon providerId="anthropic" size={16} />,
   anthropic_api_key: <Key className="size-4" />,
-  pi_chatgpt_oauth: <Cpu className="size-4" />,
-  pi_copilot_oauth: <Cpu className="size-4" />,
-  pi_xai_oauth: <Cpu className="size-4" />,
+  pi_chatgpt_oauth: <ProviderBrandIcon providerId="pi" piAuthProvider="openai-codex" size={16} />,
+  pi_copilot_oauth: <ProviderBrandIcon providerId="pi" piAuthProvider="github-copilot" size={16} />,
+  pi_xai_oauth: <ProviderBrandIcon providerId="pi" piAuthProvider="xai" size={16} />,
   pi_api_key: <Key className="size-4" />,
 }
 
@@ -97,7 +98,7 @@ function OptionButton({
     <button
       onClick={() => onSelect(option.id)}
       className={cn(
-        "flex w-full items-start gap-4 rounded-xl p-4 text-left transition-all",
+        "flex w-full items-start gap-4 rounded-[12px] p-4 text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "hover:bg-foreground/[0.02] shadow-minimal",
         isSelected
@@ -161,7 +162,7 @@ function ProviderSegmentedControl({
           key={segment}
           onClick={() => onSegmentChange(segment)}
           className={cn(
-            "flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all",
+            "flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
             activeSegment === segment
               ? "bg-background shadow-minimal text-foreground"
               : "text-muted-foreground hover:text-foreground"
@@ -234,7 +235,7 @@ export function APISetupStep({
     {
       id: 'pi_xai_oauth',
       name: 'Grok Subscription',
-      description: 'Sign in with an eligible SuperGrok or X Premium+ subscription. API billing remains separate.',
+      description: t("onboarding.apiSetup.grokDesc"),
       icon: API_SETUP_ICONS.pi_xai_oauth,
       providerType: 'pi',
     },

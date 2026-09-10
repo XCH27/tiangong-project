@@ -23,11 +23,17 @@ export default function TerminalSettingsPage() {
   const { t } = useTranslation()
   const [runtimes, setRuntimes] = useState<CliRuntimeHandshake[]>([])
   const [loading, setLoading] = useState(true)
+  const [handshakeFailed, setHandshakeFailed] = useState(false)
 
   const handshake = useCallback(async () => {
     setLoading(true)
+    setHandshakeFailed(false)
     try {
       setRuntimes(await window.electronAPI.handshakeCliRuntimes())
+    } catch (error) {
+      console.error('Failed to handshake CLI runtimes:', error)
+      setRuntimes([])
+      setHandshakeFailed(true)
     } finally {
       setLoading(false)
     }
@@ -74,7 +80,22 @@ export default function TerminalSettingsPage() {
                   </span>
                 </SettingsRow>
               ))}
-              {!loading && runtimes.length === 0 && (
+              {!loading && handshakeFailed && (
+                <div className="flex items-center justify-between gap-2 px-4 py-3">
+                  <span className="text-sm text-destructive">
+                    {t('settings.terminal.status.error')}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => void handshake()}
+                  >
+                    {t('common.retry')}
+                  </Button>
+                </div>
+              )}
+              {!loading && !handshakeFailed && runtimes.length === 0 && (
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {t('settings.terminal.none')}
                 </div>

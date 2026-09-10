@@ -262,14 +262,14 @@ export function AddWorkspaceStep_ConnectRemote({
         {(testState === 'ok' || testState === 'error') && (
           <div className="flex min-h-5 items-center gap-2" aria-live="polite">
           {testState === 'ok' && !isFreshServer && (
-            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <span className="flex items-center gap-1 text-xs text-success">
               <CheckCircle className="h-3.5 w-3.5" />
               {t('settings.ai.connectedProviders')}
               {serverVersion ? ` · v${serverVersion}` : ''}
             </span>
           )}
           {testState === 'ok' && isFreshServer && (
-            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+            <span className="flex items-center gap-1 text-xs text-success">
               <CheckCircle className="h-3.5 w-3.5" />
               {t('settings.ai.connectedProviders')}
               {serverVersion ? ` · v${serverVersion}` : ''}
@@ -286,7 +286,7 @@ export function AddWorkspaceStep_ConnectRemote({
 
         {/* Old server warning */}
         {testState === 'ok' && !serverVersion && (
-          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-700 dark:text-yellow-400">
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-info/5 border border-info/30 text-xs text-info">
             <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
             <span>{t("workspace.olderServerWarning")}</span>
           </div>

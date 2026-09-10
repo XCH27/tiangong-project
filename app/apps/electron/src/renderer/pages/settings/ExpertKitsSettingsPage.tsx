@@ -441,7 +441,10 @@ function LabelEditor({
   React.useEffect(() => {
     setName(label.name)
     setPrompt(label.systemPromptPreset ?? '')
-  }, [label])
+    // Sync drafts only when a different label is shown. Depending on the label
+    // object itself would reset in-progress typing on every live-edit update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [label.id])
 
   return (
     <SettingsCard className="p-0">

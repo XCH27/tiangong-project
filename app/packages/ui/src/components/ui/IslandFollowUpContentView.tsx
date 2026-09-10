@@ -206,7 +206,7 @@ export function IslandFollowUpContentView({
               <button
                 type="button"
                 onClick={onDelete}
-                className="h-8 px-3 rounded-[8px] text-sm bg-background shadow-minimal text-red-500 inline-flex items-center cursor-pointer hover:bg-foreground/2"
+                className="h-8 px-3 rounded-[8px] text-sm bg-background shadow-minimal text-destructive inline-flex items-center cursor-pointer hover:bg-foreground/2"
               >
                 {deleteLabel}
               </button>

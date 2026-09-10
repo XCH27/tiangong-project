@@ -5,6 +5,21 @@ export interface ContextUsageProjection {
   remainingTokens: number | null
 }
 
+/**
+ * Current-context snapshot for meters and popovers. Since 2026-08 the server
+ * accumulates `inputTokens` across turns (for cost rollups) and keeps the
+ * last-turn context size in `contextTokens`. Sessions persisted before that
+ * change have `contextTokens: 0` and the snapshot still in `inputTokens`.
+ */
+export function currentContextTokens(
+  tokenUsage: { inputTokens: number; contextTokens?: number } | undefined,
+): number | undefined {
+  if (!tokenUsage) return undefined
+  return tokenUsage.contextTokens && tokenUsage.contextTokens > 0
+    ? tokenUsage.contextTokens
+    : tokenUsage.inputTokens
+}
+
 interface ContextWindowModel {
   id: string
   contextWindow?: number

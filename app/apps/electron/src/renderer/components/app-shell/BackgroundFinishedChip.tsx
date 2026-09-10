@@ -1,7 +1,7 @@
 /**
  * BackgroundFinishedChip
  *
- * A small purple pill that floats in the top-right corner *inside* the chat
+ * A small pill that floats in the top-right corner *inside* the chat
  * input box when a *background* session (one not currently on screen) finishes a
  * run and produces new output. It is mounted by `InputContainer` (freeform mode)
  * and absolutely positioned — the in-app complement to the OS notification, which
@@ -142,13 +142,13 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
             className={cn(
               'flex items-center gap-1.5 h-[26px] pl-2 pr-2.5 rounded-full',
               'text-xs font-medium select-none outline-none transition-colors',
-              'text-purple-700 dark:text-purple-200',
-              'bg-purple-500/12 hover:bg-purple-500/20',
-              'ring-1 ring-inset ring-purple-400/30 dark:ring-purple-300/25',
+              'text-success',
+              'bg-success/10 hover:bg-success/20',
+              'ring-1 ring-inset ring-success/30',
               'shadow-minimal backdrop-blur-md',
             )}
           >
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-300" />
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
             <span className="truncate max-w-[150px]">{entry.title}</span>
           </button>
         </motion.div>

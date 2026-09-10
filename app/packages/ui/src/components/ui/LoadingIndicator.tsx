@@ -37,7 +37,7 @@ export interface SpinnerProps {
  * </div>
  *
  * // Or override with className
- * <Spinner className="text-amber-500 text-lg" />
+ * <Spinner className="text-info text-lg" />
  * ```
  */
 export function Spinner({ className }: SpinnerProps) {

@@ -187,7 +187,8 @@ describe('themeSvgContent edge cases', () => {
     const svg = '<svg><path fill="currentColor"/><circle stroke="currentColor"/></svg>'
     const result = themeSvgContent(svg, '#abc')
     expect(result).not.toContain('currentColor')
-    expect(result.match(/#abc/g)?.length).toBe(2)
+    // Two currentColor replacements + one injected root fill
+    expect(result.match(/#abc/g)?.length).toBe(3)
   })
 
   it('handles case-insensitive currentColor', () => {

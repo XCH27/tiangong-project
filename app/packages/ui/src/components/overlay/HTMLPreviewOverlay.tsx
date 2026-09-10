@@ -3,7 +3,7 @@
  *
  * Uses PreviewOverlay as the base for consistent modal/fullscreen behavior.
  * Renders HTML in a sandboxed iframe (no script execution).
- * Links open in the system browser via Electron's will-navigate handler.
+ * Links open in the system browser via Electron's setWindowOpenHandler.
  *
  * Supports multiple items with arrow navigation in the header.
  * The iframe auto-sizes to its content height by reading contentDocument.scrollHeight
@@ -18,18 +18,20 @@ import { CopyButton } from './CopyButton'
 import { ItemNavigator } from './ItemNavigator'
 
 /**
- * Inject `<base target="_top">` so link clicks navigate the top frame,
- * which Electron's will-navigate handler intercepts → system browser.
+ * Inject `<base target="_blank">` so link clicks open a new browsing context,
+ * which Electron's setWindowOpenHandler intercepts → system browser.
+ * `allow-top-navigation` stays out of the sandbox so the preview can never
+ * navigate the app window itself.
  */
 function injectBaseTarget(html: string): string {
   if (/<base\s/i.test(html)) return html
   if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/(<head[^>]*>)/i, '$1<base target="_top">')
+    return html.replace(/(<head[^>]*>)/i, '$1<base target="_blank">')
   }
   if (/<html[^>]*>/i.test(html)) {
-    return html.replace(/(<html[^>]*>)/i, '$1<head><base target="_top"></head>')
+    return html.replace(/(<html[^>]*>)/i, '$1<head><base target="_blank"></head>')
   }
-  return `<head><base target="_top"></head>${html}`
+  return `<head><base target="_blank"></head>${html}`
 }
 
 interface PreviewItem {
@@ -196,12 +198,12 @@ export function HTMLPreviewOverlay({
               maxWidth: contentSize?.width ? `${contentSize.width + 128}px` : undefined,
               padding: '24px 64px 36px',
               opacity: measured ? 1 : 0,
-              transition: 'opacity 200ms ease-in',
+              transition: 'opacity 200ms ease-out',
             }}
           >
             <iframe
               ref={iframeRef}
-              sandbox="allow-same-origin allow-top-navigation-by-user-activation"
+              sandbox="allow-same-origin allow-popups"
               srcDoc={processedHtml}
               onLoad={handleLoad}
               title={activeItem?.label || title || 'HTML Preview'}

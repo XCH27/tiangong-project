@@ -31,7 +31,7 @@ export function AddWorkspace_RadioOption({
     <label className={cn(
       "flex items-center gap-3 p-3 rounded-lg cursor-pointer",
       "bg-background shadow-minimal",
-      "transition-all duration-150",
+      "transition-[color,background-color,transform] duration-150",
       checked
         ? "hover:bg-accent/5"
         : "hover:bg-foreground/5",

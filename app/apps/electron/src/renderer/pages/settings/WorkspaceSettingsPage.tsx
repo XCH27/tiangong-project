@@ -16,7 +16,7 @@
  */
 
 import * as React from 'react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -80,11 +80,18 @@ export default function WorkspaceSettingsPage() {
   const [availableSources, setAvailableSources] = useState<LoadedSource[]>([])
   const [enabledSourceSlugs, setEnabledSourceSlugs] = useState<string[]>([])
 
+  // Stale-response guard: bumped per load; an in-flight load whose generation
+  // is no longer current must not touch form state (workspace switched mid-flight).
+  const loadGenerationRef = useRef(0)
+
   // Load settings when the target project changes (active shell or soft-focused row)
   useEffect(() => {
+    const generation = ++loadGenerationRef.current
+    const isStale = () => generation !== loadGenerationRef.current
+
     const loadWorkspaceSettings = async () => {
       if (!window.electronAPI || !settingsWorkspaceId) {
-        setIsLoadingWorkspace(false)
+        if (!isStale()) setIsLoadingWorkspace(false)
         return
       }
 
@@ -92,6 +99,7 @@ export default function WorkspaceSettingsPage() {
       try {
         const settings =
           await window.electronAPI.getWorkspaceSettings(settingsWorkspaceId)
+        if (isStale()) return
         if (settings) {
           setWsName(settings.name || '')
           setWsNameEditing(settings.name || '')
@@ -103,6 +111,7 @@ export default function WorkspaceSettingsPage() {
           // Load available sources and auto-heal stale slugs
           const sources =
             await window.electronAPI.getSources(settingsWorkspaceId)
+          if (isStale()) return
           setAvailableSources(sources)
           const validSlugs = new Set(sources.map((s) => s.config.slug))
           const healedSlugs = savedSlugs.filter((s) => validSlugs.has(s))
@@ -122,11 +131,13 @@ export default function WorkspaceSettingsPage() {
         const ICON_EXTENSIONS = ['png', 'jpg', 'jpeg', 'svg', 'webp', 'gif']
         let iconFound = false
         for (const ext of ICON_EXTENSIONS) {
+          if (isStale()) return
           try {
             const iconData = await window.electronAPI.readWorkspaceImage(
               settingsWorkspaceId,
               `./icon.${ext}`,
             )
+            if (isStale()) return
             // IPC returns null for missing files - continue to next extension
             if (!iconData) {
               continue
@@ -147,9 +158,13 @@ export default function WorkspaceSettingsPage() {
           setWsIconUrl(null)
         }
       } catch (error) {
-        console.error('Failed to load workspace settings:', error)
+        if (!isStale()) {
+          console.error('Failed to load workspace settings:', error)
+        }
       } finally {
-        setIsLoadingWorkspace(false)
+        if (!isStale()) {
+          setIsLoadingWorkspace(false)
+        }
       }
     }
 

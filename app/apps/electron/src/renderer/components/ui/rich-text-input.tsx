@@ -485,7 +485,7 @@ function RotatingPlaceholder({
 
   return (
     <div
-      className={cn('transition-opacity duration-300 ease-in-out', className)}
+      className={cn('transition-opacity duration-200 ease-out', className)}
       style={{ opacity }}
     >
       {placeholders[currentIndex]}

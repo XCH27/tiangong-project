@@ -5,7 +5,7 @@
  * with StepFormLayout for the onboarding wizard context.
  */
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Check, ExternalLink } from "lucide-react"
 import type { ApiSetupMethod } from "./APISetupStep"
@@ -69,24 +69,46 @@ export function CredentialsStep({
 
   // Copilot device code clipboard handling
   const [copiedCode, setCopiedCode] = useState(false)
+  const copiedResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Show the "copied" badge briefly; the timer is always cleaned up so an
+  // unmounted step never calls setState.
+  const flashCopiedBadge = useCallback(() => {
+    setCopiedCode(true)
+    if (copiedResetRef.current) {
+      clearTimeout(copiedResetRef.current)
+    }
+    copiedResetRef.current = setTimeout(() => {
+      copiedResetRef.current = null
+      setCopiedCode(false)
+    }, 2000)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetRef.current) {
+        clearTimeout(copiedResetRef.current)
+      }
+    }
+  }, [])
 
   // Auto-copy device code to clipboard when it appears
   useEffect(() => {
     if (copilotDeviceCode?.userCode) {
       navigator.clipboard.writeText(copilotDeviceCode.userCode).then(() => {
-        setCopiedCode(true)
-        setTimeout(() => setCopiedCode(false), 2000)
+        flashCopiedBadge()
       }).catch(() => {
         // Clipboard write failed, user can still click to copy
       })
     }
-  }, [copilotDeviceCode?.userCode])
+  }, [copilotDeviceCode?.userCode, flashCopiedBadge])
 
   const handleCopyCode = () => {
     if (copilotDeviceCode?.userCode) {
       navigator.clipboard.writeText(copilotDeviceCode.userCode).then(() => {
-        setCopiedCode(true)
-        setTimeout(() => setCopiedCode(false), 2000)
+        flashCopiedBadge()
+      }).catch(() => {
+        // Clipboard write failed, user can still click to copy
       })
     }
   }
@@ -137,9 +159,9 @@ export function CredentialsStep({
     const connectionName = isXaiOAuth ? 'Grok Subscription' : 'GitHub Copilot'
     return (
       <StepFormLayout
-        title={isXaiOAuth ? 'Connect Grok Subscription' : t("onboarding.credentials.connectGitHub")}
+        title={isXaiOAuth ? t("onboarding.credentials.connectGrok") : t("onboarding.credentials.connectGitHub")}
         description={isXaiOAuth
-          ? 'Authorize xAI in your browser. Subscription eligibility and quota are verified by xAI.'
+          ? t("onboarding.credentials.connectGrokDesc")
           : t("onboarding.credentials.connectGitHubDesc")}
         actions={
           <>
@@ -151,7 +173,7 @@ export function CredentialsStep({
               loadingText={t("onboarding.credentials.waitingForAuth")}
             >
               <ExternalLink className="size-4" />
-              {isXaiOAuth ? 'Sign in to xAI' : t("onboarding.credentials.signInGitHub")}
+              {isXaiOAuth ? t("onboarding.credentials.signInXai") : t("onboarding.credentials.signInGitHub")}
             </ContinueButton>
           </>
         }
@@ -160,7 +182,7 @@ export function CredentialsStep({
           {copilotDeviceCode ? (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm space-y-3">
               <p className="text-muted-foreground text-center">
-                Enter this code on {providerName}
+                {t("onboarding.credentials.enterCodeOnProvider", { provider: providerName })}
               </p>
               <div className="flex flex-col items-center justify-center gap-2">
                 <button
@@ -176,12 +198,12 @@ export function CredentialsStep({
                 </span>
               </div>
               <p className="text-muted-foreground text-xs text-center">
-                Your browser was opened to {providerName}.
+                {t("onboarding.credentials.browserOpenedToProvider", { provider: providerName })}
               </p>
             </div>
           ) : (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm text-muted-foreground text-center">
-              <p>Continue to connect {connectionName}.</p>
+              <p>{t("onboarding.credentials.continueToConnect", { connection: connectionName })}</p>
             </div>
           )}
           {status === 'error' && errorMessage && (
@@ -191,7 +213,7 @@ export function CredentialsStep({
           )}
           {status === 'success' && (
             <div className="rounded-lg bg-success/10 text-success text-sm p-3 text-center">
-              {connectionName} connected.
+              {t("onboarding.credentials.connectionConnected", { connection: connectionName })}
             </div>
           )}
         </div>

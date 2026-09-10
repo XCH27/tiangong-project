@@ -542,14 +542,14 @@ export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlo
       <DropdownMenuTrigger asChild>
         <button
           className={cn(
-            'p-1 rounded-[6px] transition-all select-none',
+            'p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity] select-none',
             'bg-background shadow-minimal',
             'data-[state=open]:opacity-100',
             hasActiveControls
               ? 'opacity-100 bg-accent/5 text-accent shadow-tinted'
               : alwaysVisible
                 ? 'opacity-70 hover:opacity-100 transition-opacity'
-                : 'opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-foreground',
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 text-muted-foreground/50 hover:text-foreground',
             'focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100',
           )}
           title={t('table.tableControls')}
@@ -674,9 +674,9 @@ export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlo
         <button
           onClick={() => setIsFullscreen(true)}
           className={cn(
-            "absolute top-[7px] right-2 p-1 rounded-[6px] transition-all z-10 select-none",
+            "absolute top-[7px] right-2 p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity] z-10 select-none",
             "bg-background shadow-minimal",
-            hasActiveControls ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            hasActiveControls ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
             "text-muted-foreground/50 hover:text-foreground",
             "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100"
           )}

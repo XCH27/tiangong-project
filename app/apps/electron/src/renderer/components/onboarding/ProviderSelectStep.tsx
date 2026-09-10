@@ -2,12 +2,8 @@ import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 import { Key, Monitor } from "lucide-react"
 import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
+import { ProviderBrandIcon } from "@/components/icons/ProviderBrandIcon"
 import { StepFormLayout } from "./primitives"
-import { getProviderIcon } from "@/lib/provider-icons"
-
-import claudeIcon from "@/assets/provider-icons/claude.svg"
-import openaiIcon from "@/assets/provider-icons/openai.svg"
-import copilotIcon from "@/assets/provider-icons/copilot.svg"
 
 /**
  * The high-level provider choice the user makes on first launch.
@@ -23,10 +19,10 @@ interface ProviderOption {
 }
 
 const PROVIDER_ICONS: Record<ProviderChoice, React.ReactNode> = {
-  claude: <img src={claudeIcon} alt="" className="size-5 rounded-[3px]" />,
-  chatgpt: <img src={openaiIcon} alt="" className="size-5 rounded-[3px]" />,
-  copilot: <img src={copilotIcon} alt="" className="size-5 rounded-[3px]" />,
-  grok: <img src={getProviderIcon('pi', null, 'xai') ?? ''} alt="" className="size-5 rounded-[3px]" />,
+  claude: <ProviderBrandIcon providerId="anthropic" size={20} className="rounded-[3px]" />,
+  chatgpt: <ProviderBrandIcon providerId="openai" size={20} className="rounded-[3px]" />,
+  copilot: <ProviderBrandIcon providerId="github-copilot" size={20} className="rounded-[3px]" />,
+  grok: <ProviderBrandIcon providerId="pi" piAuthProvider="xai" size={20} className="rounded-[3px]" />,
   api_key: <Key className="size-5" />,
   local: <Monitor className="size-5" />,
 }
@@ -69,19 +65,19 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
     {
       id: 'grok',
       name: 'Grok Subscription',
-      description: 'Connect an eligible xAI subscription through OAuth.',
+      description: t("onboarding.providerSelect.grokDesc"),
       icon: PROVIDER_ICONS.grok,
     },
     {
       id: 'api_key',
       name: t("onboarding.providerSelect.otherProvider"),
-      description: 'Anthropic, AWS Bedrock, OpenRouter, Google or any compatible provider.',
+      description: t("onboarding.providerSelect.otherProviderDesc"),
       icon: PROVIDER_ICONS.api_key,
     },
     {
       id: 'local',
       name: t("onboarding.providerSelect.localModel"),
-      description: 'Run models locally with Ollama.',
+      description: t("onboarding.providerSelect.localModelDesc"),
       icon: PROVIDER_ICONS.local,
     },
   ]
@@ -102,7 +98,7 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
             key={option.id}
             onClick={() => onSelect(option.id)}
             className={cn(
-              "flex w-full items-center gap-3 rounded-xl bg-foreground-2 p-3 text-left transition-all",
+              "flex w-full items-center gap-3 rounded-[12px] bg-foreground-2 p-3 text-left transition-colors",
               "sm:items-start sm:gap-4 sm:p-4",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "hover:bg-foreground/[0.02] shadow-minimal",

@@ -22,7 +22,7 @@ function RunStateIcon({ runState }: { runState: SubtaskRunState }) {
     case 'failed':
       return (
         <XCircle
-          className="h-3.5 w-3.5 shrink-0 text-red-500"
+          className="h-3.5 w-3.5 shrink-0 text-destructive"
           strokeWidth={2}
           aria-label={t('common.failed')}
         />

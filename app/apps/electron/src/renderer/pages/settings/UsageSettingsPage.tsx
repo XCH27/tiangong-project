@@ -6,16 +6,22 @@ import { ChartColumn, CircleHelp, Coins } from 'lucide-react'
 import {
   coverageIsPartial,
   coverageRatio,
-  formatCost,
   formatTokens,
+  rollUpUsage,
+  type UsageSession,
+} from '@craft-agent/shared/config/usage-rollup'
+import {
+  resolveModelPricing,
+  type SessionCost,
+} from '@craft-agent/shared/config/session-cost'
+import {
   getModelById,
   getModelDisplayName,
-  resolveModelPricing,
-  rollUpUsage,
+} from '@craft-agent/shared/config/models'
+import {
+  formatCost,
   type ModelPricing,
-  type SessionCost,
-  type UsageSession,
-} from '@craft-agent/shared/config'
+} from '@craft-agent/shared/config/model-pricing'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { EntityListEmptyScreen } from '@/components/ui/entity-list-empty'
@@ -67,6 +73,16 @@ export default function UsageSettingsPage() {
   const [days, setDays] = React.useState<Window>(30)
   const [editing, setEditing] = React.useState<string | null>(null)
 
+  // Anchor for the rolling window. State (not a memo-captured Date.now()) so
+  // the window re-anchors when the page regains focus instead of freezing at
+  // first render.
+  const [nowTs, setNowTs] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    const handleFocus = () => setNowTs(Date.now())
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [])
+
   const sessions = React.useMemo<UsageSession[]>(
     () =>
       [...metaMap.values()].map((meta) => ({
@@ -91,8 +107,8 @@ export default function UsageSettingsPage() {
   )
 
   const rollup = React.useMemo(
-    () => rollUpUsage(sessions, pricingFor, { since: Date.now() - days * DAY }),
-    [sessions, pricingFor, days],
+    () => rollUpUsage(sessions, pricingFor, { since: nowTs - days * DAY }),
+    [sessions, pricingFor, days, nowTs],
   )
 
   /**

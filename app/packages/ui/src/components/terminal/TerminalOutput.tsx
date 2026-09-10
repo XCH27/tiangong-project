@@ -109,7 +109,7 @@ export function TerminalOutput({
             title={copied === 'command' ? t('common.copied') : t('terminal.copyCommand')}
           >
             {copied === 'command' ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
+              <Check className="h-3.5 w-3.5 text-success" />
             ) : (
               <Copy className="h-3.5 w-3.5" style={{ color: mutedColor }} />
             )}
@@ -147,7 +147,7 @@ export function TerminalOutput({
             title={copied === 'output' ? t('common.copied') : t('terminal.copyOutput')}
           >
             {copied === 'output' ? (
-              <Check className="h-3.5 w-3.5 text-green-500" />
+              <Check className="h-3.5 w-3.5 text-success" />
             ) : (
               <Copy className="h-3.5 w-3.5" style={{ color: mutedColor }} />
             )}

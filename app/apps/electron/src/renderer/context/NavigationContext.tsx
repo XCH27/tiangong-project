@@ -727,6 +727,25 @@ export function NavigationProvider({
   const resolveAutoSelectionRef = useRef(resolveAutoSelection)
   useEffect(() => { resolveAutoSelectionRef.current = resolveAutoSelection }, [resolveAutoSelection])
 
+  // Deferred deep-link actions (sendMessage / onInputChange) are scheduled with
+  // a delay so the new session can mount first. Track the timer ids so they are
+  // cleared on provider unmount instead of firing against a torn-down shell.
+  const deepLinkTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+  useEffect(() => {
+    const timers = deepLinkTimersRef.current
+    return () => {
+      timers.forEach(clearTimeout)
+      timers.clear()
+    }
+  }, [])
+  const scheduleDeepLinkAction = useCallback((fn: () => void) => {
+    const id = setTimeout(() => {
+      deepLinkTimersRef.current.delete(id)
+      fn()
+    }, 100)
+    deepLinkTimersRef.current.add(id)
+  }, [])
+
   // =========================================================================
   // ACTION NAVIGATION
   // =========================================================================
@@ -856,7 +875,7 @@ export function NavigationProvider({
           if (parsed.params.input) {
             const shouldSend = parsed.params.send === 'true'
             if (shouldSend) {
-              setTimeout(() => {
+              scheduleDeepLinkAction(() => {
                 window.electronAPI.sendMessage(
                   session.id,
                   parsed.params.input!,
@@ -864,11 +883,11 @@ export function NavigationProvider({
                   undefined,
                   badges ? { badges } : undefined
                 )
-              }, 100)
+              })
             } else if (onInputChange) {
-              setTimeout(() => {
+              scheduleDeepLinkAction(() => {
                 onInputChange(session.id, parsed.params.input!)
-              }, 100)
+              })
             }
           }
           break
@@ -944,7 +963,7 @@ export function NavigationProvider({
           console.warn('[Navigation] Unknown action:', parsed.name)
       }
     },
-    [workspaceId, onCreateSession, onInputChange, pushPanel, store, updateSessionMeta]
+    [workspaceId, onCreateSession, onInputChange, pushPanel, store, updateSessionMeta, scheduleDeepLinkAction]
   )
 
   // =========================================================================
