@@ -42,6 +42,7 @@ import {
   SettingsMenuSelect,
   SettingsSegmentedControl,
   SettingsTextarea,
+  SettingsToggle,
 } from '@/components/settings'
 import { InlineColorPickerRow } from '@/components/ui/inline-color-picker-row'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
@@ -587,7 +588,14 @@ function LabelEditor({
         />
       </div>
 
-      {kind === 'expert' && <KitPayload label={label} installedSkills={installedSkills} />}
+      {kind === 'expert' && (
+        <KitPayload
+          label={label}
+          installedSkills={installedSkills}
+          disabled={disabled}
+          onPatch={onPatch}
+        />
+      )}
     </SettingsCard>
   )
 }
@@ -609,9 +617,13 @@ function LabelEditor({
 function KitPayload({
   label,
   installedSkills,
+  disabled,
+  onPatch,
 }: {
   label: LabelConfig
   installedSkills: readonly LoadedSkill[]
+  disabled?: boolean
+  onPatch: (updates: UpdateLabelInput) => void
 }) {
   const { t } = useTranslation()
 
@@ -664,9 +676,127 @@ function KitPayload({
           <span>{t('settings.expertKits.loadsEverything')}</span>
         </div>
       )}
+      <KitSkillsPicker
+        label={label}
+        installedSkills={installedSkills}
+        unresolved={unresolved}
+        disabled={disabled}
+        onPatch={onPatch}
+      />
       <p className="text-xs leading-relaxed text-foreground/40">
         {t('settings.expertKits.payloadHint')}
       </p>
+    </div>
+  )
+}
+
+/**
+ * The picker that makes a kit authorable without opening a JSON file.
+ *
+ * Until the write path opened (H38) the payload could only be edited by hand in
+ * `labels/config.json`, and the page said so. A control the product tells you to
+ * work around is not a control, so the skills a kit carries are chosen here —
+ * against the skills that are actually installed, which is the same set the kit
+ * resolves against at runtime. Sources and tools keep their existing hand-edit
+ * path until they have a resolver of their own; claiming a picker for them here
+ * would promise a binding that does not exist yet.
+ *
+ * A declared slug whose skill is not installed keeps its row, with a way to drop
+ * it. Silently removing it on load would rewrite the user's file behind their
+ * back, and a kit authored on another machine would quietly lose half itself the
+ * first time this page opened.
+ */
+function KitSkillsPicker({
+  label,
+  installedSkills,
+  unresolved,
+  disabled,
+  onPatch,
+}: {
+  label: LabelConfig
+  installedSkills: readonly LoadedSkill[]
+  unresolved: readonly string[]
+  disabled?: boolean
+  onPatch: (updates: UpdateLabelInput) => void
+}) {
+  const { t } = useTranslation()
+  const declared = React.useMemo(
+    () => label.expertKit?.skills ?? [],
+    [label.expertKit?.skills],
+  )
+  const selected = React.useMemo(() => new Set(declared), [declared])
+
+  // The payload is replaced whole on update, so every patch carries the fields
+  // this control does not own. Sending only `skills` would clear sources, tools
+  // and the requested mode — the cost of whole-object replace, paid here rather
+  // than by making "remove the last skill" unexpressible.
+  const patchSkills = React.useCallback(
+    (nextSkills: string[]) => {
+      onPatch({
+        expertKit: {
+          skills: nextSkills,
+          ...(label.expertKit?.sources ? { sources: label.expertKit.sources } : {}),
+          ...(label.expertKit?.tools ? { tools: label.expertKit.tools } : {}),
+          ...(label.expertKit?.requestedPermissionMode
+            ? { requestedPermissionMode: label.expertKit.requestedPermissionMode }
+            : {}),
+        },
+      })
+    },
+    [label.expertKit, onPatch],
+  )
+
+  return (
+    <div className="space-y-1.5 pt-1">
+      <div className="text-sm font-medium">{t('settings.expertKits.skillsHeader')}</div>
+      <p className="text-xs leading-relaxed text-foreground/50">
+        {t('settings.expertKits.skillsDesc')}
+      </p>
+
+      {installedSkills.length === 0 && unresolved.length === 0 ? (
+        <p className="py-1 text-xs leading-relaxed text-foreground/40">
+          {t('settings.expertKits.noSkillsInstalled')}
+        </p>
+      ) : (
+        <div className="divide-y divide-border/50">
+          {installedSkills.map((skill) => (
+            <SettingsToggle
+              key={skill.slug}
+              inCard={false}
+              className="px-0"
+              label={skill.metadata.name || skill.slug}
+              description={skill.metadata.description}
+              checked={selected.has(skill.slug)}
+              disabled={disabled}
+              onCheckedChange={(on) => {
+                patchSkills(
+                  on
+                    ? [...declared, skill.slug]
+                    : declared.filter((slug) => slug !== skill.slug),
+                )
+              }}
+            />
+          ))}
+          {unresolved.map((slug) => (
+            <div key={slug} className="flex items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] text-foreground/60">{slug}</div>
+                <div className="text-xs text-foreground/40">
+                  {t('settings.expertKits.skillMissing')}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={disabled}
+                onClick={() => patchSkills(declared.filter((entry) => entry !== slug))}
+              >
+                {t('common.remove')}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
