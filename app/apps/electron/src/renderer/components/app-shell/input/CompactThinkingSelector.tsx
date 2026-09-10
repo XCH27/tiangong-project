@@ -16,6 +16,7 @@ import {
 } from "@craft-agent/shared/agent/thinking-levels";
 import { useModelThinkingContext } from "./model-picker-helpers";
 import { connectionSupportsFastMode } from "@config/llm-connections";
+import { listGenericRuntimeModes } from "@config/runtime-modes";
 
 interface CompactThinkingSelectorProps {
   currentModel: string;
@@ -24,6 +25,8 @@ interface CompactThinkingSelectorProps {
   onThinkingLevelChange?: (level: ThinkingLevel) => void;
   fastMode?: boolean;
   onFastModeChange?: (enabled: boolean) => void;
+  runtimeMode?: string | null;
+  onRuntimeModeChange?: (mode: string | null) => void;
   isProcessing?: boolean;
   isEmptySession?: boolean;
   connectionUnavailable?: boolean;
@@ -36,6 +39,8 @@ export function CompactThinkingSelector({
   onThinkingLevelChange,
   fastMode = false,
   onFastModeChange,
+  runtimeMode = null,
+  onRuntimeModeChange,
   isProcessing = false,
   connectionUnavailable = false,
 }: CompactThinkingSelectorProps) {
@@ -46,6 +51,7 @@ export function CompactThinkingSelector({
     availableThinkingLevels,
     effectiveThinkingLevel,
     effectiveConnectionDetails,
+    selectedModelEntry,
     selectedModelId,
   } = useModelThinkingContext(
     currentModel,
@@ -58,18 +64,27 @@ export function CompactThinkingSelector({
     effectiveConnectionDetails,
     selectedModelId,
   );
+  const genericRuntimeModes = listGenericRuntimeModes(selectedModelEntry);
+  const canChooseRuntimeMode = genericRuntimeModes.length > 0 && !!onRuntimeModeChange;
   const canChooseThinking =
     availableThinkingLevels.length > 0 && !!onThinkingLevelChange;
   if (
-    (availableThinkingLevels.length === 0 && !supportsFastMode) ||
-    connectionUnavailable
+    connectionUnavailable ||
+    (availableThinkingLevels.length === 0 && !supportsFastMode && !canChooseRuntimeMode)
   ) {
     return null;
   }
 
+  const runtimeModeLabel = runtimeMode
+    ? t(`chat.modelPicker.runtimeModes.${runtimeMode}`, { defaultValue: runtimeMode })
+    : t("chat.modelPicker.runtimeMode");
   const chipLabel = canChooseThinking
     ? t(getThinkingLevelNameKey(effectiveThinkingLevel))
-    : t("chat.modelPicker.fastMode");
+    : runtimeMode
+      ? runtimeModeLabel
+      : supportsFastMode
+        ? t("chat.modelPicker.fastMode")
+        : runtimeModeLabel;
 
   return (
     <Drawer open={open} onOpenChange={setOpen}>
@@ -107,6 +122,37 @@ export function CompactThinkingSelector({
                     )}
                   >
                     <span className="min-w-0 text-sm">{t(getThinkingLevelNameKey(id))}</span>
+                    {isSelected && (
+                      <Check className="h-3 w-3 text-foreground/60 shrink-0 ml-3" />
+                    )}
+                  </button>
+                </DrawerClose>
+              );
+            })}
+          {canChooseRuntimeMode &&
+            genericRuntimeModes.map((entry, index) => {
+              const isSelected = runtimeMode === entry.id;
+              return (
+                <DrawerClose asChild key={entry.id}>
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => {
+                      if (!isProcessing) {
+                        onRuntimeModeChange(isSelected ? null : entry.id);
+                      }
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-[6px] px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                      index === 0 && "border-t border-border/60",
+                      isSelected ? "bg-foreground/5" : "hover:bg-foreground/5",
+                    )}
+                  >
+                    <span className="min-w-0 text-sm font-medium">
+                      {t(`chat.modelPicker.runtimeModes.${entry.id}`, {
+                        defaultValue: entry.id,
+                      })}
+                    </span>
                     {isSelected && (
                       <Check className="h-3 w-3 text-foreground/60 shrink-0 ml-3" />
                     )}

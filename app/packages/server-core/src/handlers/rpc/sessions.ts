@@ -15,7 +15,26 @@ import { isValidThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/ag
 const VALID_THINKING_LEVELS_LIST = THINKING_LEVEL_IDS.map(id => `'${id}'`).join(', ')
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import { resolveCallerWorkspaceId } from '../utils'
+import type { RequestContext } from '@craft-agent/server-core/transport'
 import { setTransferableHandler } from './transfer'
+
+/**
+ * Verify the session belongs to the caller's bound workspace before serving
+ * session-directory data (files, notes). Returns false when the caller cannot
+ * prove ownership — fail-closed, same contract as getSessionPath's null.
+ */
+function callerOwnsSession(
+  ctx: RequestContext,
+  deps: HandlerDeps,
+  sessionManager: HandlerDeps['sessionManager'],
+  sessionId: string,
+): boolean {
+  const callerWorkspaceId = resolveCallerWorkspaceId(ctx, deps)
+  if (!callerWorkspaceId) return false
+  const session = sessionManager.getSessions().find(s => s.id === sessionId)
+  return session?.workspaceId === callerWorkspaceId
+}
 
 interface ClientSessionWatchState {
   watcher: import('fs').FSWatcher
@@ -371,6 +390,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.setSessionThinkingLevel(sessionId, command.level)
       case 'setFastMode':
         return sessionManager.setSessionFastMode(sessionId, command.enabled)
+      case 'setRuntimeMode':
+        return sessionManager.setSessionRuntimeMode(sessionId, command.mode)
       case 'updateWorkingDirectory':
         return sessionManager.updateWorkingDirectory(sessionId, command.dir)
       case 'setSources':
@@ -486,7 +507,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   // ============================================================
 
   // Get files in session directory (recursive tree structure)
-  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (_ctx, sessionId: string) => {
+  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (ctx, sessionId: string) => {
+    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) return []
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return []
 
@@ -503,6 +525,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
     const clientId = ctx.clientId
     cleanupSessionFileWatchForClient(clientId)
 
+    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) return
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return
 
@@ -543,7 +566,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Get session notes (reads notes.md from session directory)
-  server.handle(RPC_CHANNELS.sessions.GET_NOTES, async (_ctx, sessionId: string) => {
+  server.handle(RPC_CHANNELS.sessions.GET_NOTES, async (ctx, sessionId: string) => {
+    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) return ''
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return ''
 
@@ -558,7 +582,10 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Set session notes (writes to notes.md in session directory)
-  server.handle(RPC_CHANNELS.sessions.SET_NOTES, async (_ctx, sessionId: string, content: string) => {
+  server.handle(RPC_CHANNELS.sessions.SET_NOTES, async (ctx, sessionId: string, content: string) => {
+    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) {
+      throw new Error(`Session not found: ${sessionId}`)
+    }
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) {
       throw new Error(`Session not found: ${sessionId}`)

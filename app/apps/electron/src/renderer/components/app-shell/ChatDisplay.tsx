@@ -46,6 +46,7 @@ import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
 import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill, Workspace } from "../../../shared/types"
 import { estimateContextBreakdown } from './input/context-breakdown'
+import { currentContextTokens } from './input/context-usage'
 import { stripPiPrefixForDisplay } from './input/model-picker-helpers'
 import type { PermissionMode } from "@craft-agent/shared/agent/modes"
 import type { ThinkingLevel } from "@craft-agent/shared/agent/thinking-levels"
@@ -79,15 +80,25 @@ import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity, summarizeFileChanges } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
 import { handleErrorMessageAction } from "./error-message-actions"
+import { DelegationStrip } from "./DelegationStrip"
 
 // ============================================================================
 // CSS Custom Highlight API helper
 // ============================================================================
 
+// Minimal ambient extension: this project's TS lib types HighlightRegistry as
+// read-only maplike; the live API also supports set/delete (used below).
+declare global {
+  interface HighlightRegistry {
+    set(name: string, highlight: Highlight): void
+    delete(name: string): boolean
+  }
+}
+
 /** Access CSS.highlights lazily — avoids stale ref from module-init / HMR timing */
-function getCSSHighlights(): Map<string, Highlight> | undefined {
+function getCSSHighlights(): HighlightRegistry | undefined {
   try {
-    return (CSS as any).highlights as Map<string, Highlight> | undefined
+    return CSS.highlights
   } catch {
     return undefined
   }
@@ -169,6 +180,8 @@ interface ChatDisplayProps {
   onThinkingLevelChange?: (level: ThinkingLevel) => void
   fastMode?: boolean
   onFastModeChange?: (enabled: boolean) => void
+  runtimeMode?: string | null
+  onRuntimeModeChange?: (mode: string | null) => void
   // Advanced options
   /** Current permission mode */
   permissionMode?: PermissionMode
@@ -244,6 +257,8 @@ interface ChatDisplayProps {
   emptyStateLabel?: string
   /** When true, the session's locked connection has been removed - disables send and shows unavailable state */
   connectionUnavailable?: boolean
+  /** Open a child session from the inline delegation strip (optional; strip falls back to navigation) */
+  onOpenSession?: (sessionId: string) => void
 }
 
 import {
@@ -459,6 +474,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   onThinkingLevelChange,
   fastMode = false,
   onFastModeChange,
+  runtimeMode = null,
+  onRuntimeModeChange,
   // Advanced options
   permissionMode = 'ask',
   // Input value preservation
@@ -501,6 +518,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   emptyStateLabel,
   // Connection unavailable
   connectionUnavailable = false,
+  onOpenSession,
 }, ref) {
   const { t } = useTranslation()
 
@@ -518,6 +536,16 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Reverse pagination: show last N turns initially, load more on scroll up
   const TURNS_PER_PAGE = 20
   const [visibleTurnCount, setVisibleTurnCount] = React.useState(TURNS_PER_PAGE)
+  // Mirror of visibleTurnCount readable from stable scroll-handler closures
+  const visibleTurnCountRef = React.useRef(visibleTurnCount)
+  React.useEffect(() => {
+    visibleTurnCountRef.current = visibleTurnCount
+  }, [visibleTurnCount])
+  // Pending scroll-anchor restore after older turns are prepended
+  const pendingPrependScrollRef = React.useRef<{
+    prevScrollHeight: number
+    prevScrollTop: number
+  } | null>(null)
   // Sticky-bottom: When true, auto-scroll on content changes. Toggled by user scroll behavior.
   const isStickToBottomRef = React.useRef(true)
   // Mirror isFocusedPanel into a ref so the ResizeObserver closure reads the latest value
@@ -545,8 +573,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   } | null>(null)
   const followUpOpenNonceRef = React.useRef(0)
 
-  // Navigation for session branching
-  const { navigate } = useNavigation()
+  // Navigation for session branching + delegation strip child opens
+  const { navigate, navigateToSession } = useNavigation()
 
   // Get isDark from useTheme hook for overlay theme
   // This accounts for scenic themes (like Haze) that force dark mode
@@ -910,7 +938,14 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
       }
     })
 
-    return () => cancelAnimationFrame(rafId)
+    return () => {
+      cancelAnimationFrame(rafId)
+      // Drop Highlight objects so they don't retain Ranges over detached DOM
+      try {
+        cssHighlights?.delete('search-passive')
+        cssHighlights?.delete('search-active')
+      } catch { /* API unavailable — no-op */ }
+    }
   }, [searchQuery, isSearchActive, matchingTurnIds, session?.id, visibleTurnCount])
 
   // Effect 2: Update active/passive highlight split when navigation index changes
@@ -999,6 +1034,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
       } catch {
         // Ignore parse errors, use defaults
       }
+    }).catch((error) => {
+      console.warn('[ChatDisplay] Failed to read preferences:', error)
     })
   }, [])
 
@@ -1011,11 +1048,13 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         const prefs = JSON.parse(content)
         prefs.diffViewer = settings
         prefs.updatedAt = Date.now()
-        window.electronAPI.writePreferences(JSON.stringify(prefs, null, 2))
+        return window.electronAPI.writePreferences(JSON.stringify(prefs, null, 2))
       } catch {
         // If preferences malformed, create fresh with just diffViewer
-        window.electronAPI.writePreferences(JSON.stringify({ diffViewer: settings, updatedAt: Date.now() }, null, 2))
+        return window.electronAPI.writePreferences(JSON.stringify({ diffViewer: settings, updatedAt: Date.now() }, null, 2))
       }
+    }).catch((error) => {
+      console.warn('[ChatDisplay] Failed to persist diff viewer settings:', error)
     })
   }, [])
 
@@ -1117,24 +1156,31 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
     // Load more turns when scrolling near top (within 100px)
     if (scrollTop < 100) {
-      setVisibleTurnCount(prev => {
-        // Check if there are more turns to load
-        const currentStartIndex = Math.max(0, totalTurnCountRef.current - prev)
-        if (currentStartIndex <= 0) return prev // Already showing all
+      // Pure state computation only — scroll adjustment happens in the
+      // useLayoutEffect keyed on visibleTurnCount (StrictMode-safe).
+      const prev = visibleTurnCountRef.current
+      const currentStartIndex = Math.max(0, totalTurnCountRef.current - prev)
+      if (currentStartIndex <= 0) return // Already showing all
 
-        // Remember scroll height before adding more items
-        const prevScrollHeight = viewport.scrollHeight
-
-        // Schedule scroll position adjustment after render
-        requestAnimationFrame(() => {
-          const newScrollHeight = viewport.scrollHeight
-          viewport.scrollTop = newScrollHeight - prevScrollHeight + scrollTop
-        })
-
-        return prev + TURNS_PER_PAGE
-      })
+      pendingPrependScrollRef.current = {
+        prevScrollHeight: viewport.scrollHeight,
+        prevScrollTop: scrollTop,
+      }
+      visibleTurnCountRef.current = prev + TURNS_PER_PAGE
+      setVisibleTurnCount(prev + TURNS_PER_PAGE)
     }
   }, [])
+
+  // Prepend scroll adjustment: after older turns render, restore the visual
+  // anchor so the content the user was reading doesn't jump.
+  React.useLayoutEffect(() => {
+    const pending = pendingPrependScrollRef.current
+    if (!pending) return
+    pendingPrependScrollRef.current = null
+    const viewport = scrollViewportRef.current
+    if (!viewport) return
+    viewport.scrollTop = viewport.scrollHeight - pending.prevScrollHeight + pending.prevScrollTop
+  }, [visibleTurnCount])
 
   const scrollToBottom = React.useCallback(() => {
     isStickToBottomRef.current = true
@@ -1576,6 +1622,13 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         <div className="flex flex-1 flex-col min-h-0 min-w-0 relative">
           {/* Content layer */}
           <div className="flex flex-1 flex-col min-h-0 min-w-0 relative z-10">
+          {/* Inline H11 strip: child sessions under this parent (null when none) */}
+          {!compactMode && (
+            <DelegationStrip
+              parentSessionId={session.id}
+              onOpenSession={onOpenSession ?? navigateToSession}
+            />
+          )}
           {/* === MESSAGES AREA: Scrollable list of message bubbles === */}
           <div className="relative flex-1 min-h-0">
             {/* Mask wrapper - fades content at top and bottom over transparent/image backgrounds */}
@@ -1702,7 +1755,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
                             compactMode ? "pt-2 pb-1" : CHAT_LAYOUT.userMessagePadding,
-                            "rounded-lg transition-all duration-200",
+                            "rounded-lg transition-[color,background-color,box-shadow] duration-200",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1727,7 +1780,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           key={turnKey}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
-                            "rounded-lg transition-all duration-200",
+                            "rounded-lg transition-[color,background-color,box-shadow] duration-200",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1761,7 +1814,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           key={turnKey}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
-                            "mt-2 rounded-lg transition-all duration-200",
+                            "mt-2 rounded-lg transition-[color,background-color,box-shadow] duration-200",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1793,7 +1846,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                         className={cn(
                           "pt-2",
-                          "rounded-lg transition-all duration-200",
+                          "rounded-lg transition-[color,background-color,box-shadow] duration-200",
                           isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                           isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                         )}
@@ -2041,7 +2094,21 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             tasks={backgroundTasks}
             sessionId={session.id}
             sessionFolderPath={sessionFolderPath}
-            onKillTask={(taskId) => killTask(taskId, backgroundTasks.find(t => t.id === taskId)?.type === 'shell' ? 'shell' : 'agent')}
+            onKillTask={(taskId) => {
+              const task = backgroundTasks.find(t => t.id === taskId)
+              const type = task?.type === 'shell'
+                ? 'shell'
+                : task?.type === 'workflow'
+                  ? 'workflow'
+                  : 'agent'
+              void killTask(taskId, type).then((result) => {
+                if (result.ok) return
+                toast.error(t(result.reasonKey ?? 'chat.taskKillFailed', {
+                  defaultValue: result.reason,
+                  reason: result.reason,
+                }))
+              })
+            }}
             onInsertMessage={onInputChange}
             sessionLabels={session.labels}
             labels={labels}
@@ -2076,6 +2143,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onThinkingLevelChange,
               fastMode,
               onFastModeChange,
+              runtimeMode,
+              onRuntimeModeChange,
               enableCompactModelPicker,
               structuredInput,
               onStructuredResponse: handleStructuredResponse,
@@ -2098,7 +2167,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onConnectionChange,
               contextStatus: {
                 isCompacting: session.currentStatus?.statusType === 'compacting',
-                inputTokens: session.tokenUsage?.inputTokens,
+                inputTokens: currentContextTokens(session.tokenUsage),
                 contextWindow: session.tokenUsage?.contextWindow,
                 outputTokens: session.tokenUsage?.outputTokens,
                 cacheReadTokens: session.tokenUsage?.cacheReadTokens,
@@ -2106,7 +2175,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                 costUsd: session.tokenUsage?.costUsd,
                 breakdown: estimateContextBreakdown(
                   session.messages,
-                  session.tokenUsage?.inputTokens,
+                  currentContextTokens(session.tokenUsage),
                 ),
               },
               followUpItems: followUpInputItems,

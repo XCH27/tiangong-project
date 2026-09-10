@@ -94,6 +94,8 @@ export interface Session {
   thinkingLevel?: ThinkingLevel
   /** Session-scoped opt-in for a model's supported low-latency mode. */
   fastMode?: boolean
+  /** Classified non-fast provider runtime mode id advertised by the model. */
+  runtimeMode?: string
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
   lastFinalMessageId?: string
   isAsyncOperationOngoing?: boolean
@@ -144,6 +146,7 @@ export interface CreateSessionOptions {
    */
   thinkingLevel?: ThinkingLevel
   fastMode?: boolean
+  runtimeMode?: string
   /**
    * Working directory for the session:
    * - 'user_default' or undefined: Use workspace's configured default working directory
@@ -484,6 +487,7 @@ export type SessionCommand =
   | { type: 'setExecutionPermissionMode'; mode: ExecutionPermissionMode }
   | { type: 'setThinkingLevel'; level: ThinkingLevel }
   | { type: 'setFastMode'; enabled: boolean }
+  | { type: 'setRuntimeMode'; mode: string | null }
   | { type: 'updateWorkingDirectory'; dir: string }
   | { type: 'setSources'; sourceSlugs: string[] }
   | { type: 'setLabels'; labels: string[] }

@@ -81,6 +81,7 @@ export interface ISessionManager {
   setSessionExecutionPermissionMode(sessionId: string, mode: ExecutionPermissionMode): void
   setSessionThinkingLevel(sessionId: string, level: ThinkingLevel): void
   setSessionFastMode(sessionId: string, enabled: boolean): Promise<void>
+  setSessionRuntimeMode(sessionId: string, mode: string | null): Promise<void>
   updateWorkingDirectory(sessionId: string, path: string): void
   setSessionSources(sessionId: string, sourceSlugs: string[]): Promise<void>
   setSessionLabels(sessionId: string, labels: string[]): void

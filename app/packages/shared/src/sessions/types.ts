@@ -37,7 +37,7 @@ export const SESSION_PERSISTENT_FIELDS = [
   'enabledSourceSlugs', 'permissionMode', 'previousPermissionMode',
   'workMode', 'workModeSelection', 'executionPermissionMode', 'workingDirectory',
   // Model/Connection
-  'model', 'llmConnection', 'connectionLocked', 'thinkingLevel', 'fastMode',
+  'model', 'llmConnection', 'connectionLocked', 'thinkingLevel', 'fastMode', 'runtimeMode',
   // Sharing
   'sharedUrl', 'sharedId',
   // Plan execution
@@ -158,6 +158,8 @@ export interface SessionConfig {
   thinkingLevel?: ThinkingLevel;
   /** Opt into the selected provider's supported low-latency mode. */
   fastMode?: boolean;
+  /** Classified non-fast provider runtime mode id (e.g. `pro`). */
+  runtimeMode?: string;
   /**
    * Pending plan execution state - tracks "Accept & Compact" flow.
    * When set, indicates a plan needs to be executed after compaction completes.
@@ -296,6 +298,7 @@ export interface SessionHeader {
   /** Thinking level for this session ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel;
   fastMode?: boolean;
+  runtimeMode?: string;
   /**
    * Pending plan execution state - tracks "Accept & Compact" flow.
    * When set, indicates a plan needs to be executed after compaction completes.
@@ -403,6 +406,7 @@ export interface SessionMetadata {
   /** Thinking level for this session ('off', 'think', 'max') */
   thinkingLevel?: ThinkingLevel;
   fastMode?: boolean;
+  runtimeMode?: string;
   /** ID of last message user has read - for unread detection */
   lastReadMessageId?: string;
   /** ID of the last final (non-intermediate) assistant message - for unread detection */

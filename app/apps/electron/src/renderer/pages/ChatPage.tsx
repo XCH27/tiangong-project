@@ -229,28 +229,23 @@ const ChatPage = React.memo(function ChatPage({ sessionId, hideHeader = false }:
     setInputValue(coerceInputText(getDraft(sessionId)))
   }, [getDraft, sessionId])
 
-  // Sync when draft is set externally (e.g., from notifications or shortcuts)
-  // PERFORMANCE NOTE: This bounded polling (max 10 attempts × 50ms = 500ms)
-  // handles external draft injection. Drafts use a ref for typing performance,
-  // so they're not directly reactive. This polling only runs on session switch,
-  // not continuously. Alternative: Add a Jotai atom for draft changes.
+  // Sync when a draft is set externally (e.g., from deep links, notifications,
+  // or shortcuts). Drafts live in a ref for typing performance, so the setter
+  // in App dispatches 'craft:draft-changed'; mount-time drafts are covered by
+  // the getDraft sync above.
   React.useEffect(() => {
-    let attempts = 0
-    const maxAttempts = 10
-    const interval = setInterval(() => {
-      const currentDraft = coerceInputText(getDraft(sessionId))
-      if (currentDraft !== inputValueRef.current && currentDraft !== '') {
-        setInputValue(currentDraft)
-        clearInterval(interval)
+    const handler = (e: Event) => {
+      const { sessionId: targetId, text } = (e as CustomEvent).detail ?? {}
+      if (targetId !== sessionId) return
+      const nextText = coerceInputText(text)
+      if (nextText !== inputValueRef.current && nextText !== '') {
+        setInputValue(nextText)
+        inputValueRef.current = nextText
       }
-      attempts++
-      if (attempts >= maxAttempts) {
-        clearInterval(interval)
-      }
-    }, 50)
-
-    return () => clearInterval(interval)
-  }, [sessionId, getDraft])
+    }
+    window.addEventListener('craft:draft-changed', handler)
+    return () => window.removeEventListener('craft:draft-changed', handler)
+  }, [sessionId])
 
   // Listen for restore-input events (queued messages restored to input on abort)
   React.useEffect(() => {
@@ -322,29 +317,31 @@ const ChatPage = React.memo(function ChatPage({ sessionId, hideHeader = false }:
   const connectionUnavailable =
     !!session?.llmConnection && !resolvedSessionConnection
 
-  React.useEffect(() => {
-    if (
-      !session?.model
-      || !session.llmConnection
-      || !resolvedSessionConnection
-      || resolvedSessionConnection === session.llmConnection
-      || !activeWorkspaceId
-    ) {
-      return
-    }
-    window.electronAPI.setSessionModel(
-      session.id,
-      activeWorkspaceId,
-      session.model,
-      resolvedSessionConnection,
+  // Effective connection for this session (resolved slug → live account).
+  // When the account exists but has no stored credential, send/tool paths fail
+  // on the backend while the UI still looks interactive — treat that as blocked.
+  const effectiveConnectionForAuth = React.useMemo(() => {
+    const slug = resolveEffectiveConnectionSlug(
+      resolvedSessionConnection ?? session?.llmConnection,
+      workspaceDefaultLlmConnection,
+      llmConnections,
     )
+    return slug ? llmConnections.find((c) => c.slug === slug) ?? null : null
   }, [
-    activeWorkspaceId,
     resolvedSessionConnection,
-    session?.id,
     session?.llmConnection,
-    session?.model,
+    workspaceDefaultLlmConnection,
+    llmConnections,
   ])
+  const credentialsMissing =
+    !!effectiveConnectionForAuth && effectiveConnectionForAuth.isAuthenticated === false
+  const composerBlocked = connectionUnavailable || credentialsMissing
+
+  // Connection slug recovery is display-only here. Persisting a remapped slug
+  // on mount used to race: main chat and side-task ChatPage both wrote
+  // setSessionModel for the same session. Normalization runs once through the
+  // session load / backend path (or explicit user model change), never merely
+  // because this component mounted.
 
   const displaySession = React.useMemo(
     () =>
@@ -724,6 +721,8 @@ const ChatPage = React.memo(function ChatPage({ sessionId, hideHeader = false }:
                 onThinkingLevelChange={(level) => setOption('thinkingLevel', level)}
                 fastMode={sessionOpts.fastMode}
                 onFastModeChange={(enabled) => setOption('fastMode', enabled)}
+                runtimeMode={sessionOpts.runtimeMode}
+                onRuntimeModeChange={(mode) => setOption('runtimeMode', mode)}
                 permissionMode={sessionOpts.permissionMode}
                 inputValue={inputValue}
                 onInputChange={handleInputChange}
@@ -780,12 +779,31 @@ const ChatPage = React.memo(function ChatPage({ sessionId, hideHeader = false }:
     <>
       <div className="h-full flex flex-col">
         {!hideHeader && <PanelHeader  title={displayTitle} titleMenu={titleMenu} compactTitleMenu={compactTitleMenu} leadingAction={leadingAction} actions={headerActions} rightSidebarButton={rightSidebarButton} isRegeneratingTitle={isAsyncOperationOngoing} />}
+        {credentialsMissing && !connectionUnavailable && (
+          <div className="shrink-0 border-b border-info/20 bg-info/5 px-4 py-2 flex items-center gap-3">
+            <AlertCircle className="h-4 w-4 text-info shrink-0" />
+            <p className="flex-1 min-w-0 text-xs text-info/90">
+              {t('chat.credentialsMissingBanner', {
+                name: effectiveConnectionForAuth?.name ?? 'AI',
+                defaultValue:
+                  '{{name}} has no API key saved. Open AI settings, edit the connection, and paste a valid key — send will stay blocked until then.',
+              })}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(routes.view.settings('ai'))}
+              className="shrink-0 rounded-[6px] bg-info/15 px-2.5 py-1 text-[11px] text-info hover:bg-info/20"
+            >
+              {t('chat.modelPicker.openAiSettings')}
+            </button>
+          </div>
+        )}
         <div className="flex-1 flex flex-col min-h-0">
           <ChatDisplay
             ref={chatDisplayRef}
             session={displaySession ?? session}
             onSendMessage={(message, attachments, skillSlugs) => {
-              if (session) {
+              if (session && !composerBlocked) {
                 onSendMessage(session.id, message, attachments, skillSlugs)
               }
             }}
@@ -802,6 +820,8 @@ const ChatPage = React.memo(function ChatPage({ sessionId, hideHeader = false }:
             onThinkingLevelChange={(level) => setOption('thinkingLevel', level)}
             fastMode={sessionOpts.fastMode}
             onFastModeChange={(enabled) => setOption('fastMode', enabled)}
+            runtimeMode={sessionOpts.runtimeMode}
+            onRuntimeModeChange={(mode) => setOption('runtimeMode', mode)}
             permissionMode={sessionOpts.permissionMode}
             inputValue={inputValue}
             onInputChange={handleInputChange}
@@ -827,6 +847,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId, hideHeader = false }:
             isSearchModeActive={isSearchModeActive}
             onMatchInfoChange={onChatMatchInfoChange}
             connectionUnavailable={connectionUnavailable}
+            disableSend={credentialsMissing}
             compactMode={!!isCompactMode}
             enableCompactModelPicker={!!isCompactMode}
           />

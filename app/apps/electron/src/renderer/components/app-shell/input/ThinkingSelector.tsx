@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useModelThinkingContext } from "./model-picker-helpers";
 import { connectionSupportsFastMode } from "@config/llm-connections";
+import { listGenericRuntimeModes } from "@config/runtime-modes";
 
 interface ThinkingSelectorProps {
   currentModel: string;
@@ -25,6 +26,8 @@ interface ThinkingSelectorProps {
   onThinkingLevelChange?: (level: ThinkingLevel) => void;
   fastMode?: boolean;
   onFastModeChange?: (enabled: boolean) => void;
+  runtimeMode?: string | null;
+  onRuntimeModeChange?: (mode: string | null) => void;
   /** Runtime changes are applied between turns, never to a live agent. */
   isProcessing?: boolean;
   connectionUnavailable?: boolean;
@@ -43,6 +46,8 @@ export function ThinkingSelector({
   onThinkingLevelChange,
   fastMode = false,
   onFastModeChange,
+  runtimeMode = null,
+  onRuntimeModeChange,
   isProcessing = false,
   connectionUnavailable = false,
 }: ThinkingSelectorProps) {
@@ -52,6 +57,7 @@ export function ThinkingSelector({
     availableThinkingLevels,
     effectiveThinkingLevel,
     effectiveConnectionDetails,
+    selectedModelEntry,
     selectedModelId,
   } = useModelThinkingContext(
     currentModel,
@@ -64,15 +70,27 @@ export function ThinkingSelector({
     effectiveConnectionDetails,
     selectedModelId,
   );
+  const genericRuntimeModes = listGenericRuntimeModes(selectedModelEntry);
+  const canChooseRuntimeMode = genericRuntimeModes.length > 0 && !!onRuntimeModeChange;
   if (
     connectionUnavailable ||
-    (availableThinkingLevels.length === 0 && !supportsFastMode)
+    (availableThinkingLevels.length === 0 && !supportsFastMode && !canChooseRuntimeMode)
   ) {
     return null;
   }
 
   const canChooseThinking =
     availableThinkingLevels.length > 0 && !!onThinkingLevelChange;
+  const runtimeModeLabel = runtimeMode
+    ? t(`chat.modelPicker.runtimeModes.${runtimeMode}`, { defaultValue: runtimeMode })
+    : t("chat.modelPicker.runtimeMode");
+  const chipLabel = canChooseThinking
+    ? t(getThinkingLevelNameKey(effectiveThinkingLevel))
+    : runtimeMode
+      ? runtimeModeLabel
+      : supportsFastMode
+        ? t("chat.modelPicker.fastMode")
+        : runtimeModeLabel;
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
@@ -86,9 +104,7 @@ export function ThinkingSelector({
           )}
         >
           <span className="max-w-[88px] truncate">
-            {canChooseThinking
-              ? t(getThinkingLevelNameKey(effectiveThinkingLevel))
-              : t("chat.modelPicker.fastMode")}
+            {chipLabel}
           </span>
           <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
         </button>
@@ -110,6 +126,34 @@ export function ThinkingSelector({
               >
                 <span className="min-w-0 text-left text-sm">
                   {t(getThinkingLevelNameKey(id))}
+                </span>
+                {isSelected && (
+                  <Check className="ml-3 h-3 w-3 shrink-0 text-foreground" />
+                )}
+              </StyledDropdownMenuItem>
+            );
+          })}
+        {canChooseRuntimeMode &&
+          genericRuntimeModes.map((entry, index) => {
+            const isSelected = runtimeMode === entry.id;
+            return (
+              <StyledDropdownMenuItem
+                key={entry.id}
+                disabled={isProcessing}
+                onSelect={() => {
+                  if (!isProcessing) {
+                    onRuntimeModeChange(isSelected ? null : entry.id);
+                  }
+                }}
+                className={cn(
+                  "flex cursor-pointer items-center justify-between rounded-[6px] px-2 py-2 disabled:cursor-not-allowed disabled:opacity-50",
+                  index === 0 && "mt-1 border-t border-border/60",
+                )}
+              >
+                <span className="min-w-0 text-left text-sm font-medium">
+                  {t(`chat.modelPicker.runtimeModes.${entry.id}`, {
+                    defaultValue: entry.id,
+                  })}
                 </span>
                 {isSelected && (
                   <Check className="ml-3 h-3 w-3 shrink-0 text-foreground" />

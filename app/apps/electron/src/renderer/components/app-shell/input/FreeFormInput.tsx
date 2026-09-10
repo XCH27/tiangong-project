@@ -95,6 +95,10 @@ import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
 import { buildPlanApprovalMessage } from '../plan-approval-message'
+import {
+  useApprovePlanWithCompact,
+  type PlanApprovalEventDetail,
+} from './use-approve-plan-with-compact'
 import { shouldHandleScopedInputEvent } from './input-event-guards'
 import {
   clearPendingFocusForSession,
@@ -203,6 +207,8 @@ export interface FreeFormInputProps {
   /** Provider low-latency mode for this session. */
   fastMode?: boolean
   onFastModeChange?: (enabled: boolean) => void
+  runtimeMode?: string | null
+  onRuntimeModeChange?: (mode: string | null) => void
   // Advanced options
   permissionMode?: PermissionMode
   // Controlled input value (for persisting across mode switches and conversation changes)
@@ -340,6 +346,8 @@ export function FreeFormInput({
   onThinkingLevelChange,
   fastMode = false,
   onFastModeChange,
+  runtimeMode = null,
+  onRuntimeModeChange,
   permissionMode = 'ask',
   inputValue,
   onInputChange,
@@ -723,6 +731,15 @@ export function FreeFormInput({
 
   // Debounced sync to parent (saves draft without blocking typing)
   const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  // Tracked setTimeout(0) focus calls — cleared on unmount so they never fire
+  // against a detached input.
+  const focusTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  React.useEffect(
+    () => () => {
+      if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
+    },
+    [],
+  )
   const syncToParent = React.useCallback(
     (value: string) => {
       if (!onInputChange) return
@@ -832,7 +849,8 @@ export function FreeFormInput({
       setInput(text)
       syncToParent(text)
       // Focus the input after inserting
-      setTimeout(() => {
+      if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
+      focusTimeoutRef.current = setTimeout(() => {
         richInputRef.current?.focus()
         // Move cursor to end
         richInputRef.current?.setSelectionRange(text.length, text.length)
@@ -864,13 +882,6 @@ export function FreeFormInput({
     clearInputDraft()
     return snapshot
   }, [input, clearInputDraft])
-
-  type PlanApprovalEventDetail = {
-    sessionId?: string
-    planPath?: string
-    includeDraftInput?: boolean
-    source?: string
-  }
 
   // Listen for craft:approve-plan events (used by ResponseCard's Accept Plan button).
   // The server owns the Plan → Execute transition and preserves the configured
@@ -907,86 +918,8 @@ export function FreeFormInput({
       )
   }, [sessionId, onSubmit, consumeInputDraftSnapshot])
 
-  // Listen for craft:approve-plan-with-compact events (Accept & Compact option)
-  // This compacts the conversation first, then executes the plan.
-  // The pending state is persisted to survive page reloads (CMD+R).
-  React.useEffect(() => {
-    const handleApprovePlanWithCompact = async (
-      e: CustomEvent<PlanApprovalEventDetail>,
-    ) => {
-      // Only handle if this event is for our session
-      if (e.detail?.sessionId && e.detail.sessionId !== sessionId) {
-        return
-      }
-
-      const planPath = e.detail?.planPath
-      const shouldIncludeDraft = e.detail?.includeDraftInput !== false
-      const draftInputSnapshot = shouldIncludeDraft
-        ? consumeInputDraftSnapshot()
-        : ''
-
-      // Persist the pending plan execution state BEFORE sending /compact.
-      // This allows reload recovery if CMD+R happens during compaction.
-      if (sessionId) {
-        await window.electronAPI.sessionCommand(sessionId, {
-          type: 'setPendingPlanExecution',
-          planPath: planPath ?? '',
-          draftInputSnapshot,
-        })
-      }
-
-      // Send /compact to trigger compaction
-      onSubmit('/compact', undefined)
-
-      // Set up a one-time listener for compaction complete.
-      // This handles the normal case (no reload during compaction).
-      const handleCompactionComplete = async (
-        compactEvent: CustomEvent<{ sessionId?: string }>,
-      ) => {
-        // Only handle if this is for our session
-        if (compactEvent.detail?.sessionId !== sessionId) {
-          return
-        }
-
-        // Remove the listener (one-time use)
-        window.removeEventListener(
-          'craft:compaction-complete',
-          handleCompactionComplete as unknown as EventListener,
-        )
-
-        const executionMessage = buildPlanApprovalMessage(
-          {
-            planPath,
-            draftInput: draftInputSnapshot,
-          },
-          t,
-        )
-        onSubmit(executionMessage, undefined)
-
-        // Clear the pending state since we just sent the execution message
-        if (sessionId) {
-          await window.electronAPI.sessionCommand(sessionId, {
-            type: 'clearPendingPlanExecution',
-          })
-        }
-      }
-
-      window.addEventListener(
-        'craft:compaction-complete',
-        handleCompactionComplete as unknown as EventListener,
-      )
-    }
-
-    window.addEventListener(
-      'craft:approve-plan-with-compact',
-      handleApprovePlanWithCompact as unknown as EventListener,
-    )
-    return () =>
-      window.removeEventListener(
-        'craft:approve-plan-with-compact',
-        handleApprovePlanWithCompact as unknown as EventListener,
-      )
-  }, [sessionId, onSubmit, consumeInputDraftSnapshot])
+  // Accept & Compact flow (listener bookkeeping extracted for lifecycle safety)
+  useApprovePlanWithCompact({ sessionId, onSubmit, consumeInputDraftSnapshot })
 
   // Reload recovery: Check for pending plan execution on mount.
   // If the page reloaded after compaction completed (awaitingCompaction = false),
@@ -1115,9 +1048,12 @@ export function FreeFormInput({
   React.useEffect(() => {
     if (!consumePendingFocusForSession(sessionId)) return
 
-    setTimeout(() => {
+    focusTimeoutRef.current = setTimeout(() => {
       richInputRef.current?.focus()
     }, 0)
+    return () => {
+      if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current)
+    }
   }, [sessionId, richInputRef])
 
   // Get the next available number for a pasted file prefix (e.g., pasted-image-1, pasted-image-2)
@@ -2072,7 +2008,7 @@ export function FreeFormInput({
     <div
       ref={containerRef}
       className={cn(
-        'overflow-hidden transition-all',
+        'overflow-hidden transition-[max-height,opacity]',
         !unstyled && 'rounded-[12px] bg-background shadow-middle',
         isDraggingOver &&
           'ring-2 ring-foreground ring-offset-2 ring-offset-background bg-foreground/5',
@@ -2316,7 +2252,7 @@ export function FreeFormInput({
         )}
 
       <form onSubmit={handleSubmit}>
-        <div className="overflow-hidden transition-all">
+        <div className="overflow-hidden transition-[max-height,opacity]">
           {/* Inline Slash Command Autocomplete */}
           <InlineSlashCommand
             open={inlineSlash.isOpen}
@@ -2812,6 +2748,8 @@ export function FreeFormInput({
                       onThinkingLevelChange={onThinkingLevelChange}
                       fastMode={fastMode}
                       onFastModeChange={onFastModeChange}
+                      runtimeMode={runtimeMode}
+                      onRuntimeModeChange={onRuntimeModeChange}
                       isProcessing={isProcessing}
                       isEmptySession={isEmptySession}
                       connectionUnavailable={connectionUnavailable}
@@ -2905,13 +2843,19 @@ export function FreeFormInput({
                           <div className="mb-3 text-xs text-muted-foreground">
                             {t('chat.connectionUnavailableDescription')}
                           </div>
+                          <div className="mb-3 text-[11px] text-foreground/50">
+                            {t('chat.connectionUnavailableHint', {
+                              defaultValue:
+                                'Usually the default connection has no API key. Open AI settings, edit the connection, and paste a valid key.',
+                            })}
+                          </div>
                           <button
                             type="button"
                             onClick={() => {
                               setModelDropdownOpen(false)
                               navigate(routes.view.settings('ai'))
                             }}
-                            className="text-xs text-foreground/70 underline hover:text-foreground"
+                            className="rounded-[6px] bg-foreground/10 px-3 py-1.5 text-xs text-foreground/80 hover:bg-foreground/10 hover:text-foreground"
                           >
                             {t('chat.modelPicker.openAiSettings')}
                           </button>
@@ -2997,6 +2941,8 @@ export function FreeFormInput({
                     onThinkingLevelChange={onThinkingLevelChange}
                     fastMode={fastMode}
                     onFastModeChange={onFastModeChange}
+                    runtimeMode={runtimeMode}
+                    onRuntimeModeChange={onRuntimeModeChange}
                     isProcessing={isProcessing}
                     connectionUnavailable={connectionUnavailable}
                   />
