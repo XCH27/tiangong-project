@@ -1,0 +1,25 @@
+# Files over 1500 lines, frozen at the size they had when added.
+# This list may only shrink. Growing a file here, or adding a new one, fails
+# `bun run lint:file-size`. Regenerate with `--update` after making a file smaller.
+
+9395 packages/server-core/src/sessions/SessionManager.ts
+4014 apps/electron/src/renderer/components/app-shell/AppShell.tsx
+3822 apps/electron/src/main/browser-pane-manager.ts
+3385 packages/ui/src/components/chat/TurnCard.tsx
+3268 apps/electron/src/renderer/components/app-shell/input/FreeFormInput.tsx
+3205 packages/shared/src/agent/claude-agent.ts
+2952 packages/shared/src/config/storage.ts
+2706 packages/shared/src/agent/pi-agent.ts
+2627 apps/electron/src/renderer/components/app-shell/ChatDisplay.tsx
+2406 apps/electron/src/renderer/App.tsx
+2394 packages/shared/src/unified-network-interceptor.ts
+2374 apps/electron/src/renderer/playground/registry/turn-card.tsx
+2178 packages/shared/src/agent/mode-manager.ts
+2110 packages/shared/src/config/validators.ts
+2080 apps/cli/src/index.ts
+2038 apps/electron/src/renderer/pages/settings/AiSettingsPage.tsx
+1893 packages/pi-agent-server/src/index.ts
+1731 packages/shared/src/agent/browser-tool-runtime.ts
+1593 packages/messaging-gateway/src/registry.ts
+1577 packages/server-core/src/tasks/TaskRunner.ts
+1558 apps/electron/src/renderer/playground/registry/chat.tsx
