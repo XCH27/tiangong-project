@@ -254,3 +254,259 @@ function normalizeSplitFractions(split: SplitNode): void {
   }
   for (const child of split.children) child.fraction = child.fraction / sum
 }
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function isValidId(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0 && v.length <= 128
+}
+
+function isValidPanelKind(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0 && v.length <= MAX_PANEL_KIND_LENGTH
+}
+
+/** Shape, depth and fractions for one node, collecting panes and ids as it goes. */
+function validateNodeShape(
+  node: unknown,
+  depth: number,
+  ids: Set<string>,
+  panes: PaneNode[],
+): ValidateResult {
+  if (depth > MAX_TREE_DEPTH) return { ok: false, reason: `tree deeper than ${MAX_TREE_DEPTH}` }
+  if (!isRecord(node)) return { ok: false, reason: 'node is not an object' }
+
+  if (!isValidId(node.id)) return { ok: false, reason: 'node id invalid' }
+  if (ids.has(node.id)) return { ok: false, reason: `duplicate node id: ${node.id}` }
+  ids.add(node.id)
+
+  if (node.type === 'pane') {
+    if (!isValidPanelKind(node.panelKind)) return { ok: false, reason: 'panelKind invalid' }
+    if (node.collapsed !== undefined && typeof node.collapsed !== 'boolean') {
+      return { ok: false, reason: 'collapsed must be boolean' }
+    }
+    if (node.minWidth !== undefined && !(Number.isFinite(node.minWidth) && (node.minWidth as number) > 0)) {
+      return { ok: false, reason: 'minWidth must be a positive finite number' }
+    }
+    panes.push(node as unknown as PaneNode)
+    return { ok: true }
+  }
+
+  if (node.type === 'split') {
+    if (node.direction !== 'row' && node.direction !== 'column') {
+      return { ok: false, reason: 'split direction invalid' }
+    }
+    if (!Array.isArray(node.children) || node.children.length < 2) {
+      return { ok: false, reason: 'split needs at least 2 children' }
+    }
+    let fractionSum = 0
+    for (const child of node.children) {
+      if (!isRecord(child)) return { ok: false, reason: 'split child is not an object' }
+      if (!(Number.isFinite(child.fraction) && (child.fraction as number) > 0)) {
+        return { ok: false, reason: 'child fraction must be a positive finite number' }
+      }
+      fractionSum += child.fraction as number
+      const r = validateNodeShape(child.node, depth + 1, ids, panes)
+      if (!r.ok) return r
+    }
+    if (Math.abs(fractionSum - 1) > 0.01) {
+      return { ok: false, reason: `split fractions must sum to ~1, got ${fractionSum}` }
+    }
+    return { ok: true }
+  }
+
+  return { ok: false, reason: `unknown node type: ${String((node as { type?: unknown }).type)}` }
+}
+
+/**
+ * Check the whole layout.
+ *
+ * Structure only. Whether a `panelKind` is *registered* is deliberately not
+ * checked here: an unknown kind is a pane the renderer hides, never an illegal
+ * tree. Treating it as illegal would mean uninstalling one surface resets the
+ * person's entire arrangement.
+ */
+export function validateLayout(input: Layout): ValidateResult {
+  if (!isRecord(input)) return { ok: false, reason: 'layout is not an object' }
+  if (input.schemaVersion !== LAYOUT_SCHEMA_VERSION) {
+    return { ok: false, reason: `schemaVersion must be ${LAYOUT_SCHEMA_VERSION}` }
+  }
+  if (!Array.isArray(input.float) || input.float.length !== 0) {
+    return { ok: false, reason: 'float must be an empty array in v1' }
+  }
+
+  const sidebar = input.sidebar as unknown
+  if (!isRecord(sidebar) || sidebar.type !== 'pane') return { ok: false, reason: 'sidebar must be a pane' }
+  if (sidebar.panelKind !== 'nav-sidebar') return { ok: false, reason: 'sidebar must be nav-sidebar' }
+  if (sidebar.edge !== 'left') return { ok: false, reason: "sidebar edge must be 'left' in v1" }
+  if (!isValidId(sidebar.id)) return { ok: false, reason: 'sidebar id invalid' }
+
+  const ids = new Set<string>([sidebar.id as string])
+  const contentPanes: PaneNode[] = []
+  const shape = validateNodeShape(input.content, 1, ids, contentPanes)
+  if (!shape.ok) return shape
+
+  const mains = contentPanes.filter((p) => p.panelKind === 'main')
+  if (mains.length !== 1) {
+    return { ok: false, reason: `content must contain exactly one main pane (got ${mains.length})` }
+  }
+  if (mains[0]?.collapsed === true) return { ok: false, reason: 'the main pane must not be collapsed' }
+  if (contentPanes.some((p) => p.panelKind === 'nav-sidebar')) {
+    return { ok: false, reason: 'nav-sidebar must stay outside the content tree' }
+  }
+  return { ok: true }
+}
+
+/**
+ * Turn untrusted data — a file on disk, an IPC argument — into a layout that is
+ * necessarily legal. Any failure falls back to the default and reports why;
+ * nothing throws. This is what makes "the layout file got corrupted, restarting
+ * fixed it" true rather than aspirational.
+ */
+export function coerceLayout(raw: unknown): CoerceResult {
+  if (!isRecord(raw)) return { layout: createDefaultLayout(), fallback: true, reason: 'not an object' }
+  let cloned: Layout
+  try {
+    cloned = structuredClone(raw) as Layout
+  } catch {
+    return { layout: createDefaultLayout(), fallback: true, reason: 'not cloneable' }
+  }
+  const v = validateLayout(cloned)
+  if (!v.ok) return { layout: createDefaultLayout(), fallback: true, reason: v.reason }
+  return { layout: cloned, fallback: false }
+}
+
+// ---------------------------------------------------------------------------
+// Operations — immutable; an illegal one returns the original by reference
+// ---------------------------------------------------------------------------
+
+/**
+ * Every operation ends here, so no operation can produce an illegal tree. An
+ * op that would break an invariant is rejected whole rather than landing
+ * half-applied.
+ */
+function finishOp(original: Layout, mutated: Layout, reason: string): LayoutOpResult {
+  const v = validateLayout(mutated)
+  if (!v.ok) return { layout: original, applied: false, reason: `${reason}: ${v.reason}` }
+  return { layout: mutated, applied: true }
+}
+
+/** Collapse or expand a pane. The main pane refuses, via the exit check. */
+export function setPaneCollapsed(layout: Layout, paneId: string, collapsed: boolean): LayoutOpResult {
+  if (!findPaneById(layout, paneId)) {
+    return { layout, applied: false, reason: `pane not found: ${paneId}` }
+  }
+  const next = structuredClone(layout)
+  for (const pane of walkPanes(next)) {
+    if (pane.id === paneId) pane.collapsed = collapsed
+  }
+  return finishOp(layout, next, 'setPaneCollapsed rejected')
+}
+
+/**
+ * Resize one child of a split, redistributing the remainder across its
+ * siblings in proportion to what they already held.
+ */
+export function setSplitChildFraction(
+  layout: Layout,
+  splitId: string,
+  childIndex: number,
+  fraction: number,
+): LayoutOpResult {
+  if (!(Number.isFinite(fraction) && fraction > 0 && fraction < 1)) {
+    return { layout, applied: false, reason: 'fraction must be between 0 and 1 (exclusive)' }
+  }
+  if (!Number.isInteger(childIndex)) {
+    return { layout, applied: false, reason: `child index must be an integer: ${childIndex}` }
+  }
+  const next = structuredClone(layout)
+  const split = findSplitById(next.content, splitId)
+  if (!split) return { layout, applied: false, reason: `split not found: ${splitId}` }
+  if (childIndex < 0 || childIndex >= split.children.length) {
+    return { layout, applied: false, reason: `child index out of range: ${childIndex}` }
+  }
+
+  const siblings = split.children
+  const target = siblings[childIndex]
+  if (!target) return { layout, applied: false, reason: `child missing at ${childIndex}` }
+
+  // A transfer that would starve any sibling is refused entirely, not clamped:
+  // clamping mid-drag makes the pointer and the edge disagree, which reads as
+  // the panel fighting back.
+  const remainder = 1 - fraction
+  if (remainder < MIN_SPLIT_CHILD_FRACTION * (siblings.length - 1) - FRACTION_TOLERANCE) {
+    return { layout, applied: false, reason: 'transfer would starve a sibling' }
+  }
+  if (fraction < MIN_SPLIT_CHILD_FRACTION - FRACTION_TOLERANCE) {
+    return { layout, applied: false, reason: 'target would fall below the minimum share' }
+  }
+
+  const siblingSum = siblings.reduce((acc, c, i) => acc + (i === childIndex ? 0 : c.fraction), 0)
+  target.fraction = fraction
+  for (let i = 0; i < siblings.length; i++) {
+    if (i === childIndex) continue
+    const sibling = siblings[i]
+    if (!sibling) continue
+    sibling.fraction =
+      siblingSum > 0 ? (sibling.fraction / siblingSum) * remainder : remainder / (siblings.length - 1)
+  }
+  normalizeSplitFractions(split)
+  return finishOp(layout, next, 'setSplitChildFraction rejected')
+}
+
+/**
+ * Dock a new panel in the content root — how a surface arrives.
+ *
+ * The new pane takes `fraction` of the width, clamped, and the existing
+ * children give it up proportionally. An out-of-range index appends.
+ */
+export function insertRootSplitPane(
+  layout: Layout,
+  pane: { id: string; panelKind: PanelKind; minWidth?: number },
+  fraction = 0.25,
+  index = Number.MAX_SAFE_INTEGER,
+): LayoutOpResult {
+  if (layout.content.type !== 'split') {
+    return { layout, applied: false, reason: 'content root is a single pane; nothing to insert beside' }
+  }
+  const next = structuredClone(layout)
+  const root = next.content as SplitNode
+
+  const share = Math.min(0.8, Math.max(MIN_SPLIT_CHILD_FRACTION, fraction))
+  for (const child of root.children) child.fraction *= 1 - share
+
+  const at = Math.max(0, Math.min(root.children.length, index))
+  root.children.splice(at, 0, {
+    fraction: share,
+    node: {
+      type: 'pane',
+      id: pane.id,
+      panelKind: pane.panelKind,
+      ...(pane.minWidth !== undefined ? { minWidth: pane.minWidth } : {}),
+    },
+  })
+  normalizeSplitFractions(root)
+  return finishOp(layout, next, 'insertRootSplitPane rejected')
+}
+
+/** Undock the first pane of a kind from the content root. */
+export function removeRootSplitPaneByKind(layout: Layout, kind: PanelKind): LayoutOpResult {
+  if (layout.content.type !== 'split') {
+    return { layout, applied: false, reason: 'content root is a single pane' }
+  }
+  const next = structuredClone(layout)
+  const root = next.content as SplitNode
+  const at = root.children.findIndex((c) => c.node.type === 'pane' && c.node.panelKind === kind)
+  if (at === -1) return { layout, applied: false, reason: `no root pane of kind ${kind}` }
+  if (root.children.length <= 2) {
+    return { layout, applied: false, reason: 'a split needs at least two children' }
+  }
+  root.children.splice(at, 1)
+  normalizeSplitFractions(root)
+  return finishOp(layout, next, 'removeRootSplitPaneByKind rejected')
+}
