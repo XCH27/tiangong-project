@@ -150,7 +150,7 @@ export function createWebApi(options: WebApiOptions): {
     openWorkspace: async () => {},
     openSessionInNewWindow: async (_wsId: string, sessionId: string) => {
       // Open in new tab
-      window.open(`${window.location.origin}/?session=${sessionId}`, '_blank')
+      window.open(`${window.location.origin}/?session=${encodeURIComponent(sessionId)}`, '_blank')
     },
 
     // Auto-update — not applicable to web (but expose server version for About page)
@@ -236,6 +236,24 @@ export function createWebApi(options: WebApiOptions): {
 
   // OAuth overrides — web-compatible browser opening
   // The Electron preload uses shell.openExternal() which isn't available in browsers.
+  //
+  // authUrl comes from the server and is assigned to a window location, so
+  // validate the scheme before navigating: only https: is allowed (http: for
+  // localhost dev). Anything else (javascript:, data:, ...) would execute in
+  // our origin because the pre-opened about:blank popup inherits it.
+  const isSafeAuthUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol === 'https:') return true
+      if (parsed.protocol === 'http:') {
+        return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1'
+      }
+      return false
+    } catch {
+      return false
+    }
+  }
+
   const oauthOverrides: Partial<ElectronAPI> = {
     // Generic source OAuth — server prepares the flow, we open the auth URL in a new tab.
     // The OAuth provider redirects through the relay to our server's /api/oauth/callback,
@@ -254,6 +272,10 @@ export function createWebApi(options: WebApiOptions): {
       // arrives. Same-window fallback covers users who blocked popups
       // entirely. NOTE: dropped `noopener` because the spec returns null
       // for `noopener` opens in some browsers, defeating the pre-open.
+      // Accepted trade-off: the provider page holds window.opener (reverse
+      // tabnabbing); we mitigate by validating authUrl's scheme before any
+      // navigation, and by completing the flow via the server-side callback
+      // + WebSocket status push rather than reading anything from the popup.
       const popup = window.open('about:blank', '_blank')
 
       try {
@@ -265,9 +287,14 @@ export function createWebApi(options: WebApiOptions): {
           authRequestId: args.authRequestId,
         })
 
+        if (!isSafeAuthUrl(result.authUrl)) {
+          if (popup && !popup.closed) popup.close()
+          return { success: false, error: 'Server returned an invalid OAuth URL' }
+        }
+
         if (popup && !popup.closed) {
           // Happy path — pre-opened popup is still open, redirect it.
-          popup.location.href = result.authUrl
+          popup.location.assign(result.authUrl)
         } else if (popup === null) {
           // Popup blocked entirely (popup === null) — fall back to a
           // same-window redirect. The OAuth callback lands back on the
@@ -302,8 +329,12 @@ export function createWebApi(options: WebApiOptions): {
       try {
         const result = await client.invoke('onboarding:startClaudeOAuth')
         if (result.success && result.authUrl) {
+          if (!isSafeAuthUrl(result.authUrl)) {
+            if (popup && !popup.closed) popup.close()
+            return { success: false, error: 'Server returned an invalid OAuth URL' }
+          }
           if (popup && !popup.closed) {
-            popup.location.href = result.authUrl
+            popup.location.assign(result.authUrl)
           } else {
             window.location.href = result.authUrl
           }

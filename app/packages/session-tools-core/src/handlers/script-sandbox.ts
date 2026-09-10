@@ -145,11 +145,15 @@ export async function handleScriptSandbox(
       }, timeoutMs);
 
       child.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
+        if (stdout.length < MAX_OUTPUT_CHARS) {
+          stdout += chunk.toString().slice(0, MAX_OUTPUT_CHARS - stdout.length);
+        }
       });
 
       child.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
+        if (stderr.length < MAX_OUTPUT_CHARS) {
+          stderr += chunk.toString().slice(0, MAX_OUTPUT_CHARS - stderr.length);
+        }
       });
 
       child.on('close', (code) => {

@@ -1780,6 +1780,9 @@ const ALWAYS_ALLOWED_TOOLS = new Set([
   'SubmitPlan',                     // Plan submission
   'EnterPlan',                      // Enter Plan phase (no abort)
   'LSP',                            // Language server (read-only)
+  // Built-in SDK affordances without their own write capability — any
+  // commands/scripts they invoke go through their own permission checks.
+  'Skill', 'SlashCommand', 'KillShell', 'TaskStop',
   // Browser automation tool (canonical wrapper)
   'browser_tool',
 ]);
@@ -1839,11 +1842,11 @@ export function shouldAllowToolInMode(
     return { allowed: true };
   }
 
-  // Check if tool name ends with an always-allowed tool (for MCP variants like mcp__plan__SubmitPlan)
-  for (const allowedTool of ALWAYS_ALLOWED_TOOLS) {
-    if (toolName.endsWith(`__${allowedTool}`)) {
-      return { allowed: true };
-    }
+  // MCP variants of always-allowed tools are only trusted from the vetted plan
+  // server (mcp__plan__SubmitPlan). A bare endsWith match would let any MCP
+  // source self-allow by naming a tool e.g. mcp__evil__Read.
+  if (toolName.startsWith('mcp__plan__') && ALWAYS_ALLOWED_TOOLS.has(toolName.slice('mcp__plan__'.length))) {
+    return { allowed: true };
   }
 
   // Browser tool aliases (legacy browser_open/browser_snapshot/...)
@@ -2066,8 +2069,11 @@ export function shouldAllowToolInMode(
     };
   }
 
-  // Default: allow other tools not explicitly handled
-  return { allowed: true };
+  // Default-deny: unrecognized tools are never auto-allowed in safe mode.
+  return {
+    allowed: false,
+    reason: getBlockReasonWithConfig(toolName, config),
+  };
 }
 
 /**

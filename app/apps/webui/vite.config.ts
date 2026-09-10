@@ -20,7 +20,10 @@ export default defineConfig({
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyDirBeforeWrite: true,
-    sourcemap: true,
+    // 'hidden' emits maps for debugging without a sourceMappingURL comment,
+    // so production bundles don't ship full source. Dev server maps are
+    // unaffected (vite always serves them in dev).
+    sourcemap: 'hidden',
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'src/index.html'),

@@ -99,7 +99,8 @@ export class PrivilegedExecutionBroker {
       requestId: request.requestId,
       sessionId: request.sessionId,
       commandHash: request.commandHash,
-      command: request.command,
+      // Hash only — the plaintext command may contain secrets and every later
+      // audit event for this request already identifies it by commandHash.
       policyAllowed: request.policyAllowed,
       policyReason: request.policyReason,
       createdAt: request.createdAt,

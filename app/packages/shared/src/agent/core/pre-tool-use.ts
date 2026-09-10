@@ -522,6 +522,40 @@ export function getConfigCliRedirect(
 }
 
 /**
+ * Split a bash command into `&&`/`;` segments and track simple single-level
+ * `cd` prefixes, so path candidates after `cd labels && ...` resolve against
+ * the changed directory. Documented guardrail, not a shell emulator: commands
+ * containing subshells or pipes fall back to the session working directory
+ * unchanged, and only plain `cd <path>` segments steer resolution.
+ */
+function splitBashSegmentsWithBaseDirs(
+  command: string,
+  initialBaseDir: string,
+): Array<{ text: string; baseDir: string }> {
+  if (/[()|]/.test(command)) {
+    return [{ text: command, baseDir: initialBaseDir }];
+  }
+  const parts = command.split(/&&|;/);
+  if (parts.length === 1) {
+    return [{ text: command, baseDir: initialBaseDir }];
+  }
+  const segments: Array<{ text: string; baseDir: string }> = [];
+  let currentDir = initialBaseDir;
+  for (const part of parts) {
+    const cdMatch = part.match(/^\s*cd\s+(?:'([^']+)'|"([^"]+)"|([^\s'";|&()<>]+))\s*$/);
+    if (cdMatch) {
+      const target = cdMatch[1] ?? cdMatch[2] ?? cdMatch[3];
+      if (target) {
+        currentDir = resolve(currentDir, target);
+      }
+      continue; // a pure cd segment carries no file candidates
+    }
+    segments.push({ text: part, baseDir: currentDir });
+  }
+  return segments;
+}
+
+/**
  * Block bash commands that operate on guarded config paths unless they use craft-agent commands.
  * Current guarded domains in Bash are declared in shared CLI domain policy.
  */
@@ -538,33 +572,34 @@ export function getConfigDomainBashRedirect(
   }
 
   const baseDir = resolve(workingDirectory ?? workspaceRootPath);
+  const segments = splitBashSegmentsWithBaseDirs(command, baseDir);
   const tokenRegex = /'([^']+)'|"([^"]+)"|([^\s'";|&()<>]+)/g;
-  const candidates: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = tokenRegex.exec(command)) !== null) {
-    const candidate = (match[1] ?? match[2] ?? match[3] ?? '').trim();
-    if (!candidate) continue;
-    if (!candidate.includes('/') && !candidate.includes('\\') && !candidate.endsWith('.json') && !candidate.endsWith('.jsonl')) {
-      continue;
-    }
-    candidates.push(candidate);
-  }
 
   const bashGuardEntries: Array<{ namespace: CliDomainNamespace; scope: string }> = CRAFT_AGENTS_CLI_BASH_GUARD_SCOPE_ENTRIES
 
-  for (const candidate of candidates) {
-    const relativePath = getWorkspaceRelativePath(candidate, workspaceRootPath, baseDir);
-    if (!relativePath) continue;
+  for (const segment of segments) {
+    tokenRegex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = tokenRegex.exec(segment.text)) !== null) {
+      const candidate = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+      if (!candidate) continue;
+      if (!candidate.includes('/') && !candidate.includes('\\') && !candidate.endsWith('.json') && !candidate.endsWith('.jsonl')) {
+        continue;
+      }
 
-    for (const entry of bashGuardEntries) {
-      if (!matchesPathScope(relativePath, entry.scope)) continue
+      const relativePath = getWorkspaceRelativePath(candidate, workspaceRootPath, segment.baseDir);
+      if (!relativePath) continue;
 
-      const context = entry.namespace === 'label'
-        ? 'Direct Bash operations targeting the workspace labels/ folder are blocked.'
-        : `Direct Bash operations targeting \`${relativePath}\` are blocked.`
+      for (const entry of bashGuardEntries) {
+        if (!matchesPathScope(relativePath, entry.scope)) continue
 
-      return {
-        message: buildCliDomainBlockMessage(entry.namespace, context),
+        const context = entry.namespace === 'label'
+          ? 'Direct Bash operations targeting the workspace labels/ folder are blocked.'
+          : `Direct Bash operations targeting \`${relativePath}\` are blocked.`
+
+        return {
+          message: buildCliDomainBlockMessage(entry.namespace, context),
+        }
       }
     }
   }
@@ -859,6 +894,10 @@ export function runPreToolUseChecks(ctx: PreToolUseInput): PreToolUseCheckResult
   // ORIGINAL `input` parameter, so the LLM still believes it ran the original
   // command and our permission system gates the original command — only the
   // SDK's actual execution sees the rewritten form.
+  // INVARIANT: rewriteBashWithRtk must never change the command target/flags —
+  // it only wraps the original command (see rtk-rewrite.ts and
+  // core/__tests__/rtk-rewrite.test.ts). The executed command therefore always
+  // contains the exact command that was approved.
   if (ctx.rtkContext?.enabled && ctx.rtkContext.path) {
     const rtkResult = rewriteBashWithRtk(
       toolName,
@@ -1002,9 +1041,12 @@ function classifyAdminApproval(command: string): PromptInfo | null {
 }
 
 function wrapCommandForMacAdminPrompt(command: string): string {
-  // Escape for AppleScript shell string: \ -> \\, " -> \", $ -> \$
+  // Escape for AppleScript shell string: \ -> \\, ` -> \`, " -> \", $ -> \$
+  // Backslashes first; backticks must be escaped too — inside the double-quoted
+  // sh string they would otherwise still trigger command substitution.
   const escaped = command
     .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
     .replace(/"/g, '\\"')
     .replace(/\$/g, '\\$');
 
@@ -1135,5 +1177,23 @@ export function shouldPromptInAskMode(
     }
   }
 
-  return null;
+  // --- Unknown tools ---
+  // Auto-allow only what safe mode considers read-only; anything else prompts
+  // so an unrecognized tool is never silently auto-approved in ask mode
+  // (mirrors the safe-mode default-deny in shouldAllowToolInMode).
+  const unknownSafeResult = shouldAllowToolInMode(
+    toolName, input, 'safe', { plansFolderPath }
+  );
+  if (unknownSafeResult.allowed) {
+    return null;
+  }
+  if (permissionManager.isCommandWhitelisted(toolName)) {
+    onDebug?.(`Auto-allowing "${toolName}" (previously approved)`);
+    return null;
+  }
+  return {
+    promptType: 'mcp_mutation',
+    description: `Tool: ${toolName}`,
+    command: toolName,
+  };
 }

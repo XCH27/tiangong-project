@@ -77,6 +77,15 @@ export function rewriteBashWithRtk(
       return { modified: false, input };
     }
 
+    // Invariant: rtk may only wrap the command (e.g. prepend `rtk`, append
+    // compression flags) — the original target and flags must survive
+    // verbatim. Permission decisions were made against the original command,
+    // so a rewrite that alters it would execute something never approved.
+    if (!rewritten.includes(command)) {
+      onDebug?.(`[rtk] rewrite dropped the original command; passing through unchanged`);
+      return { modified: false, input };
+    }
+
     onDebug?.(`[rtk] "${command}" → "${rewritten}"`);
     return { modified: true, input: { ...input, command: rewritten } };
   } catch (e) {

@@ -189,7 +189,7 @@ autoUpdater.on('update-available', (info) => {
   }
 
   // Fallback: check if file exists in cache directory
-  const existing = checkForExistingDownload()
+  const existing = checkForExistingDownload(info.version)
   if (existing.exists) {
     mainLog.info(`[auto-update] Update already downloaded (file check), setting state to ready`)
     updateInfo = {
@@ -296,8 +296,12 @@ interface CheckOptions {
 /**
  * Check if a downloaded update already exists in the cache directory.
  * This helps detect updates that were downloaded in a previous session.
+ *
+ * Only trusts electron-updater's own update-info.json manifest (and requires a
+ * version match when expectedVersion is given). A stray .zip/.exe/.dmg in the
+ * cache directory is never sufficient to mark an update ready.
  */
-function checkForExistingDownload(): { exists: boolean; version?: string } {
+function checkForExistingDownload(expectedVersion?: string): { exists: boolean; version?: string } {
   try {
     const cacheDir = getUpdateCacheDir()
     mainLog.info(`[auto-update] Checking cache directory: ${cacheDir}`)
@@ -317,25 +321,17 @@ function checkForExistingDownload(): { exists: boolean; version?: string } {
       const info = readJsonFileSync(infoPath) as Record<string, unknown> | null
       mainLog.info(`[auto-update] update-info.json contents: ${JSON.stringify(info)}`)
 
+      if (expectedVersion && info?.version !== expectedVersion) {
+        mainLog.info(`[auto-update] Cached download version ${String(info?.version)} does not match expected ${expectedVersion}`)
+        return { exists: false }
+      }
+
       // electron-updater uses 'fileName' (not 'path') in update-info.json
       const fileName = (info?.fileName || info?.path) as string | undefined
       if (fileName && fs.existsSync(path.join(cacheDir, fileName))) {
         mainLog.info(`[auto-update] Found existing download via update-info.json: ${fileName}`)
         return { exists: true, version: info?.version as string }
       }
-    }
-
-    // Fallback: check for any installer/zip/dmg file
-    const downloadFile = files.find(f =>
-      f.endsWith('.zip') ||
-      f.endsWith('.exe') ||
-      f.endsWith('.AppImage') ||
-      f.endsWith('.dmg') ||
-      f.endsWith('.nupkg')
-    )
-    if (downloadFile) {
-      mainLog.info(`[auto-update] Found existing download file: ${downloadFile}`)
-      return { exists: true }
     }
 
     mainLog.info(`[auto-update] No existing download found in cache`)
@@ -387,7 +383,7 @@ export async function checkForUpdates(options: CheckOptions = {}): Promise<Updat
 
       // Double-check: if we're still showing 'downloading' but file exists, update state
       if (updateInfo.downloadState === 'downloading') {
-        const existing = checkForExistingDownload()
+        const existing = checkForExistingDownload(result.updateInfo.version)
         if (existing.exists) {
           mainLog.info('[auto-update] Update already downloaded, updating state to ready')
           updateInfo = {

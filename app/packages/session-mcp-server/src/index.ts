@@ -59,6 +59,7 @@ interface SessionConfig {
   workspaceRootPath: string;
   plansFolderPath: string;
   callbackPort?: string;
+  callbackToken?: string;
 }
 
 const CALLBACK_TOOL_TIMEOUT_MS = 120000;
@@ -350,33 +351,19 @@ async function handleCallLlm(
   args: Record<string, unknown>,
   config: SessionConfig,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
-  const precomputed = args?._precomputedResult as string | undefined;
-
-  if (precomputed) {
-    try {
-      const parsed = JSON.parse(precomputed);
-      if (parsed.error) {
-        return errorResponse(`call_llm failed: ${parsed.error}`);
-      }
-      if (parsed.text !== undefined) {
-        return {
-          content: [{ type: 'text' as const, text: parsed.text || '(Model returned empty response)' }],
-        };
-      }
-      return errorResponse('call_llm: _precomputedResult has unexpected format (missing text field).');
-    } catch {
-      return errorResponse(`call_llm: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
-    }
-  }
-
-  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
+  // NOTE: tool arguments are model-controlled, so a precomputed result can
+  // never be trusted from them (prompt injection could fabricate call_llm
+  // output). Results must arrive out-of-band via the authenticated HTTP
+  // callback below.
   // Uses callbackPort from CLI arg (--callback-port) or env var (CRAFT_LLM_CALLBACK_PORT).
   if (config.callbackPort) {
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/call-llm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.callbackToken ? { Authorization: `Bearer ${config.callbackToken}` } : {}),
+        },
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
       });
@@ -393,8 +380,7 @@ async function handleCallLlm(
   }
 
   return errorResponse(
-    'call_llm requires either PreToolUse intercept (_precomputedResult) or ' +
-    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
+    'call_llm requires the HTTP callback (CRAFT_LLM_CALLBACK_PORT), which is not available.'
   );
 }
 
@@ -406,30 +392,16 @@ async function handleSpawnSession(
   args: Record<string, unknown>,
   config: SessionConfig,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
-  const precomputed = args?._precomputedResult as string | undefined;
-
-  if (precomputed) {
-    try {
-      const parsed = JSON.parse(precomputed);
-      if (parsed.error) {
-        return errorResponse(`spawn_session failed: ${parsed.error}`);
-      }
-      // Return the full result (could be help info or spawn result)
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(parsed, null, 2) }],
-      };
-    } catch {
-      return errorResponse(`spawn_session: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
-    }
-  }
-
-  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
+  // NOTE: tool arguments are model-controlled — see handleCallLlm for why a
+  // precomputed result is never accepted from them.
   if (config.callbackPort) {
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/spawn-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.callbackToken ? { Authorization: `Bearer ${config.callbackToken}` } : {}),
+        },
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
       });
@@ -446,8 +418,7 @@ async function handleSpawnSession(
   }
 
   return errorResponse(
-    'spawn_session requires either PreToolUse intercept (_precomputedResult) or ' +
-    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
+    'spawn_session requires the HTTP callback (CRAFT_LLM_CALLBACK_PORT), which is not available.'
   );
 }
 
@@ -478,6 +449,7 @@ async function main() {
   let workspaceRootPath: string | undefined;
   let plansFolderPath: string | undefined;
   let callbackPort: string | undefined;
+  let callbackToken: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--session-id' && args[i + 1]) {
@@ -491,6 +463,9 @@ async function main() {
       i++;
     } else if (args[i] === '--callback-port' && args[i + 1]) {
       callbackPort = args[i + 1];
+      i++;
+    } else if (args[i] === '--callback-token' && args[i + 1]) {
+      callbackToken = args[i + 1];
       i++;
     }
   }
@@ -506,6 +481,7 @@ async function main() {
     plansFolderPath,
     // CLI arg takes priority, env var as fallback (Copilot CLI may not forward env to subprocesses)
     callbackPort: callbackPort || process.env.CRAFT_LLM_CALLBACK_PORT,
+    callbackToken: callbackToken || process.env.CRAFT_LLM_CALLBACK_TOKEN,
   };
 
   // Create the Codex context

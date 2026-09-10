@@ -61,6 +61,17 @@ export interface DeepLinkResult {
   windowId?: number
 }
 
+export interface DeepLinkOptions {
+  /**
+   * Whether `craftagents://action/...` links (delete-session, new-chat?send=true,
+   * etc.) may be dispatched. Only OS entry points (open-url / second-instance)
+   * and trusted app-shell surfaces should pass true — in-app page navigation
+   * (browser panes, popups) must never trigger destructive actions.
+   * Defaults to false.
+   */
+  allowActions?: boolean
+}
+
 /**
  * Navigation payload sent to renderer via IPC
  */
@@ -235,6 +246,7 @@ export async function handleDeepLink(
   sink?: EventSink,
   resolveClientId?: (webContentsId: number) => string | undefined,
   preferredClientId?: string,
+  options?: DeepLinkOptions,
 ): Promise<DeepLinkResult> {
   const target = parseDeepLink(url)
 
@@ -244,6 +256,11 @@ export async function handleDeepLink(
       return { success: true }
     }
     return { success: false, error: 'Invalid deep link URL' }
+  }
+
+  if (target.action && options?.allowActions !== true) {
+    mainLog.warn('[DeepLink] Blocked action deep link from untrusted source:', target.action)
+    return { success: false, error: 'Action deep links are only allowed from OS entry points' }
   }
 
   mainLog.info('[DeepLink] Handling:', target)

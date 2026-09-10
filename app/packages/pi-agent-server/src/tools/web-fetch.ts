@@ -28,6 +28,7 @@ turndown.remove(NOISE_ELEMENTS);
 
 const MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024; // 50MB
 const MAX_TEXT_LENGTH = 50_000;
+const MAX_REDIRECT_HOPS = 5;
 
 const MIME_TO_EXT: Record<string, string> = {
   'application/pdf': '.pdf',
@@ -356,16 +357,46 @@ export function createWebFetchTool(
       }
 
       let response: Response;
+      let currentUrl = url;
       try {
-        response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; CraftAgent/1.0)',
-            Accept:
-              'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-          redirect: 'follow',
-          signal: AbortSignal.timeout(30_000),
-        });
+        // Follow redirects manually so every hop is re-validated — a public
+        // URL may 302 to a private/loopback target, which redirect:'follow'
+        // would silently fetch.
+        let hops = 0;
+        while (true) {
+          response = await fetch(currentUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; CraftAgent/1.0)',
+              Accept:
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            redirect: 'manual',
+            signal: AbortSignal.timeout(30_000),
+          });
+
+          if (response.status >= 300 && response.status < 400) {
+            const location = response.headers.get('location');
+            if (!location) break;
+            if (++hops > MAX_REDIRECT_HOPS) {
+              return result(
+                `Failed to fetch ${url}: too many redirects (>${MAX_REDIRECT_HOPS})`,
+                true,
+              );
+            }
+            const nextUrl = new URL(location, currentUrl).toString();
+            try {
+              await validateUrl(nextUrl);
+            } catch (err) {
+              return result(
+                `Refused to follow redirect to ${nextUrl}: ${err instanceof Error ? err.message : String(err)}`,
+                true,
+              );
+            }
+            currentUrl = nextUrl;
+            continue;
+          }
+          break;
+        }
       } catch (err) {
         return result(
           `Failed to fetch ${url}: ${err instanceof Error ? err.message : String(err)}`,

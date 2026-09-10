@@ -8,7 +8,6 @@
 import type { BaseEventPayload } from './event-bus.ts';
 import type { AutomationEvent, AutomationMatcher, PromptReferences, AgentEvent, SdkAutomationInput } from './types.ts';
 import { matchesCron } from './cron-matcher.ts';
-import { sanitizeForShell } from './security.ts';
 import { evaluateConditions } from './conditions.ts';
 
 // ============================================================================
@@ -140,6 +139,12 @@ export interface MatcherContext {
   payload: Record<string, unknown>;
   /** Fallback timezone source for time conditions */
   matcherTimezone?: string;
+  /**
+   * Precomputed cron verdict for SchedulerTick matchers. When provided it replaces the
+   * stateless `matchesCron(now)` check — used by the per-matcher catch-up tracker so a
+   * skipped/slow tick doesn't silently drop a scheduled automation.
+   */
+  cronMatched?: boolean;
 }
 
 /**
@@ -148,10 +153,11 @@ export interface MatcherContext {
  * Do not call directly from feature code. Use matcherMatchesWithContext()/adapters
  * so condition gating is never bypassed.
  */
-function matchesBasePredicate(matcher: AutomationMatcher, event: AutomationEvent, matchValue: string): boolean {
+function matchesBasePredicate(matcher: AutomationMatcher, event: AutomationEvent, matchValue: string, cronMatched?: boolean): boolean {
   if (matcher.enabled === false) return false;
   if (event === 'SchedulerTick') {
-    return !!matcher.cron && matchesCron(matcher.cron, matcher.timezone);
+    if (!matcher.cron) return false;
+    return cronMatched ?? matchesCron(matcher.cron, matcher.timezone);
   }
   if (!matcher.matcher) return true; // No matcher means match all
   try {
@@ -169,7 +175,7 @@ export function matcherMatchesWithContext(
   event: AutomationEvent,
   context: MatcherContext,
 ): boolean {
-  if (!matchesBasePredicate(matcher, event, context.matchValue)) return false;
+  if (!matchesBasePredicate(matcher, event, context.matchValue, context.cronMatched)) return false;
 
   if (matcher.conditions?.length) {
     return evaluateConditions(matcher.conditions, {
@@ -184,11 +190,12 @@ export function matcherMatchesWithContext(
 /**
  * App-event adapter for canonical matcher evaluation.
  */
-export function matcherMatches(matcher: AutomationMatcher, event: AutomationEvent, data: Record<string, unknown>): boolean {
+export function matcherMatches(matcher: AutomationMatcher, event: AutomationEvent, data: Record<string, unknown>, opts?: { cronMatched?: boolean }): boolean {
   return matcherMatchesWithContext(matcher, event, {
     matchValue: getMatchValue(event, data),
     payload: data,
     matcherTimezone: matcher.timezone,
+    cronMatched: opts?.cronMatched,
   });
 }
 
@@ -261,21 +268,23 @@ function buildBaseEventEnv(event: AutomationEvent, payload: BaseEventPayload): R
 }
 
 /**
- * Build environment variables from an event payload for prompt/command actions.
- * Includes full process.env and sanitizes user-controlled values for shell safety.
+ * Build environment variables from an event payload for prompt actions.
+ *
+ * Security contract (mirrors buildWebhookEnv):
+ * - Does NOT spread process.env — automations.json could otherwise expand secrets
+ *   (e.g. $ANTHROPIC_API_KEY) into prompts sent to the model. Only CRAFT_WH_*
+ *   user-defined vars pass through.
+ * - Does NOT apply shell sanitization — expanded values go into a prompt string,
+ *   not a shell command line, so escaping would mangle quotes/backticks for no benefit.
  */
 export function buildEnvFromPayload(event: AutomationEvent, payload: BaseEventPayload): Record<string, string> {
-  const base = buildBaseEventEnv(event, payload);
-  const env: Record<string, string> = { ...cleanEnv(), ...base };
+  const env = buildBaseEventEnv(event, payload);
 
-  // Sanitize session name for shell context
-  if (payload.sessionName) env.CRAFT_SESSION_NAME = sanitizeForShell(payload.sessionName);
-
-  // Sanitize payload field values for shell context
-  for (const [key, value] of Object.entries(payload)) {
-    if (PAYLOAD_SKIP_KEYS.has(key)) continue;
-    const envKey = `CRAFT_${toSnakeCase(key).toUpperCase()}`;
-    env[envKey] = typeof value === 'string' ? sanitizeForShell(value) : String(value);
+  // User-defined automation secrets: only CRAFT_WH_* from process.env
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith('CRAFT_WH_') && value !== undefined) {
+      env[key] = value;
+    }
   }
 
   return env;

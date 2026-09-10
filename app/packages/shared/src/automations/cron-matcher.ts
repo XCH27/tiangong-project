@@ -55,3 +55,36 @@ export function matchesCron(cronExpr: string, timezone?: string): boolean {
     return false;
   }
 }
+
+/** Start-of-minute epoch ms (floored to :00 seconds) — the granularity cron matching uses. */
+export function minuteStartMs(at: Date = new Date()): number {
+  const d = new Date(at);
+  d.setSeconds(0, 0);
+  return d.getTime();
+}
+
+/**
+ * Catch-up variant of matchesCron: did the cron expression fire in any minute in the
+ * half-open window (lastFiredMs, currentMinute]? Used by SchedulerTick handlers with a
+ * per-matcher last-fired tracker so a skipped/slow tick (or app sleep) doesn't silently
+ * drop a scheduled automation — it fires once on the next tick instead.
+ *
+ * @param lastFiredMs - minuteStartMs of the last tick this matcher was evaluated, or
+ *   undefined for first sight (falls back to current-minute-only, never replaying history).
+ */
+export function matchesCronCatchup(cronExpr: string, timezone: string | undefined, lastFiredMs: number | undefined, now: Date = new Date()): boolean {
+  try {
+    const currentMinute = minuteStartMs(now);
+    if (lastFiredMs === undefined) {
+      return matchesCron(cronExpr, timezone);
+    }
+    const options = timezone ? { timezone } : {};
+    const job = new Cron(cronExpr, options);
+    // First cron instant strictly after the last-evaluated minute start.
+    const next = job.nextRun(new Date(lastFiredMs));
+    return !!next && next.getTime() < currentMinute + 60_000;
+  } catch (e) {
+    console.error(`[matchesCronCatchup] Error:`, e);
+    return false;
+  }
+}

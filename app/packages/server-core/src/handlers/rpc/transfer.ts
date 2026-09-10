@@ -27,6 +27,8 @@ interface TransferState {
   totalBytes: number
   chunkCount: number
   received: Set<number>
+  /** Cumulative decoded bytes accepted so far (duplicate chunks counted once). */
+  receivedBytes: number
   channel: string
   args: any[]
   largeArgIndex: number
@@ -35,6 +37,9 @@ interface TransferState {
 }
 
 const DEFAULT_TRANSFER_TTL_MS = 5 * 60 * 1000
+const MAX_TOTAL_BYTES = 500 * 1024 * 1024 // 500 MB
+/** One base64 chunk frame (~2.8MB covers the client's 2MB chunks; 8MB leaves headroom). */
+const MAX_CHUNK_DATA_BYTES = 8 * 1024 * 1024
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.transfer.START,
@@ -126,7 +131,6 @@ export function registerTransferHandlers(server: RpcServer): void {
 
     // Guard against resource exhaustion: cap total transfer size and chunk
     // count, and limit concurrent transfers per client.
-    const MAX_TOTAL_BYTES = 500 * 1024 * 1024 // 500 MB
     const MAX_CHUNK_COUNT = 10_000
     const MAX_CONCURRENT_TRANSFERS_PER_CLIENT = 3
 
@@ -155,6 +159,7 @@ export function registerTransferHandlers(server: RpcServer): void {
       totalBytes: opts.totalBytes,
       chunkCount: opts.chunkCount,
       received: new Set(),
+      receivedBytes: 0,
       channel: opts.channel,
       args: opts.args,
       largeArgIndex: opts.largeArgIndex,
@@ -188,10 +193,31 @@ export function registerTransferHandlers(server: RpcServer): void {
     if (typeof opts.data !== 'string' || opts.data.length === 0) {
       throw new Error('Missing chunk data')
     }
+    if (opts.data.length > MAX_CHUNK_DATA_BYTES) {
+      throw new Error(`Chunk too large: ${opts.data.length} bytes exceeds limit of ${MAX_CHUNK_DATA_BYTES}`)
+    }
+
+    // Retried chunks (client resends after a lost ack) are idempotent: the
+    // file is already on disk and the bytes were already accounted for.
+    if (transfer.received.has(opts.index)) {
+      return { received: opts.index }
+    }
+
+    // Enforce byte limits as data arrives — not only at commit — so a client
+    // cannot exceed its declared size or the server cap by streaming forever.
+    const padding = opts.data.endsWith('==') ? 2 : opts.data.endsWith('=') ? 1 : 0
+    const decodedBytes = Math.floor(opts.data.length * 3 / 4) - padding
+    const effectiveCap = Math.min(transfer.totalBytes, MAX_TOTAL_BYTES)
+    if (transfer.receivedBytes + decodedBytes > effectiveCap) {
+      throw new Error(
+        `Transfer exceeds declared size: ${transfer.receivedBytes + decodedBytes} bytes > ${effectiveCap} byte limit`
+      )
+    }
 
     const chunkPath = join(transfer.dir, `chunk-${String(opts.index).padStart(6, '0')}`)
     await writeFile(chunkPath, opts.data, 'utf-8')
     transfer.received.add(opts.index)
+    transfer.receivedBytes += decodedBytes
     rescheduleTransferCleanup(transfer)
 
     if ((opts.index + 1) % 10 === 0 || opts.index === transfer.chunkCount - 1) {

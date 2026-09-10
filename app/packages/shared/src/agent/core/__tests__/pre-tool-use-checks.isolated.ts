@@ -919,6 +919,10 @@ describe('shouldPromptInAskMode', () => {
   beforeEach(() => {
     pm = createMockPermissionManager();
     mockShouldAllowToolInMode.mockReset();
+    // Default: safe mode considers the tool read-only (allowed). Tests for
+    // mutations override this — shouldPromptInAskMode consults safe mode for
+    // mcp__/unknown tools.
+    mockShouldAllowToolInMode.mockImplementation(() => ({ allowed: true, reason: '' }));
     mockIsApiEndpointAllowed.mockReset();
     mockIsApiEndpointAllowed.mockImplementation(() => false);
     mockIsReadOnlyBashCommandWithConfig.mockReset();

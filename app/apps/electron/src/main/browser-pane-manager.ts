@@ -9,7 +9,7 @@
 import { join, parse as parsePath } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 import { validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
-import { BrowserView, BrowserWindow, app, ipcMain, nativeTheme, session, shell, type Session as ElectronSession } from 'electron'
+import { BrowserView, BrowserWindow, app, ipcMain, nativeTheme, session, type IpcMainInvokeEvent, type Session as ElectronSession, type WebContents } from 'electron'
 import { mainLog } from './logger'
 import type { WindowManager } from './window-manager'
 import { BrowserCDP, type AccessibilitySnapshot, type ElementGeometry } from './browser-cdp'
@@ -18,7 +18,7 @@ import {
   type BrowserEmptyStateLaunchResult,
   type BrowserInstanceInfo,
 } from '../shared/types'
-import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@craft-agent/shared/config'
+import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate, getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { CodedError } from '@craft-agent/shared/protocol'
 import { getBrowserLiveFxCornerRadii } from '../shared/browser-live-fx'
 import type {
@@ -405,7 +405,10 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         session: ses,
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        // The toolbar preload only requires 'electron' (contextBridge +
+        // ipcRenderer) — verified in the bundled dist/browser-toolbar-preload.cjs —
+        // so it runs fully sandboxed.
+        sandbox: true,
       },
     })
 
@@ -744,6 +747,18 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       } else {
         normalizedUrl = `https://duckduckgo.com/?q=${encodeURIComponent(normalizedUrl)}`
       }
+    }
+
+    // Scheme allowlist — never hand file://, craftagents:// or other schemes to
+    // loadURL from toolbar/agent input.
+    let scheme: string
+    try {
+      scheme = new URL(normalizedUrl).protocol
+    } catch {
+      throw new CodedError('INVALID_URL', `Cannot navigate to malformed URL: "${normalizedUrl}"`)
+    }
+    if (scheme !== 'https:' && scheme !== 'http:' && scheme !== 'about:') {
+      throw new CodedError('URL_SCHEME_NOT_ALLOWED', `Navigation scheme "${scheme}" is not allowed`)
     }
 
     const timeoutMs = 30_000
@@ -2264,10 +2279,14 @@ export class BrowserPaneManager implements IBrowserPaneManager {
   private async handleDeepLinkUrl(url: string): Promise<void> {
     if (!url.startsWith(CRAFT_DEEPLINK_SCHEME_PREFIX)) return
 
+    // In-app entry point: pages inside a browser pane (or its popups) may
+    // navigate to craftagents:// view routes, but must never dispatch
+    // destructive `action` deep links — handleDeepLink defaults
+    // allowActions to false, and we never re-open the scheme via
+    // shell.openExternal (that would loop back through the OS handler).
     try {
       if (!this.windowManager) {
-        mainLog.warn('[browser-pane] window manager unavailable for deep-link handling, falling back to shell.openExternal')
-        await shell.openExternal(url)
+        mainLog.warn(`[browser-pane] window manager unavailable, dropping deep link url=${url}`)
         return
       }
 
@@ -2279,8 +2298,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         mainLog.warn(`[browser-pane] deep-link handling failed: ${result.error ?? 'unknown error'} url=${url}`)
       }
     } catch (error) {
-      mainLog.warn(`[browser-pane] deep-link handling threw, falling back to shell.openExternal: ${error instanceof Error ? error.message : String(error)}`)
-      await shell.openExternal(url)
+      mainLog.warn(`[browser-pane] deep-link handling threw, dropping link: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -2417,33 +2435,45 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       return this.instances.get(instanceId)
     }
 
-    ipcMain.handle(TOOLBAR_CHANNELS.NAVIGATE, async (_event, instanceId: string, url: string) => {
+    // Only the toolbar BrowserView of the resolved instance may drive it —
+    // any other sender (page webContents, popups, other windows) is rejected.
+    const resolveForSender = (event: IpcMainInvokeEvent, instanceId: string): BrowserInstance | undefined => {
       const inst = findInstance(instanceId)
+      if (!inst) return undefined
+      if (inst.toolbarView.webContents.isDestroyed() || event.sender !== inst.toolbarView.webContents) {
+        mainLog.warn(`[browser-pane] toolbar ipc rejected senderId=${event.sender.id} instanceId=${instanceId}`)
+        return undefined
+      }
+      return inst
+    }
+
+    ipcMain.handle(TOOLBAR_CHANNELS.NAVIGATE, async (event, instanceId: string, url: string) => {
+      const inst = resolveForSender(event, instanceId)
       if (inst) await this.navigate(inst.id, url)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.GO_BACK, async (_event, instanceId: string) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.GO_BACK, async (event, instanceId: string) => {
+      const inst = resolveForSender(event, instanceId)
       if (inst) await this.goBack(inst.id)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.GO_FORWARD, async (_event, instanceId: string) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.GO_FORWARD, async (event, instanceId: string) => {
+      const inst = resolveForSender(event, instanceId)
       if (inst) await this.goForward(inst.id)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.RELOAD, async (_event, instanceId: string) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.RELOAD, async (event, instanceId: string) => {
+      const inst = resolveForSender(event, instanceId)
       if (inst) this.reload(inst.id)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.STOP, async (_event, instanceId: string) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.STOP, async (event, instanceId: string) => {
+      const inst = resolveForSender(event, instanceId)
       if (inst) this.stop(inst.id)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.MENU_GEOMETRY, async (_event, instanceId: string, open: boolean, height?: number) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.MENU_GEOMETRY, async (event, instanceId: string, open: boolean, height?: number) => {
+      const inst = resolveForSender(event, instanceId)
       if (!inst) return
 
       const normalizedOpen = !!open
@@ -2466,14 +2496,14 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       this.layoutAllViews(inst)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.HIDE, async (_event, instanceId: string) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.HIDE, async (event, instanceId: string) => {
+      const inst = resolveForSender(event, instanceId)
       mainLog.info(`[browser-pane] toolbar ipc hide requested instanceId=${instanceId} resolved=${inst?.id ?? 'none'}`)
       if (inst) this.hide(inst.id)
     })
 
-    ipcMain.handle(TOOLBAR_CHANNELS.DESTROY, async (_event, instanceId: string) => {
-      const inst = findInstance(instanceId)
+    ipcMain.handle(TOOLBAR_CHANNELS.DESTROY, async (event, instanceId: string) => {
+      const inst = resolveForSender(event, instanceId)
       mainLog.info(`[browser-pane] toolbar ipc destroy requested instanceId=${instanceId} resolved=${inst?.id ?? 'none'}`)
       if (inst) this.destroyInstance(inst.id)
     })
@@ -2493,10 +2523,37 @@ export class BrowserPaneManager implements IBrowserPaneManager {
 
   /** Register the `__browser:invoke` IPC handler. Call once at app startup. */
   registerCapabilityIpc(): void {
-    ipcMain.handle('__browser:invoke', async (_event, req: BrowserCapabilityRequest) => {
+    ipcMain.handle('__browser:invoke', async (event, req: BrowserCapabilityRequest) => {
+      this.validateCapabilitySender(event.sender, req)
       return await this.dispatchCapability(req)
     })
     mainLog.info('[browser-pane] Capability IPC handler registered')
+  }
+
+  /**
+   * Derive owner identity from the sender webContents, never from the request
+   * payload: the caller must be a registered application window, and the
+   * request's workspaceId must match the workspace that window actually belongs
+   * to (its remote workspace ID for remote-owned workspaces). Anything else is
+   * a spoofed bridge call and is rejected before dispatch.
+   */
+  private validateCapabilitySender(sender: WebContents, req: BrowserCapabilityRequest): void {
+    if (!this.windowManager) {
+      throw new CodedError('BROWSER_SENDER_NOT_ALLOWED', 'Browser capability is unavailable without a window manager.')
+    }
+    const senderWorkspaceId = this.windowManager.getWorkspaceForWindow(sender.id)
+    if (senderWorkspaceId == null) {
+      throw new CodedError('BROWSER_SENDER_NOT_ALLOWED',
+        'Browser capability requests are only accepted from registered application windows.')
+    }
+    if (req && typeof req.workspaceId === 'string') {
+      const workspace = getWorkspaceByNameOrId(senderWorkspaceId)
+      const expectedWorkspaceId = workspace?.remoteServer?.remoteWorkspaceId ?? senderWorkspaceId
+      if (req.workspaceId !== expectedWorkspaceId) {
+        throw new CodedError('BROWSER_WORKSPACE_MISMATCH',
+          `Browser capability request workspace does not match the sending window's workspace.`)
+      }
+    }
   }
 
   /** Owner-key namespacing: remote sessions can't collide with local sessions. */
@@ -3131,6 +3188,56 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     const initialUrl = sourceUrl || popupWindow.webContents.getURL?.() || 'about:blank'
     mainLog.info(`[browser-pane] popup created parent=${parentInstance.id} popupWebContentsId=${popupWcId} url=${initialUrl}`)
 
+    // Popups get the same navigation guards as the page view: deep links are
+    // intercepted (actions blocked inside handleDeepLinkUrl), and window.open
+    // is restricted to http(s) with a sandboxed popup.
+    popupWindow.webContents.on('will-navigate', (event, url) => {
+      if (url.startsWith(CRAFT_DEEPLINK_SCHEME_PREFIX)) {
+        event.preventDefault()
+        void this.handleDeepLinkUrl(url)
+      }
+    })
+
+    popupWindow.webContents.setWindowOpenHandler((details) => {
+      if (details.url.startsWith(CRAFT_DEEPLINK_SCHEME_PREFIX)) {
+        void this.handleDeepLinkUrl(details.url)
+        return { action: 'deny' }
+      }
+
+      let parsed: URL
+      try {
+        parsed = new URL(details.url)
+      } catch {
+        mainLog.warn(`[browser-pane] popup window-open denied parent=${parentInstance.id} reason=invalid_url url=${details.url}`)
+        return { action: 'deny' }
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        mainLog.warn(`[browser-pane] popup window-open denied parent=${parentInstance.id} reason=unsupported_protocol protocol=${parsed.protocol} url=${details.url}`)
+        return { action: 'deny' }
+      }
+
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 520,
+          height: 720,
+          minWidth: 420,
+          minHeight: 520,
+          show: true,
+          autoHideMenuBar: true,
+          modal: false,
+          webPreferences: {
+            partition: SESSION_PARTITION,
+            session: popupWindow.webContents.session,
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+          },
+        },
+      }
+    })
+
     popupWindow.webContents.on('did-navigate', (_event, urlFromEvent) => {
       const popupUrl = typeof popupWindow.webContents.getURL === 'function'
         ? popupWindow.webContents.getURL()
@@ -3350,16 +3457,19 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     if (this.partitionPermissionsInitialized) return
     this.partitionPermissionsInitialized = true
 
+    // Silent-allow set for the shared browser partition. Anything not listed
+    // here is denied for every origin. Deliberately excluded:
+    // - media / geolocation: capture device & location access must never be
+    //   granted silently to arbitrary websites.
+    // - clipboard-read / idle-detection: no documented product need; reading
+    //   the user's clipboard silently is a data-exfiltration risk.
+    // clipboard-sanitized-write stays so site "copy" buttons keep working.
     const allow = new Set([
       'fullscreen',
       'pointerLock',
       'window-management',
       'notifications',
-      'geolocation',
-      'media',
-      'clipboard-read',
       'clipboard-sanitized-write',
-      'idle-detection',
     ])
 
     if (typeof ses.setPermissionCheckHandler === 'function') {

@@ -144,6 +144,7 @@ export class WindowManager {
           this.eventSink ?? undefined,
           this.clientResolver ?? undefined,
           this.clientResolver?.(sourceWindow.webContents.id),
+          { allowActions: true },
         )
         if (!result.success) {
           windowLog.warn(`[url-safety] Blocked ${context}: unsupported internal deep link url=${url} error=${result.error ?? 'unknown'}`)
@@ -257,6 +258,9 @@ export class WindowManager {
         preload: join(__dirname, 'bootstrap-preload.cjs'),
         contextIsolation: true,
         nodeIntegration: false,
+        // sandbox:false is required: bootstrap-preload reads process.env
+        // (CRAFT_SERVER_URL, CRAFT_WORKSPACE_ID, CRAFT_VCREDIST_*) at startup,
+        // which sandboxed preloads cannot access.
         sandbox: false,
         webviewTag: false // Browser integration uses WebContentsView, not <webview>
       }

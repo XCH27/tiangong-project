@@ -201,6 +201,8 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.git.GET_WORKING_TREE,
   RPC_CHANNELS.git.GET_FILE_DIFF,
   RPC_CHANNELS.terminal.RUN_COMMAND,
+  // CLI runtime detection probes local binaries, same locality as RUN_COMMAND
+  RPC_CHANNELS.terminal.HANDSHAKE_RUNTIMES,
 
   // debug — local debug logging
   RPC_CHANNELS.debug.LOG,
@@ -312,6 +314,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.llmConnections.SET_DEFAULT,
   RPC_CHANNELS.llmConnections.SET_WORKSPACE_DEFAULT,
   RPC_CHANNELS.llmConnections.REFRESH_MODELS,
+  RPC_CHANNELS.llmConnections.GET_SUBSCRIPTION_QUOTA,
   RPC_CHANNELS.llmConnections.CHANGED,
 
   // chatgpt — OAuth via capability passthrough

@@ -7,7 +7,7 @@
  * Same class used locally (127.0.0.1, no auth) and remotely (0.0.0.0, auth).
  */
 
-import { WebSocketServer, type WebSocket } from 'ws'
+import { WebSocketServer, type RawData, type WebSocket } from 'ws'
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import { randomUUID } from 'node:crypto'
@@ -37,6 +37,14 @@ interface BufferedEvent {
   data: string
   timestamp: number
 }
+
+/**
+ * Largest WebSocket message the server accepts (ws `maxPayload`).
+ * Sized above the chunked-transfer path (~2.8MB base64 envelope per 2MB chunk)
+ * with headroom for inline image attachments; larger payloads must use
+ * transfer:start/chunk/commit.
+ */
+const WS_MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
 
 interface ClientConnection {
   id: string
@@ -153,6 +161,8 @@ export class WsRpcServer implements RpcServer {
   private httpServer: HttpServer | null = null
   private httpsServer: HttpsServer | null = null
   private clients = new Map<string, ClientConnection>()
+  /** O(1) WebSocket → client lookup for the per-message hot path. */
+  private clientsByWs = new Map<WebSocket, ClientConnection>()
   private handlers = new Map<string, HandlerFn>()
   private pendingInvokes = new Map<string, PendingInvoke>()
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -307,7 +317,7 @@ export class WsRpcServer implements RpcServer {
           this.httpHandler,
         )
 
-        this.wss = new WebSocketServer({ server: this.httpsServer })
+        this.wss = new WebSocketServer({ server: this.httpsServer, maxPayload: WS_MAX_PAYLOAD_BYTES })
 
         this.httpsServer.on('error', (err) => reject(err))
 
@@ -323,7 +333,7 @@ export class WsRpcServer implements RpcServer {
         // Plain WS + HTTP handler: create an HTTP server for both.
         this._protocol = 'ws'
         this.httpServer = createHttpServer(this.httpHandler)
-        this.wss = new WebSocketServer({ server: this.httpServer })
+        this.wss = new WebSocketServer({ server: this.httpServer, maxPayload: WS_MAX_PAYLOAD_BYTES })
 
         this.httpServer.on('error', (err) => reject(err))
 
@@ -341,6 +351,7 @@ export class WsRpcServer implements RpcServer {
         this.wss = new WebSocketServer({
           host: this.host,
           port: this.requestedPort,
+          maxPayload: WS_MAX_PAYLOAD_BYTES,
         })
 
         this.wss.on('listening', () => {
@@ -418,7 +429,11 @@ export class WsRpcServer implements RpcServer {
       }
     }, 5_000)
 
-    ws.on('message', async (raw) => {
+    // Route through a .catch wrapper: the listener awaits auth validation and
+    // request dispatch, and a rejection must never surface as an unhandled
+    // rejection per message. Reply generically and close — the client will
+    // re-handshake on reconnect.
+    const handleMessage = async (raw: RawData): Promise<void> => {
       let envelope: MessageEnvelope
       try {
         envelope = deserializeEnvelope(raw.toString())
@@ -501,6 +516,7 @@ export class WsRpcServer implements RpcServer {
               prevClient.alive = true
               prevClient.missedPongs = 0
               handshakeCompleted = true
+              this.clientsByWs.set(ws, prevClient)
 
               // Determine replay vs stale using the per-client delivery sequence.
               // Retained buffers continue collecting events while the client is disconnected,
@@ -599,6 +615,7 @@ export class WsRpcServer implements RpcServer {
           lastSentSeq: 0,
         }
         this.clients.set(clientId, client)
+        this.clientsByWs.set(ws, client)
         handshakeCompleted = true
 
         // Send handshake_ack
@@ -655,6 +672,15 @@ export class WsRpcServer implements RpcServer {
           }
         }
       }
+    }
+
+    ws.on('message', (raw) => {
+      handleMessage(raw).catch((err) => {
+        transportLog.error('Message handling failed', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+        ws.close(1011, 'Internal error')
+      })
     })
 
     ws.on('error', () => {
@@ -690,12 +716,33 @@ export class WsRpcServer implements RpcServer {
     }
 
     let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let timedOut = false
+    const handlerPromise = Promise.resolve().then(() => handler(ctx, ...(args ?? [])))
+    // The timeout path replies and moves on while the handler keeps running.
+    // Observe its late settlement so it neither rejects unhandled nor mutates
+    // state invisibly — log and swallow, per the race contract.
+    void handlerPromise.then(
+      () => {
+        if (timedOut) transportLog.warn('Handler settled after timeout', { channel, id })
+      },
+      (lateErr) => {
+        if (timedOut) {
+          transportLog.warn('Handler rejected after timeout', {
+            channel,
+            id,
+            error: lateErr instanceof Error ? lateErr.message : String(lateErr),
+          })
+        }
+      },
+    )
     try {
       const result = await Promise.race([
-        handler(ctx, ...(args ?? [])),
+        handlerPromise,
         new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`)),
-            WsRpcServer.HANDLER_TIMEOUT_MS)
+          timeoutId = setTimeout(() => {
+            timedOut = true
+            reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`))
+          }, WsRpcServer.HANDLER_TIMEOUT_MS)
         }),
       ])
       const response: MessageEnvelope = {
@@ -751,6 +798,11 @@ export class WsRpcServer implements RpcServer {
     ws.on('close', () => {
       transportLog.info('Client disconnected', { clientId: client.id })
       this.clients.delete(client.id)
+      // Drop the ws mapping only if it still points at this socket — on
+      // reconnect the client already moved to a newer WebSocket.
+      if (this.clientsByWs.get(ws) === client) {
+        this.clientsByWs.delete(ws)
+      }
 
       // Retain buffer for potential reconnect
       const timer = setTimeout(() => {
@@ -871,10 +923,7 @@ export class WsRpcServer implements RpcServer {
   }
 
   private findClientByWs(ws: WebSocket): ClientConnection | undefined {
-    for (const client of this.clients.values()) {
-      if (client.ws === ws) return client
-    }
-    return undefined
+    return this.clientsByWs.get(ws)
   }
 
   /** Handler/request errors — sent as type:'response' with error field. */

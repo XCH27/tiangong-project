@@ -204,7 +204,10 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
 
     // Save the config
     saveWorkspaceConfig(workspace.rootPath, config)
-    deps.platform.logger.info(`Workspace setting updated: ${key} = ${JSON.stringify(normalizedValue)}`)
+    // Never log values for secret-ish keys (tokens, keys, passwords).
+    const SECRET_KEY_PATTERN = /token|key|secret|password|credential/i
+    const loggedValue = SECRET_KEY_PATTERN.test(key) ? '[redacted]' : JSON.stringify(normalizedValue)
+    deps.platform.logger.info(`Workspace setting updated: ${key} = ${loggedValue}`)
   })
 
   // ============================================================

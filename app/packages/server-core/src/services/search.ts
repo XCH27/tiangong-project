@@ -24,6 +24,19 @@ export class SearchUnavailableError extends Error {
 // Track current search process to cancel on new search
 let currentSearchProcess: ChildProcess | null = null;
 
+// Processes killed because a newer search superseded them. Their close handler
+// must resolve empty rather than with silently-truncated partial results.
+const cancelledSearchProcesses = new WeakSet<ChildProcess>();
+
+function killSearchProcess(proc: ChildProcess): void {
+  // Platform-aware termination (SIGTERM doesn't exist on Windows)
+  if (process.platform === 'win32') {
+    proc.kill();
+  } else {
+    proc.kill('SIGTERM');
+  }
+}
+
 // Module-level platform ref — set once during init via setSearchPlatform()
 let _platform: PlatformServices | null = null;
 
@@ -245,12 +258,8 @@ export async function searchSessions(
 
     // Cancel previous search if still running (user typed new query)
     if (currentSearchProcess) {
-      // Platform-aware termination (SIGTERM doesn't exist on Windows)
-      if (process.platform === 'win32') {
-        currentSearchProcess.kill();
-      } else {
-        currentSearchProcess.kill('SIGTERM');
-      }
+      cancelledSearchProcesses.add(currentSearchProcess);
+      killSearchProcess(currentSearchProcess);
       currentSearchProcess = null;
     }
 
@@ -262,12 +271,7 @@ export async function searchSessions(
 
     // Set up timeout
     const timeoutHandle = setTimeout(() => {
-      // Platform-aware termination (SIGTERM doesn't exist on Windows)
-      if (process.platform === 'win32') {
-        rg.kill();
-      } else {
-        rg.kill('SIGTERM');
-      }
+      killSearchProcess(rg);
       handlerLog.warn('[search] Search timed out after', timeout, 'ms');
     }, timeout);
 
@@ -312,8 +316,9 @@ export async function searchSessions(
 
           // Skip messages with base64-encoded content (images, attachments)
           // The query can match inside base64 noise, producing false positives.
-          // Covers both content blocks ("type":"base64") and attachment thumbnails.
-          if (rawLine.includes('base64')) continue;
+          // Match the JSON field pattern — a plain 'base64' substring also hits
+          // prose like "encode it in base64", which is a legit match.
+          if (rawLine.includes('"type":"base64"')) continue;
 
           // Get or create session result
           let sessionResult = results.get(sessionId);
@@ -360,6 +365,15 @@ export async function searchSessions(
       // Clear reference if this is still the current search
       if (currentSearchProcess === rg) {
         currentSearchProcess = null;
+      }
+
+      // Superseded by a newer search — partial results would be silently
+      // truncated, so report nothing instead.
+      if (cancelledSearchProcesses.has(rg)) {
+        cancelledSearchProcesses.delete(rg);
+        searchLog.info('ripgrep:cancelled', { searchId });
+        resolve([]);
+        return;
       }
 
       if (code !== 0 && code !== 1) {

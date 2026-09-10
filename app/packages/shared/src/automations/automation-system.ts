@@ -503,6 +503,7 @@ export class AutomationSystem implements AutomationsConfigProvider {
       // Note: Command execution has been removed. Prompt-based execution for
       // non-Claude backends is not yet implemented. This method currently only
       // validates matching (including condition gating) — actual execution is a no-op.
+      // INERT by design; do not delete (public API for non-Claude backends).
       log.debug(`[AutomationSystem] Matched ${event} automation (prompt-based execution pending)`);
     }
 
@@ -521,6 +522,7 @@ export class AutomationSystem implements AutomationsConfigProvider {
    * currently supported via prompts, so this returns empty.
    */
   buildSdkHooks(): Partial<Record<AgentEvent, SdkAutomationCallbackMatcher[]>> {
+    // INERT: always returns {} — kept as public API for the SDK hook seam (see doc comment).
     return {};
   }
 

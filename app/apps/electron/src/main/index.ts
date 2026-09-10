@@ -291,7 +291,7 @@ app.on('open-url', (event, url) => {
   mainLog.info('Received deeplink:', url)
 
   if (windowManager) {
-    handleDeepLink(url, windowManager, moduleSink ?? undefined, moduleClientResolver ?? undefined).catch(err => {
+    handleDeepLink(url, windowManager, moduleSink ?? undefined, moduleClientResolver ?? undefined, undefined, { allowActions: true }).catch(err => {
       mainLog.error('Failed to handle deep link:', err)
     })
   } else {
@@ -311,7 +311,7 @@ if (!gotTheLock) {
     const url = commandLine.find(arg => arg.startsWith(`${DEEPLINK_SCHEME}://`))
     if (url && windowManager) {
       mainLog.info('Received deeplink from second instance:', url)
-      handleDeepLink(url, windowManager, moduleSink ?? undefined, moduleClientResolver ?? undefined).catch(err => {
+      handleDeepLink(url, windowManager, moduleSink ?? undefined, moduleClientResolver ?? undefined, undefined, { allowActions: true }).catch(err => {
         mainLog.error('Failed to handle deep link:', err)
       })
     } else if (windowManager) {
@@ -777,8 +777,21 @@ app.whenReady().then(async () => {
         return removed
       })
 
-      // Cross-server RPC — invoke a channel on an arbitrary remote server
+      // Cross-server RPC — invoke a channel on a remote server.
+      // NOTE: the renderer supplies url+token because the "connect remote"
+      // flow needs to reach a server before it exists in workspace config.
+      // The URL is therefore constrained to http(s)/ws(s) schemes to keep this
+      // from becoming a file:/custom-scheme SSRF primitive.
       ipcMain.handle('server:invokeOnServer', async (_event, url: string, token: string, channel: string, ...args: unknown[]) => {
+        let parsed: URL
+        try {
+          parsed = new URL(url)
+        } catch {
+          throw new Error('Invalid server URL')
+        }
+        if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsed.protocol)) {
+          throw new Error(`Server URL scheme "${parsed.protocol}" is not allowed`)
+        }
         const { connectToRemote } = await import('./handlers/workspace')
         const { client, error } = await connectToRemote(url, token)
         if (!client) throw new Error(error ?? 'Connection failed')
@@ -928,7 +941,10 @@ app.whenReady().then(async () => {
         e.returnValue = instance.port
       })
       ipcMain.on('__get-ws-token', (e) => {
-        e.returnValue = instance.token
+        // Only registered application windows may read the server auth token —
+        // browser panes, popups and any other webContents get nothing.
+        const isKnownWindow = windowManager?.getWorkspaceForWindow(e.sender.id) != null
+        e.returnValue = isKnownWindow ? instance.token : ''
       })
       ipcMain.on('__get-workspace-remote-config', (e) => {
         const wsId = windowManager?.getWorkspaceForWindow(e.sender.id)
@@ -1107,7 +1123,7 @@ app.whenReady().then(async () => {
     // Process pending deep link from cold start
     if (pendingDeepLink) {
       mainLog.info('Processing pending deep link:', pendingDeepLink)
-      await handleDeepLink(pendingDeepLink, windowManager, moduleSink ?? undefined, moduleClientResolver ?? undefined)
+      await handleDeepLink(pendingDeepLink, windowManager, moduleSink ?? undefined, moduleClientResolver ?? undefined, undefined, { allowActions: true })
       pendingDeepLink = null
     }
 

@@ -41,6 +41,7 @@ export const EXAMPLE_CODE_REVIEW_KIT: readonly ExpertSkill[] = [
     name: 'Check the tests',
     body: 'Decide whether the tests would fail if the behaviour regressed.',
     triggers: ['tests', 'coverage', '测试'],
+    downstream: ['review.summary'],
   },
   {
     id: 'review.security',

@@ -295,7 +295,7 @@ describe('BrowserPaneManager', () => {
     expect(result.overrideBrowserWindowOptions?.webPreferences?.contextIsolation).toBe(true)
   })
 
-  it('denies app deep-link popups and forwards to deep-link handler', async () => {
+  it('denies app deep-link popups and never re-opens the scheme externally', async () => {
     manager.createInstance('popup-deeplink')
     const instance = (manager as any).instances.get('popup-deeplink')
     const openHandler = instance.pageView.webContents.setWindowOpenHandler.mock.calls[0][0]
@@ -308,7 +308,10 @@ describe('BrowserPaneManager', () => {
 
     expect(result).toEqual({ action: 'deny' })
     await Bun.sleep(0)
-    expect(mockShellOpenExternal).toHaveBeenCalledWith('craftagents://settings')
+    // Deep links must never be handed back to the OS protocol handler —
+    // that would loop (or, for action links, escalate an in-app navigation
+    // into a privileged deep-link dispatch).
+    expect(mockShellOpenExternal).not.toHaveBeenCalled()
   })
 
   it('destroys child popups when parent instance is destroyed', () => {
@@ -395,10 +398,34 @@ describe('BrowserPaneManager', () => {
     expect(destroyRegistration).toBeTruthy()
     if (!destroyRegistration) throw new Error('Expected browser-toolbar:destroy IPC registration')
 
+    const instance = (manager as any).instances.get('d-ipc-destroy')
     const [, destroyHandler] = destroyRegistration
-    await destroyHandler({}, 'd-ipc-destroy')
+    await destroyHandler({ sender: instance.toolbarView.webContents }, 'd-ipc-destroy')
 
     expect(manager.listInstances()).toHaveLength(0)
+  })
+
+  it('rejects toolbar IPC from a non-toolbar sender', async () => {
+    manager.createInstance('d-ipc-wrong-sender')
+    manager.registerToolbarIpc()
+
+    const destroyRegistration = (
+      mockIpcMainHandle.mock.calls as unknown as Array<[
+        string,
+        (_event: unknown, instanceId: string) => Promise<void>,
+      ]>
+    ).find(([channel]) => channel === 'browser-toolbar:destroy')
+
+    expect(destroyRegistration).toBeTruthy()
+    if (!destroyRegistration) throw new Error('Expected browser-toolbar:destroy IPC registration')
+
+    const instance = (manager as any).instances.get('d-ipc-wrong-sender')
+    const [, destroyHandler] = destroyRegistration
+    // The page webContents (or any non-toolbar sender) must not be able to
+    // drive toolbar actions.
+    await destroyHandler({ sender: instance.pageView.webContents }, 'd-ipc-wrong-sender')
+
+    expect(manager.listInstances()).toHaveLength(1)
   })
 
   it('emits removed callback exactly once when destroy triggers closed', () => {

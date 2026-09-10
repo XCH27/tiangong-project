@@ -1154,7 +1154,7 @@ const BaseLabelConfigSchema = z.object({
    * Identity facet (Decision E10): functional organize/filter vs identity role guidance.
    * Omit or "functional" = no role inject. "identity" may carry systemPromptPreset.
    */
-  kind: z.enum(['functional', 'identity']).optional(),
+  kind: z.enum(['functional', 'expert', 'identity']).optional(),
   /**
    * Role guidance injected when session carries this label id (kind=identity).
    * Does not grant tools or bypass the permission path.
@@ -1171,7 +1171,7 @@ type LabelConfigSchemaType = z.ZodType<{
   icon?: string;
   valueType?: 'string' | 'number' | 'date' | 'link';
   autoRules?: Array<{ pattern: string; flags?: string; valueTemplate?: string; description?: string }>;
-  kind?: 'functional' | 'identity';
+  kind?: 'functional' | 'expert' | 'identity';
   systemPromptPreset?: string;
   children?: LabelConfigSchemaType[];
 }>;

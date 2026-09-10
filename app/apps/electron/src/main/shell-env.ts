@@ -9,7 +9,7 @@
  * like Homebrew (gh, brew), nvm, pyenv, etc. are available to the agent.
  */
 
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { mainLog } from './logger'
 
 // Environment variables that should NOT be imported from the shell
@@ -45,7 +45,7 @@ export function loadShellEnv(): void {
     // -l = login shell (sources profile files like .zprofile)
     // -i = interactive shell (sources rc files like .zshrc)
     // We use a marker to separate shell startup output from env output
-    const output = execSync(`${shell} -l -i -c 'echo __ENV_START__ && env'`, {
+    const output = execFileSync(shell, ['-l', '-i', '-c', 'echo __ENV_START__ && env'], {
       encoding: 'utf-8',
       timeout: 5000,
       env: {

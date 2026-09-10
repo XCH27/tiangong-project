@@ -19,6 +19,7 @@ import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { mkdirSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 // Pi SDK
 import {
@@ -56,7 +57,7 @@ import { bedrockProviderModule } from '@earendil-works/pi-ai/bedrock-provider';
 setBedrockProviderModule(bedrockProviderModule);
 
 // Model resolution (extracted for testability + custom-endpoint precedence)
-import { resolvePiModel, isDeniedMiniModelId, isModelNotFoundError } from './model-resolution.ts';
+import { resolvePiModel, isDeniedMiniModelId, isModelNotFoundError, resolvedModelProvider } from './model-resolution.ts';
 import { pickProviderAppropriateMiniModel } from './pick-mini-model.ts';
 import {
   buildCustomEndpointModelDef,
@@ -170,7 +171,7 @@ type EnrichedToolExecutionStartEvent = Extract<AgentSessionEvent, { type: 'tool_
 type OutboundAgentEvent = AgentSessionEvent | EnrichedToolExecutionStartEvent;
 
 /** Messages to main process (stdout) */
-interface OutboundReady { type: 'ready'; sessionId: string | null; callbackPort: number }
+interface OutboundReady { type: 'ready'; sessionId: string | null; callbackPort: number; callbackToken: string }
 interface OutboundEvent { type: 'event'; event: OutboundAgentEvent }
 interface OutboundPreToolUseReq {
   type: 'pre_tool_use_request';
@@ -252,6 +253,32 @@ let currentUserMessage = '';
 const pendingPreToolUse = new Map<string, { resolve: (response: { action: string; input?: Record<string, unknown>; reason?: string }) => void }>();
 const pendingToolExecutions = new Map<string, { resolve: (result: { content: string; isError: boolean }) => void }>();
 
+// Cap on how long a handshake promise may wait for the main process before
+// resolving with an error — a dropped response (crash, abort race) must not
+// hang the SDK's tool loop forever.
+const PENDING_HANDSHAKE_TIMEOUT_MS = 5 * 60_000;
+
+function addPendingWithTimeout<T>(
+  map: Map<string, { resolve: (value: T) => void }>,
+  key: string,
+  timeoutValue: T,
+): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => {
+      if (map.delete(key)) {
+        debugLog(`Pending request ${key} timed out after ${PENDING_HANDSHAKE_TIMEOUT_MS / 1000}s`);
+        resolve(timeoutValue);
+      }
+    }, PENDING_HANDSHAKE_TIMEOUT_MS);
+    map.set(key, {
+      resolve: (value: T) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+    });
+  });
+}
+
 // Pending session MCP tool calls for completion detection
 const pendingSessionToolCalls = new Map<string, { toolName: string; arguments: Record<string, unknown> }>();
 
@@ -276,6 +303,20 @@ let toolsChanged = false;
 // Callback server for call_llm
 let callbackServer: http.Server | null = null;
 let callbackPort = 0;
+// Random bearer token required on every callback request — the server binds
+// 127.0.0.1, but any local process can reach loopback, so an unauthenticated
+// endpoint would let other local processes drive call_llm on this session's
+// credentials. Passed to legitimate consumers via the 'ready' message and
+// the CRAFT_LLM_CALLBACK_TOKEN env var.
+const callbackToken = randomBytes(32).toString('hex');
+process.env.CRAFT_LLM_CALLBACK_TOKEN = callbackToken;
+
+function isAuthorizedCallback(req: http.IncomingMessage): boolean {
+  const header = req.headers.authorization ?? '';
+  const expected = `Bearer ${callbackToken}`;
+  if (header.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(header), Buffer.from(expected));
+}
 
 // ============================================================
 // JSONL I/O
@@ -316,6 +357,11 @@ async function startCallbackServer(): Promise<void> {
   const server = http.createServer(async (req, res) => {
     if (req.method !== 'POST' || req.url !== '/call-llm') {
       res.writeHead(404);
+      res.end();
+      return;
+    }
+    if (!isAuthorizedCallback(req)) {
+      res.writeHead(401);
       res.end();
       return;
     }
@@ -633,7 +679,16 @@ async function ensureSession(): Promise<AgentSession> {
         // Verify resolved model's provider is compatible with the authenticated provider.
         // Without this, a model that resolves to a different provider (e.g. azure-openai-responses
         // when authed as github-copilot) would cause "No API key found" at runtime.
-        const resolvedProvider = (piModel as any)?.provider;
+        const resolvedProvider = resolvedModelProvider(piModel);
+        if (!resolvedProvider && initConfig.piAuth) {
+          // A model without a provider can't be checked for compatibility —
+          // surface it instead of silently skipping the model set.
+          send({
+            type: 'error',
+            message: `Model ${initConfig.model} resolved without a provider; cannot verify compatibility with ${initConfig.piAuth.provider}`,
+            code: 'model_provider_missing',
+          });
+        }
         const isCompatible = !initConfig.piAuth ||
           resolvedProvider === initConfig.piAuth.provider ||
           resolvedProvider === 'custom-endpoint';
@@ -704,9 +759,14 @@ async function requestPreToolUseApproval(
     input,
   });
 
-  const response = await new Promise<{ action: string; input?: Record<string, unknown>; reason?: string }>((resolve) => {
-    pendingPreToolUse.set(requestId, { resolve });
-  });
+  const response = await addPendingWithTimeout<{ action: string; input?: Record<string, unknown>; reason?: string }>(
+    pendingPreToolUse,
+    requestId,
+    {
+      action: 'block',
+      reason: `Timed out waiting for pre-tool-use approval of "${sdkToolName}"`,
+    },
+  );
 
   if (response.action === 'block') {
     throw new Error(response.reason || `Tool "${sdkToolName}" is not allowed`);
@@ -868,8 +928,9 @@ function buildProxyTools(): ToolDefinition<any, any>[] {
         args: approvedInput,
       });
 
-      const result = await new Promise<{ content: string; isError: boolean }>((resolve) => {
-        pendingToolExecutions.set(requestId, { resolve });
+      const result = await addPendingWithTimeout(pendingToolExecutions, requestId, {
+        content: `Tool "${def.name}" timed out waiting for the main process`,
+        isError: true,
       });
 
       return {
@@ -908,7 +969,7 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
     const authProvider = initConfig.piAuth.provider;
     const bareModel = model.startsWith('pi/') ? model.slice(3) : model;
     const resolved = resolvePiModel(modelRegistry, bareModel, authProvider, shouldPreferCustomEndpoint());
-    const resolvedProvider = (resolved as any)?.provider;
+    const resolvedProvider = resolvedModelProvider(resolved);
     const isCompatible = resolvedProvider === authProvider || resolvedProvider === 'custom-endpoint';
     if (!resolved || !isCompatible || isDeniedMiniModelId(model, piAuthProvider)) {
       // Anthropic: keep Haiku (the cheap/fast mini). For every other provider
@@ -1055,7 +1116,7 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
           const resolved = resolvePiModel(modelRegistry, candidate, initConfig!.piAuth?.provider, shouldPreferCustomEndpoint());
           if (!resolved) return false;
           if (initConfig!.piAuth) {
-            const rp = (resolved as any).provider;
+            const rp = resolvedModelProvider(resolved);
             if (rp !== initConfig!.piAuth.provider && rp !== 'custom-endpoint') {
               return false;
             }
@@ -1182,15 +1243,36 @@ function handleSessionEvent(event: AgentSessionEvent): void {
           debugLog(`Prefetching ${prefetchableToolCalls.length} parallel ${prefetchableToolCalls[0].name} calls`);
           for (const tc of prefetchableToolCalls) {
             const requestId = `prefetch-${tc.id}`;
-            const promise = new Promise<{ content: string; isError: boolean }>((resolve) => {
-              pendingToolExecutions.set(requestId, { resolve });
-            });
-            send({
-              type: 'tool_execute_request',
-              requestId,
-              toolName: tc.name!,
-              args: (tc.arguments ?? {}) as Record<string, unknown>,
-            });
+            // Route through the same pre-tool-use handshake as the sequential
+            // path — firing tool_execute_request directly would bypass the
+            // permission gate in Ask mode. The proxy tool's execute() skips
+            // its own handshake on a cache hit, so approval happens exactly
+            // once per tool call.
+            const promise = (async (): Promise<{ content: string; isError: boolean }> => {
+              try {
+                const approvedInput = await requestPreToolUseApproval(
+                  tc.name!,
+                  (tc.arguments ?? {}) as Record<string, unknown>,
+                  tc.id,
+                );
+                const resultPromise = addPendingWithTimeout(pendingToolExecutions, requestId, {
+                  content: `Prefetched tool "${tc.name}" timed out waiting for the main process`,
+                  isError: true,
+                });
+                send({
+                  type: 'tool_execute_request',
+                  requestId,
+                  toolName: tc.name!,
+                  args: approvedInput,
+                });
+                return await resultPromise;
+              } catch (err) {
+                return {
+                  content: err instanceof Error ? err.message : String(err),
+                  isError: true,
+                };
+              }
+            })();
             prefetchCache.set(tc.id!, promise);
           }
         }
@@ -1268,6 +1350,7 @@ async function handleInit(msg: Extract<InboundMessage, { type: 'init' }>): Promi
     type: 'ready',
     sessionId: null,
     callbackPort,
+    callbackToken,
   });
 }
 
@@ -1407,6 +1490,14 @@ async function handleAbort(): Promise<void> {
     pending.resolve({ action: 'block', reason: 'Aborted' });
   }
   pendingPreToolUse.clear();
+
+  // Resolve all in-flight tool executions — without this a proxy tool whose
+  // tool_execute_request was already sent would await a response that may
+  // never arrive, hanging the SDK's executeToolCalls loop forever.
+  for (const [, pending] of pendingToolExecutions) {
+    pending.resolve({ content: 'Aborted', isError: true });
+  }
+  pendingToolExecutions.clear();
 
   // Clear speculative prefetch cache — in-flight prefetches will resolve but never be consumed
   prefetchCache.clear();

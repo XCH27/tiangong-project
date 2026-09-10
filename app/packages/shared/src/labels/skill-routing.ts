@@ -86,7 +86,12 @@ function matchesAny(request: string, phrases: readonly string[]): boolean {
   const haystack = normalize(request)
   return phrases.some((phrase) => {
     const needle = normalize(phrase)
-    return needle.length > 0 && haystack.includes(needle)
+    if (needle.length === 0) return false
+    // Word-boundary match: a bare substring lets a one-letter trigger like
+    // "y" fire on "entirely", and a catch-all that fires on everything is a
+    // routing bug, not a trigger.
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`).test(haystack)
   })
 }
 

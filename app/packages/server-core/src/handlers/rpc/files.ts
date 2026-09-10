@@ -1,4 +1,4 @@
-import { readFile, writeFile, unlink, mkdir, readdir, stat } from 'fs/promises'
+import { readFile, writeFile, unlink, mkdir, readdir, stat, realpath } from 'fs/promises'
 import { isAbsolute, join, resolve, dirname, parse as parsePath } from 'path'
 import { homedir } from 'os'
 import { validatePathFormat } from '../../utils/path-validation'
@@ -29,34 +29,43 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.fs.LIST_DIRECTORY,
 ] as const
 
+const sensitiveUserPathPatterns = [
+  /\.ssh[\\/]/,
+  /\.gnupg[\\/]/,
+  /\.aws[\\/]credentials/,
+  /\.config[\\/]gcloud/,
+  /\.env$/,
+  /\.env\./,
+  /credentials\.json$/,
+  /secrets?\./i,
+  /\.pem$/,
+  /\.key$/,
+  /id_rsa/,
+  /id_ecdsa/,
+  /id_ed25519/,
+  /\.bash_history$/,
+  /\.zsh_history$/,
+  /\.sh_history$/,
+  /\.npmrc$/,
+  /\.pypirc$/,
+  /\.netrc$/,
+  /\.gitconfig$/,
+  /\.docker[\\/]config\.json$/,
+  /\.kube[\\/]config$/,
+  /\.config[\\/]gh[\\/]hosts\.yml$/,
+]
+
 /** Block the same sensitive paths even for user-consent attachment reads. */
-function isSensitiveUserPath(filePath: string): boolean {
-  const sensitivePatterns = [
-    /\.ssh[\\/]/,
-    /\.gnupg[\\/]/,
-    /\.aws[\\/]credentials/,
-    /\.config[\\/]gcloud/,
-    /\.env$/,
-    /\.env\./,
-    /credentials\.json$/,
-    /secrets?\./i,
-    /\.pem$/,
-    /\.key$/,
-    /id_rsa/,
-    /id_ecdsa/,
-    /id_ed25519/,
-    /\.bash_history$/,
-    /\.zsh_history$/,
-    /\.sh_history$/,
-    /\.npmrc$/,
-    /\.pypirc$/,
-    /\.netrc$/,
-    /\.gitconfig$/,
-    /\.docker[\\/]config\.json$/,
-    /\.kube[\\/]config$/,
-    /\.config[\\/]gh[\\/]hosts\.yml$/,
-  ]
-  return sensitivePatterns.some((pattern) => pattern.test(filePath))
+async function isSensitiveUserPath(filePath: string): Promise<boolean> {
+  // Canonicalize first: a symlink into ~/.ssh etc. must not slip past the
+  // string patterns just because the user picked the link, not the target.
+  let resolved = filePath
+  try {
+    resolved = await realpath(filePath)
+  } catch {
+    // Unresolvable path — fall back to matching the raw string
+  }
+  return sensitiveUserPathPatterns.some((pattern) => pattern.test(filePath) || pattern.test(resolved))
 }
 
 export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): void {
@@ -203,7 +212,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
     try {
       if (!path || typeof path !== 'string' || !isAbsolute(path)) return null
       // Consent model allows any absolute user-picked path, but never secrets.
-      if (isSensitiveUserPath(path)) {
+      if (await isSensitiveUserPath(path)) {
         deps.platform.logger.warn('[readUserAttachment] blocked sensitive path')
         return null
       }
@@ -213,7 +222,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
         deps.platform.logger.warn(`[readUserAttachment] file exceeds ${USER_ATTACHMENT_MAX_BYTES} bytes, skipping: ${path}`)
         return null
       }
-      const attachment = readFileAttachment(path)
+      const attachment = await readFileAttachment(path)
       if (!attachment) return null
       try {
         const thumbBuffer = await deps.platform.imageProcessor.process(path, {
@@ -584,7 +593,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
 
     // Block sensitive directories even for folder picker — prevents remote
     // clients from enumerating ~/.ssh, ~/.gnupg, ~/.aws, etc.
-    if (isSensitiveUserPath(resolved) || isSensitiveUserPath(resolved + '/')) {
+    if (await isSensitiveUserPath(resolved) || await isSensitiveUserPath(resolved + '/')) {
       throw new Error('Access denied: cannot list sensitive directory')
     }
 

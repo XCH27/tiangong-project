@@ -8,6 +8,19 @@ export { isDeniedMiniModelId } from '../../shared/src/config/llm-connections.ts'
 type PiModel<T = any> = ReturnType<PiModelRegistry['find']>;
 
 /**
+ * The Pi SDK's registry model objects carry a `provider` string at runtime,
+ * but the declared return type of `registry.find` doesn't expose it. Read it
+ * through this typed helper instead of scattering `(model as any).provider`
+ * casts — an absent provider now reads as `undefined` everywhere, not as an
+ * any-typed hole.
+ */
+export function resolvedModelProvider(model: unknown): string | undefined {
+  if (typeof model !== 'object' || model === null) return undefined;
+  const provider = (model as { provider?: unknown }).provider;
+  return typeof provider === 'string' && provider.length > 0 ? provider : undefined;
+}
+
+/**
  * Resolve a Pi SDK model from the registry, with optional custom-endpoint precedence.
  *
  * Resolution order:
@@ -56,7 +69,7 @@ export function resolvePiModel(
   const allModels = modelRegistry.getAll();
   const match = allModels.find(m =>
     (m.id === bareId || m.name === bareId) &&
-    (!piAuthProvider || (m as any).provider === piAuthProvider || (m as any).provider === 'custom-endpoint'),
+    (!piAuthProvider || resolvedModelProvider(m) === piAuthProvider || resolvedModelProvider(m) === 'custom-endpoint'),
   );
   if (match) return match;
 
