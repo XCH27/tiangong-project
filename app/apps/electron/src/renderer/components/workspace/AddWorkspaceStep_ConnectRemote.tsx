@@ -218,7 +218,7 @@ export function AddWorkspaceStep_ConnectRemote({
       <AddWorkspaceStepHeader
         title={isReconnectMode ? t("workspace.reconnect", { name: reconnectWorkspace!.name }) : t("workspace.connectRemote")}
         description={isReconnectMode
-          ? t("workspace.connectRemoteDesc")
+          ? t("workspace.reconnectDesc")
           : t("workspace.connectRemoteDesc")}
       />
 
