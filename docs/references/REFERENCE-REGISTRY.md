@@ -216,6 +216,34 @@ reworked locally).
 | `software/openchamber` | MIT · JavaScript + TypeScript | `packages/web/server/lib/browser-control/{broker,routes}.js` + its `DOCUMENTATION.md`; `packages/ui/src/lib/browser/` | **Specification input for the browser seam, and the clearest statement of the pattern this whole intake keeps finding.** The server can never act on a page; it publishes one action and waits. Invariants, each naming the failure it prevents: **capability belongs to the connection, not to configuration** — a client declares it can drive a page by opening its event stream with `browser=1`, which only a Chromium host does, so there is no setting to enable and no restart to remember; exactly one client performs a request, claimed over a separate endpoint because deciding by whose result arrives first is too late — by then each has already clicked; nobody listening is answered immediately with a 503 describing the environment, because a blocked wait followed by a timeout cannot be told apart from a hung page; a client that accepted and vanished still times out, because assuming success reports an interaction that never happened. The UI half adds page annotation (overlay, screenshot, prompt, session) so a human can point at the page and hand that to the agent, plus dev-server discovery, dev tunnel and crash recovery |
 | `software/craft-agents-oss` | Apache-2.0 · TypeScript | v0.11.2 → v0.12.0, 97 files / +1751 −545 (bun.lock +560 of it) | **Five bounded REUSE candidates, two unreviewed releases.** `session-tools-core/handlers/archive-session.ts` + `server-core/sessions/archive-guards.ts` make archive an agent-callable tool with guards rather than a UI-only action (R1 archive/labels). `shared/src/mcp/proxy-tool-name.ts` de-collides tool names across MCP servers — a prerequisite for any kit that projects a tool subset. `app-shell/inherited-filter-params.ts` gives sidebar filter inheritance, which is R1's "filters are states of one list". `server-core/bootstrap/lock-identity.ts` settles single-instance identity at bootstrap. Plus a startup migration in `shared/src/config/storage.ts`. No new authority in any of them |
 
+## Owner-provided UI captures, 2026-09-10 (QoderWork CN · TRAE SOLO CN) — `EVIDENCE_ONLY`
+
+**Licence status decides what these are.** Both are proprietary commercial desktop applications,
+installed on the owner's own machine and captured there at owner direction. There is no licence
+permitting reuse of their code or their visual design. They are therefore `EVIDENCE_ONLY` under the
+same ceiling as `Kun` and `cockpit-tools`: **information architecture and interaction patterns may
+be read and re-specified in Fleet's own terms; markup, styles, assets and visual design may not be
+copied, and Fleet must not be made to look like either product.** Nothing in the captures is a port
+target.
+
+Captures live at `/Volumes/AIGC/Paper Clone Outputs/app-{qoderwork-cn,trae-work-cn}-2026-09-10T…/`
+— renderer DOM over Electron CDP, with recovered stylesheets, an interaction graph, and a
+reconstruction. The Qoder capture records 18,285 nodes, 488 localized materials, 4 stylesheets, 87
+authored motion rules, 26 hover panels and a causality journal of 14 interactions / 64 reveals.
+
+| Observation | Where | What Fleet does today, and the reading |
+|---|---|---|
+| **Three-tier token system** — palette (`--color-amber-500`, oklch) → semantic (`--color-bg-{base,layout,container,elevated,highlight,highlight-hover,mask,spotlight}`, `--color-text-{,secondary,tertiary,quaternary}`, `--color-fill-*`, `--color-border-{,secondary,tertiary}`, and a full family per status: `{base,hover,active,bg,bg-hover,border,border-hover,text}`) → component (`--agents-content-area-{bg,gap,radius}`). Four themes ship as alternate values on the semantic layer only | qoder `assets/styles/globals-*.css` (298 KB) | Fleet's `--spacing: .25rem` matches exactly; the structure does not. Fleet has one `--background` with `--card: var(--background)` — **card and page are literally the same value, so there is no elevation** — and expresses depth as `foreground` at an opacity step (UI-SPEC §1/§3). That is a defensible, simpler system and the six-colour rule is enforced by a guard after real violations (H34). The gap worth taking seriously is **surface elevation**: Fleet nests shell → workbench → panel → popover, and with one background token each layer either reads identically or someone reaches for a literal — which is exactly the H34 violation history. Adding elevation is a UI-SPEC authority change and is **not** taken here |
+| **Kit cards state the payload as counts** — "8 个技能 · 3 个数据连接 · v1.1.1" in the card footer — and label the **action**, not the state: an installed kit's button reads 「定制此套件」, never "installed" | qoder 专家套件 page | Adopted in part (`fd47db6ae`): the kit payload block now reports resolved counts instead of a verdict over an empty array. The card/market layout is a later slice |
+| **Market and installed are two counted tabs in one page** — 「套件广场 20 · 已安装 1」 — with horizontal category chips and a `>` overflow scroller, not a dropdown and not a second route | qoder | Fleet's `kit-gallery.ts` has `browseKits`/`admitInstall` written with no surface at all. This is the shape when one is built |
+| **The authoring entry sits inside the marketplace banner** — 「+ 让 QoderWork 帮我创建」 — so creating a kit is an offer at the moment of browsing, not a separate flow | qoder | Fleet has no authoring flow. `skills/plugin-creator/SKILL.md` (read 2026-09-10, recorded above) is the conversational contract behind that button |
+| **Left nav is flat and the market is one page.** Qoder: 扩展 → {专家套件, 技能, 连接器} as three peers. Trae: 新建任务 / 插件市场 / 模板库 / 自动化 / 办公助理 / 我的文件, no nesting, with a Work / Code / Design mode switcher above it | both | Corroborates the routing discipline already recorded from Cindy's source: settings is one route with `?tab=`, retired detail routes redirect to the list rather than 404 |
+| **Trae's market is a conventional app store** — featured carousel, category sections, 3-column compact rows, per-row 「+ 安装」 / 「💬 使用」 | trae | Weaker for Fleet's purpose than Qoder's: it never says what an item carries. Recorded so the comparison is not re-run |
+
+**What this does not license.** Fleet's visual identity, colour count, spacing ladder and motion
+rules remain `UI-SPEC.md` and `design-library/22-motion.md`. Any change to the token structure is an
+owner decision against that authority, not something an intake row can settle.
+
 ## Video candidate reality check
 
 The owner's recovered list is valuable and remains intact in
