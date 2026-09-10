@@ -2,7 +2,7 @@
 
 These owner statements remain active product intent. Quote them verbatim when exact wording matters;
 do not turn this file into an archive or infer implementation status from it. The two binding UI
-statements also live in `../01-WHITEPAPER.md` §5.
+statements also live in `../PRODUCT.md` §5.
 
 ## OV-001 — Software must keep growing without becoming a mess (2026-07-08)
 

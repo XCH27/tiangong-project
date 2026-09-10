@@ -3,7 +3,7 @@
 > The complete page/surface inventory of the target product, the state standard every surface must
 > meet, and the rules that let frontend work run **ahead of** backend behavior without repeating the
 > display-only catastrophe. Companion breadth index: [`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md).
-> Visual/component rules stay in [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md); owner UI
+> Visual/component rules stay in [`UI-SPEC.md`](UI-SPEC.md); owner UI
 > philosophy (“do not add entities without necessity”; simplify Craft, do not invent) binds everything here.
 
 ## 1. Shell regions (exists today, Craft)
@@ -270,7 +270,7 @@ Acceptance for any page slice includes walking these states
 Frontend work may run ahead of backend behavior under these rules:
 
 1. **Spec first.** A page batch needs its page spec (a section in the domain spec or a short page
-   spec from [`specs/SPEC-TEMPLATE.md`](specs/SPEC-TEMPLATE.md) §Pages) covering: purpose, primary
+   spec from `specs/SPEC-TEMPLATE.md` §Pages) covering: purpose, primary
    home, information architecture, states (§4), and the data contract it consumes.
 2. **Visual anchor before code.** The Goal names the exact existing shell/page/component and
    playground state that define the visual language, plus one intentional delta. A new page still
@@ -312,5 +312,5 @@ as finished product.
 Dialogs, drawers, and settings sections follow the same rules as pages (§3 justification, §4
 states, §5 track). Settings additions specifically: settings are for credentials, security/privacy,
 retention, connections, and rare preferences — daily actions stay next to the work
-([`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md)). Before adding a settings section, prove the
+([`UI-SPEC.md`](UI-SPEC.md)). Before adding a settings section, prove the
 existing eleven pages cannot host it.

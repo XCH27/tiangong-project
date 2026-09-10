@@ -2,7 +2,7 @@
 
 > **Status:** research evidence, not architectural or execution authority. Canonical ownership remains
 > with [Decision E13](../../02-DECISIONS.md), the [roadmap](../../05-ROADMAP.md),
-> [token economy](../../17-TOKEN-ECONOMY.md), and the applicable release spec. This record consolidates
+> token economy, and the applicable release spec. This record consolidates
 > evidence from Databricks, Pi, Craft Agents, OpenHands, Hermes, and OpenClaw. Any change to a release
 > contract or authority requires an owner checkpoint and an edit to its canonical document.
 

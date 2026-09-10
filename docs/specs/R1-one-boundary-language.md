@@ -289,4 +289,4 @@ checked`.
 
 Update only this spec, the R1 row in `05-ROADMAP.md`, affected rows in
 `08-CRAFT-CAPABILITY-MAP.md`, `11-PRODUCT-MATRIX.md`, `12-PAGE-ARCHITECTURE.md` and the intentional
-delta list in `CRAFT-UI-BASELINE.md`. Do not create a completion report or another master plan.
+delta list in `../UI-SPEC.md`. Do not create a completion report or another master plan.

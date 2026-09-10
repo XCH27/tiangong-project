@@ -15,10 +15,10 @@ extended, never rebuilt beside it.
 |---|---|
 | Executing agent | [`AGENTS.md`](AGENTS.md) — the mandatory start card |
 | The owner | [`docs/OWNER-GUIDE.md`](docs/OWNER-GUIDE.md) — plain-language checkpoints and acceptance |
-| Anyone needing orientation | [`docs/00-START-HERE.md`](docs/00-START-HERE.md) — doc index and current state |
-| "What is Fleet ultimately?" | [`docs/01-WHITEPAPER.md`](docs/01-WHITEPAPER.md) — the whitepaper, with the finished-product walkthrough |
+| Anyone needing orientation | [`docs/PRODUCT.md`](docs/PRODUCT.md) — doc index and current state |
+| "What is Fleet ultimately?" | [`docs/PRODUCT.md`](docs/PRODUCT.md) — the whitepaper, with the finished-product walkthrough |
 | "How is work orchestrated?" | [`docs/13-ORCHESTRATION.md`](docs/13-ORCHESTRATION.md) — the orchestration core (kernel, composition, canvas) |
-| "What are the major independent systems?" | [`docs/16-SYSTEM-SUITES.md`](docs/16-SYSTEM-SUITES.md) — suite boundaries, shared contracts and reference sets |
+| "What are the major independent systems?" | `docs/modules/REGISTRY.md` — suite boundaries, shared contracts and reference sets |
 | "What is the exact development order?" | [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md) — the complete R0–R18 dependency order, with one ACTIVE row |
 | "Where do I start implementation?" | [`docs/WORK-ORDER.md`](docs/WORK-ORDER.md) — executable suite tasks and handoff format |
 

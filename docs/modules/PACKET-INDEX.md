@@ -5,14 +5,14 @@ Every one of the 69 registry rows appears once. A blank packet/spec is an explic
 permission for an implementer to invent a module boundary.
 
 Repository-grounded paths, absence checks and runnable evidence commands are recorded in
-[`EXECUTION-EVIDENCE.md`](EXECUTION-EVIDENCE.md). If this index and that register disagree, use
+`PACKET-INDEX.md`. If this index and that register disagree, use
 the lower (less complete) status until code and packet are reconciled.
 
 ## Status rules
 
 - `BREADTH_ONLY`: named, context-placed and page-mapped; no repository-grounded packet is complete.
 - `PACKET_DRAFT`: a module README exists, but evidence, seams or acceptance are incomplete.
-- `READY_FOR_SPEC`: packet has all fields in [`MODULE-PACKET-TEMPLATE.md`](MODULE-PACKET-TEMPLATE.md).
+- `READY_FOR_SPEC`: packet has all fields in `MODULE-PACKET-TEMPLATE.md`.
 
 Packet depth has only those three values. Whether a release/standing-track spec exists or is
 ACTIVE is shown in the separate spec column and remains owned by the spec + roadmap; it is not a

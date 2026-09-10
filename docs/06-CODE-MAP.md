@@ -14,7 +14,7 @@
 
 - **App root:** `app/` — a Bun monorepo. `app/package.json` = `0.11.1` (upstream Craft v0.11 line).
 - **Implementation reality:** current `app/` is Craft v0.11.1-derived; intentional/convergence
-  deltas are listed in [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md).
+  deltas are listed in [`UI-SPEC.md`](UI-SPEC.md).
 - **Product/interaction baseline:** `源码参考/software/craft-agents-oss-v0.10.5/` (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag
   `v0.10.5` / commit `c9d9a26f`.
 - **Selective-update reference:** `源码参考/software/craft-agents-oss/` (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag `v0.11.2` /
@@ -135,7 +135,7 @@ recorded condition, not an open work item; touch them only when a slice already 
 - **Feature behavior generally:** renderer → atom/hook → RPC → server handler → existing Craft
   store/service. Search all callers before touching a shared type.
 - **Change prompt/tool visibility:** inventory the serialized prompt and schemas; follow E13 and
-  [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md); extend one effective projection before provider
+  `modules/suites/SYS-03-context-economy.md`; extend one effective projection before provider
   schema adaptation. Do not couple it to R4 or treat a provider lane as a loadout authority.
 
 ## Artifact history and attribution (Decisions H1–H5)
@@ -171,7 +171,7 @@ repository and the executor's only job is to refuse anything the plan did not au
 ## Bounded delegation (Decisions C3/C5/C7/C9/C11 — R6 domain layer, landed early)
 
 Landed ahead of R4/R5 by owner direction (roadmap change log, 2026-08-15). **These types are
-`candidate`, not frozen** (`16-SYSTEM-SUITES.md` rule 2): R4 and R5 may change their shape without a
+`candidate`, not frozen** (`modules/REGISTRY.md` rule 2): R4 and R5 may change their shape without a
 deprecation cycle. Do not build a suite against them as if they were promoted contracts.
 
 | Concern | Real code | Note |

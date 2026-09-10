@@ -5,7 +5,7 @@ list of independent software modules. Inclusion is not a claim of implementation
 be fully designed while its implementation is `not implemented` (possibly behind a named gate —
 gates are recorded in the compatibility-anchor column and the roadmap row, never as a fifth
 implementation status); its architectural kind
-and parent context come from [`MODULE-TAXONOMY.md`](MODULE-TAXONOMY.md) and [`CONTEXTS.md`](CONTEXTS.md).
+and parent context come from `REGISTRY.md` and `REGISTRY.md`.
 
 **Coverage is not packet completion.** `breadth` means that the capability is named, placed in a
 context and given a compatibility anchor. A row may advance beyond `BREADTH_ONLY` only when the

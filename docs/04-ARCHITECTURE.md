@@ -5,7 +5,7 @@
 > [`05-ROADMAP.md`](05-ROADMAP.md)** — this file is not a progress diary.
 
 The large independent delivery systems and their cross-suite conflict gate are defined in
-[`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md). This file remains the invariant and failure authority;
+`modules/REGISTRY.md`. This file remains the invariant and failure authority;
 the suite document does not create another architecture ledger.
 
 ## 1. The shape of the system

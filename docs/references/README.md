@@ -7,7 +7,7 @@ product-only reference may inform behavior but never authorizes code copying.
 The highest-risk source-level findings are recorded in
 [`ADMISSION-V2-AUDIT.md`](ADMISSION-V2-AUDIT.md); `pending` there means evidence exists but
 admission has not been earned.
-Machine-review attempts and validator failures are preserved in [`GROK-RUN-LOG.md`](GROK-RUN-LOG.md).
+Machine-review attempts and validator failures are preserved in `GROK-RUN-LOG.md`.
 
 Required record fields: repository and commit, license, exact files/symbols reviewed, mechanism
 absorbed, Fleet seam, why we cannot trivially surpass it, rejected alternatives, and final status
@@ -25,7 +25,7 @@ Cross-tool context federation is benchmarked in
 [`context/00-UNABYSS-BENCHMARK.md`](context/00-UNABYSS-BENCHMARK.md). The owner-curated
 token-saving tool/paper inventory (with license gates and Fleet layer mapping) is
 [`context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md`](context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md);
-its design consumer is [`../17-TOKEN-ECONOMY.md`](../17-TOKEN-ECONOMY.md).
+its design consumer is `../modules/suites/SYS-03-context-economy.md`.
 The broader mainstream-product, paper and open-source review is in
 [`context/01-MULTI-AGENT-CONTEXT-RESEARCH.md`](context/01-MULTI-AGENT-CONTEXT-RESEARCH.md); it is
 an evidence packet, not a new context authority or capability ID.

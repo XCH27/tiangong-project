@@ -10,9 +10,9 @@
 ## How to use it
 
 1. **Before starting a big feature or system suite:** read the table and
-   [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md). If your feature is already `in-progress` or
+   `modules/REGISTRY.md`. If your feature is already `in-progress` or
    `merged`, do not build a duplicate — report to the main agent (join / divide / explicitly
-   approved competition per [`07-PLAYBOOK.md`](07-PLAYBOOK.md)).
+   approved competition per `../AGENTS.md`).
 2. **When you start:** add one row (feature, branch/worktree, path scope, integration owner,
    unmerged dependencies, status `in-progress`). One branch = one primary-feature row.
 3. **On overlap or path collision:** coordinate one integration owner and one compatible migration.
@@ -40,7 +40,7 @@ Status values: `in-progress` · `merged` · `dropped` · `competing`.
 
 ## Durable integration rules
 
-- Craft shell is the default UI authority ([`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md)); one
+- Craft shell is the default UI authority ([`UI-SPEC.md`](UI-SPEC.md)); one
   primary home per capability; no empty future-feature surfaces; no duplicate state authority.
 - Independent primary features use separate branches/worktrees; a registry row is a
   collision/dependency declaration, not permission to reserve unreadable territory.

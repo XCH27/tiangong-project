@@ -16,7 +16,7 @@ authorization, and not the place for reusable UI component kits.
 
 ## Authority scope
 
-Cross-document precedence is defined once in [`../00-START-HERE.md`](../00-START-HERE.md). This
+Cross-document precedence is defined once in [`../PRODUCT.md`](../PRODUCT.md). This
 library is owner-intent and product-design input only: it may explain why a direction matters, but it
 cannot override a decision, active spec, current code status, or module compatibility gate. Code
 citations in a note are evidence to verify, not a second code map.

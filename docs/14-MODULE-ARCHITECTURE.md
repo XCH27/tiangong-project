@@ -10,15 +10,15 @@
 |---|---|---|---|
 | Core | `docs/core/` index + one canonical numbered document per topic | Core architecture/decisions | Stable Craft/Fleet authorities, invariants, shared seams, quality, roadmap |
 | Module | `docs/modules/<module>/` | Module design | Long-lived product, data, UI, runtime, failure and compatibility design for a large capability |
-| Suite composition | `docs/16-SYSTEM-SUITES.md` | Delivery grouping | Closed loops, shared-contract ownership, reference sets and conflict gates; never a state authority |
+| Suite composition | `modules/REGISTRY.md` | Delivery grouping | Closed loops, shared-contract ownership, reference sets and conflict gates; never a state authority |
 | Spec | `docs/specs/` | Active implementation contract | One bounded slice that is currently being built and accepted |
 | Reference | `docs/references/<domain>/` | Reference audit | Source/product evidence, licenses, mechanisms absorbed, rejected alternatives |
 
 Core navigation is indexed at [`core/README.md`](core/README.md). The eight implementation
-contexts and legacy migration map are indexed at [`modules/CONTEXTS.md`](modules/CONTEXTS.md) and
-[`modules/MIGRATION-MAP.md`](modules/MIGRATION-MAP.md).
+contexts and legacy migration map are indexed at `modules/CONTEXTS.md` and
+`modules/MIGRATION-MAP.md`.
 The eight large closed-loop suites, their shared contract ownership and permitted parallel work are
-defined in [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md); this document supplies the packet gates
+defined in `modules/REGISTRY.md`; this document supplies the packet gates
 inside those suites.
 
 Do not delete module design because its implementation is gated. Do not promote a reference into a
@@ -58,7 +58,7 @@ record in `docs/references/<domain>/` before an implementation spec is written f
 The labels in [`modules/PACKET-INDEX.md`](modules/PACKET-INDEX.md) (`BREADTH_ONLY` /
 `PACKET_DRAFT` / `READY_FOR_SPEC`) describe **documentation depth only** — they are never work
 permissions, readiness gates, or schedule states. A current owner request outranks them
-(07-PLAYBOOK authority order); acting on it simply means writing the missing depth first, in the
+(AGENTS authority order); acting on it simply means writing the missing depth first, in the
 same effort.
 
 ## 3. Required module packet
@@ -77,7 +77,7 @@ Every large module keeps these sections, even while `not implemented`:
 - resource/performance/accessibility/offline constraints;
 - acceptance scenarios and honest implementation status.
 
-The required executable packet format is [`modules/MODULE-PACKET-TEMPLATE.md`](modules/MODULE-PACKET-TEMPLATE.md).
+The required executable packet format is `modules/MODULE-PACKET-TEMPLATE.md`.
 Until a packet contains actual code paths, reference files/commits and observable acceptance IDs,
 its packet state must remain `BREADTH_ONLY` or `PACKET_DRAFT`; `covered` is retired terminology.
 
@@ -104,7 +104,7 @@ Implementation status: `usable` | `wired but not visually checked` | `display-on
 
 Packet state describes the completeness of a module packet; it is not a user-facing capability
 status. `usable`/`wired but not visually checked`/
-`display-only`/`not implemented` are the only implementation statuses (see [`07-PLAYBOOK.md`](07-PLAYBOOK.md)
+`display-only`/`not implemented` are the only implementation statuses (see `../AGENTS.md`
 and [`10-GLOSSARY.md`](10-GLOSSARY.md)). `ACTIVE`, `READY`, `DEP`, and `GATED` belong only to
 roadmap releases. A packet may be `READY_FOR_SPEC` while its implementation remains `not implemented`.
 
@@ -115,7 +115,7 @@ identifies modules that already have a starter deep packet in `modules/`; it is 
 product list.
 
 The registry is intentionally flat for omission checking, not as a 68-way dependency graph. Before
-implementation, classify each row using [`modules/MODULE-TAXONOMY.md`](modules/MODULE-TAXONOMY.md)
+implementation, classify each row using `modules/MODULE-TAXONOMY.md`
 as core system, product module, surface, adapter/connector or capability.
 
 The following modules remain in product coverage even when their implementation is gated. Their
@@ -126,7 +126,7 @@ table status is implementation status; packet readiness is recorded in each modu
 | Canvas/spatial orchestration | `modules/canvas/` | not implemented | R7; renderer benchmark; projection must not own domain truth |
 | Video/media editing | `modules/video/` | not implemented | R12; timeline model, media jobs, renderer/export and ArtifactRef seam |
 | Browser automation/evidence | `modules/browser/` | not implemented | R3/R5 evidence; R16 computer fallback; permission and download boundaries |
-| Token/context economy | `modules/suites/SYS-03-context-economy.md` + `17-TOKEN-ECONOMY.md` | not implemented | TE1/R3 measurement; R15 loadout; R17 policy closure; no projection store before two consumers |
+| Token/context economy | `modules/suites/SYS-03-context-economy.md` + `modules/suites/SYS-03-context-economy.md` | not implemented | TE1/R3 measurement; R15 loadout; R17 policy closure; no projection store before two consumers |
 | Reviewed memory | `modules/memory/` | not implemented | R9 proposal/review/retrieval/deletion; raw Session history remains evidence authority |
 | AIGC jobs/rendering | `modules/jobs/` | not implemented | R11–R13; cancellation, resource limits and provider adapters |
 | Design surface | `modules/design/` | not implemented | R10; transactional native design model and license gate |

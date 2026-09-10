@@ -5,13 +5,13 @@ safe migration from the numbered root layout; links are not duplicated into a se
 
 ## Core authorities
 
-- [Product and whitepaper](../01-WHITEPAPER.md)
+- [Product and whitepaper](../PRODUCT.md)
 - [Decision ledger](../02-DECISIONS.md)
 - [Non-negotiables](../03-NON-NEGOTIABLES.md)
 - [Architecture](../04-ARCHITECTURE.md)
 - [Roadmap](../05-ROADMAP.md)
 - [Code map](../06-CODE-MAP.md)
-- [Playbook](../07-PLAYBOOK.md)
+- Playbook
 - [Craft capability map](../08-CRAFT-CAPABILITY-MAP.md)
 - [Quality](../09-QUALITY.md)
 - [Glossary](../10-GLOSSARY.md)
@@ -19,9 +19,9 @@ safe migration from the numbered root layout; links are not duplicated into a se
 - [Page architecture](../12-PAGE-ARCHITECTURE.md)
 - [Orchestration](../13-ORCHESTRATION.md)
 - [Module architecture and compatibility](../14-MODULE-ARCHITECTURE.md)
-- [Documentation contract and reality check](../15-DOC-AUDIT.md)
-- [Independent system suites](../16-SYSTEM-SUITES.md)
-- [Token economy and harness efficiency](../17-TOKEN-ECONOMY.md)
+- Documentation contract and reality check
+- Independent system suites
+- Token economy and harness efficiency
 
 ## Core authority rule
 

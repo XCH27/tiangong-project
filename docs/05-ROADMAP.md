@@ -11,7 +11,7 @@
 Large capabilities remain designed in [`14-MODULE-ARCHITECTURE.md`](14-MODULE-ARCHITECTURE.md) and
 `modules/` even when their implementation is `GATED` or `not implemented`. This queue controls
 integration order only; it never authorizes deleting a module packet or its reference audit.
-The larger closed-loop ownership map is [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md). It is an
+The larger closed-loop ownership map is `modules/REGISTRY.md`. It is an
 architecture/parallelism map, not a second roadmap: SYS-01 is the first integration owner because it
 **owns integration of** the shared action, identity, permission, prompt, runtime, Git/PR, artifact
 and job seams — contracts are extracted with their first real callers, never pre-frozen (G2/D6);
@@ -44,7 +44,7 @@ Two standing tracks run **beside** the release queue and are never blocked by it
   centralized effective tool projection and Pi-light may enter only as one owner-accepted bounded
   slice that changes model-call behavior. R3 then becomes the fixed cross-domain trace. ArtifactRef
   and TaskBrief savings still land with R5/R6; L3+ remain measured gates
-  ([`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md) §6).
+  (`modules/suites/SYS-03-context-economy.md` §6).
 
 ## The integration queue
 
@@ -56,7 +56,7 @@ Two standing tracks run **beside** the release queue and are never blocked by it
 | R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | DEP | R0 (R1/R2 improve it) |
 | R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
 | R5 | **Artifact handoff** | ArtifactRef v1: exact version + provenance; one real producer→consumer pair; stale-writer rejection. | DEP | R3 (supplies the real artifact + friction list) |
-| R6 | **Bounded delegation + contract gates** | TaskBrief → child run → validated RunReport over Craft TaskRunner; budget circuit-breaker; first mechanized TaskContract gates in PreToolUse. | DEP — **domain layer landed early 2026-08-15 (owner-directed, see change log)**: `agent/delegation-{contract,policy,projection}.ts`, `path-lease.ts`, `permission-intersection.ts`, `run-report-validate.ts`, consumed by `TaskRunner.ts`. Those types stay **candidate** (`16-SYSTEM-SUITES.md` rule 2) until R4/R5 supply real callers, and R6's own acceptance — PreToolUse TaskContract gates and the independent read-only verifier — remains `not implemented` | R4 (governed actions), R5 (referenced artifacts) |
+| R6 | **Bounded delegation + contract gates** | TaskBrief → child run → validated RunReport over Craft TaskRunner; budget circuit-breaker; first mechanized TaskContract gates in PreToolUse. | DEP — **domain layer landed early 2026-08-15 (owner-directed, see change log)**: `agent/delegation-{contract,policy,projection}.ts`, `path-lease.ts`, `permission-intersection.ts`, `run-report-validate.ts`, consumed by `TaskRunner.ts`. Those types stay **candidate** (`modules/REGISTRY.md` rule 2) until R4/R5 supply real callers, and R6's own acceptance — PreToolUse TaskContract gates and the independent read-only verifier — remains `not implemented` | R4 (governed actions), R5 (referenced artifacts) |
 | R7 | **Canvas v1 (projection only)** | DOM-family renderer per Decision E5a (React Flow default, custom DOM+SVG in-family fallback — the spike picks within the family, it does not reopen the family); canvas projects the real artifact/session graph per [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) §4. No executable edges. | GATED | gate: R5 artifact graph exists; E5a in-family spike passes before deep investment |
 | R8 | **Workflow extraction** | Promote the completed R3 chain into one finite versioned DAG over governed Craft actions and TaskRunner state. | DEP | R4 + R5 |
 | R9 | **Layered agent memory** | Working notes → autonomous distillation into curated layers with a logged consolidation pass; optional human curation (pin/correct/delete); hard secrecy/scope floors (D5). | GATED — **contract landed 2026-07-30** (`packages/shared/src/memory/`, `labels/memory-curator-kit.ts`; H16–H18, H26–H27): scope, promotion refusals, foreign import and the curator's ageing/trigger defaults are fixed and typechecked. No file, index or pass exists. The gate is unchanged | gate: repeated completed chains from R3+ exist |
@@ -173,7 +173,7 @@ Change log:
   walkthrough) and the parallel-dispatch frontier added to `WORK-ORDER.md` (`696542bc2`). Logged
   retroactively — the entry was missed in that commit.
 - 2026-07-26 — remediation sync after the doc audit: R1/R2 rows annotated with their pre-landed
-  slices (R1 shell `2d08364f7` + inventory `aaa09b094`; R2 C2–C5); README, 00-START-HERE,
+  slices (R1 shell `2d08364f7` + inventory `aaa09b094`; R2 C2–C5); README, PRODUCT,
   FEATURE-REGISTRY and the R0/R1/R2 spec status headers re-synced to this roadmap's R0 row as the
   single release-state edit point.
 - 2026-07-26 — selective donor advanced to v0.11.2: reference mirror and official-docs mirror

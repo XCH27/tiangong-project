@@ -83,7 +83,7 @@ the [`OWNER-GUIDE.md`](OWNER-GUIDE.md) checkpoint.
 ## Parallel dispatch queue
 
 A projection of the queue above for multi-agent execution, governed by the multi-agent and
-bounded-feature rules in [`07-PLAYBOOK.md`](07-PLAYBOOK.md). **Rewritten 2026-08-15** — the previous
+bounded-feature rules in `../AGENTS.md`. **Rewritten 2026-08-15** — the previous
 frontier table described packets that landed 2026-07-26 and covered none of the work done since.
 
 ### How concurrency is legal here (read this before dispatching anything)
@@ -97,7 +97,7 @@ violation of it. It is not, and the distinction is load-bearing:
 > 1. **Frontend track (G6)** — preview-gated pages behind a typed adapter, reported `display-only`.
 > 2. **Read-only / observation** — inventories, audits, measurement. TE1 is defined this way (E13).
 > 3. **Disjoint-path suite research and typed preview adapters** —
->    [`16-SYSTEM-SUITES.md`](16-SYSTEM-SUITES.md) §Build and parallelism, item 2.
+>    `modules/REGISTRY.md` §Build and parallelism, item 2.
 > 4. **Behaviour-preserving seam extraction** — characterization-tested refactors that change no
 >    observable behaviour.
 > 5. **Owner-directed early slices (G2)** — each registered in
@@ -143,7 +143,7 @@ there is no tag to branch from until it finishes — it ran as direct commits on
 
 ### Path ownership — the collision gate
 
-`07-PLAYBOOK.md`: at most one writer per occupied path. This table *is* the parallelism mechanism;
+`../AGENTS.md`: at most one writer per occupied path. This table *is* the parallelism mechanism;
 without it "many agents at once" means "many agents editing `AppShell.tsx`".
 
 **Reserved — no packet writes these without the integrator role:**
@@ -269,7 +269,7 @@ At each wave boundary:
 bash scripts/fleet-verify.sh
 ```
 
-**A packet whose merge breaks the gate is reverted, not patched forward** (`07-PLAYBOOK.md`: a
+**A packet whose merge breaks the gate is reverted, not patched forward** (`../AGENTS.md`: a
 broken direct-to-main change is fixed or reverted before anything else). Resolve a conflict by
 comparing behaviour, intent and state authority and choosing **one** solution — never by adding a
 second store, adapter or path. If two packets need the same file the integrator re-sequences them;
@@ -287,7 +287,7 @@ the file is not forked and no compatibility shim is added.
 
 ### Contract freeze register
 
-`16-SYSTEM-SUITES.md` rule 2: a contract name is a *candidate vocabulary entry* until its first real
+`modules/REGISTRY.md` rule 2: a contract name is a *candidate vocabulary entry* until its first real
 producer and consumer land. This register enforces that while the delegation kernel exists ahead of
 its callers.
 

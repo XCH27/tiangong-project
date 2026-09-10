@@ -7,7 +7,7 @@ UsageTracker, provider adapters, compaction/large-response paths, Skills/Sources
 gates fire, ContextPack/ContextSegment and reviewed memory. **Depends on:** SYS-01 policy/profile
 facts; the projection and Action seam remain separate.
 
-**Design authority:** [`../../17-TOKEN-ECONOMY.md`](../../17-TOKEN-ECONOMY.md) (Decision E12) — the
+**Design authority:** `SYS-03-context-economy.md` (Decision E12) — the
 layered pipeline (L0–L6), the fuse/connect/reject integration policy, guardrails and landing order.
 This packet stays the delivery boundary; 17 owns the cross-cutting design. Owner-curated candidate
 inventory: [`../../references/context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md`](../../references/context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md).

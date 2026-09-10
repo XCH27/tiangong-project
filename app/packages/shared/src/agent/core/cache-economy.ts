@@ -1,6 +1,6 @@
 /**
  * Cache economy — provider-aware prompt-cache accounting and prefix-stability
- * diagnostics. Token-economy layer L1 (docs/17-TOKEN-ECONOMY.md, Decision E12).
+ * diagnostics. Token-economy layer L1 (docs/modules/suites/SYS-03-context-economy.md, Decision E12).
  *
  * Pure module: no I/O, no side effects, no new state authority. UsageTracker
  * and the backend event adapters remain the usage authorities; this module

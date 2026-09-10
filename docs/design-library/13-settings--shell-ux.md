@@ -1,6 +1,6 @@
 # M13 — Settings and Preferences UX
 
-> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `../PRODUCT.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
 
 
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.
@@ -18,7 +18,7 @@ M13 does not own the workbench panel registry or layout engine; M16 does.
 The exact owner wording is retained in `OWNER-VOICE.md` when needed.
 Settings only for credentials, safety/policy, retention, rare preferences (old D51-R4). Daily work
 controls stay in-loop, not here. See ~~`FRONTEND-EXPOSURE-MATRIX.md` §0 and § M13~~ *(retired; the
-binding owner wording is represented by `../01-WHITEPAPER.md` and Decision P5)*.
+binding owner wording is represented by `../PRODUCT.md` and Decision P5)*.
 
 ## 2. User-Visible Loop
 

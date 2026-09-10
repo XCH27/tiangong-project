@@ -8,7 +8,7 @@
 > **Status of every row: `candidate` or `EVIDENCE_ONLY` unless the admission ledger
 > [`../REFERENCE-REGISTRY.md`](../REFERENCE-REGISTRY.md) says otherwise.** Star counts and effect
 > percentages are self-reported/collected claims, re-verified at admission. Layer mapping refers to
-> [`../../17-TOKEN-ECONOMY.md`](../../17-TOKEN-ECONOMY.md) §3; integration tier refers to §4.
+> `../../modules/suites/SYS-03-context-economy.md` §3; integration tier refers to §4.
 
 ## Route A · Input physical compression
 

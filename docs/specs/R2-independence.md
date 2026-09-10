@@ -30,7 +30,7 @@ binary updater can no longer install a Craft binary over Fleet.
    labels/tasks/automations work; no error spam from unreachable Craft endpoints; optional
    features show honest "not configured / unavailable" states.
 2. The user opens each affected surface and can tell which class every external connection is:
-   local · self-hosted · third-party connector · unavailable (01-WHITEPAPER §5 identity honesty).
+   local · self-hosted · third-party connector · unavailable (identity honesty: a connection says what it actually is).
 3. Update check: either a Fleet-controlled/user-configured channel, or the updater UI states
    updates are disabled — it never offers a Craft binary.
 4. Session sharing: **removed 2026-07-26 by owner decision.** Local export works; there is no

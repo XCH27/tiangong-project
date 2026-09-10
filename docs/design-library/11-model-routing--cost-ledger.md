@@ -1,6 +1,6 @@
 # M11 — Model Routing, Usage, and Cost Ledger
 
-> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `docs/00-START-HERE.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
+> **Design asset (source note, not an authority).** The canonical scope, decisions, active specs, and implementation status live in `../PRODUCT.md`, `docs/02-DECISIONS.md`, `docs/05-ROADMAP.md`, and `docs/modules/`. Use this file only for the active module design; reconcile it against current code and canonical documents before implementation.
 
 
 > **Recovered design material (2026-07-11).** Extracted from the previous project's module spec.

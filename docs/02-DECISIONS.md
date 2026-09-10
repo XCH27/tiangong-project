@@ -341,7 +341,7 @@
 
 - **E12 — Token economy is a first-class capability: intelligence per token, never saving for
   saving's sake.** Owner-set product bet: vendors won't reduce user token spend; Fleet does.
-  Design authority: [`17-TOKEN-ECONOMY.md`](17-TOKEN-ECONOMY.md) — a layered pipeline (structural
+  Design authority: `modules/suites/SYS-03-context-economy.md` — a layered pipeline (structural
   L0 → cache alignment L1 → deterministic input compression L2 → agent-directed compaction L3 →
   gated model-assisted compression L4 → opt-in output economy L5 → reviewed cross-session
   injection L6). Integration is three-tier: core-fused mechanisms at Fleet seams; optional
@@ -383,7 +383,7 @@
   2. **Different product, different unit of value.** `dsh` is a harness: the runtime *is* the
      product and third-party plugins are its surface (`dsh-plugin` GitHub topic, published npm
      scope). Fleet is a local-first workbench whose value is the *environment* — one Project
-     boundary, one evidence timeline, artifact lineage, permissioned recovery (01-WHITEPAPER §1).
+     boundary, one evidence timeline, artifact lineage, permissioned recovery (`PRODUCT.md`).
      Fleet's users are the owner and their agents, not plugin authors composing an agent. Adopting
      the architecture would import the other product's identity along with it.
   3. **The tax is paid in the currency Fleet is currently short of.** Once every surface is a
@@ -433,7 +433,7 @@
   167-package split; `ctx.<name>` property-proxy injection; and — most firmly — the
   self-modification toolset that lets the agent mount and unmount plugins in its own live runtime.
   That last one is a genuinely impressive capability and a direct contradiction of this product:
-  C7 forbids an executing agent rewriting its own harness, and 01-WHITEPAPER's entire claim is that
+  C7 forbids an executing agent rewriting its own harness, and `PRODUCT.md`'s entire claim is that
   every consequential action is inspectable, permissioned and recoverable. An agent that can
   re-compose the runtime enforcing those properties has no such guarantee left to offer.
 
@@ -534,7 +534,7 @@
   to the owner; agents drive UI automation only on explicit request. (2026-07-16, replaces the
   blanket "no agent UI verification" rule)
 - **G4 — Documentation architecture v2.** The authoritative set is the numbered documents indexed
-  by `00-START-HERE`, OWNER-GUIDE, UI baseline, feature registry, `specs/`, `modules/` and
+  by `PRODUCT.md`, OWNER-GUIDE, UI baseline, feature registry, `specs/`, `modules/` and
   `references/`. Each rule lives in exactly one canonical document. Superseded planning corpora are
   deleted after unique active facts migrate; they are not archived in-tree. Durable design assets
   remain in `design-library/` or module packets because they guide their ordered product rows,

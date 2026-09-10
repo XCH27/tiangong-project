@@ -33,7 +33,7 @@ only; their product concepts are not importable.
    [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md). Create or amend a spec only when the work changes a
    release contract, persisted/shared interface, authority, or externally observable behavior — an
    ordinary fix or refactor does not earn a new document. For whole-system work, route through
-   [`docs/16-SYSTEM-SUITES.md`](docs/16-SYSTEM-SUITES.md); breadth and surfaces remain indexed in
+   `docs/modules/REGISTRY.md`; breadth and surfaces remain indexed in
    `docs/modules/REGISTRY.md`, `docs/11-PRODUCT-MATRIX.md`, and `docs/12-PAGE-ARCHITECTURE.md`.
    Never use near/mid/far-term buckets: every registered capability has a release-order anchor or a
    named conditional-closure row, so an Agent cannot silently defer it forever.
@@ -114,7 +114,7 @@ Three things a newcomer gets wrong, stated plainly:
 `源码参考/` and `UI参考/` are symlinks into `/Volumes/AIGC/天工参考/`, and neither is tracked by this
 repository (both are gitignored; the last tracked mirror content is reachable at
 `backup/pre-r0-audit-2026-09-09`). When that volume is not mounted, every "compare Craft first"
-instruction in rule 1, `07-PLAYBOOK.md` step 2 and `CRAFT-UI-BASELINE.md` is **unexecutable**.
+instruction in rule 1, `AGENTS.md` step 2 and `docs/UI-SPEC.md` is **unexecutable**.
 Check before any intake, UI or reference work:
 
 ```bash
@@ -152,14 +152,14 @@ guess for the v0.10.5 baseline.
 | Frontend pages, states, mock/adapter rules | `docs/12-PAGE-ARCHITECTURE.md` |
 | Finding the code entry point | `docs/06-CODE-MAP.md` |
 | Starting implementation from the approved suite queue | `docs/WORK-ORDER.md` |
-| Broad product context, doc index | `docs/00-START-HERE.md`, `docs/01-WHITEPAPER.md` |
+| Broad product context, doc index | `docs/PRODUCT.md`, `docs/PRODUCT.md` |
 | Orchestration, delegation, canvas, workflows | `docs/13-ORCHESTRATION.md` |
-| Context size, prompt assembly, caching, token cost | `docs/17-TOKEN-ECONOMY.md` |
+| Context size, prompt assembly, caching, token cost | `docs/modules/suites/SYS-03-context-economy.md` |
 | A design question ("is this already decided?") | `docs/02-DECISIONS.md` |
 | Architecture, invariants, failure modes | `docs/04-ARCHITECTURE.md` |
-| Multi-agent, Git/delivery, templates, reporting | `docs/07-PLAYBOOK.md` |
+| Multi-agent, Git/delivery, templates, reporting | `AGENTS.md` |
 | Tests, verification, acceptance split | `docs/09-QUALITY.md` |
-| UI structure, which component to start from, review method | `docs/CRAFT-UI-BASELINE.md` |
+| UI structure, which component to start from, review method | `docs/UI-SPEC.md` |
 | **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
 | **Anything that moves** — whether to animate at all, easing, duration, press feedback | `docs/design-library/22-motion.md` |
 | Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |

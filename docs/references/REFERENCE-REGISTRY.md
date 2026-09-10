@@ -36,7 +36,7 @@ not a formal reference.
 > `abdc281a` (v0.12.0) — the same commit as the rolling pin — so the two reference roots were
 > byte-identical and the v0.10.5 product/interaction baseline did not exist on disk. It had been in
 > that state since 2026-08-17, meaning every "compare against v0.10.5" instruction in `AGENTS.md`
-> rule 1, `CRAFT-UI-BASELINE.md` and `specs/R1-one-boundary-language.md` R1-C1 silently compared
+> rule 1, `../UI-SPEC.md` and `specs/R1-one-boundary-language.md` R1-C1 silently compared
 > against v0.12.0. Restored to `c9d9a26f`. The row below is the assertion to check: a fixed HEAD in
 > this table is only true if the checkout is actually on it.
 

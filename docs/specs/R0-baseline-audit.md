@@ -76,7 +76,7 @@ then landed, or dropped (deleted with its unique facts recorded). At the end, th
    `wired but not visually checked` within the stop
    rules is dropped or returned to `G-unknown` for an owner decision, not force-landed or silently deferred.
 4. **Integrate:** `validate:dev`, non-interactive dev-launch smoke, tag `fleet-baseline-r0`.
-5. **Sync docs:** update `00-START-HERE.md` (current state), `CRAFT-UI-BASELINE.md` (delta list),
+5. **Sync docs:** update `../PRODUCT.md` (current state), `../UI-SPEC.md` (delta list),
    `FEATURE-REGISTRY.md`, matrix rows whose status changed, roadmap (R0 done → next ACTIVE), this
    spec.
 
@@ -140,5 +140,5 @@ R1 and is not a required acceptance surface.
 
 ## Doc updates on completion
 
-`00-START-HERE.md`, `CRAFT-UI-BASELINE.md`, `FEATURE-REGISTRY.md`,
+`../PRODUCT.md`, `../UI-SPEC.md`, `FEATURE-REGISTRY.md`,
 [`../11-PRODUCT-MATRIX.md`](../11-PRODUCT-MATRIX.md) rows, `05-ROADMAP.md`, this spec.

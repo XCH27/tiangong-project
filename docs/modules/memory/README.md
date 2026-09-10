@@ -4,7 +4,7 @@ Design state: `PACKET_DRAFT`; implementation status: `not implemented`; developm
 (working-note writes need no new authority and may begin alongside R3 chains — Decision D5,
 roadmap change log 2026-07-20). This packet owns the layered memory files, consolidation and
 curation surface only. Prompt assembly, tool loadout, compaction and cost accounting belong to
-[`../../17-TOKEN-ECONOMY.md`](../../17-TOKEN-ECONOMY.md) and SYS-03; calling this module a
+`../suites/SYS-03-context-economy.md` and SYS-03; calling this module a
 "context broker" incorrectly implies a second routing authority.
 
 ## Direction (owner, 2026-07-20)
