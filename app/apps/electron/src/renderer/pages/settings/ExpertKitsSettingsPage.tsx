@@ -58,6 +58,8 @@ import {
   type NormalizedLabelKind,
 } from '@craft-agent/shared/labels/kind-normalize'
 import { assessExpertKit, type ExpertKit } from '@craft-agent/shared/labels/expert-kit'
+import { resolveKitCatalog } from '@craft-agent/shared/labels/kit-resolve'
+import type { LoadedSkill } from '@craft-agent/shared/skills'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -75,6 +77,7 @@ export default function ExpertKitsSettingsPage() {
   const activeWorkspace = useActiveWorkspace()
   const { labels, flatLabels, isLoading, refresh } = useLabels(activeWorkspaceId)
 
+  const [installedSkills, setInstalledSkills] = React.useState<LoadedSkill[]>([])
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
   const [adding, setAdding] = React.useState(false)
@@ -96,6 +99,33 @@ export default function ExpertKitsSettingsPage() {
       setSelectedId(flatLabels[0].id)
     }
   }, [flatLabels, selectedId])
+
+  // A kit's declared skill slugs mean nothing without the installed set to
+  // resolve them against, so the page loads it and follows changes — a skill
+  // added on disk must make a kit's "not installed" warning disappear without a
+  // restart, or the warning teaches users to distrust it.
+  React.useEffect(() => {
+    if (!activeWorkspaceId) {
+      setInstalledSkills([])
+      return
+    }
+    let cancelled = false
+    void window.electronAPI
+      .getSkills(activeWorkspaceId)
+      .then((skills) => {
+        if (!cancelled) setInstalledSkills(skills ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setInstalledSkills([])
+      })
+    const unsubscribe = window.electronAPI.onSkillsChanged?.((changedWorkspaceId, skills) => {
+      if (changedWorkspaceId === activeWorkspaceId) setInstalledSkills(skills ?? [])
+    })
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [activeWorkspaceId])
 
   const rootPath = activeWorkspace?.rootPath || ''
   const labelsConfigPath = rootPath ? `${rootPath}/labels/config.json` : null
@@ -359,6 +389,7 @@ export default function ExpertKitsSettingsPage() {
                           label={selected}
                           disabled={busy}
                           isDark={isDark}
+                          installedSkills={installedSkills}
                           onPatch={(updates) => persist(selected.id, updates)}
                           onDelete={handleDelete}
                         />
@@ -421,12 +452,14 @@ function LabelEditor({
   label,
   disabled,
   isDark,
+  installedSkills,
   onPatch,
   onDelete,
 }: {
   label: LabelConfig
   disabled?: boolean
   isDark: boolean
+  installedSkills: readonly LoadedSkill[]
   onPatch: (updates: UpdateLabelInput) => void
   onDelete: () => void
 }) {
@@ -554,7 +587,7 @@ function LabelEditor({
         />
       </div>
 
-      {kind === 'expert' && <KitPayload label={label} />}
+      {kind === 'expert' && <KitPayload label={label} installedSkills={installedSkills} />}
     </SettingsCard>
   )
 }
@@ -573,11 +606,23 @@ function LabelEditor({
  * because the budget governs what is *active*, not what the kit may contain
  * (Decision H13).
  */
-function KitPayload({ label }: { label: LabelConfig }) {
+function KitPayload({
+  label,
+  installedSkills,
+}: {
+  label: LabelConfig
+  installedSkills: readonly LoadedSkill[]
+}) {
   const { t } = useTranslation()
+
+  // Resolve before measuring. This block used to assess `expertKit?.skills ?? []`
+  // directly, which no write path could ever fill, so the verdict below was a
+  // confident statement about an always-empty value (H36). It now measures what
+  // the declared slugs actually resolve to against the installed skills.
+  const { catalog, unresolved } = resolveKitCatalog(label.expertKit?.skills, installedSkills)
   const kit: ExpertKit = {
     labelId: label.id,
-    skills: label.expertKit?.skills ?? [],
+    skills: catalog.map((skill) => skill.id),
     sources: label.expertKit?.sources ?? [],
     tools: label.expertKit?.tools ?? [],
     ...(label.expertKit?.requestedPermissionMode
@@ -597,6 +642,20 @@ function KitPayload({ label }: { label: LabelConfig }) {
           sources: kit.sources.length,
         })}
       </p>
+      {unresolved.length > 0 && (
+        // Naming them is the point. A kit that silently carries fewer skills
+        // than it declares reads as a specialist that cannot do its job, and
+        // the missing file is the last place anyone looks.
+        <div className="flex items-start gap-2 text-xs text-info">
+          <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+          <span>
+            {t('settings.expertKits.skillsNotInstalled', {
+              count: unresolved.length,
+              names: unresolved.join('、'),
+            })}
+          </span>
+        </div>
+      )}
       {needsRouting && (
         // `info` is the reserved warning colour (UI-SPEC §1). A raw amber here
         // would be a seventh colour that no theme controls.
