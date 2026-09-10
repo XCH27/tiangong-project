@@ -243,6 +243,7 @@ collapsed** (verified 2026-08-15) — do not redo them.
 | F4 — memory browser pages | worktree | new preview page + typed adapter; reads `memory-scope.ts` layer names | tag | P-31/T9 `display-only`, preview-gated |
 | TE1-S3..S5 — cache observation | branch | `agent/core/{usage-tracker,cache-economy}.ts` + provider event adapters | tag | TE1-C3, TE1-C5, TE1-C6. Observation only — prompt diet and Pi-light are a separate owner-accepted slice **after** this baseline (E13) |
 | R2-CLOSE — finish independence | branch | R2 service classes | tag · docs-MCP owner decision · mirror mounted | R2-C1 network-blocked smoke with traffic log; R2-C6 endpoint inventory; then R2-C7 owner acceptance |
+| CRAFT-012 — upstream v0.12.0 intake | branch | the five named files only | tag | Five bounded REUSE items from the v0.11.2→v0.12.0 delta, recorded in `references/REFERENCE-REGISTRY.md` (2026-09-10): `archive-session.ts` + `archive-guards.ts`, `mcp/proxy-tool-name.ts`, `inherited-filter-params.ts`, `bootstrap/lock-identity.ts`, and the `config/storage.ts` startup migration. No new authority in any of them; `proxy-tool-name` is a prerequisite for any kit that projects a tool subset (H37 Option A) |
 | X1..X3 — suite packets | read-only | one suite each (`SYS-05`, `SYS-06`, `SYS-08` recommended first) | mirror mounted | `BREADTH_ONLY`/`PACKET_DRAFT` → `READY_FOR_SPEC` against the six `15-DOC-AUDIT.md` completion-gate items. Deliverable is a packet plus a reference audit — **not code** |
 
 ### Wave 2B — lanes that open as their evidence edge lands

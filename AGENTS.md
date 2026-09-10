@@ -108,6 +108,10 @@ Check before any intake, UI or reference work:
 
 ```bash
 ls 源码参考/software/craft-agents-oss-v0.10.5 >/dev/null 2>&1 && echo "mirror OK" || echo "mirror MISSING"
+# The baseline pin must be ON its pin. These checkouts carry their own .git, so a checkout run
+# inside one silently moves the baseline; on 2026-08-17 this one sat at v0.12.0 for three weeks.
+git -C 源码参考/software/craft-agents-oss-v0.10.5 describe --tags   # expect exactly v0.10.5
+git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin, currently v0.12.0
 ```
 
 `mirror MISSING` is a **classified limitation** (rule 6), not permission to proceed from memory or

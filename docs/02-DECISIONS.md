@@ -1009,3 +1009,60 @@
   motion tokens and Impeccable's detectors — and §6 of that file records where Fleet **overrules**
   them (no springs, no stagger, no bounce), because those references are written for product apps in
   general and this is a workbench. (2026-07-31)
+
+- **H36 — The expert kit declares what nothing hosts, so it carries one paragraph of text.** H13
+  defines a kit as a label with a real payload — skills, sources, tools, a requested permission
+  mode — and `LabelConfig.expertKit` declares exactly that. Measured 2026-09-10: `CreateLabelInput`
+  and `UpdateLabelInput` carry only `kind` and `systemPromptPreset`, so **the payload has no writer
+  in the tree**; and outside `ExpertKitsSettingsPage.tsx` nothing reads `label.expertKit`, so it has
+  **no reader**. Every exported symbol of `skill-routing.ts` (`routeSkills`, `resolveChain`,
+  `auditCatalog`, `skillApplies`, `isBlockingProblem`), `kit-gallery.ts` (`browseKits`,
+  `admitInstall`, and six more), `example-kits.ts` and `kit-sources.ts` has zero consumers outside
+  `packages/shared/src/labels/` itself; skill routing is never called from `prompts/`, `agent/` or
+  `server-core/`. The only part of a kit that survives to runtime is `systemPromptPreset`, injected
+  through `prompt-builder.ts` — which is precisely the state `expert-kit.ts`'s own header calls the
+  wrong shape: *"an identity is a paragraph of text, and every session sees the same tools
+  regardless of the role it is playing."*
+  Two consequences are decided here, not deferred. **(a)** This is the same defect H33 fixed one
+  field over: H33 widened `kind` because a rename landing only on the read side is not a rename, and
+  left `expertKit` readable-and-unwritable. **(b)** The settings page runs `assessExpertKit` over
+  `label.expertKit?.skills ?? []`, which cannot be anything but empty, and renders a tool-budget
+  verdict and a "this kit loads everything" warning as statements about it — so the surface reports
+  a measurement of an unreachable value. Under the status vocabulary the kit payload is
+  `not implemented`; only name, colour, kind, value type and prompt are `usable`. The page's own
+  agent-edit context compounds it by instructing the model *"Do not invent skill/source/permission
+  binding fields"*, closing the one path by which a payload could have been authored.
+  H19 and H21's catalog-versus-active distinction is unobservable for the same reason: it needs
+  routing to exist, so the two counts always coincide and the only suggestion the assessment can
+  emit is `add-skill-routing` for a kit with no skills. (2026-09-10)
+- **H37 — Capability comes from a live binding, never from a field that says so. Which layer owns a
+  capability is an OPEN owner ruling.** Three reference products state the same rule in unrelated
+  domains (`references/REFERENCE-REGISTRY.md`, 2026-09-10 intake). OpenChamber's browser broker:
+  *"Capability belongs to the connection, not to configuration"* — a client declares it can drive a
+  page by opening its event stream with `browser=1`, which only a Chromium host does, so the flag
+  lives and dies with that connection and there is no setting to enable. Cindy's skill slot: what
+  the approval dialog showed must be byte-identical to what the agent later reads, enforced by one
+  checker shared by both ends, with the link pointing at an approved snapshot rather than a mutable
+  directory. Orca's accounts: an account is a directory with an ownership marker and "active" is a
+  pointer, so a switch never overwrites a credential. In each case the declaration is backed by
+  something that exists. H36 is what happens without that.
+  **What Fleet is missing is upstream of the kit.** `03-NON-NEGOTIABLES.md` forbids a second
+  authority and `05-ROADMAP.md` fixes integration order, but no document answers *which layer owns
+  this capability*. So capability lands wherever it is written — a settings-tree label record trying
+  to bind skills, sources, tools and permission — and R15 marketplaces and R10 authoring will hit
+  the same wall for the same reason. Cindy's `core-product-principles.md` §§5–6 is a working answer
+  under a compatible licence: **Core** carries only what the host must provide for everyone; a
+  **Skill** describes how work is done; a **plugin** carries rich interaction; and 「Core 永远保持
+  纯粹」 bars personal, team or industry workflow from Core behind four conjunctive conditions, with
+  an unclear boundary defaulting to "prove it as a Skill or plugin first". Its companion rule is
+  that determinism belongs in code — branching, validation, state machines, orchestration,
+  permission control, error handling, retry and fallback — with prompt carrying only what needs
+  language; a kit whose whole payload collapsed into a prompt string is the counter-example.
+  **Owner ruling required (G1: this is a product boundary, not an engineering route).** Adopt a
+  Fleet layer-ownership rule of that shape, then decide what an expert kit is. Option A — build the
+  host: widen the write inputs, add a skill resolver that turns a slug into something a harness
+  reads, project the tool subset (Craft v0.12's `proxy-tool-name.ts` is the prerequisite), and route
+  the requested permission mode through the existing permission path. Option B — shrink to the
+  truth: drop `expertKit` from the record and the budget assessment from the page, and let a kit be
+  the named role with a prompt preset it demonstrably is. Both are smaller than the present state.
+  Not an option: leaving a surface that measures a value it cannot obtain. (2026-09-10)
