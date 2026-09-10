@@ -48,7 +48,6 @@ function run(command: string, cwd: string): void {
   execSync(command, {
     cwd,
     stdio: 'inherit',
-    shell: true,
   });
 }
 
@@ -60,7 +59,6 @@ function runQuiet(command: string, cwd: string): void {
     execSync(command, {
       cwd,
       stdio: 'pipe',
-      shell: true,
     });
   } catch {
     // Ignore errors

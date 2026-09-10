@@ -24,11 +24,13 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "bash scripts/test-all.sh",
+    "test": "bash scripts/test-all.sh && bun run test:repo-scripts",
+    "test:repo-scripts": "bun test scripts/distribution-safety.test.ts",
     "typecheck": "bun run typecheck:shared",
     "typecheck:shared": "cd packages/shared && bun run tsc --noEmit",
     "typecheck:staged": "bash scripts/typecheck-staged.sh",
-    "typecheck:all": "bash scripts/typecheck-all.sh",
+    "typecheck:all": "bash scripts/typecheck-all.sh && bun run typecheck:scripts",
+    "typecheck:scripts": "bun run tsc --noEmit -p tsconfig.scripts.json",
     "server:start": "bun run packages/server/src/index.ts",
     "server:dev": "bun run server:build:subprocess && CRAFT_DEBUG=true CRAFT_BUNDLED_ASSETS_ROOT=$PWD/apps/electron bun run packages/server/src/index.ts",
     "server:build": "bun run scripts/build-server.ts",
