@@ -6,7 +6,7 @@ import type { TokenUsage } from '@craft-agent/core/types';
 import type { CreateSessionOptions } from '@craft-agent/shared/protocol';
 import { parseTaskSpec, saveTaskSpec, readRunLog, readNodeOutput, type TaskSpec } from '@craft-agent/shared/tasks';
 import type { SessionCompletionEvent } from '../sessions/SessionManager';
-import { TaskRunner, type ConductorSessionHost } from './TaskRunner';
+import { TaskRunner, __resetWorkspaceInFlightForTests, type ConductorSessionHost } from './TaskRunner';
 
 // Flush pending microtasks so the runner's async dispatch (create → column → send) settles.
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -67,6 +67,14 @@ class MockHost implements ConductorSessionHost {
   getSessionWorkingDirectory(sessionId: string): string | undefined {
     return this.workingDirById.get(sessionId);
   }
+  permissionById = new Map<string, import('@craft-agent/shared/agent/mode-types').PermissionMode>();
+  getSessionPermissionMode(sessionId: string): import('@craft-agent/shared/agent/mode-types').PermissionMode | undefined {
+    return this.permissionById.get(sessionId);
+  }
+  runtimeById = new Map<string, { exists: boolean; isProcessing: boolean; finalText?: string }>();
+  getSessionRuntimeState(sessionId: string) {
+    return this.runtimeById.get(sessionId);
+  }
 
   // --- test helpers (sessionId is derived from the node title, which defaults to the node id) ---
   sessionIdFor(nodeId: string): string {
@@ -100,8 +108,10 @@ describe('TaskRunner (Conductor)', () => {
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'conductor-test-'));
     host = new MockHost();
+    __resetWorkspaceInFlightForTests();
   });
   afterEach(() => {
+    __resetWorkspaceInFlightForTests();
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -187,31 +197,31 @@ describe('TaskRunner (Conductor)', () => {
     expect(optsB?.llmConnection).toBe('default-conn')
   })
 
-  it('resolves permissionMode: node override → task default → child (never the workspace default)', async () => {
+  it('resolves permissionMode: node override → task default, intersected with parent', async () => {
+    host.permissionById.set('orch', 'allow-all')
     saveTaskSpec(
       root,
       specOf({
         id: 'perm',
         title: 'Perm',
         goal: 'g',
-        defaults: { permissionMode: 'ask' },
+        defaults: { permissionMode: 'allow-all' },
         nodes: [
           { id: 'a', prompt: 'a', permissionMode: 'safe' }, // node override wins
-          { id: 'b', prompt: 'b' }, // inherits the task default
+          { id: 'b', prompt: 'b', permissionMode: 'allow-all' }, // explicit allow-all under allow-all parent
         ],
       }),
     )
     const runner = makeRunner()
-    runner.run('perm', { runId: 'r1' })
+    runner.run('perm', { runId: 'r1', orchestratorSessionId: 'orch' })
     await tick()
 
     expect(host.created.find((c) => c.options.name === 'a')?.options.permissionMode).toBe('safe')
-    expect(host.created.find((c) => c.options.name === 'b')?.options.permissionMode).toBe('ask')
+    expect(host.created.find((c) => c.options.name === 'b')?.options.permissionMode).toBe('allow-all')
   })
 
-  it('defaults an omitted permission mode to allow-all (unattended-safe), not undefined/ask', async () => {
-    // A hand-authored spec that sets no permission mode must NOT fall through to the workspace default
-    // (which could be `ask` → the unattended child would hang). The runner supplies an explicit default.
+  it('defaults an omitted permission mode to safe (never implicit allow-all)', async () => {
+    // Unattended children must not invent privilege. Missing node/task/parent → safe.
     saveTaskSpec(
       root,
       specOf({ id: 'perm2', title: 'Perm2', goal: 'g', nodes: [{ id: 'c', prompt: 'c' }] }),
@@ -220,7 +230,122 @@ describe('TaskRunner (Conductor)', () => {
     runner.run('perm2', { runId: 'r1' })
     await tick()
 
-    expect(host.created.find((c) => c.options.name === 'c')?.options.permissionMode).toBe('allow-all')
+    expect(host.created.find((c) => c.options.name === 'c')?.options.permissionMode).toBe('safe')
+  })
+
+  it('never lets a restricted parent spawn a more privileged child', async () => {
+    host.permissionById.set('orch', 'safe')
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'perm-esc',
+        title: 'PermEsc',
+        goal: 'g',
+        nodes: [{ id: 'x', prompt: 'x', permissionMode: 'allow-all' }],
+      }),
+    )
+    const runner = makeRunner()
+    runner.run('perm-esc', { runId: 'r1', orchestratorSessionId: 'orch' })
+    await tick()
+
+    expect(host.created.find((c) => c.options.name === 'x')).toBeUndefined()
+    expect(runner.getRunState('perm-esc', 'r1')!.status).toBe('failed')
+  })
+
+  it('refuses unattended ask without an approval channel', async () => {
+    host.permissionById.set('orch', 'ask')
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'perm-ask',
+        title: 'PermAsk',
+        goal: 'g',
+        defaults: { permissionMode: 'ask' },
+        nodes: [{ id: 'y', prompt: 'y' }],
+      }),
+    )
+    const runner = makeRunner()
+    runner.run('perm-ask', { runId: 'r1', orchestratorSessionId: 'orch' })
+    await tick()
+
+    expect(host.created).toHaveLength(0)
+    expect(runner.getRunState('perm-ask', 'r1')!.status).toBe('failed')
+  })
+
+  it('records work-intent before node-spawned in the run-log', async () => {
+    saveTaskSpec(
+      root,
+      specOf({ id: 'wi', title: 'Wi', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }),
+    )
+    const runner = makeRunner()
+    runner.run('wi', { runId: 'r1' })
+    await tick()
+    const log = readRunLog(root, 'wi', 'r1')
+    const kinds = log.map((e) => e.kind)
+    const intentIdx = kinds.indexOf('work-intent')
+    const spawnIdx = kinds.indexOf('node-spawned')
+    expect(intentIdx).toBeGreaterThanOrEqual(0)
+    expect(spawnIdx).toBeGreaterThan(intentIdx)
+  })
+
+  it('on restart re-attaches an in-flight session instead of spawning a second child', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'recon',
+        title: 'Recon',
+        goal: 'g',
+        nodes: [{ id: 'a', prompt: 'a' }],
+      }),
+    )
+    const r1 = makeRunner()
+    r1.run('recon', { runId: 'r1' })
+    await tick()
+    expect(host.created).toHaveLength(1)
+
+    // Crash mid-flight: new runner + host that still sees the session processing.
+    const host2 = new MockHost()
+    host2.runtimeById.set('sess-a', { exists: true, isProcessing: true })
+    const r2 = new TaskRunner({
+      host: host2,
+      workspaceId: 'ws',
+      workspaceRoot: root,
+      now: () => '2026-06-07T00:00:00.000Z',
+    })
+    r2.resume('recon', 'r1')
+    await tick()
+
+    expect(host2.created).toHaveLength(0) // no second spawn
+    expect(r2.getRunState('recon', 'r1')!.nodes.find((n) => n.id === 'a')!.state).toBe('running')
+
+    // Late completion on the original session id settles the attempt.
+    host2.completeSession('sess-a', { finalText: 'done' })
+    await tick()
+    expect(r2.getRunState('recon', 'r1')!.nodes.find((n) => n.id === 'a')!.state).toBe('done')
+  })
+
+  it('on restart refuses silent re-dispatch when spawned session is missing', async () => {
+    saveTaskSpec(
+      root,
+      specOf({ id: 'miss', title: 'Miss', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }),
+    )
+    const r1 = makeRunner()
+    r1.run('miss', { runId: 'r1' })
+    await tick()
+
+    const host2 = new MockHost()
+    host2.runtimeById.set('sess-a', { exists: false, isProcessing: false })
+    const r2 = new TaskRunner({
+      host: host2,
+      workspaceId: 'ws',
+      workspaceRoot: root,
+      now: () => '2026-06-07T00:00:00.000Z',
+    })
+    r2.resume('miss', 'r1')
+    await tick()
+
+    expect(host2.created).toHaveLength(0)
+    expect(r2.getRunState('miss', 'r1')!.nodes.find((n) => n.id === 'a')!.state).toBe('failed')
   })
 
   it('stamps task/run/node linkage on each dispatched child session', async () => {
@@ -781,6 +906,39 @@ describe('TaskRunner (Conductor)', () => {
     expect(r2.getRunState('hyd', 'r1')!.status).toBe('failed');
   });
 
+  it('reconstructs the malformed-verdict re-ask cap from the run-log on a cross-restart resume', async () => {
+    // MAX_UNPARSED_REASKS = 2. Persist two unparsed verdicts, then resume on a fresh runner:
+    // the next unparsed must exhaust the carried-over budget and fail, not restart from zero.
+    saveTaskSpec(root, specOf({ id: 'unp-hyd', title: 'UnpHyd', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    const r1 = makeRunner();
+    r1.run('unp-hyd', { runId: 'r1', orchestratorSessionId: 'orch' });
+    await tick();
+    host.complete('a', { finalText: 'x' });
+    await tick();
+
+    host.completeSession('orch', { finalText: 'malformed first' });
+    await tick();
+    expect(r1.getRunState('unp-hyd', 'r1')!.status).toBe('verifying');
+    host.completeSession('orch', { finalText: 'malformed second' });
+    await tick();
+    expect(r1.getRunState('unp-hyd', 'r1')!.status).toBe('verifying');
+
+    const host2 = new MockHost();
+    const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root, now: () => '2026-06-07T00:00:00.000Z' });
+    r2.resume('unp-hyd', 'r1');
+    await tick();
+    expect(r2.getRunState('unp-hyd', 'r1')!.status).toBe('verifying');
+
+    // Third unparsed on the resumed process must honor the cap (already 2 re-asks in the log).
+    host2.completeSession('orch', { finalText: 'malformed after restart' });
+    await tick();
+    expect(r2.getRunState('unp-hyd', 'r1')!.status).toBe('failed');
+    const unparsed = readRunLog(root, 'unp-hyd', 'r1').filter(
+      (e) => e.kind === 'verdict' && (e as { result?: string }).result === 'unparsed',
+    );
+    expect(unparsed.length).toBe(3);
+  });
+
   it('fails a node that completes with no text despite declaring outputs (instead of marking it done)', async () => {
     // Bug 2: a clean turn-completion is not proof of success. A node that declared `outputs` but
     // produced empty final text delivered nothing — it must fail (→ needs-review), not silently pass.
@@ -841,5 +999,504 @@ describe('TaskRunner (Conductor)', () => {
     await tick();
 
     expect(host.nodeCounts).toContainEqual({ sessionId: 'orch', count: 3 });
+  });
+
+  it('stop mid-dispatch tears down the created child instead of orphaning it', async () => {
+    saveTaskSpec(root, specOf({ id: 'mid', title: 'Mid', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    // Gate createSession so stop() lands while dispatch is awaiting it.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const origCreate = host.createSession.bind(host);
+    host.createSession = async (ws, opts) => { await gate; return origCreate(ws, opts); };
+
+    const runner = makeRunner();
+    runner.run('mid', { runId: 'r1' });
+    await runner.stop('mid', 'r1');
+    release();
+    await tick();
+
+    // The belatedly-created session is cancelled and never receives the prompt.
+    expect(host.cancelled).toContain('sess-a');
+    expect(host.sent.some((s) => s.sessionId === 'sess-a')).toBe(false);
+    expect(runner.getRunState('mid', 'r1')!.status).toBe('stopped');
+  });
+
+  it('ignores a late completion from a superseded attempt session', async () => {
+    saveTaskSpec(root, specOf({ id: 'stale', title: 'Stale', goal: 'g', nodes: [{ id: 'a', prompt: 'a', retry: { limit: 1 } }] }));
+    // Give each attempt a distinct session id (the default mock derives it from the node title).
+    let n = 0;
+    const origCreate = host.createSession.bind(host);
+    host.createSession = async (ws, opts) => { n += 1; const r = await origCreate(ws, opts); return { id: `${r.id}-att${n}` }; };
+
+    const runner = makeRunner();
+    runner.run('stale', { runId: 'r1' });
+    await tick();
+
+    host.completeSession('sess-a-att1', { reason: 'error' }); // attempt 1 fails → retry dispatches attempt 2
+    await tick();
+    expect(host.created.filter((c) => c.options.name === 'a')).toHaveLength(2);
+    expect(runner.getRunState('stale', 'r1')!.nodes[0]!.state).toBe('running');
+
+    // A late completion from attempt 1's session must NOT settle the node.
+    host.completeSession('sess-a-att1', { finalText: 'OLD' });
+    await tick();
+    const snap1 = runner.getRunState('stale', 'r1')!;
+    expect(snap1.nodes[0]!.state).toBe('running');
+    expect(snap1.status).toBe('running');
+
+    // The current attempt's completion settles it normally.
+    host.completeSession('sess-a-att2', { finalText: 'NEW' });
+    await tick();
+    expect(runner.getRunState('stale', 'r1')!.status).toBe('completed');
+  });
+
+  it('pauses (not fails) when the last in-flight node is externally interrupted, then resumes', async () => {
+    saveTaskSpec(root, specOf({ id: 'int', title: 'Int', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    const runner = makeRunner();
+    runner.run('int', { runId: 'r1' });
+    await tick();
+
+    host.complete('a', { reason: 'interrupted' });
+    await tick();
+    const snap = runner.getRunState('int', 'r1')!;
+    expect(snap.status).toBe('paused'); // cancelled nodes re-dispatch on resume — not a terminal failure
+    expect(snap.nodes[0]!.state).toBe('cancelled');
+
+    runner.resume('int', 'r1');
+    await tick();
+    expect(host.created.filter((c) => c.options.name === 'a')).toHaveLength(2);
+
+    host.complete('a', { finalText: 'A' });
+    await tick();
+    expect(runner.getRunState('int', 'r1')!.status).toBe('completed');
+  });
+
+  it('replays params, verifyOnComplete, and cumulative tokens on a cross-restart resume', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'reh',
+        title: 'Reh',
+        goal: 'g',
+        params: [{ name: 'p1', default: 'dflt' }],
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', depends_on: ['a'], prompt: 'b ${params.p1}' },
+        ],
+      }),
+    );
+    const r1 = makeRunner();
+    r1.run('reh', { runId: 'r1', orchestratorSessionId: 'orch', params: { p1: 'custom' }, verifyOnComplete: false });
+    await tick();
+    r1.pause('reh', 'r1'); // keep 'b' pending while 'a' completes
+    host.complete('a', { finalText: 'A', tokenUsage: tu(30, 20) });
+    await tick();
+
+    const host2 = new MockHost();
+    const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root, now: () => '2026-06-07T00:00:00.000Z' });
+    r2.resume('reh', 'r1');
+    await tick();
+
+    // Params replayed from the persisted run-started entry (not reset to the spec default).
+    expect(host2.promptFor('b')).toBe('b custom');
+    // Cumulative tokens replayed from node-finished entries.
+    expect(r2.getRunState('reh', 'r1')!.tokensUsed).toBe(50);
+
+    host2.complete('b', { finalText: 'B' });
+    await tick();
+    // verifyOnComplete: false persisted → completes directly, no verification round.
+    expect(r2.getRunState('reh', 'r1')!.status).toBe('completed');
+  });
+
+  it('fails an over-budget run on resume instead of bouncing back into a budget pause', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'ob',
+        title: 'Ob',
+        goal: 'g',
+        token_budget: 40,
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', depends_on: ['a'], prompt: 'b' },
+        ],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('ob', { runId: 'r1' });
+    await tick();
+    host.complete('a', { finalText: 'A', tokenUsage: tu(30, 20) }); // 50 ≥ 40 → budget pause (b still pending)
+    await tick();
+    expect(runner.getRunState('ob', 'r1')!.status).toBe('paused');
+
+    runner.resume('ob', 'r1');
+    await tick();
+    const snap = runner.getRunState('ob', 'r1')!;
+    expect(snap.status).toBe('failed'); // hard cap — no unrecoverable pause loop
+    expect(readRunLog(root, 'ob', 'r1').some((e) => e.kind === 'budget-breach')).toBe(true);
+  });
+
+  it('fails an over-budget run on a cross-restart resume (token counter replayed)', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'obr',
+        title: 'Obr',
+        goal: 'g',
+        token_budget: 40,
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', depends_on: ['a'], prompt: 'b' },
+        ],
+      }),
+    );
+    const r1 = makeRunner();
+    r1.run('obr', { runId: 'r1' });
+    await tick();
+    r1.pause('obr', 'r1'); // manual pause before the budget pause can fire
+    host.complete('a', { finalText: 'A', tokenUsage: tu(30, 20) });
+    await tick();
+
+    const host2 = new MockHost();
+    const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root, now: () => '2026-06-07T00:00:00.000Z' });
+    r2.resume('obr', 'r1');
+    await tick();
+    expect(r2.getRunState('obr', 'r1')!.status).toBe('failed');
+    expect(host2.created.filter((c) => c.options.name === 'b')).toHaveLength(0);
+  });
+
+  it('keeps a terminal snapshot after evicting the run, and refuses to resume it', async () => {
+    saveTaskSpec(root, specOf({ id: 'ev', title: 'Ev', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    const runner = makeRunner();
+    runner.run('ev', { runId: 'r1' });
+    await tick();
+    host.complete('a', { finalText: 'A' });
+    await tick();
+    expect(runner.getRunState('ev', 'r1')!.status).toBe('completed'); // snapshot survives eviction
+
+    // A terminal run must not be restarted by resume() (it is no longer in the active registry).
+    runner.resume('ev', 'r1');
+    await tick();
+    expect(host.created.filter((c) => c.options.name === 'a')).toHaveLength(1);
+    expect(runner.getRunState('ev', 'r1')!.status).toBe('completed');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Delegation kernel wiring: RunReport, path leases, organization decision
+  // ---------------------------------------------------------------------------
+
+  function structuredReport(opts: {
+    outcome?: string;
+    criteria?: Array<{ id: string; status: 'met' | 'unmet' | 'unknown'; evidence?: Array<{ kind: 'file'; id: string; path?: string }> }>;
+    changedPaths?: string[];
+  } = {}): string {
+    const report = {
+      outcome: opts.outcome ?? 'done',
+      criteria: opts.criteria ?? [{ id: 'c1', status: 'met' as const, evidence: [] }],
+      changedPaths: opts.changedPaths ?? [],
+      artifacts: [],
+      evidence: [],
+      decisions: [],
+      open: [],
+      status: 'wired but not visually checked',
+    };
+    return `Result:\n\`\`\`json\n${JSON.stringify(report)}\n\`\`\``;
+  }
+
+  it('stores a structured RunReport on node completion when parseable', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'rr',
+        title: 'Rr',
+        goal: 'g',
+        nodes: [{ id: 'a', prompt: 'a', outputs: [{ name: 'result' }] }],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('rr', { runId: 'r1', verifyOnComplete: false });
+    await tick();
+
+    host.complete('a', { finalText: structuredReport() });
+    await tick();
+
+    const out = readNodeOutput(root, 'rr', 'r1', 'a');
+    expect(out?.text).toContain('```json');
+    expect(out?.report?.outcome).toBe('done');
+    expect(out?.validation?.ok).toBe(true);
+    expect(runner.getRunState('rr', 'r1')!.status).toBe('completed');
+  });
+
+  it('fails a node with declared outputs that returns natural language only', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'nl',
+        title: 'Nl',
+        goal: 'g',
+        nodes: [{ id: 'a', prompt: 'a', outputs: [{ name: 'result' }] }],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('nl', { runId: 'r1' });
+    await tick();
+
+    host.complete('a', { finalText: 'I finished everything successfully.' });
+    await tick();
+
+    const snap = runner.getRunState('nl', 'r1')!;
+    expect(snap.nodes.find((n) => n.id === 'a')!.state).toBe('failed');
+    expect(snap.status).toBe('failed');
+    const finished = readRunLog(root, 'nl', 'r1').find(
+      (e) => e.kind === 'node-finished' && (e as { nodeId?: string }).nodeId === 'a',
+    ) as { reason?: string } | undefined;
+    expect(finished?.reason).toMatch(/natural language only|structured RunReport/i);
+  });
+
+  it('still accepts plain text for intermediate nodes without declared outputs', async () => {
+    // Dependency-chain fixtures use "A"/"B" — must not require structured reports.
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'plain',
+        title: 'Plain',
+        goal: 'g',
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', depends_on: ['a'], prompt: 'b ${nodes.a.output}' },
+        ],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('plain', { runId: 'r1', verifyOnComplete: false });
+    await tick();
+    host.complete('a', { finalText: 'A' });
+    await tick();
+    expect(host.promptFor('b')).toBe('b A');
+    host.complete('b', { finalText: 'B' });
+    await tick();
+    expect(runner.getRunState('plain', 'r1')!.status).toBe('completed');
+    expect(readNodeOutput(root, 'plain', 'r1', 'a')).toEqual({ text: 'A' });
+  });
+
+  it('halts node retries after two non-progressing structured attempts', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'nop',
+        title: 'Nop',
+        goal: 'g',
+        nodes: [
+          {
+            id: 'a',
+            prompt: 'a',
+            outputs: [{ name: 'result' }],
+            retry: { limit: 5 },
+          },
+        ],
+      }),
+    );
+    // Distinct session ids per attempt so completions map correctly.
+    let n = 0;
+    const origCreate = host.createSession.bind(host);
+    host.createSession = async (ws, opts) => {
+      n += 1;
+      const r = await origCreate(ws, opts);
+      return { id: `${r.id}-att${n}` };
+    };
+
+    const runner = makeRunner();
+    runner.run('nop', { runId: 'r1' });
+    await tick();
+
+    // Unmet criterion on every attempt → no progress.
+    const bad = structuredReport({
+      criteria: [{ id: 'c1', status: 'unmet', evidence: [] }],
+    });
+    host.completeSession('sess-a-att1', { finalText: bad });
+    await tick();
+    expect(host.created.filter((c) => c.options.name === 'a')).toHaveLength(2);
+
+    host.completeSession('sess-a-att2', { finalText: bad });
+    await tick();
+
+    const snap = runner.getRunState('nop', 'r1')!;
+    expect(snap.nodes.find((n) => n.id === 'a')!.state).toBe('failed');
+    expect(snap.status).toBe('failed');
+    // Halted without exhausting the full retry.limit of 5.
+    expect(host.created.filter((c) => c.options.name === 'a').length).toBeLessThanOrEqual(2);
+    const failed = readRunLog(root, 'nop', 'r1').find(
+      (e) => e.kind === 'node-finished' && (e as { state?: string }).state === 'failed',
+    ) as { reason?: string } | undefined;
+    expect(failed?.reason).toMatch(/no-progress halt/i);
+  });
+
+  it('fails one of two parallel nodes with overlapping write_paths (path lease conflict)', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'lease',
+        title: 'Lease',
+        goal: 'g',
+        max_parallel: 2,
+        nodes: [
+          { id: 'a', prompt: 'a', write_paths: ['src/shared'] },
+          { id: 'b', prompt: 'b', write_paths: ['src/shared/util.ts'] },
+        ],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('lease', { runId: 'r1', verifyOnComplete: false });
+    await tick();
+
+    const snap = runner.getRunState('lease', 'r1')!;
+    const states = Object.fromEntries(snap.nodes.map((n) => [n.id, n.state]));
+    // Exactly one writer may hold the overlapping path; the other fails with a lease message.
+    const doneOrRunning = [states.a, states.b].filter((s) => s === 'running' || s === 'done');
+    const failed = [states.a, states.b].filter((s) => s === 'failed');
+    expect(doneOrRunning.length).toBe(1);
+    expect(failed.length).toBe(1);
+
+    const log = readRunLog(root, 'lease', 'r1');
+    expect(log.some((e) => e.kind === 'path-lease-denied')).toBe(true);
+    const leaseFail = log.find(
+      (e) => e.kind === 'node-finished' && (e as { state?: string }).state === 'failed',
+    ) as { reason?: string } | undefined;
+    expect(leaseFail?.reason).toMatch(/path lease conflict/i);
+
+    // The winner can still complete; the run fails because a sibling failed.
+    const winner = states.a === 'running' ? 'a' : 'b';
+    host.complete(winner, { finalText: 'ok' });
+    await tick();
+    expect(runner.getRunState('lease', 'r1')!.status).toBe('failed');
+  });
+
+  it('allows parallel nodes without write_paths (no leases)', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'nolease',
+        title: 'NoLease',
+        goal: 'g',
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', prompt: 'b' },
+        ],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('nolease', { runId: 'r1', verifyOnComplete: false });
+    await tick();
+    expect(host.dispatchedNames().sort()).toEqual(['a', 'b']);
+    host.complete('a', { finalText: 'A' });
+    host.complete('b', { finalText: 'B' });
+    await tick();
+    expect(runner.getRunState('nolease', 'r1')!.status).toBe('completed');
+    expect(readRunLog(root, 'nolease', 'r1').some((e) => e.kind === 'path-lease-denied')).toBe(false);
+  });
+
+  it('logs an organization-decision when the task has ≥2 independent root nodes', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'org',
+        title: 'Org',
+        goal: 'g',
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', prompt: 'b' },
+        ],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('org', { runId: 'r1', verifyOnComplete: false });
+    await tick();
+
+    const log = readRunLog(root, 'org', 'r1');
+    const org = log.find((e) => e.kind === 'organization-decision') as
+      | { mode?: string; independentWorkUnits?: number; reasons?: string[] }
+      | undefined;
+    expect(org).toBeDefined();
+    expect(org?.mode).toBe('bounded-parallel');
+    expect(org?.independentWorkUnits).toBe(2);
+    // Non-blocking: both roots still dispatch.
+    expect(host.dispatchedNames().sort()).toEqual(['a', 'b']);
+  });
+
+  it('wraps structured-output nodes in a TaskBrief envelope', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'brief-wrap',
+        title: 'BriefWrap',
+        goal: 'produce report',
+        nodes: [
+          {
+            id: 'out',
+            prompt: 'Write the audit findings',
+            outputs: [{ name: 'report' }],
+          },
+        ],
+      }),
+    )
+    const runner = makeRunner()
+    runner.run('brief-wrap', { runId: 'r1' })
+    await tick()
+    const prompt = host.promptFor('out') ?? ''
+    expect(prompt).toContain('GOAL:')
+    expect(prompt).toContain('ACCEPTANCE:')
+    expect(prompt).toContain('Write the audit findings')
+    expect(prompt).toContain('RunReport')
+  })
+
+  it('honors workspaceMaxParallel across concurrent schedule pressure', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'wscap',
+        title: 'WsCap',
+        goal: 'g',
+        max_parallel: 4,
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', prompt: 'b' },
+          { id: 'c', prompt: 'c' },
+        ],
+      }),
+    )
+    const runner = new TaskRunner({
+      host,
+      workspaceId: 'ws',
+      workspaceRoot: root,
+      now: () => '2026-06-07T00:00:00.000Z',
+      workspaceMaxParallel: 1,
+    })
+    runner.run('wscap', { runId: 'r1' })
+    await tick()
+    // Only one child may be in-flight under workspace cap.
+    expect(host.created).toHaveLength(1)
+    host.complete(host.created[0]!.options.name!, { finalText: 'ok' })
+    await tick()
+    // After release, another root may dispatch.
+    expect(host.created.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('does not log organization-decision for a single-root chain', async () => {
+    saveTaskSpec(
+      root,
+      specOf({
+        id: 'chain',
+        title: 'Chain',
+        goal: 'g',
+        nodes: [
+          { id: 'a', prompt: 'a' },
+          { id: 'b', depends_on: ['a'], prompt: 'b' },
+        ],
+      }),
+    );
+    const runner = makeRunner();
+    runner.run('chain', { runId: 'r1', verifyOnComplete: false });
+    await tick();
+    expect(readRunLog(root, 'chain', 'r1').some((e) => e.kind === 'organization-decision')).toBe(false);
   });
 });

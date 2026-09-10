@@ -1,24 +1,46 @@
 /**
- * The Conductor — an in-process DAG runner for Tasks.
+ * Delegation Kernel (TaskRunner / Conductor) — in-process DAG runner for Tasks.
+ *
+ * This is the single scheduling authority over the existing Task / Session /
+ * SessionEvents stores (C3/C6). It is not a second team runtime.
  *
  * A `task.yaml` (parsed + validated in @craft-agent/shared/tasks) describes a
- * graph of nodes; each node is a child session. The Conductor:
+ * graph of nodes; each node is a child session. The kernel:
  *   1. schedules ready nodes (deps satisfied) honoring `max_parallel`,
- *   2. dispatches each as a child session (create + sendMessage), interpolating
+ *   2. persists work-intent, intersects permissions, then dispatches each as a
+ *      child session (create + sendMessage), interpolating
  *      `${nodes.<id>.output}` / `${params.<name>}` / `${inputs.<name>}` into the prompt,
  *   3. subscribes to SessionManager's in-process `onSessionComplete` seam,
  *   4. on completion reads the child's final assistant text as the node output,
  *      feeds it to dependents, and reschedules,
  *   5. drives child `sessionStatus` + `kanbanColumn` so the board renders the live DAG,
- *   6. persists an append-only run-log under `tasks/<slug>/runs/<runId>/`.
+ *   6. persists an append-only run-log under `tasks/<slug>/runs/<runId>/`,
+ *   7. on restart reconciles in-flight attempts via the host runtime adapter —
+ *      never silently re-dispatches chargeable work.
  *
  * v1 executes `kind: 'session'` nodes wired by `depends_on` + `inputs`. Control-flow
- * kinds (route/loop/approval/…) parse but are not yet executed (P4).
+ * kinds (route/loop/approval/…) parse but are not yet executed (deferred).
  *
  * The runner depends on a minimal `ConductorSessionHost` interface (which
  * SessionManager structurally satisfies) so it is unit-testable with a mock.
  */
 import type { CreateSessionOptions } from '@craft-agent/shared/protocol';
+import type { PermissionMode } from '@craft-agent/shared/agent/mode-types';
+import {
+  attemptIdempotencyKey,
+  chooseOrganization,
+  contractFromBrief,
+  formatTaskBriefMessage,
+  parseRunReportFromText,
+  pathOverlaps,
+  PathLeaseManager,
+  resolveChildPermission,
+  shouldHaltForNoProgress,
+  validateRunReport,
+  type RunReport,
+  type TaskBrief,
+  type TaskContract,
+} from '@craft-agent/shared/agent';
 import type { SessionCompletionEvent } from '../sessions/SessionManager';
 import {
   type TaskSpec,
@@ -43,6 +65,13 @@ import {
 // Host interface (SessionManager satisfies this structurally)
 // ---------------------------------------------------------------------------
 
+/** Runtime view of a child session after restart (AionCore-style reconcile input). */
+export interface ChildSessionRuntimeState {
+  exists: boolean;
+  isProcessing: boolean;
+  finalText?: string;
+}
+
 export interface ConductorSessionHost {
   /** Creates the child session AND announces it to the renderer (createSession emits
    *  session_created by default), so the subtask appears on the board with its real title. */
@@ -57,6 +86,13 @@ export interface ConductorSessionHost {
   getSessionFinalText(sessionId: string): string | undefined;
   /** Resolved working directory of a session, so children inherit the orchestrator's cwd. */
   getSessionWorkingDirectory(sessionId: string): string | undefined;
+  /** Parent/orchestrator permission mode for monotonic intersection (optional; missing → treat as unknown). */
+  getSessionPermissionMode?(sessionId: string): PermissionMode | undefined;
+  /**
+   * Query live/runtime state of a child session for crash recovery.
+   * When present, in-flight nodes are reconciled instead of silently re-dispatched.
+   */
+  getSessionRuntimeState?(sessionId: string): ChildSessionRuntimeState | undefined;
 }
 
 export interface TaskRunnerDeps {
@@ -67,9 +103,33 @@ export interface TaskRunnerDeps {
   summarize?: (text: string) => Promise<string>;
   /** Default `max_parallel` when the spec omits it. */
   defaultMaxParallel?: number;
+  /**
+   * Workspace-level concurrent child-session cap across all active runs in this process
+   * (third capacity tier after global process default and per-run max_parallel).
+   */
+  workspaceMaxParallel?: number;
   /** Injectable clock (run-log timestamps) + run-id generator, for determinism in tests. */
   now?: () => string;
   genRunId?: () => string;
+}
+
+/** Process-wide default ceiling for concurrent Conductor children (global capacity). */
+const GLOBAL_MAX_PARALLEL_CHILDREN = 32;
+/** In-flight child count per workspaceId across TaskRunner instances in this process. */
+const workspaceInFlight = new Map<string, number>();
+
+function workspaceInFlightCount(workspaceId: string): number {
+  return workspaceInFlight.get(workspaceId) ?? 0;
+}
+function workspaceInFlightAdd(workspaceId: string, delta: number): void {
+  const next = Math.max(0, workspaceInFlightCount(workspaceId) + delta);
+  if (next === 0) workspaceInFlight.delete(workspaceId);
+  else workspaceInFlight.set(workspaceId, next);
+}
+
+/** Test-only: clear process-wide workspace capacity counters between cases. */
+export function __resetWorkspaceInFlightForTests(): void {
+  workspaceInFlight.clear();
 }
 
 export interface RunOptions {
@@ -108,12 +168,8 @@ export interface RunSnapshot {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_PARALLEL = 4;
-// Explicit, unattended-safe default for a subtask's permission mode when neither the node nor the task
-// defaults set one. Conductor children run with no human to answer an `ask` prompt, so we must NOT fall
-// through to the workspace default (which may be `ask` → the child hangs, or read-only `safe` → it
-// silently produces nothing). The task editor now persists an explicit `defaults.permissionMode`, so
-// this constant only governs hand-authored specs that omit it — and it is never `ask`.
-const AUTONOMOUS_DEFAULT_MODE = 'allow-all' as const;
+// Unattended children never invent privilege. When nothing is specified, intersection falls back to
+// `safe` (see resolveChildPermission). Historical implicit `allow-all` is removed (PR0 / C11).
 const RUNNING_STATUS = 'in-progress';
 const DONE_STATUS = 'done';
 // There is no 'failed' session status (the fixed set is todo|in-progress|needs-review|done|cancelled).
@@ -137,6 +193,12 @@ interface NodeStateEntry {
   attempt: number;
   /** Reason the previous attempt failed, fed back into the retry prompt (failure-aware retry). */
   lastFailure?: string;
+  /** Idempotency key of the current attempt (path-lease release + spawn guard). */
+  leaseAttemptKey?: string;
+  /** Criterion ids marked met on the last structured report (no-progress tracking). */
+  previousMetCriteria?: Set<string>;
+  /** Consecutive attempts with no newly met criteria (halt at 2). */
+  nonProgressingAttempts?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +229,18 @@ class ActiveRun {
   private dependents?: Map<string, Set<string>>;
   private settled = false;
   private settleResolvers: ((s: RunSnapshot) => void)[] = [];
+  /** Attempt keys that have been spawned (chargeable work started) — never silently re-dispatch. */
+  private readonly spawnedAttemptKeys = new Set<string>();
+  /** Nodes blocked in reconcile (cannot silently re-run). */
+  private readonly reconcileBlocked = new Set<string>();
+  /** In-process writer leases for nodes that declare `write_paths` (one ActiveRun = one manager). */
+  private readonly pathLeases = new PathLeaseManager();
+  /**
+   * Aggregate met criterion ids across the last verification/repair frontier pass.
+   * Used with shouldHaltForNoProgress so two non-progressing repairs stop the loop (C10).
+   */
+  private repairPreviousMet = new Set<string>();
+  private repairNonProgressingAttempts = 0;
 
   constructor(
     private readonly spec: TaskSpec,
@@ -194,7 +268,8 @@ class ActiveRun {
     } catch {
       // ignore — Results falls back to run-log node ids when no snapshot exists
     }
-    this.log({ kind: 'run-started', taskId: this.spec.id, runId: this.runId, orchestratorSessionId: this.opts.orchestratorSessionId });
+    this.log({ kind: 'run-started', taskId: this.spec.id, runId: this.runId, orchestratorSessionId: this.opts.orchestratorSessionId, params: this.opts.params, verifyOnComplete: this.opts.verifyOnComplete });
+    this.logOrganizationDecision();
     this.runStatus = 'running';
     // Move the task tile to the in-progress column for the duration of the run.
     if (this.opts.orchestratorSessionId) {
@@ -205,6 +280,41 @@ class ActiveRun {
       void this.deps.host.setTaskNodeCount(this.opts.orchestratorSessionId, this.spec.nodes.length);
     }
     this.scheduleReady();
+  }
+
+  /**
+   * When the DAG has ≥2 independent root nodes, record a deterministic organization note
+   * (bounded-parallel vs serial-isolated). Never blocks the run — pure observability.
+   */
+  private logOrganizationDecision(): void {
+    const roots = this.spec.nodes.filter((n) => (n.depends_on?.length ?? 0) === 0);
+    if (roots.length < 2) return;
+    const writePaths = roots.flatMap((n) => n.write_paths ?? []);
+    let overlappingWritePaths = false;
+    for (let i = 0; i < writePaths.length && !overlappingWritePaths; i++) {
+      for (let j = i + 1; j < writePaths.length; j++) {
+        if (pathOverlaps(writePaths[i]!, writePaths[j]!)) {
+          overlappingWritePaths = true;
+          break;
+        }
+      }
+    }
+    const decision = chooseOrganization({
+      sequentialDependence: false,
+      highSharedContext: false,
+      smallTask: false,
+      verificationOnly: false,
+      independentWorkUnits: roots.length,
+      overlappingWritePaths,
+      highVerificationRisk: !!this.spec.acceptance_criteria,
+    });
+    this.log({
+      kind: 'organization-decision',
+      mode: decision.mode,
+      reasons: decision.reasons,
+      shouldDelegate: decision.shouldDelegate,
+      independentWorkUnits: roots.length,
+    });
   }
 
   pause(): void {
@@ -221,28 +331,46 @@ class ActiveRun {
     for (const [, st] of this.state) if (st.state === 'cancelled') st.state = 'pending';
     this.runStatus = 'running';
     this.log({ kind: 'run-resumed' });
+    // A resume cannot lower the spend: token_budget is a hard cap, so resuming an over-budget
+    // run fails it outright rather than bouncing straight back into pauseForBudget.
+    if (this.isOverBudget() && this.hasPendingNodes()) {
+      this.log({ kind: 'budget-breach', metric: 'tokens', value: this.tokensUsed, limit: this.spec.token_budget! });
+      this.finish('failed');
+      return;
+    }
     this.scheduleReady();
   }
 
   /**
    * Rebuild run state from a persisted run-log (cross-restart resume). Done nodes reuse their
-   * recorded output and are NOT re-run; in-flight/cancelled nodes fall back to pending so they
-   * re-dispatch. A done node whose output file is missing also falls back to pending.
+   * recorded output and are NOT re-run. In-flight nodes are reconciled against the runtime
+   * adapter when available: still-running sessions are re-attached; completed sessions settle
+   * from final text; spawned-but-unknown sessions block silent re-dispatch (chargeable work
+   * must not be repeated without proof it did not run).
    */
   hydrate(log: RunLogEntry[], loadOutput: (nodeId: string) => NodeOutput | null): void {
+    const spawnedSessions = new Map<string, string>(); // nodeId → sessionId
+
     for (const e of log) {
       if (e.kind === 'node-spawned') {
         const st = this.state.get(e.nodeId);
         if (st) {
           st.sessionId = e.sessionId;
+          // Spawn without a later node-finished means the attempt was in-flight at shutdown.
+          if (st.state === 'pending') st.state = 'running';
           this.sessionToNode.set(e.sessionId, e.nodeId);
         }
+        spawnedSessions.set(e.nodeId, e.sessionId);
+        if (e.idempotencyKey) this.spawnedAttemptKeys.add(e.idempotencyKey);
       } else if (e.kind === 'node-scheduled') {
         const st = this.state.get(e.nodeId);
         if (st) st.attempt += 1;
       } else if (e.kind === 'node-finished') {
         const st = this.state.get(e.nodeId);
         if (st) st.state = e.state;
+        // Replay the cumulative token counter so token_budget stays enforced across a restart
+        // (entries record the run total at write time; the last one wins).
+        if (typeof e.tokensUsed === 'number') this.tokensUsed = Math.max(this.tokensUsed, e.tokensUsed);
       } else if (e.kind === 'verdict') {
         // Reconstruct the durable repair counters so a cross-restart resume honors the cap rather
         // than restarting the budget from zero (the in-memory counters reset on a fresh process).
@@ -251,16 +379,106 @@ class ActiveRun {
         else if (e.result === 'pass') this.unparsedReAsks = 0;
       }
     }
+
+    this.inFlight = 0;
     for (const [nodeId, st] of this.state) {
       if (st.state === 'done') {
         const out = loadOutput(nodeId);
         if (out) this.outputs[nodeId] = out;
         else st.state = 'pending'; // recorded output missing → must re-run
-      } else if (st.state === 'running' || st.state === 'cancelled') {
-        st.state = 'pending'; // in-flight at shutdown / cancelled → re-dispatch on resume
+        continue;
       }
+
+      if (st.state === 'cancelled') {
+        // Stop already cancelled the child — safe to re-queue on resume.
+        st.state = 'pending';
+        st.sessionId = undefined;
+        continue;
+      }
+      if (st.state !== 'running') continue;
+
+      const sessionId = st.sessionId ?? spawnedSessions.get(nodeId);
+      const runtime = sessionId && this.deps.host.getSessionRuntimeState
+        ? this.deps.host.getSessionRuntimeState(sessionId)
+        : undefined;
+
+      if (sessionId && runtime?.exists && runtime.isProcessing) {
+        // Re-attach: do not create a second child session.
+        st.state = 'running';
+        st.sessionId = sessionId;
+        this.sessionToNode.set(sessionId, nodeId);
+        this.inFlight += 1;
+        workspaceInFlightAdd(this.deps.workspaceId, 1);
+        continue;
+      }
+
+      if (sessionId && runtime?.exists && !runtime.isProcessing) {
+        const text = runtime.finalText ?? this.deps.host.getSessionFinalText(sessionId) ?? '';
+        if (text.trim()) {
+          const output: NodeOutput = { text };
+          this.outputs[nodeId] = output;
+          st.state = 'done';
+          st.sessionId = sessionId;
+          writeNodeOutput(this.deps.workspaceRoot, this.slug, this.runId, nodeId, output);
+          this.log({
+            kind: 'node-finished',
+            nodeId,
+            sessionId,
+            state: 'done',
+            tokensUsed: this.tokensUsed,
+          });
+          continue;
+        }
+        st.state = 'failed';
+        this.log({
+          kind: 'node-finished',
+          nodeId,
+          sessionId,
+          state: 'failed',
+          reason: 'reconcile: session idle without output after restart',
+        });
+        continue;
+      }
+
+      if (sessionId && runtime && !runtime.exists) {
+        this.reconcileBlocked.add(nodeId);
+        st.state = 'failed';
+        this.log({
+          kind: 'reconcile-blocked',
+          nodeId,
+          sessionId,
+          reason: 'spawned session missing after restart; refusing silent re-dispatch',
+        });
+        this.log({
+          kind: 'node-finished',
+          nodeId,
+          sessionId,
+          state: 'failed',
+          reason: 'reconcile-blocked: missing session',
+        });
+        continue;
+      }
+
+      if (sessionId && !runtime) {
+        // Host cannot answer: re-attach without creating a second session.
+        st.state = 'running';
+        st.sessionId = sessionId;
+        this.sessionToNode.set(sessionId, nodeId);
+        this.inFlight += 1;
+        workspaceInFlightAdd(this.deps.workspaceId, 1);
+        this.log({
+          kind: 'reconcile-blocked',
+          nodeId,
+          sessionId,
+          reason: 'no runtime adapter query; re-attached without re-dispatch',
+        });
+        continue;
+      }
+
+      // No session yet (work-intent only or cancelled before spawn) → safe to re-queue.
+      st.state = 'pending';
+      st.sessionId = undefined;
     }
-    this.inFlight = 0;
   }
 
   /** Resume a hydrated run: subscribe, log, and schedule the ready set (finished nodes are skipped). */
@@ -269,6 +487,12 @@ class ActiveRun {
     this.runStatus = 'running';
     this.unsubscribe = this.deps.host.onSessionComplete((evt) => this.onSessionComplete(evt));
     this.log({ kind: 'run-resumed' });
+    // Same hard-cap rule as resume(): an over-budget run fails instead of re-pausing forever.
+    if (this.isOverBudget() && this.hasPendingNodes()) {
+      this.log({ kind: 'budget-breach', metric: 'tokens', value: this.tokensUsed, limit: this.spec.token_budget! });
+      this.finish('failed');
+      return;
+    }
     this.scheduleReady();
   }
 
@@ -279,6 +503,8 @@ class ActiveRun {
     for (const [nodeId, st] of this.state) {
       if (st.state === 'running') {
         st.state = 'cancelled';
+        this.releaseNodeLeases(nodeId);
+        this.releaseInFlightSlot();
         this.log({ kind: 'node-finished', nodeId, sessionId: st.sessionId ?? '', state: 'cancelled', reason: 'stopped' });
         if (st.sessionId) {
           void this.deps.host.cancelProcessing(st.sessionId, true);
@@ -314,8 +540,11 @@ class ActiveRun {
 
   private scheduleReady(): void {
     if (this.runStatus !== 'running') return;
+    const workspaceCap = this.deps.workspaceMaxParallel ?? GLOBAL_MAX_PARALLEL_CHILDREN;
     for (const node of this.spec.nodes) {
+      // Three capacity tiers: run max_parallel · workspace · global process default.
       if (this.inFlight >= this.maxParallel) break;
+      if (workspaceInFlightCount(this.deps.workspaceId) >= workspaceCap) break;
       if (!this.isReady(node)) continue;
       if (this.isOverBudget()) {
         this.pauseForBudget();
@@ -337,14 +566,111 @@ class ActiveRun {
 
   private markRunning(node: TaskNode): void {
     const st = this.state.get(node.id)!;
+    // Drop the previous attempt's session mapping before dispatching a new one — a late
+    // completion from the old session must never settle the new attempt.
+    if (st.sessionId) {
+      this.sessionToNode.delete(st.sessionId);
+      st.sessionId = undefined;
+    }
     st.state = 'running';
     st.attempt += 1;
     this.inFlight += 1;
+    workspaceInFlightAdd(this.deps.workspaceId, 1);
     this.log({ kind: 'node-scheduled', nodeId: node.id });
+  }
+
+  private releaseInFlightSlot(): void {
+    this.inFlight = Math.max(0, this.inFlight - 1);
+    workspaceInFlightAdd(this.deps.workspaceId, -1);
+  }
+
+  private resolveNodePermission(node: TaskNode): {
+    ok: true;
+    mode: PermissionMode;
+  } | {
+    ok: false;
+    reason: string;
+    parentMode?: PermissionMode;
+    requestedMode?: PermissionMode;
+  } {
+    const parentMode =
+      (this.opts.orchestratorSessionId && this.deps.host.getSessionPermissionMode
+        ? this.deps.host.getSessionPermissionMode(this.opts.orchestratorSessionId)
+        : undefined) ?? undefined;
+    const requested = (node.permissionMode ?? undefined) as PermissionMode | undefined;
+    const taskDefault = (this.spec.defaults?.permissionMode ?? undefined) as PermissionMode | undefined;
+    const resolved = resolveChildPermission({
+      parent: parentMode,
+      requested,
+      taskDefault,
+      unattended: true,
+      approvalAvailable: false,
+    });
+    if (!resolved.ok) {
+      return {
+        ok: false,
+        reason: resolved.message,
+        parentMode: parentMode,
+        requestedMode: requested ?? taskDefault,
+      };
+    }
+    return { ok: true, mode: resolved.mode };
   }
 
   private async dispatch(node: TaskNode): Promise<void> {
     try {
+      const st = this.state.get(node.id)!;
+      if (this.reconcileBlocked.has(node.id)) {
+        this.failNode(node.id, 'reconcile-blocked: refusing re-dispatch');
+        return;
+      }
+
+      const perm = this.resolveNodePermission(node);
+      if (!perm.ok) {
+        this.log({
+          kind: 'permission-denied',
+          nodeId: node.id,
+          reason: perm.reason,
+          parentMode: perm.parentMode,
+          requestedMode: perm.requestedMode,
+        });
+        this.failNode(node.id, `permission denied: ${perm.reason}`);
+        return;
+      }
+
+      const taskPath = `${this.slug}/${node.id}`;
+      const idempotencyKey = attemptIdempotencyKey({
+        contractVersion: this.spec.id,
+        taskPath,
+        attempt: st.attempt,
+      });
+      // If this exact attempt already spawned a child (restart/reconcile), never create another.
+      if (this.spawnedAttemptKeys.has(idempotencyKey)) {
+        this.log({
+          kind: 'reconcile-blocked',
+          nodeId: node.id,
+          reason: `attempt already spawned: ${idempotencyKey}`,
+        });
+        this.failNode(node.id, `duplicate spawn blocked for ${idempotencyKey}`);
+        return;
+      }
+
+      // Path leases (sync, before any await): exclusive writers for declared write_paths.
+      // Nodes without write_paths take no lease so shared-cwd parallel still works.
+      if (!this.tryAcquireWriteLeases(node, idempotencyKey)) {
+        return;
+      }
+      st.leaseAttemptKey = idempotencyKey;
+
+      // Persist work intent BEFORE createSession (AionUi: durable then deliver).
+      this.log({
+        kind: 'work-intent',
+        nodeId: node.id,
+        attempt: st.attempt,
+        idempotencyKey,
+        contractVersion: this.spec.id,
+      });
+
       // Task-level skills ride as [skill:slug] mentions on every child prompt — the agent
       // pipeline resolves each SKILL.md and blocks tools until it is read (skills-as-context).
       const prompt = skillsPreamble(this.spec.skills) + (await this.buildPrompt(node));
@@ -355,6 +681,7 @@ class ActiveRun {
         (this.opts.orchestratorSessionId
           ? this.deps.host.getSessionWorkingDirectory(this.opts.orchestratorSessionId)
           : undefined) ?? this.spec.cwd;
+
       const options: CreateSessionOptions = {
         parentSessionId: this.opts.orchestratorSessionId,
         // Link the child back to the task / run / node so the manual subtask composer can
@@ -367,9 +694,8 @@ class ActiveRun {
         // Required for non-default (e.g. pi/*) models to resolve a backend — without it the
         // child session completes instantly with no output.
         llmConnection: node.llmConnection ?? this.spec.defaults?.llmConnection,
-        // Node override → task default (persisted by the editor, visible to the user) → explicit
-        // unattended-safe fallback. Never the workspace default (which could be `ask` → hang).
-        permissionMode: node.permissionMode ?? this.spec.defaults?.permissionMode ?? AUTONOMOUS_DEFAULT_MODE,
+        // Monotonic intersection: parent ∩ node/task request — never implicit allow-all.
+        permissionMode: perm.mode,
         labels: node.labels,
         // Inherit the orchestrator's task number (task::N) so the whole run filters as one task.
         applyTaskLabel: true,
@@ -382,18 +708,79 @@ class ActiveRun {
       // createSession announces the child to the renderer by default, so it nests under the task
       // tile with its real title instead of a fabricated "New Chat" (or never appearing).
       const child = await this.deps.host.createSession(this.deps.workspaceId, options);
-      const st = this.state.get(node.id)!;
+      // stop() may have landed mid-dispatch: the node is no longer running and the run is
+      // terminal, so sending the prompt would spawn an orphaned child. Tear down instead.
+      if (st.state !== 'running' || this.isTerminal()) {
+        this.releaseNodeLeases(node.id);
+        void this.deps.host.cancelProcessing(child.id, true);
+        return;
+      }
       st.sessionId = child.id;
       this.sessionToNode.set(child.id, node.id);
-      this.log({ kind: 'node-spawned', nodeId: node.id, sessionId: child.id });
+      this.spawnedAttemptKeys.add(idempotencyKey);
+      this.log({
+        kind: 'node-spawned',
+        nodeId: node.id,
+        sessionId: child.id,
+        attempt: st.attempt,
+        idempotencyKey,
+      });
       await this.deps.host.setKanbanColumn(child.id, 'in-progress');
+      if (st.state !== 'running' || this.isTerminal()) {
+        this.releaseNodeLeases(node.id);
+        void this.deps.host.cancelProcessing(child.id, true);
+        return;
+      }
       await this.deps.host.sendMessage(child.id, prompt);
     } catch (err) {
       this.failNode(node.id, `dispatch failed: ${(err as Error).message}`);
     }
   }
 
-  /** Resolve a node's prompt: declared inputs (+ optional summarize) then ${…} interpolation. */
+  /**
+   * Acquire exclusive writer leases for every path in `node.write_paths`.
+   * On conflict, fails the node with a clear message and returns false.
+   */
+  private tryAcquireWriteLeases(node: TaskNode, attemptKey: string): boolean {
+    const paths = node.write_paths ?? [];
+    if (paths.length === 0) return true;
+    const now = this.deps.now ? this.deps.now() : new Date().toISOString();
+    for (const path of paths) {
+      const acq = this.pathLeases.tryAcquire({
+        path,
+        holderId: node.id,
+        role: 'writer',
+        attemptKey,
+        now,
+      });
+      if (!acq.ok) {
+        this.pathLeases.release(attemptKey);
+        this.log({
+          kind: 'path-lease-denied',
+          nodeId: node.id,
+          path: acq.denial.path,
+          reason: acq.denial.message,
+          holderId: acq.denial.existing?.holderId,
+        });
+        this.failNode(node.id, `path lease conflict: ${acq.denial.message}`);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private releaseNodeLeases(nodeId: string): void {
+    const st = this.state.get(nodeId);
+    if (!st?.leaseAttemptKey) return;
+    this.pathLeases.release(st.leaseAttemptKey);
+    st.leaseAttemptKey = undefined;
+  }
+
+  /**
+   * Resolve a node's prompt: declared inputs (+ optional summarize) then ${…} interpolation.
+   * Nodes that require structured RunReports receive a TaskBrief envelope (C3).
+   * Intermediate plain-text nodes keep the raw interpolated prompt for graph plumbing.
+   */
   private async buildPrompt(node: TaskNode): Promise<string> {
     const inputValues: Record<string, unknown> = {};
     for (const [name, ref] of Object.entries(node.inputs ?? {})) {
@@ -412,6 +799,32 @@ class ActiveRun {
     if (st.attempt > 1 && st.lastFailure) {
       text = `${st.lastFailure}\n\n${text}`;
     }
+
+    if (requiresStructuredReport(node)) {
+      const acceptance = acceptanceLines(this.spec, node);
+      const brief: TaskBrief = {
+        goal: text.trim() || nodeTitle(node),
+        acceptance,
+        deliverable: 'RunReport with criterion outcomes and evidence refs (not a transcript)',
+        scopePaths: node.write_paths ?? [],
+        reservedPaths: [],
+        knownFacts: Object.entries(inputValues).map(([k, v]) => `${k}: ${String(v).slice(0, 500)}`),
+        references: [],
+        constraints: [
+          `Task path: ${this.slug}/${node.id}`,
+          `Run: ${this.runId}`,
+          'Do not dump the full transcript; return a structured RunReport JSON block.',
+        ],
+        budget: this.spec.token_budget ? { maxTokens: this.spec.token_budget } : {},
+        contextFork: 'none',
+        permissionMode: node.permissionMode ?? this.spec.defaults?.permissionMode,
+        taskPath: `${this.slug}/${node.id}`,
+        model: node.model ?? this.spec.defaults?.model,
+        llmConnection: node.llmConnection ?? this.spec.defaults?.llmConnection,
+      };
+      text = formatTaskBriefMessage(brief);
+    }
+
     return text;
   }
 
@@ -422,6 +835,12 @@ class ActiveRun {
     if (!nodeId) return; // not one of our child nodes
     const st = this.state.get(nodeId);
     if (!st || st.state !== 'running') return; // already settled/cancelled
+    if (st.sessionId !== evt.sessionId) {
+      // Stale mapping from a prior attempt (markRunning clears it on re-dispatch, but defend
+      // here too): a late completion from the old session must not settle the new attempt.
+      this.sessionToNode.delete(evt.sessionId);
+      return;
+    }
 
     if (evt.tokenUsage) {
       // `tokenUsage` is cumulative-per-session; add only the delta since this session's last
@@ -440,22 +859,29 @@ class ActiveRun {
 
     if (evt.reason === 'complete') {
       const text = evt.finalText ?? this.deps.host.getSessionFinalText(evt.sessionId) ?? '';
+      const node = this.spec.nodes.find((n) => n.id === nodeId);
+      const requiresStructured = requiresStructuredReport(node);
 
       // A clean turn-completion is not proof of success: a node that declared `outputs` but
       // produced no text delivered nothing. Treat that as a failure (retry/needs-review) instead
       // of silently marking it done. Nodes with no declared outputs keep the lenient behavior.
-      const node = this.spec.nodes.find((n) => n.id === nodeId);
       if ((node?.outputs?.length ?? 0) > 0 && text.trim() === '') {
         this.failNode(nodeId, 'completed without producing declared output', evt.sessionId);
         return;
       }
 
-      const output: NodeOutput = { text };
-      this.outputs[nodeId] = output;
+      const settled = this.settleNodeOutput(nodeId, text, requiresStructured);
+      if (!settled.ok) {
+        this.failNode(nodeId, settled.reason, evt.sessionId);
+        return;
+      }
+
+      this.outputs[nodeId] = settled.output;
       st.state = 'done';
-      this.inFlight = Math.max(0, this.inFlight - 1);
-      writeNodeOutput(this.deps.workspaceRoot, this.slug, this.runId, nodeId, output);
-      this.log({ kind: 'node-finished', nodeId, sessionId: evt.sessionId, state: 'done' });
+      this.releaseInFlightSlot();
+      this.releaseNodeLeases(nodeId);
+      writeNodeOutput(this.deps.workspaceRoot, this.slug, this.runId, nodeId, settled.output);
+      this.log({ kind: 'node-finished', nodeId, sessionId: evt.sessionId, state: 'done', tokensUsed: this.tokensUsed });
       void this.deps.host.setSessionStatus(evt.sessionId, DONE_STATUS);
       void this.deps.host.setKanbanColumn(evt.sessionId, 'done');
       this.scheduleReady();
@@ -463,8 +889,9 @@ class ActiveRun {
       // Externally aborted while running → cancelled (re-dispatched on resume). We do not
       // auto-retry here to avoid a stop/retry loop.
       st.state = 'cancelled';
-      this.inFlight = Math.max(0, this.inFlight - 1);
-      this.log({ kind: 'node-finished', nodeId, sessionId: evt.sessionId, state: 'cancelled', reason: 'interrupted' });
+      this.releaseInFlightSlot();
+      this.releaseNodeLeases(nodeId);
+      this.log({ kind: 'node-finished', nodeId, sessionId: evt.sessionId, state: 'cancelled', reason: 'interrupted', tokensUsed: this.tokensUsed });
       void this.deps.host.setKanbanColumn(evt.sessionId, 'todo');
       this.scheduleReady();
     } else {
@@ -473,17 +900,127 @@ class ActiveRun {
     }
   }
 
+  /**
+   * Parse optional RunReport, validate when a contract applies, and enforce hard structured
+   * acceptance for nodes that declared outputs (soft parse for intermediate plain-text nodes).
+   */
+  private settleNodeOutput(
+    nodeId: string,
+    text: string,
+    requiresStructured: boolean,
+  ): { ok: true; output: NodeOutput } | { ok: false; reason: string } {
+    const st = this.state.get(nodeId)!;
+    const { report, structured } = parseRunReportFromText(text);
+    const contract = this.contractForNode(nodeId);
+
+    let validation: NodeOutput['validation'];
+    if (contract && (structured || requiresStructured)) {
+      const result = validateRunReport({
+        contract,
+        text,
+        report: report ?? undefined,
+      });
+      validation = {
+        ok: result.ok,
+        suggestedVerdict: result.suggestedVerdict,
+        issues: result.issues.map((i) => i.message),
+      };
+
+      if (requiresStructured && !result.structured) {
+        return {
+          ok: false,
+          reason:
+            'completed with natural language only; structured RunReport required because ' +
+            'this node declares outputs (or acceptance criteria demand a report)',
+        };
+      }
+      if (requiresStructured && !result.ok) {
+        // Still record report/validation on failure path via failNode lastFailure only —
+        // progress tracking uses criteria when present.
+        this.trackNodeProgress(st, result.report);
+        return {
+          ok: false,
+          reason:
+            `RunReport validation failed: ${(validation.issues ?? []).join('; ') || result.suggestedVerdict}`,
+        };
+      }
+    } else if (requiresStructured && !structured) {
+      return {
+        ok: false,
+        reason:
+          'completed with natural language only; structured RunReport required because ' +
+          'this node declares outputs',
+      };
+    }
+
+    if (report) this.trackNodeProgress(st, report);
+
+    const output: NodeOutput = { text };
+    if (report) output.report = report as NodeOutput['report'];
+    if (validation) output.validation = validation;
+    return { ok: true, output };
+  }
+
+  /** Build a TaskContract for validation when the node requires structured acceptance. */
+  private contractForNode(nodeId: string): TaskContract | null {
+    const node = this.spec.nodes.find((n) => n.id === nodeId);
+    if (!node) return null;
+    if (!requiresStructuredReport(node)) return null;
+
+    const acceptance = acceptanceLines(this.spec, node);
+    if (acceptance.length === 0) return null;
+
+    const brief: TaskBrief = {
+      goal: this.spec.goal,
+      acceptance,
+      deliverable: 'RunReport with criterion outcomes and evidence refs (not a transcript)',
+      scopePaths: node.write_paths ?? [],
+      reservedPaths: [],
+      knownFacts: [],
+      references: [],
+      constraints: [],
+      budget: {},
+      contextFork: 'none',
+    };
+    return contractFromBrief(brief, {
+      taskId: this.spec.id,
+      taskPath: `${this.slug}/${nodeId}`,
+      version: this.spec.id,
+    });
+  }
+
+  private trackNodeProgress(st: NodeStateEntry, report: RunReport | null): void {
+    if (!report) return;
+    const currentMet = new Set(
+      report.criteria.filter((c) => c.status === 'met').map((c) => c.id),
+    );
+    const progress = shouldHaltForNoProgress({
+      previousMet: st.previousMetCriteria ?? new Set(),
+      currentMet,
+      nonProgressingAttempts: st.nonProgressingAttempts ?? 0,
+    });
+    st.previousMetCriteria = currentMet;
+    st.nonProgressingAttempts = progress.nonProgressingAttempts;
+  }
+
   private failNode(nodeId: string, reason: string, sessionId?: string): void {
     const st = this.state.get(nodeId)!;
     const wasRunning = st.state === 'running';
-    if (wasRunning) this.inFlight = Math.max(0, this.inFlight - 1);
+    if (wasRunning) this.releaseInFlightSlot();
+    this.releaseNodeLeases(nodeId);
 
     // Bounded, failure-aware retry: re-dispatch the node when its `retry` policy still
     // has budget and matches this failure class. error/timeout/dispatch failures all map
-    // to the `error` retry trigger (empty/invalid detection is deferred).
+    // to the `error` retry trigger. Two non-progressing structured attempts halt retries (C10).
     const node = this.spec.nodes.find((n) => n.id === nodeId);
     const retry = node?.retry;
-    if (retry && st.attempt <= retry.limit && retryMatches(retry.when, 'error')) {
+    const haltNoProgress = (st.nonProgressingAttempts ?? 0) >= 2;
+    if (
+      !haltNoProgress &&
+      retry &&
+      st.attempt <= retry.limit &&
+      retryMatches(retry.when, 'error')
+    ) {
       st.lastFailure = `Previous attempt failed: ${reason}. Address the cause before retrying.`;
       st.state = 'pending';
       const sid = sessionId ?? st.sessionId;
@@ -493,9 +1030,19 @@ class ActiveRun {
       return;
     }
 
+    const finalReason = haltNoProgress
+      ? `no-progress halt after ${st.nonProgressingAttempts} non-progressing attempts: ${reason}`
+      : reason;
     st.state = 'failed';
     const sid = sessionId ?? st.sessionId;
-    this.log({ kind: 'node-finished', nodeId, sessionId: sid ?? '', state: 'failed', reason });
+    this.log({
+      kind: 'node-finished',
+      nodeId,
+      sessionId: sid ?? '',
+      state: 'failed',
+      reason: finalReason,
+      tokensUsed: this.tokensUsed,
+    });
     if (sid) void this.deps.host.setSessionStatus(sid, FAILED_STATUS);
     this.scheduleReady();
   }
@@ -509,6 +1056,13 @@ class ActiveRun {
       return s === 'done' || s === 'skipped';
     });
     if (!allGood) {
+      // A cancelled node (externally interrupted) is not a terminal failure: it re-dispatches
+      // on resume. Pause the run so it stays resumable instead of settling it as failed.
+      const hasCancelled = this.spec.nodes.some((n) => this.state.get(n.id)!.state === 'cancelled');
+      if (hasCancelled) {
+        this.pause();
+        return;
+      }
       this.finish('failed');
       return;
     }
@@ -686,8 +1240,23 @@ class ActiveRun {
    */
   private repairForVerdict(reason: string | undefined, named?: string[]): void {
     const detail = reason ?? 'the result did not meet the acceptance criteria';
+    const frontier = this.computeFrontier(named);
+
+    // No-progress halt (C10): when structured reports exist on the frontier, two consecutive
+    // repair passes with no newly met criteria stop further repairs.
+    if (this.shouldHaltRepairForNoProgress(frontier)) {
+      this.log({
+        kind: 'budget-breach',
+        metric: 'iterations',
+        value: this.repairNonProgressingAttempts,
+        limit: 2,
+      });
+      this.finish('failed');
+      return;
+    }
+
     let reset = 0;
-    for (const id of this.computeFrontier(named)) {
+    for (const id of frontier) {
       const st = this.state.get(id);
       if (!st || st.state !== 'done') continue;
       st.state = 'pending';
@@ -702,6 +1271,32 @@ class ActiveRun {
     }
     this.runStatus = 'running';
     this.scheduleReady();
+  }
+
+  /**
+   * Aggregate met criterion ids from structured node reports on the frontier and decide
+   * whether another repair would be a third non-progressing attempt.
+   */
+  private shouldHaltRepairForNoProgress(frontier: Set<string>): boolean {
+    let hasStructured = false;
+    const currentMet = new Set<string>();
+    for (const id of frontier) {
+      const report = this.outputs[id]?.report;
+      if (!report?.criteria) continue;
+      hasStructured = true;
+      for (const c of report.criteria) {
+        if (c.status === 'met') currentMet.add(`${id}:${c.id}`);
+      }
+    }
+    if (!hasStructured && this.repairPreviousMet.size === 0) return false;
+    const progress = shouldHaltForNoProgress({
+      previousMet: this.repairPreviousMet,
+      currentMet,
+      nonProgressingAttempts: this.repairNonProgressingAttempts,
+    });
+    this.repairPreviousMet = currentMet;
+    this.repairNonProgressingAttempts = progress.nonProgressingAttempts;
+    return progress.halt;
   }
 
   /**
@@ -789,6 +1384,29 @@ function retryMatches(when: 'error' | 'empty' | 'invalid' | undefined, failure: 
 }
 
 /**
+ * Hard structured-report gate: nodes that declare `outputs` must return a parseable
+ * RunReport (NL-only is not acceptance). Intermediate nodes without outputs stay lenient.
+ */
+function requiresStructuredReport(node: TaskNode | undefined): boolean {
+  return (node?.outputs?.length ?? 0) > 0;
+}
+
+/** Acceptance lines used to lock a TaskContract for RunReport validation. */
+function acceptanceLines(spec: TaskSpec, node: TaskNode): string[] {
+  if (spec.acceptance_criteria?.trim()) {
+    const lines = spec.acceptance_criteria
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (lines.length) return lines;
+  }
+  if (node.outputs?.length) {
+    return node.outputs.map((o) => `Produce declared output "${o.name}"`);
+  }
+  return ['Produce a structured RunReport for the node goal'];
+}
+
+/**
  * Parse the orchestrator's machine-readable verdict line. Tolerant of surrounding prose: the last
  * `VERDICT: PASS|FAIL [— [nodes=a,b — ]reason]` occurrence wins. A missing/garbled line is `unparsed`
  * — the caller re-asks (bounded) rather than hanging the run on a malformed reply.
@@ -830,6 +1448,10 @@ function resolveParams(spec: TaskSpec, provided?: Record<string, unknown>): Reco
 
 export class TaskRunner {
   private readonly runs = new Map<string, ActiveRun>();
+  /** Bounded cache of terminal snapshots: getRunState still answers after a run is evicted,
+   *  without retaining the whole ActiveRun (spec, outputs, session maps) forever. */
+  private readonly settledRuns = new Map<string, RunSnapshot>();
+  private static readonly MAX_SETTLED_SNAPSHOTS = 50;
 
   constructor(private readonly deps: TaskRunnerDeps) {}
 
@@ -868,8 +1490,25 @@ export class TaskRunner {
       this.deps,
     );
     this.runs.set(this.key(slug, runId), run);
+    this.evictOnSettled(slug, runId, run);
     run.start();
     return run.snapshot();
+  }
+
+  /**
+   * Drop terminal runs from the registry once settle consumers have their snapshot — the map
+   * holds ActiveRuns, not history (terminal state lives in the run-log / GET_RESULTS path).
+   */
+  private evictOnSettled(slug: string, runId: string, run: ActiveRun): void {
+    const key = this.key(slug, runId);
+    void run.waitUntilSettled().then((snap) => {
+      if (this.runs.get(key) === run) this.runs.delete(key);
+      this.settledRuns.set(key, snap);
+      if (this.settledRuns.size > TaskRunner.MAX_SETTLED_SNAPSHOTS) {
+        const oldest = this.settledRuns.keys().next().value;
+        if (oldest !== undefined) this.settledRuns.delete(oldest);
+      }
+    });
   }
 
   pause(slug: string, runId: string): void {
@@ -882,6 +1521,8 @@ export class TaskRunner {
       existing.resume();
       return;
     }
+    // Terminal runs are evicted from the active registry and are not resumable.
+    if (this.settledRuns.has(this.key(slug, runId))) return;
     // Not in memory (e.g. after an app restart): reconstruct from the persisted run-log.
     this.rehydrate(slug, runId);
   }
@@ -895,16 +1536,24 @@ export class TaskRunner {
     const log = readRunLog(this.deps.workspaceRoot, slug, runId);
     if (log.length === 0) throw new Error(`Cannot resume "${slug}:${runId}": no run-log found`);
     const started = log.find((e) => e.kind === 'run-started');
-    const orchestratorSessionId = started && started.kind === 'run-started' ? started.orchestratorSessionId : undefined;
+    const startedEntry = started && started.kind === 'run-started' ? started : undefined;
+    const orchestratorSessionId = startedEntry?.orchestratorSessionId;
     const run = new ActiveRun(
       loaded.spec,
       slug,
       runId,
-      { orchestratorSessionId, params: resolveParams(loaded.spec), verifyOnComplete: true },
+      // Replay the original run's options (persisted on run-started) so a cross-restart resume
+      // honors the caller's params and verifyOnComplete instead of resetting to defaults.
+      {
+        orchestratorSessionId,
+        params: resolveParams(loaded.spec, startedEntry?.params),
+        verifyOnComplete: startedEntry?.verifyOnComplete ?? true,
+      },
       this.deps,
     );
     run.hydrate(log, (nodeId) => readNodeOutput(this.deps.workspaceRoot, slug, runId, nodeId));
     this.runs.set(this.key(slug, runId), run);
+    this.evictOnSettled(slug, runId, run);
     run.resumeFromHydrated();
     return run.snapshot();
   }
@@ -914,7 +1563,8 @@ export class TaskRunner {
   }
 
   getRunState(slug: string, runId: string): RunSnapshot | null {
-    return this.runs.get(this.key(slug, runId))?.snapshot() ?? null;
+    const key = this.key(slug, runId);
+    return this.runs.get(key)?.snapshot() ?? this.settledRuns.get(key) ?? null;
   }
 
   /** Await a run reaching a terminal state (completed/failed/stopped). */

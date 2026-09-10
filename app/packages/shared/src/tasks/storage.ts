@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { atomicWriteFileSync, stripBom } from '../utils/files.ts';
+import { atomicWriteFileSync, recoverAtomicWriteSync, stripBom } from '../utils/files.ts';
 import { validateTaskInput } from './validate.ts';
 import { TaskSpecSchema, type TaskSpec } from './schema.ts';
 import type { NodeOutput } from './refs.ts';
@@ -33,14 +33,23 @@ export type NodeRunState = 'pending' | 'running' | 'done' | 'failed' | 'cancelle
 
 /** Append-only run-log event. `t` is an ISO-8601 timestamp. */
 export type RunLogEntry =
-  | { t: string; kind: 'run-started'; taskId: string; runId: string; orchestratorSessionId?: string }
+  | { t: string; kind: 'run-started'; taskId: string; runId: string; orchestratorSessionId?: string; params?: Record<string, unknown>; verifyOnComplete?: boolean }
   | { t: string; kind: 'node-scheduled'; nodeId: string }
-  | { t: string; kind: 'node-spawned'; nodeId: string; sessionId: string }
-  | { t: string; kind: 'node-finished'; nodeId: string; sessionId: string; state: NodeRunState; reason?: string }
+  /** Durable work intent recorded before createSession (idempotent enqueue). */
+  | { t: string; kind: 'work-intent'; nodeId: string; attempt: number; idempotencyKey: string; contractVersion?: string }
+  | { t: string; kind: 'node-spawned'; nodeId: string; sessionId: string; attempt?: number; idempotencyKey?: string }
+  | { t: string; kind: 'node-finished'; nodeId: string; sessionId: string; state: NodeRunState; reason?: string; tokensUsed?: number }
   | { t: string; kind: 'node-retry'; nodeId: string; attempt: number; reason: string }
+  | { t: string; kind: 'permission-denied'; nodeId: string; reason: string; parentMode?: string; requestedMode?: string }
   | { t: string; kind: 'run-paused' | 'run-resumed' | 'run-stopped' | 'run-completed' | 'run-failed' | 'run-verifying' }
   | { t: string; kind: 'verdict'; result: 'pass' | 'fail' | 'unparsed'; reason?: string; nodes?: string[] }
-  | { t: string; kind: 'budget-breach'; metric: 'tokens' | 'parallel' | 'iterations'; value: number; limit: number };
+  | { t: string; kind: 'budget-breach'; metric: 'tokens' | 'parallel' | 'iterations'; value: number; limit: number }
+  /** Restart could not prove an in-flight attempt is safe to re-run. */
+  | { t: string; kind: 'reconcile-blocked'; nodeId: string; sessionId?: string; reason: string }
+  /** Deterministic organization policy note at run start (≥2 independent roots). Non-blocking. */
+  | { t: string; kind: 'organization-decision'; mode: string; reasons: string[]; shouldDelegate?: boolean; independentWorkUnits?: number }
+  /** Path writer lease denied (overlapping write_paths among concurrent nodes). */
+  | { t: string; kind: 'path-lease-denied'; nodeId: string; path: string; reason: string; holderId?: string };
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -93,6 +102,7 @@ export function loadTaskSpec(
   slug: string,
 ): (ValidationResult & { spec?: TaskSpec }) | null {
   const path = taskYamlPath(workspaceRoot, slug);
+  recoverAtomicWriteSync(path);
   if (!existsSync(path)) return null;
   return parseTaskYaml(readFileSync(path, 'utf-8'));
 }
@@ -112,7 +122,12 @@ export function listTaskSlugs(workspaceRoot: string): string[] {
   const root = tasksRoot(workspaceRoot);
   if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(join(root, d.name, TASK_FILE)))
+    .filter((d) => {
+      if (!d.isDirectory()) return false;
+      const path = join(root, d.name, TASK_FILE);
+      recoverAtomicWriteSync(path);
+      return existsSync(path);
+    })
     .map((d) => d.name)
     .sort();
 }
@@ -175,6 +190,7 @@ export function writeRunSpecSnapshot(workspaceRoot: string, slug: string, runId:
 /** Read a run's spec snapshot. Returns null for older runs written before snapshots existed. */
 export function readRunSpecSnapshot(workspaceRoot: string, slug: string, runId: string): TaskSpec | null {
   const path = join(runDir(workspaceRoot, slug, runId), RUN_SPEC);
+  recoverAtomicWriteSync(path);
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, 'utf-8')) as TaskSpec;
@@ -206,6 +222,7 @@ export function readNodeOutput(
   nodeId: string,
 ): NodeOutput | null {
   const path = join(runDir(workspaceRoot, slug, runId), NODES_DIR, `${nodeId}.json`);
+  recoverAtomicWriteSync(path);
   if (!existsSync(path)) return null;
   try {
     return JSON.parse(readFileSync(path, 'utf-8')) as NodeOutput;

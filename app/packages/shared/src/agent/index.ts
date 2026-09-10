@@ -172,3 +172,110 @@ export {
   createPushableInputStream,
   type PushableInputStream,
 } from './backend/claude/persistent-input.ts';
+
+// Bounded delegation kernel contracts (R6 spine — pure domain layer)
+export {
+  PERMISSION_MODE_RANK,
+  permissionModeRank,
+  isPermissionUpgrade,
+  intersectPermissionModes,
+  resolveChildPermission,
+  type ResolveChildPermissionInput,
+  type ChildPermissionResolution,
+  type ChildPermissionDenialReason,
+} from './permission-intersection.ts';
+
+export {
+  type CriterionId,
+  type ArtifactRef,
+  type EvidenceRef,
+  type AttemptIdentity,
+  type BudgetCeiling,
+  type Criterion,
+  type TaskContract,
+  type TaskBrief,
+  type CriterionOutcome,
+  type CapabilityStatus,
+  type MechanicalFailureClass,
+  type RunReport,
+  type ContractChangeRequest,
+  type VerifierVerdict,
+  type ContextFork,
+  type BriefValidationError,
+  ArtifactRefSchema,
+  EvidenceRefSchema,
+  AttemptIdentitySchema,
+  BudgetCeilingSchema,
+  CriterionSchema,
+  TaskContractSchema,
+  TaskBriefSchema,
+  CriterionOutcomeSchema,
+  CapabilityStatusSchema,
+  MechanicalFailureClassSchema,
+  RunReportSchema,
+  ContractChangeRequestSchema,
+  VerifierVerdictSchema,
+  ContextForkSchema,
+  validateTaskBrief,
+  taskBriefFromLegacyPrompt,
+  formatTaskBriefMessage,
+  parseRunReportFromText,
+  contractFromBrief,
+  attemptIdempotencyKey,
+} from './delegation-contract.ts';
+
+export {
+  resolveSpawnSessionBrief,
+  looksLikeTaskBriefMessage,
+} from './base-agent.ts';
+
+export {
+  type OrganizationMode,
+  type OrganizationSignals,
+  type OrganizationDecision,
+  type FullRoutingDecision,
+  chooseOrganization,
+  planDelegation,
+} from './delegation-policy.ts';
+
+export {
+  type LeaseRole,
+  type PathLease,
+  type LeaseDenial,
+  normalizeLeasePath,
+  pathOverlaps,
+  PathLeaseManager,
+} from './path-lease.ts';
+
+export {
+  type ValidationIssue,
+  type ReportValidationResult,
+  validateRunReport,
+  shouldHaltForNoProgress,
+} from './run-report-validate.ts';
+
+export {
+  type CostTier,
+  type TaskRequirements,
+  type AgentCapabilities,
+  type DelegationCandidate,
+  type RoutingOutcome,
+  type EscalationTrigger,
+  type DelegationOffer,
+  type DelegationSummary,
+  costRank,
+  satisfies,
+  routeDelegation,
+  nextEscalation,
+  isValidEscalation,
+  describeCandidate,
+  buildDelegationOffers,
+  groupEscalations,
+} from './delegation-routing.ts';
+
+export {
+  type ChildSessionProjectionInput,
+  type DelegationStripViewModel,
+  projectDelegationStrip,
+  toDelegationStripViewModel,
+} from './delegation-projection.ts';

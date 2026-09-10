@@ -152,6 +152,12 @@ const TaskNodeObject = z.object({
   depends_on: z.array(slug('depends_on entry')).optional(),
   inputs: z.record(z.string(), InputRefSchema).optional(),
   outputs: z.array(OutputDeclSchema).optional(),
+  /**
+   * Workspace-relative paths this node intends to write. When set, the Conductor
+   * acquires exclusive writer path leases before dispatch so parallel siblings
+   * cannot overlap (PathLeaseManager). Omitted → no lease (shared-cwd parallel OK).
+   */
+  write_paths: z.array(z.string().min(1)).optional(),
 
   // Control-flow (parsed now, executed in P4).
   when: z.string().optional(),

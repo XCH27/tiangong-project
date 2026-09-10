@@ -40,14 +40,15 @@ export interface SpawnSessionToolOptions {
 export function createSpawnSessionTool(options: SpawnSessionToolOptions) {
   return tool(
     'spawn_session',
-    `Create a new session that runs independently with its own prompt, connection, model, and sources.
+    `Create a new session that runs independently with its own TaskBrief, connection, model, and sources.
 
 Use this to delegate tasks to parallel sessions — research, analysis, drafts, or any work that benefits from separate context.
 
 Call with help=true first to discover available connections, models, and sources.
-When spawning, the 'prompt' parameter is required.
 
-Optional overrides: model, llmConnection, permissionMode, thinkingLevel, enabledSourceSlugs, labels, workingDirectory. Omitted fields inherit from the spawning session or the workspace default.
+Prefer a structured TaskBrief: goal, acceptance, deliverable (plus optional scopePaths, reservedPaths, knownFacts, constraints, budget). A bare 'prompt' is accepted for compatibility and is converted into a TaskBrief envelope (result.briefCompat=true). Empty goal/prompt is rejected.
+
+Optional overrides: model, llmConnection, permissionMode, thinkingLevel, enabledSourceSlugs, labels, workingDirectory. Omitted fields inherit from the spawning session or the workspace default. permissionMode is intersected with the parent and can never escalate privilege above the parent session.
 
 thinkingLevel is silently ignored on non-reasoning models (e.g. gpt-4o, gemini-2.5-flash) — the SDK drops the reasoning param rather than erroring.
 
@@ -57,7 +58,33 @@ Only use 'attachments' for existing file paths on disk — the tool reads them a
       help: z.boolean().optional()
         .describe('If true, returns available connections, models, and sources instead of creating a session'),
       prompt: z.string().optional()
-        .describe('Instructions for the new session (required when not in help mode)'),
+        .describe('Legacy bare instructions, or a pre-formatted TaskBrief (GOAL:/ACCEPTANCE:). Prefer structured goal/acceptance/deliverable.'),
+      // TaskBrief envelope (Decision C3)
+      goal: z.string().optional()
+        .describe('TaskBrief goal — primary objective for the child session'),
+      acceptance: z.union([z.array(z.string()), z.string()]).optional()
+        .describe('TaskBrief acceptance criteria (string array, or one string coerced to a single criterion)'),
+      deliverable: z.string().optional()
+        .describe('TaskBrief deliverable — what the child must return (e.g. RunReport with evidence)'),
+      scopePaths: z.array(z.string()).optional()
+        .describe('Paths the child may touch'),
+      reservedPaths: z.array(z.string()).optional()
+        .describe('Paths the child must not modify'),
+      knownFacts: z.array(z.string()).optional()
+        .describe('Facts already established for the child (not to re-discover)'),
+      constraints: z.array(z.string()).optional()
+        .describe('Hard constraints for the child run'),
+      references: z.array(z.string()).optional()
+        .describe('Reference paths or URLs the child may consult'),
+      budget: z.object({
+        maxTokens: z.number().int().positive().optional(),
+        maxToolCalls: z.number().int().positive().optional(),
+        maxEdits: z.number().int().positive().optional(),
+        maxRetries: z.number().int().nonnegative().optional(),
+        maxDelegations: z.number().int().nonnegative().optional(),
+        maxElapsedMs: z.number().int().positive().optional(),
+      }).optional()
+        .describe('Budget ceiling for the child run'),
       name: z.string().optional()
         .describe('Session name'),
       llmConnection: z.string().optional()
@@ -67,7 +94,7 @@ Only use 'attachments' for existing file paths on disk — the tool reads them a
       enabledSourceSlugs: z.array(z.string()).optional()
         .describe('Source slugs to enable in the new session'),
       permissionMode: z.enum(['safe', 'ask', 'allow-all']).optional()
-        .describe('Permission mode for the new session'),
+        .describe('Permission mode for the new session; cannot exceed the parent (intersected server-side)'),
       thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']).optional()
         .describe('Reasoning level for the new session. Silently ignored on non-reasoning models (e.g. gpt-4o, gemini-2.5-flash). Omit to inherit the workspace default.'),
       labels: z.array(z.string()).optional()
