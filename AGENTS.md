@@ -3,6 +3,17 @@
 Mandatory entry for every executing agent. Do not preload the whole `docs/` corpus; follow the
 routing table below and read only what the task touches.
 
+## Read this first
+
+[`docs/PRODUCT.md`](docs/PRODUCT.md) is the single authority on what Fleet is and is not — the four
+sources and what each decides, the rule that settles built-in versus driven-from-outside, and the
+list of things Fleet does not do. Where any other document disagrees with it, it wins.
+
+The short version: **Craft Agents decides the look, Cindy decides how features are implemented and
+how the surfaces talk to the backend, OpenChamber decides Git and GitHub, and the production
+surfaces — canvas, documents, video — are Fleet's own.** QoderWork and TRAE are interface reference
+only; their product concepts are not importable.
+
 ## The 10 rules that matter most
 
 1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first — then admit the best.**
@@ -131,6 +142,7 @@ guess for the v0.10.5 baseline.
 
 | Your task involves… | Read |
 |---|---|
+| **What Fleet is / is not, what to build in vs drive from outside** | [`docs/PRODUCT.md`](docs/PRODUCT.md) — the authority |
 | Anything (always) | This file, then the capability row in `docs/08-CRAFT-CAPABILITY-MAP.md`, confirmed with `rg` |
 | What integrates next / release scope | `docs/05-ROADMAP.md` and the linked spec in `docs/specs/` |
 | Any domain's breadth, gaps, reference projects | `docs/modules/REGISTRY.md`, `docs/11-PRODUCT-MATRIX.md`, `docs/references/` |

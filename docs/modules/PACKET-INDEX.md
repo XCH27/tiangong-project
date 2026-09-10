@@ -53,13 +53,11 @@ packets; it does not promote implementation status or create suite-owned state.
 | EXEC-03 | Governed Execution / core | — | P-19 | R0,R4,R18 / EXEC-03-A | BREADTH_ONLY |
 | EXEC-04 | Governed Execution / product | — | P-20 | R6 / EXEC-04-A | BREADTH_ONLY |
 | EXEC-05 | Governed Execution / adapter | — | P-21 | R0,R6 / EXEC-05-A | BREADTH_ONLY |
-| EXEC-06 | Governed Execution / capability | — | P-22 | R17 / EXEC-06-A | BREADTH_ONLY |
 | EXEC-07 | Governed Execution / capability | — | P-23 | R6 / EXEC-07-A | BREADTH_ONLY |
 | EXEC-08 | Governed Execution / adapter | — | P-24 | R18 / EXEC-08-A | BREADTH_ONLY |
 | EXEC-09 | Governed Execution / adapter | — | P-25 | R14 / EXEC-09-A | BREADTH_ONLY |
 | EXEC-10 | Integrations / capability | — | P-26 | R4 / EXEC-10-A | BREADTH_ONLY |
 | EXEC-11 | Integrations / adapter | — | P-27 | R14 / EXEC-11-A | BREADTH_ONLY |
-| EXEC-12 | Governed Execution / product | — | — | R14 + owner checkpoint / EXEC-12-A | BREADTH_ONLY |
 | EXEC-13 | Integrations / product | — | P-54, P-60 | R14 / EXEC-13-A (diff ladder starts R3-era per C4) | BREADTH_ONLY |
 | EXEC-14 | Governed Execution / capability | suites/SYS-03-context-economy.md | P-55 | TE1,R3 / EXEC-14-A | PACKET_DRAFT |
 | EXEC-15 | Governed Execution / adapter | — | P-15,P-24 | R16 / EXEC-15-A | BREADTH_ONLY |
@@ -82,9 +80,6 @@ packets; it does not promote implementation status or create suite-owned state.
 | CREATE-10 | Creative Media / product | — | P-43 | R12 / CREATE-10-A | BREADTH_ONLY |
 | CREATE-11 | Creative Media / capability | — | P-44 | R10,R13 / CREATE-11-A | BREADTH_ONLY |
 | CREATE-12 | Integrations / capability | jobs/README.md | P-45 | R5,R8,R10-R14 / CREATE-12-A | PACKET_DRAFT |
-| CREATE-13 | Creative Media / product | — | P-43 | R13 / CREATE-13-A | BREADTH_ONLY |
-| CREATE-14 | Creative Media / capability | — | P-36 | R13 / CREATE-14-A | BREADTH_ONLY |
-| CREATE-15 | Creative Media / product | — | P-43 | R13 / CREATE-15-A | BREADTH_ONLY |
 | CREATE-16 | Creative Media / product | — | P-14 | R10 / CREATE-16-A | BREADTH_ONLY |
 | ORCH-01 | Composition / product | workflows/README.md | P-46 | R8 / WF-001..004 | PACKET_DRAFT |
 | ORCH-02 | Governed Execution / surface | workflows/README.md | P-47 | R8 / ORCH-02-A | PACKET_DRAFT |
@@ -94,7 +89,6 @@ packets; it does not promote implementation status or create suite-owned state.
 | ORCH-06 | Work Core / core | — | P-50 | R3,R4 / ORCH-06-A | BREADTH_ONLY |
 | ORCH-07 | Composition / surface | — | P-51 | R4,R6 / ORCH-07-A | BREADTH_ONLY |
 | ORCH-08 | Integrations / capability | — | P-52 | R0,R2,R18 / ORCH-08-A | BREADTH_ONLY |
-| ORCH-09 | Integrations / adapter | — | P-53 | R2 / ORCH-09-A | BREADTH_ONLY |
 | ORCH-10 | Intelligence / product | suites/SYS-08-marketplaces.md | P-56,P-57 | R15 / ORCH-10-A | PACKET_DRAFT |
 | ORCH-11 | Governed Execution / product | suites/SYS-08-marketplaces.md | P-56,P-58 | R15 / ORCH-11-A | PACKET_DRAFT |
 | ORCH-12 | Governed Execution / adapter | suites/SYS-08-marketplaces.md | P-56,P-59 | R15 / ORCH-12-A | PACKET_DRAFT |

@@ -64,16 +64,14 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | EXEC-03 | Terminal and local execution | EXTEND | breadth | usable | Bash/background; PTY gated |
 | EXEC-04 | Multi-agent delegation | EXTEND | breadth | wired but not visually checked (kernel + spawn TaskBrief + DelegationStrip; R4/R5/R6 close still open) | Session/Task tree + TaskRunner as Delegation Kernel |
 | EXEC-05 | Runtime/provider adapters | EXTEND | breadth | Claude+Pi lanes usable; generic adapter contract not implemented | capability negotiation |
-| EXEC-06 | Adaptive organization/router | NEW | breadth | not implemented | measured Task/Session policy |
 | EXEC-07 | Worktree isolation | NEW | breadth | not implemented | Git/process lifecycle |
-| EXEC-08 | Sandbox and OS isolation | EXTEND/NEW | breadth | wired but not visually checked | tested Fleet filesystem/network/script isolation; full OS/container executor remains gated |
+| EXEC-08 | Sandbox and OS isolation | EXTEND/NEW | breadth | wired but not visually checked | tested Fleet filesystem/network/script isolation; full OS/container executor remains gated — Fleet's filesystem, network and script isolation stays and is `wired but not visually checked`. A **second, deeper OS sandbox is out of scope** (PRODUCT.md): the permission path and process boundary already enforce what the candidates enforce on the platform Fleet ships on |
 | EXEC-09 | Remote and cloud execution | EXTEND | breadth | not implemented | direct user-owned Fleet transport |
 | EXEC-10 | Automations and scheduler | EXTEND | breadth | usable | governed actions |
 | EXEC-11 | Messaging and channel adapters | EXTEND | breadth | not implemented | Workspace-scoped gateway |
-| EXEC-12 | Collaboration, sharing and invites | EXTEND | breadth | online sharing removed 2026-07-26; invites/collaborative grants not implemented | explicit grants/side effects |
 | EXEC-13 | Git repository, branch and PR review delivery | EXTEND/NEW | breadth | not implemented | governed Git/PR adapter; never a task authority |
 | EXEC-14 | System prompt, effective execution profile and agent identity configuration | EXTEND | breadth | not implemented | one prompt/tool projection over provider + permission seams |
-| EXEC-15 | External computer/environment control | EXTEND/NEW | breadth | BrowserPane structured path usable in its current Craft scope; general computer control not implemented | narrowest reliable route first (native action → structured adapter → accessibility → pixel); environment/display identity, live expiring grant and observation freshness; never a second permission or session authority |
+| EXEC-15 | External computer/environment control | EXTEND/NEW | breadth | BrowserPane structured path usable in its current Craft scope; general computer control not implemented | narrowest reliable route first (native action → structured adapter → accessibility → pixel); environment/display identity, live expiring grant and observation freshness; never a second permission or session authority — The **built-in browser stays** — it is one of the shared surfaces (PRODUCT.md) and its structured BrowserPane path is `usable`. **General external-computer control is out of scope**: driving a specific tool for a specific job is fine, a remote-control layer contradicts the product's first sentence |
 
 ## Intelligence economics and memory
 
@@ -81,7 +79,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 |---|---|---|---|---|---|
 | INTEL-01 | Context/effective capability projection and compaction | EXTEND | breadth | not implemented | centralized measurable projection; compaction gated |
 | INTEL-02 | Token optimization and cache strategy | EXTEND | breadth | not implemented | existing prompt/tool assembly + one UsageTracker |
-| INTEL-03 | Model routing and capability negotiation | NEW/EXTEND | breadth | per-model thinking-level mapping usable; routing not implemented | provider adapters |
+| INTEL-03 | Model routing and capability negotiation | NEW/EXTEND | breadth | per-model thinking-level mapping usable; routing not implemented | provider adapters — Per-model thinking-level mapping stays and is `usable`. **Speculative routing and capability negotiation are out of scope** until a real caller asks for them (PRODUCT.md) |
 | INTEL-04 | Cost and usage ledger | NEW/EXTEND | breadth | not implemented | real/estimated/unknown |
 | INTEL-05 | Layered agent-maintained memory | NEW | breadth | not implemented | autonomous accumulation + logged consolidation; curation optional; D5 floors |
 | INTEL-06 | Prompt, skill and context loadouts | EXTEND | breadth | not implemented | install/loadout/runtime separated; feeds one effective projection |
@@ -103,9 +101,6 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | CREATE-10 | Storyboard and shot planning | NEW | breadth | not implemented | plans link to media/artifacts |
 | CREATE-11 | Templates, brand kits and reusable assets | NEW | breadth | not implemented | Library assets + provenance |
 | CREATE-12 | Export, render and delivery profiles | NEW | breadth | not implemented | Job output + fidelity declaration |
-| CREATE-13 | 3D scene and director stage | NEW | breadth | not implemented | scene graph/shot state via media adapters; no canvas authority |
-| CREATE-14 | Panorama, environment preview and relighting | NEW | breadth | not implemented | media generation Job + provenance-bearing environment asset |
-| CREATE-15 | Multi-angle, multi-grid shot planning and spatial storyboard | NEW | breadth | not implemented | shot identity links to source/media artifacts |
 | CREATE-16 | Long-form narrative and content generation | NEW | breadth | not implemented | native document authority + governed generation actions |
 
 ## Orchestration and extensibility
@@ -120,7 +115,6 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | ORCH-06 | Event stream and activity history | EXTEND | breadth | usable | SessionEvents/timeline |
 | ORCH-07 | Notifications, approvals and inbox | EXTEND | breadth | not implemented | permission/session evidence |
 | ORCH-08 | Diagnostics, health and recovery | NEW | breadth | not implemented | failure classification |
-| ORCH-09 | Telemetry and privacy controls | NEW | breadth | not implemented | local-first and redaction |
 | ORCH-10 | Skill marketplace and loadout distribution | NEW/EXTEND | breadth | not implemented | signed skill manifest, compatibility and one loadout authority |
 | ORCH-11 | Plugin marketplace and lifecycle | NEW/EXTEND | breadth | not implemented | trust, permissions, install/update/rollback and runtime isolation |
 | ORCH-12 | MCP server marketplace and connector registry | NEW/EXTEND | breadth | not implemented | server manifest, tool capabilities, credential scope and health |

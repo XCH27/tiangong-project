@@ -51,6 +51,11 @@ export const SETTINGS_PAGES = [
     descriptionKey: 'settings.expertKits.description',
   },
   {
+    id: 'labels' as const,
+    labelKey: 'settings.labels.title',
+    descriptionKey: 'settings.labels.description',
+  },
+  {
     id: 'usage' as const,
     labelKey: 'settings.usage.title',
     descriptionKey: 'settings.usage.description',

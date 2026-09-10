@@ -30,13 +30,11 @@ with a concrete code path, evidence command and status. They are intentionally n
 | EXEC-03-A | Terminal output, cancel, restart and failure states are observable and scoped to a session | terminal smoke |
 | EXEC-04-A | Delegation creates a child in the existing Session/Task tree and returns a validated report | delegation trace |
 | EXEC-05-A | A runtime adapter reports supported/unsupported capabilities without guessing | adapter contract test |
-| EXEC-06-A | Router choice is explainable, measured and overrideable without creating a second task store | routing fixture |
 | EXEC-07-A | Worktree occupancy and cleanup are idempotent and never confused with a location path | lifecycle test |
 | EXEC-08-A | Sandbox create/exec/cancel/reclaim reports limits and denial through core policy | executor test |
 | EXEC-09-A | Remote disconnect and grant revocation prevent further execution with honest status | transport test |
 | EXEC-10-A | An automation invokes governed actions and records schedule/run outcome in existing history | scheduler smoke |
 | EXEC-11-A | Channel failure/reconnect is isolated from local core and scoped to a workspace | adapter test |
-| EXEC-12-A | Invite/collaborative grant changes explicit grants and records public side effects before commit | owner checkpoint |
 | EXEC-13-A | Git/branch/PR actions are attributed, permissioned, reviewable and cannot replace the Task/Session authority | Git fixture + permission trace |
 | EXEC-14-A | One Craft-owned effective prompt/tool projection is versioned, scoped and attributable; profile changes cannot silently weaken policy or create a second harness | prompt/profile fixture + policy regression |
 | EXEC-15-A | An approved external-environment action proves the narrowest reliable route was tried first, binds environment/display identity and a live expiring grant, and refuses on a stale observation; a route that is not needed closes `NO_GAP` with evidence | route-exhaustion trace + stale-frame refusal fixture |
@@ -59,9 +57,6 @@ with a concrete code path, evidence command and status. They are intentionally n
 | CREATE-10-A | Storyboard shots link to media/artifacts and survive reordering without losing identity | storyboard fixture |
 | CREATE-11-A | Template/brand assets have provenance, scope and safe reuse boundaries | library fixture |
 | CREATE-12-A | Export profile creates one Job output receipt and preserves source/output separately | delivery smoke |
-| CREATE-13-A | A 3D scene/shot plan preserves stable object and shot identity and can be previewed without making the canvas the scene authority | scene fixture |
-| CREATE-14-A | Panorama/relight output records source, transform/model and generated asset provenance, including unsupported/failure states | media provenance fixture |
-| CREATE-15-A | Multi-angle and multi-grid shots retain source linkage when reordered, regenerated or partially failed | shot-grid fixture |
 | CREATE-16-A | Long-form generation applies governed document actions, preserves human edits and records prompt/model/source provenance | document generation fixture |
 | ORCH-01-A | Workflow definition validates a typed finite DAG and rejects cycles/stale versions | schema test |
 | ORCH-02-A | Workflow run projects TaskRunner status and never creates a second run authority | run trace |
@@ -71,7 +66,6 @@ with a concrete code path, evidence command and status. They are intentionally n
 | ORCH-06-A | Activity history correlates events to the owning Session/Task/Artifact without duplication | event trace |
 | ORCH-07-A | Inbox approval/notification resolves to a real permission or session event | inbox smoke |
 | ORCH-08-A | Diagnostics classifies failure and offers only a recovery action that actually exists | failure fixture |
-| ORCH-09-A | Telemetry is opt-in/configured, redacts sensitive values and is disableable offline | privacy test |
 | ORCH-10-A | Skill marketplace discovers signed manifests, shows compatibility/permissions, installs into a scoped loadout, and supports disable/update/rollback | marketplace fixture |
 | ORCH-11-A | Plugin marketplace verifies provenance and license, previews requested capabilities, requires permission approval, isolates runtime, and recovers from failed update/uninstall | plugin lifecycle test |
 | ORCH-12-A | MCP marketplace registers server capabilities and health, scopes credentials per grant, exposes tool risk before install, and removes/revokes a server without stale tools | MCP registry test |
