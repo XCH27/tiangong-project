@@ -1,5 +1,4 @@
 import { spawnSync } from 'node:child_process';
-import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export interface FilesystemIsolationPlan {
@@ -73,14 +72,7 @@ export function applyFilesystemIsolation(
   sessionDir: string,
   options?: FilesystemIsolationOptions,
 ): FilesystemIsolationPlan {
-  // Sandboxes evaluate real paths, so resolve symlinks (e.g. macOS
-  // /var -> /private/var) or writes under the session root are denied.
-  let sessionRoot: string;
-  try {
-    sessionRoot = realpathSync.native(sessionDir);
-  } catch {
-    sessionRoot = resolve(sessionDir);
-  }
+  const sessionRoot = resolve(sessionDir);
 
   if (process.platform === 'darwin' && canUseSandboxExec()) {
     const profile = buildDarwinSandboxProfile(sessionRoot, options);

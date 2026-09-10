@@ -49,8 +49,6 @@ export interface AssistantTurn {
   isStreaming: boolean
   isComplete: boolean
   timestamp: number
-  /** Latest persisted completion/event timestamp in this assistant turn. */
-  completedAt?: number
   /** Extracted from TodoWrite tool - latest todo state in this turn */
   todos?: TodoItem[]
 }
@@ -403,13 +401,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
         currentTurn.isComplete = true
       }
 
-      if (currentTurn.isComplete && currentTurn.completedAt === undefined) {
-        currentTurn.completedAt = Math.max(
-          currentTurn.timestamp,
-          ...currentTurn.activities.map(activity => activity.timestamp),
-        )
-      }
-
       // If no response but we have intermediate text, promote the last one to response
       // Don't do this for interrupted turns - respect user interruptions
       // Don't do this for turns with plans - the plan is the final output
@@ -477,7 +468,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
           timestamp: message.timestamp,
         }
       }
-      currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
       const statusActivity: ActivityItem = {
         id: message.id,
         type: 'status',
@@ -494,7 +484,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
     // Info messages with compaction_complete update the matching status activity
     if (message.role === 'info' && message.statusType === 'compaction_complete') {
       if (currentTurn) {
-        currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
         const statusIdx = currentTurn.activities.findIndex(
           a => a.type === 'status' && a.statusType === 'compacting'
         )
@@ -515,10 +504,7 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
       // Flush current turn first (mark as interrupted if info message)
       const isInterruption = message.role === 'info'
       // For error/warning (not info), the previous turn is complete
-      if (currentTurn) {
-        currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
-        if (!isInterruption) currentTurn.isComplete = true
-      }
+      if (currentTurn && !isInterruption) currentTurn.isComplete = true
       flushCurrentTurn(isInterruption)
       turns.push({
         type: 'system',
@@ -555,7 +541,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
         displayName: 'Plan',
         timestamp: message.timestamp,
       })
-      currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
       currentTurn.isStreaming = false
       currentTurn.isComplete = true
       flushCurrentTurn()
@@ -582,7 +567,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
       // Always add to current turn (ignoring turnId differences)
       // Pass existing activities for incremental depth calculation
       currentTurn.activities.push(messageToActivity(message, currentTurn.activities))
-      currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
       currentTurn.isStreaming = !isToolComplete
       continue
     }
@@ -625,7 +609,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
           intermediateActivity.depth = 0
         }
         currentTurn.activities.push(intermediateActivity)
-        currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
 
         // Update turn streaming state based on this message
         // If message is no longer pending/streaming, update turn state accordingly
@@ -658,7 +641,6 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
         messageId: message.id,
         annotations: message.annotations,
       }
-      currentTurn.completedAt = Math.max(currentTurn.completedAt ?? message.timestamp, message.timestamp)
       currentTurn.isStreaming = !!message.isStreaming
       currentTurn.isComplete = !message.isStreaming
 

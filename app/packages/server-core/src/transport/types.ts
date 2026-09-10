@@ -17,7 +17,6 @@ export interface RpcServer {
   push(channel: string, target: PushTarget, ...args: any[]): void
   invokeClient(clientId: string, channel: string, ...args: any[]): Promise<any>
   updateClientWorkspace?(clientId: string, workspaceId: string): void
-  updateClientSessionWorkspaces?(clientId: string, workspaceIds: readonly string[]): void
 
   /** Whether a connected client advertised the given capability on handshake. */
   hasClientCapability(clientId: string, capability: string): boolean

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import * as Icons from "lucide-react"
 import { isMac } from "@/lib/platform"
@@ -143,8 +143,6 @@ export function DesktopAppMenu({
   onOpenSettings,
   onOpenSettingsSubpage,
   onOpenKeyboardShortcuts,
-  onOpenWhatsNew,
-  hasUnseenReleaseNotes,
   onToggleSidebar,
   onToggleFocusMode,
 }: AppMenuProps) {
@@ -228,24 +226,19 @@ export function DesktopAppMenu({
             {t("menu.help")}
           </StyledDropdownMenuSubTrigger>
           <StyledDropdownMenuSubContent>
-            {HELP_LINKS.map((link, index) => {
+            {HELP_LINKS.map((link) => {
               const Icon = getIcon(link.icon)
               return (
-                <Fragment key={link.id}>
-                  {index > 0 && HELP_LINKS[index - 1].group !== link.group && (
-                    <StyledDropdownMenuSeparator />
-                  )}
-                  <StyledDropdownMenuItem
-                    onClick={() => window.electronAPI.openUrl(link.url)}
-                  >
-                    {Icon && <Icon className="h-3.5 w-3.5" />}
-                    {t(link.labelKey)}
-                    <Icons.ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
-                  </StyledDropdownMenuItem>
-                </Fragment>
+                <StyledDropdownMenuItem
+                  key={link.id}
+                  onClick={() => window.electronAPI.openUrl(link.url)}
+                >
+                  {Icon && <Icon className="h-3.5 w-3.5" />}
+                  {t(link.labelKey)}
+                  <Icons.ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+                </StyledDropdownMenuItem>
               )
             })}
-            <StyledDropdownMenuSeparator />
             <StyledDropdownMenuItem onClick={onOpenKeyboardShortcuts}>
               <Icons.Keyboard className="h-3.5 w-3.5" />
               {t(ROOT_MENU.keyboardShortcuts.labelKey)}
@@ -254,7 +247,7 @@ export function DesktopAppMenu({
           </StyledDropdownMenuSubContent>
         </DropdownMenuSub>
 
-        {isDebugMode && renderDebugSubmenu(t, onOpenWhatsNew, hasUnseenReleaseNotes)}
+        {isDebugMode && renderDebugSubmenu(t)}
 
         <StyledDropdownMenuSeparator />
 
@@ -273,11 +266,7 @@ export function DesktopAppMenu({
  * that drive it (`checkForUpdates`, `installUpdate`, `toggleDevTools`) all live on
  * `window.electronAPI` directly and never traverse the menu IPC channels.
  */
-function renderDebugSubmenu(
-  t: (key: string) => string,
-  onOpenWhatsNew: () => void,
-  hasUnseenReleaseNotes?: boolean,
-): React.ReactNode {
+function renderDebugSubmenu(t: (key: string) => string): React.ReactNode {
   const SectionIcon = getIcon(DEBUG_MENU.icon)
   return (
     <DropdownMenuSub>
@@ -298,27 +287,12 @@ function renderDebugSubmenu(
             console.warn(`[DesktopAppMenu] No debug handler for id: ${item.id}`)
             return null
           }
-          const menuItem = (
+          return (
             <StyledDropdownMenuItem key={item.id} onClick={handler}>
               {Icon && <Icon className="h-3.5 w-3.5" />}
               {t(item.labelKey)}
               {shortcut && <DropdownMenuShortcut className="pl-6">{shortcut}</DropdownMenuShortcut>}
             </StyledDropdownMenuItem>
-          )
-          if (item.id !== 'installUpdate') return menuItem
-          return (
-            <Fragment key={`${item.id}-with-whats-new`}>
-              {menuItem}
-              <StyledDropdownMenuItem onClick={onOpenWhatsNew}>
-                <span className="relative">
-                  <Icons.Cake className="h-3.5 w-3.5" />
-                  {hasUnseenReleaseNotes && (
-                    <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
-                  )}
-                </span>
-                {t('sidebar.whatsNew')}
-              </StyledDropdownMenuItem>
-            </Fragment>
           )
         })}
       </StyledDropdownMenuSubContent>

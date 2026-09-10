@@ -18,10 +18,6 @@ import { useMenuComponents } from '@/components/ui/menu-context'
 import { automationSelection } from '@/hooks/useEntitySelection'
 import { automationsAtom } from '@/atoms/automations'
 import { useAppShellContext } from '@/context/AppShellContext'
-import {
-  getBatchOperationErrorMessage,
-  runSequentialAutomationOperations,
-} from './batch-operation'
 
 const {
   useSelection: useAutomationSelection,
@@ -33,7 +29,7 @@ export function BatchAutomationMenu() {
   const { MenuItem, Separator } = useMenuComponents()
 
   const selectedIds = useAutomationSelectedIds()
-  const { removeFromSelection } = useAutomationSelection()
+  const { clearMultiSelect } = useAutomationSelection()
   const automations = useAtomValue(automationsAtom)
 
   const {
@@ -57,46 +53,36 @@ export function BatchAutomationMenu() {
     if (!activeWorkspaceId) return
     const targetEnabled = !allEnabled
     const count = selectedAutomations.length
-    const result = await runSequentialAutomationOperations(selectedAutomations, (automation) =>
-      window.electronAPI.setAutomationEnabled(
+    clearMultiSelect()
+    for (const a of selectedAutomations) {
+      await window.electronAPI.setAutomationEnabled(
         activeWorkspaceId,
-        automation.event,
-        automation.matcherIndex,
+        a.event,
+        a.matcherIndex,
         targetEnabled,
-      ),
-    )
-    removeFromSelection(result.succeeded.map((automation) => automation.id))
-    if (result.failed.length > 0) {
-      const message = getBatchOperationErrorMessage(result.failed[0].error)
-      toast.error(t('toast.failedToToggleAutomation'), { description: message })
-      return
+      ).catch(() => {})
     }
     toast(targetEnabled
       ? t('automations.batchEnabled', { count })
       : t('automations.batchDisabled', { count })
     )
-  }, [activeWorkspaceId, selectedAutomations, allEnabled, removeFromSelection, t])
+  }, [activeWorkspaceId, selectedAutomations, allEnabled, clearMultiSelect, t])
 
   // Batch delete — sequential IPC in reverse matcherIndex order so earlier indices stay valid
   const handleBatchDelete = useCallback(async () => {
     if (!activeWorkspaceId) return
-    const count = selectedAutomations.length
+    const count = selectedIds.size
+    clearMultiSelect()
     const sorted = [...selectedAutomations].sort((a, b) => b.matcherIndex - a.matcherIndex)
-    const result = await runSequentialAutomationOperations(sorted, (automation) =>
-      window.electronAPI.deleteAutomation(
+    for (const a of sorted) {
+      await window.electronAPI.deleteAutomation(
         activeWorkspaceId,
-        automation.event,
-        automation.matcherIndex,
-      ),
-    )
-    removeFromSelection(result.succeeded.map((automation) => automation.id))
-    if (result.failed.length > 0) {
-      const message = getBatchOperationErrorMessage(result.failed[0].error)
-      toast.error(t('toast.failedToDeleteAutomation'), { description: message })
-      return
+        a.event,
+        a.matcherIndex,
+      ).catch(() => {})
     }
     toast(t('automations.batchDeleted', { count }))
-  }, [activeWorkspaceId, selectedAutomations, removeFromSelection, t])
+  }, [activeWorkspaceId, selectedIds.size, selectedAutomations, clearMultiSelect, t])
 
   const count = selectedIds.size
 

@@ -1,6 +1,5 @@
 import * as React from 'react'
 import type { CSSProperties } from 'react'
-import type { TFunction } from 'i18next'
 import type { StatusConfig } from '@craft-agent/shared/statuses'
 import { isEmoji } from '@craft-agent/shared/utils/icon-constants'
 import { resolveEntityColor, getDefaultStatusColor } from '@craft-agent/shared/colors'
@@ -38,24 +37,6 @@ export interface SessionStatus extends SessionStatusConfig {
   category?: 'open' | 'closed'
   isFixed?: boolean
   isDefault?: boolean
-}
-
-const BUILT_IN_STATUS_NAMES: Record<string, string> = {
-  backlog: 'Backlog',
-  todo: 'Todo',
-  'needs-review': 'Needs Review',
-  done: 'Done',
-  cancelled: 'Cancelled',
-}
-
-/** Built-in status labels follow the UI language; workspace-defined labels remain verbatim. */
-export function getLocalizedStatusLabel(
-  t: TFunction,
-  status: Pick<SessionStatusConfig, 'id' | 'label'>,
-): string {
-  return BUILT_IN_STATUS_NAMES[status.id] === status.label
-    ? t(`status.${status.id}`, { defaultValue: status.label })
-    : status.label
 }
 
 // ============================================================================

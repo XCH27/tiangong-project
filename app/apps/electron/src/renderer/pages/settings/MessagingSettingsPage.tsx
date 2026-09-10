@@ -62,7 +62,7 @@ import {
   type PlatformOwner,
 } from '@/components/messaging/access'
 import { useActiveWorkspace } from '@/context/AppShellContext'
-import { useNavigation } from '@/context/NavigationContext'
+import { useNavigation } from '@/contexts/NavigationContext'
 import {
   messagingBindingsAtom,
   setMessagingBindingsAtom,
@@ -113,7 +113,7 @@ export default function MessagingSettingsPage() {
     <div className="flex h-full flex-col">
       <PanelHeader title={t('settings.messaging.title')} />
       <ScrollArea className="flex-1">
-        <div className="mx-auto max-w-3xl px-5 py-7">
+        <div className="space-y-6 p-6">
           <SettingsSection title={t('settings.messaging.title')}>
             <SettingsCard>
               <PlatformRow platform="telegram" workspaceId={activeWorkspace.id} />
@@ -861,12 +861,12 @@ function buildDescription(
     return t(`settings.messaging.${platform}.connected`, { defaultValue: 'Connected' })
   }
   if (runtime.state === 'connecting') {
-    return t('common.connecting')
+    return t('dialog.whatsapp.starting', { defaultValue: 'Connecting…' })
   }
   if (runtime.state === 'error' && runtime.lastError) {
     return runtime.lastError
   }
-  return t('settings.messaging.notConnected')
+  return t(`settings.messaging.${platform}.notConnected`, { defaultValue: 'Not connected' })
 }
 
 function defaultRuntime(platform: Platform): MessagingPlatformRuntimeInfo {

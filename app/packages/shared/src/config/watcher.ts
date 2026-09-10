@@ -777,8 +777,6 @@ export class ConfigWatcher {
       }
 
       // Invalidate cache before reloading so we get fresh results
-      // (same as Craft v0.10.5: watcher list is workspace-scoped; project-tier
-      // skills are resolved by getSkills with the session workingDirectory).
       invalidateSkillsCache();
       const allSkills = loadAllSkills(this.workspaceDir);
       this.callbacks.onSkillsListChange?.(allSkills);

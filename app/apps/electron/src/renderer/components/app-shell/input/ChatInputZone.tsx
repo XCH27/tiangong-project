@@ -1,19 +1,19 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { CHAT_LAYOUT } from '@/config/layout'
-import type { LabelConfig } from '@craft-agent/shared/labels'
+import { flattenLabels, type LabelConfig } from '@craft-agent/shared/labels'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { BackgroundTask } from '../ActiveTasksBar'
 import { ActiveOptionBadges } from '../ActiveOptionBadges'
 import { InputContainer } from './InputContainer'
 import { InputErrorBoundary } from './InputErrorBoundary'
-import { ComposerContextStack, type ComposerContextStackProps } from './ComposerContextStack'
 
 interface ChatInputZoneProps {
   compactMode?: boolean
   showOptionBadges?: boolean
   permissionMode?: PermissionMode
+  onPermissionModeChange?: (mode: PermissionMode) => void
   tasks?: BackgroundTask[]
   sessionId: string
   sessionFolderPath?: string
@@ -26,7 +26,6 @@ interface ChatInputZoneProps {
   currentSessionStatus?: string
   onSessionStatusChange?: (stateId: string) => void
   className?: string
-  composerContext?: ComposerContextStackProps
   inputProps: React.ComponentProps<typeof InputContainer>
 }
 
@@ -34,6 +33,7 @@ export function ChatInputZone({
   compactMode = false,
   showOptionBadges,
   permissionMode = 'ask',
+  onPermissionModeChange,
   tasks = [],
   sessionId,
   sessionFolderPath,
@@ -42,11 +42,13 @@ export function ChatInputZone({
   sessionLabels = [],
   labels = [],
   onLabelsChange,
+  sessionStatuses = [],
   currentSessionStatus = 'todo',
+  onSessionStatusChange,
   className,
-  composerContext,
   inputProps,
 }: ChatInputZoneProps) {
+  const [autoOpenLabelId, setAutoOpenLabelId] = React.useState<string | null>(null)
   const shouldShowOptionBadges = showOptionBadges ?? !compactMode
   const inputResetKey = `${sessionId}::${inputProps.structuredInput?.type ?? 'freeform'}`
 
@@ -61,7 +63,11 @@ export function ChatInputZone({
 
     onLabelsChange?.([...current, labelId])
 
-  }, [onLabelsChange, sessionLabels])
+    const config = flattenLabels(labels || []).find(label => label.id === labelId)
+    if (config?.valueType) {
+      setAutoOpenLabelId(labelId)
+    }
+  }, [labels, onLabelsChange, sessionLabels])
 
   return (
     <div className={cn(
@@ -72,14 +78,27 @@ export function ChatInputZone({
     )}>
       {shouldShowOptionBadges && (
         <ActiveOptionBadges
+          permissionMode={permissionMode}
+          onPermissionModeChange={onPermissionModeChange}
           tasks={tasks}
           sessionId={sessionId}
+          sessionFolderPath={sessionFolderPath}
           onKillTask={onKillTask}
           onInsertMessage={onInsertMessage ?? inputProps.onInputChange}
+          sessionLabels={sessionLabels}
+          labels={labels}
+          onLabelsChange={onLabelsChange}
+          onRemoveLabel={(labelId) => {
+            const next = (sessionLabels || []).filter(entry => entry !== labelId && !entry.startsWith(`${labelId}::`))
+            onLabelsChange?.(next)
+          }}
+          autoOpenLabelId={autoOpenLabelId}
+          onAutoOpenConsumed={() => setAutoOpenLabelId(null)}
+          sessionStatuses={sessionStatuses}
+          currentSessionStatus={currentSessionStatus}
+          onSessionStatusChange={onSessionStatusChange}
         />
       )}
-
-      {composerContext && <ComposerContextStack {...composerContext} />}
 
       <InputErrorBoundary
         sessionId={sessionId}
@@ -90,6 +109,7 @@ export function ChatInputZone({
           {...inputProps}
           compactMode={compactMode}
           permissionMode={permissionMode}
+          onPermissionModeChange={onPermissionModeChange}
           labels={labels}
           sessionLabels={sessionLabels}
           onLabelAdd={handleLabelAdd}

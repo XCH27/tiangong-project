@@ -176,8 +176,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.browserPane.RELOAD,
   RPC_CHANNELS.browserPane.STOP,
   RPC_CHANNELS.browserPane.FOCUS,
-  RPC_CHANNELS.browserPane.EMBED,
-  RPC_CHANNELS.browserPane.DETACH,
   RPC_CHANNELS.browserPane.SNAPSHOT,
   RPC_CHANNELS.browserPane.CLICK,
   RPC_CHANNELS.browserPane.FILL,
@@ -194,15 +192,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.gitbash.CHECK,
   RPC_CHANNELS.gitbash.BROWSE,
   RPC_CHANNELS.gitbash.SET_PATH,
-
-  // Right-workbench filesystem ops — require an Electron window registry
-  // (resolveDesktopSessionDirectory). Never proxy to a headless remote host
-  // where webContentsId would be client-declared and untrusted.
-  RPC_CHANNELS.git.GET_WORKING_TREE,
-  RPC_CHANNELS.git.GET_FILE_DIFF,
-  RPC_CHANNELS.terminal.RUN_COMMAND,
-  // CLI runtime detection probes local binaries, same locality as RUN_COMMAND
-  RPC_CHANNELS.terminal.HANDSHAKE_RUNTIMES,
 
   // debug — local debug logging
   RPC_CHANNELS.debug.LOG,
@@ -314,7 +303,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.llmConnections.SET_DEFAULT,
   RPC_CHANNELS.llmConnections.SET_WORKSPACE_DEFAULT,
   RPC_CHANNELS.llmConnections.REFRESH_MODELS,
-  RPC_CHANNELS.llmConnections.GET_SUBSCRIPTION_QUOTA,
   RPC_CHANNELS.llmConnections.CHANGED,
 
   // chatgpt — OAuth via capability passthrough
@@ -331,13 +319,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.copilot.LOGOUT,
   RPC_CHANNELS.copilot.DEVICE_CODE,
 
-  // xAI — subscription OAuth device flow on the workspace host
-  RPC_CHANNELS.xai.START_OAUTH,
-  RPC_CHANNELS.xai.CANCEL_OAUTH,
-  RPC_CHANNELS.xai.GET_AUTH_STATUS,
-  RPC_CHANNELS.xai.LOGOUT,
-  RPC_CHANNELS.xai.DEVICE_CODE,
-
   // Claude OAuth — runs on workspace server so credentials and connection config
   // end up on the same server that will use them. Browser opening is client-side.
   // (ChatGPT OAuth stays LOCAL_ONLY — requires localhost callback server.)
@@ -348,7 +329,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
 
   // settings — workspace-level settings
   RPC_CHANNELS.settings.SETUP_LLM_CONNECTION,
-  RPC_CHANNELS.settings.DISCOVER_LLM_MODELS,
   RPC_CHANNELS.settings.TEST_LLM_CONNECTION_SETUP,
   RPC_CHANNELS.settings.GET_DEFAULT_THINKING_LEVEL,
   RPC_CHANNELS.settings.SET_DEFAULT_THINKING_LEVEL,
@@ -399,8 +379,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.skills.GET,
   RPC_CHANNELS.skills.GET_FILES,
   RPC_CHANNELS.skills.DELETE,
-  RPC_CHANNELS.skills.MOVE_SCOPE,
-  RPC_CHANNELS.skills.INSTALL_KIT,
   RPC_CHANNELS.skills.CHANGED,
 
   // statuses — workspace metadata
@@ -411,7 +389,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   // labels — workspace metadata
   RPC_CHANNELS.labels.LIST,
   RPC_CHANNELS.labels.CREATE,
-  RPC_CHANNELS.labels.UPDATE,
   RPC_CHANNELS.labels.DELETE,
   RPC_CHANNELS.labels.CHANGED,
 
@@ -447,7 +424,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.projects.DELETE_ASSET,
   RPC_CHANNELS.projects.CHANGED,
 
-  // git — branch label is pure workspace fs (no desktop identity required)
+  // git — workspace filesystem
   RPC_CHANNELS.git.GET_BRANCH,
 
   // resources — workspace resource export/import

@@ -8,10 +8,9 @@
 import { createLogger } from '../../utils/debug.ts';
 import type { EventBus, BaseEventPayload } from '../event-bus.ts';
 import type { AutomationHandler, PromptHandlerOptions, AutomationsConfigProvider } from './types.ts';
-import { APP_EVENTS, type AutomationEvent, type AutomationMatcher, type PromptAction, type PendingPrompt, type AppEvent } from '../types.ts';
+import { APP_EVENTS, type AutomationEvent, type PromptAction, type PendingPrompt, type AppEvent } from '../types.ts';
 import type { PermissionMode } from '../../agent/mode-types.ts';
 import { matcherMatches, buildEnvFromPayload, expandEnvVars, parsePromptReferences } from '../utils.ts';
-import { matchesCronCatchup, minuteStartMs } from '../cron-matcher.ts';
 import { deriveAutomationName } from '../name-utils.ts';
 
 const log = createLogger('prompt-handler');
@@ -25,8 +24,6 @@ export class PromptHandler implements AutomationHandler {
   private readonly configProvider: AutomationsConfigProvider;
   private bus: EventBus | null = null;
   private boundHandler: ((event: AutomationEvent, payload: BaseEventPayload) => Promise<void>) | null = null;
-  /** Per-matcher minute (start ms) of the last SchedulerTick evaluated here — catch-up tracking. */
-  private readonly cronLastFired = new Map<string, number>();
 
   constructor(options: PromptHandlerOptions, configProvider: AutomationsConfigProvider) {
     this.options = options;
@@ -64,7 +61,7 @@ export class PromptHandler implements AutomationHandler {
     }> = [];
 
     for (const matcher of matchers) {
-      if (!this.matcherFires(matcher, event, payload)) continue;
+      if (!matcherMatches(matcher, event, payload as unknown as Record<string, unknown>)) continue;
 
       const prompts: Array<{ prompt: PromptAction; labels?: string[]; permissionMode?: PermissionMode }> = [];
       for (const action of matcher.actions) {
@@ -132,22 +129,6 @@ export class PromptHandler implements AutomationHandler {
       log.debug(`[PromptHandler] Delivering ${pendingPrompts.length} prompts`);
       this.options.onPromptsReady(pendingPrompts);
     }
-  }
-
-  /**
-   * Canonical matcher evaluation, with per-matcher cron catch-up for SchedulerTick:
-   * a skipped/slow tick (or app sleep) must not silently drop a scheduled automation —
-   * the matcher fires on the next tick if its cron matched any minute since last evaluated.
-   */
-  private matcherFires(matcher: AutomationMatcher, event: AutomationEvent, payload: BaseEventPayload): boolean {
-    if (event !== 'SchedulerTick' || !matcher.cron) {
-      return matcherMatches(matcher, event, payload as unknown as Record<string, unknown>);
-    }
-    const key = matcher.id ?? matcher.cron;
-    const now = new Date();
-    const cronMatched = matchesCronCatchup(matcher.cron, matcher.timezone, this.cronLastFired.get(key), now);
-    this.cronLastFired.set(key, minuteStartMs(now));
-    return matcherMatches(matcher, event, payload as unknown as Record<string, unknown>, { cronMatched });
   }
 
   /**

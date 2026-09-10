@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { useState, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
 import { Key, User, Lock, Eye, EyeOff, CheckCircle2, XCircle, type LucideIcon } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
 import { Button } from '@/components/ui/button'
@@ -164,7 +163,6 @@ interface AuthRequestCardProps {
  * - failed: Show error state
  */
 export function AuthRequestCard({ message, onRespondToCredential, sessionId, isInteractive = true }: AuthRequestCardProps) {
-  const { t } = useTranslation()
   const [value, setValue] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -372,7 +370,7 @@ export function AuthRequestCard({ message, onRespondToCredential, sessionId, isI
           icon={CheckCircle2}
           title={`${authSourceName} Connected`}
           subtitle={authEmail ? `Signed in as ${authEmail}` : undefined}
-          subtitleSecondary={authWorkspace ? `${t('settings.workspace.title')}: ${authWorkspace}` : undefined}
+          subtitleSecondary={authWorkspace ? `Workspace: ${authWorkspace}` : undefined}
         />
       )
     }

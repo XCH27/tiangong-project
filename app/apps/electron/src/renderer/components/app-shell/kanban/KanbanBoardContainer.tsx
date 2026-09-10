@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
@@ -6,19 +7,20 @@ import { useAppShellContext } from '@/context/AppShellContext'
 import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/atoms/sessions'
 import { projectsAtom } from '@/atoms/projects'
 import { kanbanProjectFilterAtom, kanbanColumnStatusAtom, kanbanEditorTargetAtom } from '@/atoms/kanban'
-import { useNavigation } from '@/context/NavigationContext'
+import { useNavigation } from '@/contexts/NavigationContext'
 import { useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
 import { useLabels } from '@/hooks/useLabels'
 import { getSessionTitle } from '@/utils/session'
+import { routes } from '@/lib/navigate'
 import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
 import { DEFAULT_MODEL, getModelShortName } from '@config/models'
 import { getDefaultModelsForConnection, type LlmConnectionWithStatus } from '@config/llm-connections'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { KanbanColumnDef } from '@craft-agent/shared/projects/types'
 import { KanbanBoard } from './KanbanBoard'
-import { KanbanBoardHeader } from './KanbanBoardHeader'
 import { KANBAN_COLUMNS, statusToColumn } from './status-column'
-import type { KanbanProjectFilterOption } from './KanbanProjectFilter'
+import { BoardListToggle } from './BoardListToggle'
+import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
 import { mergeSubtaskRows, type SpecNodeSummary, type SubtaskChildRow } from './subtask-merge'
 import type { SpecNode } from './task-spec-form'
@@ -101,7 +103,7 @@ export function KanbanBoardContainer() {
   const [columnStatus, setColumnStatus] = useAtom(kanbanColumnStatusAtom)
   const treatment = useProjectColorTreatment()
   const updateSessionMeta = useSetAtom(updateSessionMetaAtom)
-  const { navigateToSession } = useNavigation()
+  const { navigate, navigateToSession } = useNavigation()
   // Label tree for resolving the reserved Task label (scoped tile-click navigation).
   const { labels: labelConfigs } = useLabels(activeWorkspaceId ?? null)
 
@@ -359,6 +361,24 @@ export function KanbanBoardContainer() {
     [metaMap, statusesById, onSendMessage, updateSessionMeta, activeWorkspaceId, t]
   )
 
+  // Create a parent task tile in place — no navigation. It lands in ToDo (no
+  // kanbanColumn + todo status → todo column). While a project filter is active,
+  // bind the new task to the first selected project so it stays visible under the
+  // filter (an unbound task would be hidden the moment it's created).
+  const handleCreateTask = React.useCallback(
+    async (title: string) => {
+      if (!activeWorkspaceId) return
+      const boundProjectId = projectFilter[0]
+      await onCreateSession(activeWorkspaceId, {
+        name: title,
+        sessionStatus: 'todo',
+        ...(boundProjectId ? { projectId: boundProjectId } : {}),
+        applyTaskLabel: true,
+      })
+    },
+    [activeWorkspaceId, onCreateSession, projectFilter]
+  )
+
   // Change a task's status badge directly (independent from its column). Mirrors
   // the move handler's optimistic-then-persist shape so the badge reflows before
   // the RPC lands.
@@ -521,10 +541,10 @@ export function KanbanBoardContainer() {
           setEditorTarget(null)
           navigateToSession(sessionId)
         }}
-        onCreated={({ sessionId, taskLabelId, projectId: createdProjectId, session }) => {
+        onCreated={({ sessionId, taskLabelId, projectId: createdProjectId }) => {
           // Same human-clearable scope as a tile click; no label (fail-soft) → plain open.
           if (taskLabelId && onJumpToTaskSessions) {
-            onJumpToTaskSessions(sessionId, { labelId: taskLabelId, projectId: createdProjectId, session })
+            onJumpToTaskSessions(sessionId, { labelId: taskLabelId, projectId: createdProjectId })
           } else {
             navigateToSession(sessionId)
           }
@@ -538,20 +558,35 @@ export function KanbanBoardContainer() {
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <KanbanBoardHeader
-        allTasksLabel={t('kanban.allTasks')}
-        newTaskLabel={t('kanban.newTask')}
-        addColumnLabel={t('kanban.column.add')}
-        projects={projectOptions}
-        selectedProjectIds={projectFilter}
-        onProjectFilterChange={setProjectFilter}
-        columnsFromLabel={usingProjectColumns && editingProject
-          ? t('kanban.column.columnsFrom', { project: editingProject.config.name })
-          : undefined}
-        onCreateTask={() => setEditorTarget({ mode: 'create', initialProjectId: projectFilter[0] })}
-        onAddColumn={editingProject ? handleAddColumn : undefined}
-        createDisabled={!activeWorkspaceId}
-      />
+      <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="text-sm font-medium">{t('kanban.allTasks')}</span>
+          {projectOptions.length > 0 && (
+            <KanbanProjectFilter projects={projectOptions} value={projectFilter} onChange={setProjectFilter} />
+          )}
+          {usingProjectColumns && editingProject && (
+            <span className="truncate text-[11px] text-foreground/45">
+              {t('kanban.column.columnsFrom', { project: editingProject.config.name })}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditorTarget({ mode: 'create', initialProjectId: projectFilter[0] })}
+            disabled={!activeWorkspaceId}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-foreground/[0.03] disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.newTask')}
+          </button>
+          <BoardListToggle
+            value="board"
+            onChange={view => {
+              if (view === 'list') navigate(routes.view.allSessions())
+            }}
+          />
+        </div>
+      </div>
       <div className="min-h-0 flex-1">
         <KanbanBoard
           columns={activeColumns}
@@ -570,6 +605,7 @@ export function KanbanBoardContainer() {
           onRunSubtasks={handleRunSubtasks}
           subtaskModelGroups={subtaskModelGroups}
           defaultSubtaskModel={defaultSubtaskModel}
+          onCreateTask={handleCreateTask}
           onMoveTask={handleMoveTask}
           columnDropStatus={columnStatus}
           onSelectDropStatus={handleSelectDropStatus}
@@ -577,6 +613,7 @@ export function KanbanBoardContainer() {
             ? {
                 onUpdateColumn: handleUpdateColumn,
                 onRemoveColumn: handleRemoveColumn,
+                onAddColumn: handleAddColumn,
               }
             : {})}
         />

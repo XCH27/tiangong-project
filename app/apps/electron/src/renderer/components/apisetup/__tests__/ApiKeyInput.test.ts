@@ -4,66 +4,46 @@ import {
   resolvePiAuthProviderForSubmit,
   resolvePresetStateForBaseUrlChange,
 } from '../submit-helpers'
-import { resolveModelEntry, toSelectedModelPayload } from '../model-selection'
+import { pickTierDefaults, resolveTierModels } from '../tier-models'
 
 const MODELS = [
-  { id: 'pi/zai-alpha', name: 'Alpha', costInput: 10, costOutput: 20, contextWindow: 200000, reasoning: true },
-  { id: 'pi/zai-beta', name: 'Beta', costInput: 5, costOutput: 10, contextWindow: 200000, reasoning: true },
-  { id: 'pi/zai-gamma', name: 'Gamma', costInput: 1, costOutput: 2, contextWindow: 128000, reasoning: false },
+  { id: 'pi/zai-best', name: 'Best', costInput: 10, costOutput: 20, contextWindow: 200000, reasoning: true },
+  { id: 'pi/zai-balanced', name: 'Balanced', costInput: 5, costOutput: 10, contextWindow: 200000, reasoning: true },
+  { id: 'pi/zai-fast', name: 'Fast', costInput: 1, costOutput: 2, contextWindow: 128000, reasoning: false },
 ]
 
-describe('ApiKeyInput model selection payload', () => {
-  it('preserves the user-selected order without assigning strength tiers', () => {
-    const resolved = toSelectedModelPayload(
-      ['pi/zai-gamma', 'pi/zai-alpha'],
-      MODELS,
-    )
-    expect(resolved.map((model) => typeof model === 'string' ? model : model.id))
-      .toEqual(['pi/zai-gamma', 'pi/zai-alpha'])
-  })
+describe('ApiKeyInput tier hydration helpers', () => {
+  it('resolveTierModels keeps saved tier selections when all are valid', () => {
+    const saved = ['pi/zai-fast', 'pi/zai-balanced', 'pi/zai-best']
+    const resolved = resolveTierModels(MODELS, saved)
 
-  it('keeps a provider model that is newer than the bundled catalog', () => {
-    expect(toSelectedModelPayload(['pi/zai-next'], MODELS))
-      .toEqual(['pi/zai-next'])
-  })
-
-  it('hydrates an unprefixed provider result with Pi capability metadata', () => {
-    const [resolved] = toSelectedModelPayload(
-      ['zai-alpha'],
-      MODELS,
-    )
-
-    expect(typeof resolved === 'string' ? resolved : {
-      id: resolved.id,
-      contextWindow: resolved.contextWindow,
-      supportsThinking: resolved.supportsThinking,
-    }).toEqual({
-      id: 'pi/zai-alpha',
-      contextWindow: 200000,
-      supportsThinking: true,
+    expect(resolved).toEqual({
+      best: 'pi/zai-fast',
+      default_: 'pi/zai-balanced',
+      cheap: 'pi/zai-best',
     })
   })
-})
 
-describe('unified model entry', () => {
-  it('selects an exact provider result from the same search field', () => {
-    expect(resolveModelEntry('  pi/zai-alpha ', MODELS.map((model) => model.id), []))
-      .toEqual({ kind: 'select', modelId: 'pi/zai-alpha' })
+  it('resolveTierModels preserves duplicate tiers when saved models are valid', () => {
+    const saved = ['pi/zai-best', 'pi/zai-best', 'pi/zai-fast']
+    const resolved = resolveTierModels(MODELS, saved)
+
+    expect(resolved).toEqual({
+      best: 'pi/zai-best',
+      default_: 'pi/zai-best',
+      cheap: 'pi/zai-fast',
+    })
   })
 
-  it('keeps the Pi runtime namespace out of provider-facing model entry', () => {
-    expect(resolveModelEntry('zai-alpha', MODELS.map((model) => model.id), []))
-      .toEqual({ kind: 'select', modelId: 'pi/zai-alpha' })
-  })
+  it('resolveTierModels falls back per-slot for invalid/missing saved values', () => {
+    const resolved = resolveTierModels(MODELS, ['pi/zai-best', 'pi/not-real'])
+    const defaults = pickTierDefaults(MODELS)
 
-  it('adds an unknown model id from the same search field', () => {
-    expect(resolveModelEntry('zai-next', MODELS.map((model) => model.id), []))
-      .toEqual({ kind: 'custom', modelId: 'zai-next' })
-  })
-
-  it('does not duplicate an already selected model', () => {
-    expect(resolveModelEntry('pi/zai-alpha', MODELS.map((model) => model.id), ['pi/zai-alpha']))
-      .toBeNull()
+    expect(resolved).toEqual({
+      best: 'pi/zai-best',
+      default_: defaults.default_,
+      cheap: defaults.cheap,
+    })
   })
 })
 

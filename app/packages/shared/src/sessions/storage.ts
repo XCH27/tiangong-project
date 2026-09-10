@@ -28,7 +28,6 @@ import { generateUniqueSessionId } from './slug-generator.ts';
 import { toPortablePath, expandPath } from '../utils/paths.ts';
 import { sanitizeSessionId } from './validation.ts';
 import { perf } from '../utils/perf.ts';
-import { recoverAtomicWriteSync } from '../utils/files.ts';
 import type {
   SessionConfig,
   StoredSession,
@@ -179,12 +178,8 @@ export async function createSession(
   workspaceRootPath: string,
   options?: {
     name?: string;
-    goal?: string;
     workingDirectory?: string;
     permissionMode?: SessionConfig['permissionMode'];
-    workMode?: SessionConfig['workMode'];
-    workModeSelection?: SessionConfig['workModeSelection'];
-    executionPermissionMode?: SessionConfig['executionPermissionMode'];
     enabledSourceSlugs?: string[];
     model?: string;
     llmConnection?: string;
@@ -217,15 +212,11 @@ export async function createSession(
     id: sessionId,
     workspaceRootPath,
     name: options?.name,
-    goal: options?.goal,
     createdAt: now,
     lastUsedAt: now,
     workingDirectory: options?.workingDirectory,
     sdkCwd,
     permissionMode: options?.permissionMode,
-    workMode: options?.workMode,
-    workModeSelection: options?.workModeSelection,
-    executionPermissionMode: options?.executionPermissionMode,
     enabledSourceSlugs: options?.enabledSourceSlugs,
     model: options?.model,
     llmConnection: options?.llmConnection,
@@ -343,7 +334,6 @@ export function loadSession(workspaceRootPath: string, sessionId: string): Store
   const end = perf.start('session.loadSession', { sessionId });
 
   const jsonlPath = getSessionFilePath(workspaceRootPath, sessionId);
-  recoverAtomicWriteSync(jsonlPath);
   if (existsSync(jsonlPath)) {
     const session = readSessionJsonl(jsonlPath);
     if (session) {
@@ -380,8 +370,6 @@ export function listSessions(workspaceRootPath: string): SessionMetadata[] {
       const sessionDir = join(sessionsDir, sessionId);
       const jsonlFile = join(sessionDir, 'session.jsonl');
 
-      recoverAtomicWriteSync(jsonlFile);
-
       // Clean up orphaned .tmp files from crashed atomic writes.
       // These are harmless but waste disk space.
       const tmpFile = jsonlFile + '.tmp';
@@ -394,24 +382,6 @@ export function listSessions(workspaceRootPath: string): SessionMetadata[] {
         if (header) {
           const metadata = headerToMetadata(header, workspaceRootPath);
           if (metadata) sessions.push(metadata);
-        }
-      } else {
-        // Orphan session directory with no jsonl (crashed create, partial delete).
-        // Skip listing it so the UI never offers a click that loads nothing.
-        // Best-effort: remove empty shells that only contain subdirs we create by default.
-        try {
-          const children = readdirSync(sessionDir);
-          const onlyScaffold = children.every((name) =>
-            ['plans', 'attachments', 'long_responses', 'data', 'downloads', 'tmp'].includes(name),
-          );
-          if (onlyScaffold || children.length === 0) {
-            // Leave non-empty orphans (user files) alone; only drop pure scaffold shells.
-            if (children.length === 0) {
-              try { rmSync(sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
-            }
-          }
-        } catch {
-          // ignore cleanup failures
         }
       }
     }
@@ -569,7 +539,6 @@ export async function updateSessionMetadata(
   updates: Partial<Pick<SessionConfig,
     | 'isFlagged'
     | 'name'
-    | 'goal'
     | 'sessionStatus'
     | 'labels'
     | 'lastReadMessageId'
@@ -578,9 +547,6 @@ export async function updateSessionMetadata(
     | 'workingDirectory'
     | 'sdkCwd'
     | 'permissionMode'
-    | 'workMode'
-    | 'workModeSelection'
-    | 'executionPermissionMode'
     | 'sharedUrl'
     | 'sharedId'
     | 'model'
@@ -595,16 +561,12 @@ export async function updateSessionMetadata(
 
   if (updates.isFlagged !== undefined) session.isFlagged = updates.isFlagged;
   if (updates.name !== undefined) session.name = updates.name;
-  if ('goal' in updates) session.goal = updates.goal || undefined;
   if (updates.sessionStatus !== undefined) session.sessionStatus = updates.sessionStatus;
   if (updates.labels !== undefined) session.labels = updates.labels;
   if (updates.enabledSourceSlugs !== undefined) session.enabledSourceSlugs = updates.enabledSourceSlugs;
   if (updates.workingDirectory !== undefined) session.workingDirectory = updates.workingDirectory;
   if (updates.sdkCwd !== undefined) session.sdkCwd = updates.sdkCwd;
   if (updates.permissionMode !== undefined) session.permissionMode = updates.permissionMode;
-  if (updates.workMode !== undefined) session.workMode = updates.workMode;
-  if (updates.workModeSelection !== undefined) session.workModeSelection = updates.workModeSelection;
-  if (updates.executionPermissionMode !== undefined) session.executionPermissionMode = updates.executionPermissionMode;
   if ('lastReadMessageId' in updates) session.lastReadMessageId = updates.lastReadMessageId;
   if ('hasUnread' in updates) session.hasUnread = updates.hasUnread;
   if ('sharedUrl' in updates) session.sharedUrl = updates.sharedUrl;

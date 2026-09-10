@@ -12,16 +12,6 @@
  * - Track cumulative session usage (for billing display)
  */
 
-import {
-  cacheUsageFromLedger,
-  summarizeCacheEconomy,
-  type CacheEconomySummary,
-  type EconomicsOptions,
-  type NormalizedCacheUsage,
-  type PromptPrefixSnapshot,
-  type ProviderCacheProfile,
-} from './cache-economy.ts';
-
 // ============================================================
 // Types
 // ============================================================
@@ -30,7 +20,7 @@ import {
  * Token usage for a single message.
  */
 export interface MessageUsage {
-  /** Total input tokens (already includes cache read/creation tokens). */
+  /** Total input tokens (includes cache tokens) */
   inputTokens: number;
 
   /** Output tokens generated */
@@ -44,9 +34,6 @@ export interface MessageUsage {
 
   /** Timestamp of this usage record */
   timestamp: number;
-
-  /** Provider-normalized cache usage when the adapter attached it. */
-  cacheUsage?: NormalizedCacheUsage;
 }
 
 /**
@@ -118,8 +105,6 @@ export class UsageTracker {
   private sessionUsage: SessionUsage;
   private lastMessageUsage: MessageUsage | null = null;
   private cachedContextWindow?: number;
-  /** Per-turn normalized cache usage — same ledger as sessionUsage, not folded. */
-  private turnCacheUsages: NormalizedCacheUsage[] = [];
 
   constructor(config: UsageTrackerConfig = {}) {
     this.config = config;
@@ -139,34 +124,28 @@ export class UsageTracker {
    * This is called during message processing to track real-time usage.
    */
   recordMessageUsage(usage: {
-    /** Complete context size, already including cache read/creation tokens. */
     inputTokens: number;
     outputTokens?: number;
     cacheReadTokens?: number;
     cacheCreationTokens?: number;
-    cacheUsage?: NormalizedCacheUsage;
   }): void {
     const now = Date.now();
 
+    // Calculate total input including cache
     const cacheRead = usage.cacheReadTokens ?? 0;
     const cacheCreation = usage.cacheCreationTokens ?? 0;
+    const totalInput = usage.inputTokens + cacheRead + cacheCreation;
 
     // Update last message usage (for per-message display)
     this.lastMessageUsage = {
-      inputTokens: usage.inputTokens,
+      inputTokens: totalInput,
       outputTokens: usage.outputTokens ?? 0,
       cacheReadTokens: cacheRead,
       cacheCreationTokens: cacheCreation,
       timestamp: now,
-      cacheUsage: usage.cacheUsage ?? cacheUsageFromLedger({
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        cacheReadTokens: cacheRead,
-        cacheCreationTokens: cacheCreation,
-      }),
     };
 
-    this.debug(`Message usage: ${usage.inputTokens} input, ${usage.outputTokens ?? 0} output, ${cacheRead} cache read`);
+    this.debug(`Message usage: ${totalInput} input, ${usage.outputTokens ?? 0} output, ${cacheRead} cache read`);
 
     // Emit usage update
     this.emitUsageUpdate();
@@ -181,7 +160,6 @@ export class UsageTracker {
     outputTokens: number;
     cacheReadTokens?: number;
     cacheCreationTokens?: number;
-    cacheUsage?: NormalizedCacheUsage;
   }): void {
     // Use provided usage or last tracked message usage
     const finalUsage = usage ?? this.lastMessageUsage;
@@ -192,16 +170,6 @@ export class UsageTracker {
       this.sessionUsage.totalCacheReadTokens += finalUsage.cacheReadTokens ?? 0;
       this.sessionUsage.totalCacheCreationTokens += finalUsage.cacheCreationTokens ?? 0;
       this.sessionUsage.messageCount++;
-      this.turnCacheUsages.push(
-        usage?.cacheUsage
-          ?? finalUsage.cacheUsage
-          ?? cacheUsageFromLedger({
-            inputTokens: finalUsage.inputTokens,
-            outputTokens: finalUsage.outputTokens,
-            cacheReadTokens: finalUsage.cacheReadTokens,
-            cacheCreationTokens: finalUsage.cacheCreationTokens,
-          }),
-      );
     }
 
     this.debug(`Turn complete: ${this.sessionUsage.messageCount} messages, ${this.sessionUsage.totalInputTokens} total input`);
@@ -235,23 +203,6 @@ export class UsageTracker {
    */
   getSessionUsage(): SessionUsage {
     return { ...this.sessionUsage };
-  }
-
-  /**
-   * Per-turn normalized cache usage from the same ledger as getSessionUsage().
-   */
-  getTurnCacheUsages(): NormalizedCacheUsage[] {
-    return this.turnCacheUsages.map((turn) => ({ ...turn }));
-  }
-
-  /**
-   * Fold per-turn cache usage through the cache-economy authority.
-   */
-  getCacheEconomySummary(
-    profile: ProviderCacheProfile,
-    options: EconomicsOptions & { prefixSnapshots?: PromptPrefixSnapshot[] } = {},
-  ): CacheEconomySummary {
-    return summarizeCacheEconomy(profile, this.turnCacheUsages, options);
   }
 
   /**
@@ -315,7 +266,6 @@ export class UsageTracker {
       startedAt: Date.now(),
     };
     this.lastMessageUsage = null;
-    this.turnCacheUsages = [];
     this.debug('Usage tracker reset');
   }
 

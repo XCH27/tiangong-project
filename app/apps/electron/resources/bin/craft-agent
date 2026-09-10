@@ -1,8 +1,4 @@
 #!/bin/sh
 ENTRY="${CRAFT_COMMANDS_ENTRY:-$CRAFT_CLI_ENTRY}"
-if [ -z "$ENTRY" ] || [ ! -f "$ENTRY" ]; then
-  echo "craft-agent configuration CLI is not implemented in this Fleet build; use the app or craft-cli RPC client." >&2
-  exit 64
-fi
 export CRAFT_CLI_JSON_ONLY="${CRAFT_CLI_JSON_ONLY:-1}"
 exec "${CRAFT_BUN:-bun}" run "$ENTRY" "$@"

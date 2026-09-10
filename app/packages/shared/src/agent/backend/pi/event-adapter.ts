@@ -9,10 +9,7 @@
  * Claude / Codex / Copilot backends.
  */
 
-import type {
-  AgentEvent as CraftAgentEvent,
-  AgentEventUsage,
-} from '@craft-agent/core/types';
+import type { AgentEvent as CraftAgentEvent } from '@craft-agent/core/types';
 import type {
   AgentEvent as PiAgentEvent,
 } from '@earendil-works/pi-agent-core';
@@ -25,7 +22,6 @@ import { BaseEventAdapter } from '../base-event-adapter.ts';
 import { PI_TOOL_NAME_MAP } from './constants.ts';
 import { toolMetadataStore } from '../../../interceptor-common.ts';
 import { parseError } from '../../errors.ts';
-import { normalizeProviderUsage, type NormalizedCacheUsage } from '../../core/cache-economy.ts';
 
 /**
  * Pi SDK auto-compaction race signature — the AbortController crash described
@@ -49,41 +45,6 @@ const OVERFLOW_FALLBACK_TIMEOUT_MS = 5_000;
  * AgentSessionEvent is a superset of PiAgentEvent (adds compaction_*, auto_retry_*, queue_update).
  */
 type PiEvent = PiAgentEvent | AgentSessionEvent;
-
-type PiUsage = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  totalTokens: number;
-  cost: { total: number };
-};
-
-/**
- * Pi reports uncached input, cache reads, and cache writes separately.
- * Craft's AgentEventUsage.inputTokens is the complete context size, so the
- * provider-specific fields must be folded exactly once at this adapter seam.
- */
-function normalizePiUsage(
-  usage: PiUsage,
-  contextWindow?: number,
-): AgentEventUsage & { cacheUsage: NormalizedCacheUsage } {
-  const cacheUsage = normalizeProviderUsage({
-    input: usage.input,
-    output: usage.output,
-    cacheRead: usage.cacheRead,
-    cacheWrite: usage.cacheWrite,
-  });
-  return {
-    inputTokens: cacheUsage.totalInputTokens,
-    outputTokens: cacheUsage.outputTokens,
-    cacheReadTokens: cacheUsage.cacheReadTokens,
-    cacheCreationTokens: cacheUsage.cacheWriteTokens,
-    costUsd: usage.cost.total,
-    contextWindow,
-    cacheUsage,
-  };
-}
 
 /**
  * Maps Pi SDK events to Craft AgentEvents for UI compatibility.
@@ -124,7 +85,7 @@ export class PiEventAdapter extends BaseEventAdapter {
   private miniModel: string | undefined;
 
   // Track last usage for emitting with complete event
-  private lastUsage: PiUsage | undefined;
+  private lastUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } } | undefined;
 
   // ============================================================
   // Overflow-recovery state machine
@@ -303,9 +264,17 @@ export class PiEventAdapter extends BaseEventAdapter {
           this.overflowState = 'none';
         }
         if (this.lastUsage) {
+          const inputTokens = this.lastUsage.input + (this.lastUsage.cacheRead || 0);
           yield {
             type: 'complete',
-            usage: normalizePiUsage(this.lastUsage, this.contextWindow),
+            usage: {
+              inputTokens,
+              outputTokens: this.lastUsage.output,
+              cacheReadTokens: this.lastUsage.cacheRead,
+              cacheCreationTokens: this.lastUsage.cacheWrite,
+              costUsd: this.lastUsage.cost.total,
+              contextWindow: this.contextWindow,
+            },
           };
         } else {
           yield { type: 'complete' };
@@ -359,7 +328,7 @@ export class PiEventAdapter extends BaseEventAdapter {
       case 'message_end': {
         // Pi SDK emits message_end for ALL messages (user, assistant, toolResult).
         // Only process assistant messages — skip user prompts and tool results.
-        const msg = event.message as { role?: string; stopReason?: string; errorMessage?: string; usage?: PiUsage; id?: string } | undefined;
+        const msg = event.message as { role?: string; stopReason?: string; errorMessage?: string; usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } }; id?: string } | undefined;
         // SDK message id, set by pi-agent-server when forwarding the event.
         // SessionManager uses this to correlate the follow-up `pi_turn_anchor`
         // event to the Craft assistant message created here (#782).
@@ -416,17 +385,13 @@ export class PiEventAdapter extends BaseEventAdapter {
         // Emit usage_update if the assistant message includes token usage
         if (msg.usage && typeof msg.usage.input === 'number') {
           this.lastUsage = msg.usage;
-          const normalizedUsage = normalizePiUsage(msg.usage, this.contextWindow);
-          const usageUpdate = {
-            inputTokens: normalizedUsage.inputTokens,
-            cacheReadTokens: normalizedUsage.cacheReadTokens,
-            cacheCreationTokens: normalizedUsage.cacheCreationTokens,
-            contextWindow: this.contextWindow,
-            cacheUsage: normalizedUsage.cacheUsage,
-          };
+          const inputTokens = msg.usage.input + (msg.usage.cacheRead || 0);
           yield {
             type: 'usage_update',
-            usage: usageUpdate,
+            usage: {
+              inputTokens,
+              contextWindow: this.contextWindow,
+            },
           };
         }
         break;

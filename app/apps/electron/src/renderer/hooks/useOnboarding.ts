@@ -96,7 +96,6 @@ export const BASE_SLUG_FOR_METHOD: Record<ApiSetupMethod, string> = {
   claude_oauth: 'claude-max',
   pi_chatgpt_oauth: 'chatgpt-plus',
   pi_copilot_oauth: 'github-copilot',
-  pi_xai_oauth: 'grok-subscription',
   pi_api_key: 'pi-api-key',
 }
 
@@ -141,9 +140,9 @@ export function apiSetupMethodToConnectionSetup(
     credential?: string
     baseUrl?: string
     connectionDefaultModel?: string
-    models?: LlmConnectionSetup['models']
+    models?: string[]
     piAuthProvider?: string
-    modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userSelected' | 'userDefined3Tier'
+    modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'
     customEndpoint?: CustomEndpointConfig
     iamCredentials?: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
     awsRegion?: string
@@ -173,7 +172,6 @@ export function apiSetupMethodToConnectionSetup(
       }
     case 'pi_chatgpt_oauth':
     case 'pi_copilot_oauth':
-    case 'pi_xai_oauth':
       return {
         slug,
         credential: options.credential,
@@ -249,9 +247,9 @@ export function useOnboarding({
     options?: {
       baseUrl?: string
       connectionDefaultModel?: string
-      models?: LlmConnectionSetup['models']
+      models?: string[]
       piAuthProvider?: string
-      modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userSelected' | 'userDefined3Tier'
+      modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'
       customEndpoint?: CustomEndpointConfig
       iamCredentials?: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
       awsRegion?: string
@@ -454,12 +452,11 @@ export function useOnboarding({
       // Validate connection by spawning a lightweight subprocess test.
       // Custom endpoint protocol routes through PiAgent at runtime, so test with Pi too.
       const setupTestProvider = data.customEndpoint ? 'pi' : (isPiApiKeyFlow ? 'pi' : 'anthropic')
-      const firstModel = data.models?.[0]
       const testResult = await window.electronAPI.testLlmConnectionSetup({
         provider: setupTestProvider,
         apiKey: data.apiKey,
         baseUrl: data.baseUrl,
-        model: typeof firstModel === 'string' ? firstModel : firstModel?.id,
+        model: data.models?.[0],
         piAuthProvider: data.piAuthProvider,
         customEndpoint: data.customEndpoint,
       })
@@ -603,33 +600,6 @@ export function useOnboarding({
         return
       }
 
-      // xAI subscription OAuth (device flow — also works for remote/headless hosts)
-      if (effectiveMethod === 'pi_xai_oauth') {
-        const effectiveEditingSlug = connectionSlugOverride ?? editingSlug
-        const isReauth = !!effectiveEditingSlug
-        const connectionSlug = apiSetupMethodToConnectionSetup(effectiveMethod, {}, effectiveEditingSlug, existingSlugs).slug
-        const cleanup = window.electronAPI.onXaiDeviceCode((data) => {
-          setCopilotDeviceCode(data)
-        })
-
-        try {
-          const result = await window.electronAPI.startXaiOAuth(connectionSlug)
-          if (result.success) {
-            await saveAndValidateConnection(connectionSlug, effectiveMethod, undefined, isReauth)
-          } else {
-            setState(s => ({
-              ...s,
-              credentialStatus: 'error',
-              errorMessage: result.error || 'xAI authentication failed',
-            }))
-          }
-        } finally {
-          cleanup()
-          setCopilotDeviceCode(undefined)
-        }
-        return
-      }
-
       // Claude OAuth (two-step flow - opens browser, user copies code)
       // Remaining method must be claude_oauth
       if (effectiveMethod !== 'claude_oauth') {
@@ -669,7 +639,6 @@ export function useOnboarding({
       claude: 'claude_oauth',
       chatgpt: 'pi_chatgpt_oauth',
       copilot: 'pi_copilot_oauth',
-      grok: 'pi_xai_oauth',
       api_key: 'pi_api_key',
     }
 
@@ -689,7 +658,7 @@ export function useOnboarding({
     }))
 
     // OAuth methods start immediately
-    if (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot' || choice === 'grok') {
+    if (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot') {
       // Defer to next tick so state is updated before handleStartOAuth reads it
       setTimeout(() => handleStartOAuth(method), 0)
     }
@@ -762,14 +731,9 @@ export function useOnboarding({
   const handleCancelOAuth = useCallback(async () => {
     setIsWaitingForCode(false)
     setState(s => ({ ...s, credentialStatus: 'idle', errorMessage: undefined }))
-    if (state.apiSetupMethod === 'pi_xai_oauth') {
-      await window.electronAPI.cancelXaiOAuth()
-    } else if (state.apiSetupMethod === 'pi_copilot_oauth') {
-      await window.electronAPI.cancelCopilotOAuth()
-    } else {
-      await window.electronAPI.clearClaudeOAuthState()
-    }
-  }, [state.apiSetupMethod])
+    // Clear OAuth state on backend
+    await window.electronAPI.clearClaudeOAuthState()
+  }, [])
 
   // Git Bash handlers (Windows only)
   const handleBrowseGitBash = useCallback(async () => {
@@ -860,9 +824,6 @@ export function useOnboarding({
     // Clean up any pending OAuth state
     window.electronAPI.clearClaudeOAuthState().catch(() => {
       // Ignore errors - state may not exist
-    })
-    window.electronAPI.cancelXaiOAuth().catch(() => {
-      // Ignore errors - no xAI flow may be active
     })
   }, [initialStep, initialApiSetupMethod])
 

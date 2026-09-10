@@ -6,10 +6,6 @@
  */
 
 import type { PermissionMode } from '../agent/mode-manager.ts';
-import type {
-  ExecutionPermissionMode,
-  WorkModeOption,
-} from '../agent/work-mode.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 
 export interface ConfigDefaults {
@@ -33,9 +29,6 @@ export interface ConfigDefaults {
   };
   workspaceDefaults: {
     thinkingLevel: ThinkingLevel;
-    defaultWorkMode: WorkModeOption;
-    executionPermissionMode: ExecutionPermissionMode;
-    cyclableWorkModes: WorkModeOption[];
     permissionMode: PermissionMode;
     cyclablePermissionModes: PermissionMode[];
     localMcpServers: {

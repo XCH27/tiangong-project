@@ -54,17 +54,14 @@ module.exports = {
     const filename = context.filename || context.getFilename()
     const basename = filename.split('/').pop() || ''
 
-    // State-setting code and direct state assertions in tests are not the
-    // business-logic reads this rule is intended to prevent.
-    if (allowedFiles.includes(basename) || filename.includes('/__tests__/') || /\.(test|spec)\.[cm]?[jt]sx?$/.test(basename)) {
+    // Allow in specific files
+    if (allowedFiles.includes(basename)) {
       return {}
     }
 
     return {
       // Match: .config.isAuthenticated access
       MemberExpression(node) {
-        if (node.parent?.type === 'AssignmentExpression' && node.parent.left === node) return
-        if (node.parent?.type === 'UnaryExpression' && node.parent.operator === 'delete') return
         // Check if property is 'isAuthenticated'
         if (
           node.property.type === 'Identifier' &&

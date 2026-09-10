@@ -11,6 +11,7 @@
 
 import {
   readFileSync,
+  writeFileSync,
   mkdirSync,
   existsSync,
   copyFileSync,
@@ -19,7 +20,6 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ChannelBinding, MessagingLogger, PlatformType } from './types'
 import { normalizeBindingConfig } from './types'
-import { writeJsonFileAtomic } from './atomic-write'
 
 const NOOP_LOGGER: MessagingLogger = {
   info: () => {},
@@ -266,7 +266,7 @@ export class BindingStore {
       if (!existsSync(this.dirPath)) {
         mkdirSync(this.dirPath, { recursive: true })
       }
-      writeJsonFileAtomic(this.filePath, this.bindings)
+      writeFileSync(this.filePath, JSON.stringify(this.bindings, null, 2), 'utf-8')
       // Fire the listener only after the write succeeds — otherwise the UI
       // shows a "binding added" event for state that will disappear on
       // restart.

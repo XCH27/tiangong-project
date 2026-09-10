@@ -3,13 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/hooks/useTheme'
 import type { ThemeOverrides } from '@config/theme'
 import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
-import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
+import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
 import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
-import {
-  defaultSessionOptions,
-  mergeSessionOptions,
-} from './hooks/useSessionOptions'
+import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
 import { generateMessageId } from '../shared/types'
 import { useEventProcessor } from './event-processor'
 import type { AgentEvent, Effect } from './event-processor'
@@ -28,7 +25,7 @@ import { useOnboarding } from '@/hooks/useOnboarding'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useSession } from '@/hooks/useSession'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
-import { NavigationProvider } from '@/context/NavigationContext'
+import { NavigationProvider } from '@/contexts/NavigationContext'
 import { navigate, routes } from './lib/navigate'
 import { attachmentFromContentRef, toDraftRef } from './lib/drafts'
 import { stripMarkdown } from './utils/text'
@@ -38,12 +35,6 @@ import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallb
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
 import { initRendererPerf } from './lib/perf'
-import { normalizeSessionConnectionsOnce as runNormalizeSessionConnections } from './lib/session-connection-normalize'
-import { runSessionOptionChange } from './hooks/session-options-sync'
-
-const PROJECT_OVERVIEW_SESSION_SCOPE = {
-  scope: 'local-project-overview',
-} as const
 import {
   initializeSessionsAtom,
   addSessionAtom,
@@ -85,8 +76,11 @@ import { useLinkInterceptor, type FilePreviewState } from '@/hooks/useLinkInterc
 import { useTransportConnectionState } from '@/hooks/useTransportConnectionState'
 import { useStaleSessionRecovery } from '@/hooks/useStaleSessionRecovery'
 import { TransportConnectionBanner, shouldShowTransportConnectionBanner } from '@/components/app-shell/TransportConnectionBanner'
+import {
+  markBackgroundTaskSignal,
+  markLiveBackgroundTasksOrphaned,
+} from '@/components/app-shell/background-task-chip-state'
 import { getFileManagerName } from '@/lib/platform'
-import { optimisticSessionCommand } from '@/lib/optimistic-session-command'
 import { rendererLog } from '@/lib/logger'
 import { ActionRegistryProvider } from '@/actions'
 import { toast } from 'sonner'
@@ -142,14 +136,16 @@ function handleBackgroundTaskEvent(
     const exists = currentTasks.some(t => t.toolUseId === evt.toolUseId)
     if (!exists) {
       const isWorkflow = evt.kind === 'workflow'
+      const startTime = Date.now()
       store.set(backgroundTasksAtom, [
         ...currentTasks,
         {
           id: evt.taskId as string,
           type: isWorkflow ? ('workflow' as const) : ('agent' as const),
           toolUseId: evt.toolUseId as string,
-          startTime: Date.now(),
+          startTime,
           elapsedSeconds: 0,
+          lastSignalAt: startTime,
           intent: evt.intent as string | undefined,
           status: 'running' as const,
           ...(isWorkflow ? { workflowId: evt.workflowId as string | undefined, agentsCompleted: 0 } : {}),
@@ -157,25 +153,29 @@ function handleBackgroundTaskEvent(
       ])
     }
   } else if (event.type === 'workflow_agent_completed' && 'workflowId' in evt) {
-    // One sub-agent of a running Workflow finished — bump the owning chip's count.
+    // One sub-agent of a running Workflow finished — bump the owning chip's count
+    // and treat it as evidence that a stale workflow is still alive.
     const currentTasks = store.get(backgroundTasksAtom)
+    const now = Date.now()
     store.set(backgroundTasksAtom, currentTasks.map(t =>
       t.type === 'workflow' && t.workflowId === evt.workflowId
-        ? { ...t, agentsCompleted: (t.agentsCompleted ?? 0) + 1 }
+        ? { ...markBackgroundTaskSignal(t, now), agentsCompleted: (t.agentsCompleted ?? 0) + 1 }
         : t
     ))
   } else if (event.type === 'shell_backgrounded' && 'shellId' in evt && 'toolUseId' in evt) {
     const currentTasks = store.get(backgroundTasksAtom)
     const exists = currentTasks.some(t => t.toolUseId === evt.toolUseId)
     if (!exists) {
+      const startTime = Date.now()
       store.set(backgroundTasksAtom, [
         ...currentTasks,
         {
           id: evt.shellId as string,
           type: 'shell' as const,
           toolUseId: evt.toolUseId as string,
-          startTime: Date.now(),
+          startTime,
           elapsedSeconds: 0,
+          lastSignalAt: startTime,
           intent: evt.intent as string | undefined,
           status: 'running' as const,
         },
@@ -183,9 +183,10 @@ function handleBackgroundTaskEvent(
     }
   } else if (event.type === 'task_progress' && 'toolUseId' in evt && 'elapsedSeconds' in evt) {
     const currentTasks = store.get(backgroundTasksAtom)
+    const now = Date.now()
     store.set(backgroundTasksAtom, currentTasks.map(t =>
       t.toolUseId === evt.toolUseId
-        ? { ...t, elapsedSeconds: evt.elapsedSeconds as number }
+        ? { ...markBackgroundTaskSignal(t, now), elapsedSeconds: evt.elapsedSeconds as number }
         : t
     ))
   } else if (event.type === 'task_completed' && 'taskId' in evt) {
@@ -229,27 +230,17 @@ function handleBackgroundTaskEvent(
       store.set(backgroundTasksAtom, currentTasks.filter(t => t.toolUseId !== evt.toolUseId))
     }
   } else if (event.type === 'complete' || event.type === 'interrupted' || event.type === 'error') {
-    // Orphan backstop: when the turn ends, any chip still marked 'running' belongs
-    // to a background sub-agent whose per-turn subprocess is being torn down — with
-    // the default (keep-alive OFF) model it has almost certainly died. Flip it to
-    // 'orphaned' (visually distinct, auto-expires) so the bar never shows a false
-    // "running" forever. This is the reliability fix that lets the bar be re-enabled.
-    //
-    // WS2 keep-alive: when the main process reports `backgroundTasksAlive` on the
-    // complete event, the persistent query stays open across turns and the tasks
-    // genuinely survive — so do NOT orphan them here. They stay 'running' until a
-    // real `task_completed` arrives (routed via the between-turns background sink).
-    // Without this guard the chip lies "orphaned" while the agent is still working.
+    // Orphan backstop: without keep-alive, turn teardown is authoritative evidence
+    // that both running and uncertain/stale background tasks died with the SDK
+    // subprocess. With keep-alive they may genuinely survive, so preserve them for
+    // a later progress or task_completed signal.
     if (evt.backgroundTasksAlive === true) {
       return
     }
     const currentTasks = store.get(backgroundTasksAtom)
-    if (currentTasks.some(t => t.status === 'running')) {
-      store.set(backgroundTasksAtom, currentTasks.map(t =>
-        t.status === 'running'
-          ? { ...t, status: 'orphaned' as const, completedAt: Date.now() }
-          : t
-      ))
+    const nextTasks = markLiveBackgroundTasksOrphaned(currentTasks, Date.now())
+    if (nextTasks !== currentTasks) {
+      store.set(backgroundTasksAtom, nextTasks)
     }
   }
 }
@@ -418,18 +409,12 @@ export default function App() {
   // theme for dark-only themes in light system mode
   const { shikiTheme, isDark } = useTheme({ appTheme })
 
-  // Ref for sessionOptions — must stay in lockstep with every optimistic write
-  // (not only after useEffect), or rapid successive toggles read a stale previous.
+  // Ref for sessionOptions to access current value in event handlers without re-registering
   const sessionOptionsRef = useRef(sessionOptions)
+  // Keep ref in sync with state
   useEffect(() => {
     sessionOptionsRef.current = sessionOptions
   }, [sessionOptions])
-
-  /** Commit options map to both React state and the ref in one path. */
-  const commitSessionOptionsMap = useCallback((next: Map<string, SessionOptions>) => {
-    sessionOptionsRef.current = next
-    setSessionOptions(next)
-  }, [])
 
   const applyPermissionModeState = useCallback((sessionId: string, state: PermissionModeState, source: 'event' | 'reconcile') => {
     setSessionOptions(prev => {
@@ -464,9 +449,6 @@ export default function App() {
       next.set(sessionId, {
         ...current,
         permissionMode: state.permissionMode,
-        workMode: state.workMode ?? current.workMode,
-        workModeSelection: state.workModeSelection ?? current.workModeSelection,
-        executionPermissionMode: state.executionPermissionMode ?? current.executionPermissionMode,
         permissionModeVersion: state.modeVersion,
       })
       return next
@@ -497,37 +479,13 @@ export default function App() {
         ...defaultSessionOptions,
         ...current,
         permissionMode: session.permissionMode ?? defaultSessionOptions.permissionMode,
-        workMode: session.workMode ?? defaultSessionOptions.workMode,
-        workModeSelection: session.workModeSelection ?? defaultSessionOptions.workModeSelection,
-        executionPermissionMode: session.executionPermissionMode ?? defaultSessionOptions.executionPermissionMode,
         thinkingLevel: session.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
-        fastMode: session.fastMode ?? false,
-        runtimeMode: session.runtimeMode ?? null,
       }
 
-      // Keep an entry whenever the session carries work-phase or non-default
-      // gate/thinking state. Execute+ask must not be treated as "default empty"
-      // just because permissionMode happens to match a fallback string.
-      const hasWorkModeState =
-        session.workMode !== undefined
-        || session.workModeSelection !== undefined
-        || session.executionPermissionMode !== undefined
       const hasNonDefaultMode = merged.permissionMode !== defaultSessionOptions.permissionMode
-        || merged.workMode !== defaultSessionOptions.workMode
-        || merged.workModeSelection !== defaultSessionOptions.workModeSelection
-        || merged.executionPermissionMode !== defaultSessionOptions.executionPermissionMode
       const hasNonDefaultThinking = merged.thinkingLevel !== DEFAULT_THINKING_LEVEL
-      const hasFastMode = merged.fastMode
-      const hasRuntimeMode = Boolean(merged.runtimeMode)
 
-      if (
-        !hasWorkModeState
-        && !hasNonDefaultMode
-        && !hasNonDefaultThinking
-        && !hasFastMode
-        && !hasRuntimeMode
-        && merged.permissionModeVersion == null
-      ) {
+      if (!hasNonDefaultMode && !hasNonDefaultThinking && merged.permissionModeVersion == null) {
         next.delete(session.id)
       } else {
         next.set(session.id, merged)
@@ -559,39 +517,11 @@ export default function App() {
     }
   }, [clearStreamingState, replaceLoadedSession, syncSessionOptionsFromSession, reconcilePermissionModeState, store])
 
-  // One-shot legacy connection remaps per process. Main chat and side-task
-  // ChatPage must not both write setSessionModel merely because they mounted.
-  // alreadyNormalized = finished success; inFlight = concurrent load/refresh join.
-  const normalizedConnectionSessionsRef = useRef(new Set<string>())
-  const connectionNormalizeInFlightRef = useRef(new Map<string, Promise<void>>())
-
-  const normalizeSessionConnectionsOnce = useCallback(async (
-    sessions: Array<{ id: string; model?: string; llmConnection?: string; workspaceId?: string }>,
-    connections: LlmConnectionWithStatus[],
-  ) => {
-    await runNormalizeSessionConnections({
-      sessions,
-      connections,
-      alreadyNormalized: normalizedConnectionSessionsRef.current,
-      inFlight: connectionNormalizeInFlightRef.current,
-      windowWorkspaceId,
-      setSessionModel: (sessionId, workspaceId, model, connection) =>
-        window.electronAPI.setSessionModel(sessionId, workspaceId, model, connection),
-      onFailure: (message, sessionId) => {
-        toast.error(t('toast.sessionConnectionNormalizeFailed', {
-          defaultValue: 'Could not update session connection: {{reason}}',
-          reason: message,
-        }))
-        console.error('[App] Failed to normalize session connection:', sessionId, message)
-      },
-    })
-  }, [windowWorkspaceId, t])
-
   const loadSessionsFromServer = useCallback(async () => {
     setSessionLoadError(null)
 
     try {
-      const loadedSessions = await window.electronAPI.getSessions(PROJECT_OVERVIEW_SESSION_SCOPE)
+      const loadedSessions = await window.electronAPI.getSessions()
 
       // Initialize per-session atoms and metadata map
       // NOTE: No sessionsAtom used - sessions are only in per-session atoms
@@ -600,25 +530,12 @@ export default function App() {
       // Initialize unified sessionOptions from session data
       const optionsMap = new Map<string, SessionOptions>()
       for (const s of loadedSessions) {
-        const hasWorkModeState =
-          s.workMode !== undefined
-          || s.workModeSelection !== undefined
-          || s.executionPermissionMode !== undefined
-        const hasNonDefaultMode = s.permissionMode !== undefined
-          && s.permissionMode !== defaultSessionOptions.permissionMode
+        const hasNonDefaultMode = s.permissionMode && s.permissionMode !== 'ask'
         const hasNonDefaultThinking = s.thinkingLevel && s.thinkingLevel !== DEFAULT_THINKING_LEVEL
-        const hasFastMode = s.fastMode === true
-        const hasRuntimeMode = Boolean(s.runtimeMode)
-        if (hasNonDefaultMode || hasWorkModeState || hasNonDefaultThinking || hasFastMode || hasRuntimeMode) {
+        if (hasNonDefaultMode || hasNonDefaultThinking) {
           optionsMap.set(s.id, {
-            ...defaultSessionOptions,
-            permissionMode: s.permissionMode ?? defaultSessionOptions.permissionMode,
-            workMode: s.workMode ?? defaultSessionOptions.workMode,
-            workModeSelection: s.workModeSelection ?? defaultSessionOptions.workModeSelection,
-            executionPermissionMode: s.executionPermissionMode ?? defaultSessionOptions.executionPermissionMode,
+            permissionMode: s.permissionMode ?? 'ask',
             thinkingLevel: s.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
-            fastMode: s.fastMode ?? false,
-            runtimeMode: s.runtimeMode ?? null,
           })
         }
       }
@@ -628,29 +545,12 @@ export default function App() {
         loadedSessions.map((s) => reconcilePermissionModeState(s.id))
       )
 
-      // One-shot connection remaps once sessions are known (connections may load later too).
-      if (llmConnections.length > 0) {
-        await normalizeSessionConnectionsOnce(
-          loadedSessions.map((s) => ({
-            id: s.id,
-            model: s.model,
-            llmConnection: s.llmConnection,
-            workspaceId: s.workspaceId,
-          })),
-          llmConnections,
-        )
-      }
-
       setSessionsLoaded(true)
 
       if (initialSessionId && windowWorkspaceId) {
         const session = loadedSessions.find(s => s.id === initialSessionId)
         if (session) {
-          navigate(routes.view.sessionHome({
-            id: session.id,
-            workingDirectory: session.workingDirectory,
-            workspaceId: session.workspaceId,
-          }))
+          navigate(routes.view.allSessions(session.id))
         }
       }
     } catch (err) {
@@ -667,14 +567,7 @@ export default function App() {
       setSessionLoadError(formatSessionLoadFailure(err))
       setSessionsLoaded(true)
     }
-  }, [
-    initializeSessions,
-    initialSessionId,
-    reconcilePermissionModeState,
-    windowWorkspaceId,
-    llmConnections,
-    normalizeSessionConnectionsOnce,
-  ])
+  }, [initializeSessions, initialSessionId, reconcilePermissionModeState, windowWorkspaceId])
 
   const refreshSessionListMetadataFromServer = useCallback(async (options: SessionListRefreshOptions = {}): Promise<Map<string, SessionMeta> | null> => {
     const {
@@ -687,7 +580,7 @@ export default function App() {
     const transportState = await window.electronAPI.getTransportConnectionState().catch(() => null)
 
     try {
-      const sessions = await window.electronAPI.getSessions(PROJECT_OVERVIEW_SESSION_SCOPE)
+      const sessions = await window.electronAPI.getSessions()
       const returnedIds = new Set(sessions.map(s => s.id))
       const missingIds = Array.from(beforeIds).filter(id => !returnedIds.has(id))
       const addedIds = sessions.map(s => s.id).filter(id => !beforeIds.has(id))
@@ -766,16 +659,7 @@ export default function App() {
       const settings = await window.electronAPI.getWorkspaceSettings(windowWorkspaceId)
       setWorkspaceDefaultLlmConnection(settings?.defaultLlmConnection)
     }
-    // Deduplicated migration after connections are known.
-    const metaMap = store.get(sessionMetaMapAtom)
-    const sessions = [...metaMap.values()].map((meta) => ({
-      id: meta.id,
-      model: meta.model,
-      llmConnection: meta.llmConnection,
-      workspaceId: meta.workspaceId,
-    }))
-    await normalizeSessionConnectionsOnce(sessions, connections)
-  }, [resolveDefaultConnectionSlug, windowWorkspaceId, store, normalizeSessionConnectionsOnce])
+  }, [resolveDefaultConnectionSlug, windowWorkspaceId])
 
   // Handle onboarding completion
   const handleOnboardingComplete = useCallback(async () => {
@@ -860,13 +744,9 @@ export default function App() {
 
   // Notification system - shows native OS notifications and badge count
   const handleNavigateToSession = useCallback((sessionId: string) => {
-    const meta = store.get(sessionMetaMapAtom).get(sessionId)
-    navigate(routes.view.sessionHome({
-      id: sessionId,
-      workingDirectory: meta?.workingDirectory,
-      workspaceId: meta?.workspaceId,
-    }))
-  }, [store])
+    // Navigate to the session via central routing (uses allSessions filter)
+    navigate(routes.view.allSessions(sessionId))
+  }, [])
 
   const { isWindowFocused, showSessionNotification } = useNotifications({
     workspaceId: windowWorkspaceId,
@@ -983,9 +863,6 @@ export default function App() {
             if (typeof effect.modeVersion === 'number' && effect.changedAt && effect.changedBy) {
               applyPermissionModeState(effect.sessionId, {
                 permissionMode: effect.permissionMode,
-                workMode: effect.workMode,
-                workModeSelection: effect.workModeSelection,
-                executionPermissionMode: effect.executionPermissionMode,
                 modeVersion: effect.modeVersion,
                 changedAt: effect.changedAt,
                 changedBy: effect.changedBy,
@@ -995,13 +872,7 @@ export default function App() {
               setSessionOptions(prevOpts => {
                 const next = new Map(prevOpts)
                 const current = next.get(effect.sessionId) ?? defaultSessionOptions
-                next.set(effect.sessionId, {
-                  ...current,
-                  permissionMode: effect.permissionMode,
-                  workMode: effect.workMode ?? current.workMode,
-                  workModeSelection: effect.workModeSelection ?? current.workModeSelection,
-                  executionPermissionMode: effect.executionPermissionMode ?? current.executionPermissionMode,
-                })
+                next.set(effect.sessionId, { ...current, permissionMode: effect.permissionMode })
                 return next
               })
               void reconcilePermissionModeState(effect.sessionId)
@@ -1082,7 +953,7 @@ export default function App() {
               syncSessionOptionsFromSession(createdSession)
               return
             }
-            return window.electronAPI.getSessions(PROJECT_OVERVIEW_SESSION_SCOPE).then(initializeSessions)
+            return window.electronAPI.getSessions().then(initializeSessions)
           })
           .catch((error: unknown) => console.error('Failed to handle session_created event:', error))
         return
@@ -1309,9 +1180,8 @@ export default function App() {
       // (closures would retain the full sessions array with all messages)
       const metaMap = store.get(sessionMetaMapAtom)
       const meta = metaMap.get(sessionId)
-      // Empty = never first-sent (same rule as list visibility / auto-delete)
-      const isEmpty = !meta
-        || (!meta.lastFinalMessageId && !meta.name && !meta.preview && (meta.messageCount ?? 0) === 0)
+      // Session is empty if it has no lastFinalMessageId (no assistant responses) and no name (set on first user message)
+      const isEmpty = !meta || (!meta.lastFinalMessageId && !meta.name)
 
       if (!isEmpty) {
         const confirmed = await window.electronAPI.showDeleteSessionConfirmation(meta?.name || 'Untitled')
@@ -1332,36 +1202,24 @@ export default function App() {
   }, [removeSession])
 
   const handleFlagSession = useCallback((sessionId: string) => {
-    optimisticSessionCommand(sessionId, { type: 'flag' }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))?.isFlagged
-      updateSessionById(sessionId, { isFlagged: true })
-      return () => updateSessionById(sessionId, { isFlagged: prev ?? false })
-    })
-  }, [updateSessionById, store])
+    updateSessionById(sessionId, { isFlagged: true })
+    window.electronAPI.sessionCommand(sessionId, { type: 'flag' })
+  }, [updateSessionById])
 
   const handleUnflagSession = useCallback((sessionId: string) => {
-    optimisticSessionCommand(sessionId, { type: 'unflag' }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))?.isFlagged
-      updateSessionById(sessionId, { isFlagged: false })
-      return () => updateSessionById(sessionId, { isFlagged: prev ?? false })
-    })
-  }, [updateSessionById, store])
+    updateSessionById(sessionId, { isFlagged: false })
+    window.electronAPI.sessionCommand(sessionId, { type: 'unflag' })
+  }, [updateSessionById])
 
   const handleArchiveSession = useCallback((sessionId: string) => {
-    optimisticSessionCommand(sessionId, { type: 'archive' }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))
-      updateSessionById(sessionId, { isArchived: true, archivedAt: Date.now() })
-      return () => updateSessionById(sessionId, { isArchived: prev?.isArchived ?? false, archivedAt: prev?.archivedAt })
-    })
-  }, [updateSessionById, store])
+    updateSessionById(sessionId, { isArchived: true, archivedAt: Date.now() })
+    window.electronAPI.sessionCommand(sessionId, { type: 'archive' })
+  }, [updateSessionById])
 
   const handleUnarchiveSession = useCallback((sessionId: string) => {
-    optimisticSessionCommand(sessionId, { type: 'unarchive' }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))
-      updateSessionById(sessionId, { isArchived: false, archivedAt: undefined })
-      return () => updateSessionById(sessionId, { isArchived: prev?.isArchived ?? false, archivedAt: prev?.archivedAt })
-    })
-  }, [updateSessionById, store])
+    updateSessionById(sessionId, { isArchived: false, archivedAt: undefined })
+    window.electronAPI.sessionCommand(sessionId, { type: 'unarchive' })
+  }, [updateSessionById])
 
   /**
    * Set which session user is actively viewing (for unread state machine).
@@ -1369,56 +1227,42 @@ export default function App() {
    * whether to mark new assistant messages as unread.
    */
   const handleSetActiveViewingSession = useCallback((sessionId: string) => {
-    // Tell main process user is viewing this session. Use the session's own workspace
-    // (cross-project lists can surface sessions from other folders); fall back to the
-    // window's workspace when the meta isn't loaded.
-    const metaWorkspaceId = store.get(sessionMetaMapAtom).get(sessionId)?.workspaceId
-    // Optimistic UI update: clear hasUnread immediately (rolled back on failure)
-    optimisticSessionCommand(sessionId, { type: 'setActiveViewing', workspaceId: metaWorkspaceId ?? windowWorkspaceId ?? '' }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))?.hasUnread
-      updateSessionById(sessionId, { hasUnread: false })
-      return () => updateSessionById(sessionId, { hasUnread: prev ?? false })
-    })
-  }, [updateSessionById, windowWorkspaceId, store])
+    // Optimistic UI update: clear hasUnread immediately
+    updateSessionById(sessionId, { hasUnread: false })
+    // Tell main process user is viewing this session
+    window.electronAPI.sessionCommand(sessionId, { type: 'setActiveViewing', workspaceId: windowWorkspaceId ?? '' })
+  }, [updateSessionById, windowWorkspaceId])
 
   const handleMarkSessionRead = useCallback((sessionId: string) => {
     // Update hasUnread flag (primary source of truth for NEW badge)
     // Also update lastReadMessageId for backwards compatibility
-    optimisticSessionCommand(sessionId, { type: 'markRead' }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))
-      updateSessionById(sessionId, (s) => {
-        const lastFinalId = s.messages.findLast(
-          m => (m.role === 'assistant' || m.role === 'plan') && !m.isIntermediate
-        )?.id
-        return {
-          hasUnread: false,
-          ...(lastFinalId ? { lastReadMessageId: lastFinalId } : {}),
-        }
-      })
-      return () => updateSessionById(sessionId, {
-        hasUnread: prev?.hasUnread ?? false,
-        lastReadMessageId: prev?.lastReadMessageId,
-      })
-    })
-  }, [updateSessionById, store])
-
-  const handleSessionStatusChange = useCallback((sessionId: string, state: SessionStatus) => {
-    optimisticSessionCommand(sessionId, { type: 'setSessionStatus', state }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))?.sessionStatus
-      updateSessionById(sessionId, { sessionStatus: state })
-      return () => updateSessionById(sessionId, { sessionStatus: prev })
-    })
-  }, [updateSessionById, store])
-
-  const handleRenameSession = useCallback((sessionId: string, name: string) => {
-    optimisticSessionCommand(sessionId, { type: 'rename', name }, () => {
-      const prev = store.get(sessionAtomFamily(sessionId))?.name
-      updateSessionById(sessionId, { name })
-      return () => {
-        if (prev !== undefined) updateSessionById(sessionId, { name: prev })
+    updateSessionById(sessionId, (s) => {
+      const lastFinalId = s.messages.findLast(
+        m => (m.role === 'assistant' || m.role === 'plan') && !m.isIntermediate
+      )?.id
+      return {
+        hasUnread: false,
+        ...(lastFinalId ? { lastReadMessageId: lastFinalId } : {}),
       }
     })
-  }, [updateSessionById, store])
+    window.electronAPI.sessionCommand(sessionId, { type: 'markRead' })
+  }, [updateSessionById])
+
+  const handleMarkSessionUnread = useCallback((sessionId: string) => {
+    // Set hasUnread flag (primary source of truth for NEW badge)
+    updateSessionById(sessionId, { hasUnread: true, lastReadMessageId: undefined })
+    window.electronAPI.sessionCommand(sessionId, { type: 'markUnread' })
+  }, [updateSessionById])
+
+  const handleSessionStatusChange = useCallback((sessionId: string, state: SessionStatus) => {
+    updateSessionById(sessionId, { sessionStatus: state })
+    window.electronAPI.sessionCommand(sessionId, { type: 'setSessionStatus', state })
+  }, [updateSessionById])
+
+  const handleRenameSession = useCallback((sessionId: string, name: string) => {
+    updateSessionById(sessionId, { name })
+    window.electronAPI.sessionCommand(sessionId, { type: 'rename', name })
+  }, [updateSessionById])
 
   const handleSendMessage = useCallback(async (sessionId: string, message: string, attachments?: FileAttachment[], skillSlugs?: string[], externalBadges?: ContentBadge[]) => {
     try {
@@ -1588,28 +1432,26 @@ export default function App() {
 
   /**
    * Unified handler for all session option changes.
-   * Optimistic UI, then await independent backend commands. Failed commands
-   * roll back only their keys (partial success stays aligned with the backend).
-   * Returns a Promise so tests and callers can await; event handlers may ignore it.
+   * Handles persistence and backend sync for each option type.
    */
-  const handleSessionOptionsChange = useCallback(async (
-    sessionId: string,
-    updates: SessionOptionUpdates,
-  ): Promise<void> => {
-    await runSessionOptionChange({
-      sessionId,
-      updates,
-      getMap: () => sessionOptionsRef.current,
-      setMap: commitSessionOptionsMap,
-      sessionCommand: (id, command) => window.electronAPI.sessionCommand(id, command),
-      onFailure: (message) => {
-        toast.error(t('toast.sessionOptionUpdateFailed', {
-          defaultValue: 'Could not update session options: {{reason}}',
-          reason: message,
-        }))
-      },
+  const handleSessionOptionsChange = useCallback((sessionId: string, updates: SessionOptionUpdates) => {
+    setSessionOptions(prev => {
+      const next = new Map(prev)
+      const current = next.get(sessionId) ?? defaultSessionOptions
+      next.set(sessionId, mergeSessionOptions(current, updates))
+      return next
     })
-  }, [t, commitSessionOptionsMap])
+
+    // Handle persistence/backend for specific options
+    if (updates.permissionMode !== undefined) {
+      // Sync permission mode change with backend
+      window.electronAPI.sessionCommand(sessionId, { type: 'setPermissionMode', mode: updates.permissionMode })
+    }
+    if (updates.thinkingLevel !== undefined) {
+      // Sync thinking level change with backend (session-level, persisted)
+      window.electronAPI.sessionCommand(sessionId, { type: 'setThinkingLevel', level: updates.thinkingLevel })
+    }
+  }, [sessionOptions])
 
   // Handle input draft changes per session with debounced persistence
   const draftSaveTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
@@ -1699,11 +1541,6 @@ export default function App() {
       sessionDraftsRef.current.set(sessionId, nextDraft)
     }
     schedulePersistDraft(sessionId)
-    // Notify mounted ChatPages so externally injected drafts (deep links,
-    // notifications, shortcuts) are picked up without polling.
-    window.dispatchEvent(new CustomEvent('craft:draft-changed', {
-      detail: { sessionId, text },
-    }))
   }, [schedulePersistDraft])
 
   const handleAttachmentsChange = useCallback((sessionId: string, attachments: FileAttachment[]) => {
@@ -1729,6 +1566,29 @@ export default function App() {
     }
     schedulePersistDraft(sessionId)
   }, [schedulePersistDraft])
+
+  // Open new chat - creates session and selects it
+  // Used by components via AppShellContext and for programmatic navigation
+  const openNewChat = useCallback(async (params: NewChatActionParams = {}) => {
+    if (!windowWorkspaceId) {
+      console.warn('[App] Cannot open new chat: no workspace ID')
+      return
+    }
+
+    const session = await handleCreateSession(windowWorkspaceId)
+
+    if (params.name) {
+      await window.electronAPI.sessionCommand(session.id, { type: 'rename', name: params.name })
+    }
+
+    // Navigate to the chat view - this sets both selectedSession and activeView
+    navigate(routes.view.allSessions(session.id))
+
+    // Pre-fill input if provided (after a small delay to ensure component is mounted)
+    if (params.input) {
+      setTimeout(() => handleInputChange(session.id, params.input!), 100)
+    }
+  }, [windowWorkspaceId, handleCreateSession, handleInputChange])
 
   const handleRespondToPermission = useCallback(async (
     sessionId: string,
@@ -1807,18 +1667,6 @@ export default function App() {
   // Centralized link interceptor: classifies file types and decides whether to
   // show an in-app preview overlay or open externally. Replaces the old
   // handleOpenFile/handleOpenUrl that always opened in external apps.
-  const handleRevealInFinder = useCallback(async (path: string) => {
-    try {
-      await window.electronAPI.showInFolder(path)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      console.error('Failed to show in folder:', error)
-      toast.error(t('toast.failedToReveal', { fileManager: getFileManagerName() }), {
-        description: message,
-      })
-    }
-  }, [t])
-
   const linkInterceptor = useLinkInterceptor({
     openFileExternal: async (path) => {
       try {
@@ -1848,7 +1696,17 @@ export default function App() {
         })
       }
     },
-    showInFolder: handleRevealInFinder,
+    showInFolder: async (path) => {
+      try {
+        await window.electronAPI.showInFolder(path)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Failed to show in folder:', error)
+        toast.error(t("toast.failedToReveal", { fileManager: getFileManagerName() }), {
+          description: message,
+        })
+      }
+    },
     readFile: (path) => window.electronAPI.readFile(path),
     readFileDataUrl: (path) => window.electronAPI.readFileDataUrl(path),
     readFileBinary: (path) => window.electronAPI.readFileBinary(path),
@@ -1920,48 +1778,47 @@ export default function App() {
       // Open (or focus) the window for the selected workspace
       window.electronAPI.openWorkspace(workspaceId)
     } else {
-      const previous = workspaces.find(w => w.id === windowWorkspaceId)
-      const next = workspaces.find(w => w.id === workspaceId)
-      // Local→local focus must not tear down the shell (Cursor/Codex multi-folder model).
-      // Remote involvement still does a hard switch — different runtime / connection.
-      const softLocalSwitch = !previous?.remoteServer && !next?.remoteServer
-
+      // Switch workspace in current window
       // 1. Update the main process's window-workspace mapping
       await window.electronAPI.switchWorkspace(workspaceId)
 
       // 2. Update React state to trigger re-renders
       setWindowWorkspaceId(workspaceId)
 
-      // 3. Soft local switch keeps the selected session when it still belongs to the
-      // focused project, and keeps pending permission/credential prompts (same runtime,
-      // still relevant). Hard switch clears both.
-      if (!softLocalSwitch) {
-        setSession({ selected: null })
-      }
+      // 3. Clear selected session - the old session belongs to the previous workspace
+      // and should not remain selected when switching to a new workspace.
+      // This prevents showing stale session data from the wrong workspace.
+      setSession({ selected: null })
 
-      if (!softLocalSwitch) {
-        // Hard switch: drop transient editor state bound to the previous runtime.
-        // Pending permission/credential requests stay keyed by Session ID so a
-        // still-blocked Session can recover when the user returns to that runtime.
-        setSessionOptions(new Map())
-        sessionDraftsRef.current.clear()
-      }
+      // 4. Clear pending permissions/credentials (not relevant to new workspace)
+      setPendingPermissions(new Map())
+      setPendingCredentials(new Map())
 
-      // Always clear sources/skills on workspace change (Craft v0.10.5 App.tsx).
-      // Soft-local used to skip this and briefly showed the previous workspace's MCP/skills.
+      // 5. Clear session options from previous workspace
+      // (session IDs are unique UUIDs, but clearing prevents unbounded memory growth
+      // and ensures no stale state from old workspace persists)
+      setSessionOptions(new Map())
+
+      // 6. Clear message drafts from previous workspace
+      // (prevents memory growth on repeated workspace switches)
+      sessionDraftsRef.current.clear()
+
+      // 7. Reset sources and skills atoms to empty
+      // (prevents stale data flash during workspace switch - AppShell will reload)
       store.set(sourcesAtom, [])
       store.set(skillsAtom, [])
 
-      if (!softLocalSwitch) {
-        // Hard switch (remote boundary): also clear session listing
-        store.set(sessionMetaMapAtom, new Map())
-        store.set(sessionIdsAtom, [])
-      }
+      // 8. Clear session atoms BEFORE workspace switch
+      // This prevents stale session data from the previous workspace being visible.
+      store.set(sessionMetaMapAtom, new Map())
+      store.set(sessionIdsAtom, [])
 
       // Note: NavigationContext detects the workspaceId change and handles
-      // panel restoration. Soft local navigation usually sets projectSessions itself.
+      // panel restoration from the stored workspace URL (or defaults to allSessions).
+      // Sessions and theme will reload automatically due to windowWorkspaceId dependency
+      // in useEffect hooks.
     }
-  }, [windowWorkspaceId, workspaces, setSession, store])
+  }, [windowWorkspaceId, setSession, store])
 
   // Handle workspace switch by slug (called by NavigationContext on popstate when ?ws= changes)
   const handleSwitchWorkspaceBySlug = useCallback((slug: string) => {
@@ -2009,6 +1866,7 @@ export default function App() {
     onArchiveSession: handleArchiveSession,
     onUnarchiveSession: handleUnarchiveSession,
     onMarkSessionRead: handleMarkSessionRead,
+    onMarkSessionUnread: handleMarkSessionUnread,
     onSetActiveViewingSession: handleSetActiveViewingSession,
     onSessionStatusChange: handleSessionStatusChange,
     onDeleteSession: handleDeleteSession,
@@ -2029,6 +1887,8 @@ export default function App() {
     onSessionOptionsChange: handleSessionOptionsChange,
     onInputChange: handleInputChange,
     onAttachmentsChange: handleAttachmentsChange,
+    // New chat (via deep link navigation)
+    openNewChat,
   }), [
     // NOTE: sessions removed to prevent memory leaks - components use atoms instead
     workspaces,
@@ -2051,6 +1911,7 @@ export default function App() {
     handleArchiveSession,
     handleUnarchiveSession,
     handleMarkSessionRead,
+    handleMarkSessionUnread,
     handleSetActiveViewingSession,
     handleSessionStatusChange,
     handleDeleteSession,
@@ -2067,6 +1928,7 @@ export default function App() {
     handleSessionOptionsChange,
     handleInputChange,
     handleAttachmentsChange,
+    openNewChat,
   ])
 
   // Platform actions for @craft-agent/ui components (overlays, etc.)
@@ -2085,14 +1947,16 @@ export default function App() {
     // Read file as binary Uint8Array (used by PDF preview blocks)
     onReadFileBinary: (path: string) => window.electronAPI.readFileBinary(path),
     // Reveal a file in the system file manager (Finder on macOS, Explorer on Windows, etc.)
-    onRevealInFinder: handleRevealInFinder,
+    onRevealInFinder: (path: string) => {
+      window.electronAPI.showInFolder(path).catch(() => {})
+    },
     // Platform-specific file manager name for UI labels
     fileManagerName: getFileManagerName(),
     // Hide/show macOS traffic lights when fullscreen overlays are open
     onSetTrafficLightsVisible: (visible: boolean) => {
       window.electronAPI.setTrafficLightsVisible(visible)
     },
-  }), [handleOpenFile, handleOpenUrl, handleRevealInFinder, linkInterceptor.openFileExternal])
+  }), [handleOpenFile, handleOpenUrl, linkInterceptor.openFileExternal])
 
   // Loading state - show splash screen
   if (appState === 'loading') {
@@ -2207,14 +2071,15 @@ export default function App() {
           )}
 
           {/* Main UI - always rendered, splash fades away to reveal it */}
-          <div className="h-full flex flex-col text-foreground">
+          <div
+            className="h-full flex flex-col text-foreground"
+            style={{ paddingTop: 'var(--topbar-height)' }}
+          >
             {showTransportConnectionBanner && connectionState && (
-              <div className="shrink-0" style={{ paddingTop: 'var(--topbar-height)' }}>
-                <TransportConnectionBanner
-                  state={connectionState}
-                  onRetry={handleReconnectTransport}
-                />
-              </div>
+              <TransportConnectionBanner
+                state={connectionState}
+                onRetry={handleReconnectTransport}
+              />
             )}
             <div className="flex-1 min-h-0">
               {sessionLoadError ? (

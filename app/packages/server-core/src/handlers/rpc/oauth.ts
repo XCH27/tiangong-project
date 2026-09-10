@@ -46,11 +46,6 @@ export async function completeOAuthFlow(opts: {
     if (flow.workspaceId !== opts.workspaceId) throw new Error('Workspace mismatch')
   }
 
-  // Consume the flow BEFORE the async exchange. getByState + remove run in one
-  // synchronous turn, so this is atomic; awaiting first would let a concurrent
-  // callback double-exchange the same code.
-  flowStore.remove(state)
-
   const result = await credManager.exchangeAndStore(flow.source, flow.provider, {
     code,
     codeVerifier: flow.codeVerifier,
@@ -59,6 +54,8 @@ export async function completeOAuthFlow(opts: {
     clientSecret: flow.clientSecret,
     redirectUri: flow.redirectUri,
   })
+
+  flowStore.remove(state)
 
   // If this was triggered from a session auth card, complete it
   if (flow.sessionId && flow.authRequestId) {

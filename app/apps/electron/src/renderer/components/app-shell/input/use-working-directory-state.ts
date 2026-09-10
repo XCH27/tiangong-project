@@ -17,8 +17,6 @@ export interface UseWorkingDirectoryStateInput {
   onWorkingDirectoryChange: (path: string) => void
   sessionFolderPath: string | undefined
   workspaceId: string | undefined
-  /** Project/workspace root — when WD equals this path, no composer chip (sidebar owns identity). */
-  workspaceRootPath?: string | undefined
   /** Whether the consumer's surface (popover / drawer) is currently open.
    *  The hook uses this to refresh history + reset the filter on every open. */
   isOpen: boolean
@@ -79,7 +77,6 @@ export function useWorkingDirectoryState(
     onWorkingDirectoryChange,
     sessionFolderPath,
     workspaceId,
-    workspaceRootPath,
     isOpen,
     onClose,
   } = input
@@ -155,8 +152,8 @@ export function useWorkingDirectoryState(
   )
 
   const { hasFolder, folderName, showReset } = React.useMemo(
-    () => deriveSelectionFlags(workingDirectory, sessionFolderPath, workspaceRootPath),
-    [workingDirectory, sessionFolderPath, workspaceRootPath],
+    () => deriveSelectionFlags(workingDirectory, sessionFolderPath),
+    [workingDirectory, sessionFolderPath],
   )
 
   const showFilter = sortedRecent.length > WORKING_DIR_FILTER_THRESHOLD
@@ -214,33 +211,19 @@ export interface SelectionFlags {
 
 /**
  * Derive the selection flags used to label and configure the trigger badge.
- * "No extra folder" when:
- * - no working directory, or
- * - WD equals the session storage root, or
- * - WD equals the project/workspace root (sidebar project row already shows that
- *   identity — e.g. "My Workspace" must not also appear as a composer chip).
+ * "No folder selected" means either no working directory at all, or the
+ * working directory equals the session root.
  */
 export function deriveSelectionFlags(
   workingDirectory: string | undefined,
   sessionFolderPath: string | undefined,
-  workspaceRootPath?: string | undefined,
 ): SelectionFlags {
-  const stripTrailing = (p: string) => {
-    // Keep filesystem roots (`/` or `C:\`) so they still count as a selected path.
-    if (p === '/' || /^[A-Za-z]:\\?$/.test(p)) return p
-    return p.replace(/[/\\]+$/, '')
-  }
-  const wd = workingDirectory ? stripTrailing(workingDirectory) : undefined
-  const sessionRoot = sessionFolderPath ? stripTrailing(sessionFolderPath) : undefined
-  const projectRoot = workspaceRootPath ? stripTrailing(workspaceRootPath) : undefined
-  const isSessionRoot = !!wd && !!sessionRoot && wd === sessionRoot
-  const isProjectRoot = !!wd && !!projectRoot && wd === projectRoot
-  const hasFolder = !!wd && !isSessionRoot && !isProjectRoot
+  const hasFolder = !!workingDirectory && workingDirectory !== sessionFolderPath
   const folderName = hasFolder
-    ? (getPathBasename(wd!) || undefined)
+    ? (getPathBasename(workingDirectory!) || undefined)
     : undefined
   const showReset = hasFolder
-    && !!sessionRoot
-    && sessionRoot !== wd
+    && !!sessionFolderPath
+    && sessionFolderPath !== workingDirectory
   return { hasFolder, folderName, showReset }
 }

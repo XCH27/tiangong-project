@@ -17,7 +17,7 @@ export type FontFamily = 'inter' | 'system'
 interface ThemeContextType {
   // Preferences (persisted at app level)
   mode: ThemeMode
-  /** App-level (global) color theme — the only theme the product runtime consumes */
+  /** App-level default color theme (used when workspace has no override) */
   colorTheme: string
   font: FontFamily
   setMode: (mode: ThemeMode) => void
@@ -25,11 +25,7 @@ interface ThemeContextType {
   setColorTheme: (theme: string) => void
   setFont: (font: FontFamily) => void
 
-  // Workspace-level theme override (legacy compat only)
-  // Per-workspace theme was removed from the product surface (R1 decision: theme is
-  // global, REMOVE permanently). The state, IPC and setters below are kept only so
-  // the playground and stored data remain compatible — the product runtime never
-  // applies workspaceColorTheme to rendering (see effectiveColorTheme).
+  // Workspace-level theme override
   /** Active workspace ID (null if no workspace context) */
   activeWorkspaceId: string | null
   /** Workspace-specific color theme override (null = inherit from app default) */
@@ -40,14 +36,14 @@ interface ThemeContextType {
   // Derived/computed
   resolvedMode: 'light' | 'dark'
   systemPreference: 'light' | 'dark'
-  /** Effective color theme for rendering (previewColorTheme ?? colorTheme) */
+  /** Effective color theme for rendering (previewColorTheme ?? workspaceColorTheme ?? colorTheme) */
   effectiveColorTheme: string
   /** Temporary preview theme (hover state) - not persisted */
   previewColorTheme: string | null
   /** Set temporary preview theme for hover preview. Pass null to clear. */
   setPreviewColorTheme: (theme: string | null) => void
   /** Where effectiveColorTheme came from for current render cycle */
-  effectiveColorThemeSource: 'preview' | 'app'
+  effectiveColorThemeSource: 'preview' | 'workspace' | 'app'
   /** How the preset theme was resolved */
   themeResolvedFrom: 'none' | 'ipc' | 'fallback'
   /** Non-fatal theme loading error. Null when theme loaded normally. */
@@ -138,7 +134,7 @@ export function ThemeProvider({
   const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>(getSystemPreference)
   const [previewColorTheme, setPreviewColorTheme] = useState<string | null>(null)
 
-  // === Workspace-level theme override (legacy compat only, never applied to rendering) ===
+  // === Workspace-level theme override ===
   const [workspaceColorTheme, setWorkspaceColorThemeState] = useState<string | null>(null)
 
   // Track if we're receiving an external update to prevent echo broadcasts
@@ -166,14 +162,25 @@ export function ThemeProvider({
 
   // === Derived values ===
   const resolvedMode = mode === 'system' ? systemPreference : mode
-  // Effective theme: preview > app default (global).
-  // Per-workspace theme was removed from the product surface (R1 decision); its
-  // storage and IPC remain only for playground/backward compatibility and are
-  // intentionally not consumed here.
-  const effectiveColorTheme = previewColorTheme ?? colorTheme
-  const effectiveColorThemeSource: 'preview' | 'app' =
-    previewColorTheme !== null ? 'preview' : 'app'
+  // Effective theme: preview > workspace override > app default
+  const effectiveColorTheme = previewColorTheme ?? workspaceColorTheme ?? colorTheme
+  const effectiveColorThemeSource: 'preview' | 'workspace' | 'app' =
+    previewColorTheme !== null ? 'preview' : workspaceColorTheme !== null ? 'workspace' : 'app'
   const isDarkFromMode = resolvedMode === 'dark'
+
+  // Load workspace theme override when workspace changes
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      setWorkspaceColorThemeState(null)
+      return
+    }
+
+    window.electronAPI?.getWorkspaceColorTheme?.(activeWorkspaceId).then((theme) => {
+      setWorkspaceColorThemeState(theme)
+    }).catch(() => {
+      setWorkspaceColorThemeState(null)
+    })
+  }, [activeWorkspaceId])
 
   // Load preset theme when effectiveColorTheme changes (SINGLETON - only here, not in useTheme)
   useEffect(() => {
@@ -456,8 +463,7 @@ export function ThemeProvider({
     }
   }, [mode, colorTheme])
 
-  // Set workspace-specific color theme override (kept for playground/compat only;
-  // per-workspace theme removed from product surface per R1 — not applied to rendering)
+  // Set workspace-specific color theme override
   const setWorkspaceColorTheme = useCallback((newTheme: string | null) => {
     if (!activeWorkspaceId) return
     setWorkspaceColorThemeState(newTheme)

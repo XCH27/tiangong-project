@@ -49,8 +49,6 @@ export interface PermissionManagerConfig {
   sessionId: string;
   /** Working directory for the session */
   workingDirectory?: string;
-  /** Authoritative workspace root (permissions.json / source permissions load from here). Falls back to workingDirectory when absent. */
-  workspaceRootPath?: string;
   /** Plans folder path (writes to this folder are allowed in Explore mode) */
   plansFolderPath?: string;
   /** Data folder path (writes to this folder are allowed in Explore mode for transform_data output) */

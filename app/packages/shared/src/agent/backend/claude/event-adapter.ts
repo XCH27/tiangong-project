@@ -13,18 +13,8 @@
  */
 
 import type { SDKMessage, SDKAssistantMessageError } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent, AgentEventUsage } from '@craft-agent/core/types';
+import type { AgentEvent } from '@craft-agent/core/types';
 import type { AgentError } from '../../errors.ts';
-import { normalizeProviderUsage, type NormalizedCacheUsage } from '../../core/cache-economy.ts';
-
-/**
- * Complete-event usage plus the error-path tag. `errored` marks usage from a
- * failed turn: SessionManager skips accumulating it because the retried turn's
- * complete event carries the replacement totals (accumulating both would
- * double-count cost). Provisional side-channel until the core type gains the
- * field — read it back via the same cast in SessionManager's 'complete' case.
- */
-type TurnResultUsage = AgentEventUsage & { errored?: boolean; cacheUsage?: NormalizedCacheUsage };
 import { BaseEventAdapter } from '../base-event-adapter.ts';
 import { ToolIndex, extractToolStarts, extractToolResults, isParentTaskTool, type ContentBlock } from '../../tool-matching.ts';
 import { classifyClaudeTaskNotification } from './task-notification.ts';
@@ -78,7 +68,6 @@ interface AssistantUsage {
   input_tokens: number;
   cache_read_input_tokens: number;
   cache_creation_input_tokens: number;
-  cacheUsage: NormalizedCacheUsage;
 }
 
 export class ClaudeEventAdapter extends BaseEventAdapter {
@@ -240,28 +229,23 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
     const isSidechain = (message as any).parent_tool_use_id !== null;
     if (!isSidechain && (message as any).message?.usage) {
       const usage = (message as any).message.usage;
-      const cacheUsage = normalizeProviderUsage({
-        input_tokens: usage.input_tokens,
-        cache_read_input_tokens: usage.cache_read_input_tokens,
-        cache_creation_input_tokens: usage.cache_creation_input_tokens,
-        output_tokens: usage.output_tokens,
-      });
       this.lastAssistantUsage = {
-        input_tokens: cacheUsage.uncachedInputTokens,
-        cache_read_input_tokens: cacheUsage.cacheReadTokens,
-        cache_creation_input_tokens: cacheUsage.cacheWriteTokens,
-        cacheUsage,
+        input_tokens: usage.input_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
       };
+
+      const currentInputTokens =
+        this.lastAssistantUsage.input_tokens +
+        this.lastAssistantUsage.cache_read_input_tokens +
+        this.lastAssistantUsage.cache_creation_input_tokens;
 
       events.push({
         type: 'usage_update',
         usage: {
-          inputTokens: cacheUsage.totalInputTokens,
-          cacheReadTokens: cacheUsage.cacheReadTokens,
-          cacheCreationTokens: cacheUsage.cacheWriteTokens,
+          inputTokens: currentInputTokens,
           contextWindow: this.cachedContextWindow,
-          cacheUsage,
-        } as AgentEvent extends { type: 'usage_update'; usage: infer U } ? U : never,
+        },
       });
     }
 
@@ -473,28 +457,30 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
       this.cachedContextWindow = primaryModelUsage.contextWindow;
     }
 
-    // The result message's msg.usage is the SDK's whole-turn cumulative record
-    // (every API call in the turn); lastAssistantUsage is only the FINAL call.
-    // SessionManager accumulates every field of the complete event, so all
-    // fields must come from the same cumulative record — mixing the final-call
-    // input with whole-turn output/cost mis-counts multi-call turns. The
-    // per-message snapshot (final-call context size) rides the trailing
-    // usage_update below, which is the contextTokens authority.
-    const cacheUsage = normalizeProviderUsage({
-      input_tokens: msg.usage.input_tokens,
-      cache_read_input_tokens: msg.usage.cache_read_input_tokens,
-      cache_creation_input_tokens: msg.usage.cache_creation_input_tokens,
-      output_tokens: msg.usage.output_tokens,
-    });
+    // Use lastAssistantUsage for per-message context display (not cumulative)
+    let inputTokens: number;
+    let cacheRead: number;
+    let cacheCreation: number;
 
-    const usage: TurnResultUsage = {
-      inputTokens: cacheUsage.totalInputTokens,
-      outputTokens: cacheUsage.outputTokens,
-      cacheReadTokens: cacheUsage.cacheReadTokens,
-      cacheCreationTokens: cacheUsage.cacheWriteTokens,
+    if (this.lastAssistantUsage) {
+      inputTokens = this.lastAssistantUsage.input_tokens +
+                    this.lastAssistantUsage.cache_read_input_tokens +
+                    this.lastAssistantUsage.cache_creation_input_tokens;
+      cacheRead = this.lastAssistantUsage.cache_read_input_tokens;
+      cacheCreation = this.lastAssistantUsage.cache_creation_input_tokens;
+    } else {
+      cacheRead = msg.usage.cache_read_input_tokens ?? 0;
+      cacheCreation = msg.usage.cache_creation_input_tokens ?? 0;
+      inputTokens = msg.usage.input_tokens + cacheRead + cacheCreation;
+    }
+
+    const usage = {
+      inputTokens,
+      outputTokens: msg.usage.output_tokens,
+      cacheReadTokens: cacheRead,
+      cacheCreationTokens: cacheCreation,
       costUsd: msg.total_cost_usd,
       contextWindow: primaryModelUsage?.contextWindow,
-      cacheUsage,
     };
 
     if (msg.subtype === 'success') {
@@ -508,29 +494,7 @@ export class ClaudeEventAdapter extends BaseEventAdapter {
       } else {
         events.push({ type: 'error', message: errorMsg });
       }
-      // Tag error-path usage so the accumulator skips it — a failed-then-retried
-      // turn reports its full replacement usage on the retry's complete event.
-      const erroredUsage: TurnResultUsage = { ...usage, errored: true };
-      events.push({ type: 'complete', usage: erroredUsage });
-    }
-
-    // Re-assert the per-message context snapshot after the complete event:
-    // complete now carries whole-turn cumulative input, but contextTokens (and
-    // the renderer badge) track the final API call's actual context size.
-    if (this.lastAssistantUsage) {
-      events.push({
-        type: 'usage_update',
-        usage: {
-          inputTokens:
-            this.lastAssistantUsage.input_tokens +
-            this.lastAssistantUsage.cache_read_input_tokens +
-            this.lastAssistantUsage.cache_creation_input_tokens,
-          cacheReadTokens: this.lastAssistantUsage.cache_read_input_tokens,
-          cacheCreationTokens: this.lastAssistantUsage.cache_creation_input_tokens,
-          contextWindow: this.cachedContextWindow,
-          cacheUsage: this.lastAssistantUsage.cacheUsage,
-        } as AgentEvent extends { type: 'usage_update'; usage: infer U } ? U : never,
-      });
+      events.push({ type: 'complete', usage });
     }
   }
 

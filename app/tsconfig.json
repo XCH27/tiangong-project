@@ -19,22 +19,12 @@
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
-  "references": [
-    { "path": "./packages/shared" },
-    { "path": "./packages/server-core" },
-    { "path": "./packages/server" },
-    { "path": "./packages/ui" },
-    { "path": "./packages/core" },
-    { "path": "./packages/session-tools-core" },
-    { "path": "./packages/session-mcp-server" },
-    { "path": "./packages/pi-agent-server" },
-    { "path": "./packages/messaging-gateway" },
-    { "path": "./packages/messaging-whatsapp-worker" },
-    { "path": "./apps/electron" },
-    { "path": "./apps/cli" },
-    { "path": "./apps/webui" }
-  ],
-  "files": []
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
 }

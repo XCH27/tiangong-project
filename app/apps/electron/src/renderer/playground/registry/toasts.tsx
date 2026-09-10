@@ -79,7 +79,7 @@ function SonnerPlayground() {
               key={t.id}
               onClick={() => showToast(t.id)}
               className={cn(
-                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-[color,background-color]',
+                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all',
                 'bg-muted/50 hover:bg-muted text-foreground',
                 lastType === t.id && 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
               )}

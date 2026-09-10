@@ -60,11 +60,10 @@ export interface ParsedCompoundRoute {
 // =============================================================================
 
 /**
- * Known prefixes that indicate a compound route.
- * Also consumed by the main-process deep link handler so both sides accept the same set.
+ * Known prefixes that indicate a compound route
  */
-export const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'projectSessions', 'conversations', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'settings'
+const COMPOUND_ROUTE_PREFIXES = [
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'settings'
 ]
 
 /**
@@ -100,14 +99,14 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   const first = segments[0]
 
-  // Kanban board — standalone route. Product-gated off (R1 list is the home):
-  // still accept the URL but resolve as the normal session list so deep links
-  // and stale history cannot mount a half-finished Board surface.
+  // Kanban board — standalone route. A view of all sessions in board mode.
+  // Encoded as its own prefix (not `allSessions/board`) so it never collides
+  // with the positional `{filter}/session/{id}` detail parsing below.
   if (first === 'board') {
     return {
       navigator: 'sessions',
       sessionFilter: { kind: 'allSessions' },
-      viewMode: 'list',
+      viewMode: 'board',
       details: null,
     }
   }
@@ -238,25 +237,6 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       sessionFilter = { kind: 'allSessions' }
       detailsStartIndex = 1
       break
-    case 'projectSessions': {
-      // projectSessions | projectSessions/ws/{id} | projectSessions/session/{sid}
-      // | projectSessions/ws/{id}/session/{sid}
-      if (segments[1] === 'ws' && segments[2]) {
-        sessionFilter = {
-          kind: 'projectSessions',
-          workspaceId: decodeURIComponent(segments[2]),
-        }
-        detailsStartIndex = 3
-      } else {
-        sessionFilter = { kind: 'projectSessions' }
-        detailsStartIndex = 1
-      }
-      break
-    }
-    case 'conversations':
-      sessionFilter = { kind: 'conversations' }
-      detailsStartIndex = 1
-      break
     case 'flagged':
       sessionFilter = { kind: 'flagged' }
       detailsStartIndex = 1
@@ -357,14 +337,6 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     case 'allSessions':
       base = 'allSessions'
       break
-    case 'projectSessions':
-      base = filter.workspaceId
-        ? `projectSessions/ws/${encodeURIComponent(filter.workspaceId)}`
-        : 'projectSessions'
-      break
-    case 'conversations':
-      base = 'conversations'
-      break
     case 'flagged':
       base = 'flagged'
       break
@@ -381,7 +353,7 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
       base = `view/${encodeURIComponent(filter.viewId)}`
       break
     default:
-      base = 'projectSessions'
+      base = 'allSessions'
   }
 
   if (!parsed.details) return base
@@ -500,9 +472,6 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
           ...(filter.kind === 'state' ? { stateId: filter.stateId } : {}),
           ...(filter.kind === 'label' ? { labelId: filter.labelId } : {}),
           ...(filter.kind === 'view' ? { viewId: filter.viewId } : {}),
-          ...(filter.kind === 'projectSessions' && filter.workspaceId
-            ? { workspaceId: filter.workspaceId }
-            : {}),
         },
       }
     }
@@ -510,15 +479,11 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
       type: 'view',
       name: filter.kind,
       id: filter.kind === 'state' ? filter.stateId : (filter.kind === 'label' ? filter.labelId : (filter.kind === 'view' ? filter.viewId : undefined)),
-      params: {
-        ...(filter.kind === 'projectSessions' && filter.workspaceId
-          ? { workspaceId: filter.workspaceId }
-          : {}),
-      },
+      params: {},
     }
   }
 
-  return { type: 'view', name: 'projectSessions', params: {} }
+  return { type: 'view', name: 'allSessions', params: {} }
 }
 
 // =============================================================================
@@ -641,7 +606,7 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
   }
 
   // Sessions
-  const filter = compound.sessionFilter || { kind: 'projectSessions' as const }
+  const filter = compound.sessionFilter || { kind: 'allSessions' as const }
   if (compound.details) {
     return {
       navigator: 'sessions',
@@ -673,12 +638,8 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
       return { navigator: 'settings', subpage: 'workspace' }
     case 'permissions':
       return { navigator: 'settings', subpage: 'permissions' }
-    // `labels` is the retired spelling of this surface (Decision H21). The old
-    // deep link keeps resolving so existing bookmarks and docs do not 404 — it
-    // simply lands on the page that absorbed it.
     case 'labels':
-    case 'expert-kits':
-      return { navigator: 'settings', subpage: 'expert-kits' }
+      return { navigator: 'settings', subpage: 'labels' }
     case 'shortcuts':
       return { navigator: 'settings', subpage: 'shortcuts' }
     case 'preferences':
@@ -743,12 +704,6 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
           filter = { kind: 'label', labelId: parsed.params.labelId }
         } else if (filterKind === 'view' && parsed.params.viewId) {
           filter = { kind: 'view', viewId: parsed.params.viewId }
-        } else if (filterKind === 'projectSessions') {
-          filter = parsed.params.workspaceId
-            ? { kind: 'projectSessions', workspaceId: parsed.params.workspaceId }
-            : { kind: 'projectSessions' }
-        } else if (filterKind === 'conversations') {
-          filter = { kind: 'conversations' }
         } else {
           filter = { kind: filterKind as 'allSessions' | 'flagged' | 'archived' }
         }
@@ -758,25 +713,11 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
           details: { type: 'session', sessionId: parsed.id },
         }
       }
-      return { navigator: 'sessions', filter: { kind: 'projectSessions' }, details: null }
+      return { navigator: 'sessions', filter: { kind: 'allSessions' }, details: null }
     case 'allSessions':
       return {
         navigator: 'sessions',
         filter: { kind: 'allSessions' },
-        details: null,
-      }
-    case 'projectSessions':
-      return {
-        navigator: 'sessions',
-        filter: parsed.params.workspaceId
-          ? { kind: 'projectSessions', workspaceId: parsed.params.workspaceId }
-          : { kind: 'projectSessions' },
-        details: null,
-      }
-    case 'conversations':
-      return {
-        navigator: 'sessions',
-        filter: { kind: 'conversations' },
         details: null,
       }
     case 'flagged':
@@ -799,7 +740,7 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
           details: null,
         }
       }
-      return { navigator: 'sessions', filter: { kind: 'projectSessions' }, details: null }
+      return { navigator: 'sessions', filter: { kind: 'allSessions' }, details: null }
     case 'label':
       if (parsed.id) {
         return {
@@ -808,7 +749,7 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
           details: null,
         }
       }
-      return { navigator: 'sessions', filter: { kind: 'projectSessions' }, details: null }
+      return { navigator: 'sessions', filter: { kind: 'allSessions' }, details: null }
     case 'view':
       if (parsed.id) {
         return {
@@ -817,7 +758,7 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
           details: null,
         }
       }
-      return { navigator: 'sessions', filter: { kind: 'projectSessions' }, details: null }
+      return { navigator: 'sessions', filter: { kind: 'allSessions' }, details: null }
     default:
       return null
   }
@@ -902,9 +843,6 @@ export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel |
   if (sidebarStr === 'history') {
     return { type: 'history' }
   }
-  if (sidebarStr === 'workbench') {
-    return { type: 'workbench' }
-  }
   if (sidebarStr.startsWith('files')) {
     const path = sidebarStr.substring(6) // Remove 'files/' prefix
     return { type: 'files', path: path || undefined }
@@ -929,8 +867,6 @@ export function buildRightSidebarParam(panel?: RightSidebarPanel): string | unde
       return 'history'
     case 'files':
       return panel.path ? `files/${panel.path}` : 'files'
-    case 'workbench':
-      return 'workbench'
     default:
       return undefined
   }

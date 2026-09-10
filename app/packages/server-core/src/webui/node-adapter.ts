@@ -8,12 +8,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { INTERNAL_PEER_IP_HEADER } from './http-server'
 
 type WebHandler = (req: Request) => Promise<Response> | Response
-
-/** Maximum allowed request body size (10 MB) to mitigate DoS via oversized payloads. */
-const MAX_BODY_BYTES = 10 * 1024 * 1024
 
 /**
  * Wrap a web-standard fetch handler as a Node HTTP request listener.
@@ -50,28 +46,12 @@ async function handleRequest(
   for (let i = 0; i < raw.length; i += 2) {
     headers.append(raw[i], raw[i + 1])
   }
-  // Always overwrite any inbound value: only the transport adapter may assert
-  // the direct peer used for trusted-proxy decisions.
-  headers.set(INTERNAL_PEER_IP_HEADER, nodeReq.socket.remoteAddress ?? 'direct')
 
   let body: Buffer | null = null
   if (nodeReq.method !== 'GET' && nodeReq.method !== 'HEAD') {
     const chunks: Buffer[] = []
-    let totalBytes = 0
-    let tooLarge = false
     for await (const chunk of nodeReq) {
-      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk
-      totalBytes += buf.length
-      if (totalBytes > MAX_BODY_BYTES) {
-        tooLarge = true
-        break
-      }
-      chunks.push(buf)
-    }
-    if (tooLarge) {
-      nodeRes.writeHead(413, { 'Content-Type': 'text/plain' })
-      nodeRes.end('Request body too large')
-      return
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
     }
     body = Buffer.concat(chunks)
   }

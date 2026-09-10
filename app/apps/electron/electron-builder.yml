@@ -73,11 +73,10 @@ files:
 extraMetadata:
   main: dist/main.cjs
 
-# Auto-update: no publish target — Fleet has no release channel yet, and builds must never
-# embed the upstream Craft feed (a Craft manifest in app-update.yml would let a stale cache
-# install a Craft binary over Fleet; Decision P8, spec R2-C2). Runtime updates are gated by
-# FLEET_UPDATE_FEED_URL in src/main/auto-update.ts; creating a Fleet channel is a recorded
-# owner checkpoint (production runtime commitment).
+# Auto-update: electron-updater fetches from this URL for update manifests (.yml files)
+publish:
+  provider: generic
+  url: https://thecraftagents.com/electron/latest
 
 # Disable ASAR to avoid decompression overhead and click delays
 asar: false

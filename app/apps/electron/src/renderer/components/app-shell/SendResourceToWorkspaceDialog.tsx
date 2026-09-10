@@ -10,7 +10,6 @@
  */
 
 import * as React from 'react'
-import { useTranslation } from 'react-i18next'
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Cloud, CloudOff, Monitor, Send } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,7 +25,6 @@ import { Button } from '@/components/ui/button'
 import { WorkspaceAvatar } from '@/components/ui/workspace-avatar'
 import { useWorkspaceIcons } from '@/hooks/useWorkspaceIcon'
 import { cn } from '@/lib/utils'
-import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
 import type { Workspace, ExportResourcesOptions, ResourceImportMode } from '../../../shared/types'
 
 export type SendResourceType = 'source' | 'skill' | 'automation'
@@ -64,7 +62,6 @@ export function SendResourceToWorkspaceDialog({
   activeWorkspaceId,
   onTransferComplete,
 }: SendResourceToWorkspaceDialogProps) {
-  const { t } = useTranslation()
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const workspaceIconMap = useWorkspaceIcons(workspaces)
@@ -242,12 +239,12 @@ export function SendResourceToWorkspaceDialog({
                 >
                   <WorkspaceAvatar
                     workspaceId={workspace.id}
-                    workspaceName={getWorkspaceDisplayName(workspace.name, t)}
+                    workspaceName={workspace.name}
                     src={workspaceIconMap.get(workspace.id)}
                     className="h-5 w-5 rounded-full ring-1 ring-border/50 shrink-0"
                     fallbackClassName="rounded-full"
                   />
-                  <span className="flex-1 truncate">{getWorkspaceDisplayName(workspace.name, t)}</span>
+                  <span className="flex-1 truncate">{workspace.name}</span>
                   {isRemote ? (
                     isDisconnected ? (
                       <CloudOff className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />

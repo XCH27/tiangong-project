@@ -32,7 +32,7 @@ import {
   isSkillsNavigation,
   isAutomationsNavigation,
   isProjectsNavigation,
-} from '@/context/NavigationContext'
+} from '@/contexts/NavigationContext'
 import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelectionCount } from '@/hooks/useSession'
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
 import { extractLabelId } from '@craft-agent/shared/labels'
@@ -43,7 +43,6 @@ import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
 import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
-import { BOARD_VIEW_ENABLED } from '@/lib/product-surface'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -272,11 +271,14 @@ export function MainContentPanel({
         </Panel>
       )
     }
-    // Nothing selected. The list beside this panel already says the list is
-    // empty, with an icon and the action that fixes it; repeating the same
-    // sentence here as bare grey text gives the person two empty states for one
-    // emptiness and no second thing to do. The detail pane is for a selection.
-    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
+    // No source selected - empty state
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <p className="text-sm">{t("sourcesList.noSourcesConfigured")}</p>
+        </div>
+      </Panel>
+    )
   }
 
   // Skills navigator - show skill info, multi-select panel, or empty state
@@ -304,11 +306,14 @@ export function MainContentPanel({
         </Panel>
       )
     }
-    // Nothing selected. The list beside this panel already says the list is
-    // empty, with an icon and the action that fixes it; repeating the same
-    // sentence here as bare grey text gives the person two empty states for one
-    // emptiness and no second thing to do. The detail pane is for a selection.
-    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
+    // No skill selected - empty state
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <p className="text-sm">{t("skillsList.noSkillsConfigured")}</p>
+        </div>
+      </Panel>
+    )
   }
 
   // Automations navigator - show automation info, multi-select panel, or empty state
@@ -344,8 +349,13 @@ export function MainContentPanel({
         )
       }
     }
-    // Same as sources and skills: one emptiness, one empty state, in the list.
-    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <p className="text-sm">{t("automations.noAutomationsConfigured")}</p>
+        </div>
+      </Panel>
+    )
   }
 
   // Projects navigator - show project detail page or empty state
@@ -358,15 +368,19 @@ export function MainContentPanel({
         </Panel>
       )
     }
-    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
+    return wrapWithStoplight(
+      <Panel variant="grow" className={className}>
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          <p className="text-sm">{t("projectsList.noProjectSelected")}</p>
+        </div>
+      </Panel>
+    )
   }
 
   // Chats navigator - show chat, multi-select panel, or empty state
   if (isSessionsNavigation(navState)) {
-    // Board view is product-gated (R1: list is the home). When disabled, fall
-    // through to the normal session path so stale viewMode=board cannot mount
-    // a half-finished Kanban that looks clickable but incomplete.
-    if (BOARD_VIEW_ENABLED && navState.viewMode === 'board') {
+    // Board view: full-width Kanban over all sessions (placement independent of status)
+    if (navState.viewMode === 'board') {
       return wrapWithStoplight(
         <Panel variant="grow" className={className}>
           <KanbanBoardContainer />

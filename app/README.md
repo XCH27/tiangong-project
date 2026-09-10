@@ -33,7 +33,7 @@ We built Craft Agents because we wanted a better, more opinionated (and preferab
 **How do I connect to Linear, Gmail, Slack...?**
 Tell the agent "add Linear as a source." It finds public APIs and MCP servers, reads their docs, sets up credentials, and configures everything. No config files, no setup wizards.
 
-[Check out how I just connected to Slack →](https://agents.craft.do/s/DRNQEiy8w2e1v5LPgKl8b)
+[Check out how I just connected to Slack →](https://thecraftagents.com/s/DRNQEiy8w2e1v5LPgKl8b)
 
 **I already have my MCP config JSON.**
 Paste it. The agent handles the rest.
@@ -50,7 +50,7 @@ Craft Agents connects to anything. We have it hooked up to a direct Postgres DB 
 **How do I import my Claude Code skills and MCPs?**
 Tell the agent you want to import your skills from Claude Code. It handles the migration.
 
-[Here I imported all my skills in one go →](https://agents.craft.do/s/gWCFqwhObFWaNJIEJmd6j)
+[Here I imported all my skills in one go →](https://thecraftagents.com/s/gWCFqwhObFWaNJIEJmd6j)
 
 **How do I create a new skill?**
 Describe what the skill should do, give it context. The agent takes care of the rest.
@@ -64,18 +64,23 @@ Yes. That's the core idea behind agent-native software. You describe what you wa
 
 ## Installation
 
-### Fleet distribution status
+### One-Line Install (Recommended)
 
-Fleet does not have a public binary release channel yet. The inherited Craft installer endpoints
-install upstream Craft Agents builds and must not be used as Fleet installers. Build Fleet from
-source until a Fleet-controlled signed channel is available.
+**macOS / Linux:**
+```bash
+curl -fsSL https://thecraftagents.com/install-app.sh | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://thecraftagents.com/install-app.ps1 | iex
+```
 
 ### Build from Source
 
-From this Fleet checkout:
-
 ```bash
-cd app
+git clone https://github.com/lukilabs/craft-agents-oss.git
+cd craft-agents-oss
 bun install
 bun run electron:start
 ```
@@ -189,7 +194,6 @@ In thin-client mode, the desktop app renders the UI but all session logic, tool 
 | `CRAFT_RPC_TLS_KEY` | No | — | Path to PEM private key file (required with cert) |
 | `CRAFT_RPC_TLS_CA` | No | — | Path to PEM CA chain file (optional, for client cert verification) |
 | `CRAFT_DEBUG` | No | `false` | Enable debug logging |
-| `CRAFT_WEBUI_TRUSTED_PROXIES` | No | — | Comma-separated exact reverse-proxy IPs allowed to supply forwarded client/protocol/host headers |
 
 ### TLS (Recommended for Remote Access)
 
@@ -223,7 +227,7 @@ docker run -d \
   -p 9100:9100 \
   -e CRAFT_SERVER_TOKEN=<token> \
   -e CRAFT_RPC_HOST=0.0.0.0 \
-  -v craft-data:/home/craftagents/.craft-agent \
+  -v craft-data:/root/.craft-agent \
   craft-agents-server
 ```
 
@@ -237,7 +241,7 @@ docker run -d \
   -e CRAFT_RPC_TLS_CERT=/certs/cert.pem \
   -e CRAFT_RPC_TLS_KEY=/certs/key.pem \
   -v ./certs:/certs:ro \
-  -v craft-data:/home/craftagents/.craft-agent \
+  -v craft-data:/root/.craft-agent \
   craft-agents-server
 ```
 
@@ -546,7 +550,7 @@ Or configure manually in `~/.craft-agent/workspaces/{id}/automations.json`:
 
 **Supported events:** `LabelAdd`, `LabelRemove`, `PermissionModeChange`, `FlagChange`, `SessionStatusChange`, `SchedulerTick`, `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, and more.
 
-See the [Automations documentation](https://agents.craft.do/docs/automations/overview) for the full reference.
+See the [Automations documentation](https://thecraftagents.com/docs/automations/overview) for the full reference.
 
 ## Advanced Features
 

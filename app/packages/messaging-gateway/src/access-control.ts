@@ -121,7 +121,8 @@ export function readPlatformAccessMode(
   config: MessagingConfig,
   platform: PlatformType,
 ): PlatformAccessMode {
-  return config.platforms[platform]?.accessMode ?? 'open'
+  if (platform !== 'telegram') return 'open'
+  return config.platforms.telegram?.accessMode ?? 'open'
 }
 
 /** Read the platform's owners list (empty when not configured). */
@@ -129,7 +130,8 @@ export function readPlatformOwners(
   config: MessagingConfig,
   platform: PlatformType,
 ): PlatformOwner[] {
-  return config.platforms[platform]?.owners ?? []
+  if (platform !== 'telegram') return []
+  return config.platforms.telegram?.owners ?? []
 }
 
 /**

@@ -5,7 +5,7 @@
  * Format: Line 1 = SessionHeader, Lines 2+ = StoredMessage (one per line)
  */
 
-import { openSync, readSync, closeSync, readFileSync } from 'fs';
+import { openSync, readSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
 import { open, readFile } from 'fs/promises';
 import { dirname } from 'path';
 import type { SessionHeader, StoredSession, StoredMessage, SessionTokenUsage } from './types.ts';
@@ -13,7 +13,7 @@ import type { PermissionMode } from '../agent/mode-types.ts';
 import { parsePermissionMode } from '../agent/mode-types.ts';
 import { toPortablePath, expandPath, normalizePath } from '../utils/paths.ts';
 import { debug } from '../utils/debug.ts';
-import { atomicWriteFileSync, recoverAtomicWriteSync, safeJsonParse } from '../utils/files.ts';
+import { safeJsonParse } from '../utils/files.ts';
 import { pickSessionFields } from './utils.ts';
 
 // ============================================================
@@ -79,7 +79,6 @@ function normalizeHeaderPermissionModes<T extends SessionHeader>(header: T): T {
  */
 export function readSessionHeader(sessionFile: string): SessionHeader | null {
   try {
-    recoverAtomicWriteSync(sessionFile);
     const fd = openSync(sessionFile, 'r');
     const buffer = Buffer.alloc(8192); // 8KB is plenty for metadata header
     const bytesRead = readSync(fd, buffer, 0, 8192, 0);
@@ -103,7 +102,6 @@ export function readSessionHeader(sessionFile: string): SessionHeader | null {
  */
 export function readSessionJsonl(sessionFile: string): StoredSession | null {
   try {
-    recoverAtomicWriteSync(sessionFile);
     const content = readFileSync(sessionFile, 'utf-8');
     const lines = content.split('\n').filter(Boolean);
 
@@ -158,7 +156,11 @@ export function writeSessionJsonl(sessionFile: string, session: StoredSession): 
     ...session.messages.map(m => makeSessionPathPortable(JSON.stringify(m), sessionDir)),
   ];
 
-  atomicWriteFileSync(sessionFile, lines.join('\n') + '\n');
+  const tmpFile = sessionFile + '.tmp';
+  writeFileSync(tmpFile, lines.join('\n') + '\n');
+  // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
+  try { unlinkSync(sessionFile); } catch { /* ignore if doesn't exist */ }
+  renameSync(tmpFile, sessionFile);
 }
 
 /**

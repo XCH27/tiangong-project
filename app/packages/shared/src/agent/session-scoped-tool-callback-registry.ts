@@ -27,13 +27,6 @@ export interface SessionScopedToolCallbacks {
   onPlanSubmitted?: (planPath: string) => void;
 
   /**
-   * Called when the agent enters Plan phase via EnterPlan tool.
-   * Does not pause execution; SessionManager projects workMode=plan.
-   * Return `{ activated: false }` when already in Plan.
-   */
-  onEnterPlan?: (reason?: string) => { activated: boolean } | void;
-
-  /**
    * Called when authentication is requested via OAuth/credential tools.
    * The auth UI should be shown and execution paused.
    */
@@ -60,10 +53,10 @@ export interface SessionScopedToolCallbacks {
 
   /** Set labels on a session (defaults to current). */
   setSessionLabelsFn?: (sessionId: string | undefined, labels: string[]) => void | Promise<void>;
-  /** Set or clear the durable goal on a session (defaults to current). */
-  setSessionGoalFn?: (sessionId: string | undefined, goal: string | null) => void | Promise<void>;
   /** Set status on a session (defaults to current). */
   setSessionStatusFn?: (sessionId: string | undefined, status: string) => void | Promise<void>;
+  /** Archive (archived=true) or unarchive (archived=false) a session by ID. */
+  archiveSessionFn?: (sessionId: string, archived: boolean) => void | Promise<void>;
   /** Get detailed info about a session (defaults to current). */
   getSessionInfoFn?: (sessionId?: string) => import('@craft-agent/session-tools-core').SessionInfo | null;
   /** List sessions in the workspace with pagination. */
@@ -90,6 +83,10 @@ export interface SessionScopedToolCallbacks {
   getMessagingBindingsFn?: (sessionId: string) => Array<{ platform: string; channelId: string; threadId?: number; channelName?: string; enabled: boolean }>;
   /** Unbind messaging channels from a session. Returns count of removed bindings. */
   unbindMessagingChannelFn?: (sessionId: string, platform?: string) => number;
+  /** Create a Craft Agents Task (board card + task.yaml + orchestrator session) without running it. */
+  createTaskFn?: (
+    input: import('@craft-agent/session-tools-core').CreateTaskInput
+  ) => Promise<import('@craft-agent/session-tools-core').CreateTaskResult>;
 }
 
 // Registry of callbacks keyed by sessionId

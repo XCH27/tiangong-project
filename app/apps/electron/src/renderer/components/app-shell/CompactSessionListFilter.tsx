@@ -3,7 +3,7 @@
  *
  * Bottom-sheet replacement for the desktop session-list filter dropdown,
  * used when AppShell is in compact / mobile mode. Mirrors the behaviour of
- * `CompactWorkspaceSwitcher`: the trigger
+ * `CompactPermissionModeSelector` and `CompactWorkspaceSwitcher`: the trigger
  * is the same `HeaderIconButton` users see on desktop, but the picker opens
  * as a vaul `Drawer` so it isn't clipped by the narrow viewport / panel
  * container query the desktop Radix dropdown gets caught on.
@@ -52,9 +52,8 @@ import {
 } from '@/components/ui/label-menu-utils'
 import { findLabelById } from '@craft-agent/shared/labels'
 import type { LabelConfig } from '@craft-agent/shared/labels'
-import { getLocalizedStatusLabel, type SessionStatus, type SessionStatusId } from '@/config/session-status-config'
+import { type SessionStatus, type SessionStatusId } from '@/config/session-status-config'
 import type { ChatGroupingMode } from './SessionList'
-import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 type FilterMode = 'include' | 'exclude'
 
@@ -110,8 +109,8 @@ export function CompactSessionListFilter({
   }, [open])
 
   const flatLabelItems = React.useMemo(
-    (): LabelMenuItem[] => createLabelMenuItems(displayLabelConfigs, [], label => getLocalizedLabelName(t, label)),
-    [displayLabelConfigs, t],
+    (): LabelMenuItem[] => createLabelMenuItems(displayLabelConfigs),
+    [displayLabelConfigs],
   )
 
   const trimmedQuery = query.trim()
@@ -256,7 +255,7 @@ export function CompactSessionListFilter({
                     icon={state.icon}
                     iconColor={colorize ? state.resolvedColor : undefined}
                     bareIcon
-                    label={getLocalizedStatusLabel(t, state)}
+                    label={state.label}
                     mode={mode}
                     pinned={isPinned}
                     onTap={() => toggleStatus(state.id)}
@@ -475,7 +474,7 @@ function PinnedSummary({
                   : pinnedStatus.icon}
               </span>
             }
-            label={getLocalizedStatusLabel(t, pinnedStatus)}
+            label={pinnedStatus.label}
           />
         )}
         {pinnedLabel && (

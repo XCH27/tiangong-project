@@ -49,22 +49,12 @@ export interface WorkingDirectorySelectorProps {
   /** Session root, offered as the "Reset" target. Undefined disables reset. */
   sessionFolderPath?: string
   workspaceId?: string
-  /** Project root path — suppresses the "has folder" chip when WD equals project identity. */
-  workspaceRootPath?: string
   /**
    * Renders the popover trigger. The returned element is wrapped in
    * `<PopoverTrigger asChild>`, so it must forward a ref (a DOM element or a
    * ref-forwarding component).
-   *
-   * When only a programmatic open is needed (e.g. from Composer Add → Folder),
-   * pass a visually hidden focusable button.
    */
   renderTrigger: (state: WorkingDirectoryTriggerState) => React.ReactElement
-  /** Optional read-only context rendered beside, but outside, the popover trigger. */
-  renderAfterTrigger?: (state: WorkingDirectoryTriggerState) => React.ReactNode
-  /** Controlled open (optional). When set with onOpenChange, owns open state. */
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
   /** Popover side/align — defaults match the chat input badge. */
   side?: 'top' | 'bottom' | 'left' | 'right'
   align?: 'start' | 'center' | 'end'
@@ -84,28 +74,15 @@ export function WorkingDirectorySelector({
   onWorkingDirectoryChange,
   sessionFolderPath,
   workspaceId,
-  workspaceRootPath,
   renderTrigger,
-  renderAfterTrigger,
-  open: openControlled,
-  onOpenChange,
   side = 'top',
   align = 'start',
   sideOffset = 8,
 }: WorkingDirectorySelectorProps) {
   const { t } = useTranslation()
-  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
-  const isControlled = openControlled !== undefined
-  const popoverOpen = isControlled ? openControlled : uncontrolledOpen
-  const setPopoverOpen = React.useCallback(
-    (next: boolean) => {
-      if (!isControlled) setUncontrolledOpen(next)
-      onOpenChange?.(next)
-    },
-    [isControlled, onOpenChange],
-  )
+  const [popoverOpen, setPopoverOpen] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const closePopover = React.useCallback(() => setPopoverOpen(false), [setPopoverOpen])
+  const closePopover = React.useCallback(() => setPopoverOpen(false), [])
 
   const {
     homeDir,
@@ -132,7 +109,6 @@ export function WorkingDirectorySelector({
     onWorkingDirectoryChange,
     sessionFolderPath,
     workspaceId,
-    workspaceRootPath,
     isOpen: popoverOpen,
     onClose: closePopover,
   })
@@ -153,20 +129,11 @@ export function WorkingDirectorySelector({
   const MENU_LIST_STYLE = 'max-h-[200px] overflow-y-auto p-1 [&_[cmdk-list-sizer]]:space-y-px'
   const MENU_ITEM_STYLE = 'flex cursor-pointer select-none items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] outline-none'
 
-  const triggerState: WorkingDirectoryTriggerState = {
-    open: popoverOpen,
-    hasFolder,
-    folderName,
-    workingDirectory,
-    homeDir,
-    gitBranch,
-  }
-
   return (
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
-          {renderTrigger(triggerState)}
+          {renderTrigger({ open: popoverOpen, hasFolder, folderName, workingDirectory, homeDir, gitBranch })}
         </PopoverTrigger>
         <PopoverContent side={side} align={align} sideOffset={sideOffset} className={MENU_CONTAINER_STYLE}>
           <CommandPrimitive shouldFilter={showFilter}>
@@ -224,7 +191,7 @@ export function WorkingDirectorySelector({
                       type="button"
                       onClick={(e) => handleRemoveRecent(e, path)}
                       data-touch-reveal="true"
-                      className="shrink-0 h-3 w-3 rounded-[3px] flex items-center justify-center opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100 text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-[color,background-color,opacity]"
+                      className="shrink-0 h-3 w-3 rounded-[3px] flex items-center justify-center opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -262,7 +229,6 @@ export function WorkingDirectorySelector({
           </CommandPrimitive>
         </PopoverContent>
       </Popover>
-      {renderAfterTrigger?.(triggerState)}
       <ServerDirectoryBrowser
         open={showServerBrowser}
         mode={serverBrowserMode}

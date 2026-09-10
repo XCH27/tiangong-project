@@ -11,12 +11,10 @@ import type {
   TypedError,
   ContentBadge,
   ToolDisplayMeta,
-  TokenUsage,
   AnnotationV1,
   PermissionRequest as BasePermissionRequest,
 } from '@craft-agent/core/types'
 import type { PermissionMode } from '../agent/mode-types'
-import type { ExecutionPermissionMode, WorkMode, WorkModeSelection } from '../agent/work-mode'
 import type { ThinkingLevel } from '../agent/thinking-levels'
 import type { CustomEndpointConfig } from '../config/llm-connections'
 import type {
@@ -42,16 +40,6 @@ export type SessionStatus = string
 export type BuiltInStatusId = 'todo' | 'in-progress' | 'needs-review' | 'done' | 'cancelled'
 
 /**
- * Session-list scope requested by a UI client.
- *
- * The desktop Project overview is the only broad scope. CLI, WebUI and remote
- * callers keep the transport client's single-Workspace scope.
- */
-export interface GetSessionsOptions {
-  scope?: 'workspace' | 'local-project-overview'
-}
-
-/**
  * Electron-specific Session type (includes runtime state).
  * Extends core Session with messages array and processing state.
  */
@@ -60,8 +48,6 @@ export interface Session {
   workspaceId: string
   workspaceName: string
   name?: string
-  /** Persistent objective the Agent should keep pursuing across turns. */
-  goal?: string
   /** Preview of first user message (from JSONL header, for lazy-loaded sessions) */
   preview?: string
   lastMessageAt: number
@@ -70,10 +56,6 @@ export interface Session {
   isFlagged?: boolean
   /** Permission mode for this session ('safe', 'ask', 'allow-all') */
   permissionMode?: PermissionMode
-  /** User-visible phase, separate from execution approval. */
-  workMode?: WorkMode
-  workModeSelection?: WorkModeSelection
-  executionPermissionMode?: ExecutionPermissionMode
   sessionStatus?: SessionStatus
   /** Labels (additive tags, many-per-session — bare IDs or "id::value" entries) */
   labels?: string[]
@@ -92,10 +74,6 @@ export interface Session {
   model?: string
   llmConnection?: string
   thinkingLevel?: ThinkingLevel
-  /** Session-scoped opt-in for a model's supported low-latency mode. */
-  fastMode?: boolean
-  /** Classified non-fast provider runtime mode id advertised by the model. */
-  runtimeMode?: string
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error'
   lastFinalMessageId?: string
   isAsyncOperationOngoing?: boolean
@@ -107,7 +85,17 @@ export interface Session {
   }
   createdAt?: number
   messageCount?: number
-  tokenUsage?: TokenUsage
+  tokenUsage?: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+    contextTokens: number
+    costUsd: number
+    cacheReadTokens?: number
+    cacheCreationTokens?: number
+    /** Model's context window size in tokens (from SDK modelUsage) */
+    contextWindow?: number
+  }
   /** When true, session is hidden from session list (e.g., mini edit sessions) */
   hidden?: boolean
   isArchived?: boolean
@@ -133,11 +121,7 @@ export interface Session {
 
 export interface CreateSessionOptions {
   name?: string
-  goal?: string
   permissionMode?: PermissionMode
-  workMode?: WorkMode
-  workModeSelection?: WorkModeSelection
-  executionPermissionMode?: ExecutionPermissionMode
   /**
    * Reasoning/thinking level override. When set, takes precedence over workspace
    * and global defaults. Silently ignored by the underlying SDK on non-reasoning
@@ -145,8 +129,6 @@ export interface CreateSessionOptions {
    * the API request for models with `reasoning: false` in the Pi SDK catalog.
    */
   thinkingLevel?: ThinkingLevel
-  fastMode?: boolean
-  runtimeMode?: string
   /**
    * Working directory for the session:
    * - 'user_default' or undefined: Use workspace's configured default working directory
@@ -192,13 +174,9 @@ export interface CreateSessionOptions {
 export interface RemoteSessionTransferPayload {
   sourceSessionId: string
   name?: string
-  goal?: string
   sessionStatus?: SessionStatus
   labels?: string[]
   permissionMode?: PermissionMode
-  workMode?: WorkMode
-  workModeSelection?: WorkModeSelection
-  executionPermissionMode?: ExecutionPermissionMode
   summary: string
 }
 
@@ -381,9 +359,6 @@ export interface TaskResultsDto {
 
 export interface PermissionModeState {
   permissionMode: PermissionMode
-  workMode?: WorkMode
-  workModeSelection?: WorkModeSelection
-  executionPermissionMode?: ExecutionPermissionMode
   previousPermissionMode?: PermissionMode
   transitionDisplay?: string
   modeVersion: number
@@ -413,7 +388,7 @@ export type SessionEvent =
   | { type: 'working_directory_changed'; sessionId: string; workingDirectory: string }
   | { type: 'permission_request'; sessionId: string; request: PermissionRequest }
   | { type: 'credential_request'; sessionId: string; request: CredentialRequest }
-  | { type: 'permission_mode_changed'; sessionId: string; permissionMode: PermissionMode; workMode?: WorkMode; workModeSelection?: WorkModeSelection; executionPermissionMode?: ExecutionPermissionMode; previousPermissionMode?: PermissionMode; transitionDisplay?: string; modeVersion?: number; changedAt?: string; changedBy?: PermissionModeState['changedBy'] }
+  | { type: 'permission_mode_changed'; sessionId: string; permissionMode: PermissionMode; previousPermissionMode?: PermissionMode; transitionDisplay?: string; modeVersion?: number; changedAt?: string; changedBy?: PermissionModeState['changedBy'] }
   | { type: 'plan_submitted'; sessionId: string; message: Message }
   | { type: 'sources_changed'; sessionId: string; enabledSourceSlugs: string[] }
   | { type: 'labels_changed'; sessionId: string; labels: string[] }
@@ -426,8 +401,6 @@ export type SessionEvent =
   | { type: 'workflow_agent_completed'; sessionId: string; workflowId: string; agentId: string; turnId?: string }
   | { type: 'shell_killed'; sessionId: string; shellId: string }
   | { type: 'user_message'; sessionId: string; message: Message; status: 'accepted' | 'queued' | 'processing'; optimisticMessageId?: string }
-  | { type: 'queued_message_removed'; sessionId: string; messageId: string; optimisticMessageId?: string }
-  | { type: 'session_reverted'; sessionId: string; messages: Message[]; tokenUsage: Session['tokenUsage'] }
   | { type: 'session_flagged'; sessionId: string }
   | { type: 'session_unflagged'; sessionId: string }
   | { type: 'session_archived'; sessionId: string }
@@ -435,22 +408,15 @@ export type SessionEvent =
   | { type: 'name_changed'; sessionId: string; name?: string }
   | { type: 'session_model_changed'; sessionId: string; model: string | null }
   | { type: 'session_status_changed'; sessionId: string; sessionStatus: SessionStatus }
-  | { type: 'session_metadata_changed'; sessionId: string; changes: Partial<Pick<Session, 'goal' | 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId'>> }
+  | { type: 'session_metadata_changed'; sessionId: string; changes: Partial<Pick<Session, 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId'>> }
   | { type: 'session_deleted'; sessionId: string }
   | { type: 'session_created'; sessionId: string }
+  | { type: 'session_shared'; sessionId: string; sharedUrl: string }
+  | { type: 'session_unshared'; sessionId: string }
   | { type: 'auth_request'; sessionId: string; message: Message; request: SharedAuthRequest }
   | { type: 'auth_completed'; sessionId: string; requestId: string; success: boolean; cancelled?: boolean; error?: string }
   | { type: 'source_activated'; sessionId: string; sourceSlug: string; originalMessage: string }
-  | {
-      type: 'usage_update'
-      sessionId: string
-      tokenUsage: {
-        inputTokens: number
-        cacheReadTokens?: number
-        cacheCreationTokens?: number
-        contextWindow?: number
-      }
-    }
+  | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
 
@@ -477,17 +443,12 @@ export type SessionCommand =
   | { type: 'archive' }
   | { type: 'unarchive' }
   | { type: 'rename'; name: string }
-  | { type: 'setGoal'; goal: string | null }
   | { type: 'setSessionStatus'; state: SessionStatus }
   | { type: 'markRead' }
   | { type: 'markUnread' }
   | { type: 'setActiveViewing'; workspaceId: string }
   | { type: 'setPermissionMode'; mode: PermissionMode }
-  | { type: 'setWorkMode'; selection: WorkModeSelection; mode?: WorkMode }
-  | { type: 'setExecutionPermissionMode'; mode: ExecutionPermissionMode }
   | { type: 'setThinkingLevel'; level: ThinkingLevel }
-  | { type: 'setFastMode'; enabled: boolean }
-  | { type: 'setRuntimeMode'; mode: string | null }
   | { type: 'updateWorkingDirectory'; dir: string }
   | { type: 'setSources'; sourceSlugs: string[] }
   | { type: 'setLabels'; labels: string[] }
@@ -495,6 +456,9 @@ export type SessionCommand =
   | { type: 'setKanbanColumn'; column: string | null }
   | { type: 'showInFinder' }
   | { type: 'copyPath' }
+  | { type: 'shareToViewer' }
+  | { type: 'updateShare' }
+  | { type: 'revokeShare' }
   | { type: 'refreshTitle' }
   | { type: 'setConnection'; connectionSlug: string }
   | { type: 'setPendingPlanExecution'; planPath: string; draftInputSnapshot?: string }
@@ -504,8 +468,6 @@ export type SessionCommand =
   | { type: 'addAnnotation'; messageId: string; annotation: AnnotationV1 }
   | { type: 'removeAnnotation'; messageId: string; annotationId: string }
   | { type: 'updateAnnotation'; messageId: string; annotationId: string; patch: Partial<AnnotationV1> }
-  | { type: 'removeQueuedMessage'; messageId: string }
-  | { type: 'revertToUserMessage'; messageId: string }
 
 export interface NewChatActionParams {
   input?: string
@@ -615,28 +577,9 @@ export interface LlmConnectionSetup {
   credential?: string
   baseUrl?: string | null
   defaultModel?: string | null
-  /**
-   * Provider-discovered models retain their capability metadata across the RPC
-   * boundary. String entries remain supported for custom endpoints whose model
-   * capabilities are genuinely unknown.
-   */
-  models?: Array<
-    | string
-    | {
-        id: string
-        name: string
-        shortName: string
-        description: string
-        provider: 'anthropic' | 'pi'
-        contextWindow: number
-        supportsThinking?: boolean
-        supportedReasoningEfforts?: readonly string[]
-        supportsFastMode?: boolean
-        supportsImages?: boolean
-      }
-  > | null
+  models?: string[] | null
   piAuthProvider?: string
-  modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userSelected' | 'userDefined3Tier'
+  modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'
   /** When true, reject setup if the connection doesn't already exist (reauth guard). */
   updateOnly?: boolean
   /** Custom endpoint protocol for arbitrary OpenAI/Anthropic-compatible APIs */
@@ -656,32 +599,6 @@ export interface LlmConnectionSetup {
    * persists for both new and re-auth connections. Optional and fail-soft.
    */
   oauthIdentity?: ClaudeOAuthIdentityDto
-}
-
-/**
- * Discover models before a connection is persisted. Credentials are used only
- * for this bounded provider request and are never stored by this operation.
- */
-export interface DiscoverLlmModelsParams {
-  providerId: string
-  apiKey?: string
-  baseUrl?: string
-  piAuthProvider?: string
-}
-
-export interface DiscoverLlmModelsResult {
-  models: Array<{
-    id: string
-    name: string
-    shortName: string
-    description: string
-    provider: 'anthropic' | 'pi'
-    contextWindow: number
-    supportsThinking?: boolean
-    supportedReasoningEfforts?: readonly string[]
-    supportsFastMode?: boolean
-    supportsImages?: boolean
-  }>
 }
 
 export interface TestLlmConnectionParams {
@@ -759,6 +676,12 @@ export interface UnreadSummary {
   hasUnreadByWorkspace: Record<string, boolean>
 }
 
+export interface ShareResult {
+  success: boolean
+  url?: string
+  error?: string
+}
+
 export interface RefreshTitleResult {
   success: boolean
   title?: string
@@ -801,12 +724,7 @@ export interface UpdateInfo {
   available: boolean
   currentVersion: string
   latestVersion: string | null
-  /**
-   * `disabled` means no Fleet-controlled update channel is configured, so the updater performs no
-   * network call at all. This is a first-class state, not a failure: Fleet is a fork of Craft, and
-   * installing an upstream Craft binary over it would erase the fork (Decision P8, spec R2-C2).
-   */
-  downloadState: 'idle' | 'disabled' | 'downloading' | 'ready' | 'installing' | 'error'
+  downloadState: 'idle' | 'downloading' | 'ready' | 'installing' | 'error'
   downloadProgress: number
   error?: string
 }
@@ -818,10 +736,6 @@ export interface UpdateInfo {
 export interface WorkspaceSettings {
   name?: string
   model?: string
-  defaultWorkMode?: import('../agent/work-mode.ts').WorkModeOption
-  executionPermissionMode?: import('../agent/work-mode.ts').ExecutionPermissionMode
-  cyclableWorkModes?: import('../agent/work-mode.ts').WorkModeOption[]
-  /** @deprecated Compatibility fields for pre-work-mode workspace configs. */
   permissionMode?: PermissionMode
   cyclablePermissionModes?: PermissionMode[]
   thinkingLevel?: ThinkingLevel
@@ -829,44 +743,6 @@ export interface WorkspaceSettings {
   localMcpEnabled?: boolean
   defaultLlmConnection?: string
   enabledSourceSlugs?: string[]
-}
-
-// ---------------------------------------------------------------------------
-// CLI runtime capability negotiation
-// ---------------------------------------------------------------------------
-
-export interface CliRuntimeModelCapability {
-  id: string
-  name: string
-  description?: string
-  contextWindow?: number
-  supportedReasoningEfforts: string[]
-  inputModalities: Array<'text' | 'image' | 'audio' | 'video' | 'pdf'>
-}
-
-export interface CliRuntimeHandshake {
-  id: 'codex' | 'claude-code' | 'opencode'
-  name: string
-  version?: string
-  status: 'ready' | 'partial' | 'unavailable' | 'error'
-  models: CliRuntimeModelCapability[]
-  error?: string
-  checkedAt: number
-}
-
-export interface SubscriptionQuotaWindow {
-  id: string
-  period: 'short' | 'weekly' | 'monthly' | 'other'
-  usedPercent: number
-  resetAt?: number
-}
-
-export interface SubscriptionQuotaSnapshot {
-  connectionSlug: string
-  status: 'ready' | 'unsupported' | 'error'
-  windows: SubscriptionQuotaWindow[]
-  updatedAt: number
-  error?: string
 }
 
 // ---------------------------------------------------------------------------

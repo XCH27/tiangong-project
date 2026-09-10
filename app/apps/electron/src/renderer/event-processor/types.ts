@@ -6,7 +6,6 @@
  */
 
 import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
-import type { ExecutionPermissionMode, WorkMode, WorkModeSelection } from '@craft-agent/shared/agent/work-mode'
 
 /**
  * Streaming state for a session - replaces streamingTextRef
@@ -323,9 +322,6 @@ export interface PermissionModeChangedEvent {
   type: 'permission_mode_changed'
   sessionId: string
   permissionMode: PermissionMode
-  workMode?: WorkMode
-  workModeSelection?: WorkModeSelection
-  executionPermissionMode?: ExecutionPermissionMode
   previousPermissionMode?: PermissionMode
   transitionDisplay?: string
   modeVersion?: number
@@ -440,22 +436,6 @@ export interface UserMessageEvent {
   optimisticMessageId?: string
 }
 
-/** A queued follow-up was removed from the Session-owned delivery FIFO. */
-export interface QueuedMessageRemovedEvent {
-  type: 'queued_message_removed'
-  sessionId: string
-  messageId: string
-  optimisticMessageId?: string
-}
-
-/** A completed turn was removed by the Session authority. */
-export interface SessionRevertedEvent {
-  type: 'session_reverted'
-  sessionId: string
-  messages: Message[]
-  tokenUsage: Session['tokenUsage']
-}
-
 /**
  * Message annotation update event
  */
@@ -464,6 +444,23 @@ export interface MessageAnnotationsUpdatedEvent {
   sessionId: string
   messageId: string
   annotations: NonNullable<Message['annotations']>
+}
+
+/**
+ * Session shared event - session was shared to viewer
+ */
+export interface SessionSharedEvent {
+  type: 'session_shared'
+  sessionId: string
+  sharedUrl: string
+}
+
+/**
+ * Session unshared event - session share was revoked
+ */
+export interface SessionUnsharedEvent {
+  type: 'session_unshared'
+  sessionId: string
 }
 
 /**
@@ -510,8 +507,6 @@ export interface UsageUpdateEvent {
   sessionId: string
   tokenUsage: {
     inputTokens: number
-    cacheReadTokens?: number
-    cacheCreationTokens?: number
     contextWindow?: number
   }
 }
@@ -557,9 +552,9 @@ export type AgentEvent =
   | TaskCompletedEvent
   | WorkflowAgentCompletedEvent
   | UserMessageEvent
-  | QueuedMessageRemovedEvent
-  | SessionRevertedEvent
   | MessageAnnotationsUpdatedEvent
+  | SessionSharedEvent
+  | SessionUnsharedEvent
   | AuthRequestEvent
   | AuthCompletedEvent
   | SourceActivatedEvent
@@ -572,7 +567,7 @@ export type Effect =
   | { type: 'permission_request'; request: PermissionRequest }
   | { type: 'credential_request'; request: CredentialRequest }
   | { type: 'generate_title'; sessionId: string; userMessage: string }
-  | { type: 'permission_mode_changed'; sessionId: string; permissionMode: PermissionMode; workMode?: WorkMode; workModeSelection?: WorkModeSelection; executionPermissionMode?: ExecutionPermissionMode; previousPermissionMode?: PermissionMode; transitionDisplay?: string; modeVersion?: number; changedAt?: string; changedBy?: 'user' | 'system' | 'restore' | 'automation' | 'unknown' }
+  | { type: 'permission_mode_changed'; sessionId: string; permissionMode: PermissionMode; previousPermissionMode?: PermissionMode; transitionDisplay?: string; modeVersion?: number; changedAt?: string; changedBy?: 'user' | 'system' | 'restore' | 'automation' | 'unknown' }
   | { type: 'restore_input'; text: string }
   | { type: 'toast_error'; message: string }
 

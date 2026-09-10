@@ -91,8 +91,6 @@ export type ErrorCode =
   | 'BROWSER_INSTANCE_NOT_OWNED'
   | 'BROWSER_REMOTE_UPLOAD_NOT_SUPPORTED'
   | 'BROWSER_REMOTE_EVALUATE_BLOCKED'
-  | 'BROWSER_SENDER_NOT_ALLOWED'
-  | 'BROWSER_WORKSPACE_MISMATCH'
   | 'INVALID_URL'
   | 'URL_SCHEME_NOT_ALLOWED'
 
@@ -115,8 +113,6 @@ const KNOWN_ERROR_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   'BROWSER_INSTANCE_NOT_OWNED',
   'BROWSER_REMOTE_UPLOAD_NOT_SUPPORTED',
   'BROWSER_REMOTE_EVALUATE_BLOCKED',
-  'BROWSER_SENDER_NOT_ALLOWED',
-  'BROWSER_WORKSPACE_MISMATCH',
   'INVALID_URL',
   'URL_SCHEME_NOT_ALLOWED',
 ])
@@ -148,7 +144,6 @@ export class CodedError extends Error {
 export type PushTarget =
   | { to: 'all'; exclude?: string }
   | { to: 'workspace'; workspaceId: string; exclude?: string }
-  | { to: 'session-workspace'; workspaceId: string; exclude?: string }
   | { to: 'client'; clientId: string }
 
 // ---------------------------------------------------------------------------

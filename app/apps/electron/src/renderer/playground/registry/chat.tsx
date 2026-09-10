@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button'
 import { motion } from 'motion/react'
 import { ArrowUp, Paperclip, ChevronDown, Circle, Sparkles } from 'lucide-react'
 import type { LabelConfig } from '@craft-agent/shared/labels'
-import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { FileAttachment, PermissionRequest, PermissionMode } from '../../../shared/types'
 import { cn } from '@/lib/utils'
@@ -203,6 +202,7 @@ const playgroundAppShellContext = {
   onArchiveSession: () => {},
   onUnarchiveSession: () => {},
   onMarkSessionRead: () => {},
+  onMarkSessionUnread: () => {},
   onSetActiveViewingSession: () => {},
   onSessionStatusChange: () => {},
   onDeleteSession: async () => true,
@@ -543,7 +543,6 @@ interface InputContainerPlaygroundProps {
   workingDirectory?: string
   inputMode?: InputContainerMode
   compactMode?: boolean
-  isEmptySession?: boolean
   showOptionBadges?: boolean
   showTasks?: boolean
   showLabels?: boolean
@@ -569,7 +568,6 @@ function InputContainerPlayground({
   workingDirectory = '/Users/demo/projects/craft-agent',
   inputMode = 'freeform',
   compactMode = false,
-  isEmptySession = false,
   showOptionBadges = true,
   showTasks = true,
   showLabels = true,
@@ -587,8 +585,7 @@ function InputContainerPlayground({
 }: InputContainerPlaygroundProps) {
   const playgroundSessionId = 'playground-session'
   const [model, setModel] = React.useState(currentModel)
-  const [thinkingLevel, setThinkingLevel] = React.useState<ThinkingLevel>('medium')
-  const mode = permissionMode
+  const [mode, setMode] = React.useState<PermissionMode>(permissionMode)
   const [inputValue, setInputValue] = React.useState('')
   const [currentSessionStatus, setCurrentSessionStatus] = React.useState('in-progress')
   const [cwd, setCwd] = React.useState(workingDirectory)
@@ -605,6 +602,10 @@ function InputContainerPlayground({
   React.useEffect(() => {
     setModel(currentModel)
   }, [currentModel])
+
+  React.useEffect(() => {
+    setMode(permissionMode)
+  }, [permissionMode])
 
   React.useEffect(() => {
     setCwd(workingDirectory)
@@ -745,6 +746,7 @@ function InputContainerPlayground({
           compactMode={compactMode}
           showOptionBadges={showOptionBadges}
           permissionMode={mode}
+          onPermissionModeChange={setMode}
           tasks={showTasks ? sampleBackgroundTasks : []}
           sessionId={playgroundSessionId}
           onKillTask={(taskId) => console.log('[Playground] Kill task:', taskId)}
@@ -764,18 +766,11 @@ function InputContainerPlayground({
               console.log('[Playground] Structured response:', response)
             },
             currentModel: model,
-            thinkingLevel,
-            onThinkingLevelChange: setThinkingLevel,
-            isEmptySession,
             sources: showSources ? sources : [],
             enabledSourceSlugs: showSources ? enabledSourceSlugs : [],
             onSourcesChange: showSources ? setEnabledSourceSlugs : undefined,
             workingDirectory: showWorkingDirectory ? cwd : undefined,
             onWorkingDirectoryChange: showWorkingDirectory ? setCwd : undefined,
-            workspaceId: 'playground-workspace',
-            onExecutionWorkspaceChange: (_workspaceId, workspace) => {
-              if (workspace?.rootPath) setCwd(workspace.rootPath)
-            },
             followUpItems,
             onSubmit: mockInputCallbacks.onSubmit,
             onModelChange: setModel,
@@ -800,7 +795,7 @@ interface ActiveTasksBarContextProps {
 }
 
 function ActiveTasksBarContext({ tasks = sampleBackgroundTasks }: ActiveTasksBarContextProps) {
-  const permissionMode: PermissionMode = 'ask'
+  const [permissionMode, setPermissionMode] = React.useState<PermissionMode>('ask')
 
   // Inject mock electronAPI for file attachments
   React.useEffect(() => {
@@ -831,6 +826,7 @@ function ActiveTasksBarContext({ tasks = sampleBackgroundTasks }: ActiveTasksBar
         {/* Active option badges and tasks */}
         <ActiveOptionBadges
           permissionMode={permissionMode}
+          onPermissionModeChange={setPermissionMode}
           tasks={tasks}
           sessionId="playground-session"
           onKillTask={(taskId) => console.log('[Playground] Kill task:', taskId)}
@@ -843,6 +839,7 @@ function ActiveTasksBarContext({ tasks = sampleBackgroundTasks }: ActiveTasksBar
           isProcessing={false}
           currentModel="claude-sonnet-4-6"
           permissionMode={permissionMode}
+          onPermissionModeChange={setPermissionMode}
           sources={mockSources}
           enabledSourceSlugs={['github-api', 'local-files']}
           workingDirectory="/Users/demo/projects/craft-agent"
@@ -873,7 +870,7 @@ interface PermissionInputToggleProps {
 
 function PermissionInputToggle({ autoToggle = false, autoToggleInterval = 3000, useLongCommand = false }: PermissionInputToggleProps) {
   const [showPermission, setShowPermission] = React.useState(false)
-  const permissionMode: PermissionMode = 'ask'
+  const [permissionMode, setPermissionMode] = React.useState<PermissionMode>('ask')
 
   const permissionRequest = useLongCommand ? veryLongPermissionRequest : samplePermissionRequest
 
@@ -935,6 +932,7 @@ function PermissionInputToggle({ autoToggle = false, autoToggleInterval = 3000, 
       {/* Active option badges */}
       <ActiveOptionBadges
         permissionMode={permissionMode}
+        onPermissionModeChange={setPermissionMode}
       />
 
       {/* Real InputContainer - handles animation automatically */}
@@ -944,6 +942,7 @@ function PermissionInputToggle({ autoToggle = false, autoToggleInterval = 3000, 
         isProcessing={false}
         currentModel="claude-sonnet-4-6"
         permissionMode={permissionMode}
+        onPermissionModeChange={setPermissionMode}
         sources={mockSources}
         enabledSourceSlugs={['github-api', 'local-files']}
         workingDirectory="/Users/demo/projects/craft-agent"
@@ -1107,6 +1106,7 @@ export const chatComponents: ComponentEntry[] = [
     mockData: () => ({
       tasks: sampleBackgroundTasks,
       sessionId: 'session-playground',
+      onPermissionModeChange: (mode: string) => console.log('[Playground] Permission mode changed:', mode),
       onKillTask: (taskId: string) => console.log('[Playground] Kill task:', taskId),
     }),
   },
@@ -1286,12 +1286,6 @@ export const chatComponents: ComponentEntry[] = [
         defaultValue: false,
       },
       {
-        name: 'isEmptySession',
-        description: 'Show the new-task execution context strip',
-        control: { type: 'boolean' },
-        defaultValue: false,
-      },
-      {
         name: 'placeholder',
         description: 'Textarea placeholder text',
         control: { type: 'string', placeholder: 'Message...' },
@@ -1428,15 +1422,6 @@ export const chatComponents: ComponentEntry[] = [
         name: 'Default (Comprehensive)',
         description: 'App-like full setup with badges, labels, statuses, sources, and working directory',
         props: {},
-      },
-      {
-        name: 'New Task Context',
-        description: 'Empty-session execution target and in-flow project picker',
-        props: {
-          isEmptySession: true,
-          showTasks: false,
-          showOptionBadges: false,
-        },
       },
       {
         name: 'Working Dir History (Few)',

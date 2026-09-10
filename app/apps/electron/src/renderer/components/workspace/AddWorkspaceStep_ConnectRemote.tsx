@@ -5,8 +5,7 @@ import { cn } from "@/lib/utils"
 import { slugify } from "@/lib/slugify"
 import { Input } from "../ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
-import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspacePrimaryButton } from "./primitives"
-import { getWorkspaceDisplayName } from '@/utils/workspace-display-name'
+import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspacePrimaryButton, AddWorkspaceSecondaryButton } from "./primitives"
 
 const CREATE_NEW_VALUE = '__create_new__'
 
@@ -51,7 +50,7 @@ async function resolveUniqueSlug(baseName: string): Promise<{ slug: string; path
 }
 
 /**
- * AddWorkspaceStep_ConnectRemote - Connect directly to a user-hosted workspace service.
+ * AddWorkspaceStep_ConnectRemote - Connect to a remote Craft Agent Server
  *
  * Two paths:
  * 1. Connect to existing workspace — select from dropdown, no name needed, auto-resolve local slug
@@ -182,22 +181,8 @@ export function AddWorkspaceStep_ConnectRemote({
   )
 
   const showCreateMode = !isReconnectMode && (isCreateNew || isFreshServer)
-  const buttonLabel = isReconnectMode
-    ? t('common.reconnect')
-    : showCreateMode
-      ? t('workspace.createWorkspace')
-      : t('common.connect')
-  const isTesting = testState === 'testing'
-  const needsConnectionTest = testState !== 'ok'
-  const primaryButtonLabel = needsConnectionTest
-    ? t('common.continue')
-    : buttonLabel
-  const primaryButtonLoadingLabel = isTesting
-    ? t('common.loading')
-    : t('common.connecting')
-  const primaryButtonDisabled = needsConnectionTest
-    ? !serverUrl || !token || isTesting || isCreating
-    : !canConnect
+  const buttonLabel = isReconnectMode ? 'Reconnect' : showCreateMode ? 'Create and Connect' : 'Connect'
+  const buttonLoadingLabel = isReconnectMode ? 'Reconnecting...' : showCreateMode ? 'Creating...' : 'Connecting...'
 
   return (
     <AddWorkspaceContainer>
@@ -212,21 +197,21 @@ export function AddWorkspaceStep_ConnectRemote({
         )}
       >
         <ArrowLeft className="h-4 w-4" />
-        {t('common.back')}
+        Back
       </button>
 
       <AddWorkspaceStepHeader
-        title={isReconnectMode ? t("workspace.reconnect", { name: reconnectWorkspace!.name }) : t("workspace.connectRemote")}
+        title={isReconnectMode ? t("workspace.reconnect", { name: reconnectWorkspace!.name }) : "Connect to remote server"}
         description={isReconnectMode
-          ? t("workspace.reconnectDesc")
-          : t("workspace.connectRemoteDesc")}
+          ? "Update the server URL or token to restore the connection."
+          : "Connect to a remote Craft Agent Server for this workspace."}
       />
 
       <div className="mt-6 w-full space-y-5">
         {/* Server URL */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            {t('common.url')}
+            Server URL
           </label>
           <div className="bg-background shadow-minimal rounded-lg">
             <Input
@@ -243,7 +228,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {/* Token */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">
-            {t('workspace.serverAuthToken')}
+            Token
           </label>
           <div className="bg-background shadow-minimal rounded-lg">
             <Input
@@ -257,36 +242,37 @@ export function AddWorkspaceStep_ConnectRemote({
           </div>
         </div>
 
-        {/* Connection result is progressive disclosure: the primary action
-            validates first, then the same slot advances to connect/create. */}
-        {(testState === 'ok' || testState === 'error') && (
-          <div className="flex min-h-5 items-center gap-2" aria-live="polite">
+        {/* Test Connection */}
+        <div className="flex items-center gap-3">
+          <AddWorkspaceSecondaryButton
+            onClick={handleTestConnection}
+            disabled={!serverUrl || !token || testState === 'testing' || isCreating}
+          >
+            {testState === 'testing' ? 'Testing...' : 'Test Connection'}
+          </AddWorkspaceSecondaryButton>
           {testState === 'ok' && !isFreshServer && (
-            <span className="flex items-center gap-1 text-xs text-success">
+            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
               <CheckCircle className="h-3.5 w-3.5" />
-              {t('settings.ai.connectedProviders')}
-              {serverVersion ? ` · v${serverVersion}` : ''}
+              Connected{serverVersion ? ` — v${serverVersion}` : ''}
             </span>
           )}
           {testState === 'ok' && isFreshServer && (
-            <span className="flex items-center gap-1 text-xs text-success">
+            <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
               <CheckCircle className="h-3.5 w-3.5" />
-              {t('settings.ai.connectedProviders')}
-              {serverVersion ? ` · v${serverVersion}` : ''}
+              Connected{serverVersion ? ` — v${serverVersion}` : ''} — no workspaces yet
             </span>
           )}
           {testState === 'error' && (
             <span className="flex items-center gap-1 text-xs text-destructive">
               <XCircle className="h-3.5 w-3.5" />
-              {testError || t('common.failed')}
+              {testError || 'Failed'}
             </span>
           )}
-          </div>
-        )}
+        </div>
 
         {/* Old server warning */}
         {testState === 'ok' && !serverVersion && (
-          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-info/5 border border-info/30 text-xs text-info">
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-700 dark:text-yellow-400">
             <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
             <span>{t("workspace.olderServerWarning")}</span>
           </div>
@@ -299,7 +285,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {!isReconnectMode && testState === 'ok' && remoteWorkspaces.length > 0 && !isCreateNew && (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground">
-              {t('settings.workspace.title')}
+              Workspace
             </label>
             <div className="bg-background shadow-minimal rounded-lg">
               <Select
@@ -313,7 +299,7 @@ export function AddWorkspaceStep_ConnectRemote({
                 <SelectContent container={selectPortalRef.current}>
                   {remoteWorkspaces.map(ws => (
                     <SelectItem key={ws.id} value={ws.id}>
-                      {getWorkspaceDisplayName(ws.name, t)}
+                      {ws.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -326,7 +312,7 @@ export function AddWorkspaceStep_ConnectRemote({
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <Plus className="h-3 w-3" />
-              {t('workspace.createNew')}
+              Create new workspace on server
             </button>
           </div>
         )}
@@ -335,7 +321,7 @@ export function AddWorkspaceStep_ConnectRemote({
         {!isReconnectMode && testState === 'ok' && showCreateMode && (
           <div className="space-y-2">
             <label className="block text-sm font-medium text-foreground">
-              {t('workspace.nameLabel')}
+              Workspace name
             </label>
             <div className="bg-background shadow-minimal rounded-lg">
               <Input
@@ -347,7 +333,7 @@ export function AddWorkspaceStep_ConnectRemote({
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              {t('workspace.createWorkspaceDesc')}
+              A workspace will be created on the remote server with this name.
             </p>
             {isCreateNew && remoteWorkspaces.length > 0 && (
               <button
@@ -360,7 +346,7 @@ export function AddWorkspaceStep_ConnectRemote({
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft className="h-3 w-3" />
-                {t('workspace.selectWorkspace')}
+                Use existing workspace
               </button>
             )}
           </div>
@@ -368,14 +354,12 @@ export function AddWorkspaceStep_ConnectRemote({
 
         {/* Connect / Create and Connect */}
         <AddWorkspacePrimaryButton
-          onClick={
-            needsConnectionTest ? handleTestConnection : handleConnect
-          }
-          disabled={primaryButtonDisabled}
-          loading={isCreating || isTesting}
-          loadingText={primaryButtonLoadingLabel}
+          onClick={handleConnect}
+          disabled={!canConnect}
+          loading={isCreating}
+          loadingText={buttonLoadingLabel}
         >
-          {primaryButtonLabel}
+          {buttonLabel}
         </AddWorkspacePrimaryButton>
       </div>
     </AddWorkspaceContainer>

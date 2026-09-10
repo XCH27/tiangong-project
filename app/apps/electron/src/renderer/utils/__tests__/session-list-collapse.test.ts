@@ -7,12 +7,8 @@ import {
 describe('serializeSessionFilterForScope', () => {
   it('serializes simple filter kinds', () => {
     expect(serializeSessionFilterForScope({ kind: 'allSessions' })).toBe('allSessions')
-    expect(serializeSessionFilterForScope({ kind: 'projectSessions' })).toBe('projectSessions')
-    expect(serializeSessionFilterForScope({ kind: 'projectSessions', workspaceId: 'ws1' })).toBe('projectSessions:ws1')
-    expect(serializeSessionFilterForScope({ kind: 'conversations' })).toBe('conversations')
     expect(serializeSessionFilterForScope({ kind: 'flagged' })).toBe('flagged')
     expect(serializeSessionFilterForScope({ kind: 'archived' })).toBe('archived')
-    expect(serializeSessionFilterForScope(undefined)).toBe('projectSessions')
   })
 
   it('serializes id-based filters with stable prefixes', () => {

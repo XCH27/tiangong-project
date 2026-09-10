@@ -1,5 +1,5 @@
 import { getModelDisplayName, getModelShortName, getModelProvider } from '@config/models'
-import { ProviderBrandIcon } from '@/components/icons/ProviderBrandIcon'
+import { getProviderIcon } from '@/lib/provider-icons'
 import { cn } from '@/lib/utils'
 
 interface ModelChipProps {
@@ -12,11 +12,12 @@ interface ModelChipProps {
 
 /**
  * Read-only chip: provider brand icon + model name. Reuses the centralized
- * model registry (`@config/models`) and the bundled provider sprite so it
- * can't drift from the real model metadata and resolves every known vendor.
+ * model registry (`@config/models`) and provider icon map so it can't drift
+ * from the real model metadata.
  */
 export function ModelChip({ model, short = false, className }: ModelChipProps) {
   const provider = getModelProvider(model) ?? 'anthropic'
+  const iconUrl = getProviderIcon(provider)
   const label = short ? getModelShortName(model) : getModelDisplayName(model)
 
   return (
@@ -27,7 +28,11 @@ export function ModelChip({ model, short = false, className }: ModelChipProps) {
         className
       )}
     >
-      <ProviderBrandIcon providerId={provider} size={12} className="rounded-[2px]" aria-hidden />
+      {iconUrl ? (
+        <img src={iconUrl} alt="" className="h-3 w-3 shrink-0 rounded-[2px]" aria-hidden />
+      ) : (
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" aria-hidden />
+      )}
       <span className="min-w-0 truncate">{label}</span>
     </span>
   )

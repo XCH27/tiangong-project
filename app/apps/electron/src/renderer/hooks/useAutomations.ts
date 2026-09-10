@@ -9,7 +9,7 @@
  * - Syncing automations to Jotai atom for cross-component access
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSetAtom } from 'jotai'
 import { toast } from 'sonner'
@@ -24,8 +24,6 @@ async function loadAutomationsFromServer(workspaceId: string): Promise<Automatio
 
 export interface UseAutomationsResult {
   automations: AutomationListItem[]
-  automationLoadError: boolean
-  retryLoadAutomations: () => void
   automationTestResults: Record<string, TestResult>
   automationPendingDelete: string | null
   pendingDeleteAutomation: AutomationListItem | undefined
@@ -46,17 +44,6 @@ export function useAutomations(
   const [automations, setAutomations] = useState<AutomationListItem[]>([])
   const [automationTestResults, setAutomationTestResults] = useState<Record<string, TestResult>>({})
   const [automationPendingDelete, setAutomationPendingDelete] = useState<string | null>(null)
-  const [automationLoadError, setAutomationLoadError] = useState(false)
-  const activeWorkspaceIdRef = useRef(activeWorkspaceId)
-  activeWorkspaceIdRef.current = activeWorkspaceId
-
-  // Never project one workspace's automations into another while the new
-  // workspace is loading. Within the same workspace, refresh failures retain
-  // the last confirmed list instead of fabricating an empty configuration.
-  useEffect(() => {
-    setAutomations([])
-    setAutomationLoadError(false)
-  }, [activeWorkspaceId])
 
   // Sync automations to Jotai atom for cross-component access (MainContentPanel)
   const setAutomationsAtom = useSetAtom(automationsAtom)
@@ -69,24 +56,17 @@ export function useAutomations(
   // history effect can re-merge them.
   const loadAndHydrate = useCallback(async () => {
     if (!activeWorkspaceId) return
-    const requestedWorkspaceId = activeWorkspaceId
     try {
-      const items = await loadAutomationsFromServer(requestedWorkspaceId)
+      const items = await loadAutomationsFromServer(activeWorkspaceId)
       try {
-        const map = await window.electronAPI.getAutomationLastExecuted(requestedWorkspaceId)
+        const map = await window.electronAPI.getAutomationLastExecuted(activeWorkspaceId)
         for (const item of items) {
           item.lastExecutedAt = map[item.id] ?? item.lastExecutedAt
         }
       } catch { /* history unavailable — timestamps stay undefined */ }
-      if (activeWorkspaceIdRef.current !== requestedWorkspaceId) return
       setAutomations(items)
-      setAutomationLoadError(false)
-    } catch (error) {
-      if (activeWorkspaceIdRef.current !== requestedWorkspaceId) return
-      // Preserve the last confirmed projection. Replacing it with [] makes a
-      // transport/storage failure indistinguishable from a genuinely empty config.
-      console.error('[useAutomations] Failed to load automations:', error)
-      setAutomationLoadError(true)
+    } catch {
+      setAutomations([])
     }
   }, [activeWorkspaceId])
 
@@ -224,8 +204,6 @@ export function useAutomations(
 
   return {
     automations,
-    automationLoadError,
-    retryLoadAutomations: () => { void loadAndHydrate() },
     automationTestResults,
     automationPendingDelete,
     pendingDeleteAutomation,

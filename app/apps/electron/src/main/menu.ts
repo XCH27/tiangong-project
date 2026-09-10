@@ -1,8 +1,7 @@
 import { Menu, app, shell, BrowserWindow } from 'electron'
-import { join } from 'path'
 import { i18n } from '@craft-agent/shared/i18n'
 import { RPC_CHANNELS, type BroadcastEventMap } from '../shared/types'
-import { EDIT_MENU, VIEW_MENU, WINDOW_MENU, HELP_LINKS } from '../shared/menu-schema'
+import { EDIT_MENU, VIEW_MENU, WINDOW_MENU } from '../shared/menu-schema'
 import type { MenuItem } from '../shared/menu-schema'
 import type { WindowManager } from './window-manager'
 import type { EventSink } from '@craft-agent/server-core/transport'
@@ -233,25 +232,10 @@ export async function rebuildMenu(): Promise<void> {
     {
       label: i18n.t("menu.help"),
       submenu: [
-        ...HELP_LINKS.flatMap<Electron.MenuItemConstructorOptions>((link, index) => [
-          ...(index > 0 && HELP_LINKS[index - 1].group !== link.group
-            ? [{ type: 'separator' as const }]
-            : []),
-          {
-            label: i18n.t(link.labelKey),
-            click: () => shell.openExternal(link.url)
-          }
-        ]),
-        { type: 'separator' as const },
-        // Preview-gated surfaces (G6 frontend track) live in the component
-        // playground; until now the page was built but had no entry point.
-        ...(isDebugMode ? [{
-          label: i18n.t("menu.componentPlayground"),
-          click: () => {
-            const win = new BrowserWindow({ width: 1280, height: 860, title: i18n.t("menu.componentPlayground") })
-            void win.loadFile(join(__dirname, 'renderer/playground.html'))
-          }
-        }] : []),
+        {
+          label: i18n.t("menu.helpAndDocs"),
+          click: () => shell.openExternal('https://thecraftagents.com/docs')
+        },
         {
           label: i18n.t("menu.keyboardShortcuts"),
           accelerator: 'CmdOrCtrl+/',

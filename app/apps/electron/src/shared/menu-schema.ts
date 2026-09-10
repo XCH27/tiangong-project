@@ -14,7 +14,6 @@
 
 import { RPC_CHANNELS } from './types'
 import { FEATURE_FLAGS } from '@craft-agent/shared/feature-flags'
-import { getDocsHomeUrl, getDocUrl } from '@craft-agent/shared/docs/doc-links'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -23,25 +22,25 @@ import { getDocsHomeUrl, getDocUrl } from '@craft-agent/shared/docs/doc-links'
 export interface MenuItemAction {
   type: 'action'
   id: string
-  labelKey: string // i18n key — resolve with t() at render time
+  labelKey: string              // i18n key — resolve with t() at render time
   /** Link to the action registry (e.g., 'view.toggleSidebar').
    *  Enables future: derive display shortcuts from registry + propagate user overrides. */
   actionId?: string
-  shortcut: string // Electron accelerator: 'CmdOrCtrl+B'
-  shortcutDisplayMac: string // Display on macOS: '⌘B'
-  shortcutDisplayOther: string // Display on Windows/Linux: 'Ctrl+B'
+  shortcut: string              // Electron accelerator: 'CmdOrCtrl+B'
+  shortcutDisplayMac: string    // Display on macOS: '⌘B'
+  shortcutDisplayOther: string  // Display on Windows/Linux: 'Ctrl+B'
   ipcChannel: string
-  icon: string // Lucide icon name
+  icon: string                  // Lucide icon name
 }
 
 export interface MenuItemRole {
   type: 'role'
-  role: string // Electron role: 'undo', 'copy', etc.
-  labelKey: string // i18n key — resolve with t() at render time
+  role: string                  // Electron role: 'undo', 'copy', etc.
+  labelKey: string              // i18n key — resolve with t() at render time
   shortcutDisplayMac?: string
   shortcutDisplayOther?: string
   icon: string
-  ipcChannel?: string // Optional IPC for renderer to call
+  ipcChannel?: string           // Optional IPC for renderer to call
 }
 
 export interface MenuItemSeparator {
@@ -51,27 +50,22 @@ export interface MenuItemSeparator {
 /**
  * External-link menu item (e.g. "Help & Documentation").
  *
- * Renderers turn this into `window.electronAPI.openUrl(url)`; the Electron native
- * menu builder opens the same URL through `shell.openExternal`.
+ * Renderers turn this into `window.electronAPI.openUrl(url)`. Not consumed by the
+ * Electron native menu builder — main process imports only EDIT/VIEW/WINDOW today.
  */
 export interface MenuItemUrl {
   type: 'url'
   id: string
-  labelKey: string // i18n key — resolve with t() at render time
-  url: string // Target URL passed to shell.openExternal
-  icon: string // Lucide icon name
+  labelKey: string              // i18n key — resolve with t() at render time
+  url: string                   // Target URL passed to shell.openExternal
+  icon: string                  // Lucide icon name
 }
 
-export interface HelpMenuLink extends MenuItemUrl {
-  group: 'topic' | 'all'
-}
-
-export type MenuItem =
-  MenuItemAction | MenuItemRole | MenuItemSeparator | MenuItemUrl
+export type MenuItem = MenuItemAction | MenuItemRole | MenuItemSeparator | MenuItemUrl
 
 export interface MenuSection {
   id: string
-  labelKey: string // i18n key — resolve with t() at render time
+  labelKey: string              // i18n key — resolve with t() at render time
   icon: string
   items: MenuItem[]
 }
@@ -296,70 +290,17 @@ export const ROOT_MENU = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Canonical Help directory rendered by the desktop app menu, mobile Help page,
- * and macOS native menu. Contextual "Learn more" actions elsewhere may still
- * link directly to a topic through `getDocUrl`; they do not define another
- * directory.
- *
- * Excludes `keyboardShortcuts`, which is a `MenuItemAction` and lives in
- * `ROOT_MENU`.
+ * External-link items rendered inside the Help submenu (desktop) and the Help
+ * sub-page (mobile). Excludes `keyboardShortcuts`, which is a `MenuItemAction`
+ * and lives in `ROOT_MENU` so mobile can hoist it to the root list.
  */
-export const HELP_LINKS: HelpMenuLink[] = [
+export const HELP_LINKS: MenuItemUrl[] = [
   {
     type: 'url',
-    id: 'help-sources',
-    labelKey: 'sidebar.sources',
-    url: getDocUrl('sources'),
-    icon: 'DatabaseZap',
-    group: 'topic',
-  },
-  {
-    type: 'url',
-    id: 'help-skills',
-    labelKey: 'sidebar.skills',
-    url: getDocUrl('skills'),
-    icon: 'Zap',
-    group: 'topic',
-  },
-  {
-    type: 'url',
-    id: 'help-statuses',
-    labelKey: 'sidebar.statuses',
-    url: getDocUrl('statuses'),
-    icon: 'CheckCircle2',
-    group: 'topic',
-  },
-  {
-    type: 'url',
-    id: 'help-permissions',
-    labelKey: 'settings.permissions.title',
-    url: getDocUrl('permissions'),
-    icon: 'Settings',
-    group: 'topic',
-  },
-  {
-    type: 'url',
-    id: 'help-automations',
-    labelKey: 'sidebar.automations',
-    url: getDocUrl('automations'),
-    icon: 'Webhook',
-    group: 'topic',
-  },
-  {
-    type: 'url',
-    id: 'help-messaging',
-    labelKey: 'settings.messaging.title',
-    url: getDocUrl('messaging'),
-    icon: 'MessageSquare',
-    group: 'topic',
-  },
-  {
-    type: 'url',
-    id: 'help-all-documentation',
-    labelKey: 'menu.allDocumentation',
-    url: getDocsHomeUrl(),
-    icon: 'BookOpen',
-    group: 'all',
+    id: 'helpAndDocs',
+    labelKey: 'menu.helpAndDocs',
+    url: 'https://thecraftagents.com/docs',
+    icon: 'HelpCircle',
   },
 ]
 
@@ -428,8 +369,8 @@ import { SETTINGS_PAGES, type SettingsSubpage } from './settings-registry'
 
 export interface SettingsMenuItem {
   id: SettingsSubpage
-  labelKey: string // i18n key - resolve with t() at render time
-  icon: string // Lucide icon name for AppMenu
+  labelKey: string    // i18n key - resolve with t() at render time
+  icon: string        // Lucide icon name for AppMenu
   descriptionKey: string // i18n key - resolve with t() at render time
 }
 
@@ -440,33 +381,29 @@ export interface SettingsMenuItem {
 const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   app: 'ToggleRight',
   ai: 'Sparkles',
-  'expert-kits': 'Boxes',
-  labels: 'Tag',
-  usage: 'ChartColumn',
-  terminal: 'SquareTerminal',
   appearance: 'Palette',
   input: 'Keyboard',
   workspace: 'Building2',
   permissions: 'ShieldCheck',
+  labels: 'Tag',
   messaging: 'MessageSquare',
   server: 'Server',
   shortcuts: 'Keyboard',
   preferences: 'UserCircle',
-  archived: 'Archive',
 }
 
 /**
  * All settings pages - derived from settings-registry (single source of truth)
  * Order is determined by SETTINGS_PAGES in settings-registry.ts
  */
-export const SETTINGS_ITEMS: SettingsMenuItem[] = SETTINGS_PAGES.filter(
-  (page) => page.id !== 'server' || FEATURE_FLAGS.embeddedServer,
-).map((page) => ({
-  id: page.id,
-  labelKey: page.labelKey,
-  icon: SETTINGS_ICONS[page.id],
-  descriptionKey: page.descriptionKey,
-}))
+export const SETTINGS_ITEMS: SettingsMenuItem[] = SETTINGS_PAGES
+  .filter(page => page.id !== 'server' || FEATURE_FLAGS.embeddedServer)
+  .map(page => ({
+    id: page.id,
+    labelKey: page.labelKey,
+    icon: SETTINGS_ICONS[page.id],
+    descriptionKey: page.descriptionKey,
+  }))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -475,11 +412,6 @@ export const SETTINGS_ITEMS: SettingsMenuItem[] = SETTINGS_PAGES.filter(
 /**
  * Get the display shortcut for the current platform
  */
-export function getShortcutDisplay(
-  item: MenuItemAction | MenuItemRole,
-  isMac: boolean,
-): string {
-  return isMac
-    ? (item.shortcutDisplayMac ?? '')
-    : (item.shortcutDisplayOther ?? '')
+export function getShortcutDisplay(item: MenuItemAction | MenuItemRole, isMac: boolean): string {
+  return isMac ? (item.shortcutDisplayMac ?? '') : (item.shortcutDisplayOther ?? '')
 }

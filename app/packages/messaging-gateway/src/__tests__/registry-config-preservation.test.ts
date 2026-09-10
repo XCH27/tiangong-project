@@ -78,31 +78,6 @@ function makeFakeTelegramAdapter(): PlatformAdapter {
 }
 
 describe('MessagingGatewayRegistry — config preservation across writes', () => {
-  for (const platform of ['whatsapp', 'lark'] as const) {
-    it(`${platform} config writes preserve owners and accessMode`, () => {
-      const { registry, workspaceId } = makeRegistry()
-      registry.setPlatformOwners(workspaceId, platform, [
-        { userId: `${platform}-owner`, addedAt: Date.now() },
-      ])
-      registry.setPlatformAccessMode(workspaceId, platform, 'owner-only')
-
-      // Exercise the same merge seam used by reconnect credential/config writes.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(registry as any).patchPlatformConfig(
-        workspaceId,
-        platform,
-        platform === 'whatsapp'
-          ? { enabled: true, selfChatMode: false }
-          : { enabled: true, domain: 'feishu' },
-      )
-
-      expect(registry.getPlatformAccessMode(workspaceId, platform)).toBe('owner-only')
-      expect(registry.getPlatformOwners(workspaceId, platform)).toEqual([
-        expect.objectContaining({ userId: `${platform}-owner` }),
-      ])
-    })
-  }
-
   it('owners survive bindWorkspaceSupergroup', async () => {
     const { registry, workspaceId } = makeRegistry()
     // Set up an owner via the public method.
@@ -169,21 +144,6 @@ describe('MessagingGatewayRegistry — config preservation across writes', () =>
     expect(owners).toHaveLength(1)
     expect(owners[0]!.userId).toBe('first')
   })
-
-  for (const platform of ['whatsapp', 'lark'] as const) {
-    it(`seedFirstOwner bootstraps ${platform} instead of leaving owner-only locked`, async () => {
-      const { registry, workspaceId } = makeRegistry()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const seeded = await (registry as any).seedFirstOwner(workspaceId, platform, {
-        userId: `${platform}-first`,
-        addedAt: Date.now(),
-      })
-
-      expect(seeded).toEqual([expect.objectContaining({ userId: `${platform}-first` })])
-      expect(registry.getPlatformAccessMode(workspaceId, platform)).toBe('owner-only')
-      expect(registry.getPlatformOwners(workspaceId, platform)).toEqual(seeded)
-    })
-  }
 })
 
 describe('MessagingGatewayRegistry — lock-down migrates open bindings', () => {
@@ -209,7 +169,7 @@ describe('MessagingGatewayRegistry — lock-down migrates open bindings', () => 
     expect(reloaded.createdAt).toBe(b.createdAt)
   })
 
-  it('locking down WhatsApp migrates its open bindings but not another platform', () => {
+  it('non-telegram bindings are not touched by the lock-down', () => {
     const { registry, workspaceId } = makeRegistry()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const state = (registry as any).workspaces.get(workspaceId) ??
@@ -220,15 +180,9 @@ describe('MessagingGatewayRegistry — lock-down migrates open bindings', () => 
       accessMode: 'open',
     })
 
-    const telegram = store.bind('ws-test', 'sess-B', 'telegram', 'chat-B', undefined, {
-      accessMode: 'open',
-    })
+    registry.setPlatformAccessMode(workspaceId, 'telegram', 'owner-only')
 
-    registry.setPlatformAccessMode(workspaceId, 'whatsapp', 'owner-only')
-
-    const waReloaded = store.getAll().find((x: { id: string }) => x.id === wa.id)
-    const telegramReloaded = store.getAll().find((x: { id: string }) => x.id === telegram.id)
-    expect(waReloaded.config.accessMode).toBe('inherit')
-    expect(telegramReloaded.config.accessMode).toBe('open')
+    const reloaded = store.getAll().find((x: { id: string }) => x.id === wa.id)
+    expect(reloaded.config.accessMode).toBe('open')
   })
 })

@@ -71,9 +71,6 @@ export function parseArgs(argv: string[]): CliArgs {
         url = args[++i] ?? ''
         break
       case '--token':
-        // Deprecated: tokens on argv are visible in process listings and
-        // shell history. Kept for compatibility — $CRAFT_SERVER_TOKEN is
-        // the preferred path (env fallback below).
         token = args[++i] ?? ''
         break
       case '--workspace':
@@ -1900,8 +1897,7 @@ Usage: craft-cli [options] <command> [args...]
 
 Connection:
   --url <ws[s]://...>    Server URL (default: $CRAFT_SERVER_URL)
-  --token <secret>       Auth token (deprecated: leaks via process listings/shell
-                         history — prefer $CRAFT_SERVER_TOKEN)
+  --token <secret>       Auth token (default: $CRAFT_SERVER_TOKEN)
   --workspace <id>       Workspace ID (auto-detected if omitted)
   --timeout <ms>         Request timeout (default: 10000)
   --tls-ca <path>        Custom CA cert for self-signed TLS

@@ -54,7 +54,6 @@ import { getCredentialManager } from '../credentials/manager.ts';
 
 // ChatGPT OAuth token refresh (used when Pi routes ChatGPT auth)
 import { refreshChatGptTokens } from '../auth/chatgpt-oauth.ts';
-import { refreshXaiTokens } from '../auth/xai-oauth.ts';
 
 // Session-scoped tool callbacks (for SubmitPlan, source auth, etc.)
 import {
@@ -802,16 +801,6 @@ export class PiAgent extends BaseAgent {
             refreshToken: newCreds.refresh,
             expiresAt: newCreds.expires,
           });
-        } else if (piAuthProvider === 'xai') {
-          // Grok subscription: xAI refresh tokens rotate, so persist the
-          // complete replacement credential before notifying subprocesses.
-          const newTokens = await refreshXaiTokens(stored.refreshToken);
-          await credentialManager.setLlmOAuth(slug, {
-            accessToken: newTokens.accessToken,
-            idToken: newTokens.idToken,
-            refreshToken: newTokens.refreshToken,
-            expiresAt: newTokens.expiresAt,
-          });
         } else {
           // ChatGPT Plus: use existing refresh utility
           const newTokens = await refreshChatGptTokens(stored.refreshToken);
@@ -1452,7 +1441,8 @@ export class PiAgent extends BaseAgent {
    *
    * - Session tools (SubmitPlan, config_validate, etc.) -> session-tools-core handlers
    * - call_llm -> preExecuteCallLlm (BaseAgent)
-   * - mcp__* tools -> routed via mcpPool
+   * - mcp__* tools -> MCP server proxy (TODO)
+   * - api_* tools -> API source proxy (TODO)
    *
    * Returns { content: string; isError: boolean } matching subprocess protocol.
    */
@@ -1500,9 +1490,6 @@ export class PiAgent extends BaseAgent {
       onPlanSubmitted: (planPath: string) => {
         setLastPlanFilePath(sessionId, planPath);
         this.onPlanSubmitted?.(planPath);
-      },
-      onEnterPlan: (reason?: string) => {
-        return this.onEnterPlan?.(reason);
       },
       onAuthRequest: (request: unknown) => {
         this.onAuthRequest?.(request as any);
@@ -1991,7 +1978,6 @@ export class PiAgent extends BaseAgent {
     if (sessionId) {
       mergeSessionScopedToolCallbacks(sessionId, {
         onPlanSubmitted: (planPath) => this.onPlanSubmitted?.(planPath),
-        onEnterPlan: (reason) => this.onEnterPlan?.(reason) as { activated: boolean } | void,
         onAuthRequest: (request) => this.onAuthRequest?.(request),
         queryFn: (request) => this.queryLlm(request),
       });
@@ -2047,7 +2033,7 @@ export class PiAgent extends BaseAgent {
         this.config.debugMode,
         this.config.workspace.rootPath,
         this.config.session?.workingDirectory,
-        this.config.systemPromptPreset ?? 'framework',
+        this.config.systemPromptPreset,
         'Craft Agents Backend', // backendName
         getCoAuthorPreference(), // respect user's includeCoAuthoredBy preference (#576)
         projectContext ?? undefined,

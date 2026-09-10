@@ -2,14 +2,14 @@ import * as React from 'react'
 import type { ComponentEntry } from './types'
 import { TransportConnectionBanner } from '@/components/app-shell/TransportConnectionBanner'
 import type { TransportConnectionState } from '../../../shared/types'
-import { Plus } from 'lucide-react'
+import { HelpCircle, Plus } from 'lucide-react'
 
 // =============================================================================
 // TransportConnectionBanner Playground
 // Demonstrates the banner in context with a mock TopBar to verify no overlap.
 // =============================================================================
 
-/** Mock TopBar strip — just the right-side add-panel button beside the banner. */
+/** Mock TopBar strip — just the right-side buttons that caused the overlap. */
 function MockTopBar() {
   return (
     <div className="absolute top-0 left-0 right-0 h-[48px] z-[50] flex items-center justify-between px-3 border-b border-border/30 bg-background/80 backdrop-blur-sm">
@@ -17,6 +17,9 @@ function MockTopBar() {
       <div className="flex items-center gap-1" style={{ paddingRight: 12 }}>
         <button className="h-[26px] w-[26px] flex items-center justify-center rounded-lg hover:bg-foreground/5">
           <Plus className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
+        </button>
+        <button className="h-[26px] w-[26px] flex items-center justify-center rounded-lg hover:bg-foreground/5">
+          <HelpCircle className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
         </button>
       </div>
     </div>
@@ -103,7 +106,7 @@ export const transportBannerComponents: ComponentEntry[] = [
     id: 'transport-banner-layout',
     name: 'TransportConnectionBanner (Layout)',
     category: 'Chat',
-    description: 'Banner with mock TopBar — verifies Retry button does not overlap the add-panel button',
+    description: 'Banner with mock TopBar — verifies Retry button does not overlap help button',
     component: BannerInLayout,
     layout: 'centered',
     props: [],

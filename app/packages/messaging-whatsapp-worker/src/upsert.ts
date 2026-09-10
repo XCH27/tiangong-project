@@ -89,7 +89,7 @@ export async function processUpsertMessage(
     return
   }
 
-  const key = msg.key as { remoteJid?: string; participant?: string; id?: string }
+  const key = msg.key as { remoteJid?: string; id?: string }
   log(
     `upsert emit: channelId=${key.remoteJid} textLen=${text.length} attachments=${attachments.length}`,
   )
@@ -97,8 +97,7 @@ export async function processUpsertMessage(
     type: 'incoming',
     channelId: key.remoteJid!,
     messageId: key.id!,
-    // In groups, remoteJid is the group JID — the actual sender is participant.
-    senderId: key.participant ?? key.remoteJid!,
+    senderId: key.remoteJid!,
     senderName: (msg.pushName as string | undefined) ?? undefined,
     text,
     attachments: attachments.length > 0 ? attachments : undefined,

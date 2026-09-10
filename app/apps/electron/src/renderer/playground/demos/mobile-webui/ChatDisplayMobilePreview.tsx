@@ -80,8 +80,10 @@ export function ChatDisplayMobilePreview({
   permissionMode = 'ask',
 }: ChatDisplayMobilePreviewProps) {
   const [model, setModel] = React.useState('haiku')
-  const mode = permissionMode
+  const [mode, setMode] = React.useState<PermissionMode>(permissionMode)
   const [input, setInput] = React.useState('')
+
+  React.useEffect(() => setMode(permissionMode), [permissionMode])
 
   const messages = React.useMemo(
     () => buildMessages(messageCount, streaming),
@@ -109,6 +111,7 @@ export function ChatDisplayMobilePreview({
             currentModel={model}
             onModelChange={setModel}
             permissionMode={mode}
+            onPermissionModeChange={setMode}
             inputValue={input}
             onInputChange={(v) => setInput(v)}
             sources={MOCK_SOURCES}

@@ -127,39 +127,4 @@ export {
   MAX_BUNDLE_SIZE_BYTES,
 } from './bundle.ts';
 
-// Derived session activity (live; distinct from the manual sessionStatus label)
-export type {
-  SessionActivity,
-  SessionActivityInput,
-  ActivityTone,
-  AgentFleetSummary,
-} from './session-activity.ts';
-export {
-  deriveSessionActivity,
-  needsAttention,
-  activityRank,
-  activityTone,
-  activityIsAnimated,
-  activityHasIndicator,
-  summarizeFleet,
-} from './session-activity.ts';
-
-// Message revert (file-level rollback; distinct from conversation branching)
-export type {
-  SnapshotId,
-  TurnSnapshot,
-  RevertPlan,
-  StagedRevert,
-  RevertBlockedReason,
-  RevertAvailability,
-  RevertSummary,
-} from './revert-model.ts';
-export {
-  planRevert,
-  planRestoreBeforeRevert,
-  mergeRevertRestores,
-  revertAvailability,
-  summarizeStagedRevert,
-} from './revert-model.ts';
-
 

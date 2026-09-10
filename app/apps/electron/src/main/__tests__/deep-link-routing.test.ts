@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { handleDeepLink, parseDeepLink } from '../deep-link'
+import { handleDeepLink } from '../deep-link'
 import { RPC_CHANNELS } from '../../shared/types'
 import type { EventSink } from '@craft-agent/server-core/transport'
 import type { WindowManager } from '../window-manager'
@@ -20,19 +20,6 @@ function createMockWindow(webContentsId: number) {
 }
 
 describe('handleDeepLink routing', () => {
-  it('accepts Project and Conversations compound routes used by Session links', () => {
-    expect(
-      parseDeepLink('craftagents://projectSessions/ws/ws-2/session/session-1')
-    ).toMatchObject({
-      view: 'projectSessions/ws/ws-2/session/session-1',
-    })
-    expect(
-      parseDeepLink('craftagents://conversations/session/session-2')
-    ).toMatchObject({
-      view: 'conversations/session/session-2',
-    })
-  })
-
   it('prefers resolved target client over preferred caller client', async () => {
     const targetWindow = createMockWindow(22)
 

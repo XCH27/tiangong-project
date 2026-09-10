@@ -8,6 +8,3 @@ preload = ["./packages/shared/src/unified-network-interceptor.ts"]
 # `bun install --linker=hoisted` for the same reason.
 [install]
 linker = "hoisted"
-
-[test]
-preload = ["./scripts/test-preload.ts"]

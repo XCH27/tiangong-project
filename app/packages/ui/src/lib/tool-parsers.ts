@@ -176,8 +176,6 @@ export function parseWebSearchResult(rawContent: string): string {
 export interface CodeOverlayData {
   type: 'code'
   filePath: string
-  /** False when filePath is only a display/language hint, not a host path. */
-  filePathActions?: boolean
   content: string
   mode: 'read' | 'write'
   startLine?: number
@@ -218,8 +216,6 @@ export interface DocumentOverlayData {
   type: 'document'
   content: string
   filePath: string
-  /** False when filePath is only a display hint, not a host path. */
-  filePathActions?: boolean
   /** Tool that produced this content (e.g. "Write") — used for the header type badge */
   toolName: string
   error?: string
@@ -255,9 +251,7 @@ export function extractOverlayData(activity: ActivityItem): OverlayData | null {
   const toolName = activity.toolName?.toLowerCase() || ''
 
   // Get file path from various input formats
-  const sourceFilePath = (input?.file_path as string) || (input?.path as string)
-  const filePath = sourceFilePath || 'file'
-  const filePathActions = Boolean(sourceFilePath)
+  const filePath = (input?.file_path as string) || (input?.path as string) || 'file'
 
   // Read tool → Code overlay (read mode)
   if (toolName === 'read') {
@@ -265,7 +259,6 @@ export function extractOverlayData(activity: ActivityItem): OverlayData | null {
     return {
       type: 'code',
       filePath,
-      filePathActions,
       content: parsed.content,
       mode: 'read',
       startLine: parsed.startLine,
@@ -285,7 +278,6 @@ export function extractOverlayData(activity: ActivityItem): OverlayData | null {
       return {
         type: 'document',
         filePath,
-        filePathActions,
         content,
         toolName: 'Write',
         error: activity.error,
@@ -294,7 +286,6 @@ export function extractOverlayData(activity: ActivityItem): OverlayData | null {
     return {
       type: 'code',
       filePath,
-      filePathActions,
       content,
       mode: 'write',
       error: activity.error,

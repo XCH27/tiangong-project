@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadWorkspaceConfig } from '../storage.ts';
@@ -17,25 +17,6 @@ afterEach(() => {
 });
 
 describe('workspace storage: config normalization', () => {
-  it('recovers a durable config backup left by an interrupted replace', () => {
-    const workspaceRoot = mkdtempSync(join(tmpdir(), 'ws-atomic-recovery-'));
-    tempDirs.push(workspaceRoot);
-    const configPath = join(workspaceRoot, 'config.json');
-    const rawConfig = {
-      id: 'ws_recovered',
-      name: 'Recovered Workspace',
-      slug: 'recovered-workspace',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    writeFileSync(configPath, JSON.stringify(rawConfig), 'utf-8');
-    renameSync(configPath, configPath + '.atomic-backup');
-
-    const loaded = loadWorkspaceConfig(workspaceRoot);
-
-    expect(loaded?.id).toBe('ws_recovered');
-  });
-
   it('maps canonical defaults.permissionMode and cyclablePermissionModes on read', () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), 'ws-mode-map-'));
     tempDirs.push(workspaceRoot);

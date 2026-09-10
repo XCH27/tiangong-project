@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import { useEffect, useState, useMemo, useCallback } from "react"
 import {
   AlertTriangle,
-  ArrowDown,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -17,7 +16,6 @@ import { motion, AnimatePresence } from "motion/react"
 import { toast } from "sonner"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { coerceInputText, appendRestoredInput } from "@/lib/input-text"
 import { Markdown, CollapsibleMarkdownProvider, StreamingMarkdown, type RenderMode } from "@/components/markdown"
@@ -44,10 +42,7 @@ import {
 } from "@craft-agent/ui"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
-import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill, Workspace } from "../../../shared/types"
-import { estimateContextBreakdown } from './input/context-breakdown'
-import { currentContextTokens } from './input/context-usage'
-import { stripPiPrefixForDisplay } from './input/model-picker-helpers'
+import type { Session, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, LoadedSource, LoadedSkill } from "../../../shared/types"
 import type { PermissionMode } from "@craft-agent/shared/agent/modes"
 import type { ThinkingLevel } from "@craft-agent/shared/agent/thinking-levels"
 import {
@@ -73,32 +68,22 @@ import { ChatInputZone, type StructuredInputState, type StructuredResponse, type
 import type { RichTextInputHandle } from "@/components/ui/rich-text-input"
 import { useBackgroundTasks } from "@/hooks/useBackgroundTasks"
 import { useTurnCardExpansion } from "@/hooks/useTurnCardExpansion"
-import { useNavigation } from "@/context/NavigationContext"
+import { useNavigation } from "@/contexts/NavigationContext"
 import { useAppShellContext } from "@/context/AppShellContext"
 import { navigate, routes } from "@/lib/navigate"
 import { CHAT_LAYOUT } from "@/config/layout"
-import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity, summarizeFileChanges } from "@/lib/file-changes"
+import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
 import { handleErrorMessageAction } from "./error-message-actions"
-import { DelegationStrip } from "./DelegationStrip"
 
 // ============================================================================
 // CSS Custom Highlight API helper
 // ============================================================================
 
-// Minimal ambient extension: this project's TS lib types HighlightRegistry as
-// read-only maplike; the live API also supports set/delete (used below).
-declare global {
-  interface HighlightRegistry {
-    set(name: string, highlight: Highlight): void
-    delete(name: string): boolean
-  }
-}
-
 /** Access CSS.highlights lazily — avoids stale ref from module-init / HMR timing */
-function getCSSHighlights(): HighlightRegistry | undefined {
+function getCSSHighlights(): Map<string, Highlight> | undefined {
   try {
-    return CSS.highlights
+    return (CSS as any).highlights as Map<string, Highlight> | undefined
   } catch {
     return undefined
   }
@@ -178,13 +163,12 @@ interface ChatDisplayProps {
   thinkingLevel?: ThinkingLevel
   /** Callback when thinking level changes */
   onThinkingLevelChange?: (level: ThinkingLevel) => void
-  fastMode?: boolean
-  onFastModeChange?: (enabled: boolean) => void
-  runtimeMode?: string | null
-  onRuntimeModeChange?: (mode: string | null) => void
   // Advanced options
   /** Current permission mode */
   permissionMode?: PermissionMode
+  onPermissionModeChange?: (mode: PermissionMode) => void
+  /** Enabled permission modes for Shift+Tab cycling */
+  enabledModes?: PermissionMode[]
   // Input value preservation (controlled from parent)
   /** Current input value - preserved across mode switches and conversation changes */
   inputValue?: string
@@ -219,8 +203,6 @@ interface ChatDisplayProps {
   workingDirectory?: string
   /** Callback when working directory changes */
   onWorkingDirectoryChange?: (path: string) => void
-  /** Change the execution workspace for an empty session. */
-  onExecutionWorkspaceChange?: (workspaceId: string, workspace?: Workspace) => void
   /** Session folder path (for "Reset to Session Root" option) */
   sessionFolderPath?: string
   // Lazy loading
@@ -257,8 +239,6 @@ interface ChatDisplayProps {
   emptyStateLabel?: string
   /** When true, the session's locked connection has been removed - disables send and shows unavailable state */
   connectionUnavailable?: boolean
-  /** Open a child session from the inline delegation strip (optional; strip falls back to navigation) */
-  onOpenSession?: (sessionId: string) => void
 }
 
 import {
@@ -472,12 +452,10 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Thinking level
   thinkingLevel = 'medium',
   onThinkingLevelChange,
-  fastMode = false,
-  onFastModeChange,
-  runtimeMode = null,
-  onRuntimeModeChange,
   // Advanced options
   permissionMode = 'ask',
+  onPermissionModeChange,
+  enabledModes,
   // Input value preservation
   inputValue,
   onInputChange,
@@ -498,7 +476,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Working directory
   workingDirectory,
   onWorkingDirectoryChange,
-  onExecutionWorkspaceChange,
   sessionFolderPath,
   // Lazy loading
   messagesLoading = false,
@@ -518,7 +495,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   emptyStateLabel,
   // Connection unavailable
   connectionUnavailable = false,
-  onOpenSession,
 }, ref) {
   const { t } = useTranslation()
 
@@ -531,21 +507,10 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const isInputDisabled = disabled
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const scrollViewportRef = React.useRef<HTMLDivElement>(null)
-  const [showScrollToBottom, setShowScrollToBottom] = React.useState(false)
   const prevSessionIdRef = React.useRef<string | null>(null)
   // Reverse pagination: show last N turns initially, load more on scroll up
   const TURNS_PER_PAGE = 20
   const [visibleTurnCount, setVisibleTurnCount] = React.useState(TURNS_PER_PAGE)
-  // Mirror of visibleTurnCount readable from stable scroll-handler closures
-  const visibleTurnCountRef = React.useRef(visibleTurnCount)
-  React.useEffect(() => {
-    visibleTurnCountRef.current = visibleTurnCount
-  }, [visibleTurnCount])
-  // Pending scroll-anchor restore after older turns are prepended
-  const pendingPrependScrollRef = React.useRef<{
-    prevScrollHeight: number
-    prevScrollTop: number
-  } | null>(null)
   // Sticky-bottom: When true, auto-scroll on content changes. Toggled by user scroll behavior.
   const isStickToBottomRef = React.useRef(true)
   // Mirror isFocusedPanel into a ref so the ResizeObserver closure reads the latest value
@@ -560,8 +525,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const prevSessionIdForCommitScrollRef = React.useRef<string | null>(null)
   const internalTextareaRef = React.useRef<RichTextInputHandle>(null)
   const textareaRef = externalTextareaRef || internalTextareaRef
-  const inputValueRef = React.useRef(inputValue)
-  inputValueRef.current = inputValue
   const [sendMessageKey, setSendMessageKey] = useState<'enter' | 'cmd-enter'>('enter')
   const [openAnnotationRequest, setOpenAnnotationRequest] = React.useState<{
     messageId: string
@@ -573,8 +536,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   } | null>(null)
   const followUpOpenNonceRef = React.useRef(0)
 
-  // Navigation for session branching + delegation strip child opens
-  const { navigate, navigateToSession } = useNavigation()
+  // Navigation for session branching
+  const { navigate } = useNavigation()
 
   // Get isDark from useTheme hook for overlay theme
   // This accounts for scenic themes (like Haze) that force dark mode
@@ -938,14 +901,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
       }
     })
 
-    return () => {
-      cancelAnimationFrame(rafId)
-      // Drop Highlight objects so they don't retain Ranges over detached DOM
-      try {
-        cssHighlights?.delete('search-passive')
-        cssHighlights?.delete('search-active')
-      } catch { /* API unavailable — no-op */ }
-    }
+    return () => cancelAnimationFrame(rafId)
   }, [searchQuery, isSearchActive, matchingTurnIds, session?.id, visibleTurnCount])
 
   // Effect 2: Update active/passive highlight split when navigation index changes
@@ -1034,8 +990,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
       } catch {
         // Ignore parse errors, use defaults
       }
-    }).catch((error) => {
-      console.warn('[ChatDisplay] Failed to read preferences:', error)
     })
   }, [])
 
@@ -1048,13 +1002,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         const prefs = JSON.parse(content)
         prefs.diffViewer = settings
         prefs.updatedAt = Date.now()
-        return window.electronAPI.writePreferences(JSON.stringify(prefs, null, 2))
+        window.electronAPI.writePreferences(JSON.stringify(prefs, null, 2))
       } catch {
         // If preferences malformed, create fresh with just diffViewer
-        return window.electronAPI.writePreferences(JSON.stringify({ diffViewer: settings, updatedAt: Date.now() }, null, 2))
+        window.electronAPI.writePreferences(JSON.stringify({ diffViewer: settings, updatedAt: Date.now() }, null, 2))
       }
-    }).catch((error) => {
-      console.warn('[ChatDisplay] Failed to persist diff viewer settings:', error)
     })
   }, [])
 
@@ -1152,40 +1104,26 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight
     // 20px threshold for "at bottom" detection
     isStickToBottomRef.current = distanceFromBottom < 20
-    setShowScrollToBottom(distanceFromBottom >= 20)
 
     // Load more turns when scrolling near top (within 100px)
     if (scrollTop < 100) {
-      // Pure state computation only — scroll adjustment happens in the
-      // useLayoutEffect keyed on visibleTurnCount (StrictMode-safe).
-      const prev = visibleTurnCountRef.current
-      const currentStartIndex = Math.max(0, totalTurnCountRef.current - prev)
-      if (currentStartIndex <= 0) return // Already showing all
+      setVisibleTurnCount(prev => {
+        // Check if there are more turns to load
+        const currentStartIndex = Math.max(0, totalTurnCountRef.current - prev)
+        if (currentStartIndex <= 0) return prev // Already showing all
 
-      pendingPrependScrollRef.current = {
-        prevScrollHeight: viewport.scrollHeight,
-        prevScrollTop: scrollTop,
-      }
-      visibleTurnCountRef.current = prev + TURNS_PER_PAGE
-      setVisibleTurnCount(prev + TURNS_PER_PAGE)
+        // Remember scroll height before adding more items
+        const prevScrollHeight = viewport.scrollHeight
+
+        // Schedule scroll position adjustment after render
+        requestAnimationFrame(() => {
+          const newScrollHeight = viewport.scrollHeight
+          viewport.scrollTop = newScrollHeight - prevScrollHeight + scrollTop
+        })
+
+        return prev + TURNS_PER_PAGE
+      })
     }
-  }, [])
-
-  // Prepend scroll adjustment: after older turns render, restore the visual
-  // anchor so the content the user was reading doesn't jump.
-  React.useLayoutEffect(() => {
-    const pending = pendingPrependScrollRef.current
-    if (!pending) return
-    pendingPrependScrollRef.current = null
-    const viewport = scrollViewportRef.current
-    if (!viewport) return
-    viewport.scrollTop = viewport.scrollHeight - pending.prevScrollHeight + pending.prevScrollTop
-  }, [visibleTurnCount])
-
-  const scrollToBottom = React.useCallback(() => {
-    isStickToBottomRef.current = true
-    setShowScrollToBottom(false)
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
   // Set up scroll event listener
@@ -1448,75 +1386,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Memoize turn grouping - avoids O(n) iteration on every render/keystroke
   const allTurns = React.useMemo(() => {
     if (!session) return []
-    return groupMessagesByTurn(
-      session.messages.filter((message) => !message.isQueued),
-      { isSessionProcessing: session.isProcessing },
-    )
+    return groupMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
   }, [session?.messages, session?.isProcessing])
-
-  const sessionFileChanges = React.useMemo(() => collectFileChangesFromActivities(
-    allTurns.flatMap((turn) => turn.type === 'assistant' ? turn.activities : []),
-  ).filter((change) => !change.error), [allTurns])
-  const sessionFileChangeSummary = React.useMemo(
-    () => summarizeFileChanges(sessionFileChanges),
-    [sessionFileChanges],
-  )
-
-  const queuedComposerItems = React.useMemo(() => {
-    if (!session) return []
-    return session.messages
-      .filter((message) => message.role === 'user' && message.isQueued && !message.hidden)
-      .map((message) => ({ id: message.id, text: coerceInputText(message.content) }))
-      .filter((item) => item.text.length > 0)
-  }, [session?.messages])
-
-  React.useEffect(() => {
-    setShowScrollToBottom(false)
-  }, [session?.id])
-
-  const removeQueuedComposerItem = React.useCallback(async (item: { id: string; text: string }) => {
-    if (!session) return undefined
-    const removed = await window.electronAPI.sessionCommand(session.id, {
-      type: 'removeQueuedMessage',
-      messageId: item.id,
-    })
-    if (typeof removed !== 'string') return undefined
-    return removed
-  }, [session?.id])
-
-  const handleEditQueuedComposerItem = React.useCallback(async (item: { id: string; text: string }) => {
-    try {
-      const restored = await removeQueuedComposerItem(item)
-      if (restored) onInputChange?.(appendRestoredInput(inputValueRef.current, restored))
-      textareaRef.current?.focus()
-    } catch (error) {
-      console.error('[ChatDisplay] Failed to edit queued message:', error)
-    }
-  }, [onInputChange, removeQueuedComposerItem, textareaRef])
-
-  const handleRemoveQueuedComposerItem = React.useCallback(async (item: { id: string; text: string }) => {
-    try {
-      await removeQueuedComposerItem(item)
-    } catch (error) {
-      console.error('[ChatDisplay] Failed to remove queued message:', error)
-    }
-  }, [removeQueuedComposerItem])
-
-  const handleRevertCompletedMessage = React.useCallback(async (message: Message) => {
-    if (!session || message.role !== 'user') return
-    try {
-      const restored = await window.electronAPI.sessionCommand(session.id, {
-        type: 'revertToUserMessage',
-        messageId: message.id,
-      })
-      if (typeof restored === 'string' && restored.trim()) {
-        onInputChange?.(appendRestoredInput(inputValueRef.current, restored))
-      }
-      textareaRef.current?.focus()
-    } catch (error) {
-      console.error('[ChatDisplay] Failed to revert completed message:', error)
-    }
-  }, [onInputChange, session, textareaRef])
 
   // Keep ref in sync for scroll handler
   totalTurnCountRef.current = allTurns.length
@@ -1622,13 +1493,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         <div className="flex flex-1 flex-col min-h-0 min-w-0 relative">
           {/* Content layer */}
           <div className="flex flex-1 flex-col min-h-0 min-w-0 relative z-10">
-          {/* Inline H11 strip: child sessions under this parent (null when none) */}
-          {!compactMode && (
-            <DelegationStrip
-              parentSessionId={session.id}
-              onOpenSession={onOpenSession ?? navigateToSession}
-            />
-          )}
           {/* === MESSAGES AREA: Scrollable list of message bubbles === */}
           <div className="relative flex-1 min-h-0">
             {/* Mask wrapper - fades content at top and bottom over transparent/image backgrounds */}
@@ -1755,7 +1619,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
                             compactMode ? "pt-2 pb-1" : CHAT_LAYOUT.userMessagePadding,
-                            "rounded-lg transition-[color,background-color,box-shadow] duration-200",
+                            "rounded-lg transition-all duration-200",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1766,8 +1630,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             onOpenUrl={onOpenUrl}
                             sessionId={session?.id}
                             compactMode={compactMode}
-                            canRetractCompleted={!session.isProcessing && !turn.message.isQueued}
-                            onRetractCompleted={handleRevertCompletedMessage}
                           />
                         </div>
                       )
@@ -1780,7 +1642,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           key={turnKey}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
-                            "rounded-lg transition-[color,background-color,box-shadow] duration-200",
+                            "rounded-lg transition-all duration-200",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1814,7 +1676,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           key={turnKey}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
-                            "mt-2 rounded-lg transition-[color,background-color,box-shadow] duration-200",
+                            "mt-2 rounded-lg transition-all duration-200",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1834,19 +1696,13 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
                     // Assistant turns - render with TurnCard (buffered streaming)
                     const assistantUiKey = getAssistantTurnUiKey(turn, index)
-                    const requestTurn = turns
-                      .slice(0, index)
-                      .findLast((candidate): candidate is UserTurn => candidate.type === 'user')
-                    const turnFileChangeSummary = summarizeFileChanges(
-                      collectFileChangesFromActivities(turn.activities).filter(change => !change.error),
-                    )
                     return (
                       <div
                         key={turnKey}
                         ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                         className={cn(
                           "pt-2",
-                          "rounded-lg transition-[color,background-color,box-shadow] duration-200",
+                          "rounded-lg transition-all duration-200",
                           isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                           isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                         )}
@@ -1856,18 +1712,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         sessionFolderPath={session.sessionFolderPath}
                         hasActiveFollowUpAnnotations={pendingFollowUpAnnotations.length > 0}
                         turnId={turn.turnId}
-                        modelName={stripPiPrefixForDisplay(
-                          requestTurn?.message.requestModel
-                            || session.model
-                            || '',
-                        ) || undefined}
-                        workMode={requestTurn?.message.requestWorkMode}
-                        fileChangeSummary={turnFileChangeSummary.fileCount > 0
-                          ? turnFileChangeSummary
-                          : undefined}
-                        durationMs={turn.isComplete && requestTurn && turn.completedAt !== undefined
-                          ? Math.max(0, turn.completedAt - requestTurn.message.timestamp)
-                          : undefined}
                         activities={turn.activities}
                         response={turn.response}
                         intent={turn.intent}
@@ -1901,11 +1745,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                                 enabledSourceSlugs: session.enabledSourceSlugs,
                               }
                             )
-                            navigate(routes.view.sessionHome({
-                              id: child.id,
-                              workingDirectory: child.workingDirectory ?? session.workingDirectory,
-                              workspaceId: child.workspaceId ?? session.workspaceId,
-                            }), { newPanel: resolveBranchNewPanelOption(options) })
+                            navigate(routes.view.allSessions(child.id), { newPanel: resolveBranchNewPanelOption(options) })
                           } catch (error) {
                             const rawMessage = error instanceof Error ? error.message : 'Failed to create branch'
                             const message = rawMessage.includes('source and target providers must match')
@@ -2072,43 +1912,15 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             </div>
           </div>
 
-          {showScrollToBottom && (
-            <div className="flex shrink-0 justify-center py-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label={t('chat.scrollToBottom')}
-                onClick={scrollToBottom}
-                className="h-8 w-8 rounded-full bg-background shadow-minimal"
-              >
-                <ArrowDown className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-
           {/* === INPUT CONTAINER: FreeForm or Structured Input === */}
           <ChatInputZone
             compactMode={compactMode}
             permissionMode={permissionMode}
+            onPermissionModeChange={onPermissionModeChange}
             tasks={backgroundTasks}
             sessionId={session.id}
             sessionFolderPath={sessionFolderPath}
-            onKillTask={(taskId) => {
-              const task = backgroundTasks.find(t => t.id === taskId)
-              const type = task?.type === 'shell'
-                ? 'shell'
-                : task?.type === 'workflow'
-                  ? 'workflow'
-                  : 'agent'
-              void killTask(taskId, type).then((result) => {
-                if (result.ok) return
-                toast.error(t(result.reasonKey ?? 'chat.taskKillFailed', {
-                  defaultValue: result.reason,
-                  reason: result.reason,
-                }))
-              })
-            }}
+            onKillTask={(taskId) => killTask(taskId, backgroundTasks.find(t => t.id === taskId)?.type === 'shell' ? 'shell' : 'agent')}
             onInsertMessage={onInputChange}
             sessionLabels={session.labels}
             labels={labels}
@@ -2116,19 +1928,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             sessionStatuses={sessionStatuses}
             currentSessionStatus={session.sessionStatus || 'todo'}
             onSessionStatusChange={onSessionStatusChange}
-            composerContext={!compactMode ? {
-              fileSummary: sessionFileChangeSummary.fileCount > 0 ? sessionFileChangeSummary : undefined,
-              queuedItems: queuedComposerItems,
-              onOpenFileChanges: sessionFileChanges.length > 0 ? () => {
-                setOverlayState({
-                  type: 'multi-diff',
-                  changes: sessionFileChanges,
-                  consolidated: true,
-                })
-              } : undefined,
-              onEditQueued: handleEditQueuedComposerItem,
-              onRemoveQueued: handleRemoveQueuedComposerItem,
-            } : undefined}
             inputProps={{
               placeholder,
               disabled: isInputDisabled,
@@ -2141,10 +1940,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onModelChange,
               thinkingLevel,
               onThinkingLevelChange,
-              fastMode,
-              onFastModeChange,
-              runtimeMode,
-              onRuntimeModeChange,
+              enabledModes,
               enableCompactModelPicker,
               structuredInput,
               onStructuredResponse: handleStructuredResponse,
@@ -2159,7 +1955,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               workspaceId,
               workingDirectory,
               onWorkingDirectoryChange,
-              onExecutionWorkspaceChange,
               disableSend: disableSend || connectionUnavailable,
               connectionUnavailable,
               isEmptySession: session.messages.length === 0,
@@ -2167,16 +1962,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onConnectionChange,
               contextStatus: {
                 isCompacting: session.currentStatus?.statusType === 'compacting',
-                inputTokens: currentContextTokens(session.tokenUsage),
+                inputTokens: session.tokenUsage?.inputTokens,
                 contextWindow: session.tokenUsage?.contextWindow,
-                outputTokens: session.tokenUsage?.outputTokens,
-                cacheReadTokens: session.tokenUsage?.cacheReadTokens,
-                cacheCreationTokens: session.tokenUsage?.cacheCreationTokens,
-                costUsd: session.tokenUsage?.costUsd,
-                breakdown: estimateContextBreakdown(
-                  session.messages,
-                  currentContextTokens(session.tokenUsage),
-                ),
               },
               followUpItems: followUpInputItems,
               onFollowUpClick: handleFollowUpChipClick,
@@ -2212,7 +1999,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             onClose={handleCloseOverlay}
             content={activityOutputOverlayData.content}
             filePath={activityOutputOverlayData.filePath}
-            filePathActions={activityOutputOverlayData.filePathActions}
             mode={activityOutputOverlayData.mode}
             startLine={activityOutputOverlayData.startLine}
             totalLines={activityOutputOverlayData.totalLines}
@@ -2250,7 +2036,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             onOpenUrl={onOpenUrl}
             onOpenFile={onOpenFile}
             filePath={activityOutputOverlayData.filePath}
-            filePathActions={activityOutputOverlayData.filePathActions}
             typeBadge={{
               icon: Info,
               label: activityOutputOverlayData.toolName,
@@ -2308,7 +2093,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             onClose={handleCloseOverlay}
             content={overlayState.content}
             filePath="response.md"
-            filePathActions={false}
             language="markdown"
             mode="read"
             theme={isDark ? 'dark' : 'light'}
@@ -2356,8 +2140,6 @@ interface MessageBubbleProps {
   compactMode?: boolean
   /** Callback to resend the user message that preceded an error */
   onRetry?: () => void
-  canRetractCompleted?: boolean
-  onRetractCompleted?: (message: Message) => void | Promise<void>
 }
 
 /**
@@ -2445,8 +2227,6 @@ function MessageBubble({
   onPopOut,
   compactMode,
   onRetry,
-  canRetractCompleted,
-  onRetractCompleted,
 }: MessageBubbleProps) {
   const { t } = useTranslation()
 
@@ -2459,23 +2239,6 @@ function MessageBubble({
         badges={message.badges}
         isPending={message.isPending}
         isQueued={message.isQueued}
-        timestamp={message.timestamp}
-        modelName={
-          message.requestModel
-            ? stripPiPrefixForDisplay(message.requestModel)
-            : undefined
-        }
-        workMode={message.requestWorkMode}
-        onRetract={message.isQueued && sessionId
-          ? async () => {
-              await window.electronAPI.sessionCommand(sessionId, {
-                type: 'removeQueuedMessage',
-                messageId: message.id,
-              })
-            }
-          : canRetractCompleted && onRetractCompleted
-            ? () => onRetractCompleted(message)
-            : undefined}
         onUrlClick={onOpenUrl}
         onFileClick={onOpenFile}
         compactMode={compactMode}
@@ -2614,13 +2377,7 @@ const MemoizedMessageBubble = React.memo(MessageBubble, (prev, next) => {
     prev.message.id === next.message.id &&
     prev.message.content === next.message.content &&
     prev.message.role === next.message.role &&
-    prev.message.isQueued === next.message.isQueued &&
-    prev.message.timestamp === next.message.timestamp &&
-    prev.message.requestModel === next.message.requestModel &&
-    prev.message.requestWorkMode === next.message.requestWorkMode &&
     prev.sessionId === next.sessionId &&
-    prev.compactMode === next.compactMode &&
-    prev.canRetractCompleted === next.canRetractCompleted &&
-    prev.onRetractCompleted === next.onRetractCompleted
+    prev.compactMode === next.compactMode
   )
 })

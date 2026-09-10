@@ -1,5 +1,4 @@
 import type { AgentProvider, LlmAuthType } from '@craft-agent/shared/agent/backend'
-import type { BackendRuntimeUpdate } from '@craft-agent/shared/agent/backend'
 import { isCompatProvider, modelSupportsImages, type LlmConnection } from '@craft-agent/shared/config'
 import type { FileAttachment } from '@craft-agent/shared/protocol'
 
@@ -15,42 +14,6 @@ export interface ModelAttachmentFilterResult {
   attachments?: FileAttachment[]
   /** Image attachments intentionally omitted from the model payload. */
   omittedImages: FileAttachment[]
-}
-
-interface BackendRuntimeUpdateContext {
-  connection: LlmConnection | null
-  resolvedModel: string
-  authType?: LlmAuthType
-}
-
-/** Build the live-backend update envelope from an already-resolved connection. */
-export function buildBackendRuntimeUpdate({
-  connection,
-  resolvedModel,
-  authType,
-}: BackendRuntimeUpdateContext): BackendRuntimeUpdate {
-  return {
-    model: resolvedModel,
-    providerType: connection?.providerType,
-    authType,
-    runtime: connection ? {
-      baseUrl: connection.baseUrl,
-      piAuthProvider: connection.piAuthProvider,
-      customEndpoint: connection.customEndpoint,
-      customModels: connection.models?.map(model => {
-        if (typeof model === 'string') return model
-        const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined
-        if (model.contextWindow || supportsImages !== undefined) {
-          return {
-            id: model.id,
-            ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-            ...(supportsImages !== undefined ? { supportsImages } : {}),
-          }
-        }
-        return model.id
-      }),
-    } : undefined,
-  }
 }
 
 function definedObject<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {

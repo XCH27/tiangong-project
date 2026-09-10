@@ -16,32 +16,6 @@ const GIT_CONVENTIONS_HEADING = '## Git Conventions'
 const CO_AUTHOR_TRAILER = 'Co-Authored-By: Craft Agent <agents-noreply@craft.do>'
 
 describe('system prompt guidance', () => {
-  it('keeps the provider-neutral framework preset small and tool-driven', () => {
-    const prompt = getSystemPrompt(
-      undefined,
-      undefined,
-      '/tmp/workspace',
-      undefined,
-      'framework',
-      'Pi',
-      false,
-    )
-    const fullPrompt = getSystemPrompt(
-      undefined,
-      undefined,
-      '/tmp/workspace',
-      undefined,
-      'default',
-      'Pi',
-      false,
-    )
-
-    expect(prompt.length).toBeLessThan(fullPrompt.length / 10)
-    expect(prompt).toContain('Load a skill, source guide, project instruction, or detailed reference only when')
-    expect(prompt).not.toContain('## Browser Tools')
-    expect(prompt).not.toContain('## Source Management Tools')
-  })
-
   it('uses backend-neutral debug log querying guidance (rg/grep via Bash)', () => {
     const prompt = getSystemPrompt(
       undefined,

@@ -38,7 +38,6 @@ import type { BrowserWindow } from 'electron'
 import { mainLog } from './logger'
 import type { WindowManager } from './window-manager'
 import { RPC_CHANNELS } from '../shared/types'
-import { COMPOUND_ROUTE_PREFIXES } from '../shared/route-parser'
 import type { EventSink } from '@craft-agent/server-core/transport'
 
 export interface DeepLinkTarget {
@@ -59,17 +58,6 @@ export interface DeepLinkResult {
   success: boolean
   error?: string
   windowId?: number
-}
-
-export interface DeepLinkOptions {
-  /**
-   * Whether `craftagents://action/...` links (delete-session, new-chat?send=true,
-   * etc.) may be dispatched. Only OS entry points (open-url / second-instance)
-   * and trusted app-shell surfaces should pass true — in-app page navigation
-   * (browser panes, popups) must never trigger destructive actions.
-   * Defaults to false.
-   */
-  allowActions?: boolean
 }
 
 /**
@@ -125,8 +113,12 @@ export function parseDeepLink(url: string): DeepLinkTarget | null {
       return null
     }
 
-    // Compound route prefixes (shared with the renderer route parser)
-    // craftagents://allSessions/..., craftagents://projectSessions/ws/{ws}/session/{id}, etc.
+    // Compound route prefixes
+    const COMPOUND_ROUTE_PREFIXES = [
+      'allSessions', 'flagged', 'state', 'sources', 'settings', 'skills'
+    ]
+
+    // craftagents://allSessions/..., craftagents://settings/..., etc. (compound routes)
     if (COMPOUND_ROUTE_PREFIXES.includes(host)) {
       // Reconstruct the full compound route from host + pathname
       const viewRoute = pathParts.length > 0 ? `${host}/${pathParts.join('/')}` : host
@@ -246,7 +238,6 @@ export async function handleDeepLink(
   sink?: EventSink,
   resolveClientId?: (webContentsId: number) => string | undefined,
   preferredClientId?: string,
-  options?: DeepLinkOptions,
 ): Promise<DeepLinkResult> {
   const target = parseDeepLink(url)
 
@@ -256,11 +247,6 @@ export async function handleDeepLink(
       return { success: true }
     }
     return { success: false, error: 'Invalid deep link URL' }
-  }
-
-  if (target.action && options?.allowActions !== true) {
-    mainLog.warn('[DeepLink] Blocked action deep link from untrusted source:', target.action)
-    return { success: false, error: 'Action deep links are only allowed from OS entry points' }
   }
 
   mainLog.info('[DeepLink] Handling:', target)

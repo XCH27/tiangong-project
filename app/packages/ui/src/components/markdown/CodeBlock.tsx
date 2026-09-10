@@ -188,7 +188,7 @@ export function CodeBlock({ code, language = 'text', className, mode = 'full', f
         </span>
         <button
           onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
           aria-label={t('common.copyCode')}
         >
           {copied ? (

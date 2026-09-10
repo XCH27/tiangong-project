@@ -366,7 +366,7 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
       filePath: `${location}/sources/`,
       context:
         'The user wants to add a local folder source. ' +
-        'First, look up the guide: mcp__craft-agents-docs__SearchCraftAgents({ query: "filesystem" }). ' +
+        'First, look up the filesystem source guide in the product docs at https://thecraftagents.com/docs. ' +
         'Local folders are bookmarks - use type: "local" with a local.path field. ' +
         'They use existing Read, Write, Glob, Grep tools - no MCP server needed. ' +
         'If unclear, ask about the folder path they want to connect. ' +
@@ -422,31 +422,27 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
     inlineExecution: true,        // Execute inline in popover
   }),
 
-  // Label catalog — Craft single file; identity = kind + systemPromptPreset on nodes
+  // Label configuration context
   'edit-labels': (location) => ({
     context: {
       label: 'Label Configuration',
       filePath: `${location}/labels/config.json`,
       context:
-        'Edit the project label catalog (session tags / identity roles). ' +
-        'Single authority file: labels/config.json hierarchical "labels" array. ' +
-        'Prefer craft-agent label list|create|update|delete (raw writes to labels/ may be blocked). ' +
-        'Each label: id (stable slug / #id on sessions — do not rename casually), name, color, ' +
-        'optional valueType, optional autoRules[], optional children[]. ' +
-        'Identity: kind "identity" + systemPromptPreset (role text injected when session has this #id; does not grant tools). ' +
-        'Omit kind or use "functional" for organize/filter/auto-rules only. ' +
-        'Do not invent skill, source, or permission binding fields — not implemented. ' +
-        'Starter ids: development, code, bug, automation, content, writing, research, design, priority, project. ' +
-        'Array order = display order. Color-only circles. ' +
-        'autoRules: pattern, flags, valueTemplate, description. ' +
-        'Read ~/.craft-agent/docs/labels.md. Confirm when done.',
+        'The user wants to customize session labels (tagging/categorization). ' +
+        'Labels are stored in labels/config.json as a hierarchical tree. ' +
+        'Each label has: id (slug, globally unique), name (display), color (optional EntityColor), children (sub-labels array). ' +
+        'Colors use EntityColor format: string shorthand (e.g. "blue") or { light, dark } object for theme-aware colors. ' +
+        'Labels are color-only (no icons) — rendered as colored circles in the UI. ' +
+        'Children form a recursive tree structure — array position determines display order. ' +
+        'Read ~/.craft-agent/docs/labels.md for full format reference. ' +
+        'Confirm clearly when done.',
     },
-    example: 'Make research an identity label with a review-focused systemPromptPreset',
+    example: 'Add a "Bug" label with red color',
     displayLabelKey: 'editPopover.label.labelConfiguration',
     exampleKey: 'editPopover.example.editLabels',
-    model: 'fast',
-    systemPromptPreset: 'mini',
-    inlineExecution: true,
+    model: 'fast',               // Use fast model for quick config edits
+    systemPromptPreset: 'mini',   // Use focused mini prompt
+    inlineExecution: true,        // Execute inline in popover
   }),
 
   // Auto-label rules context (focused on regex patterns within labels)
@@ -471,27 +467,28 @@ const EDIT_CONFIGS: Record<EditContextKey, (location: string) => EditConfig> = {
     inlineExecution: true,        // Execute inline in popover
   }),
 
-  // Add new label (settings or # menu). Prefer craft-agent label create.
+  // Add new label context (triggered from the # menu when no labels match)
   'add-label': (location) => ({
     context: {
       label: 'Add Label',
       filePath: `${location}/labels/config.json`,
       context:
-        'The user wants to create a new label. ' +
-        'Prefer craft-agent label create (raw writes to labels/ may be blocked). ' +
-        'Labels live in labels/config.json hierarchical tree. ' +
-        'Fields: id (slug), name, color (EntityColor), optional kind "identity", optional systemPromptPreset, children[]. ' +
-        'For a session role, set kind "identity" and systemPromptPreset. Do not invent skill/source/permission binds. ' +
-        'Read ~/.craft-agent/docs/labels.md. Confirm when done.',
+        'The user wants to create a new label from the # inline menu. ' +
+        'Labels are stored in labels/config.json as a hierarchical tree. ' +
+        'Each label has: id (slug, globally unique), name (display), color (optional EntityColor), children (sub-labels array). ' +
+        'Colors use EntityColor format: string shorthand (e.g. "blue") or { light, dark } object for theme-aware colors. ' +
+        'Labels are color-only (no icons) — rendered as colored circles in the UI. ' +
+        'Read ~/.craft-agent/docs/labels.md for full format reference. ' +
+        'Confirm clearly when done.',
     },
-    example: 'Identity label "Reviewer" with a careful-review systemPromptPreset',
+    example: 'A red "Bug" label',
     overridePlaceholder: 'What label would you like to create?',
     displayLabelKey: 'editPopover.label.addLabel',
     exampleKey: 'editPopover.example.addLabel',
     overridePlaceholderKey: 'editPopover.placeholder.addLabel',
-    model: 'fast',
-    systemPromptPreset: 'mini',
-    inlineExecution: true,
+    model: 'fast',               // Use fast model for quick config edits
+    systemPromptPreset: 'mini',   // Use focused mini prompt
+    inlineExecution: true,        // Execute inline in popover
   }),
 
   // Views configuration context
@@ -1010,7 +1007,7 @@ export function EditPopover({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5, ease: 'easeInOut' }}
-            className="fixed inset-0 bg-black/5 z-overlay"
+            className="fixed inset-0 bg-black/5 z-40"
           />
         )}
       </AnimatePresence>
@@ -1047,7 +1044,7 @@ export function EditPopover({
               <div
                 onMouseDown={handleDragStart}
                 className={cn(
-                  "absolute top-0 left-1/2 -translate-x-1/2 z-floating-menu px-4 py-2 cursor-grab rounded pointer-events-auto titlebar-no-drag",
+                  "absolute top-0 left-1/2 -translate-x-1/2 z-50 px-4 py-2 cursor-grab rounded pointer-events-auto titlebar-no-drag",
                   isDragging && "cursor-grabbing"
                 )}
               >
@@ -1077,7 +1074,7 @@ export function EditPopover({
             {/* Bottom-right resize handle - outside overflow-hidden container */}
             <div
               onMouseDown={handleResizeStart}
-              className="absolute -bottom-2 -right-2 w-6 h-6 cursor-nwse-resize pointer-events-auto z-floating-menu"
+              className="absolute -bottom-2 -right-2 w-6 h-6 cursor-nwse-resize pointer-events-auto z-50"
               style={{ transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` }}
             />
           </PopoverContent>

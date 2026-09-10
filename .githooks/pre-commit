@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Repo pre-commit gate. Wired via: git config core.hooksPath .githooks
 # (replaces the dead husky runtime path .husky/_ that was never generated —
-#  see docs/07-PLAYBOOK.md quality chain).
+#  see AGENTS.md quality chain).
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel)"

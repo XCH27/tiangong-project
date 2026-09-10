@@ -25,11 +25,6 @@ interface WorkspaceCreationScreenProps {
   reconnectWorkspace?: Workspace
   /** Reconnect an existing remote workspace and resolve only on real success. */
   onReconnectWorkspace?: (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => Promise<void>
-  /**
-   * Skip the multi-option choice screen when the caller already chose a path
-   * (e.g. sidebar "+" → Local | Cloud).
-   */
-  initialStep?: CreationStep
 }
 
 /**
@@ -46,13 +41,10 @@ export function WorkspaceCreationScreen({
   className,
   reconnectWorkspace,
   onReconnectWorkspace,
-  initialStep,
 }: WorkspaceCreationScreenProps) {
   const { t } = useTranslation()
-  // Start at 'remote' when reconnecting, or at an explicit initialStep from the caller
-  const [step, setStep] = useState<CreationStep>(
-    reconnectWorkspace ? 'remote' : (initialStep ?? 'choice'),
-  )
+  // Start at 'remote' step directly when reconnecting
+  const [step, setStep] = useState<CreationStep>(reconnectWorkspace ? 'remote' : 'choice')
   const [isCreating, setIsCreating] = useState(false)
   const [dimensions, setDimensions] = useState({ width: 1920, height: 1080 })
 
@@ -134,8 +126,7 @@ export function WorkspaceCreationScreen({
       case 'remote':
         return (
           <AddWorkspaceStep_ConnectRemote
-            // When opened directly from sidebar "+" cloud, back dismisses (no choice step)
-            onBack={reconnectWorkspace || initialStep === 'remote' ? onClose : () => setStep('choice')}
+            onBack={reconnectWorkspace ? onClose : () => setStep('choice')}
             onCreate={handleCreateWorkspace}
             isCreating={isCreating}
             initialUrl={reconnectWorkspace?.remoteServer?.url}

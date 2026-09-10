@@ -43,9 +43,9 @@ import {
   handleSessionModelChanged,
   handleConnectionChanged,
   handleUserMessage,
-  handleQueuedMessageRemoved,
-  handleSessionReverted,
   handleMessageAnnotationsUpdated,
+  handleSessionShared,
+  handleSessionUnshared,
   handleAuthRequest,
   handleAuthCompleted,
   handleUsageUpdate,
@@ -199,14 +199,14 @@ export function processEvent(
     case 'user_message':
       return handleUserMessage(state, event)
 
-    case 'queued_message_removed':
-      return handleQueuedMessageRemoved(state, event)
-
-    case 'session_reverted':
-      return handleSessionReverted(state, event)
-
     case 'message_annotations_updated':
       return handleMessageAnnotationsUpdated(state, event)
+
+    case 'session_shared':
+      return handleSessionShared(state, event)
+
+    case 'session_unshared':
+      return handleSessionUnshared(state, event)
 
     case 'auth_request':
       return handleAuthRequest(state, event)

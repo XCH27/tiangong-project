@@ -7,7 +7,7 @@ export interface CollapsedGroupScopeOptions {
 }
 
 export function serializeSessionFilterForScope(filter?: SessionFilter): string {
-  if (!filter) return 'projectSessions'
+  if (!filter) return 'allSessions'
 
   switch (filter.kind) {
     case 'state':
@@ -16,10 +16,6 @@ export function serializeSessionFilterForScope(filter?: SessionFilter): string {
       return `label:${encodeURIComponent(filter.labelId)}`
     case 'view':
       return `view:${encodeURIComponent(filter.viewId)}`
-    case 'projectSessions':
-      return filter.workspaceId
-        ? `projectSessions:${encodeURIComponent(filter.workspaceId)}`
-        : 'projectSessions'
     default:
       return filter.kind
   }

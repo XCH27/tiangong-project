@@ -21,23 +21,6 @@ export const mkdirSync = () => {}
 export const readdirSync = () => []
 export const readdir = () => {}
 export const copyFileSync = () => {}
-export const openSync = () => { throw new Error('openSync not available in browser') }
-export const closeSync = () => {}
-export const fsyncSync = () => {}
-export const ftruncateSync = () => {}
-export const writeSync = () => 0
-export const readSync = () => 0
-export const appendFileSync = () => {}
-export const chmodSync = () => {}
-export const rmSync = () => {}
-export const rmdirSync = () => {}
-export const lstatSync = () => { throw new Error('lstatSync not available in browser') }
-export const readlinkSync = () => ''
-export const symlinkSync = () => {}
-export const linkSync = () => {}
-export const realpathSync = (p: string) => p
-export const accessSync = () => { throw new Error('accessSync not available in browser') }
-export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, COPYFILE_EXCL: 1 }
 export const promises = {
   readFile: async () => { throw new Error('fs.promises not available in browser') },
   writeFile: async () => { throw new Error('fs.promises not available in browser') },

@@ -20,6 +20,11 @@ mock.module('node:fs', () => ({
   readFileSync: originalExistsSync,
 }));
 
+// `prerequisite-manager` imports exactly one thing from storage, and the real
+// one reads ~/.craft-agent/config-defaults.json through `existsSync` — which
+// this suite has already replaced with a fixture set. The real function then
+// sees its config file "missing" and throws, failing every rule-matching test
+// for a reason that has nothing to do with rule matching.
 mock.module('../../../config/storage.ts', () => ({
   getBrowserToolEnabled: () => true,
 }));
@@ -87,22 +92,16 @@ describe('PrerequisiteManager', () => {
       expect(result.allowed).toBe(true);
     });
 
-    it('exempts craft-agents-docs MCP tools', () => {
-      mockExistsPaths.add(guidePath('craft-agents-docs'));
-      const result = manager.checkPrerequisites('mcp__craft-agents-docs__search');
-      expect(result.allowed).toBe(true);
-    });
-
     it('handles malformed MCP tool names (fewer than 3 parts)', () => {
       const result = manager.checkPrerequisites('mcp__linear');
       expect(result.allowed).toBe(true);
     });
 
-    it('matches the built-in browser tool and blocks until browser docs are read', () => {
+    it('matches native browser tools and blocks until browser docs are read', () => {
       const docsPath = browserDocPath();
       mockExistsPaths.add(docsPath);
 
-      const result = manager.checkPrerequisites('browser_tool');
+      const result = manager.checkPrerequisites('browser_snapshot');
       expect(result.allowed).toBe(false);
       expect(result.blockReason).toContain(docsPath);
     });
@@ -302,11 +301,11 @@ describe('PrerequisiteManager', () => {
       const docsPath = browserDocPath();
       mockExistsPaths.add(docsPath);
 
-      expect(manager.checkPrerequisites('browser_tool').allowed).toBe(false);
-      expect(manager.checkPrerequisites('browser_tool').allowed).toBe(false);
+      expect(manager.checkPrerequisites('browser_open').allowed).toBe(false);
+      expect(manager.checkPrerequisites('browser_open').allowed).toBe(false);
 
       manager.trackReadTool({ file_path: docsPath });
-      expect(manager.checkPrerequisites('browser_tool').allowed).toBe(true);
+      expect(manager.checkPrerequisites('browser_open').allowed).toBe(true);
     });
   });
 

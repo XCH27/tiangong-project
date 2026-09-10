@@ -13,14 +13,10 @@ interface PendingWrite {
 
 interface HeaderMetadataSignature {
   name?: string
-  goal?: string
   labels?: string[]
   isFlagged?: boolean
   sessionStatus?: string
   permissionMode?: string
-  workMode?: string
-  workModeSelection?: string
-  executionPermissionMode?: string
   hasUnread?: boolean
   lastReadMessageId?: string
 }
@@ -28,14 +24,10 @@ interface HeaderMetadataSignature {
 function getHeaderMetadataSignature(header: SessionHeader): string {
   const signature: HeaderMetadataSignature = {
     name: header.name,
-    goal: header.goal,
     labels: header.labels,
     isFlagged: header.isFlagged,
     sessionStatus: header.sessionStatus,
     permissionMode: header.permissionMode,
-    workMode: header.workMode,
-    workModeSelection: header.workModeSelection,
-    executionPermissionMode: header.executionPermissionMode,
     hasUnread: header.hasUnread,
     lastReadMessageId: header.lastReadMessageId,
   }
@@ -46,14 +38,10 @@ function mergeHeaderWithExternalMetadata(localHeader: SessionHeader, diskHeader:
   return {
     ...localHeader,
     name: diskHeader.name,
-    goal: diskHeader.goal,
     labels: diskHeader.labels,
     isFlagged: diskHeader.isFlagged,
     sessionStatus: diskHeader.sessionStatus,
     permissionMode: diskHeader.permissionMode,
-    workMode: diskHeader.workMode,
-    workModeSelection: diskHeader.workModeSelection,
-    executionPermissionMode: diskHeader.executionPermissionMode,
     hasUnread: diskHeader.hasUnread,
     lastReadMessageId: diskHeader.lastReadMessageId,
   }
@@ -89,12 +77,7 @@ class SessionPersistenceQueue {
     }
 
     const timer = setTimeout(() => {
-      // Background (debounced) writes must not crash the process on failure;
-      // the error is logged inside write(). Explicit flush() callers receive
-      // the re-thrown error so they can detect failures (e.g. flushAll on quit).
-      this.write(session.id).catch(() => {
-        // Error already logged in write(); swallow here to avoid unhandled rejection.
-      })
+      void this.write(session.id)
     }, this.debounceMs)
 
     this.pending.set(session.id, { data: session, timer })
@@ -165,7 +148,7 @@ class SessionPersistenceQueue {
       // the original session.jsonl remains intact.
       //
       // Update signature BEFORE the write so that fs.watch events fired
-      // during rename are correctly identified as self-writes.
+      // during unlink/rename are correctly identified as self-writes.
       // Without this, onSessionMetadataChange sees the stale signature
       // and reverts in-memory metadata on idle sessions.
       const finalSignature = getHeaderMetadataSignature(header)
@@ -173,33 +156,12 @@ class SessionPersistenceQueue {
 
       const tmpFile = filePath + '.tmp'
       await writeFile(tmpFile, lines.join('\n') + '\n', 'utf-8')
-      // POSIX `rename` atomically replaces an existing target. Windows'
-      // `rename` fails with EEXIST/EPERM when the target exists, so we
-      // fall back to unlink-then-rename only on that platform. The
-      // previous implementation unlinked first on ALL platforms, which
-      // opened a window where neither the old nor the new file existed
-      // — a crash in that window caused data loss.
-      try {
-        await rename(tmpFile, filePath)
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code
-        if (code === 'EEXIST' || code === 'EPERM') {
-          try { await unlink(filePath) } catch { /* target already gone */ }
-          await rename(tmpFile, filePath)
-        } else {
-          throw err
-        }
-      }
+      // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
+      try { await unlink(filePath) } catch { /* ignore if doesn't exist */ }
+      await rename(tmpFile, filePath)
       debug(`[PersistenceQueue] Wrote session ${sessionId}`)
     } catch (error) {
-      // Roll back the signature: the write did not complete, so the cached
-      // signature must not claim it did. Otherwise fs.watch comparisons
-      // would misclassify the next external change as a self-write.
-      this.lastWrittenHeaderSignature.delete(sessionId)
       console.error(`[PersistenceQueue] Failed to write session ${sessionId}:`, error)
-      // Re-throw so flush() callers (e.g. flushAll on quit) can detect
-      // the failure instead of silently reporting success.
-      throw error
     }
   }
 

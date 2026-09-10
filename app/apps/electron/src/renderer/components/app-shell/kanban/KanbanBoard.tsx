@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   DndContext,
   DragOverlay,
@@ -48,6 +50,8 @@ interface KanbanBoardProps {
   subtaskModelGroups?: KanbanModelProviderGroup[]
   /** Model id pre-selected in the composer. */
   defaultSubtaskModel?: string
+  /** Create a task tile from a typed title. Renders the inline composer in the first column. */
+  onCreateTask?: (title: string) => void
   /** Move a tile to another column (drag-and-drop). Placement only — never touches status. */
   onMoveTask?: (taskId: string, toColumn: KanbanColumnId) => void
   /** Per-column status auto-applied on drop. Keyed by column id; empty = leave untouched. */
@@ -58,13 +62,16 @@ interface KanbanBoardProps {
   onUpdateColumn?: (columnId: string, patch: Partial<KanbanColumnDef>) => void
   /** Remove a custom column (single-project edit mode); its cards reassign to the first column. */
   onRemoveColumn?: (columnId: string) => void
+  /** Append a new custom column (single-project edit mode). Renders the "add column" affordance. */
+  onAddColumn?: () => void
 }
 
 /**
  * The board. Renders the supplied `columns` and buckets tiles strictly by
  * `task.column` (placement is independent from the status badge); a tile whose
  * column id matches none of the active columns falls back to the first column.
- * Task creation is owned by the page header so columns contain tasks only.
+ * The "New Task" composer lives at the top of the first column — creating a
+ * parent session drops a named tile there.
  */
 export function KanbanBoard({
   columns,
@@ -83,12 +90,15 @@ export function KanbanBoard({
   onRunSubtasks,
   subtaskModelGroups,
   defaultSubtaskModel,
+  onCreateTask,
   onMoveTask,
   columnDropStatus,
   onSelectDropStatus,
   onUpdateColumn,
   onRemoveColumn,
+  onAddColumn,
 }: KanbanBoardProps) {
+  const { t } = useTranslation()
   const firstColumnId = columns[0]?.id
 
   const tasksByColumn = React.useMemo(() => {
@@ -142,7 +152,7 @@ export function KanbanBoard({
       onDragCancel={() => setActiveId(null)}
     >
       <div className="flex h-full gap-3 p-3">
-        {columns.map(column => (
+        {columns.map((column, index) => (
           <KanbanColumn
             key={column.id}
             column={column}
@@ -163,6 +173,7 @@ export function KanbanBoard({
             onRunSubtasks={onRunSubtasks}
             subtaskModelGroups={subtaskModelGroups}
             defaultSubtaskModel={defaultSubtaskModel}
+            onCreateTask={index === 0 ? onCreateTask : undefined}
             dropStatusId={column.dropStatusId ?? columnDropStatus?.[column.id]}
             onSelectDropStatus={
               onSelectDropStatus ? statusId => onSelectDropStatus(column.id, statusId) : undefined
@@ -173,6 +184,16 @@ export function KanbanBoard({
             onRemove={onRemoveColumn && columns.length > 1 ? () => onRemoveColumn(column.id) : undefined}
           />
         ))}
+        {onAddColumn && (
+          <button
+            type="button"
+            onClick={onAddColumn}
+            title={t('kanban.column.add')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-lg border border-dashed border-border text-foreground/50 transition-colors hover:border-border/80 hover:bg-foreground/[0.03] hover:text-foreground/80"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+          </button>
+        )}
       </div>
 
       {/* position:fixed overlay clone — escapes the column's overflow clipping.
@@ -180,7 +201,7 @@ export function KanbanBoard({
           gone (it re-renders into the target), so a "fly back" would be wrong. */}
       <DragOverlay dropAnimation={null} style={{ zIndex: 'var(--z-floating-menu, 400)' }}>
         {activeTask ? (
-          <div className="cursor-grabbing rounded-lg shadow-modal-small" style={{ transform: 'scale(1.025)' }}>
+          <div className="cursor-grabbing rounded-lg shadow-dragging" style={{ transform: 'scale(1.025)' }}>
             <TaskTile
               task={activeTask}
               project={activeTask.projectId ? projectsById.get(activeTask.projectId) : undefined}

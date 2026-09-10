@@ -18,9 +18,9 @@ import type { ToolResult } from './types.ts';
 
 // Handlers
 import { handleSubmitPlan } from './handlers/submit-plan.ts';
-import { handleEnterPlan } from './handlers/enter-plan.ts';
 import { handleConfigValidate } from './handlers/config-validate.ts';
 import { handleSkillValidate } from './handlers/skill-validate.ts';
+import { handleManageSkill } from './handlers/manage-skill.ts';
 import { handleMermaidValidate } from './handlers/mermaid-validate.ts';
 import { handleSourceTest } from './handlers/source-test.ts';
 import {
@@ -36,14 +36,12 @@ import { handleScriptSandbox } from './handlers/script-sandbox.ts';
 import { handleRenderTemplate } from './handlers/render-template.ts';
 import { handleSendDeveloperFeedback } from './handlers/send-developer-feedback.ts';
 import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
-import { handleSetSessionGoal } from './handlers/set-session-goal.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
-import { handleAcceptDeliverable } from './handlers/accept-deliverable.ts';
-import { handleListExpertKits, handleManageExpertKit } from './handlers/expert-kits.ts';
-import { handleManageSkill } from './handlers/manage-skill.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleListBackgroundTasks } from './handlers/list-background-tasks.ts';
+import { handleCreateTask } from './handlers/create-task.ts';
+import { handleArchiveSession } from './handlers/archive-session.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
 
@@ -55,13 +53,6 @@ export const SubmitPlanSchema = z.object({
   planPath: z.string().describe('Absolute path to the plan markdown file you wrote'),
 });
 
-export const EnterPlanSchema = z.object({
-  reason: z
-    .string()
-    .optional()
-    .describe('Optional short reason for entering Plan (e.g. ambiguous approach, large scope)'),
-});
-
 export const ConfigValidateSchema = z.object({
   target: z.enum(['config', 'sources', 'statuses', 'preferences', 'permissions', 'automations', 'tool-icons', 'all'])
     .describe('Which config file(s) to validate'),
@@ -70,6 +61,25 @@ export const ConfigValidateSchema = z.object({
 
 export const SkillValidateSchema = z.object({
   skillSlug: z.string().describe('The slug of the skill to validate'),
+});
+
+export const ManageSkillSchema = z.object({
+  action: z.enum(['write', 'move']).describe("'write' creates a skill, 'move' changes where it applies"),
+  slug: z.string().describe('Directory name of the skill'),
+  scope: z
+    .enum(['global', 'workspace', 'project'])
+    .optional()
+    .describe(
+      "Where the skill applies. 'global' is ~/.agents/skills and is SHARED with other agent tools on this machine; 'workspace' is this workspace only; 'project' travels with the repository. Target scope for write, destination for move.",
+    ),
+  fromScope: z
+    .enum(['global', 'workspace', 'project'])
+    .optional()
+    .describe('Source scope. Required for move.'),
+  content: z
+    .string()
+    .optional()
+    .describe('Complete SKILL.md including YAML frontmatter with name and description. Required for write.'),
 });
 
 export const MermaidValidateSchema = z.object({
@@ -197,47 +207,30 @@ export const SetSessionLabelsSchema = z.object({
   labels: z.array(z.string()).describe('Labels to set (replaces all existing labels)'),
 });
 
-export const SetSessionGoalSchema = z.object({
-  sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
-  goal: z.string().nullable().describe('Durable session objective. Pass null or an empty string to clear it.'),
-});
-
 export const SetSessionStatusSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to update. Omit to update the current session.'),
   status: z.string().describe('Status to set (e.g., "todo", "in_progress", "done")'),
 });
 
-export const AcceptDeliverableSchema = z.object({
-  sourcePath: z.string().describe('Project-relative path of the accepted file to copy into deliverables/.'),
-  evidence: z.array(z.object({
-    kind: z.enum(['file', 'session-evidence', 'url']).describe('Evidence kind'),
-    id: z.string().describe('Evidence id or path'),
-  })).optional().describe('Optional evidence refs recorded in the provenance header.'),
-});
-
-export const ManageSkillSchema = z.object({
-  action: z.enum(['write', 'move']).describe('Write a new skill, or move an existing one to a different scope.'),
-  slug: z.string().describe('Directory name for the skill. Letters, digits, dots, dashes and underscores only.'),
-  scope: z.enum(['global', 'workspace', 'project']).optional().describe('Where the skill should end up. "global" is ~/.agents/skills and applies in every workspace on this machine — it is shared with other agent tools. "workspace" is this workspace only. "project" lives in the project folder and travels with the repository.'),
-  fromScope: z.enum(['global', 'workspace', 'project']).optional().describe('Current scope. Required for move.'),
-  content: z.string().optional().describe('Complete SKILL.md content including YAML frontmatter with name and description. Required for write.'),
-});
-
-export const ListExpertKitsSchema = z.object({
-  includeAvailableSkills: z.boolean().optional().describe('Also list the installed skills a kit could carry, with their scope. Default true.'),
-});
-
-export const ManageExpertKitSchema = z.object({
-  action: z.enum(['create', 'update', 'delete']).describe('What to do.'),
-  labelId: z.string().optional().describe('Kit id. Required for update and delete.'),
-  name: z.string().optional().describe('Kit name. Required for create.'),
-  systemPromptPreset: z.string().optional().describe('Role instructions injected when the kit is active.'),
-  skills: z.array(z.string()).optional().describe('Slugs of installed skills this kit carries. Replaces the list whole. A slug that names no installed skill is refused.'),
-  requestedPermissionMode: z.enum(['safe', 'ask', 'allow-all']).optional().describe('The permission mode this role REQUESTS. It is not a grant — the permission path decides and may return something narrower.'),
-});
-
 export const GetSessionInfoSchema = z.object({
   sessionId: z.string().optional().describe('Session ID to query. Omit to get info about the current session.'),
+});
+
+export const ArchiveSessionSchema = z.object({
+  sessionId: z.string().describe('Session ID to archive or unarchive. Required — you cannot archive your own session.'),
+  archived: z.boolean().optional().describe('true to archive (default), false to unarchive.'),
+});
+
+export const CreateTaskSchema = z.object({
+  title: z.string().describe('Short task title shown on the board (also drives the slug)'),
+  description: z.string().describe('What the task should accomplish — becomes the task goal and the initial node prompt'),
+  acceptanceCriteria: z.string().optional().describe('Freeform rubric the final result is verified against'),
+  sources: z.array(z.string()).optional().describe('Source slugs to enable on the task sessions'),
+  skills: z.array(z.string()).optional().describe('Skill slugs applied to dispatched task prompts'),
+  llmConnection: z.string().optional().describe('LLM connection slug serving the model'),
+  model: z.string().optional().describe('Model ID for the task sessions (workspace default when omitted)'),
+  workingDirectory: z.string().optional().describe('Working directory for the task sessions'),
+  projectId: z.string().optional().describe("Project ID to bind the task to (defaults to the invoking session's project)"),
 });
 
 export const ListSessionsSchema = z.object({
@@ -276,46 +269,16 @@ export const UnbindMessagingChannelSchema = z.object({
 // ============================================================
 
 export const TOOL_DESCRIPTIONS = {
-  // Aligned with OpenCode plan_exit + Grok exit_plan_mode: human approval before implement.
-  SubmitPlan: `Submit a completed plan for user review and approval to implement.
+  SubmitPlan: `Submit a plan for user review.
 
-Call this after you have written a complete plan markdown file (Write tool → plansFolderPath).
-This is the exit from Plan phase (OpenCode plan_exit / Grok exit_plan_mode).
+Call this after you have written your plan to a markdown file using the Write tool.
+The plan will be displayed to the user in a special formatted view.
 
-Call when:
-- The plan file is complete and you are confident it is ready to implement
-- Clarifying questions (if any) are resolved
-
-Do NOT call:
-- Before the plan file exists or is finalized
-- If the user still wants to refine the plan
-
-**IMPORTANT after this tool:**
-- Execution is **paused** for user review (accept / revise / reject)
-- No further tool calls or text after SubmitPlan will run
-- On accept, the session continues in Execute (Build/Agent) under the existing permission policy`,
-
-  // Aligned with Grok enter_plan_mode + OpenCode plan_enter description (build stays default).
-  EnterPlan: `Enter the Plan work phase mid-turn without pausing the turn (Grok enter_plan_mode).
-
-The default phase is Execute (OpenCode build / Agent): search and edit freely under permissions.
-Use EnterPlan only when planning first is better than implementing immediately.
-
-Call this tool when:
-- The user's request is complex and would benefit from planning first
-- The approach is genuinely ambiguous (multiple reasonable architectures)
-- The user explicitly asks for a plan
-
-Do NOT call this tool:
-- For simple, straightforward tasks (typo, small UI fix, single-file change)
-- When the user wants immediate implementation
-- When already in Plan (call is a no-op)
-
-After this tool returns:
-- Session becomes Plan (read-only except the governed plan artifact)
-- Continue investigating; write the plan under plansFolderPath
-- Call SubmitPlan when ready for user approval to implement
-- Do not mutate project files except the plan artifact`,
+**IMPORTANT:** After calling this tool:
+- Execution will be **automatically paused** to present the plan to the user
+- No further tool calls or text output will be processed after this tool returns
+- The conversation will resume when the user responds (accept, modify, or reject the plan)
+- Do NOT include any text or tool calls after SubmitPlan - they will not be executed`,
 
   config_validate: `Validate Craft Agent configuration files.
 
@@ -331,6 +294,17 @@ Returns structured validation results with errors, warnings, and suggestions.
 - \`automations\`: Validates automations.json configuration
 - \`tool-icons\`: Validates tool-icons.json
 - \`all\`: Validates all configuration files`,
+
+  manage_skill: `Write a skill, or move one between scopes.
+
+A skill is a directory containing SKILL.md. Choose the scope deliberately:
+- global — ~/.agents/skills. Reaches every workspace AND IS SHARED WITH OTHER AGENT
+  TOOLS ON THIS MACHINE. Writing here changes something outside this product.
+- workspace — this workspace only.
+- project — travels with the repository, so collaborators get it too.
+
+Never overwrites: a slug already taken at the target belongs to whoever wrote it.
+The result always names which scope was touched.`,
 
   skill_validate: `Validate a skill's SKILL.md file.
 
@@ -534,12 +508,7 @@ Use this to share anything that would help improve the product — issues you hi
   set_session_labels: `Set labels on the current session or a specific session by ID. Replaces all existing labels.
 
 Use this to tag sessions for filtering or to trigger label-based automations (LabelAdd/LabelRemove events).
-Identity labels may be selected automatically when one configured role clearly matches the work; a coordinating Agent may assign one to another session with sessionId. Read session info first and preserve unrelated labels because this operation replaces the full array.
 Pass an empty array to clear all labels. Omit sessionId to target the current session.`,
-
-  set_session_goal: `Set or clear the durable goal of the current session or a specific session by ID.
-
-Use this when the user establishes a persistent objective that should remain active across turns, or when a coordinating Agent assigns an explicit objective to another session. Do not invent a goal from casual conversation. Pass null to clear it. Omit sessionId to target the current session.`,
 
   set_session_status: `Set the status of the current session or a specific session by ID (e.g., "todo", "in_progress").
 
@@ -548,28 +517,16 @@ Omit sessionId to target the current session.
 
 IMPORTANT: never move a task into a closed status (such as "done" or "cancelled") yourself — closing a task is the user's decision, made on the board. You may prepare and hand off work by setting an open status like "needs-review"; the user reviews and closes it. Closed-status calls are rejected.`,
 
-  manage_skill: `Write a new skill, or move an existing skill between scopes.
+  archive_session: `Archive or unarchive another session in this workspace by ID.
 
-A skill is a directory holding a SKILL.md whose YAML frontmatter carries name and description; both are required or the loader skips it silently.
+Archiving removes a session from the active list and unread counts — it does NOT delete it (pass archived=false to restore). Use it to tidy up finished or superseded sessions.
+Requires an explicit sessionId and cannot target your own session. Use list_sessions / get_session_info to find the target session's ID.`,
 
-Scope decides where it applies. "global" (~/.agents/skills) reaches every workspace on this machine and is shared with other agent tools, so writing there is visible outside this app and moving out of it takes the skill away from them too. "workspace" is this workspace only. "project" lives in the project folder and travels with the repository.
+  create_task: `Create a Craft Agents Task on the kanban board — writes tasks/<slug>/task.yaml and creates its orchestrator session. CREATION ONLY: the task lands in "todo" and is NOT run; starting it is the user's (or an automation's) decision.
 
-Nothing overwrites: a name already taken at the target is refused, with the reason.`,
-  list_expert_kits: `List the expert kits in this workspace and, by default, the installed skills they could carry.
+Provide title + description (the description becomes the task goal and the initial node prompt). Optional: acceptanceCriteria (verification rubric), sources / skills (workspace slugs), llmConnection + model, workingDirectory, projectId. When projectId is omitted, the task inherits the invoking session's project.
 
-Each kit reports the skills that resolve, the declared slugs that are NOT installed, its sources, tools and requested permission mode. Each available skill reports its scope: "global" applies in every workspace (~/.agents/skills), "workspace" only in this one, "project" only inside this project folder.
-
-Read-only. Use it before manage_expert_kit so you propose skills that actually exist.`,
-  manage_expert_kit: `Create, update or delete an expert kit — a named role that carries a set of installed skills and role instructions.
-
-Use it to assemble a kit in conversation: ask what the person does, propose skills from list_expert_kits, then write the kit. skills replaces the list whole, so pass the full set you want.
-
-requestedPermissionMode records what the role ASKS for. It never grants anything: the permission path decides and may return something narrower.`,
-  accept_deliverable: `Copy an accepted Project file into deliverables/ with a provenance header (R3 acceptance).
-
-Call this when the owner accepts a revision. The helper writes <project>/deliverables/<basename> as header + original bytes. Path escape, missing source, and overwrite of a different file return an explicit error and write nothing.
-
-After a successful copy this tool may set the open status "needs-review" and add an "accepted" label only if that label already exists in the catalog. It never creates labels and never sets done or cancelled — closing the task is the user's decision.`,
+Returns { slug, orchestratorSessionId, taskLabelId, warnings } — unknown source/skill slugs are reported as warnings, not errors. Use it when the user asks to capture or queue work as a task; to execute work right now, use the current session or spawn_session instead.`,
 
   get_session_info: `Get metadata about the current session or a specific session by ID.
 
@@ -652,9 +609,9 @@ export type SessionToolDef = RegistrySessionToolDef | BackendSessionToolDef;
 
 export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'SubmitPlan', description: TOOL_DESCRIPTIONS.SubmitPlan, inputSchema: SubmitPlanSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSubmitPlan },
-  { name: 'EnterPlan', description: TOOL_DESCRIPTIONS.EnterPlan, inputSchema: EnterPlanSchema, executionMode: 'registry', safeMode: 'allow', handler: handleEnterPlan },
   { name: 'config_validate', description: TOOL_DESCRIPTIONS.config_validate, inputSchema: ConfigValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleConfigValidate },
   { name: 'skill_validate', description: TOOL_DESCRIPTIONS.skill_validate, inputSchema: SkillValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleSkillValidate },
+  { name: 'manage_skill', description: TOOL_DESCRIPTIONS.manage_skill, inputSchema: ManageSkillSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageSkill },
   { name: 'mermaid_validate', description: TOOL_DESCRIPTIONS.mermaid_validate, inputSchema: MermaidValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleMermaidValidate },
   { name: 'source_test', description: TOOL_DESCRIPTIONS.source_test, inputSchema: SourceTestSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSourceTest },
   { name: 'source_oauth_trigger', description: TOOL_DESCRIPTIONS.source_oauth_trigger, inputSchema: SourceOAuthTriggerSchema, executionMode: 'registry', safeMode: 'block', handler: handleSourceOAuthTrigger },
@@ -674,12 +631,9 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'browser_tool', description: TOOL_DESCRIPTIONS.browser_tool, inputSchema: BrowserToolSchema, executionMode: 'backend', safeMode: 'allow', handler: null },
   // Session self-management tools (registry — use context callbacks to reach SessionManager)
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
-  { name: 'set_session_goal', description: TOOL_DESCRIPTIONS.set_session_goal, inputSchema: SetSessionGoalSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionGoal },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
-  { name: 'manage_skill', description: TOOL_DESCRIPTIONS.manage_skill, inputSchema: ManageSkillSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageSkill },
-  { name: 'list_expert_kits', description: TOOL_DESCRIPTIONS.list_expert_kits, inputSchema: ListExpertKitsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListExpertKits },
-  { name: 'manage_expert_kit', description: TOOL_DESCRIPTIONS.manage_expert_kit, inputSchema: ManageExpertKitSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageExpertKit },
-  { name: 'accept_deliverable', description: TOOL_DESCRIPTIONS.accept_deliverable, inputSchema: AcceptDeliverableSchema, executionMode: 'registry', safeMode: 'block', handler: handleAcceptDeliverable },
+  { name: 'archive_session', description: TOOL_DESCRIPTIONS.archive_session, inputSchema: ArchiveSessionSchema, executionMode: 'registry', safeMode: 'block', handler: handleArchiveSession },
+  { name: 'create_task', description: TOOL_DESCRIPTIONS.create_task, inputSchema: CreateTaskSchema, executionMode: 'registry', safeMode: 'block', handler: handleCreateTask },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
   { name: 'list_background_tasks', description: TOOL_DESCRIPTIONS.list_background_tasks, inputSchema: ListBackgroundTasksSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListBackgroundTasks },

@@ -11,8 +11,6 @@
 
 // Types
 export * from './types.ts';
-export * from './system-labels.ts';
-export * from './identity.ts';
 
 // Tree utilities (recursive operations on the nested label tree)
 export * from './tree.ts';

@@ -69,19 +69,9 @@ export class RetryScheduler {
   private readonly workspaceRootPath: string;
   private timer: ReturnType<typeof setInterval> | null = null;
   private processing = false;
-  /** Promise chain serializing ALL queue-file mutations (enqueue + tick rewrite) so an
-   *  appendFile can never race tick()'s full-file writeFile and get silently dropped. */
-  private fileQueue: Promise<void> = Promise.resolve();
 
   constructor(options: RetrySchedulerOptions) {
     this.workspaceRootPath = options.workspaceRootPath;
-  }
-
-  /** Run `fn` under the queue-file mutex. */
-  private withFileLock<T>(fn: () => Promise<T>): Promise<T> {
-    const next = this.fileQueue.then(fn, fn);
-    this.fileQueue = next.then(() => {}, () => {});
-    return next;
   }
 
   /**
@@ -128,7 +118,7 @@ export class RetryScheduler {
     };
 
     const queuePath = join(this.workspaceRootPath, AUTOMATIONS_RETRY_QUEUE_FILE);
-    await this.withFileLock(() => appendFile(queuePath, JSON.stringify(entry) + '\n', 'utf-8'));
+    await appendFile(queuePath, JSON.stringify(entry) + '\n', 'utf-8');
     log.debug(`[RetryScheduler] Enqueued ${entry.id} — next retry in ${DEFERRED_DELAYS_MS[0]! / 60_000}m`);
   }
 
@@ -140,17 +130,6 @@ export class RetryScheduler {
     this.processing = true;
 
     try {
-      await this.withFileLock(() => this.processQueue());
-    } catch (err) {
-      log.debug(`[RetryScheduler] Tick error: ${err}`);
-    } finally {
-      this.processing = false;
-    }
-  }
-
-  /** Queue-file mutation half of tick() — runs under the file lock. */
-  private async processQueue(): Promise<void> {
-    {
       const queuePath = join(this.workspaceRootPath, AUTOMATIONS_RETRY_QUEUE_FILE);
 
       // Read queue
@@ -258,6 +237,10 @@ export class RetryScheduler {
         const content = remaining.map(e => JSON.stringify(e)).join('\n') + '\n';
         await writeFile(queuePath, content, 'utf-8');
       }
+    } catch (err) {
+      log.debug(`[RetryScheduler] Tick error: ${err}`);
+    } finally {
+      this.processing = false;
     }
   }
 

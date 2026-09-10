@@ -13,9 +13,8 @@
  *    rejected attempt repopulates it.
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { writeJsonFileAtomic } from './atomic-write'
 import type {
   MessagingLogger,
   PendingRejectReason,
@@ -226,7 +225,7 @@ export class PendingSendersStore {
       if (!existsSync(this.dirPath)) {
         mkdirSync(this.dirPath, { recursive: true })
       }
-      writeJsonFileAtomic(this.filePath, this.entries)
+      writeFileSync(this.filePath, JSON.stringify(this.entries, null, 2), 'utf-8')
       this.changeListener?.()
     } catch (err) {
       this.log.error('failed to save pending senders', {

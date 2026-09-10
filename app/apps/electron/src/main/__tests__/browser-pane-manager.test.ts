@@ -110,9 +110,6 @@ function createMockWindow(opts?: { width?: number; height?: number; minWidth?: n
       if (!listeners[event]) listeners[event] = []
       listeners[event].push(wrapped)
     },
-    removeListener: (event: string, cb: Function) => {
-      listeners[event] = (listeners[event] || []).filter(fn => fn !== cb)
-    },
     _emit: (event: string, ...args: any[]) => {
       for (const cb of listeners[event] || []) cb(...args)
     },
@@ -131,7 +128,6 @@ function createMockWindow(opts?: { width?: number; height?: number; minWidth?: n
     }),
     setBrowserView: mock((_view: any) => {}),
     addBrowserView: mock((_view: any) => {}),
-    removeBrowserView: mock((_view: any) => {}),
     setTopBrowserView: mock((_view: any) => {}),
     getContentSize: mock(() => [contentWidth, contentHeight]),
     setContentSize: mock((width: number, height: number) => {
@@ -189,9 +185,6 @@ mock.module('electron', () => ({
       },
       on: mock((_event: string, _cb: any) => {}),
     })),
-  },
-  webContents: {
-    fromId: mock(() => null),
   },
 }))
 
@@ -295,7 +288,7 @@ describe('BrowserPaneManager', () => {
     expect(result.overrideBrowserWindowOptions?.webPreferences?.contextIsolation).toBe(true)
   })
 
-  it('denies app deep-link popups and never re-opens the scheme externally', async () => {
+  it('denies app deep-link popups and forwards to deep-link handler', async () => {
     manager.createInstance('popup-deeplink')
     const instance = (manager as any).instances.get('popup-deeplink')
     const openHandler = instance.pageView.webContents.setWindowOpenHandler.mock.calls[0][0]
@@ -308,10 +301,7 @@ describe('BrowserPaneManager', () => {
 
     expect(result).toEqual({ action: 'deny' })
     await Bun.sleep(0)
-    // Deep links must never be handed back to the OS protocol handler —
-    // that would loop (or, for action links, escalate an in-app navigation
-    // into a privileged deep-link dispatch).
-    expect(mockShellOpenExternal).not.toHaveBeenCalled()
+    expect(mockShellOpenExternal).toHaveBeenCalledWith('craftagents://settings')
   })
 
   it('destroys child popups when parent instance is destroyed', () => {
@@ -339,51 +329,6 @@ describe('BrowserPaneManager', () => {
     expect(manager.listInstances()).toHaveLength(0)
   })
 
-  it('reparents the page view into the workbench host and restores it on detach', () => {
-    manager.createInstance('embedded-1', { show: false })
-    const instance = (manager as any).instances.get('embedded-1')
-    const host = createMockWindow({ width: 640, height: 720 })
-
-    manager.embedInstance('embedded-1', host as any, {
-      x: 800.4,
-      y: 40.7,
-      width: 399.8,
-      height: 679.2,
-    })
-
-    expect(instance.window.removeBrowserView).toHaveBeenCalledWith(instance.pageView)
-    expect(host.addBrowserView).toHaveBeenCalledWith(instance.pageView)
-    expect(instance.pageView.setBounds).toHaveBeenLastCalledWith({
-      x: 800,
-      y: 41,
-      width: 400,
-      height: 679,
-    })
-
-    manager.detachInstance('embedded-1')
-
-    expect(host.removeBrowserView).toHaveBeenCalledWith(instance.pageView)
-    expect(instance.window.addBrowserView).toHaveBeenCalledWith(instance.pageView)
-  })
-
-  it('restores the page view to its own window when the workbench host closes', () => {
-    manager.createInstance('embedded-host-close', { show: false })
-    const instance = (manager as any).instances.get('embedded-host-close')
-    const host = createMockWindow({ width: 640, height: 720 })
-
-    manager.embedInstance('embedded-host-close', host as any, {
-      x: 0, y: 0, width: 400, height: 600,
-    })
-    expect(instance.embeddedHost).toBe(host)
-
-    // The renderer's unmount cleanup never runs on a forced window destroy.
-    host.isDestroyed = mock(() => true)
-    host._emit('closed')
-
-    expect(instance.embeddedHost).toBeNull()
-    expect(instance.window.addBrowserView).toHaveBeenCalledWith(instance.pageView)
-  })
-
   it('destroys instance via toolbar destroy IPC handler', async () => {
     manager.createInstance('d-ipc-destroy')
     manager.registerToolbarIpc()
@@ -398,34 +343,10 @@ describe('BrowserPaneManager', () => {
     expect(destroyRegistration).toBeTruthy()
     if (!destroyRegistration) throw new Error('Expected browser-toolbar:destroy IPC registration')
 
-    const instance = (manager as any).instances.get('d-ipc-destroy')
     const [, destroyHandler] = destroyRegistration
-    await destroyHandler({ sender: instance.toolbarView.webContents }, 'd-ipc-destroy')
+    await destroyHandler({}, 'd-ipc-destroy')
 
     expect(manager.listInstances()).toHaveLength(0)
-  })
-
-  it('rejects toolbar IPC from a non-toolbar sender', async () => {
-    manager.createInstance('d-ipc-wrong-sender')
-    manager.registerToolbarIpc()
-
-    const destroyRegistration = (
-      mockIpcMainHandle.mock.calls as unknown as Array<[
-        string,
-        (_event: unknown, instanceId: string) => Promise<void>,
-      ]>
-    ).find(([channel]) => channel === 'browser-toolbar:destroy')
-
-    expect(destroyRegistration).toBeTruthy()
-    if (!destroyRegistration) throw new Error('Expected browser-toolbar:destroy IPC registration')
-
-    const instance = (manager as any).instances.get('d-ipc-wrong-sender')
-    const [, destroyHandler] = destroyRegistration
-    // The page webContents (or any non-toolbar sender) must not be able to
-    // drive toolbar actions.
-    await destroyHandler({ sender: instance.pageView.webContents }, 'd-ipc-wrong-sender')
-
-    expect(manager.listInstances()).toHaveLength(1)
   })
 
   it('emits removed callback exactly once when destroy triggers closed', () => {

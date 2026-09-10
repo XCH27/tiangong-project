@@ -15,6 +15,11 @@ let mockedProvider: 'anthropic' | 'pi' = 'anthropic'
 // Partial-mock baseline: import real modules via file paths (avoids recursive mock imports)
 const actualSharedAgentModule = await import('../../../../../packages/shared/src/agent/index.ts')
 const actualSharedAgentBackendModule = await import('../../../../../packages/shared/src/agent/backend/index.ts')
+// Config gets the same treatment. Hand-listing every export made this suite
+// fail whole every time upstream added one — a barrel mock is all-or-nothing,
+// so an unlisted real export is a SyntaxError at import, not a missing stub at
+// call time. Spreading the real module means only the values this test needs to
+// control are overridden, and new exports arrive for free.
 const actualSharedConfigModule = await import('../../../../../packages/shared/src/config/index.ts')
 
 mock.module('electron', () => ({
@@ -63,9 +68,6 @@ mock.module('@craft-agent/shared/config', () => ({
   getWorkspaces: () => [workspace],
   loadConfigDefaults: () => ({
     workspaceDefaults: {
-      defaultWorkMode: 'auto',
-      executionPermissionMode: 'ask',
-      cyclableWorkModes: ['auto', 'explore', 'plan', 'execute'],
       permissionMode: 'ask',
       thinkingLevel: 'medium',
     },
@@ -76,12 +78,6 @@ mock.module('@craft-agent/shared/config', () => ({
   getToolIconsDir: () => '/tmp/tool-icons',
   getMiniModel: () => 'claude-haiku-4-5-20251001',
   getDefaultThinkingLevel: () => 'medium',
-  getPersistedUiLanguage: () => undefined,
-  resolveTitleLanguageName: () => undefined,
-  resolveMidStreamBehavior: () => 'queue',
-  defaultMidStreamBehavior: () => 'queue',
-  resetManagedAnthropicAuthEnvVars: () => {},
-  loadPreferences: () => ({}),
   ConfigWatcher: class ConfigWatcher {
     constructor(..._args: unknown[]) {}
     start() {}
@@ -118,8 +114,12 @@ mock.module('@craft-agent/shared/config', () => ({
   touchLlmConnection: async () => {},
   isCompatProvider: () => false,
   isAnthropicProvider: () => true,
-  modelSupportsImages: () => true,
-  getProviderCatalogEntry: () => undefined,
+  // Mid-stream steering: SessionManager resolves this per connection on every
+  // send. The barrel mock replaces the whole module, so a real export that is
+  // not listed here is a SyntaxError at import time, not a missing stub at call
+  // time — which is why the whole suite failed rather than one test.
+  defaultMidStreamBehavior: () => 'queue',
+  resolveMidStreamBehavior: () => 'queue',
 }))
 
 mock.module('@craft-agent/shared/workspaces', () => ({

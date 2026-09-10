@@ -1,7 +1,7 @@
 /**
  * BackgroundFinishedChip
  *
- * A small pill that floats in the top-right corner *inside* the chat
+ * A small purple pill that floats in the top-right corner *inside* the chat
  * input box when a *background* session (one not currently on screen) finishes a
  * run and produces new output. It is mounted by `InputContainer` (freeform mode)
  * and absolutely positioned — the in-app complement to the OS notification, which
@@ -36,10 +36,9 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { AnimatePresence, motion } from 'motion/react'
 import { CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { NavigationContext } from '@/context/NavigationContext'
+import { NavigationContext } from '@/contexts/NavigationContext'
 import { navigate, routes } from '@/lib/navigate'
 import { focusedSessionIdAtom } from '@/atoms/panel-stack'
-import { sessionMetaMapAtom } from '@/atoms/sessions'
 import {
   backgroundFinishedAtom,
   dismissBackgroundFinishedAtom,
@@ -65,7 +64,6 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
   const queue = useAtomValue(backgroundFinishedAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
   const dismiss = useSetAtom(dismissBackgroundFinishedAtom)
-  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
 
   // Opening a session acknowledges it: clear its queued entry whenever it's the
   // session shown in this row. The detector in App.tsx already avoids queuing
@@ -111,16 +109,7 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
     setExiting(false)
     dismiss(targetId)
     if (nav) nav.navigateToSession(targetId)
-    else {
-      // Fallback (no NavigationContext): build sessionHome from meta so folder-bound
-      // sessions don't land on 对话 and lose their selection.
-      const meta = sessionMetaMap.get(targetId)
-      navigate(routes.view.sessionHome({
-        id: targetId,
-        workingDirectory: meta?.workingDirectory,
-        workspaceId: meta?.workspaceId,
-      }))
-    }
+    else navigate(routes.view.allSessions(targetId))
   }
 
   return (
@@ -142,13 +131,13 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
             className={cn(
               'flex items-center gap-1.5 h-[26px] pl-2 pr-2.5 rounded-full',
               'text-xs font-medium select-none outline-none transition-colors',
-              'text-success',
-              'bg-success/10 hover:bg-success/20',
-              'ring-1 ring-inset ring-success/30',
-              'shadow-minimal backdrop-blur-md',
+              'text-purple-700 dark:text-purple-200',
+              'bg-purple-500/12 hover:bg-purple-500/20',
+              'ring-1 ring-inset ring-purple-400/30 dark:ring-purple-300/25',
+              'shadow-[0_2px_10px_rgba(147,51,234,0.20)] backdrop-blur-md',
             )}
           >
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-300" />
             <span className="truncate max-w-[150px]">{entry.title}</span>
           </button>
         </motion.div>

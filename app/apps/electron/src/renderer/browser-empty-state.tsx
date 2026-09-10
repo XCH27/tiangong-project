@@ -1,23 +1,15 @@
 import React, { useCallback } from 'react'
-import { initReactI18next, useTranslation } from 'react-i18next'
-import LanguageDetector from 'i18next-browser-languagedetector'
+import { useTranslation } from 'react-i18next'
 import ReactDOM from 'react-dom/client'
 import { BrowserEmptyStateCard } from '@craft-agent/ui'
-import { setupI18n } from '@craft-agent/shared/i18n'
 import { routes } from '../shared/routes'
 import { EMPTY_STATE_PROMPT_SAMPLES } from './components/browser/empty-state-prompts'
 import './index.css'
 
-// This is a standalone renderer entry, so it does not inherit main.tsx's
-// translation bootstrap.
-setupI18n([LanguageDetector, initReactI18next])
-
 function BrowserEmptyStateApp() {
   const { t } = useTranslation()
   const handlePromptSelect = useCallback(async (fullPrompt: string) => {
-    // Browser quick chats are folder-less: pin workdir 'none' so they land under
-    // conversations regardless of the workspace's default workingDirectory config.
-    const route = routes.action.newSession({ input: fullPrompt, send: true, workdir: 'none' })
+    const route = routes.action.newSession({ input: fullPrompt, send: true })
     const token = String(Date.now())
 
     try {

@@ -21,7 +21,6 @@ import { WorkspaceCreationScreen } from "@/components/workspace"
 import { waitForTransportConnected } from '@/lib/transport-wait'
 import { useWorkspaceIcons } from "@/hooks/useWorkspaceIcon"
 import { useTransportConnectionState } from "@/hooks/useTransportConnectionState"
-import { getWorkspaceDisplayName } from "@/utils/workspace-display-name"
 import type { Workspace } from "../../../shared/types"
 
 interface CompactWorkspaceSwitcherProps {
@@ -54,7 +53,6 @@ export function CompactWorkspaceSwitcher({
   const [reconnectTarget, setReconnectTarget] = useState<Workspace | null>(null)
   const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
   const selectedWorkspace = workspaces.find(w => w.id === activeWorkspaceId)
-  const selectedWorkspaceName = getWorkspaceDisplayName(selectedWorkspace?.name, t)
   const workspaceIconMap = useWorkspaceIcons(workspaces)
   const connectionState = useTransportConnectionState()
   const isRemote = connectionState?.mode === 'remote'
@@ -184,12 +182,12 @@ export function CompactWorkspaceSwitcher({
           >
             <WorkspaceAvatar
               workspaceId={selectedWorkspace?.id}
-              workspaceName={selectedWorkspaceName}
+              workspaceName={selectedWorkspace?.name}
               src={selectedWorkspace ? workspaceIconMap.get(selectedWorkspace.id) : undefined}
               className="h-5 w-5 mr-1.5 rounded-full ring-1 ring-border/50"
               fallbackClassName="rounded-full text-[11px]"
             />
-            <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspaceName}</span>
+            <span className="truncate min-w-0 flex-1 text-left">{selectedWorkspace?.name || 'Workspace'}</span>
             {selectedWorkspace?.remoteServer && (
               isRemoteDisconnected(selectedWorkspace.id)
                 ? <CloudOff className="h-3 w-3 text-destructive shrink-0" />
@@ -206,8 +204,7 @@ export function CompactWorkspaceSwitcher({
           </DrawerHeader>
 
           <div className="px-2 pb-2 flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
-              {workspaces.map((workspace) => {
-                const workspaceName = getWorkspaceDisplayName(workspace.name, t)
+            {workspaces.map((workspace) => {
               const disconnected = isRemoteDisconnected(workspace.id)
               const isActive = activeWorkspaceId === workspace.id
               const handleSelect = () => {
@@ -238,14 +235,14 @@ export function CompactWorkspaceSwitcher({
                   >
                     <WorkspaceAvatar
                       workspaceId={workspace.id}
-                      workspaceName={workspaceName}
+                      workspaceName={workspace.name}
                       src={workspaceIconMap.get(workspace.id)}
                       className="h-7 w-7 rounded-full ring-1 ring-border/50 shrink-0"
                       fallbackClassName="rounded-full text-sm"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="truncate text-sm font-medium">{workspaceName}</span>
+                        <span className="truncate text-sm font-medium">{workspace.name}</span>
                         {workspaceUnreadMap?.[workspace.id] && <span className="h-2 w-2 rounded-full bg-accent shrink-0" />}
                       </div>
                       {workspace.remoteServer && (

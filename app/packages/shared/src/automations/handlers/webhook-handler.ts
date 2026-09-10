@@ -9,9 +9,8 @@
 import { createLogger } from '../../utils/debug.ts';
 import type { EventBus, BaseEventPayload } from '../event-bus.ts';
 import type { AutomationHandler, AutomationsConfigProvider } from './types.ts';
-import { APP_EVENTS, type AutomationEvent, type AutomationMatcher, type WebhookAction, type WebhookActionResult, type AppEvent } from '../types.ts';
+import { APP_EVENTS, type AutomationEvent, type WebhookAction, type WebhookActionResult, type AppEvent } from '../types.ts';
 import { matcherMatches, buildWebhookEnv, expandEnvVars } from '../utils.ts';
-import { matchesCronCatchup, minuteStartMs } from '../cron-matcher.ts';
 import { executeWithRetry, redactUrl, isTransientFailure, createWebhookHistoryEntry, expandWebhookAction } from '../webhook-utils.ts';
 import { RetryScheduler } from '../retry-scheduler.ts';
 import { appendAutomationHistoryEntry } from '../history-store.ts';
@@ -112,8 +111,6 @@ export class WebhookHandler implements AutomationHandler {
   private readonly retryScheduler: RetryScheduler;
   private bus: EventBus | null = null;
   private boundHandler: ((event: AutomationEvent, payload: BaseEventPayload) => Promise<void>) | null = null;
-  /** Per-matcher minute (start ms) of the last SchedulerTick evaluated here — catch-up tracking. */
-  private readonly cronLastFired = new Map<string, number>();
 
   constructor(options: WebhookHandlerOptions, configProvider: AutomationsConfigProvider) {
     this.options = options;
@@ -148,7 +145,7 @@ export class WebhookHandler implements AutomationHandler {
     const webhookTasks: WebhookTask[] = [];
 
     for (const matcher of matchers) {
-      if (!this.matcherFires(matcher, event, payload)) continue;
+      if (!matcherMatches(matcher, event, payload as unknown as Record<string, unknown>)) continue;
 
       for (const action of matcher.actions) {
         if (action.type === 'webhook') {
@@ -259,22 +256,6 @@ export class WebhookHandler implements AutomationHandler {
       log.debug(`[WebhookHandler] Delivering ${results.length} webhook results`);
       this.options.onWebhookResults(results);
     }
-  }
-
-  /**
-   * Canonical matcher evaluation, with per-matcher cron catch-up for SchedulerTick:
-   * a skipped/slow tick (or app sleep) must not silently drop a scheduled automation —
-   * the matcher fires on the next tick if its cron matched any minute since last evaluated.
-   */
-  private matcherFires(matcher: AutomationMatcher, event: AutomationEvent, payload: BaseEventPayload): boolean {
-    if (event !== 'SchedulerTick' || !matcher.cron) {
-      return matcherMatches(matcher, event, payload as unknown as Record<string, unknown>);
-    }
-    const key = matcher.id ?? matcher.cron;
-    const now = new Date();
-    const cronMatched = matchesCronCatchup(matcher.cron, matcher.timezone, this.cronLastFired.get(key), now);
-    this.cronLastFired.set(key, minuteStartMs(now));
-    return matcherMatches(matcher, event, payload as unknown as Record<string, unknown>, { cronMatched });
   }
 
   /**

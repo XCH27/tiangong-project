@@ -32,7 +32,6 @@ import { isDetailNavState } from '@/lib/nav-helpers'
 import { PanelSlot } from './PanelSlot'
 import { PanelResizeSash } from './PanelResizeSash'
 import { CompactPanelTransition } from './CompactPanelTransition'
-import { SidebarPanelSlot } from './SidebarPanelSlot'
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
@@ -123,14 +122,13 @@ export function PanelStackContainer({
       <div
         ref={scrollRef}
         data-mobile-menu-root="true"
-        data-compact="true"
         className="flex-1 min-w-0 relative panel-scroll @container/shell"
         style={{
           paddingBlock: PANEL_STACK_VERTICAL_OVERFLOW,
           marginBlock: -PANEL_STACK_VERTICAL_OVERFLOW,
-          marginBottom: -PANEL_EDGE_INSET,
-          paddingBottom: PANEL_EDGE_INSET,
-          '--compact-panel-stack-top': `calc(var(--topbar-height) + ${PANEL_STACK_VERTICAL_OVERFLOW + COMPACT_PANEL_TOP_GAP}px)`,
+          marginBottom: -6,
+          paddingBottom: 6,
+          '--compact-panel-stack-top': `${PANEL_STACK_VERTICAL_OVERFLOW + COMPACT_PANEL_TOP_GAP}px`,
         } as React.CSSProperties}
       >
         {/* Navigator slot — full width, slides left to -30% when detail focused. */}
@@ -178,9 +176,7 @@ export function PanelStackContainer({
   }
 
   // === DESKTOP BRANCH ===
-  // AppShell supplies the window-edge insets, including the small optical top
-  // compensation for the downward-biased panel shadow. This stack only adds
-  // shadow room via padding + negative margin.
+  // Same flex-row layout as before; behavior is unchanged.
   return (
     <div
       ref={scrollRef}
@@ -191,8 +187,8 @@ export function PanelStackContainer({
         overflowY: 'hidden',
         paddingBlock: PANEL_STACK_VERTICAL_OVERFLOW,
         marginBlock: -PANEL_STACK_VERTICAL_OVERFLOW,
-        marginBottom: -PANEL_EDGE_INSET,
-        paddingBottom: PANEL_EDGE_INSET,
+        marginBottom: -6,
+        paddingBottom: 6,
         paddingRight: 8,
         marginRight: -8,
       }}
@@ -205,13 +201,22 @@ export function PanelStackContainer({
         style={{ gap: PANEL_GAP, flexGrow: 1, minWidth: 0 }}
       >
         {/* === SIDEBAR SLOT === */}
-        <SidebarPanelSlot
-          sidebarWidth={sidebarWidth}
-          visible={hasSidebar}
+        <motion.div
+          data-panel-role="sidebar"
+          initial={false}
+          animate={{
+            width: hasSidebar ? sidebarWidth : 0,
+            marginRight: hasSidebar ? 0 : -PANEL_GAP,
+            opacity: hasSidebar ? 1 : 0,
+          }}
           transition={transition}
+          className="h-full relative shrink-0"
+          style={{ overflowX: 'clip', overflowY: 'visible' }}
         >
-          {sidebarSlot}
-        </SidebarPanelSlot>
+          <div className="h-full" style={{ width: sidebarWidth }}>
+            {sidebarSlot}
+          </div>
+        </motion.div>
 
         {/* === NAVIGATOR SLOT === */}
         <motion.div

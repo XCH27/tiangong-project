@@ -15,6 +15,7 @@ import { homedir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { expandPath } from './path-processor.ts';
 import { getBrowserToolEnabled } from '../../config/storage.ts';
+import { isBrowserToolNameOrAlias } from '../browser-tool-names.ts';
 
 // ============================================================
 // Types
@@ -46,7 +47,7 @@ export interface PrerequisiteManagerConfig {
 // ============================================================
 
 /** Slugs that are exempt from prerequisite checks (internal sources) */
-const EXEMPT_SLUGS = new Set(['session', 'craft-agents-docs']);
+const EXEMPT_SLUGS = new Set(['session']);
 
 /** Global browser tools docs path required before browser tool usage. */
 const BROWSER_TOOLS_DOC_PATH = resolve(join(homedir(), '.craft-agent', 'docs', 'browser-tools.md'));
@@ -99,9 +100,14 @@ const RULES: PrerequisiteRule[] = [
   // Only matches the session-scoped tool (not external MCP browser tools like mcp__playwright__*),
   // and skipped entirely when the built-in browser tool is disabled.
   {
+    // Name matching goes through the shared helper rather than a literal pair.
+    // `browser-tool-names.ts` exists because the browser tool has a canonical
+    // name, a set of retained legacy aliases, and two namespace prefixes; the
+    // hand-rolled comparison here covered one name and one prefix, so a session
+    // replaying `browser_open`, or any caller using the `mcp__workspace__`
+    // prefix, drove a browser without the guide this rule exists to require.
     toolMatcher: (toolName: string) =>
-      (toolName === 'browser_tool' || toolName === 'mcp__session__browser_tool') &&
-      getBrowserToolEnabled(),
+      getBrowserToolEnabled() && isBrowserToolNameOrAlias(toolName),
     resolveRequiredPath: () => {
       return existsSync(BROWSER_TOOLS_DOC_PATH) ? BROWSER_TOOLS_DOC_PATH : null;
     },

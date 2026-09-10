@@ -196,7 +196,7 @@ export function PermissionsDataTable({
     <button
       onClick={() => setIsFullscreen(true)}
       className={cn(
-        'p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity]',
+        'p-1 rounded-[6px] transition-all',
         'opacity-0 group-hover:opacity-100',
         'bg-background/80 backdrop-blur-sm shadow-minimal',
         'text-muted-foreground/50 hover:text-foreground',

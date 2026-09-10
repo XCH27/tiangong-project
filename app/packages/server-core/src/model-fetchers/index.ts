@@ -21,7 +21,6 @@ import {
 } from '@craft-agent/shared/config'
 import { MODEL_FETCHERS } from './registry'
 import { handlerLog } from './runtime'
-import { enrichModelsWithOpenCodeCatalog } from './opencode-catalog'
 
 /** Copilot models are server-managed — refresh every 10 minutes to pick up policy changes. */
 const COPILOT_REFRESH_INTERVAL_MS = 10 * 60 * 1000
@@ -31,34 +30,6 @@ const COPILOT_REFRESH_INTERVAL_MS = 10 * 60 * 1000
 // ============================================================
 
 type CredentialResolver = (slug: string) => Promise<ModelFetcherCredentials>
-
-/**
- * Preserve the user's explicit Pi model selection while refreshing the
- * provider-owned metadata for models that still exist in discovery.
- *
- * The selected ids and their order are user state. Capability fields such as
- * reasoning efforts and context limits are provider state and must not become
- * permanently stale merely because the connection uses a curated model list.
- * Unknown custom ids remain untouched.
- */
-export function mergeDiscoveredModelCapabilities(
-  selectedModels: Array<ModelDefinition | string>,
-  discoveredModels: ModelDefinition[],
-): Array<ModelDefinition | string> {
-  const discoveredById = new Map(discoveredModels.map(model => [model.id, model]))
-
-  return selectedModels.map(selected => {
-    const id = typeof selected === 'string' ? selected : selected.id
-    const discovered = discoveredById.get(id)
-    if (!discovered) return selected
-
-    return {
-      ...(typeof selected === 'string' ? {} : selected),
-      ...discovered,
-      id,
-    }
-  })
-}
 
 // ============================================================
 // ModelRefreshService
@@ -150,38 +121,17 @@ class ModelRefreshService {
       return
     }
 
-    // OpenCode's models.dev-backed catalog supplies per-model official effort
-    // values and provider-native runtime modes that several SDK discovery
-    // endpoints omit. Live discovery still owns the model list; this only
-    // enriches exact provider/model matches and fails soft when offline.
-    newModels = await enrichModelsWithOpenCodeCatalog(connection, newModels)
-
-    // For Pi connections with an explicit user-owned selection, preserve the
-    // selected ids and order while refreshing provider-owned capabilities.
+    // For Pi connections with explicit user-owned 3-tier selection,
+    // never overwrite model lists from background refresh.
     // Exception: Copilot connections are always server-managed — GitHub's
     // model policy controls which models are enabled, so we must always
     // accept the live API result.
     const isCopilot = connection.providerType === 'pi' && connection.piAuthProvider === 'github-copilot'
-    const preservesUserSelection =
-      connection.modelSelectionMode === 'userSelected'
-      || connection.modelSelectionMode === 'userDefined3Tier'
-    if (connection.providerType === 'pi' && preservesUserSelection && !isCopilot) {
-      const selectedModels = connection.models ?? []
-      const modelCount = selectedModels.length
-      const hydratedModels = mergeDiscoveredModelCapabilities(selectedModels, newModels)
-      const discoveredIds = new Set(newModels.map(model => model.id))
-      const hydratedCount = selectedModels.filter(model =>
-        discoveredIds.has(typeof model === 'string' ? model : model.id),
-      ).length
-
-      handlerLog.info(
-        `Model refresh [${slug}]: preserving user-defined Pi selection (${modelCount} models), refreshed capabilities for ${hydratedCount}`,
-      )
+    if (connection.providerType === 'pi' && connection.modelSelectionMode === 'userDefined3Tier' && !isCopilot) {
+      const modelCount = connection.models?.length ?? 0
+      handlerLog.info(`Model refresh [${slug}]: preserving user-defined Pi model list (${modelCount} models)`)
       if (modelCount > 10) {
-        handlerLog.warn(`Model refresh [${slug}]: user-selected model set has suspicious model count (${modelCount})`)
-      }
-      if (modelCount > 0 && hydratedCount > 0) {
-        updateLlmConnection(slug, { models: hydratedModels })
+        handlerLog.warn(`Model refresh [${slug}]: userDefined3Tier has suspicious model count (${modelCount})`)
       }
       return
     }
@@ -286,8 +236,6 @@ class ModelRefreshService {
         handlerLog.warn(`Periodic model refresh failed for ${slug}: ${err instanceof Error ? err.message : err}`)
       }
     }, intervalMs)
-    // Don't keep the Node.js event loop alive solely for refresh timers.
-    timer.unref?.()
 
     this.timers.set(slug, timer)
   }

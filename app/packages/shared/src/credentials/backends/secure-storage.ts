@@ -54,11 +54,8 @@ const IV_SIZE = 12;
 const AUTH_TAG_SIZE = 16;
 const KEY_SIZE = 32;
 
-// PBKDF2 iterations. OWASP 2023 recommends ≥600000 for sha256.
-const PBKDF2_ITERATIONS = 600000;
-// Legacy iteration count used to decrypt credentials encrypted by older builds.
-// Kept for the migration path only; new writes always use PBKDF2_ITERATIONS.
-const LEGACY_PBKDF2_ITERATIONS = 100000;
+// PBKDF2 iterations (balance security vs startup time)
+const PBKDF2_ITERATIONS = 100000;
 
 /**
  * Get stable machine identifier using OS-native hardware UUID.
@@ -232,7 +229,7 @@ export class SecureStorageBackend implements CredentialBackend {
     // Extract encrypted data
     const encryptedData = fileData.subarray(HEADER_SIZE);
 
-    // Try new stable key first (v2 - hardware UUID based) with current iterations.
+    // Try new stable key first (v2 - hardware UUID based)
     const newKey = this.getEncryptionKey(salt);
     let store = this.tryDecrypt(encryptedData, newKey);
 
@@ -241,31 +238,19 @@ export class SecureStorageBackend implements CredentialBackend {
       return store;
     }
 
-    // Fall back to new stable key (v2) with legacy iterations — handles data
-    // encrypted after the v2 machine-id migration but before the PBKDF2 bump.
-    const newKeyLegacyIter = this.deriveStableKey(salt, LEGACY_PBKDF2_ITERATIONS);
-    store = this.tryDecrypt(encryptedData, newKeyLegacyIter);
-
-    if (store) {
-      // Migration: re-save with new iterations so future loads use the fast path.
-      this.cachedStore = store;
-      this.saveStoreSync(store);
-      return store;
-    }
-
-    // Try legacy key for migration (v1 - included hostname) with legacy iterations.
-    // This handles credentials encrypted with old key derivation.
+    // Try legacy key for migration (v1 - included hostname)
+    // This handles credentials encrypted with old key derivation
     const legacyKey = this.getLegacyEncryptionKey(salt);
     store = this.tryDecrypt(encryptedData, legacyKey);
 
     if (store) {
-      // Migration: re-save with new stable key so future loads use hardware UUID.
+      // Migration: re-save with new stable key so future loads use hardware UUID
       this.cachedStore = store;
       this.saveStoreSync(store);
       return store;
     }
 
-    // All key/iteration combinations failed - file is truly corrupted
+    // Both keys failed - file is truly corrupted
     this.handleCorruptedFile();
     return null;
   }
@@ -348,23 +333,8 @@ export class SecureStorageBackend implements CredentialBackend {
   }
 
   /**
-   * Derive a v2 (stable machine ID) key with explicit iteration count.
-   * Used for the PBKDF2 migration path: existing data may have been encrypted
-   * with LEGACY_PBKDF2_ITERATIONS before the bump to 600000. The result is
-   * NOT cached — only the current-iteration key is cached in `encryptionKey`.
-   */
-  private deriveStableKey(salt: Buffer, iterations: number): Buffer {
-    const stableMachineId = createHash('sha256')
-      .update(getStableMachineId())
-      .update('craft-agent-v2')
-      .digest();
-    return pbkdf2Sync(stableMachineId, salt, iterations, KEY_SIZE, 'sha256');
-  }
-
-  /**
    * Legacy key derivation for migration from v1 (included hostname).
    * Used to decrypt credentials from older versions before re-encrypting with stable key.
-   * Always uses legacy iterations — v1 credentials predate the PBKDF2 bump.
    */
   private getLegacyEncryptionKey(salt: Buffer): Buffer {
     const legacyMachineId = createHash('sha256')
@@ -374,7 +344,7 @@ export class SecureStorageBackend implements CredentialBackend {
       .update('craft-agent-v1')
       .digest();
 
-    return pbkdf2Sync(legacyMachineId, salt, LEGACY_PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
+    return pbkdf2Sync(legacyMachineId, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
   }
 
   private handleCorruptedFile(): void {

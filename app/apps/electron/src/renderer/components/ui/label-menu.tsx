@@ -5,8 +5,7 @@ import { cn } from '@/lib/utils'
 import { LabelIcon } from './label-icon'
 import type { LabelConfig } from '@craft-agent/shared/labels'
 import { createLabelMenuItems, filterItems, segmentScore, type LabelMenuItem } from './label-menu-utils'
-import { getLocalizedStatusLabel, getStatusIconStyle, type SessionStatus } from '@/config/session-status-config'
-import { getLocalizedLabelName } from '@/utils/label-display-name'
+import { getStatusIconStyle, type SessionStatus } from '@/config/session-status-config'
 
 export { createLabelMenuItems, filterItems, type LabelMenuItem } from './label-menu-utils'
 
@@ -50,11 +49,7 @@ const MENU_ITEM_SELECTED = 'bg-foreground/5'
  * Filter states by a simple text match on the state label.
  * Uses the same segmentScore logic for consistency with label filtering.
  */
-export function filterSessionStatuses(
-  states: SessionStatus[],
-  filter: string,
-  getLabel: (state: SessionStatus) => string = (state) => state.label,
-): SessionStatus[] {
+export function filterSessionStatuses(states: SessionStatus[], filter: string): SessionStatus[] {
   if (!filter) return states
 
   const segments = filter.toLowerCase().split('/').map(s => s.trim()).filter(Boolean)
@@ -65,13 +60,13 @@ export function filterSessionStatuses(
   const scored: { state: SessionStatus; score: number }[] = []
 
   for (const state of states) {
-    const score = segmentScore(getLabel(state), segment)
+    const score = segmentScore(state.label, segment)
     if (score > 0) {
       scored.push({ state, score })
     }
   }
 
-  scored.sort((a, b) => b.score - a.score || getLabel(a.state).localeCompare(getLabel(b.state)))
+  scored.sort((a, b) => b.score - a.score || a.state.label.localeCompare(b.state.label))
   return scored.map(s => s.state)
 }
 
@@ -102,7 +97,7 @@ export function InlineLabelMenu({
   const listRef = React.useRef<HTMLDivElement>(null)
   const [selectedIndex, setSelectedIndex] = React.useState(0)
   const filteredItems = filterItems(items, filter)
-  const filteredStates_ = filterSessionStatuses(states, filter, state => getLocalizedStatusLabel(t, state))
+  const filteredStates_ = filterSessionStatuses(states, filter)
 
   // Build a unified flat index for keyboard navigation:
   // [0..filteredStates_.length-1] = states, [filteredStates_.length..] = labels
@@ -257,7 +252,7 @@ export function InlineLabelMenu({
                       >
                         {state.icon}
                       </span>
-                      <div className="flex-1 min-w-0 truncate">{getLocalizedStatusLabel(t, state)}</div>
+                      <div className="flex-1 min-w-0 truncate">{state.label}</div>
                       {/* Checkmark on active state */}
                       {isActive && (
                         <Check className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -376,7 +371,6 @@ export function useInlineLabelMenu({
   sessionStatuses = [],
   activeStateId,
 }: UseInlineLabelMenuOptions): UseInlineLabelMenuReturn {
-  const { t } = useTranslation()
   const [isOpen, setIsOpen] = React.useState(false)
   const [filter, setFilter] = React.useState('')
   const [position, setPosition] = React.useState({ x: 0, y: 0 })
@@ -386,8 +380,8 @@ export function useInlineLabelMenu({
 
   // Build flat menu items from label tree, excluding already-applied labels
   const items = React.useMemo(
-    () => createLabelMenuItems(labels, sessionLabels, label => getLocalizedLabelName(t, label)),
-    [labels, sessionLabels, t],
+    () => createLabelMenuItems(labels, sessionLabels),
+    [labels, sessionLabels],
   )
 
   const handleInputChange = React.useCallback((value: string, cursorPosition: number) => {

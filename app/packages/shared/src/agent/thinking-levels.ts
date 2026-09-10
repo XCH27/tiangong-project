@@ -14,8 +14,9 @@
  * Provider mappings:
  * - Anthropic: adaptive thinking + effort levels (current Opus models). On models that
  *   don't accept `xhigh`, the Anthropic SDK silently falls back to `high`.
- * - Pi/OpenAI: reasoning_effort via Pi SDK levels. Pi's ceiling is `xhigh`,
- *   so Craft's `max` saturates there.
+ * - Pi/OpenAI: reasoning_effort via Pi SDK levels, passed through 1:1 up to `max`.
+ *   Pi clamps per model internally, so models without native `max` support
+ *   (everything except GPT-5.6 and adaptive Claude) degrade to their own ceiling.
  */
 
 /**
@@ -27,7 +28,6 @@
  */
 export const THINKING_LEVEL_IDS = [
   'off',
-  'minimal',
   'low',
   'medium',
   'high',
@@ -53,7 +53,6 @@ export interface ThinkingLevelDefinition {
  */
 export const THINKING_LEVELS: readonly ThinkingLevelDefinition[] = [
   { id: 'off', nameKey: 'thinking.off', descriptionKey: 'thinking.offDesc' },
-  { id: 'minimal', nameKey: 'thinking.minimal', descriptionKey: 'thinking.minimalDesc' },
   { id: 'low', nameKey: 'thinking.low', descriptionKey: 'thinking.lowDesc' },
   { id: 'medium', nameKey: 'thinking.medium', descriptionKey: 'thinking.mediumDesc' },
   { id: 'high', nameKey: 'thinking.high', descriptionKey: 'thinking.highDesc' },
@@ -71,9 +70,6 @@ export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'medium';
  */
 export const THINKING_TO_EFFORT: Record<ThinkingLevel, 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null> = {
   off: null,
-  // Anthropic does not expose `minimal`; models on that transport never
-  // advertise it, but map defensively to the provider floor.
-  minimal: 'low',
   low: 'low',
   medium: 'medium',
   high: 'high',
@@ -93,7 +89,6 @@ export const THINKING_TO_EFFORT: Record<ThinkingLevel, 'low' | 'medium' | 'high'
 const TOKEN_BUDGETS = {
   haiku: {
     off: 0,
-    minimal: 1_000,
     low: 2_000,
     medium: 4_000,
     high: 6_000,
@@ -102,7 +97,6 @@ const TOKEN_BUDGETS = {
   },
   default: {
     off: 0,
-    minimal: 2_000,
     low: 4_000,
     medium: 10_000,
     high: 20_000,

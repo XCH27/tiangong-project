@@ -16,15 +16,18 @@ export const GUI_HANDLED_CHANNELS = [
  * Connect to a remote server and wait for handshake.
  * When workspaceId is provided, the handshake is scoped to that workspace so
  * workspace-context RPC handlers (for example sessions:export) can resolve it.
+ * opts.requestTimeout overrides the 30s default — session transfers pull whole
+ * bundles as one response frame and need more headroom over WAN.
  * Returns the connected client or null + error message.
  */
-export async function connectToRemote(url: string, token: string, workspaceId?: string) {
+export async function connectToRemote(url: string, token: string, workspaceId?: string, opts?: { requestTimeout?: number }) {
   const { WsRpcClient } = await import('../../transport/client')
   const client = new WsRpcClient(url, {
     token,
     workspaceId,
     autoReconnect: false,
     tlsRejectUnauthorized: false,
+    requestTimeout: opts?.requestTimeout,
   })
 
   const connected = await new Promise<boolean>((resolve) => {
@@ -55,7 +58,7 @@ export async function connectToRemote(url: string, token: string, workspaceId?: 
 export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDeps): void {
   const windowManager = deps.windowManager
 
-  // Test a direct connection to a user-hosted workspace service.
+  // Test connection to a remote Craft Agent Server.
   // Pure discovery — returns list of existing workspaces or needsWorkspace flag.
   // Workspace creation is handled separately via invokeOnServer → server:createWorkspace.
   server.handle(RPC_CHANNELS.remote.TEST_CONNECTION, async (_ctx, url: string, token: string) => {
@@ -100,15 +103,9 @@ export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDep
   })
 
   // Open a session in a new window
-  // Deep link follows routes.view.sessionHome semantics: folder-bound sessions land under
-  // projectSessions (workspace-scoped when known), folder-less sessions under conversations.
-  server.handle(RPC_CHANNELS.window.OPEN_SESSION_IN_NEW_WINDOW, async (_ctx, workspaceId: string, sessionId: string, workingDirectory?: string | null) => {
+  server.handle(RPC_CHANNELS.window.OPEN_SESSION_IN_NEW_WINDOW, async (_ctx, workspaceId: string, sessionId: string) => {
     if (!windowManager) return
-    const deepLink = workingDirectory
-      ? workspaceId
-        ? `craftagents://projectSessions/ws/${encodeURIComponent(workspaceId)}/session/${sessionId}`
-        : `craftagents://projectSessions/session/${sessionId}`
-      : `craftagents://conversations/session/${sessionId}`
+    const deepLink = `craftagents://allSessions/session/${sessionId}`
     windowManager.createWindow({
       workspaceId,
       focused: true,

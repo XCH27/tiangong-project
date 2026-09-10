@@ -23,8 +23,6 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -33,7 +31,6 @@ import {
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeveloperFeedbackEnabled } from '@craft-agent/shared/feature-flags';
-import { getDocsMcpUrl } from '@craft-agent/shared/docs/doc-links';
 // Import from session-tools-core
 import {
   type SessionToolContext,
@@ -59,7 +56,6 @@ interface SessionConfig {
   workspaceRootPath: string;
   plansFolderPath: string;
   callbackPort?: string;
-  callbackToken?: string;
 }
 
 const CALLBACK_TOOL_TIMEOUT_MS = 120000;
@@ -183,13 +179,6 @@ function createCodexContext(config: SessionConfig): SessionToolContext {
         planPath,
       });
     },
-    onEnterPlan: (reason?: string) => {
-      sendCallback({
-        __callback__: 'enter_plan',
-        sessionId,
-        reason,
-      });
-    },
     onAuthRequest: (request: AuthRequest) => {
       sendCallback({
         __callback__: 'auth_request',
@@ -278,72 +267,6 @@ function createSessionTools(includeDeveloperFeedback: boolean): Tool[] {
 }
 
 // ============================================================
-// Craft Agents Docs Upstream Proxy
-// ============================================================
-
-/** Cached upstream client + tool list */
-let docsClient: Client | null = null;
-let docsTools: Tool[] = [];
-
-/**
- * Connect to the craft-agents-docs MCP server and fetch its tool definitions.
- * Falls back gracefully if the server is unreachable (tools will just be empty).
- */
-async function connectDocsUpstream(docsMcpUrl: string): Promise<void> {
-  try {
-    const client = new Client(
-      { name: 'craft-agent-session-proxy', version: '1.0.0' },
-      { capabilities: {} }
-    );
-
-    const transport = new StreamableHTTPClientTransport(new URL(docsMcpUrl));
-    await client.connect(transport);
-
-    const result = await client.listTools();
-    docsTools = (result.tools || []) as Tool[];
-    docsClient = client;
-
-    console.error(`Craft Agents Docs proxy connected: ${docsTools.length} tools`);
-  } catch (err) {
-    console.error(`Craft Agents Docs proxy connection failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
-    docsClient = null;
-    docsTools = [];
-  }
-}
-
-/**
- * Route a tool call to the upstream docs client.
- */
-async function callDocsUpstream(
-  name: string,
-  args: Record<string, unknown>
-): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  if (!docsClient) {
-    return errorResponse(`Craft Agents Docs server is not connected. Tool '${name}' unavailable.`);
-  }
-
-  try {
-    const result = await docsClient.callTool({ name, arguments: args });
-    // Convert MCP result to our format
-    const textContent = (result.content as Array<{ type: string; text?: string }> || [])
-      .filter(c => c.type === 'text' && c.text)
-      .map(c => ({ type: 'text' as const, text: c.text! }));
-
-    return {
-      content: textContent.length > 0 ? textContent : [{ type: 'text', text: '(No response from docs server)' }],
-      isError: result.isError as boolean | undefined,
-    };
-  } catch (err) {
-    return errorResponse(`Docs tool '${name}' failed: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-/** Check if a tool name belongs to the docs upstream */
-function isDocsUpstreamTool(name: string): boolean {
-  return docsTools.some(t => t.name === name);
-}
-
-// ============================================================
 // call_llm Handler (backend-specific)
 // ============================================================
 
@@ -351,19 +274,33 @@ async function handleCallLlm(
   args: Record<string, unknown>,
   config: SessionConfig,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  // NOTE: tool arguments are model-controlled, so a precomputed result can
-  // never be trusted from them (prompt injection could fabricate call_llm
-  // output). Results must arrive out-of-band via the authenticated HTTP
-  // callback below.
+  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
+  const precomputed = args?._precomputedResult as string | undefined;
+
+  if (precomputed) {
+    try {
+      const parsed = JSON.parse(precomputed);
+      if (parsed.error) {
+        return errorResponse(`call_llm failed: ${parsed.error}`);
+      }
+      if (parsed.text !== undefined) {
+        return {
+          content: [{ type: 'text' as const, text: parsed.text || '(Model returned empty response)' }],
+        };
+      }
+      return errorResponse('call_llm: _precomputedResult has unexpected format (missing text field).');
+    } catch {
+      return errorResponse(`call_llm: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
+    }
+  }
+
+  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
   // Uses callbackPort from CLI arg (--callback-port) or env var (CRAFT_LLM_CALLBACK_PORT).
   if (config.callbackPort) {
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/call-llm`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(config.callbackToken ? { Authorization: `Bearer ${config.callbackToken}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
       });
@@ -380,7 +317,8 @@ async function handleCallLlm(
   }
 
   return errorResponse(
-    'call_llm requires the HTTP callback (CRAFT_LLM_CALLBACK_PORT), which is not available.'
+    'call_llm requires either PreToolUse intercept (_precomputedResult) or ' +
+    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
   );
 }
 
@@ -392,16 +330,30 @@ async function handleSpawnSession(
   args: Record<string, unknown>,
   config: SessionConfig,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  // NOTE: tool arguments are model-controlled — see handleCallLlm for why a
-  // precomputed result is never accepted from them.
+  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
+  const precomputed = args?._precomputedResult as string | undefined;
+
+  if (precomputed) {
+    try {
+      const parsed = JSON.parse(precomputed);
+      if (parsed.error) {
+        return errorResponse(`spawn_session failed: ${parsed.error}`);
+      }
+      // Return the full result (could be help info or spawn result)
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(parsed, null, 2) }],
+      };
+    } catch {
+      return errorResponse(`spawn_session: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
+    }
+  }
+
+  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
   if (config.callbackPort) {
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/spawn-session`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(config.callbackToken ? { Authorization: `Bearer ${config.callbackToken}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
       });
@@ -418,7 +370,8 @@ async function handleSpawnSession(
   }
 
   return errorResponse(
-    'spawn_session requires the HTTP callback (CRAFT_LLM_CALLBACK_PORT), which is not available.'
+    'spawn_session requires either PreToolUse intercept (_precomputedResult) or ' +
+    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
   );
 }
 
@@ -449,7 +402,6 @@ async function main() {
   let workspaceRootPath: string | undefined;
   let plansFolderPath: string | undefined;
   let callbackPort: string | undefined;
-  let callbackToken: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--session-id' && args[i + 1]) {
@@ -463,9 +415,6 @@ async function main() {
       i++;
     } else if (args[i] === '--callback-port' && args[i + 1]) {
       callbackPort = args[i + 1];
-      i++;
-    } else if (args[i] === '--callback-token' && args[i + 1]) {
-      callbackToken = args[i + 1];
       i++;
     }
   }
@@ -481,7 +430,6 @@ async function main() {
     plansFolderPath,
     // CLI arg takes priority, env var as fallback (Copilot CLI may not forward env to subprocesses)
     callbackPort: callbackPort || process.env.CRAFT_LLM_CALLBACK_PORT,
-    callbackToken: callbackToken || process.env.CRAFT_LLM_CALLBACK_TOKEN,
   };
 
   // Create the Codex context
@@ -503,18 +451,12 @@ async function main() {
     }
   );
 
-  // R2-C1: docs tools are optional and connect only to an explicitly configured endpoint.
-  const docsMcpUrl = getDocsMcpUrl();
-  if (docsMcpUrl) {
-    await connectDocsUpstream(docsMcpUrl);
-  }
-
-  // Handle tool listing — session tools + docs upstream tools
+  // Handle tool listing — session tools
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [...createSessionTools(includeDeveloperFeedback), ...docsTools],
+    tools: createSessionTools(includeDeveloperFeedback),
   }));
 
-  // Handle tool calls — route via canonical registry, call_llm, or docs upstream
+  // Handle tool calls — route via canonical registry or call_llm
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: toolArgs } = request.params;
 
@@ -533,11 +475,6 @@ async function main() {
       const def = sessionToolRegistry.get(name);
       if (def?.handler) {
         return await def.handler(ctx, toolArgs);
-      }
-
-      // Route to docs upstream if it's a docs tool
-      if (isDocsUpstreamTool(name)) {
-        return await callDocsUpstream(name, toolArgs as Record<string, unknown>);
       }
 
       return errorResponse(`Unknown tool: ${name}`);

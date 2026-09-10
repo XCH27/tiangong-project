@@ -28,7 +28,6 @@ import { cn } from '@/lib/utils'
 import { automationSelection } from '@/hooks/useEntitySelection'
 import { APP_EVENTS, AGENT_EVENTS, getEventDisplayName, type AutomationListItem, type AutomationListFilter } from './types'
 import { formatShortRelativeTime } from './utils'
-import { ErrorState } from '@/components/ui/surface-state'
 
 const {
   useSelection: useAutomationSelection,
@@ -120,7 +119,7 @@ function AutomationItem({
             </MicroBadge>
           )}
           {automation.actions.some(a => a.type === 'webhook') && (
-            <MicroBadge colorClass="bg-foreground/10 text-foreground/60">
+            <MicroBadge colorClass="bg-orange-500/10 text-orange-600 dark:text-orange-400">
               {t('automations.badgeWebhook')}
             </MicroBadge>
           )}
@@ -163,8 +162,6 @@ function AutomationItem({
 
 export interface AutomationsListPanelProps {
   automations: AutomationListItem[]
-  loadError?: boolean
-  onRetryLoad?: () => void
   automationFilter?: AutomationListFilter | null
   onAutomationClick: (automationId: string) => void
   onDeleteAutomation?: (automationId: string) => void
@@ -178,8 +175,6 @@ export interface AutomationsListPanelProps {
 
 export function AutomationsListPanel({
   automations,
-  loadError = false,
-  onRetryLoad,
   automationFilter,
   onAutomationClick,
   onDeleteAutomation,
@@ -255,17 +250,6 @@ export function AutomationsListPanel({
     const allIds = filteredAutomations.map(a => a.id)
     selectRange(toIndex, allIds)
   }, [filteredAutomations, selectRange])
-
-  if (loadError && automations.length === 0) {
-    return (
-      <div className={cn('flex flex-col flex-1 min-h-0', className)}>
-        <ErrorState
-          description={t('automations.loadFailed')}
-          action={onRetryLoad ? { label: t('common.retry'), onClick: onRetryLoad } : undefined}
-        />
-      </div>
-    )
-  }
 
   // Empty state
   if (automations.length === 0) {

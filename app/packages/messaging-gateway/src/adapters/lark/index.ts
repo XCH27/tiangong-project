@@ -300,20 +300,9 @@ export class LarkAdapter implements PlatformAdapter {
   }
 
   async destroy(): Promise<void> {
-    // Close the underlying WS connection before dropping our refs — the
-    // SDK's WSClient keeps its own socket + reconnect loop alive, so nulling
-    // without close() leaves a duplicate connection (and duplicate inbound
-    // events) behind when the adapter is re-registered.
-    if (this.wsClient) {
-      try {
-        this.wsClient.close()
-      } catch (err: unknown) {
-        this.log.warn('[lark] ws close failed (non-fatal)', {
-          event: 'lark_ws_close_failed',
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    }
+    // The SDK's WSClient doesn't currently expose a `.stop()` method in its
+    // public types — it tears down on process exit. We null out our refs so
+    // re-init works; the underlying socket gets garbage-collected.
     this.wsClient = null
     this.client = null
     this.connected = false

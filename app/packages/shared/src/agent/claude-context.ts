@@ -76,7 +76,6 @@ export interface ClaudeContextOptions {
   workspaceId: string;
   onPlanSubmitted: (planPath: string) => void;
   onAuthRequest: (request: unknown) => void;
-  onEnterPlan?: (reason?: string) => { activated: boolean } | void;
 }
 
 /**
@@ -90,7 +89,7 @@ export interface ClaudeContextOptions {
  * - Icon management
  */
 export function createClaudeContext(options: ClaudeContextOptions): SessionToolContext {
-  const { sessionId, workspacePath, workspaceId, onPlanSubmitted, onAuthRequest, onEnterPlan } = options;
+  const { sessionId, workspacePath, workspaceId, onPlanSubmitted, onAuthRequest } = options;
 
   // File system implementation
   const fs: FileSystemInterface = {
@@ -113,7 +112,6 @@ export function createClaudeContext(options: ClaudeContextOptions): SessionToolC
   const callbacks: SessionToolCallbacks = {
     onPlanSubmitted,
     onAuthRequest: (request) => onAuthRequest(request),
-    onEnterPlan,
   };
 
   // Validators implementation

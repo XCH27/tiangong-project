@@ -69,7 +69,7 @@ function createTestHarness(sessionPaths: Map<string, string>) {
     sessionManager: {
       getSessionPath: (sessionId: string) => sessionPaths.get(sessionId) ?? null,
       waitForInit: async () => {},
-      getSessions: () => [...sessionPaths.keys()].map(id => ({ id, workspaceId: 'ws-1' })),
+      getSessions: () => [],
     } as unknown as HandlerDeps['sessionManager'],
     platform: {
       appRootPath: '',

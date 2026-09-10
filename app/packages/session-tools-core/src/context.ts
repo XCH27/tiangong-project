@@ -56,15 +56,6 @@ export interface SessionToolCallbacks {
    * Codex: sends __CALLBACK__ message to stderr
    */
   onAuthRequest(request: AuthRequest): void;
-
-  /**
-   * Called when the agent requests the Plan work phase mid-turn.
-   * Does not pause execution — agent continues and later uses SubmitPlan.
-   * Return `{ activated: false }` when already in Plan (Grok-style idempotent activate).
-   * Claude: calls onEnterPlan on the agent → SessionManager.setSessionWorkMode(plan)
-   * Codex/Pi: sends __CALLBACK__ message to stderr when available
-   */
-  onEnterPlan?(reason?: string): { activated: boolean } | void;
 }
 
 // ============================================================
@@ -322,11 +313,11 @@ export interface SessionToolContext {
   /** Set labels on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionLabels?(sessionId: string | undefined, labels: string[]): void | Promise<void>;
 
-  /** Set or clear the durable goal on a session. Defaults to current session. */
-  setSessionGoal?(sessionId: string | undefined, goal: string | null): void | Promise<void>;
-
   /** Set status on a session. Defaults to current session if no ID given. Injected by backend. */
   setSessionStatus?(sessionId: string | undefined, status: string): void | Promise<void>;
+
+  /** Archive (archived=true) or unarchive (archived=false) another session by ID. Injected by backend. */
+  archiveSession?(sessionId: string, archived: boolean): void | Promise<void>;
 
   /** Get detailed info about a session. Defaults to current session if no ID given. Injected by backend. */
   getSessionInfo?(sessionId?: string): SessionInfo | null;
@@ -347,6 +338,15 @@ export interface SessionToolContext {
 
   /** Resolve a status display name to its ID against configured statuses. Injected by backend. */
   resolveStatus?(status: string): ResolvedStatusResult;
+
+  /**
+   * Create a Craft Agents Task (board card + task.yaml + orchestrator session)
+   * WITHOUT running it. Slug derivation, node synthesis, and spec validation
+   * happen behind this callback where the task primitives live. Injected by
+   * backend (SessionManager); undefined in backends that don't run alongside
+   * it (e.g. the Codex MCP subprocess) — the handler degrades gracefully.
+   */
+  createTask?(input: CreateTaskInput): Promise<CreateTaskResult>;
 
   // ============================================================
   // Inter-Session Messaging
@@ -453,10 +453,40 @@ export interface ResolvedStatusResult {
 // ============================================================
 
 /** Full metadata for a single session (returned by get_session_info). */
+/** Input for create_task — structured fields, mapped onto a TaskSpec by the backend. */
+export interface CreateTaskInput {
+  /** Short task title shown on the board (also drives the slug). */
+  title: string;
+  /** What the task should accomplish — becomes the task goal and the initial node prompt. */
+  description: string;
+  /** Freeform rubric the final result is verified against. */
+  acceptanceCriteria?: string;
+  /** Source slugs enabled on the task's sessions. */
+  sources?: string[];
+  /** Skill slugs applied to dispatched task prompts. */
+  skills?: string[];
+  /** LLM connection slug serving `model`. */
+  llmConnection?: string;
+  /** Model id for the task's sessions (workspace default when omitted). */
+  model?: string;
+  /** Working directory for the task's sessions. */
+  workingDirectory?: string;
+  /** Project to bind the task to. Defaults to the invoking session's project. */
+  projectId?: string;
+}
+
+/** Result of create_task. */
+export interface CreateTaskResult {
+  slug: string;
+  orchestratorSessionId: string;
+  taskLabelId?: string;
+  /** Fail-soft problems (unknown source/skill slugs, label failure, …). */
+  warnings: string[];
+}
+
 export interface SessionInfo {
   id: string;
   name: string;
-  goal?: string;
   labels: string[];
   status: string;
   permissionMode: string;

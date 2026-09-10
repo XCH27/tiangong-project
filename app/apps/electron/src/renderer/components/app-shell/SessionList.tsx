@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { useSetAtom } from "jotai"
 import { isToday, isYesterday, format, startOfDay } from "date-fns"
@@ -25,7 +25,7 @@ import { useSessionActions } from "@/hooks/useSessionActions"
 import { useEntityListInteractions } from "@/hooks/useEntityListInteractions"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useEscapeInterrupt } from "@/context/EscapeInterruptContext"
-import { useNavigation, useNavigationState, routes, isSessionsNavigation } from "@/context/NavigationContext"
+import { useNavigation, useNavigationState, routes, isSessionsNavigation } from "@/contexts/NavigationContext"
 import { useFocusContext } from "@/context/FocusContext"
 import { sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import type { ViewConfig } from "@craft-agent/shared/views"
@@ -46,6 +46,7 @@ interface SessionListProps {
   onUnflag?: (sessionId: string) => void
   onArchive?: (sessionId: string) => void
   onUnarchive?: (sessionId: string) => void
+  onMarkUnread: (sessionId: string) => void
   onSessionStatusChange: (sessionId: string, state: SessionStatusId) => void
   onRename: (sessionId: string, name: string) => void
   /** Called when Enter is pressed to focus chat input for a specific session */
@@ -76,14 +77,6 @@ interface SessionListProps {
   onLabelsChange?: (sessionId: string, labels: string[]) => void
   /** Workspace projects (for the Projects submenu in SessionMenu) */
   projects?: Array<{ id: string; slug: string; name: string; color?: string }>
-  /**
-   * Labels for project grouping. When set, grouping uses `projectGroupField`
-   * against these ids (Fleet: Project = Workspace → pass workspaces + workspaceId).
-   * Falls back to `projects` + nested projectId when omitted.
-   */
-  groupByProjects?: Array<{ id: string; name: string }>
-  /** Which session field buckets project groups (default nested projectId). */
-  projectGroupField?: 'projectId' | 'workspaceId'
   /** Callback to bind/unbind a session to a project (null = unbind) */
   onSetProjectId?: (sessionId: string, projectId: string | null) => void
   /** How to group sessions: 'date' (default) or 'status' */
@@ -102,15 +95,6 @@ interface SessionListProps {
   hasPendingPrompt?: (sessionId: string) => boolean
   /** DOM-verified match info for the active session (from ChatDisplay) */
   activeChatMatchInfo?: { sessionId: string | null; count: number; isHighlighting?: boolean }
-  /**
-   * Create path for the empty-state CTA. Must use the same context binding as the shell
-   * primary "New Task" button (project folder when a project row is focused; workdir none
-   * under 对话). Without this the empty button used to call newSession with no workdir and
-   * always landed under 对话.
-   */
-  onNewSession?: () => void
-  /** Reports the canonical non-paginated list affected by list-wide actions. */
-  onBulkActionItemsChange?: (items: readonly SessionMeta[]) => void
 }
 
 // Re-export SessionStatusId for use by parent components
@@ -139,6 +123,7 @@ export function SessionList({
   onUnflag,
   onArchive,
   onUnarchive,
+  onMarkUnread,
   onSessionStatusChange,
   onRename,
   onFocusChatInput,
@@ -153,8 +138,6 @@ export function SessionList({
   labels = [],
   onLabelsChange,
   projects,
-  groupByProjects,
-  projectGroupField = 'projectId',
   onSetProjectId,
   groupingMode = 'date',
   workspaceId,
@@ -164,8 +147,6 @@ export function SessionList({
   onNavigateToSession,
   hasPendingPrompt,
   activeChatMatchInfo,
-  onNewSession,
-  onBulkActionItemsChange,
 }: SessionListProps) {
   const { t, i18n } = useTranslation()
   const setSendToWorkspace = useSetAtom(sendToWorkspaceAtom)
@@ -207,7 +188,6 @@ export function SessionList({
     workspaceId,
     groupingMode,
     currentFilter?.kind,
-    currentFilter && 'workspaceId' in currentFilter ? currentFilter.workspaceId : undefined,
     currentFilter && 'stateId' in currentFilter ? currentFilter.stateId : undefined,
     currentFilter && 'labelId' in currentFilter ? currentFilter.labelId : undefined,
     currentFilter && 'viewId' in currentFilter ? currentFilter.viewId : undefined,
@@ -265,7 +245,6 @@ export function SessionList({
     contentSearchResults,
     matchingFilterItems,
     otherResultItems,
-    bulkActionItems,
     exceededSearchLimit,
     flatItems,
     hasMore,
@@ -285,10 +264,6 @@ export function SessionList({
     groupingMode,
     scrollViewportRef,
   })
-
-  useLayoutEffect(() => {
-    onBulkActionItemsChange?.(bulkActionItems)
-  }, [bulkActionItems, onBulkActionItemsChange])
 
   const rowData = useMemo(() => {
     if (isSearchMode) {
@@ -414,23 +389,18 @@ export function SessionList({
     }
 
     if (groupingMode === 'project') {
-      // Fleet Project = Workspace (folder). Prefer groupByProjects + workspaceId when
-      // the shell passes the workspace list; otherwise legacy nested projectId.
-      const groupCatalog = groupByProjects ?? projects ?? []
-      const field = groupByProjects ? (projectGroupField ?? 'workspaceId') : projectGroupField
+      // Build groups from visible items, bucketed by projectId.
+      // Sessions without a projectId (or with an unknown projectId) go to the
+      // "no-project" bucket so they're never silently dropped from the list.
       const projectOrder = new Map<string, number>()
-      groupCatalog.forEach((p, index) => projectOrder.set(p.id, index))
+      ;(projects ?? []).forEach((p, index) => projectOrder.set(p.id, index))
       const projectNameById = new Map<string, string>()
-      groupCatalog.forEach(p => projectNameById.set(p.id, p.name))
+      ;(projects ?? []).forEach(p => projectNameById.set(p.id, p.name))
 
       const groupsByKey = new Map<string, { rows: SessionListRow[], projectId: string | null }>()
       for (const row of rows) {
-        const item = row.item as { projectId?: string; workspaceId?: string; workingDirectory?: string }
-        // Folder-less work is not a project bucket even if storage has workspaceId
-        const rawId = field === 'workspaceId'
-          ? (item.workingDirectory ? item.workspaceId : undefined)
-          : item.projectId
-        const resolvedProjectId = rawId && projectNameById.has(rawId) ? rawId : null
+        const rawProjectId = (row.item as { projectId?: string }).projectId
+        const resolvedProjectId = rawProjectId && projectNameById.has(rawProjectId) ? rawProjectId : null
         const key = resolvedProjectId ? `project-${resolvedProjectId}` : 'project-__none__'
         if (!groupsByKey.has(key)) groupsByKey.set(key, { rows: [], projectId: resolvedProjectId })
         groupsByKey.get(key)!.rows.push(row)
@@ -451,7 +421,7 @@ export function SessionList({
         const collapsedMeta = collapsedGroupsMeta.find(m => m.key === key)
         const label = projectId
           ? (projectNameById.get(projectId) ?? t('sidebar.unknownProject', { defaultValue: 'Unknown project' }))
-          : t('sidebar.conversations', { defaultValue: 'Conversations' })
+          : t('sidebar.noProject', { defaultValue: 'No project' })
         orderedGroups.push({
           key,
           label,
@@ -461,7 +431,7 @@ export function SessionList({
         })
       }
       orderedGroups.sort((a, b) => {
-        // Unbound / no-project bucket sinks to the bottom
+        // No-project bucket sinks to the bottom, configured projects in registration order
         if (a.key === 'project-__none__') return 1
         if (b.key === 'project-__none__') return -1
         const aOrder = projectOrder.get(a.key.replace('project-', '')) ?? 999
@@ -530,7 +500,7 @@ export function SessionList({
       rows,
       groups: orderedGroups,
     }
-  }, [isSearchMode, matchingFilterItems, otherResultItems, flatItems, groupingMode, sessionStatuses, projects, groupByProjects, projectGroupField, collapsedGroupsMeta, t, i18n.resolvedLanguage])
+  }, [isSearchMode, matchingFilterItems, otherResultItems, flatItems, groupingMode, sessionStatuses, projects, collapsedGroupsMeta, t])
 
   const flatRows = rowData.rows
 
@@ -542,15 +512,10 @@ export function SessionList({
       const allKeys = new Set(items.map(item => item.hasUnread ? 'unread-yes' : 'unread-no'))
       setCollapsedGroups(allKeys)
     } else if (groupingMode === 'project') {
-      const catalog = groupByProjects ?? projects ?? []
-      const knownIds = new Set(catalog.map(p => p.id))
-      const field = groupByProjects ? (projectGroupField ?? 'workspaceId') : projectGroupField
+      const knownProjectIds = new Set((projects ?? []).map(p => p.id))
       const allKeys = new Set(items.map(item => {
-        const meta = item as { projectId?: string; workspaceId?: string; workingDirectory?: string }
-        const pid = field === 'workspaceId'
-          ? (meta.workingDirectory ? meta.workspaceId : undefined)
-          : meta.projectId
-        return pid && knownIds.has(pid) ? `project-${pid}` : 'project-__none__'
+        const pid = (item as { projectId?: string }).projectId
+        return pid && knownProjectIds.has(pid) ? `project-${pid}` : 'project-__none__'
       }))
       setCollapsedGroups(allKeys)
     } else {
@@ -559,7 +524,7 @@ export function SessionList({
       ))
       setCollapsedGroups(allKeys)
     }
-  }, [items, groupingMode, projects, groupByProjects, projectGroupField])
+  }, [items, groupingMode, projects])
   const expandAllGroups = useCallback(() => {
     setCollapsedGroups(new Set())
   }, [])
@@ -730,6 +695,7 @@ export function SessionList({
     onUnflag: onUnflag ? handleUnflagWithToast : undefined,
     onArchive: onArchive ? handleArchiveWithToast : undefined,
     onUnarchive: onUnarchive ? handleUnarchiveWithToast : undefined,
+    onMarkUnread,
     onDelete: handleDeleteWithToast,
     onLabelsChange,
     projects,
@@ -753,7 +719,7 @@ export function SessionList({
     handleRenameClick, onSessionStatusChange,
     onFlag, handleFlagWithToast, onUnflag, handleUnflagWithToast,
     onArchive, handleArchiveWithToast, onUnarchive, handleUnarchiveWithToast,
-    handleDeleteWithToast, onLabelsChange,
+    onMarkUnread, handleDeleteWithToast, onLabelsChange,
     projects, onSetProjectId,
     handleSelectSessionById, handleOpenInNewWindow, setSendToWorkspace, handleFocusZone, handleKeyDown,
     sessionStatuses, flatLabels, labels, resolvedSearchQuery,
@@ -775,51 +741,18 @@ export function SessionList({
       )
     }
 
-    const emptyTitle =
-      currentFilter?.kind === 'conversations'
-        ? t('session.noConversationsYet')
-        : currentFilter?.kind === 'projectSessions' && currentFilter.workspaceId
-          ? t('session.noProjectSessionsYet')
-          : currentFilter?.kind === 'projectSessions'
-            ? t('session.noProjectSessionsYetOverview')
-            : t('session.noSessionsYet')
-    const emptyDesc =
-      currentFilter?.kind === 'conversations'
-        ? t('session.noConversationsYetDesc')
-        : currentFilter?.kind === 'projectSessions' && currentFilter.workspaceId
-          ? t('session.noProjectSessionsYetDesc')
-          : currentFilter?.kind === 'projectSessions'
-            ? t('session.noProjectSessionsYetOverviewDesc')
-            : t('session.noSessionsYetDesc')
-
     return (
       <EntityListEmptyScreen
         icon={<Inbox />}
-        title={emptyTitle}
-        description={emptyDesc}
+        title={t("session.noSessionsYet")}
+        description={t("session.noSessionsYetDesc")}
         className="h-full"
       >
         <button
           onClick={() => {
-            // Prefer shell-owned create so project focus binds workdir (R1 clause 2 / P10).
-            if (onNewSession) {
-              onNewSession()
-              return
-            }
-            // Fallback only when parent did not wire context (tests / playground).
-            const params: {
-              status?: string
-              label?: string
-              workdir?: string
-              workspaceId?: string
-            } = {}
+            const params: { status?: string; label?: string } = {}
             if (currentFilter?.kind === 'state') params.status = currentFilter.stateId
             else if (currentFilter?.kind === 'label') params.label = currentFilter.labelId
-            else if (currentFilter?.kind === 'conversations') params.workdir = 'none'
-            else if (currentFilter?.kind === 'projectSessions' && currentFilter.workspaceId) {
-              // Without rootPath we cannot bind the folder; still target that workspace.
-              params.workspaceId = currentFilter.workspaceId
-            }
             navigate(routes.action.newSession(Object.keys(params).length > 0 ? params : undefined))
           }}
           className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-[8px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors"

@@ -2,13 +2,13 @@ import * as React from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronDown, Trash2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { PROJECT_COLOR_PALETTE, type ProjectColorTreatment } from '@/utils/project-colors'
 import { type SessionStatus, getStatusIconStyle } from '@/config/session-status-config'
 import type { KanbanColumnColor } from '@/hooks/useKanbanColumnColors'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { SessionStatusMenu } from '@/components/ui/session-status-menu'
 import { TaskTile } from './TaskTile'
+import { NewTaskComposer } from './NewTaskComposer'
 import type {
   KanbanColumnMeta,
   KanbanModelProviderGroup,
@@ -41,6 +41,8 @@ interface KanbanColumnProps {
   subtaskModelGroups?: KanbanModelProviderGroup[]
   /** Model id pre-selected in the composer. */
   defaultSubtaskModel?: string
+  /** When present, renders the inline "New Task" composer at the top of the column. */
+  onCreateTask?: (title: string) => void
   /** Status auto-applied to a task dropped into this column (empty/undefined = leave untouched). */
   dropStatusId?: string
   /** Set this column's drop-status. Enables the header status picker when provided ('' clears). */
@@ -71,6 +73,7 @@ export function KanbanColumn({
   onRunSubtasks,
   subtaskModelGroups,
   defaultSubtaskModel,
+  onCreateTask,
   dropStatusId,
   onSelectDropStatus,
   onRename,
@@ -107,15 +110,14 @@ export function KanbanColumn({
 
       <div
         ref={setNodeRef}
-        className={cn(
-          'flex flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-2 transition-shadow',
-          isOver && color && 'ring-2 ring-inset',
-        )}
+        className="flex flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-2 transition-shadow"
         style={{
           backgroundColor: color?.tint,
-          ...(isOver && color ? { ['--tw-ring-color' as string]: color.solid } : {}),
+          boxShadow: isOver && color ? `inset 0 0 0 2px ${color.solid}` : undefined,
         }}
       >
+        {onCreateTask && <NewTaskComposer onCreate={onCreateTask} />}
+
         {tasks.map(task => (
           <DraggableTile key={task.id} taskId={task.id}>
             <TaskTile
@@ -258,7 +260,8 @@ function ColumnHeader({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="dark w-64 space-y-3 rounded-lg border-border/50 bg-background/80 p-3 shadow-modal-small backdrop-blur-xl backdrop-saturate-150"
+        className="dark w-64 space-y-3 border-border/50 bg-background/80 p-3 backdrop-blur-xl backdrop-saturate-150"
+        style={{ borderRadius: '8px', boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)' }}
         data-no-dnd="true"
       >
         {onRename && (
@@ -327,7 +330,7 @@ function ColumnHeader({
               onRemove()
               setOpen(false)
             }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t('kanban.column.remove')}

@@ -7,17 +7,17 @@
  * When multiple panels exist, each uses flex-grow with its proportion as the weight,
  * combined with min-width to prevent shrinking below PANEL_MIN_WIDTH.
  *
- * Panel header uses the shared right-workbench control from AppShellContext
- * (no close-X design). Compact mode still gets a leading back control to
- * return to the session list. Background matches the left navigator module
- * (`bg-background shadow-middle`).
+ * Each PanelSlot overrides AppShellContext to inject a per-panel close button
+ * into PanelHeader's rightSidebarButton slot. All panels are equal — closing
+ * any panel removes it from the stack. A reactive effect handles window close
+ * when the stack becomes empty.
  */
 
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
-import { ChevronLeft } from 'lucide-react'
+import { X, ChevronLeft } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atoms/panel-stack'
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
@@ -64,7 +64,19 @@ export function PanelSlot({
     closePanel(entry.id)
   }, [closePanel, entry.id])
 
-  // Compact back only — desktop close-X removed; workbench toggle is the header control.
+  // Build close button for PanelHeader (via context override)
+  const closeButton = useMemo(() => {
+    return (
+      <PanelHeaderCenterButton
+        icon={<X className="h-4 w-4" />}
+        onClick={handleClose}
+        tooltip={t("common.close")}
+      />
+    )
+  }, [handleClose])
+
+  // Build back button for compact mode — closes the panel to reveal the session list.
+  // Same PanelHeaderCenterButton style as X and share, just on the left side.
   const backButton = useMemo(() => {
     if (!isCompact) return undefined
     return (
@@ -74,15 +86,16 @@ export function PanelSlot({
         tooltip={t("common.backToList")}
       />
     )
-  }, [isCompact, handleClose, t])
+  }, [isCompact, handleClose])
 
-  // Inherit AppShell workbench button; never inject a close-X in the header slot.
+  // Override AppShellContext so ChatPage/PanelHeader gets our per-panel close button,
+  // back button (compact mode), and isFocusedPanel for input field appearance
   const contextOverride = useMemo(() => ({
     ...parentContext,
-    rightSidebarButton: parentContext.rightSidebarButton ?? null,
+    rightSidebarButton: closeButton,
     leadingAction: backButton,
     isFocusedPanel,
-  }), [parentContext, backButton, isFocusedPanel])
+  }), [parentContext, closeButton, backButton, isFocusedPanel])
 
   const handlePointerDown = useCallback(() => {
     if (!isFocusedPanel) {
@@ -99,9 +112,8 @@ export function PanelSlot({
         data-compact={isCompact || undefined}
         className={cn(
           'h-full overflow-hidden relative @container/panel',
-          // Match left navigator module: bg-background + middle shadow (not foreground-2).
           !isOnly && isFocusedPanel ? 'shadow-panel-focused z-[1]' : 'shadow-middle z-0',
-          'bg-background',
+          'bg-foreground-2',
         )}
         style={{
           // In multi-panel, unfocused panels override --background so all

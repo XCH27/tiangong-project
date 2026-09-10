@@ -13,7 +13,6 @@ import {
   getDefaultModelForConnection,
   defaultMidStreamBehavior,
 } from '@craft-agent/shared/config'
-import { getProviderCatalogEntry } from '@craft-agent/shared/config'
 
 // ============================================================
 // Error Parsing
@@ -160,12 +159,6 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
     authType: 'oauth',
     piAuthProvider: 'github-copilot',
   },
-  'grok-subscription': {
-    name: 'Grok Subscription',
-    providerType: 'pi',
-    authType: 'oauth',
-    piAuthProvider: 'xai',
-  },
   'pi-api-key': {
     name: 'Craft Agents Backend (API Key)',
     providerType: 'pi',
@@ -217,38 +210,7 @@ export function createBuiltInConnection(slug: string, baseUrl?: string | null): 
   const baseSlug = slug.replace(/-\d+$/, '')
   const template = BUILT_IN_CONNECTION_TEMPLATES[slug] ?? BUILT_IN_CONNECTION_TEMPLATES[baseSlug]
   if (!template) {
-    const catalogEntry = getProviderCatalogEntry(baseSlug)
-    if (!catalogEntry) {
-      throw new Error(`Unknown provider connection slug: ${slug}`)
-    }
-
-    const providerType = catalogEntry.piProvider ? 'pi' : 'pi_compat'
-    return {
-      slug,
-      name: catalogEntry.label,
-      providerType,
-      authType: providerType === 'pi' ? 'api_key' : 'api_key_with_endpoint',
-      baseUrl: baseUrl?.trim() || catalogEntry.baseUrl,
-      piAuthProvider: catalogEntry.piProvider,
-      customEndpoint:
-        providerType === 'pi_compat'
-          ? { api: 'openai-completions' }
-          : undefined,
-      models: getDefaultModelsForConnection(
-        providerType,
-        catalogEntry.piProvider,
-      ),
-      defaultModel: getDefaultModelForConnection(
-        providerType,
-        catalogEntry.piProvider,
-      ),
-      modelSelectionMode:
-        providerType === 'pi'
-          ? 'automaticallySyncedFromProvider'
-          : undefined,
-      midStreamBehavior: defaultMidStreamBehavior(providerType),
-      createdAt: Date.now(),
-    }
+    throw new Error(`Unknown built-in connection slug: ${slug}. Custom connections should be created through settings.`)
   }
 
   const hasCustomEndpoint = !!baseUrl

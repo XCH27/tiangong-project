@@ -1,9 +1,8 @@
 /**
  * AppearanceSettingsPage
  *
- * Visual customization settings: app theme mode, color theme, font,
- * interface toggles, and CLI tool icon mappings.
- * Color theme is software-wide only — not per-project.
+ * Visual customization settings: theme mode, color theme, font,
+ * workspace-specific theme overrides, and CLI tool icon mappings.
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -12,10 +11,11 @@ import { LANGUAGES, type LanguageCode } from '@craft-agent/shared/i18n'
 import type { ColumnDef } from '@tanstack/react-table'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
-
+import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { useTheme } from '@/context/ThemeContext'
-
+import { useAppShellContext } from '@/context/AppShellContext'
+import { routes } from '@/lib/navigate'
 import { Monitor, Sun, Moon } from 'lucide-react'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import type { ToolIconMapping } from '../../../shared/types'
@@ -30,9 +30,17 @@ import {
 } from '@/components/settings'
 import { useAtom } from 'jotai'
 import * as storage from '@/lib/local-storage'
+import { useWorkspaceIcons } from '@/hooks/useWorkspaceIcon'
+import { WorkspaceAvatar } from '@/components/ui/workspace-avatar'
+import { ColorPicker } from '@/components/ui/color-picker'
+import { workspaceAvatarColorsAtom } from '@/atoms/workspace-avatar-colors'
+import { kanbanColumnColorsAtom, kanbanColumnStatusAtom, kanbanLivePulseAtom } from '@/atoms/kanban'
 import { showBackgroundFinishedChipAtom } from '@/atoms/background-finished'
+import { KANBAN_COLUMNS } from '@/components/app-shell/kanban/status-column'
+import { DEFAULT_KANBAN_COLUMN_COLORS } from '@/components/app-shell/kanban/kanban-colors'
+import type { KanbanColumnId } from '@/components/app-shell/kanban/types'
 import { setProjectColorTreatment, useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
-import type { ProjectColorTreatment } from '@/utils/project-colors'
+import { PROJECT_COLOR_PALETTE, type ProjectColorTreatment } from '@/utils/project-colors'
 import { Info_DataTable, SortableHeader } from '@/components/info/Info_DataTable'
 import { Info_Badge } from '@/components/info/Info_Badge'
 import type { PresetTheme } from '@config/theme'
@@ -108,11 +116,21 @@ export default function AppearanceSettingsPage() {
     setColorTheme,
     font,
     setFont,
+    activeWorkspaceId,
+    setWorkspaceColorTheme,
     themeLoadError,
     themeResolvedFrom,
   } = useTheme()
-  // Preset themes for the app-wide color theme dropdown
+  const { workspaces, sessionStatuses } = useAppShellContext()
+
+  // Fetch workspace icons as data URLs (file:// URLs don't work in renderer)
+  const workspaceIconMap = useWorkspaceIcons(workspaces)
+
+  // Preset themes for the color theme dropdown
   const [presetThemes, setPresetThemes] = useState<PresetTheme[]>([])
+
+  // Per-workspace theme overrides (workspaceId -> themeId or undefined)
+  const [workspaceThemes, setWorkspaceThemes] = useState<Record<string, string | undefined>>({})
 
   // Tool icon mappings loaded from main process
   const [toolIcons, setToolIcons] = useState<ToolIconMapping[]>([])
@@ -129,11 +147,57 @@ export default function AppearanceSettingsPage() {
     storage.set(storage.KEYS.showConnectionIcons, checked)
   }, [])
 
-  // Project color treatment in the SessionList (folder stripe — not app theme)
+  // Project color treatment in the SessionList
   const projectColorTreatment = useProjectColorTreatment()
   const handleProjectColorTreatmentChange = useCallback((value: string) => {
     setProjectColorTreatment(value as ProjectColorTreatment)
   }, [])
+
+  // Per-workspace avatar color overrides (persisted in localStorage)
+  const [workspaceAvatarColors, setWorkspaceAvatarColors] = useAtom(workspaceAvatarColorsAtom)
+  const setWorkspaceAvatarColor = useCallback((workspaceId: string, hex: string) => {
+    setWorkspaceAvatarColors(prev => ({ ...prev, [workspaceId]: hex }))
+  }, [setWorkspaceAvatarColors])
+  const clearWorkspaceAvatarColor = useCallback((workspaceId: string) => {
+    setWorkspaceAvatarColors(prev => {
+      const next = { ...prev }
+      delete next[workspaceId]
+      return next
+    })
+  }, [setWorkspaceAvatarColors])
+
+  // Kanban board appearance (persisted in localStorage via atomWithStorage).
+  const [kanbanColumnColors, setKanbanColumnColors] = useAtom(kanbanColumnColorsAtom)
+  const setKanbanColumnColor = useCallback((column: KanbanColumnId, hex: string) => {
+    setKanbanColumnColors(prev => ({ ...prev, [column]: hex }))
+  }, [setKanbanColumnColors])
+  const resetKanbanColumnColor = useCallback((column: KanbanColumnId) => {
+    setKanbanColumnColors(prev => {
+      const next = { ...prev }
+      delete next[column]
+      return next
+    })
+  }, [setKanbanColumnColors])
+  const [kanbanLivePulse, setKanbanLivePulse] = useAtom(kanbanLivePulseAtom)
+
+  // Per-column status applied when a task is dragged into that column. Empty
+  // selection ('') removes the mapping → status left unchanged on move.
+  const [kanbanColumnStatus, setKanbanColumnStatus] = useAtom(kanbanColumnStatusAtom)
+  const setColumnStatus = useCallback((column: KanbanColumnId, statusId: string) => {
+    setKanbanColumnStatus(prev => {
+      const next = { ...prev }
+      if (statusId) next[column] = statusId
+      else delete next[column]
+      return next
+    })
+  }, [setKanbanColumnStatus])
+  const columnStatusOptions = useMemo(
+    () => [
+      { value: '', label: t("settings.appearance.kanbanColumnStatusNone") },
+      ...(sessionStatuses ?? []).map(s => ({ value: s.id, label: s.label })),
+    ],
+    [sessionStatuses, t]
+  )
 
   // Rich tool descriptions toggle (persisted in config.json, read by SDK subprocess)
   const [richToolDescriptions, setRichToolDescriptions] = useState(true)
@@ -167,6 +231,20 @@ export default function AppearanceSettingsPage() {
     loadThemes()
   }, [])
 
+  // Load workspace themes on mount
+  useEffect(() => {
+    const loadWorkspaceThemes = async () => {
+      if (!window.electronAPI?.getAllWorkspaceThemes) return
+      try {
+        const themes = await window.electronAPI.getAllWorkspaceThemes()
+        setWorkspaceThemes(themes)
+      } catch (error) {
+        console.error('Failed to load workspace themes:', error)
+      }
+    }
+    loadWorkspaceThemes()
+  }, [])
+
   // Load tool icon mappings and resolve the config file path on mount
   useEffect(() => {
     const load = async () => {
@@ -185,7 +263,31 @@ export default function AppearanceSettingsPage() {
     load()
   }, [])
 
-  // Theme options for app-wide color theme dropdown
+  // Handler for workspace theme change
+  // Uses ThemeContext for the active workspace (immediate visual update) and IPC for other workspaces
+  const handleWorkspaceThemeChange = useCallback(
+    async (workspaceId: string, value: string) => {
+      // 'default' means inherit from app default (null in storage)
+      const themeId = value === 'default' ? null : value
+
+      // If changing the current workspace, use context for immediate update
+      if (workspaceId === activeWorkspaceId) {
+        setWorkspaceColorTheme(themeId)
+      } else {
+        // For other workspaces, just persist via IPC
+        await window.electronAPI?.setWorkspaceColorTheme?.(workspaceId, themeId)
+      }
+
+      // Update local state for UI
+      setWorkspaceThemes(prev => ({
+        ...prev,
+        [workspaceId]: themeId ?? undefined
+      }))
+    },
+    [activeWorkspaceId, setWorkspaceColorTheme]
+  )
+
+  // Theme options for dropdowns
   const themeOptions = useMemo(() => [
     { value: 'default', label: t("settings.appearance.useDefault") },
     ...presetThemes
@@ -196,15 +298,25 @@ export default function AppearanceSettingsPage() {
       })),
   ], [presetThemes, t])
 
+  // Get current app default theme label for display (null when using 'default' to avoid redundant "Use Default (Default)")
+  const appDefaultLabel = useMemo(() => {
+    if (colorTheme === 'default') return null
+    const preset = presetThemes.find(t => t.id === colorTheme)
+    return preset?.theme.name || colorTheme
+  }, [colorTheme, presetThemes])
+
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.appearance.title")} />
+      <PanelHeader
+        title={t("settings.appearance.title")}
+        actions={<HeaderMenu route={routes.view.settings('appearance')} helpFeature="themes" />}
+      />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">
             <div className="space-y-8">
 
-              {/* App theme — software-wide only (not per project) */}
+              {/* Default Theme */}
               <SettingsSection title={t("settings.appearance.defaultTheme")}>
                 <SettingsCard>
                   <SettingsRow label={t("settings.appearance.mode")}>
@@ -260,6 +372,67 @@ export default function AppearanceSettingsPage() {
                 )}
               </SettingsSection>
 
+              {/* Workspace Themes */}
+              {workspaces.length > 0 && (
+                <SettingsSection
+                  title={t("settings.appearance.workspaceThemes")}
+                  description={t("settings.appearance.workspaceThemesDesc")}
+                >
+                  <SettingsCard>
+                    {workspaces.map((workspace) => {
+                      const wsTheme = workspaceThemes[workspace.id]
+                      const hasCustomTheme = wsTheme !== undefined
+                      return (
+                        <SettingsRow
+                          key={workspace.id}
+                          label={
+                            <div className="flex items-center gap-2">
+                              <ColorPicker
+                                value={workspaceAvatarColors[workspace.id] || ''}
+                                onChange={(hex) => setWorkspaceAvatarColor(workspace.id, hex)}
+                                onClear={() => clearWorkspaceAvatarColor(workspace.id)}
+                                clearLabel={t("settings.appearance.workspaceAvatarReset")}
+                                presets={PROJECT_COLOR_PALETTE}
+                                ariaLabel={t("settings.appearance.workspaceAvatarColor")}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    className="cursor-pointer rounded hover:ring-2 hover:ring-foreground/20 transition-shadow"
+                                    aria-label={t("settings.appearance.workspaceAvatarColor")}
+                                  >
+                                    <WorkspaceAvatar
+                                      workspaceId={workspace.id}
+                                      workspaceName={workspace.name}
+                                      src={workspaceIconMap.get(workspace.id)}
+                                      className="w-4 h-4 rounded"
+                                    />
+                                  </button>
+                                }
+                              />
+                              <span>{workspace.name}</span>
+                            </div>
+                          }
+                        >
+                          <SettingsMenuSelect
+                            value={hasCustomTheme ? wsTheme : 'default'}
+                            onValueChange={(value) => handleWorkspaceThemeChange(workspace.id, value)}
+                            options={[
+                              { value: 'default', label: appDefaultLabel ? t("settings.appearance.useDefaultWithTheme", { theme: appDefaultLabel }) : t("settings.appearance.useDefault") },
+                              ...presetThemes
+                                .filter(t => t.id !== 'default')
+                                .map(t => ({
+                                  value: t.id,
+                                  label: t.theme.name || t.id,
+                                })),
+                            ]}
+                          />
+                        </SettingsRow>
+                      )
+                    })}
+                  </SettingsCard>
+                </SettingsSection>
+              )}
+
               {/* Interface */}
               <SettingsSection title={t("settings.appearance.interface")}>
                 <SettingsCard>
@@ -294,6 +467,55 @@ export default function AppearanceSettingsPage() {
                       ]}
                     />
                   </SettingsRow>
+                </SettingsCard>
+              </SettingsSection>
+
+              {/* Kanban board — column colors + live-pulse toggle */}
+              <SettingsSection
+                title={t("settings.appearance.kanbanBoard")}
+                description={t("settings.appearance.kanbanBoardDesc")}
+              >
+                <SettingsCard>
+                  {KANBAN_COLUMNS.map(column => {
+                    const merged = kanbanColumnColors[column.id] ?? DEFAULT_KANBAN_COLUMN_COLORS[column.id]
+                    return (
+                      <SettingsRow key={column.id} label={t(column.labelKey)}>
+                        <ColorPicker
+                          value={merged}
+                          onChange={(hex) => setKanbanColumnColor(column.id, hex)}
+                          onClear={kanbanColumnColors[column.id] ? () => resetKanbanColumnColor(column.id) : undefined}
+                          clearLabel={t("settings.appearance.kanbanColumnColorReset")}
+                          presets={PROJECT_COLOR_PALETTE}
+                          ariaLabel={t("settings.appearance.kanbanColumnColor", { column: t(column.labelKey) })}
+                          align="end"
+                        />
+                      </SettingsRow>
+                    )
+                  })}
+                  <SettingsToggle
+                    label={t("settings.appearance.kanbanLivePulse")}
+                    description={t("settings.appearance.kanbanLivePulseDesc")}
+                    checked={kanbanLivePulse}
+                    onCheckedChange={setKanbanLivePulse}
+                  />
+                </SettingsCard>
+              </SettingsSection>
+
+              {/* Kanban status automation — status applied on drag into a column */}
+              <SettingsSection
+                title={t("settings.appearance.kanbanColumnStatus")}
+                description={t("settings.appearance.kanbanColumnStatusDesc")}
+              >
+                <SettingsCard>
+                  {KANBAN_COLUMNS.map(column => (
+                    <SettingsRow key={column.id} label={t(column.labelKey)}>
+                      <SettingsMenuSelect
+                        value={kanbanColumnStatus[column.id] ?? ''}
+                        onValueChange={(value) => setColumnStatus(column.id, value)}
+                        options={columnStatusOptions}
+                      />
+                    </SettingsRow>
+                  ))}
                 </SettingsCard>
               </SettingsSection>
 

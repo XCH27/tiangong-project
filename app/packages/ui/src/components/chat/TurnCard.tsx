@@ -340,22 +340,13 @@ export interface TurnCardProps {
   isLastResponse?: boolean
   /** Session folder path for stripping from file paths in tool display */
   sessionFolderPath?: string
-  /** Model and elapsed time metadata shown below the response. */
-  modelName?: string
-  durationMs?: number
-  workMode?: 'explore' | 'plan' | 'execute'
-  fileChangeSummary?: {
-    fileCount: number
-    additions: number
-    deletions: number
-  }
   /** Display mode: 'detailed' shows all info, 'informative' hides MCP/API names and params */
   displayMode?: 'informative' | 'detailed'
   /** Animate response appearance (for playground demos) */
   animateResponse?: boolean
   /** Compact-footer layout. Used by EditPopover (popover embedding) and ChatPage in
-   *  auto-compact / WebUI mobile. Hides Markdown / Branch; Copy stays reachable
-   *  without hover. Keeps Accept Plan when a plan is the last response. */
+   *  auto-compact / WebUI mobile. Hides Copy / Markdown / Branch actions; keeps the
+   *  Accept Plan dropdown when a plan is the last response. */
   compactMode?: boolean
   /** Callback to branch the session from a specific message */
   onBranch?: (messageId: string, options?: { newPanel?: boolean }) => void
@@ -542,6 +533,11 @@ function getToolDisplayName(name: string): string {
     'set_session_status': 'Set Session Status',
     'get_session_info': 'Get Session Info',
     'list_sessions': 'List Sessions',
+    'archive_session': 'Archive Session',
+    'create_task': 'Create Task',
+    'list_background_tasks': 'List Background Tasks',
+    'send_agent_message': 'Send Agent Message',
+    'spawn_session': 'Spawn Session',
   }
 
   return displayNames[stripped] || stripped
@@ -947,7 +943,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
                 }
               }}
               className={cn(
-                "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity shrink-0",
+                "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0",
                 "hover:bg-muted/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               )}
             >
@@ -1198,7 +1194,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
               }
             }}
             className={cn(
-              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity shrink-0",
+              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0",
               "hover:bg-muted/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             )}
           >
@@ -1337,7 +1333,7 @@ function ActivityGroupRow({ group, expandedGroups: externalExpandedGroups, onExp
               }
             }}
             className={cn(
-              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity shrink-0",
+              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0",
               "hover:bg-muted/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             )}
           >
@@ -1418,8 +1414,8 @@ export interface ResponseCardProps {
   isLastResponse?: boolean
   /** Whether to show the Accept Plan button (default: true) */
   showAcceptPlan?: boolean
-  /** Compact-footer layout. Hides Markdown / Branch in the response footer;
-   *  Copy stays reachable without hover. Accept Plan stays on the last plan. */
+  /** Compact-footer layout. Hides Copy / Markdown / Branch in the response footer;
+   *  keeps the Accept Plan dropdown when a plan is the last response. */
   compactMode?: boolean
   /** Callback to branch the session from this response */
   onBranch?: (options?: { newPanel?: boolean }) => void
@@ -1490,7 +1486,7 @@ function clearAnnotationMarks(root: HTMLElement): void {
   annotatedInlineCodeNodes.forEach((codeNode) => {
     codeNode.removeAttribute('data-ca-annotation-inline-code')
     codeNode.style.backgroundColor = ''
-    codeNode.classList.remove('shadow-none')
+    codeNode.style.boxShadow = ''
   })
 
   const marks = root.querySelectorAll('span[data-ca-annotation-id]')
@@ -1565,7 +1561,7 @@ function applyTextHighlightRange(
     if (inlineCodeParent) {
       inlineCodeParent.setAttribute('data-ca-annotation-inline-code', 'true')
       inlineCodeParent.style.backgroundColor = annotationColorToCss(annotation.style?.color)
-      inlineCodeParent.classList.add('shadow-none')
+      inlineCodeParent.style.boxShadow = 'none'
     }
 
     const mark = document.createElement('span')
@@ -1686,10 +1682,6 @@ export function ResponseCard({
   const lastUpdateRef = useRef(Date.now())
   // Copy to clipboard state
   const [copied, setCopied] = useState(false)
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => {
-    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
-  }, [])
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false)
   // Dark mode detection - scroll fade only shown in dark mode
@@ -1787,8 +1779,7 @@ export function ResponseCard({
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy:', err)
     }
@@ -2467,7 +2458,7 @@ export function ResponseCard({
           <button
             onClick={() => setIsFullscreen(true)}
             className={cn(
-              "absolute top-2 right-2 p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity] z-10 select-none",
+              "absolute top-2 right-2 p-1 rounded-[6px] transition-all z-10 select-none",
               "opacity-0 group-hover:opacity-100",
               "bg-background shadow-minimal",
               "text-muted-foreground/50 hover:text-foreground",
@@ -2521,7 +2512,7 @@ export function ResponseCard({
           </div>
 
           {/* Desktop footer with actions (Copy / Markdown / Accept Plan / Branch).
-              Compact mode uses the slim footer below: Copy stays, Markdown/Branch do not. */}
+              Compact mode falls through to the slim Accept-Plan-only footer below. */}
           {!compactMode && (
             <div className={cn(
               "pl-4 pr-2.5 py-2 border-t border-border/30 flex items-center justify-between bg-muted/20",
@@ -2570,7 +2561,7 @@ export function ResponseCard({
                 {isPlan && showAcceptPlan && onAccept && onAcceptWithCompact && (
                   <div
                     className={cn(
-                      "flex items-center gap-3 transition-[opacity,transform] duration-200",
+                      "flex items-center gap-3 transition-all duration-200",
                       isLastResponse
                         ? "opacity-100 translate-x-0"
                         : "opacity-0 translate-x-2 pointer-events-none"
@@ -2589,46 +2580,23 @@ export function ResponseCard({
             </div>
           )}
 
-          {/* Compact footer — Copy stays reachable without hover (mobile / auto-compact
-              / popover). Markdown and Branch stay desktop-only. Accept Plan keeps the
-              bottom-sheet drawer; still last-response-only so older plans do not show it. */}
-          {compactMode && (
+          {/* Compact footer — Accept Plan only (mobile / auto-compact / popover).
+              Uses a bottom-sheet drawer to match the CompactPermissionModeSelector
+              / CompactModelSelector pattern. Guarded by isLastResponse so older
+              plans don't render an empty strip with a hidden-but-focusable button. */}
+          {compactMode && isPlan && showAcceptPlan && isLastResponse && onAccept && onAcceptWithCompact && (
             <div
               className={cn(
-                "pl-3 pr-2 py-1.5 border-t border-border/30 flex items-center justify-between bg-muted/20",
+                "pl-3 pr-2 py-1.5 border-t border-border/30 flex items-center justify-end bg-muted/20",
                 SIZE_CONFIG.fontSize
               )}
             >
-              <button
-                type="button"
-                onClick={() => { void handleCopy() }}
-                data-touch-reveal="true"
-                className={cn(
-                  "turn-action-btn flex items-center gap-1.5 select-none",
-                  copied ? "text-success" : "text-muted-foreground hover:text-foreground",
-                  "focus:outline-none focus-visible:underline"
-                )}
-              >
-                {copied ? (
-                  <>
-                    <Check className={SIZE_CONFIG.iconSize} />
-                    <span>{t("common.copied")}</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className={SIZE_CONFIG.iconSize} />
-                    <span>{t("common.copy")}</span>
-                  </>
-                )}
-              </button>
-              {isPlan && showAcceptPlan && isLastResponse && onAccept && onAcceptWithCompact && (
-                <CompactAcceptPlanDrawer
-                  onAccept={onAccept}
-                  onAcceptWithCompact={onAcceptWithCompact}
-                  acceptLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.acceptPlan')}
-                  acceptOptionLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.accept')}
-                />
-              )}
+              <CompactAcceptPlanDrawer
+                onAccept={onAccept}
+                onAcceptWithCompact={onAcceptWithCompact}
+                acceptLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.acceptPlan')}
+                acceptOptionLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.accept')}
+              />
             </div>
           )}
         </div>
@@ -2786,34 +2754,6 @@ function TodoList({ todos }: TodoListProps) {
 // Main Component
 // ============================================================================
 
-function formatTurnDuration(ms: number, language?: string): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--'
-  const totalSeconds = Math.floor(ms / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-  if (language?.startsWith('zh')) {
-    return [
-      hours > 0 ? `${hours}小时` : null,
-      minutes > 0 ? `${minutes}分` : null,
-      `${seconds}秒`,
-    ].filter(Boolean).join(' ')
-  }
-  if (language?.startsWith('ja')) {
-    return [
-      hours > 0 ? `${hours}時間` : null,
-      minutes > 0 ? `${minutes}分` : null,
-      `${seconds}秒`,
-    ].filter(Boolean).join(' ')
-  }
-
-  return [
-    hours > 0 ? `${hours}h` : null,
-    minutes > 0 ? `${minutes}m` : null,
-    `${seconds}s`,
-  ].filter(Boolean).join(' ')
-}
-
 /**
  * TurnCard - Email-like display for one assistant turn
  *
@@ -2849,10 +2789,6 @@ export const TurnCard = React.memo(function TurnCard({
   onAcceptPlanWithCompact,
   isLastResponse,
   sessionFolderPath,
-  modelName,
-  durationMs,
-  workMode,
-  fileChangeSummary,
   displayMode = 'detailed',
   animateResponse = false,
   compactMode = false,
@@ -2866,7 +2802,6 @@ export const TurnCard = React.memo(function TurnCard({
   openAnnotationRequest,
   annotationInteractionMode = 'interactive',
 }: TurnCardProps) {
-  const { t } = useTranslation()
   // Derive the turn phase from props using the state machine.
   // This provides a single source of truth for lifecycle state,
   // replacing the old ad-hoc boolean combinations.
@@ -3023,7 +2958,7 @@ export const TurnCard = React.memo(function TurnCard({
   const isThinking = shouldShowThinkingIndicator(turnPhase, isBuffering)
 
   return (
-    <div className="group/turn space-y-1">
+    <div className="space-y-1">
       {/* Activity Section - excluded from search highlighting (matches ripgrep behavior) */}
       {hasActivities && (
         <div className="group select-none" data-search-exclude="true">
@@ -3302,34 +3237,6 @@ export const TurnCard = React.memo(function TurnCard({
           />
         </div>
       )}
-      {(workMode || modelName || durationMs !== undefined || fileChangeSummary?.fileCount) && isComplete && (
-        <div
-          className={cn(
-            "mt-1 flex min-h-6 flex-wrap items-center gap-x-2 gap-y-0.5 px-2 text-[11px] text-muted-foreground/60",
-            "opacity-0",
-            "transition-opacity duration-100",
-            "group-hover/turn:opacity-100 group-hover/turn:text-muted-foreground",
-            "group-focus-within/turn:opacity-100 group-focus-within/turn:text-muted-foreground",
-          )}
-          data-touch-reveal="true"
-        >
-          <span className="tabular-nums">
-            {[
-              workMode ? t(`mode.work.${workMode}`) : null,
-              modelName || null,
-              durationMs !== undefined ? formatTurnDuration(durationMs, i18n.resolvedLanguage) : null,
-            ].filter(Boolean).join(' · ')}
-          </span>
-          {!!fileChangeSummary?.fileCount && (
-            <>
-              <span aria-hidden>·</span>
-              <span>{t('composer.changes.files', { count: fileChangeSummary.fileCount })}</span>
-              <span className="text-success">+{fileChangeSummary.additions}</span>
-              <span className="text-destructive">−{fileChangeSummary.deletions}</span>
-            </>
-          )}
-        </div>
-      )}
     </div>
   )
 }, (prev, next) => {
@@ -3354,13 +3261,6 @@ export const TurnCard = React.memo(function TurnCard({
 
   // Re-render if compactMode changed (affects ResponseCard footer rendering)
   if (prev.compactMode !== next.compactMode) return false
-
-  // Request metadata is persisted independently from the Session's current
-  // selectors, so historical rows must update when it is hydrated.
-  if (prev.modelName !== next.modelName) return false
-  if (prev.durationMs !== next.durationMs) return false
-  if (prev.workMode !== next.workMode) return false
-  if (prev.fileChangeSummary !== next.fileChangeSummary) return false
 
   // Re-render if annotation interaction mode changed (interactive vs tooltip-only)
   if (prev.annotationInteractionMode !== next.annotationInteractionMode) return false

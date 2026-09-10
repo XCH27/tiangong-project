@@ -1,8 +1,7 @@
-import { isAbsolute, relative, resolve } from 'path'
+import { resolve } from 'path'
 import { join } from 'path'
 import { homedir } from 'os'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
+import { execSync } from 'child_process'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import { getWorkspaceByNameOrId, getGitBashPath, setGitBashPath, clearGitBashPath } from '@craft-agent/shared/config'
 import { classifyExternalUrl, formatBlockedUrlError } from '@craft-agent/shared/utils/url-safety'
@@ -16,7 +15,6 @@ import {
   requestClientShowInFolder,
   requestClientOpenFileDialog,
 } from '@craft-agent/server-core/transport'
-import { handshakeCliRuntimes } from '../../services/cli-runtime-handshake'
 
 export const CORE_HANDLED_CHANNELS = [
   RPC_CHANNELS.theme.GET_SYSTEM_PREFERENCE,
@@ -30,10 +28,6 @@ export const CORE_HANDLED_CHANNELS = [
   RPC_CHANNELS.releaseNotes.GET,
   RPC_CHANNELS.releaseNotes.GET_LATEST_VERSION,
   RPC_CHANNELS.git.GET_BRANCH,
-  RPC_CHANNELS.git.GET_WORKING_TREE,
-  RPC_CHANNELS.git.GET_FILE_DIFF,
-  RPC_CHANNELS.terminal.RUN_COMMAND,
-  RPC_CHANNELS.terminal.HANDSHAKE_RUNTIMES,
   RPC_CHANNELS.gitbash.CHECK,
   RPC_CHANNELS.gitbash.BROWSE,
   RPC_CHANNELS.gitbash.SET_PATH,
@@ -148,47 +142,7 @@ function assertLocalWorkspace(ctx: { workspaceId: string | null }, action: strin
 }
 
 export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps): void {
-  const resolveDesktopSessionDirectory = async (
-    ctx: { workspaceId: string | null; webContentsId: number | null },
-    sessionId: string,
-  ): Promise<string> => {
-    // `ctx.webContentsId` / `ctx.workspaceId` arrive in the client's own
-    // handshake envelope, so neither can be trusted as an authorization fact:
-    // any client that completes the handshake (including an authenticated
-    // WebUI/remote one against the headless server) could declare them.
-    // Anchor the decision in state only the host itself holds — the window
-    // manager, which exists solely in the Electron main process and tracks
-    // real BrowserWindows and the workspace each one was registered for.
-    const desktopWindows = deps.windowManager
-    if (!desktopWindows) {
-      throw new Error('Right workbench filesystem actions require a desktop window')
-    }
-    if (ctx.webContentsId == null) {
-      throw new Error('Right workbench filesystem actions require a desktop window')
-    }
-    if (!desktopWindows.getWindowByWebContentsId(ctx.webContentsId)) {
-      throw new Error('Right workbench filesystem actions require a desktop window')
-    }
-
-    const windowWorkspaceId = desktopWindows.getWorkspaceForWindow(ctx.webContentsId)
-    if (!windowWorkspaceId) {
-      throw new Error('Right workbench filesystem actions require a workspace')
-    }
-
-    const session = deps.sessionManager
-      .getSessions(windowWorkspaceId)
-      .find((candidate) => candidate.id === sessionId && candidate.workspaceId === windowWorkspaceId)
-    if (!session) throw new Error('Session is not available in the current workspace')
-    if (!session.workingDirectory) throw new Error('Session has no working directory')
-
-    return validateFilePath(
-      session.workingDirectory,
-      getWorkspaceAllowedDirs(session.workspaceId),
-    )
-  }
-
   const windowManager = deps.windowManager
-  const execFileAsync = promisify(execFile)
 
   // Get system theme preference (dark = true, light = false)
   server.handle(RPC_CHANNELS.theme.GET_SYSTEM_PREFERENCE, async () => {
@@ -226,263 +180,19 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
   })
 
   // Get git branch for a directory (returns null if not a git repo or git unavailable)
-  server.handle(RPC_CHANNELS.git.GET_BRANCH, async (ctx, dirPath: string) => {
+  server.handle(RPC_CHANNELS.git.GET_BRANCH, async (_ctx, dirPath: string) => {
     try {
-      const safePath = await validateFilePath(dirPath, getWorkspaceAllowedDirs(ctx.workspaceId))
-      const result = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-        cwd: safePath,
+      const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: dirPath,
         encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 5000,
-        maxBuffer: 1024 * 1024,
-      })
-      const branch = result.stdout.trim()
+      }).trim()
       return branch || null
     } catch {
       return null
     }
   })
-
-  // Read-only Git projection for the right-side review module. This never
-  // stages, restores, commits, or otherwise mutates the repository.
-  //
-  // Failure contract (R18 §7):
-  // - identity / path / session policy errors throw (renderer shows `failed`)
-  // - directory is not a git repo → null (renderer shows `notRepository`)
-  server.handle(RPC_CHANNELS.git.GET_WORKING_TREE, async (ctx, sessionId: string) => {
-    const safeDirectory = await resolveDesktopSessionDirectory(ctx, sessionId)
-    const runGitInDirectory = async (args: string[], maxBuffer?: number) => {
-      const result = await execFileAsync('git', args, {
-        cwd: safeDirectory,
-        encoding: 'utf-8',
-        timeout: 8000,
-        maxBuffer: maxBuffer ?? 2 * 1024 * 1024,
-      })
-      return result.stdout.trimEnd()
-    }
-    const runGitInDirectoryOrNull = async (args: string[]) => {
-      try {
-        return await runGitInDirectory(args)
-      } catch {
-        return null
-      }
-    }
-
-    let repoRoot: string
-    try {
-      repoRoot = await runGitInDirectory(['rev-parse', '--show-toplevel'])
-    } catch {
-      // Not a repository (or git missing in PATH for this cwd). Distinct from
-      // desktop-identity failures, which throw before this point.
-      return null
-    }
-
-    try {
-      const branch = (await runGitInDirectoryOrNull(['symbolic-ref', '--short', 'HEAD'])) || null
-      // Treat Git output as a machine protocol. `status --short` is intended
-      // for humans and can inherit ANSI colour from the user's Git config;
-      // line splitting also corrupts valid filenames containing newlines.
-      // Disabling rename detection keeps each porcelain-v1 record to one path.
-      const status = await runGitInDirectory([
-        '-c', 'color.status=false',
-        '-c', 'core.quotepath=false',
-        'status', '--porcelain=v1', '-z', '--untracked-files=all', '--no-renames',
-      ])
-      const files = status
-        .split('\0')
-        .filter(Boolean)
-        .map((record) => {
-          if (record.length < 4 || record[2] !== ' ') {
-            throw new Error('Git returned an invalid porcelain status record')
-          }
-          return {
-            indexStatus: record[0] ?? ' ',
-            workingTreeStatus: record[1] ?? ' ',
-            path: record.slice(3),
-            additions: 0,
-            deletions: 0,
-          }
-        })
-
-      const fileByPath = new Map(files.map((file) => [file.path, file]))
-      const applyNumstat = (numstat: string) => {
-        for (const record of numstat.split('\0')) {
-          if (!record) continue
-          const firstSeparator = record.indexOf('\t')
-          const secondSeparator = record.indexOf('\t', firstSeparator + 1)
-          if (firstSeparator < 0 || secondSeparator < 0) {
-            throw new Error('Git returned an invalid numstat record')
-          }
-          const added = record.slice(0, firstSeparator)
-          const deleted = record.slice(firstSeparator + 1, secondSeparator)
-          const path = record.slice(secondSeparator + 1)
-          const file = fileByPath.get(path)
-          if (!file) continue
-          file.additions += added === '-' ? 0 : Number.parseInt(added, 10) || 0
-          file.deletions += deleted === '-' ? 0 : Number.parseInt(deleted, 10) || 0
-        }
-      }
-      applyNumstat(await runGitInDirectory([
-        '-c', 'color.ui=false', '-c', 'core.quotepath=false',
-        'diff', '--cached', '--numstat', '-z', '--no-renames',
-      ]))
-      applyNumstat(await runGitInDirectory([
-        '-c', 'color.ui=false', '-c', 'core.quotepath=false',
-        'diff', '--numstat', '-z', '--no-renames',
-      ]))
-      const worktreePorcelain = await runGitInDirectoryOrNull(['worktree', 'list', '--porcelain'])
-      const worktrees = (worktreePorcelain ?? '').split(/\n\n+/).filter(Boolean).map((block) => {
-        const path = block.match(/^worktree (.+)$/m)?.[1]
-        if (!path) return null
-        const branchRef = block.match(/^branch (.+)$/m)?.[1]
-        return {
-          path,
-          branch: branchRef?.replace(/^refs\/heads\//, '') ?? null,
-          bare: /^bare$/m.test(block),
-        }
-      }).filter((entry): entry is { path: string; branch: string | null; bare: boolean } => !!entry)
-
-      return {
-        repoRoot,
-        branch,
-        files,
-        totals: files.reduce(
-          (totals, file) => ({
-            additions: totals.additions + file.additions,
-            deletions: totals.deletions + file.deletions,
-          }),
-          { additions: 0, deletions: 0 },
-        ),
-        worktrees,
-      }
-    } catch (error) {
-      throw new Error(
-        `Git working tree could not be read: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  })
-
-  // Load only the file the user selected. The overview stays small even for
-  // large repositories and this endpoint remains a read-only projection.
-  server.handle(RPC_CHANNELS.git.GET_FILE_DIFF, async (
-    ctx,
-    sessionId: string,
-    requestedPath: string,
-  ) => {
-    const safeDirectory = await resolveDesktopSessionDirectory(ctx, sessionId)
-    let repoRoot: string
-    try {
-      repoRoot = (await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
-        cwd: safeDirectory,
-        encoding: 'utf-8',
-        timeout: 5000,
-      })).stdout.trim()
-    } catch {
-      return null
-    }
-
-    const absolutePath = resolve(repoRoot, requestedPath)
-    const relativePath = relative(repoRoot, absolutePath)
-    if (
-      !requestedPath
-      || isAbsolute(requestedPath)
-      || relativePath.startsWith('..')
-      || isAbsolute(relativePath)
-    ) {
-      throw new Error('Git file path is outside the repository')
-    }
-
-    const runDiff = async (args: string[]) => {
-      try {
-        return (await execFileAsync('git', args, {
-          cwd: repoRoot,
-          encoding: 'utf-8',
-          timeout: 8000,
-          maxBuffer: 2 * 1024 * 1024,
-        })).stdout.trimEnd()
-      } catch (error) {
-        const output = (error as { stdout?: string }).stdout
-        if (typeof output === 'string') return output.trimEnd()
-        throw error
-      }
-    }
-
-    const parts = [
-      await runDiff([
-        '-c', 'core.quotepath=false', 'diff', '--cached', '--no-ext-diff',
-        '--unified=3', '--no-renames', '--', relativePath,
-      ]),
-      await runDiff([
-        '-c', 'core.quotepath=false', 'diff', '--no-ext-diff',
-        '--unified=3', '--no-renames', '--', relativePath,
-      ]),
-    ].filter(Boolean)
-
-    if (parts.length === 0) {
-      // Untracked files are absent from normal git diff. `--no-index` is still
-      // read-only; exit code 1 means "different" and is handled above.
-      const nullDevice = process.platform === 'win32' ? 'NUL' : '/dev/null'
-      const untracked = await runDiff([
-        '-c', 'core.quotepath=false', 'diff', '--no-index', '--no-ext-diff',
-        '--unified=3', '--', nullDevice, absolutePath,
-      ])
-      if (untracked) parts.push(untracked)
-    }
-
-    const maxDiffLength = 1_500_000
-    const fullDiff = parts.join('\n')
-    return {
-      path: relativePath,
-      diff: fullDiff.slice(0, maxDiffLength),
-      truncated: fullDiff.length > maxDiffLength,
-    }
-  })
-
-  // User-invoked project command runner. Execution stays behind the core RPC
-  // boundary and is bounded; the renderer never starts system processes.
-  server.handle(RPC_CHANNELS.terminal.RUN_COMMAND, async (ctx, sessionId: string, command: string) => {
-    const trimmed = command.trim()
-    if (!trimmed) return { output: '', exitCode: 0, timedOut: false }
-    if (trimmed.length > 20_000) throw new Error('Command exceeds the 20000 character limit')
-    const safeDirectory = await resolveDesktopSessionDirectory(ctx, sessionId)
-
-    const shell = process.platform === 'win32'
-      ? (process.env.COMSPEC || 'cmd.exe')
-      : (process.env.SHELL || '/bin/zsh')
-    const args = process.platform === 'win32'
-      ? ['/d', '/s', '/c', trimmed]
-      : ['-l', '-c', trimmed]
-
-    try {
-      const result = await execFileAsync(shell, args, {
-        cwd: safeDirectory,
-        encoding: 'utf-8',
-        timeout: 30_000,
-        maxBuffer: 1_500_000,
-      })
-      return {
-        output: `${result.stdout}${result.stderr}`.trimEnd(),
-        exitCode: 0,
-        timedOut: false,
-      }
-    } catch (error) {
-      const failure = error as {
-        stdout?: string
-        stderr?: string
-        code?: number | string
-        killed?: boolean
-      }
-      return {
-        output: `${failure.stdout ?? ''}${failure.stderr ?? ''}`.trimEnd(),
-        exitCode: typeof failure.code === 'number' ? failure.code : 1,
-        timedOut: failure.killed === true,
-      }
-    }
-  })
-
-  server.handle(
-    RPC_CHANNELS.terminal.HANDSHAKE_RUNTIMES,
-    async () => await handshakeCliRuntimes(),
-  )
 
   // Git Bash detection and configuration (Windows only)
   server.handle(RPC_CHANNELS.gitbash.CHECK, async () => {
@@ -517,12 +227,12 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
     }
 
     try {
-      const result = await execFileAsync('where', ['bash'], {
+      const result = execSync('where bash', {
         encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
         timeout: 5000,
-        maxBuffer: 1024 * 1024,
-      })
-      const firstPath = result.stdout.split('\n')[0]?.trim()
+      }).trim()
+      const firstPath = result.split('\n')[0]?.trim()
       if (firstPath && firstPath.toLowerCase().includes('git') && await isUsableGitBashPath(firstPath)) {
         process.env.CLAUDE_CODE_GIT_BASH_PATH = firstPath
         setGitBashPath(firstPath)

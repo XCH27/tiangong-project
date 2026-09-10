@@ -9,7 +9,7 @@ import type { HandlerDeps } from '../handler-deps'
 
 // History file name — matches AUTOMATIONS_HISTORY_FILE from @craft-agent/shared/automations/constants
 const HISTORY_FILE = 'automations-history.jsonl'
-interface HistoryEntry { id: string; ts: number; ok: boolean; sessionId?: string; prompt?: string; error?: string; test?: boolean; webhook?: { method: string; url: string; statusCode: number; durationMs: number; attempts?: number; error?: string; responseBody?: string } }
+interface HistoryEntry { id: string; ts: number; ok: boolean; sessionId?: string; prompt?: string; error?: string; webhook?: { method: string; url: string; statusCode: number; durationMs: number; attempts?: number; error?: string; responseBody?: string } }
 
 // Per-workspace config mutex: serializes read-modify-write cycles on automations.json
 // to prevent concurrent IPC calls from clobbering each other's changes.
@@ -23,11 +23,7 @@ function withConfigMutex<T>(workspaceRoot: string, fn: () => Promise<T>): Promis
 
 // Shared helper: resolve workspace, read automations.json, validate matcher, mutate, write back
 interface AutomationsConfigJson { automations?: Record<string, Record<string, unknown>[]>; [key: string]: unknown }
-/**
- * Address a matcher by stable id (preferred — immune to list reordering) or, for backward
- * compatibility with renderers that still send it, by positional index (stale-index-unsafe).
- */
-async function withAutomationMatcher(workspaceId: string, eventName: string, matcherRef: number | string, mutate: (matchers: Record<string, unknown>[], index: number, config: AutomationsConfigJson, genId: () => string) => void) {
+async function withAutomationMatcher(workspaceId: string, eventName: string, matcherIndex: number, mutate: (matchers: Record<string, unknown>[], index: number, config: AutomationsConfigJson, genId: () => string) => void) {
   const workspace = getWorkspaceByNameOrId(workspaceId)
   if (!workspace) throw new Error('Workspace not found')
 
@@ -40,14 +36,8 @@ async function withAutomationMatcher(workspaceId: string, eventName: string, mat
 
     const eventMap = config.automations ?? {}
     const matchers = eventMap[eventName]
-    let matcherIndex = -1
-    if (Array.isArray(matchers)) {
-      matcherIndex = typeof matcherRef === 'string'
-        ? matchers.findIndex((m) => m?.id === matcherRef)
-        : matcherRef
-    }
     if (!Array.isArray(matchers) || matcherIndex < 0 || matcherIndex >= matchers.length) {
-      throw new Error(`Invalid automation reference: ${eventName}[${typeof matcherRef === 'string' ? matcherRef : matcherIndex}]`)
+      throw new Error(`Invalid automation reference: ${eventName}[${matcherIndex}]`)
     }
 
     mutate(matchers, matcherIndex, config, generateShortId)
@@ -128,8 +118,7 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
         })
 
         if (payload.automationId) {
-          // Tag test runs so they can be told apart from real triggers in history.
-          const entry = { ...createWebhookHistoryEntry({
+          const entry = createWebhookHistoryEntry({
             matcherId: payload.automationId,
             ok: result.success,
             method,
@@ -138,7 +127,7 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
             durationMs: result.durationMs ?? 0,
             error: result.error,
             responseBody: result.responseBody,
-          }), test: true }
+          })
           try {
             await appendAutomationHistoryEntry(workspace.rootPath, entry)
           } catch (e) {
@@ -177,9 +166,9 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
           duration: Date.now() - start,
         })
 
-        // Write history entry for test runs (tagged as tests)
+        // Write history entry for test runs
         if (payload.automationId) {
-          const entry = { ...createPromptHistoryEntry({ matcherId: payload.automationId, ok: true, sessionId, prompt: action.prompt }), test: true }
+          const entry = createPromptHistoryEntry({ matcherId: payload.automationId, ok: true, sessionId, prompt: action.prompt })
           try {
             await appendAutomationHistoryEntry(workspace.rootPath, entry)
           } catch (e) {
@@ -194,9 +183,9 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
           duration: Date.now() - start,
         })
 
-        // Write failed history entry (tagged as a test run)
+        // Write failed history entry
         if (payload.automationId) {
-          const entry = { ...createPromptHistoryEntry({ matcherId: payload.automationId, ok: false, error: (err as Error).message, prompt: action.prompt }), test: true }
+          const entry = createPromptHistoryEntry({ matcherId: payload.automationId, ok: false, error: (err as Error).message, prompt: action.prompt })
           try {
             await appendAutomationHistoryEntry(workspace.rootPath, entry)
           } catch (e) {
@@ -210,9 +199,8 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
   })
 
   // Automation enabled state management (toggle enabled/disabled in automations.json)
-  // matcherRef: stable matcher id (preferred) or legacy positional index.
-  server.handle(RPC_CHANNELS.automations.SET_ENABLED, async (_ctx, workspaceId: string, eventName: string, matcherRef: number | string, enabled: boolean) => {
-    await withAutomationMatcher(workspaceId, eventName, matcherRef, (matchers, idx) => {
+  server.handle(RPC_CHANNELS.automations.SET_ENABLED, async (_ctx, workspaceId: string, eventName: string, matcherIndex: number, enabled: boolean) => {
+    await withAutomationMatcher(workspaceId, eventName, matcherIndex, (matchers, idx) => {
       if (enabled) {
         delete matchers[idx].enabled
       } else {
@@ -222,8 +210,8 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
   })
 
   // Duplicate an automation matcher
-  server.handle(RPC_CHANNELS.automations.DUPLICATE, async (_ctx, workspaceId: string, eventName: string, matcherRef: number | string) => {
-    await withAutomationMatcher(workspaceId, eventName, matcherRef, (matchers, idx, _config, genId) => {
+  server.handle(RPC_CHANNELS.automations.DUPLICATE, async (_ctx, workspaceId: string, eventName: string, matcherIndex: number) => {
+    await withAutomationMatcher(workspaceId, eventName, matcherIndex, (matchers, idx, _config, genId) => {
       const clone = JSON.parse(JSON.stringify(matchers[idx]))
       clone.id = genId()
       clone.name = clone.name ? `${clone.name} Copy` : 'Untitled Copy'
@@ -232,8 +220,8 @@ export function registerAutomationsHandlers(server: RpcServer, deps: HandlerDeps
   })
 
   // Delete an automation matcher
-  server.handle(RPC_CHANNELS.automations.DELETE, async (_ctx, workspaceId: string, eventName: string, matcherRef: number | string) => {
-    await withAutomationMatcher(workspaceId, eventName, matcherRef, (matchers, idx, config) => {
+  server.handle(RPC_CHANNELS.automations.DELETE, async (_ctx, workspaceId: string, eventName: string, matcherIndex: number) => {
+    await withAutomationMatcher(workspaceId, eventName, matcherIndex, (matchers, idx, config) => {
       matchers.splice(idx, 1)
       if (matchers.length === 0) {
         const eventMap = config.automations

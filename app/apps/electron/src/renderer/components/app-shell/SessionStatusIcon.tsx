@@ -7,7 +7,6 @@ import { getStateIcon, getStateIconStyle } from "@/config/session-status-config"
 import { useSessionListContext } from "@/context/SessionListContext"
 import type { SessionMeta } from "@/atoms/sessions"
 import { getSessionStatus } from "@/utils/session"
-import { SessionActivityDot } from "./SessionActivityDot"
 
 interface SessionStatusIconProps {
   item: SessionMeta
@@ -27,13 +26,10 @@ export function SessionStatusIcon({ item }: SessionStatusIconProps) {
   return (
     <Popover modal={true} open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        {/* The manual label is the button; live activity rides its corner. The
-            two answer different questions — "how was this filed" and "what is it
-            doing" — and only the second is derived (Decision H5). */}
         <button
           type="button"
           className={cn(
-            "relative !h-5 !w-5 flex items-center justify-center rounded-full transition-colors cursor-pointer",
+            "!h-5 !w-5 flex items-center justify-center rounded-full transition-colors cursor-pointer",
             "hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
             "[&>svg]:w-full [&>svg]:h-full [&>img]:w-full [&>img]:h-full [&>span]:text-base",
           )}
@@ -47,7 +43,6 @@ export function SessionStatusIcon({ item }: SessionStatusIconProps) {
           }}
         >
           {getStateIcon(status, ctx.sessionStatuses)}
-          <SessionActivityDot item={item} />
         </button>
       </PopoverTrigger>
       <PopoverContent

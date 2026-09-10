@@ -1778,11 +1778,7 @@ const ALWAYS_ALLOWED_TOOLS = new Set([
   'WebFetch', 'WebSearch',          // Web research
   'TodoWrite',                      // Task tracking
   'SubmitPlan',                     // Plan submission
-  'EnterPlan',                      // Enter Plan phase (no abort)
   'LSP',                            // Language server (read-only)
-  // Built-in SDK affordances without their own write capability — any
-  // commands/scripts they invoke go through their own permission checks.
-  'Skill', 'SlashCommand', 'KillShell', 'TaskStop',
   // Browser automation tool (canonical wrapper)
   'browser_tool',
 ]);
@@ -1842,11 +1838,11 @@ export function shouldAllowToolInMode(
     return { allowed: true };
   }
 
-  // MCP variants of always-allowed tools are only trusted from the vetted plan
-  // server (mcp__plan__SubmitPlan). A bare endsWith match would let any MCP
-  // source self-allow by naming a tool e.g. mcp__evil__Read.
-  if (toolName.startsWith('mcp__plan__') && ALWAYS_ALLOWED_TOOLS.has(toolName.slice('mcp__plan__'.length))) {
-    return { allowed: true };
+  // Check if tool name ends with an always-allowed tool (for MCP variants like mcp__plan__SubmitPlan)
+  for (const allowedTool of ALWAYS_ALLOWED_TOOLS) {
+    if (toolName.endsWith(`__${allowedTool}`)) {
+      return { allowed: true };
+    }
   }
 
   // Browser tool aliases (legacy browser_open/browser_snapshot/...)
@@ -2008,11 +2004,6 @@ export function shouldAllowToolInMode(
 
   // Handle MCP tools - allow read-only, block write operations
   if (toolName.startsWith('mcp__')) {
-    // Always allow documentation tools (read-only, always available)
-    if (toolName.startsWith('mcp__craft-agents-docs__')) {
-      return { allowed: true };
-    }
-
     // Handle session-scoped tools - derive safe-mode behavior from canonical session-tools-core metadata
     if (toolName.startsWith('mcp__session__')) {
       const safeAllowedSessionTools = getSessionSafeAllowedToolNames({
@@ -2069,11 +2060,8 @@ export function shouldAllowToolInMode(
     };
   }
 
-  // Default-deny: unrecognized tools are never auto-allowed in safe mode.
-  return {
-    allowed: false,
-    reason: getBlockReasonWithConfig(toolName, config),
-  };
+  // Default: allow other tools not explicitly handled
+  return { allowed: true };
 }
 
 /**
@@ -2107,11 +2095,17 @@ function getBlockReasonWithConfig(toolName: string, config: ToolCheckConfig): st
  * errorResponse() in packages/session-tools-core/src/response.ts for the
  * full explanation of the OpenAI Responses API limitation.
  *
+ * Must NOT set `continue: false`: since Claude CLI 2.1.212 (SDK 0.3.220)
+ * that halts the entire turn before the model sees the reason, so it can
+ * never react (e.g. suggest a mode switch or submit a plan). With
+ * `continue: true`, `decision: 'block'` feeds the reason back to the
+ * model as a tool error and the turn continues.
+ *
  * @param reason - The reason for blocking (from shouldAllowToolInMode)
  */
 export function blockWithReason(reason: string) {
   return {
-    continue: false,
+    continue: true,
     decision: 'block' as const,
     reason: `[ERROR] ${reason}`,
   };

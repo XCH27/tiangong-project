@@ -1,22 +1,26 @@
 import * as React from 'react'
 import { ChevronRight } from 'lucide-react'
+import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '../../lib/utils'
 
 /**
- * Collapsible content wrapper. Fade-only: the motion spec forbids animating
- * height, and expanding a heading is a tens-per-day action.
+ * Simple animated collapsible content wrapper.
  */
 function AnimatedCollapsibleContent({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) {
   return (
-    <div
-      className={cn(
-        'overflow-hidden transition-opacity duration-200 ease-out',
-        isOpen ? 'opacity-100' : 'opacity-0'
+    <AnimatePresence initial={false}>
+      {isOpen && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          className="overflow-hidden"
+        >
+          {children}
+        </motion.div>
       )}
-      aria-hidden={!isOpen}
-    >
-      {children}
-    </div>
+    </AnimatePresence>
   )
 }
 
@@ -68,18 +72,19 @@ export function CollapsibleSection({
         onClick={() => hasContent && onToggle(sectionId)}
       >
         {/* Chevron - always visible when collapsed, hover-only when expanded */}
-        {/* Chevron - always visible when collapsed, hover-only when expanded */}
-        <div
+        <motion.div
+          initial={false}
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
           className={cn(
-            'absolute -left-4 top-[5px] select-none transition-transform duration-200 ease-out',
-            isExpanded && 'rotate-90',
+            'absolute -left-4 top-[5px] select-none transition-opacity',
             !hasContent && 'opacity-0',
             hasContent && isCollapsed && 'opacity-100',
-            hasContent && isExpanded && 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+            hasContent && isExpanded && 'opacity-0 group-hover:opacity-100'
           )}
         >
           <ChevronRight className="h-3 w-3 text-muted-foreground" />
-        </div>
+        </motion.div>
 
         {/* Heading content */}
         {heading}

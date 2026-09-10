@@ -38,8 +38,6 @@ export interface FullscreenOverlayBaseHeaderProps {
   typeBadge?: OverlayTypeBadge
   /** File path — shows dual-trigger menu badge with "Open" + "Reveal in {file manager}" */
   filePath?: string
-  /** Whether filePath represents a real host path that can expose system actions. */
-  filePathActions?: boolean
   /** Title — displayed as a badge. Fallback when no file path. */
   title?: string
   /** Click handler for the title badge */
@@ -90,15 +88,6 @@ const contextMenuItemClasses = cn(
 
 interface FilePathBadgeProps {
   filePath: string
-  actionsEnabled?: boolean
-}
-
-export function hasHostFilePathActions(
-  actionsEnabled: boolean,
-  onOpenFileExternal?: (path: string) => void,
-  onRevealInFinder?: (path: string) => void,
-): boolean {
-  return actionsEnabled && (!!onOpenFileExternal || !!onRevealInFinder)
 }
 
 /**
@@ -110,12 +99,9 @@ export function hasHostFilePathActions(
  * viewing a file in an overlay, "Open" should launch the system editor directly,
  * not re-trigger the in-app preview interceptor.
  */
-function FilePathBadge({ filePath, actionsEnabled = true }: FilePathBadgeProps) {
-  const { t } = useTranslation()
+function FilePathBadge({ filePath }: FilePathBadgeProps) {
   const { onOpenFileExternal, onRevealInFinder, fileManagerName } = usePlatform()
-  const revealLabel = t('chat.showInFileManager', {
-    fileManager: fileManagerName || 'Finder',
-  })
+  const revealLabel = `Reveal in ${fileManagerName || 'Finder'}`
 
   const handleOpen = useCallback(() => {
     onOpenFileExternal?.(filePath)
@@ -126,18 +112,14 @@ function FilePathBadge({ filePath, actionsEnabled = true }: FilePathBadgeProps) 
   }, [onRevealInFinder, filePath])
 
   // Shared menu items — same content rendered by both dropdown and context menu
-  const hasMenuItems = hasHostFilePathActions(
-    actionsEnabled,
-    onOpenFileExternal,
-    onRevealInFinder,
-  )
+  const hasMenuItems = !!onOpenFileExternal || !!onRevealInFinder
 
   const dropdownItems = (
     <>
       {onOpenFileExternal && (
         <StyledDropdownMenuItem onSelect={handleOpen}>
           <ExternalLink />
-          {t('common.open')}
+          Open
         </StyledDropdownMenuItem>
       )}
       {onRevealInFinder && (
@@ -154,7 +136,7 @@ function FilePathBadge({ filePath, actionsEnabled = true }: FilePathBadgeProps) 
       {onOpenFileExternal && (
         <ContextMenu.Item className={contextMenuItemClasses} onSelect={handleOpen}>
           <ExternalLink />
-          {t('common.open')}
+          Open
         </ContextMenu.Item>
       )}
       {onRevealInFinder && (
@@ -214,7 +196,6 @@ export function FullscreenOverlayBaseHeader({
   onClose,
   typeBadge,
   filePath,
-  filePathActions = true,
   title,
   onTitleClick,
   subtitle,
@@ -265,7 +246,7 @@ export function FullscreenOverlayBaseHeader({
         />
       )}
       {filePath ? (
-        <FilePathBadge filePath={filePath} actionsEnabled={filePathActions} />
+        <FilePathBadge filePath={filePath} />
       ) : title ? (
         <PreviewHeaderBadge label={title} onClick={onTitleClick} shrinkable />
       ) : null}

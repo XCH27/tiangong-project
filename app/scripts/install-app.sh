@@ -2,7 +2,7 @@
 
 set -e
 
-VERSIONS_URL="${FLEET_INSTALL_VERSIONS_URL:-}"
+VERSIONS_URL="https://thecraftagents.com/electron"
 DOWNLOAD_DIR="$HOME/.craft-agent/downloads"
 
 # Colors for output
@@ -17,10 +17,6 @@ info() { printf "%b\n" "${BLUE}>${NC} $1"; }
 success() { printf "%b\n" "${GREEN}>${NC} $1"; }
 warn() { printf "%b\n" "${YELLOW}!${NC} $1"; }
 error() { printf "%b\n" "${RED}x${NC} $1"; exit 1; }
-
-if [ -z "$VERSIONS_URL" ]; then
-    error "Fleet has no default binary release channel. Set FLEET_INSTALL_VERSIONS_URL to an owner-approved Fleet manifest endpoint."
-fi
 
 # Detect OS
 OS="$(uname -s)"
@@ -355,7 +351,7 @@ ELECTRON_CACHE_ALT="$HOME/.cache/@craft-agent"
 # Verify AppImage exists
 if [ ! -f "$APPIMAGE_PATH" ]; then
     echo "Error: Craft Agent not found at $APPIMAGE_PATH"
-    echo "Reinstall: rerun this script with FLEET_INSTALL_VERSIONS_URL set to the approved Fleet channel"
+    echo "Reinstall: curl -fsSL https://thecraftagents.com/install-app.sh | bash"
     exit 1
 fi
 

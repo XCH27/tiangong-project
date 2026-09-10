@@ -208,8 +208,6 @@ describe('ClaudeEventAdapter', () => {
         type: 'usage_update',
         usage: {
           inputTokens: 1700, // 1000 + 500 + 200
-          cacheReadTokens: 500,
-          cacheCreationTokens: 200,
         },
       });
     });
@@ -356,7 +354,7 @@ describe('ClaudeEventAdapter', () => {
       });
     });
 
-    it('should emit cumulative msg.usage on complete and the per-message snapshot on usage_update', async () => {
+    it('should use lastAssistantUsage for accurate context display', async () => {
       // Send an assistant message first to capture per-message usage
       await adapter.adapt({
         type: 'assistant',
@@ -373,13 +371,12 @@ describe('ClaudeEventAdapter', () => {
         isReplay: false,
       } as any);
 
-      // Now send result — complete carries the SDK's whole-turn cumulative
-      // usage; the per-message context snapshot rides a trailing usage_update.
+      // Now send result — should use the per-message usage, not cumulative
       const events = await adapter.adapt({
         type: 'result',
         subtype: 'success',
         usage: {
-          input_tokens: 5000,
+          input_tokens: 5000, // cumulative (should be ignored)
           output_tokens: 1000,
           cache_read_input_tokens: 2000,
           cache_creation_input_tokens: 500,
@@ -390,39 +387,10 @@ describe('ClaudeEventAdapter', () => {
       } as any);
 
       const completeEvent = events.find(e => e.type === 'complete') as any;
-      // Cumulative whole-turn record (5000+2000+500=7500), not lastAssistantUsage
-      expect(completeEvent.usage.inputTokens).toBe(7500);
-      expect(completeEvent.usage.cacheReadTokens).toBe(2000);
-      expect(completeEvent.usage.cacheCreationTokens).toBe(500);
-      expect(completeEvent.usage.errored).toBeUndefined();
-
-      // Trailing usage_update re-asserts the final-call context snapshot
-      const snapshotEvent = events.find(e => e.type === 'usage_update') as any;
-      expect(snapshotEvent).toBeDefined();
-      expect(snapshotEvent.usage.inputTokens).toBe(1300); // 800+400+100
-      expect(snapshotEvent.usage.cacheReadTokens).toBe(400);
-      expect(snapshotEvent.usage.cacheCreationTokens).toBe(100);
-    });
-
-    it('should tag error-path usage so accumulators skip it', async () => {
-      const events = await adapter.adapt({
-        type: 'result',
-        subtype: 'error',
-        errors: ['boom'],
-        usage: {
-          input_tokens: 100,
-          output_tokens: 0,
-          cache_read_input_tokens: 0,
-          cache_creation_input_tokens: 0,
-        },
-        total_cost_usd: 0.01,
-        modelUsage: {},
-        session_id: 'sess-1',
-      } as any);
-
-      const completeEvent = events.find(e => e.type === 'complete') as any;
-      expect(completeEvent.usage.errored).toBe(true);
-      expect(completeEvent.usage.costUsd).toBe(0.01);
+      // Should use lastAssistantUsage (800+400+100=1300), not cumulative (5000+2000+500=7500)
+      expect(completeEvent.usage.inputTokens).toBe(1300);
+      expect(completeEvent.usage.cacheReadTokens).toBe(400);
+      expect(completeEvent.usage.cacheCreationTokens).toBe(100);
     });
   });
 

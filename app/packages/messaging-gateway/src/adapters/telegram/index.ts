@@ -41,13 +41,6 @@ export type TelegramChatInfo =
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024
 
 /**
- * Reconnect attempts before the adapter gives up. A permanent 409 (a second
- * poller that never exits) would otherwise retry forever at the 5-minute
- * ceiling. Mirrors the WhatsApp worker's reconnect_exhausted cap.
- */
-const MAX_RECONNECT_ATTEMPTS = 10
-
-/**
  * Minimal mime → extension fallback used when Telegram's `file_path` is
  * missing or extension-less. Kept intentionally small — anything unknown
  * becomes `.bin` and `readFileAttachment` will classify it as 'unknown'.
@@ -644,16 +637,6 @@ export class TelegramAdapter implements PlatformAdapter {
     if (this.destroyed || !this.bot) return
 
     this.reconnectAttempts++
-    if (this.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-      this.connected = false
-      this.log.error('[telegram] reconnect exhausted; staying disconnected until re-init', {
-        event: 'telegram_reconnect_exhausted',
-        reason: 'reconnect_exhausted',
-        attempts: this.reconnectAttempts - 1,
-        lastError: describeError(err),
-      })
-      return
-    }
     // 409 = another poller is competing; wait 30 s before first retry so the
     // other process has a chance to exit. Other errors start at 5 s.
     const is409 = err instanceof Error && err.message.includes('409')

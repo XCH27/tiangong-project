@@ -16,19 +16,15 @@ import type { SettingsSubpage } from '../../../shared/settings-registry'
 
 import AppSettingsPage from './AppSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
-import ExpertKitsSettingsPage from './ExpertKitsSettingsPage'
-import LabelsSettingsPage from './LabelsSettingsPage'
-import UsageSettingsPage from './UsageSettingsPage'
-import TerminalSettingsPage from './TerminalSettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
 import InputSettingsPage from './InputSettingsPage'
 import WorkspaceSettingsPage from './WorkspaceSettingsPage'
 import PermissionsSettingsPage from './PermissionsSettingsPage'
+import LabelsSettingsPage from './LabelsSettingsPage'
 import MessagingSettingsPage from './MessagingSettingsPage'
 import ServerSettingsPage from './ServerSettingsPage'
 import ShortcutsPage from './ShortcutsPage'
 import PreferencesPage from './PreferencesPage'
-import ArchivedSettingsPage from './ArchivedSettingsPage'
 
 /**
  * Map of settings subpage IDs to their page components.
@@ -37,19 +33,15 @@ import ArchivedSettingsPage from './ArchivedSettingsPage'
 export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = {
   app: AppSettingsPage,
   ai: AiSettingsPage,
-  'expert-kits': ExpertKitsSettingsPage,
-  labels: LabelsSettingsPage,
-  usage: UsageSettingsPage,
-  terminal: TerminalSettingsPage,
   appearance: AppearanceSettingsPage,
   input: InputSettingsPage,
   workspace: WorkspaceSettingsPage,
   permissions: PermissionsSettingsPage,
+  labels: LabelsSettingsPage,
   messaging: MessagingSettingsPage,
   server: ServerSettingsPage,
   shortcuts: ShortcutsPage,
   preferences: PreferencesPage,
-  archived: ArchivedSettingsPage,
 }
 
 /**

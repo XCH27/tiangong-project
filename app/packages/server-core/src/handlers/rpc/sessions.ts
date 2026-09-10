@@ -1,40 +1,15 @@
 import { readFile, writeFile, stat } from 'fs/promises'
 import { join } from 'path'
-import {
-  RPC_CHANNELS,
-  type FileAttachment,
-  type GetSessionsOptions,
-  type SendMessageOptions,
-  type SessionEvent,
-} from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
 import type { StoredAttachment } from '@craft-agent/core/types'
-import { getWorkspaceByNameOrId, getWorkspaces } from '@craft-agent/shared/config'
+import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { perf } from '@craft-agent/shared/utils'
 import { isValidThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
 const VALID_THINKING_LEVELS_LIST = THINKING_LEVEL_IDS.map(id => `'${id}'`).join(', ')
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
-import { resolveCallerWorkspaceId } from '../utils'
-import type { RequestContext } from '@craft-agent/server-core/transport'
 import { setTransferableHandler } from './transfer'
-
-/**
- * Verify the session belongs to the caller's bound workspace before serving
- * session-directory data (files, notes). Returns false when the caller cannot
- * prove ownership — fail-closed, same contract as getSessionPath's null.
- */
-function callerOwnsSession(
-  ctx: RequestContext,
-  deps: HandlerDeps,
-  sessionManager: HandlerDeps['sessionManager'],
-  sessionId: string,
-): boolean {
-  const callerWorkspaceId = resolveCallerWorkspaceId(ctx, deps)
-  if (!callerWorkspaceId) return false
-  const session = sessionManager.getSessions().find(s => s.id === sessionId)
-  return session?.workspaceId === callerWorkspaceId
-}
 
 interface ClientSessionWatchState {
   watcher: import('fs').FSWatcher
@@ -160,7 +135,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Get all sessions for the calling window's workspace
   // Waits for initialization to complete so sessions are never returned empty during startup
-  server.handle(RPC_CHANNELS.sessions.GET, async (ctx, options?: GetSessionsOptions) => {
+  server.handle(RPC_CHANNELS.sessions.GET, async (ctx) => {
     try {
       await sessionManager.waitForInit()
     } catch (error) {
@@ -170,43 +145,15 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
     const windowWorkspaceId = ctx.webContentsId != null
       ? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId)
       : undefined
-    const wantsLocalProjectOverview =
-      options?.scope === 'local-project-overview'
-      && ctx.webContentsId != null
-
-    let sessions
-    let resolvedWorkspaceId = ctx.workspaceId ?? windowWorkspaceId ?? undefined
-
-    if (wantsLocalProjectOverview) {
-      // Electron desktop may project all configured Projects in one sidebar.
-      // Remote twin ids are included only for metadata already present in this
-      // local SessionManager; remote execution keeps its own connection.
-      const visibleWorkspaceIds = new Set<string>()
-      for (const workspace of getWorkspaces()) {
-        visibleWorkspaceIds.add(workspace.id)
-        if (workspace.remoteServer?.remoteWorkspaceId) {
-          visibleWorkspaceIds.add(workspace.remoteServer.remoteWorkspaceId)
-        }
-      }
-
-      sessions = sessionManager.getSessions().filter(session =>
-        visibleWorkspaceIds.has(session.workspaceId)
-      )
-      server.updateClientSessionWorkspaces?.(ctx.clientId, [...visibleWorkspaceIds])
-      resolvedWorkspaceId = undefined
-    } else {
-      // Preserve the single-Workspace contract for CLI, WebUI, remote clients
-      // and ordinary RPC callers.
-      sessions = sessionManager.getSessions(resolvedWorkspaceId)
-    }
+    const workspaceId = ctx.workspaceId ?? windowWorkspaceId
+    const sessions = sessionManager.getSessions(workspaceId ?? undefined)
     end()
 
     log.info('[sessions:get] result', {
       ctxWorkspaceId: ctx.workspaceId,
       webContentsId: ctx.webContentsId,
       windowWorkspaceId,
-      requestedScope: options?.scope ?? 'workspace',
-      resolvedWorkspaceId,
+      resolvedWorkspaceId: workspaceId,
       returnedCount: sessions.length,
       returnedWorkspaceIds: sessionWorkspaceDistribution(sessions),
       returnedIds: summarizeIds(sessions.map(s => s.id)),
@@ -365,8 +312,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.unarchiveSession(sessionId)
       case 'rename':
         return sessionManager.renameSession(sessionId, command.name)
-      case 'setGoal':
-        return sessionManager.setSessionGoal(sessionId, command.goal)
       case 'setSessionStatus':
         return sessionManager.setSessionStatus(sessionId, command.state)
       case 'markRead':
@@ -378,20 +323,12 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.setActiveViewingSession(sessionId, command.workspaceId)
       case 'setPermissionMode':
         return sessionManager.setSessionPermissionMode(sessionId, command.mode)
-      case 'setWorkMode':
-        return sessionManager.setSessionWorkMode(sessionId, command.selection, command.mode)
-      case 'setExecutionPermissionMode':
-        return sessionManager.setSessionExecutionPermissionMode(sessionId, command.mode)
       case 'setThinkingLevel':
         // Validate thinking level before passing to session manager
         if (!isValidThinkingLevel(command.level)) {
           throw new Error(`Invalid thinking level: ${command.level}. Valid values: ${VALID_THINKING_LEVELS_LIST}`)
         }
         return sessionManager.setSessionThinkingLevel(sessionId, command.level)
-      case 'setFastMode':
-        return sessionManager.setSessionFastMode(sessionId, command.enabled)
-      case 'setRuntimeMode':
-        return sessionManager.setSessionRuntimeMode(sessionId, command.mode)
       case 'updateWorkingDirectory':
         return sessionManager.updateWorkingDirectory(sessionId, command.dir)
       case 'setSources':
@@ -414,6 +351,12 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         const sessionPath = sessionManager.getSessionPath(sessionId)
         return sessionPath ? { success: true, path: sessionPath } : { success: false }
       }
+      case 'shareToViewer':
+        return sessionManager.shareToViewer(sessionId)
+      case 'updateShare':
+        return sessionManager.updateShare(sessionId)
+      case 'revokeShare':
+        return sessionManager.revokeShare(sessionId)
       case 'refreshTitle':
         log.info(`IPC: refreshTitle received for session ${sessionId}`)
         return sessionManager.refreshTitle(sessionId)
@@ -436,10 +379,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         return sessionManager.removeMessageAnnotation(sessionId, command.messageId, command.annotationId)
       case 'updateAnnotation':
         return sessionManager.updateMessageAnnotation(sessionId, command.messageId, command.annotationId, command.patch)
-      case 'removeQueuedMessage':
-        return sessionManager.removeQueuedMessage(sessionId, command.messageId)
-      case 'revertToUserMessage':
-        return sessionManager.revertToUserMessage(sessionId, command.messageId)
       default: {
         const _exhaustive: never = command
         throw new Error(`Unknown session command: ${JSON.stringify(command)}`)
@@ -507,8 +446,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   // ============================================================
 
   // Get files in session directory (recursive tree structure)
-  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (ctx, sessionId: string) => {
-    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) return []
+  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (_ctx, sessionId: string) => {
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return []
 
@@ -525,7 +463,6 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
     const clientId = ctx.clientId
     cleanupSessionFileWatchForClient(clientId)
 
-    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) return
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return
 
@@ -566,8 +503,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Get session notes (reads notes.md from session directory)
-  server.handle(RPC_CHANNELS.sessions.GET_NOTES, async (ctx, sessionId: string) => {
-    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) return ''
+  server.handle(RPC_CHANNELS.sessions.GET_NOTES, async (_ctx, sessionId: string) => {
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return ''
 
@@ -582,10 +518,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Set session notes (writes to notes.md in session directory)
-  server.handle(RPC_CHANNELS.sessions.SET_NOTES, async (ctx, sessionId: string, content: string) => {
-    if (!callerOwnsSession(ctx, deps, sessionManager, sessionId)) {
-      throw new Error(`Session not found: ${sessionId}`)
-    }
+  server.handle(RPC_CHANNELS.sessions.SET_NOTES, async (_ctx, sessionId: string, content: string) => {
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) {
       throw new Error(`Session not found: ${sessionId}`)

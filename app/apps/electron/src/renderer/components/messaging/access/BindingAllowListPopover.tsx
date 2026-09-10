@@ -163,7 +163,7 @@ function ModeRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-xs font-medium">
           {t(MODE_LABEL_KEYS[mode])}
-          {selected && <Check className="h-3 w-3 text-success" />}
+          {selected && <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />}
         </div>
         <div className="mt-0.5 text-xs text-foreground/50">
           {t(MODE_DESCRIPTION_KEYS[mode])}

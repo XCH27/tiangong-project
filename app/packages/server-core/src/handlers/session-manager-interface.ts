@@ -9,7 +9,6 @@
 import type { Workspace, WorkspaceInfo, ActiveSessionInfo } from '@craft-agent/core/types'
 import type { StoredAttachment, AnnotationV1 } from '@craft-agent/core/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/mode-types'
-import type { ExecutionPermissionMode, WorkMode, WorkModeSelection } from '@craft-agent/shared/agent/work-mode'
 import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 import type { AuthResult } from '@craft-agent/shared/agent'
 import type {
@@ -22,6 +21,7 @@ import type {
   CredentialResponse,
   PermissionModeState,
   UnreadSummary,
+  ShareResult,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -64,7 +64,6 @@ export interface ISessionManager {
   archiveSession(sessionId: string): Promise<void>
   unarchiveSession(sessionId: string): Promise<void>
   renameSession(sessionId: string, name: string): Promise<void>
-  setSessionGoal(sessionId: string, goal: string | null): Promise<void>
   setSessionStatus(sessionId: string, status: SessionStatus): Promise<void>
   markSessionRead(sessionId: string): Promise<void>
   markSessionUnread(sessionId: string): Promise<void>
@@ -77,11 +76,7 @@ export interface ISessionManager {
   // ---------------------------------------------------------------------------
 
   setSessionPermissionMode(sessionId: string, mode: PermissionMode): void
-  setSessionWorkMode(sessionId: string, selection: WorkModeSelection, mode?: WorkMode): void
-  setSessionExecutionPermissionMode(sessionId: string, mode: ExecutionPermissionMode): void
   setSessionThinkingLevel(sessionId: string, level: ThinkingLevel): void
-  setSessionFastMode(sessionId: string, enabled: boolean): Promise<void>
-  setSessionRuntimeMode(sessionId: string, mode: string | null): Promise<void>
   updateWorkingDirectory(sessionId: string, path: string): void
   setSessionSources(sessionId: string, sourceSlugs: string[]): Promise<void>
   setSessionLabels(sessionId: string, labels: string[]): void
@@ -124,8 +119,6 @@ export interface ISessionManager {
     rpcContext?: { callerClientId?: string },
   ): Promise<void>
   cancelProcessing(sessionId: string, silent?: boolean): Promise<void>
-  removeQueuedMessage(sessionId: string, messageId: string): Promise<string | undefined>
-  revertToUserMessage(sessionId: string, messageId: string): Promise<string | undefined>
   killShell(sessionId: string, shellId: string): Promise<{ success: boolean; error?: string }>
   getTaskOutput(taskId: string): Promise<string | null>
 
@@ -176,8 +169,8 @@ export interface ISessionManager {
   /**
    * Send the plan-approval "I approve this plan, please execute it" message
    * to the session as if the user had clicked "Accept plan" in the desktop UI.
-   * Moves the session to Execute while retaining its configured execution
-   * approval posture. Approval never implies bypassing tool permissions.
+   * If the session is in Explore (safe) mode, also switches it to allow-all
+   * so the plan can actually run without per-tool prompts.
    *
    * Used by the messaging gateway so Telegram/WhatsApp accept buttons produce
    * the same server-side effect as the desktop accept button.
@@ -188,6 +181,9 @@ export interface ISessionManager {
   // Sharing
   // ---------------------------------------------------------------------------
 
+  shareToViewer(sessionId: string): Promise<ShareResult>
+  updateShare(sessionId: string): Promise<ShareResult>
+  revokeShare(sessionId: string): Promise<ShareResult>
 
   // ---------------------------------------------------------------------------
   // Export / Import

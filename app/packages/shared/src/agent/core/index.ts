@@ -61,20 +61,6 @@ export type {
   UsageTrackerConfig,
 } from './usage-tracker.ts';
 
-// Cache economy (TE1) — observation/accounting only; UsageTracker remains the ledger
-export type {
-  CacheKind,
-  Confidence,
-  ProviderCacheProfile,
-  NormalizedCacheUsage,
-  RawProviderUsage,
-  TurnEconomics,
-  EconomicsOptions,
-  PromptPrefixSnapshot,
-  CacheBreakDiagnosis,
-  CacheEconomySummary,
-} from './cache-economy.ts';
-
 // Constants
 export {
   PERMISSION_MODE_ORDER,
@@ -121,19 +107,6 @@ export {
   UsageTracker,
   createUsageTracker,
 } from './usage-tracker.ts';
-
-// Cache economy
-export {
-  PROVIDER_CACHE_PROFILES,
-  alignedPrefixTokens,
-  normalizeProviderUsage,
-  estimateTurnEconomics,
-  fingerprintZone,
-  diagnoseCacheBreak,
-  summarizeCacheEconomy,
-  cacheUsageFromLedger,
-  summarizeSessionCacheEconomy,
-} from './cache-economy.ts';
 
 // PreToolUse Utilities
 export {

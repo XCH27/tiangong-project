@@ -28,7 +28,6 @@ import { SourceSelectorPopover } from '@/components/ui/SourceSelectorPopover'
 import { SkillSelectorPopover } from '@/components/ui/SkillSelectorPopover'
 import { WorkingDirectorySelector } from '../input/WorkingDirectorySelector'
 import type { LoadedSource, LoadedSkill } from '../../../../shared/types'
-import { ErrorState } from '@/components/ui/surface-state'
 
 // Client-side fallback for async generate: a touch longer than the server's GENERATE_TIMEOUT_MS
 // (180s) so the orchestrator's own timeout + result push can land before we give up locally.
@@ -78,7 +77,7 @@ type TaskResults = Awaited<ReturnType<typeof window.electronAPI.getTaskResults>>
 // ---------------------------------------------------------------------------
 type BtnVariant = 'primary' | 'secondary' | 'ghost'
 const BTN_VARIANT: Record<BtnVariant, string> = {
-  primary: 'bg-accent text-accent-foreground hover:bg-accent/90',
+  primary: 'bg-indigo-500 text-white hover:bg-indigo-600',
   secondary: 'border border-border bg-card text-foreground hover:bg-foreground/[0.03]',
   ghost: 'text-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground',
 }
@@ -122,7 +121,7 @@ const SelectButton = React.forwardRef<
       {...rest}
     >
       {children}
-      <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-foreground/40" />
+      <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-foreground/40" strokeWidth={2} />
     </button>
   )
 })
@@ -155,7 +154,7 @@ function ModelSelect({
             {g.models.map((m) => (
               <DropdownMenuItem key={m.id} className="text-xs" onSelect={() => onChange(m.id)}>
                 <span className="truncate">{m.name}</span>
-                {m.id === value && <Check className="ml-auto h-3.5 w-3.5 shrink-0" />}
+                {m.id === value && <Check className="ml-auto h-3.5 w-3.5 shrink-0" strokeWidth={2} />}
               </DropdownMenuItem>
             ))}
           </React.Fragment>
@@ -244,7 +243,7 @@ function SourcesField({
         onClick={() => setOpen((prev) => !prev)}
       >
         {selected.length === 0 ? (
-          <DatabaseZap className="h-4 w-4 shrink-0 text-foreground/40" />
+          <DatabaseZap className="h-4 w-4 shrink-0 text-foreground/40" strokeWidth={2} />
         ) : (
           <AvatarStack avatars={selected.map((s) => <SourceAvatar key={s.config.slug} source={s} size="xs" />)} />
         )}
@@ -300,7 +299,7 @@ function SkillsField({
         onClick={() => setOpen((prev) => !prev)}
       >
         {selected.length === 0 ? (
-          <Zap className="h-4 w-4 shrink-0 text-foreground/40" />
+          <Zap className="h-4 w-4 shrink-0 text-foreground/40" strokeWidth={2} />
         ) : (
           <AvatarStack avatars={selected.map((s) => <SkillAvatar key={s.slug} skill={s} size="xs" workspaceId={workspaceId} />)} />
         )}
@@ -343,7 +342,7 @@ function FolderField({
       align="start"
       renderTrigger={({ hasFolder, folderName }) => (
         <SelectButton style={{ width: 168 }} title={t('tasks.workingDirectoryHint')}>
-          <Folder className="h-3.5 w-3.5 shrink-0 text-foreground/40" />
+          <Folder className="h-3.5 w-3.5 shrink-0 text-foreground/40" strokeWidth={2} />
           <span className={cn('min-w-0 flex-1 truncate text-left', !hasFolder && 'text-foreground/50')}>
             {folderName ?? t('chat.workInFolder')}
           </span>
@@ -390,7 +389,7 @@ function SubtaskCard({
   return (
     <div className="group rounded-[10px] border border-border/70 bg-foreground/[0.015] p-3">
       <div className="flex items-start gap-2">
-        <div className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-accent/10 text-[12px] font-bold text-accent">
+        <div className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-indigo-500/10 text-[12px] font-bold text-indigo-500 dark:text-indigo-300">
           {index + 1}
         </div>
         <div className="min-w-0 flex-1">
@@ -425,9 +424,9 @@ function SubtaskCard({
                   type="button"
                   onClick={() => removeDep(depUid)}
                   aria-label={t('tasks.removeDependency')}
-                  className="grid h-4 w-4 shrink-0 place-items-center rounded text-foreground/40 hover:bg-foreground/10 hover:text-destructive"
+                  className="grid h-4 w-4 shrink-0 place-items-center rounded text-foreground/40 hover:bg-foreground/10 hover:text-red-500"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3 w-3" strokeWidth={2.5} />
                 </button>
               </span>
             ))}
@@ -456,9 +455,9 @@ function SubtaskCard({
           type="button"
           onClick={onRemove}
           aria-label={t('tasks.removeSubtask')}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded text-foreground/40 opacity-0 transition-[color,background-color,opacity] hover:bg-foreground/10 hover:text-destructive group-hover:opacity-100"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded text-foreground/40 opacity-0 transition-all hover:bg-foreground/10 hover:text-red-500 group-hover:opacity-100"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
         </button>
       </div>
     </div>
@@ -483,13 +482,7 @@ export interface TaskEditorProps {
    * user somewhere useful — e.g. the session list scoped to the task. `taskLabelId` is the
    * RESOLVED reserved-label id from tasks:create (may be 'task-2' after a name collision).
    */
-  onCreated?: (created: {
-    sessionId: string
-    taskLabelId?: string
-    projectId?: string
-    /** Freshly created session fields — lets the host navigate before the meta map catches up. */
-    session?: { workingDirectory?: string; workspaceId?: string }
-  }) => void
+  onCreated?: (created: { sessionId: string; taskLabelId?: string; projectId?: string }) => void
   /** Real provider→model groups (from the workspace's LLM connections). */
   modelGroups: KanbanModelProviderGroup[]
   /** model id → connection slug that serves it (so each node routes to the right backend). */
@@ -560,9 +553,6 @@ export function TaskEditor({
   // Results tab (edit mode): storage-backed run outcome, loaded lazily on tab open / refresh.
   const [results, setResults] = React.useState<TaskResults | null>(null)
   const [resultsLoading, setResultsLoading] = React.useState(false)
-  const [resultsError, setResultsError] = React.useState<string | null>(null)
-  const [taskLoadError, setTaskLoadError] = React.useState(false)
-  const [taskLoadAttempt, setTaskLoadAttempt] = React.useState(0)
 
   // Jotai store handle for one-shot reads (no subscription — the editor must not re-render
   // on every streaming metadata tick just to have read children once at open).
@@ -611,7 +601,6 @@ export function TaskEditor({
     const sessionMeta = editSessionId ? store.get(sessionMetaMapAtom).get(editSessionId) : undefined
     const sessionProjectId = sessionMeta?.projectId ?? ''
     if (target.taskSlug) {
-      setTaskLoadError(false)
       void window.electronAPI
         .getTask(workspaceId, target.taskSlug)
         .then((res) => {
@@ -643,11 +632,7 @@ export function TaskEditor({
             ...collectQuickAddRows(new Set(nodes.map((n) => n.id))),
           ])
         })
-        .catch((error) => {
-          if (cancelled) return
-          console.error('[TaskEditor] Failed to load task definition:', error)
-          setTaskLoadError(true)
-        })
+        .catch(() => {})
     } else {
       if (target.initialTitle) setTitle(target.initialTitle)
       // A bound quick-add tile with no task.yaml: prefill + floor from the session's own state, so
@@ -662,26 +647,22 @@ export function TaskEditor({
     }
     // Prefill runs once per target identity; fallbackModel is stable enough for this load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target.mode, editSessionId, editSlug, workspaceId, taskLoadAttempt])
+  }, [target.mode, editSessionId, editSlug, workspaceId])
 
   const loadResults = React.useCallback(() => {
     if (!editSlug) return
     setResultsLoading(true)
-    setResultsError(null)
     void window.electronAPI
       .getTaskResults(workspaceId, editSlug)
       .then((res) => setResults(res))
-      .catch((error) => {
-        console.error('[TaskEditor] Failed to load task results:', error)
-        setResultsError(error instanceof Error ? error.message : String(error))
-      })
+      .catch(() => {})
       .finally(() => setResultsLoading(false))
   }, [workspaceId, editSlug])
 
   // Load results when the Results tab is first opened (and there's a slug to read).
   React.useEffect(() => {
-    if (tab === 'results' && editSlug && !results && !resultsLoading && !resultsError) loadResults()
-  }, [tab, editSlug, results, resultsLoading, resultsError, loadResults])
+    if (tab === 'results' && editSlug && !results && !resultsLoading) loadResults()
+  }, [tab, editSlug, results, resultsLoading, loadResults])
 
   // Async generate: tasks:generate returns the orchestrator session id immediately and the
   // authored spec arrives later via the onTaskGenerated push event. We track the pending
@@ -899,9 +880,6 @@ export function TaskEditor({
           sessionId: created.orchestratorSessionId,
           taskLabelId: created.taskLabelId,
           projectId: projectId || undefined,
-          // The meta map may not have announced the orchestrator yet; carry what we
-          // know so the jump handler can compute the correct home without racing it.
-          session: { workingDirectory: cwd.trim() || undefined, workspaceId },
         })
       }
       if (!run) {
@@ -931,7 +909,7 @@ export function TaskEditor({
       {/* Header */}
       <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5 shadow-minimal">
         <Btn variant="ghost" className="px-2" onClick={onClose}>
-          <ChevronLeft className="h-4 w-4" /> {t('kanban.board')}
+          <ChevronLeft className="h-4 w-4" strokeWidth={2} /> {t('kanban.board')}
         </Btn>
         <span className="text-foreground/25">/</span>
         <span className="text-sm font-semibold">{isEdit ? t('tasks.editTask') : t('kanban.newTask')}</span>
@@ -957,7 +935,7 @@ export function TaskEditor({
         <div className="ml-auto flex items-center gap-2">
           {isEdit && onOpenSession && (
             <Btn variant="secondary" onClick={onOpenSession} disabled={busy}>
-              <ExternalLink className="h-3.5 w-3.5" /> {t('tasks.openSession')}
+              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} /> {t('tasks.openSession')}
             </Btn>
           )}
           {tab === 'definition' && (
@@ -969,14 +947,14 @@ export function TaskEditor({
                 {isEdit ? t('common.save') : t('common.create')}
               </Btn>
               <Btn variant="primary" onClick={() => submit(true)} disabled={busy}>
-                {busy ? <Spinner /> : <Sparkles className="h-3.5 w-3.5" />}
+                {busy ? <Spinner /> : <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />}
                 {busy ? t('tasks.starting') : isEdit ? t('tasks.saveAndRun') : t('tasks.createAndRun')}
               </Btn>
             </>
           )}
           {tab === 'results' && (
             <Btn variant="secondary" onClick={loadResults} disabled={resultsLoading}>
-              {resultsLoading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} {t('common.refresh')}
+              {resultsLoading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />} {t('common.refresh')}
             </Btn>
           )}
         </div>
@@ -986,14 +964,7 @@ export function TaskEditor({
         <ResultsPanel
           results={results}
           loading={resultsLoading}
-          error={resultsError}
-          onRetry={loadResults}
           onOpenChildSession={onOpenChildSession}
-        />
-      ) : taskLoadError ? (
-        <ErrorState
-          description={t('tasks.definitionLoadFailed')}
-          action={{ label: t('common.retry'), onClick: () => setTaskLoadAttempt((attempt) => attempt + 1) }}
         />
       ) : (
       /* Body */
@@ -1012,7 +983,7 @@ export function TaskEditor({
                   mode === m ? 'bg-card text-foreground shadow-minimal' : 'text-foreground/55 hover:text-foreground/80',
                 )}
               >
-                {m === 'generate' && <Sparkles className="h-3.5 w-3.5" />}
+                {m === 'generate' && <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} />}
                 {m === 'generate' ? t('tasks.modeGenerate') : t('tasks.modeManual')}
               </button>
             ))}
@@ -1071,13 +1042,13 @@ export function TaskEditor({
                   {!boundProjectId && (
                     <DropdownMenuItem className="text-xs" onSelect={() => setProjectId('')}>
                       {t('tasks.noProject')}
-                      {!projectId && <Check className="ml-auto h-3.5 w-3.5" />}
+                      {!projectId && <Check className="ml-auto h-3.5 w-3.5" strokeWidth={2} />}
                     </DropdownMenuItem>
                   )}
                   {projects.map((p) => (
                     <DropdownMenuItem key={p.config.id} className="text-xs" onSelect={() => setProjectId(p.config.id)}>
                       <span className="truncate">{p.config.name}</span>
-                      {projectId === p.config.id && <Check className="ml-auto h-3.5 w-3.5 shrink-0" />}
+                      {projectId === p.config.id && <Check className="ml-auto h-3.5 w-3.5 shrink-0" strokeWidth={2} />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1108,7 +1079,7 @@ export function TaskEditor({
                   {(['allow-all', 'ask', 'safe'] as const).map((m) => (
                     <DropdownMenuItem key={m} className="text-xs" onSelect={() => setPermissionMode(m)}>
                       <span className="truncate">{t(`mode.${m}`)}</span>
-                      {permissionMode === m && <Check className="ml-auto h-3.5 w-3.5 shrink-0" />}
+                      {permissionMode === m && <Check className="ml-auto h-3.5 w-3.5 shrink-0" strokeWidth={2} />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -1168,7 +1139,7 @@ export function TaskEditor({
                   {subtasks.length}
                 </span>
                 <Btn variant="secondary" className="ml-auto h-7 px-2.5 text-[12px]" onClick={addSubtask}>
-                  <Plus className="h-3.5 w-3.5" /> {t('kanban.addSubtask')}
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.addSubtask')}
                 </Btn>
               </div>
 
@@ -1191,7 +1162,7 @@ export function TaskEditor({
                     onClick={addSubtask}
                     className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-border py-2.5 text-[12.5px] font-semibold text-foreground/40 transition-colors hover:border-foreground/30 hover:text-foreground/60"
                   >
-                    <Plus className="h-3.5 w-3.5" /> {t('tasks.addFirstSubtask')}
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('tasks.addFirstSubtask')}
                   </button>
                 )}
               </div>
@@ -1225,13 +1196,13 @@ export function TaskEditor({
             </div>
           ) : (
             <div className="flex min-h-full flex-col items-center justify-center gap-3 px-6 py-8 text-center">
-              <div className="grid h-12 w-12 place-items-center rounded-full bg-accent/10 text-accent">
-                <Sparkles className="h-6 w-6" />
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-indigo-500/10 text-indigo-500 dark:text-indigo-300">
+                <Sparkles className="h-6 w-6" strokeWidth={2} />
               </div>
               <div className="text-[14px] font-bold">{t('tasks.generatePlan')}</div>
               <p className="max-w-[360px] text-[12.5px] leading-relaxed text-foreground/55">{t('tasks.generateBody')}</p>
               <Btn variant="primary" onClick={generatePlan} disabled={busy}>
-                <Sparkles className="h-3.5 w-3.5" /> {t('tasks.generatePlan')}
+                <Sparkles className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('tasks.generatePlan')}
               </Btn>
               <span className="text-[11px] text-foreground/40">{t('tasks.generateHint')}</span>
             </div>
@@ -1249,14 +1220,10 @@ export function TaskEditor({
 function ResultsPanel({
   results,
   loading,
-  error,
-  onRetry,
   onOpenChildSession,
 }: {
   results: TaskResults | null
   loading: boolean
-  error: string | null
-  onRetry: () => void
   onOpenChildSession?: (sessionId: string) => void
 }) {
   const { t } = useTranslation()
@@ -1269,19 +1236,10 @@ function ResultsPanel({
     )
   }
 
-  if (error) {
-    return (
-      <ErrorState
-        description={t('tasks.resultsLoadFailed')}
-        action={{ label: t('common.retry'), onClick: onRetry }}
-      />
-    )
-  }
-
   if (!results || !results.runId || results.nodes.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-border bg-card px-6 text-center text-foreground/50 shadow-minimal">
-        <CircleSlash className="h-6 w-6 text-foreground/30" />
+        <CircleSlash className="h-6 w-6 text-foreground/30" strokeWidth={2} />
         <p className="text-[12.5px]">{t('tasks.resultsEmpty')}</p>
       </div>
     )
@@ -1304,18 +1262,18 @@ function ResultsPanel({
           className={cn(
             'flex items-start gap-2.5 rounded-[10px] border px-3 py-2.5',
             verdict.result === 'pass'
-              ? 'border-success/30 bg-success/5'
+              ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
               : verdict.result === 'fail'
-                ? 'border-destructive/30 bg-destructive/5'
+                ? 'border-red-500/30 bg-red-500/[0.06]'
                 : 'border-border bg-foreground/[0.03]',
           )}
         >
           {verdict.result === 'pass' ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" strokeWidth={2.5} />
           ) : verdict.result === 'fail' ? (
-            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" strokeWidth={2.5} />
           ) : (
-            <CircleSlash className="mt-0.5 h-4 w-4 shrink-0 text-foreground/40" />
+            <CircleSlash className="mt-0.5 h-4 w-4 shrink-0 text-foreground/40" strokeWidth={2.5} />
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -1343,11 +1301,11 @@ function ResultsPanel({
             {verdicts.map((v, i) => (
               <div key={i} className="flex items-start gap-2 text-[11.5px]">
                 {v.result === 'pass' ? (
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" strokeWidth={2.5} />
                 ) : v.result === 'fail' ? (
-                  <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+                  <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" strokeWidth={2.5} />
                 ) : (
-                  <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/40" />
+                  <CircleSlash className="mt-0.5 h-3.5 w-3.5 shrink-0 text-foreground/40" strokeWidth={2.5} />
                 )}
                 <span className="min-w-0 flex-1 text-foreground/60">
                   {v.reason || (v.result === 'pass' ? t('tasks.verdictPass') : v.result === 'fail' ? t('tasks.verdictFail') : t('tasks.verdictUnparsed'))}
@@ -1371,9 +1329,9 @@ function ResultsPanel({
               <button
                 type="button"
                 onClick={() => onOpenChildSession(node.sessionId!)}
-                className="inline-flex shrink-0 items-center gap-1 rounded text-[11.5px] font-semibold text-accent hover:underline"
+                className="inline-flex shrink-0 items-center gap-1 rounded text-[11.5px] font-semibold text-indigo-500 hover:underline dark:text-indigo-300"
               >
-                <ExternalLink className="h-3 w-3" /> {t('tasks.openSession')}
+                <ExternalLink className="h-3 w-3" strokeWidth={2.5} /> {t('tasks.openSession')}
               </button>
             )}
           </div>

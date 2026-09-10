@@ -1,11 +1,3 @@
-import {
-  THINKING_LEVELS,
-  isValidThinkingLevel,
-  type ThinkingLevel,
-  type ThinkingLevelDefinition,
-} from '../agent/thinking-levels.ts';
-import type { ModelPricing } from './model-pricing.ts';
-
 /**
  * Centralized Model Registry
  *
@@ -30,6 +22,7 @@ const BEDROCK_TO_BARE: Record<string, string> = {
   'us.anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'us.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'us.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'us.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   'us.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
   'us.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
   // EU inference profile IDs
@@ -40,6 +33,7 @@ const BEDROCK_TO_BARE: Record<string, string> = {
   'eu.anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'eu.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'eu.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'eu.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   'eu.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
   'eu.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
   // Global inference profile IDs
@@ -50,6 +44,7 @@ const BEDROCK_TO_BARE: Record<string, string> = {
   'global.anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'global.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'global.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'global.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   // Base IDs (no region prefix)
   'anthropic.claude-opus-4-8': 'claude-opus-4-8',
   'anthropic.claude-fable-5': 'claude-fable-5',
@@ -58,6 +53,7 @@ const BEDROCK_TO_BARE: Record<string, string> = {
   'anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   'anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
   'anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
 };
@@ -67,17 +63,12 @@ function bedrockToBareId(modelId: string): string {
 
 const DEPRECATED_MODEL_REPLACEMENTS: Record<string, string> = {
   'claude-opus-4-5-20251101': 'claude-opus-4-8',
-  'claude-opus-4-6': 'claude-opus-4-8',
   'anthropic.claude-opus-4-5-20251101-v1:0': 'anthropic.claude-opus-4-8',
-  'anthropic.claude-opus-4-6-v1': 'anthropic.claude-opus-4-8',
   'anthropic.claude-opus-4-7-v1': 'anthropic.claude-opus-4-7',
   'us.anthropic.claude-opus-4-5-20251101-v1:0': 'us.anthropic.claude-opus-4-8',
-  'us.anthropic.claude-opus-4-6-v1': 'us.anthropic.claude-opus-4-8',
   'us.anthropic.claude-opus-4-7-v1': 'us.anthropic.claude-opus-4-7',
   'eu.anthropic.claude-opus-4-5-20251101-v1:0': 'eu.anthropic.claude-opus-4-8',
-  'eu.anthropic.claude-opus-4-6-v1': 'eu.anthropic.claude-opus-4-8',
   'eu.anthropic.claude-opus-4-7-v1': 'eu.anthropic.claude-opus-4-7',
-  'global.anthropic.claude-opus-4-6-v1': 'global.anthropic.claude-opus-4-8',
   'global.anthropic.claude-opus-4-7-v1': 'global.anthropic.claude-opus-4-7',
 };
 
@@ -119,56 +110,10 @@ export interface ModelDefinition {
   provider: ModelProvider;
   /** Maximum context window in tokens */
   contextWindow: number;
-  /**
-   * Whether this model exposes a user-selectable thinking/reasoning effort.
-   * Missing metadata means unknown, so the UI must not guess or render a control.
-   */
+  /** Whether this model supports thinking/reasoning effort. Defaults to true when undefined. */
   supportsThinking?: boolean;
-  /**
-   * Provider-advertised reasoning values. When present, the UI and adapter
-   * must only expose this subset of the Fleet thinking vocabulary.
-   *
-   * Providers commonly call this `supportedReasoningEfforts`; we retain the
-   * normalized values here so model discovery remains the single authority.
-   */
-  supportedReasoningEfforts?: readonly string[];
-  /** Whether the provider exposes a request-level fast/speed mode for this model. */
-  supportsFastMode?: boolean;
-  /**
-   * Provider-native request modes advertised for this exact model.
-   *
-   * These are deliberately separate from reasoning effort: for example,
-   * OpenAI's `fast` mode selects priority service while `pro` changes a
-   * provider-specific reasoning mode. Neither is another model ID.
-   */
-  runtimeModes?: Readonly<Record<string, ModelRuntimeMode>>;
   /** Explicit per-model image input capability hint, primarily for custom endpoints. */
   supportsImages?: boolean;
-  /**
-   * Provider-advertised input modalities. Discovered API and CLI models keep
-   * this lossless projection; static models may fall back to text plus
-   * `supportsImages`.
-   */
-  inputModalities?: readonly ('text' | 'image' | 'audio' | 'video' | 'pdf')[];
-  /**
-   * Published rates for this exact model.
-   *
-   * Optional and unresolved by default, because for most of the registry it
-   * genuinely is unknown: a custom OpenAI-compatible endpoint has whatever
-   * price its operator charges, and a discovered model arrives with no price at
-   * all. Absent means "nobody told us", which `session-cost.ts` reports as
-   * unknown — distinct from zero, which would read as free.
-   */
-  pricing?: ModelPricing;
-}
-
-export interface ModelRuntimeMode {
-  /** Provider request-body fragment to merge when the mode is selected. */
-  requestBody?: Readonly<Record<string, unknown>>;
-  /** Provider request headers to merge when the mode is selected. */
-  requestHeaders?: Readonly<Record<string, string>>;
-  /** Optional usage multiplier surfaced by provider metadata. */
-  quotaMultiplier?: number;
 }
 
 // ============================================
@@ -191,9 +136,6 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.opusDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
-    supportsThinking: true,
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-    supportsFastMode: true,
   },
   {
     id: 'claude-opus-4-7',
@@ -203,8 +145,22 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.opusDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
-    supportsThinking: true,
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+  },
+  // TODO(opus-4.6-sunset): remove this entry when Opus 4.6 is deprecated by
+  // Anthropic. Also drop the related 4.6 pieces in llm-connections.ts
+  // PI_PREFERRED_DEFAULTS and the restoreOpus46ToAnthropicConnections
+  // migration in storage.ts (grep for TODO(opus-4.6-sunset) to find them all).
+  {
+    id: 'claude-opus-4-6',
+    name: 'Opus 4.6',
+    // shortName intentionally collides with 4.8/4.7. Those are listed first,
+    // so findModelIdByShortName('Opus') keeps returning 4.8 — zero behavior
+    // change for callers that reference "Opus" abstractly.
+    shortName: 'Opus',
+    description: 'Previous Opus release',
+    descriptionKey: 'model.opusDesc',
+    provider: 'anthropic',
+    contextWindow: 200_000,
   },
   {
     id: 'claude-sonnet-5',
@@ -214,8 +170,6 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.sonnetDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
-    supportsThinking: true,
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     id: 'claude-sonnet-4-6',
@@ -225,8 +179,6 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.sonnetDesc',
     provider: 'anthropic',
     contextWindow: 200_000,
-    supportsThinking: true,
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
   {
     id: 'claude-haiku-4-5-20251001',
@@ -236,8 +188,6 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.haikuDesc',
     provider: 'anthropic',
     contextWindow: 200_000,
-    supportsThinking: true,
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high'],
   },
   {
     id: 'claude-fable-5',
@@ -247,8 +197,6 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     descriptionKey: 'model.fableDesc',
     provider: 'anthropic',
     contextWindow: 1_000_000,
-    supportsThinking: true,
-    supportedReasoningEfforts: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
   },
 
   // ----------------------------------------
@@ -280,51 +228,6 @@ export const ANTHROPIC_MODELS = getModelsByProvider('anthropic');
  * @deprecated Use ANTHROPIC_MODELS or MODEL_REGISTRY instead
  */
 export const MODELS = ANTHROPIC_MODELS;
-
-/**
- * Convert provider-specific reasoning labels into Fleet's persisted thinking
- * vocabulary. Unknown values are intentionally ignored: sending a value the
- * adapter does not understand is worse than hiding an option.
- */
-function normalizeProviderThinkingLevel(value: string): ThinkingLevel | undefined {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'default') return 'medium';
-  if (normalized === 'none' || normalized === 'disabled' || normalized === 'off') return 'off';
-  return isValidThinkingLevel(normalized) ? normalized : undefined;
-}
-
-/**
- * Resolve the effort choices for one model. This is deliberately capability
- * based rather than provider based, matching OpenCode's model catalog.
- */
-export function getThinkingLevelsForModel(
-  model: ModelDefinition | string | undefined,
-): readonly ThinkingLevelDefinition[] {
-  // A bare custom-endpoint model string has no capability metadata. Do not
-  // expose a control that would send an unsupported reasoning parameter.
-  if (!model || typeof model === 'string') return [];
-  // An explicit denial always wins. A stale provider catalog must not make
-  // the composer send a reasoning parameter the adapter has ruled out.
-  if (model.supportsThinking === false) return [];
-  const advertised = model.supportedReasoningEfforts;
-  // Explicit effort values are themselves a positive capability declaration.
-  // When neither it nor supportsThinking is present, remain conservative.
-  if (model.supportsThinking !== true && (!advertised || advertised.length === 0)) return [];
-  // `supportsThinking` alone only says the model reasons; it does not define a
-  // request-level effort vocabulary. Static/custom models must advertise the
-  // selectable values explicitly. Pi discovery translates its SDK contract
-  // into `supportedReasoningEfforts` before the renderer sees the model.
-  if (!advertised || advertised.length === 0) return [];
-  const ids = new Set(advertised.map(normalizeProviderThinkingLevel).filter(
-    (value): value is ThinkingLevel => value !== undefined,
-  ));
-  return THINKING_LEVELS.filter(level => ids.has(level.id));
-}
-
-/** Fast mode is opt-in and must be advertised by the selected model. */
-export function modelSupportsFastMode(model: ModelDefinition | string | undefined): boolean {
-  return typeof model !== 'string' && model?.supportsFastMode === true;
-}
 
 // ============================================
 // MODEL ID HELPERS (Derived from Registry)

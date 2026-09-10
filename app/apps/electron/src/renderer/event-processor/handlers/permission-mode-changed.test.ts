@@ -12,10 +12,7 @@ describe('handlePermissionModeChanged', () => {
     const event: PermissionModeChangedEvent = {
       type: 'permission_mode_changed',
       sessionId: 's1',
-      permissionMode: 'ask',
-      workMode: 'execute',
-      workModeSelection: 'auto',
-      executionPermissionMode: 'ask',
+      permissionMode: 'allow-all',
       previousPermissionMode: 'safe',
       transitionDisplay: 'Explore -> Execute',
       modeVersion: 12,
@@ -28,10 +25,7 @@ describe('handlePermissionModeChanged', () => {
     expect(result.effects[0]).toEqual({
       type: 'permission_mode_changed',
       sessionId: 's1',
-      permissionMode: 'ask',
-      workMode: 'execute',
-      workModeSelection: 'auto',
-      executionPermissionMode: 'ask',
+      permissionMode: 'allow-all',
       previousPermissionMode: 'safe',
       transitionDisplay: 'Explore -> Execute',
       modeVersion: 12,

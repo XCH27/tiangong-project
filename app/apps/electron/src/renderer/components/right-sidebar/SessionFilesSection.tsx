@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils'
 import * as storage from '@/lib/local-storage'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getFileManagerName } from '@/lib/platform'
-import { acquireSessionFilesWatch, restoreSessionFileWatch } from './session-files-watch'
+import { restoreSessionFileWatch } from './session-files-watch'
 
 /**
  * Stagger animation variants for child items - matches LeftSidebar pattern
@@ -150,15 +150,8 @@ const WEB_PREVIEWABLE_EXTENSIONS = new Set([
   'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico',
 ])
 
-/** True when running in web UI (browser) rather than Electron. Evaluated lazily:
- * window.electronAPI is absent when the module is imported without the preload. */
-let cachedIsWebMode: boolean | null = null
-function isWebMode(): boolean {
-  if (cachedIsWebMode === null) {
-    cachedIsWebMode = window.electronAPI?.getRuntimeEnvironment?.() === 'web'
-  }
-  return cachedIsWebMode
-}
+/** True when running in web UI (browser) rather than Electron. */
+const isWebMode = window.electronAPI.getRuntimeEnvironment() === 'web'
 
 /**
  * Constructs a thumbnail:// protocol URL for a given file path.
@@ -191,12 +184,12 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: SessionFile 
   }, [file.path])
 
   const ext = file.name.split('.').pop()?.toLowerCase() || ''
-  const previewableSet = isWebMode() ? WEB_PREVIEWABLE_EXTENSIONS : PREVIEWABLE_EXTENSIONS
+  const previewableSet = isWebMode ? WEB_PREVIEWABLE_EXTENSIONS : PREVIEWABLE_EXTENSIONS
   const canPreview = previewableSet.has(ext)
 
   // Web mode: load a small preview via RPC as a base64 data URL
   useEffect(() => {
-    if (!isWebMode() || !canPreview || failed) return
+    if (!isWebMode || !canPreview || failed) return
     let cancelled = false
     window.electronAPI.readFilePreviewDataUrl(file.path, 64).then((url) => {
       if (!cancelled) setDataUrl(url)
@@ -211,7 +204,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: SessionFile 
     return getFileIcon(file)
   }
 
-  const imgSrc = isWebMode() ? dataUrl : getThumbnailUrl(file.path)
+  const imgSrc = isWebMode ? dataUrl : getThumbnailUrl(file.path)
 
   return (
     <>
@@ -250,6 +243,8 @@ interface FileTreeItemProps {
   onFileClick: (file: SessionFile) => void
   onFileDoubleClick: (file: SessionFile) => void
   onRevealInFileManager: (path: string) => void
+  /** Whether this item is inside an expanded folder (for stagger animation) */
+  isNested?: boolean
 }
 
 /**
@@ -267,6 +262,7 @@ function FileTreeItem({
   onFileClick,
   onFileDoubleClick,
   onRevealInFileManager,
+  isNested,
 }: FileTreeItemProps) {
   const { t } = useTranslation()
   const isDirectory = file.type === 'directory'
@@ -403,6 +399,7 @@ function FileTreeItem({
                         onFileClick={onFileClick}
                         onFileDoubleClick={onFileDoubleClick}
                         onRevealInFileManager={onRevealInFileManager}
+                        isNested={true}
                       />
                     </motion.div>
                   ))}
@@ -428,11 +425,8 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
   const [files, setFiles] = useState<SessionFile[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
-  // Ref (not state): loadFiles reads/writes this, and state would make loadFiles
-  // change identity mid-load, retriggering the load effect and the watcher.
-  const hasSavedExpandedStateRef = useRef(false)
+  const [hasSavedExpandedState, setHasSavedExpandedState] = useState(false)
   const mountedRef = useRef(true)
-  const reloadDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load expanded paths from storage when session changes.
   // If no value exists yet, we default to "expand all" after files load.
@@ -442,14 +436,14 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
       if (raw !== null) {
         const saved = storage.get<string[]>(storage.KEYS.sessionFilesExpandedFolders, [], sessionId)
         setExpandedPaths(new Set(saved))
-        hasSavedExpandedStateRef.current = true
+        setHasSavedExpandedState(true)
       } else {
         setExpandedPaths(new Set())
-        hasSavedExpandedStateRef.current = false
+        setHasSavedExpandedState(false)
       }
     } else {
       setExpandedPaths(new Set())
-      hasSavedExpandedStateRef.current = false
+      setHasSavedExpandedState(false)
     }
   }, [sessionId])
 
@@ -474,12 +468,12 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
         setFiles(sessionFiles)
 
         // Default behavior: expand the entire folder tree when there's no saved state yet.
-        if (!hasSavedExpandedStateRef.current) {
+        if (!hasSavedExpandedState) {
           const allDirectoryPaths = new Set(collectDirectoryPaths(sessionFiles))
           if (allDirectoryPaths.size > 0) {
             setExpandedPaths(allDirectoryPaths)
             saveExpandedPaths(allDirectoryPaths)
-            hasSavedExpandedStateRef.current = true
+            setHasSavedExpandedState(true)
           }
         }
       }
@@ -493,7 +487,7 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
         setIsLoading(false)
       }
     }
-  }, [sessionId, saveExpandedPaths])
+  }, [sessionId, hasSavedExpandedState, saveExpandedPaths])
 
   // Initial load and file watcher setup
   useEffect(() => {
@@ -501,23 +495,14 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
     loadFiles()
 
     if (sessionId) {
-      // Start watching for file changes. The server keeps one watcher per
-      // client, so ownership is refcounted across mounts (sidebar + popover).
-      const releaseWatch = acquireSessionFilesWatch(sessionId)
+      // Start watching for file changes
+      void window.electronAPI.watchSessionFiles(sessionId)
 
-      // Listen for file change events (debounced: a burst of fs events
-      // collapses into a single tree refetch)
+      // Listen for file change events
       const unsubscribe = window.electronAPI.onSessionFilesChanged((changedSessionId) => {
-        if (changedSessionId !== sessionId || !mountedRef.current) return
-        if (reloadDebounceRef.current) {
-          clearTimeout(reloadDebounceRef.current)
+        if (changedSessionId === sessionId && mountedRef.current) {
+          void loadFiles()
         }
-        reloadDebounceRef.current = setTimeout(() => {
-          reloadDebounceRef.current = null
-          if (mountedRef.current) {
-            void loadFiles()
-          }
-        }, 300)
       })
 
       const unsubscribeReconnect = window.electronAPI.onReconnected(() => {
@@ -527,13 +512,9 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
 
       return () => {
         mountedRef.current = false
-        if (reloadDebounceRef.current) {
-          clearTimeout(reloadDebounceRef.current)
-          reloadDebounceRef.current = null
-        }
         unsubscribe()
         unsubscribeReconnect()
-        releaseWatch()
+        void window.electronAPI.unwatchSessionFiles()
       }
     }
 

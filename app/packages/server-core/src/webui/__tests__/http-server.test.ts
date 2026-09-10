@@ -29,7 +29,6 @@ async function createServer(overrides?: {
   publicWsUrl?: string
   wsProtocol?: 'ws' | 'wss'
   wsPort?: number
-  trustedProxies?: string[]
 }) {
   const server = await startWebuiHttpServer({
     port: 0,
@@ -40,7 +39,6 @@ async function createServer(overrides?: {
     publicWsUrl: overrides?.publicWsUrl,
     wsProtocol: overrides?.wsProtocol ?? 'wss',
     wsPort: overrides?.wsPort ?? 9100,
-    trustedProxies: overrides?.trustedProxies,
     getHealthCheck: () => ({ status: 'ok' }),
     logger,
   })
@@ -110,39 +108,6 @@ describe('startWebuiHttpServer', () => {
     expect(await res.json()).toEqual({ error: 'Invalid credentials' })
   })
 
-  it('does not rate-limit repeated successful logins', async () => {
-    const { baseUrl } = await createServer()
-
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const res = await fetch(`${baseUrl}/api/auth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: PASSWORD }),
-      })
-      expect(res.status).toBe(200)
-    }
-  })
-
-  it('rate-limits repeated failed logins', async () => {
-    const { baseUrl } = await createServer()
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const res = await fetch(`${baseUrl}/api/auth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: 'wrong-password' }),
-      })
-      expect(res.status).toBe(401)
-    }
-
-    const blocked = await fetch(`${baseUrl}/api/auth`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: PASSWORD }),
-    })
-    expect(blocked.status).toBe(429)
-  })
-
   it('honors an explicit secure-cookie override', async () => {
     const { baseUrl } = await createServer({ secureCookies: true, wsProtocol: 'ws', wsPort: 9100 })
 
@@ -156,7 +121,7 @@ describe('startWebuiHttpServer', () => {
     expect(res.headers.get('set-cookie')).toContain('Secure')
   })
 
-  it('ignores forwarded protocol from an untrusted direct peer', async () => {
+  it('infers secure cookies from proxy https headers when no override is set', async () => {
     const { baseUrl } = await createServer({ wsProtocol: 'wss', wsPort: 9100 })
 
     const res = await fetch(`${baseUrl}/api/auth`, {
@@ -169,15 +134,11 @@ describe('startWebuiHttpServer', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(res.headers.get('set-cookie')).not.toContain('Secure')
+    expect(res.headers.get('set-cookie')).toContain('Secure')
   })
 
-  it('trusts forwarded protocol and host only from an explicitly trusted proxy', async () => {
-    const { baseUrl } = await createServer({
-      wsProtocol: 'wss',
-      wsPort: 9100,
-      trustedProxies: ['127.0.0.1'],
-    })
+  it('derives a browser-facing websocket URL from forwarded public host headers', async () => {
+    const { baseUrl } = await createServer({ wsProtocol: 'wss', wsPort: 9100 })
 
     const authRes = await fetch(`${baseUrl}/api/auth`, {
       method: 'POST',
@@ -198,7 +159,6 @@ describe('startWebuiHttpServer', () => {
     })
 
     expect(configRes.status).toBe(200)
-    expect(authRes.headers.get('set-cookie')).toContain('Secure')
     expect(await configRes.json()).toEqual({
       wsUrl: 'wss://craft.example.com:9100',
     })

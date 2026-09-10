@@ -2,7 +2,7 @@
  * Auto-update module using electron-updater
  *
  * Handles checking for updates, downloading, and installing via the standard
- * electron-updater library. Updates are served from https://agents.craft.do/electron/latest
+ * electron-updater library. Updates are served from https://thecraftagents.com/electron/latest
  * using the generic provider (YAML manifests + binaries on R2/S3).
  *
  * Platform behavior:
@@ -72,12 +72,42 @@ let __isUpdating = false
 // so the regular before-quit save site would see an empty array.
 let beforeUpdateQuitHook: (() => void) | null = null
 
+// Hook fired (awaited) immediately before quitAndInstall, AFTER the window
+// snapshot. index.ts uses it to flush sessions + release resources BEFORE the
+// installer quit, so before-quit no longer needs to preventDefault (which
+// cancelled Squirrel.Mac's quit and left the update downloaded-but-not-installed).
+let beforeUpdateInstallHook: (() => Promise<void>) | null = null
+
+// Hook fired when quitAndInstall throws AFTER beforeUpdateInstallHook already tore
+// the app down (sessions flushed, services disposed, lock released, isQuitting set).
+// The process cannot safely keep running at that point — index.ts uses this to
+// inform the user and relaunch into a fresh process instead of leaving a zombie
+// app whose next quit would skip the flush entirely (#891).
+let installQuitFailedHook: (() => void) | null = null
+
 /**
  * Register a callback to run inside installUpdate() before quitAndInstall.
  * Used by index.ts to snapshot multi-window state while windows are still alive.
  */
 export function setBeforeUpdateQuitHook(fn: () => void): void {
   beforeUpdateQuitHook = fn
+}
+
+/**
+ * Register an async callback run (awaited) inside installUpdate() right before
+ * quitAndInstall. index.ts uses it to run the full quit cleanup so the installer
+ * handoff isn't interrupted by the before-quit handler's preventDefault (#891).
+ */
+export function setBeforeUpdateInstallHook(fn: () => Promise<void>): void {
+  beforeUpdateInstallHook = fn
+}
+
+/**
+ * Register the recovery callback for a quitAndInstall failure that happens after
+ * the install cleanup hook already ran. index.ts relaunches the app from it.
+ */
+export function setInstallQuitFailedHook(fn: () => void): void {
+  installQuitFailedHook = fn
 }
 
 /**
@@ -122,39 +152,13 @@ function broadcastDownloadProgress(progress: number): void {
   eventSink(RPC_CHANNELS.update.DOWNLOAD_PROGRESS, { to: 'all' }, progress)
 }
 
-// ─── Fork safety: the update channel must be Fleet-controlled ─────────────────
-
-/**
- * Fleet is a fork of Craft Agents. The inherited `publish` target in electron-builder.yml points at
- * `agents.craft.do/electron/latest`, so an unmodified updater would download and install an
- * **upstream Craft binary over Fleet**, erasing the fork. Decision P8 forbids that, and spec R2-C2
- * requires the channel to be Fleet-controlled/user-configured *or* the install honestly disabled.
- *
- * No Fleet release channel exists yet, so the default is disabled: no check, no download, no
- * install, and — importantly — no network call to a Craft-operated host. Set
- * `FLEET_UPDATE_FEED_URL` to a Fleet-controlled or self-hosted feed to re-enable the full path.
- */
-const FLEET_UPDATE_FEED_URL = process.env.FLEET_UPDATE_FEED_URL?.trim() || null
-
-export function isUpdaterEnabled(): boolean {
-  return FLEET_UPDATE_FEED_URL !== null
-}
-
 // ─── Configure electron-updater ───────────────────────────────────────────────
 
-if (FLEET_UPDATE_FEED_URL) {
-  autoUpdater.setFeedURL({ provider: 'generic', url: FLEET_UPDATE_FEED_URL })
-  // Auto-download updates in the background after detection
-  autoUpdater.autoDownload = true
-  // Install on app quit (if update is downloaded but user hasn't clicked "Restart")
-  autoUpdater.autoInstallOnAppQuit = true
-} else {
-  // Both must be false: `autoInstallOnAppQuit` would otherwise install anything already staged in
-  // the updater cache by a previous build, without any further check.
-  autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
-  updateInfo = { ...updateInfo, downloadState: 'disabled' }
-}
+// Auto-download updates in the background after detection
+autoUpdater.autoDownload = true
+
+// Install on app quit (if update is downloaded but user hasn't clicked "Restart")
+autoUpdater.autoInstallOnAppQuit = true
 
 // Use the logger for electron-updater internal logging
 autoUpdater.logger = {
@@ -189,7 +193,7 @@ autoUpdater.on('update-available', (info) => {
   }
 
   // Fallback: check if file exists in cache directory
-  const existing = checkForExistingDownload(info.version)
+  const existing = checkForExistingDownload()
   if (existing.exists) {
     mainLog.info(`[auto-update] Update already downloaded (file check), setting state to ready`)
     updateInfo = {
@@ -296,12 +300,8 @@ interface CheckOptions {
 /**
  * Check if a downloaded update already exists in the cache directory.
  * This helps detect updates that were downloaded in a previous session.
- *
- * Only trusts electron-updater's own update-info.json manifest (and requires a
- * version match when expectedVersion is given). A stray .zip/.exe/.dmg in the
- * cache directory is never sufficient to mark an update ready.
  */
-function checkForExistingDownload(expectedVersion?: string): { exists: boolean; version?: string } {
+function checkForExistingDownload(): { exists: boolean; version?: string } {
   try {
     const cacheDir = getUpdateCacheDir()
     mainLog.info(`[auto-update] Checking cache directory: ${cacheDir}`)
@@ -321,17 +321,25 @@ function checkForExistingDownload(expectedVersion?: string): { exists: boolean; 
       const info = readJsonFileSync(infoPath) as Record<string, unknown> | null
       mainLog.info(`[auto-update] update-info.json contents: ${JSON.stringify(info)}`)
 
-      if (expectedVersion && info?.version !== expectedVersion) {
-        mainLog.info(`[auto-update] Cached download version ${String(info?.version)} does not match expected ${expectedVersion}`)
-        return { exists: false }
-      }
-
       // electron-updater uses 'fileName' (not 'path') in update-info.json
       const fileName = (info?.fileName || info?.path) as string | undefined
       if (fileName && fs.existsSync(path.join(cacheDir, fileName))) {
         mainLog.info(`[auto-update] Found existing download via update-info.json: ${fileName}`)
         return { exists: true, version: info?.version as string }
       }
+    }
+
+    // Fallback: check for any installer/zip/dmg file
+    const downloadFile = files.find(f =>
+      f.endsWith('.zip') ||
+      f.endsWith('.exe') ||
+      f.endsWith('.AppImage') ||
+      f.endsWith('.dmg') ||
+      f.endsWith('.nupkg')
+    )
+    if (downloadFile) {
+      mainLog.info(`[auto-update] Found existing download file: ${downloadFile}`)
+      return { exists: true }
     }
 
     mainLog.info(`[auto-update] No existing download found in cache`)
@@ -349,21 +357,6 @@ function checkForExistingDownload(expectedVersion?: string): { exists: boolean; 
  * @param options.autoDownload - If false, only checks without downloading (for manual "Check Now")
  */
 export async function checkForUpdates(options: CheckOptions = {}): Promise<UpdateInfo> {
-  // Return before any network call: with no Fleet channel configured, the only reachable feed is
-  // Craft's (R2-C1 forbids silent calls to Craft-operated hosts; R2-C2 forbids installing them).
-  if (!isUpdaterEnabled()) {
-    mainLog.info('[auto-update] Updater disabled: no FLEET_UPDATE_FEED_URL configured')
-    updateInfo = {
-      ...updateInfo,
-      available: false,
-      latestVersion: null,
-      downloadState: 'disabled',
-      downloadProgress: 0,
-    }
-    broadcastUpdateInfo()
-    return { ...updateInfo }
-  }
-
   const { autoDownload = true } = options
 
   // Temporarily override autoDownload for this check if needed
@@ -383,7 +376,7 @@ export async function checkForUpdates(options: CheckOptions = {}): Promise<Updat
 
       // Double-check: if we're still showing 'downloading' but file exists, update state
       if (updateInfo.downloadState === 'downloading') {
-        const existing = checkForExistingDownload(result.updateInfo.version)
+        const existing = checkForExistingDownload()
         if (existing.exists) {
           mainLog.info('[auto-update] Update already downloaded, updating state to ready')
           updateInfo = {
@@ -452,6 +445,16 @@ export async function installUpdate(): Promise<void> {
     autoUpdateLog.error('beforeUpdateQuit hook failed', err)
   }
 
+  // Run the app's quit cleanup (session flush, timers, lock release) BEFORE the
+  // installer hands off. This lets the before-quit handler skip its own
+  // preventDefault-based cleanup, so Squirrel.Mac's quit runs to a real exit and
+  // the update actually installs (#891).
+  try {
+    await beforeUpdateInstallHook?.()
+  } catch (err) {
+    autoUpdateLog.error('beforeUpdateInstall cleanup hook failed', err)
+  }
+
   try {
     // isSilent=false shows the installer UI on Windows if needed (fallback)
     // isForceRunAfter=true ensures the app relaunches after install
@@ -461,6 +464,13 @@ export async function installUpdate(): Promise<void> {
     autoUpdateLog.error('quitAndInstall failed', error)
     updateInfo = { ...updateInfo, downloadState: 'error' }
     broadcastUpdateInfo()
+    // beforeUpdateInstallHook already tore the app down — recover via the
+    // registered relaunch hook instead of leaving a zombie process (#891).
+    try {
+      installQuitFailedHook?.()
+    } catch (hookErr) {
+      autoUpdateLog.error('installQuitFailed hook failed', hookErr)
+    }
     throw error
   }
 }

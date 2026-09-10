@@ -7,9 +7,8 @@ import type { LabelConfig } from "@craft-agent/shared/labels"
 import { fuzzyScore } from "@craft-agent/shared/search"
 import { getSessionTitle, getSessionStatus } from "@/utils/session"
 import type { SessionMeta } from "@/atoms/sessions"
-import { resolveBulkReadSessions } from "@/lib/session-list-read"
 import type { ViewConfig } from "@craft-agent/shared/views"
-import type { SessionFilter } from "@/context/NavigationContext"
+import type { SessionFilter } from "@/contexts/NavigationContext"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -75,8 +74,6 @@ export interface UseSessionSearchResult {
   // Filtered + grouped results
   matchingFilterItems: SessionMeta[]
   otherResultItems: SessionMeta[]
-  /** Complete canonical list affected by list-wide actions (not render pagination). */
-  bulkActionItems: readonly SessionMeta[]
   exceededSearchLimit: boolean
 
   // Render-ready outputs
@@ -255,16 +252,6 @@ export function sessionMatchesCurrentFilter(
     case 'allSessions':
       return session.isArchived !== true
 
-    case 'projectSessions': {
-      if (session.isArchived === true) return false
-      if (!session.workingDirectory) return false
-      if (currentFilter.workspaceId) return session.workspaceId === currentFilter.workspaceId
-      return true
-    }
-
-    case 'conversations':
-      return session.isArchived !== true && !session.workingDirectory
-
     case 'flagged':
       return session.isFlagged === true && session.isArchived !== true
 
@@ -318,16 +305,6 @@ export function useSessionSearch({
   const [isSearchUnavailable, setIsSearchUnavailable] = useState(false)
   const [displayLimit, setDisplayLimit] = useState(INITIAL_DISPLAY_LIMIT)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const contentSearchWorkspaceIds = useMemo(() => {
-    const ids = new Set(
-      items
-        .map(item => item.workspaceId)
-        .filter((id): id is string => Boolean(id)),
-    )
-    if (workspaceId) ids.add(workspaceId)
-    return [...ids].sort()
-  }, [items, workspaceId])
-  const contentSearchWorkspaceKey = contentSearchWorkspaceIds.join('\u0000')
 
   // Search mode is active when search is open AND query has 2+ characters
   const isSearchMode = searchActive && searchQuery.length >= 2
@@ -336,7 +313,7 @@ export function useSessionSearch({
   // --- Content search (ripgrep IPC with debounce + cancellation) ---
 
   useEffect(() => {
-    if (contentSearchWorkspaceIds.length === 0 || !isSearchMode) {
+    if (!workspaceId || !isSearchMode) {
       setContentSearchResults(new Map())
       return
     }
@@ -353,12 +330,7 @@ export function useSessionSearch({
         searchLog.info('ipc:call', { searchId })
         const ipcStart = performance.now()
 
-        const resultGroups = await Promise.all(
-          contentSearchWorkspaceIds.map((id, index) =>
-            window.electronAPI.searchSessionContent(id, searchQuery, `${searchId}:${index}`)
-          ),
-        )
-        const results = resultGroups.flat()
+        const results = await window.electronAPI.searchSessionContent(workspaceId, searchQuery, searchId)
 
         if (cancelled) return
 
@@ -403,7 +375,7 @@ export function useSessionSearch({
       clearTimeout(timer)
       setIsSearchingContent(false)
     }
-  }, [contentSearchWorkspaceKey, isSearchMode, searchQuery])
+  }, [workspaceId, isSearchMode, searchQuery])
 
   // --- Focus search input when search activates ---
 
@@ -500,12 +472,6 @@ export function useSessionSearch({
     return { matchingFilterItems: matching, otherResultItems: others, exceededSearchLimit: exceeded }
   }, [searchFilteredItems, currentFilter, evaluateViews, isSearchMode, statusFilter, labelFilterMap, labelConfigs, searchQuery])
 
-  const bulkActionItems = useMemo(() => resolveBulkReadSessions({
-    isSearchMode,
-    preSearchSessions: searchFilteredItems,
-    searchResultSessions: [...matchingFilterItems, ...otherResultItems],
-  }), [isSearchMode, searchFilteredItems, matchingFilterItems, otherResultItems])
-
   // --- Pagination ---
 
   useEffect(() => {
@@ -525,37 +491,22 @@ export function useSessionSearch({
 
   // Scroll-based pagination: listen for scroll on the actual ScrollArea viewport
   // (IntersectionObserver with root=null doesn't detect scroll inside Radix ScrollArea)
-  //
-  // The ref may not be populated when this effect first runs (viewport mounts
-  // after the hook, or conditionally). Resolve it into state, retrying after
-  // paint, so the scroll listener can never silently never-attach.
-  const [viewportEl, setViewportEl] = useState<HTMLDivElement | null>(null)
   useEffect(() => {
-    const el = scrollViewportRef?.current
-    if (el) {
-      setViewportEl(el)
-      return
-    }
-    const rafId = requestAnimationFrame(() => {
-      setViewportEl(scrollViewportRef?.current ?? null)
-    })
-    return () => cancelAnimationFrame(rafId)
-  }, [scrollViewportRef, hasMore])
-
-  useEffect(() => {
-    if (!hasMore || !viewportEl) return
+    if (!hasMore) return
+    const viewport = scrollViewportRef?.current
+    if (!viewport) return
 
     const check = () => {
-      const { scrollTop, scrollHeight, clientHeight } = viewportEl
+      const { scrollTop, scrollHeight, clientHeight } = viewport
       if (scrollHeight - scrollTop - clientHeight < 200) {
         loadMore()
       }
     }
 
     check() // fill viewport on mount / after group expand
-    viewportEl.addEventListener('scroll', check, { passive: true })
-    return () => viewportEl.removeEventListener('scroll', check)
-  }, [hasMore, loadMore, displayLimit, viewportEl])
+    viewport.addEventListener('scroll', check, { passive: true })
+    return () => viewport.removeEventListener('scroll', check)
+  }, [hasMore, loadMore, displayLimit, scrollViewportRef])
 
   // --- Derived render data ---
 
@@ -582,7 +533,6 @@ export function useSessionSearch({
     contentSearchResults,
     matchingFilterItems,
     otherResultItems,
-    bulkActionItems,
     exceededSearchLimit,
     flatItems,
     dateGroups,

@@ -19,16 +19,11 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { expandPath, toPortablePath } from '../utils/paths.ts';
-import { atomicWriteFileSync, readJsonFileSync, recoverAtomicWriteSync } from '../utils/files.ts';
+import { atomicWriteFileSync, readJsonFileSync } from '../utils/files.ts';
 import { getDefaultStatusConfig, saveStatusConfig, ensureDefaultIconFiles } from '../statuses/storage.ts';
 import { getDefaultLabelConfig, saveLabelConfig } from '../labels/storage.ts';
 import { loadConfigDefaults } from '../config/storage.ts';
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
-import {
-  isExecutionPermissionMode,
-  isWorkModeOption,
-  WORK_MODE_OPTIONS,
-} from '../agent/work-mode.ts';
 import { normalizeThinkingLevel } from '../agent/thinking-levels.ts';
 import type {
   WorkspaceConfig,
@@ -103,7 +98,6 @@ export function getWorkspaceSkillsPath(rootPath: string): string {
  */
 export function loadWorkspaceConfig(rootPath: string): WorkspaceConfig | null {
   const configPath = join(rootPath, 'config.json');
-  recoverAtomicWriteSync(configPath);
   if (!existsSync(configPath)) return null;
 
   try {
@@ -129,23 +123,6 @@ export function loadWorkspaceConfig(rootPath: string): WorkspaceConfig | null {
       config.defaults.cyclablePermissionModes = normalized.length >= 2
         ? normalized
         : [...PERMISSION_MODE_ORDER];
-    }
-
-    if (config.defaults?.defaultWorkMode !== undefined
-      && !isWorkModeOption(config.defaults.defaultWorkMode)) {
-      config.defaults.defaultWorkMode = undefined;
-    }
-    if (config.defaults?.executionPermissionMode !== undefined
-      && !isExecutionPermissionMode(config.defaults.executionPermissionMode)) {
-      config.defaults.executionPermissionMode = undefined;
-    }
-    if (Array.isArray(config.defaults?.cyclableWorkModes)) {
-      const normalized = config.defaults.cyclableWorkModes
-        .filter(isWorkModeOption)
-        .filter((mode, index, arr) => arr.indexOf(mode) === index);
-      config.defaults.cyclableWorkModes = normalized.length >= 2
-        ? normalized
-        : [...WORK_MODE_OPTIONS];
     }
 
     if (config.defaults && 'thinkingLevel' in config.defaults) {
@@ -330,9 +307,6 @@ export function createWorkspaceAtPath(
     model: undefined,
     thinkingLevel: undefined,
     // defaultLlmConnection: undefined - falls back to app default
-    defaultWorkMode: globalDefaults.workspaceDefaults.defaultWorkMode,
-    executionPermissionMode: globalDefaults.workspaceDefaults.executionPermissionMode,
-    cyclableWorkModes: globalDefaults.workspaceDefaults.cyclableWorkModes,
     permissionMode: globalDefaults.workspaceDefaults.permissionMode,
     cyclablePermissionModes: globalDefaults.workspaceDefaults.cyclablePermissionModes,
     enabledSourceSlugs: [],

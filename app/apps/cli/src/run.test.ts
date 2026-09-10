@@ -3,7 +3,6 @@ import {
   serializeEnvelope,
   deserializeEnvelope,
 } from '@craft-agent/server-core/transport'
-import { PROTOCOL_VERSION } from '@craft-agent/shared/protocol'
 import type { SpawnedServer } from './server-spawner.ts'
 
 // ---------------------------------------------------------------------------
@@ -67,7 +66,7 @@ function createMockServer(opts?: MockServerOptions): MockServer {
             id: crypto.randomUUID(),
             type: 'handshake_ack',
             clientId: 'run-test-client',
-            protocolVersion: PROTOCOL_VERSION,
+            protocolVersion: '1.0',
           }))
           return
         }

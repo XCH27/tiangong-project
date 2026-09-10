@@ -1,4 +1,4 @@
-import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, readFileSync, statSync, writeFileSync, unlinkSync, mkdtempSync, renameSync } from 'fs';
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync, mkdtempSync, renameSync } from 'fs';
 import { extname, basename, resolve, join, relative } from 'path';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
@@ -25,38 +25,7 @@ export function safeJsonParse(text: string): unknown {
  * Replaces the common JSON.parse(readFileSync(path, 'utf-8')) pattern.
  */
 export function readJsonFileSync<T = unknown>(filePath: string): T {
-  recoverAtomicWriteSync(filePath);
   return JSON.parse(stripBom(readFileSync(filePath, 'utf-8'))) as T;
-}
-
-const ATOMIC_BACKUP_SUFFIX = '.atomic-backup';
-
-function removeFileIfPresent(filePath: string): void {
-  try { unlinkSync(filePath); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-}
-
-function flushFileSync(filePath: string): void {
-  const fd = openSync(filePath, 'r');
-  try {
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/**
- * Recover the durable previous copy left by the Windows replace fallback.
- * A missing target plus a complete backup means the process stopped after
- * removing the old target but before installing the new file.
- */
-export function recoverAtomicWriteSync(filePath: string): void {
-  const backupPath = filePath + ATOMIC_BACKUP_SUFFIX;
-
-  if (!existsSync(filePath) && existsSync(backupPath)) {
-    renameSync(backupPath, filePath);
-  }
 }
 
 /**
@@ -64,57 +33,14 @@ export function recoverAtomicWriteSync(filePath: string): void {
  * This prevents partial writes from corrupting the file on crash/interrupt.
  * Uses write-to-temp-then-rename pattern which is atomic on POSIX systems.
  */
-export function atomicWriteFileSync(
-  filePath: string,
-  data: string,
-  options: { forceBackupFallback?: boolean } = {},
-): void {
+export function atomicWriteFileSync(filePath: string, data: string): void {
   const tmpPath = filePath + '.tmp';
-  const backupPath = filePath + ATOMIC_BACKUP_SUFFIX;
-  const backupTmpPath = backupPath + '.tmp';
-
-  recoverAtomicWriteSync(filePath);
-
   try {
     writeFileSync(tmpPath, data);
-    flushFileSync(tmpPath);
-
-    if (!options.forceBackupFallback) {
-      try {
-        renameSync(tmpPath, filePath);
-        return;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code !== 'EEXIST' && code !== 'EPERM') throw error;
-      }
-    }
-
-    // Windows cannot reliably rename over an existing target. Preserve a
-    // complete previous copy before the unlink/install sequence. Recovery on
-    // the next read restores it if the process stops in that narrow window.
-    if (!existsSync(filePath)) {
-      renameSync(tmpPath, filePath);
-      return;
-    }
-
-    removeFileIfPresent(backupPath);
-    removeFileIfPresent(backupTmpPath);
-    copyFileSync(filePath, backupTmpPath);
-    flushFileSync(backupTmpPath);
-    renameSync(backupTmpPath, backupPath);
-
-    try {
-      unlinkSync(filePath);
-      renameSync(tmpPath, filePath);
-      removeFileIfPresent(backupPath);
-    } catch (error) {
-      if (!existsSync(filePath) && existsSync(backupPath)) {
-        renameSync(backupPath, filePath);
-      }
-      throw error;
-    }
+    renameSync(tmpPath, filePath);
   } catch (error) {
-    removeFileIfPresent(tmpPath);
+    // Clean up temp file if rename failed
+    try { unlinkSync(tmpPath); } catch {}
     throw error;
   }
 }

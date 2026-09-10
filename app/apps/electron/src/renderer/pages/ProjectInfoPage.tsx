@@ -1,8 +1,8 @@
 /**
- * ProjectInfoPage — Project home (R1 §4).
+ * ProjectInfoPage
  *
- * Documents / assets / settings only. Sessions live in the sidebar work list
- * (Projects scope), not as a second list here.
+ * Workspace-project detail page with three tabs: Sessions, Assets, Settings.
+ * v1 scope only — no memory tab, no provider selection, no plugin marketplace.
  */
 
 import * as React from 'react'
@@ -24,25 +24,27 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
 import { cn } from '@/lib/utils'
+import { PROJECT_COLOR_PALETTE } from '@/utils/project-colors'
+import { InlineColorPickerRow } from '@/components/ui/inline-color-picker-row'
 import type { LoadedProject, ProjectAsset } from '@craft-agent/shared/projects/types'
 
 interface ProjectInfoPageProps {
   projectSlug: string
 }
 
-type TabKey = 'assets' | 'settings'
+type TabKey = 'sessions' | 'assets' | 'settings'
 
 export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
   const { t } = useTranslation()
   const workspace = useActiveWorkspace()
   const workspaceId = workspace?.id
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
-  const { onCreateSession, onOpenFile } = useAppShellContext()
+  const { onCreateSession } = useAppShellContext()
 
   const [project, setProject] = useState<LoadedProject | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<TabKey>('assets')
+  const [tab, setTab] = useState<TabKey>('sessions')
   const [assets, setAssets] = useState<ProjectAsset[]>([])
   const [editName, setEditName] = useState('')
   const [editDescription, setEditDescription] = useState('')
@@ -106,6 +108,30 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
   useEffect(() => {
     if (tab === 'assets') refreshAssets()
   }, [tab, refreshAssets])
+
+  const projectSessions = useMemo(() => {
+    if (!project) return []
+    const result: { id: string; name: string }[] = []
+    for (const meta of sessionMetaMap.values()) {
+      if ((meta as { projectId?: string }).projectId === project.config.id) {
+        result.push({ id: meta.id, name: meta.name ?? meta.id })
+      }
+    }
+    return result
+  }, [project, sessionMetaMap])
+
+  const handleStartSession = useCallback(async () => {
+    if (!workspaceId || !project) return
+    try {
+      const session = await onCreateSession(workspaceId, { projectId: project.config.id })
+      if (session?.id) {
+        navigate(routes.view.allSessions(session.id))
+      }
+    } catch (err) {
+      console.error('[ProjectInfoPage] Failed to create session:', err)
+      toast.error(t('projectInfo.newSessionFailed'))
+    }
+  }, [workspaceId, project, onCreateSession, t])
 
   const handlePickWorkingDirectory = useCallback(async () => {
     try {
@@ -196,6 +222,9 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
 
           {/* Tab bar */}
           <div className="flex items-center gap-1 border-b border-border/50 px-2 mb-4">
+            <TabButton active={tab === 'sessions'} onClick={() => setTab('sessions')}>
+              {t('projectInfo.tabSessions')}
+            </TabButton>
             <TabButton active={tab === 'assets'} onClick={() => setTab('assets')}>
               {t('projectInfo.tabAssets')}
             </TabButton>
@@ -204,9 +233,38 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
             </TabButton>
           </div>
 
-          {/* No Sessions tab: Project home owns documents/assets/settings, and a Session appears
-            * exactly once — in the Project-grouped sidebar work list. Creating work in this Project
-            * is the "+" action on its sidebar row (specs/R1-one-boundary-language.md §1 and §4). */}
+          {/* Sessions tab */}
+          {tab === 'sessions' && (
+            <Info_Section
+              title={t('projectInfo.tabSessions')}
+              actions={
+                <Button size="sm" variant="ghost" onClick={handleStartSession}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  {t('projectInfo.newSessionButton', { name: project.config.name })}
+                </Button>
+              }
+            >
+              {projectSessions.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-muted-foreground">
+                  {t('projectInfo.noSessions')}
+                </div>
+              ) : (
+                <ul className="divide-y divide-border/50">
+                  {projectSessions.map((s) => (
+                    <li key={s.id} className="px-4 py-2">
+                      <button
+                        type="button"
+                        className="text-sm text-foreground hover:underline text-left"
+                        onClick={() => navigate(routes.view.allSessions(s.id))}
+                      >
+                        {s.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Info_Section>
+          )}
 
           {/* Assets tab */}
           {tab === 'assets' && (
@@ -292,11 +350,19 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
                     </Button>
                   </div>
                 </Field>
-                {/* Project accent colour removed 2026-07-25 (owner: the settings page carried
-                  * fields with no evident purpose). It only tinted session rows and kanban tiles via
-                  * SessionProjectColorWrapper — decoration, while occupying the largest block on the
-                  * page. Already-set colours still render; the field simply cannot be edited here.
-                  * `ProjectConfig.color` is retained so existing values are not destroyed. */}
+                <Field
+                  label={t('projectInfo.color')}
+                  hint={t('projectInfo.colorHint')}
+                >
+                  <InlineColorPickerRow
+                    value={editColor}
+                    onChange={setEditColor}
+                    presets={PROJECT_COLOR_PALETTE}
+                    onClear={() => setEditColor('')}
+                    clearLabel={t('projectInfo.colorClear')}
+                    customAriaLabel={t('projectInfo.colorCustom')}
+                  />
+                </Field>
                 <Field
                   label={t('projectInfo.details')}
                   hint={t('projectInfo.detailsHelpText')}
@@ -328,8 +394,7 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
           {/* Metadata read-out for quick reference */}
           <Info_Section title={t('projectInfo.metadata')}>
             <Info_Table>
-              {/* The slug row is gone: it restates the project name (both read "01" here) and the
-                * folder path below already shows the on-disk identity. */}
+              <Info_Table.Row label={t('common.slug')} value={project.config.slug} />
               <Info_Table.Row label={t('common.location')}>
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="flex-1 min-w-0 truncate font-mono text-xs">{project.folderPath}</span>
@@ -337,7 +402,7 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => onOpenFile(project.folderPath)}
+                        onClick={() => window.electronAPI.openFile(project.folderPath)}
                         className="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded text-foreground/50 hover:text-foreground hover:bg-foreground/5 transition-colors"
                         aria-label={t('projectInfo.openLocation')}
                       >

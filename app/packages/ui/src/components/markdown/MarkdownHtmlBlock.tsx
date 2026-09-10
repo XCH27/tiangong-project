@@ -23,12 +23,9 @@
  * Flash prevention: All cached items are rendered as hidden iframes (display:none/block).
  * Switching tabs toggles CSS visibility — no re-parse, no flash.
  *
- * Security: iframe uses a pure `sandbox` attribute (no tokens),
- * blocking all JavaScript execution and framing the preview in an
- * opaque origin. `allow-top-navigation` is deliberately absent: links
- * open in a new browsing context (`<base target="_blank">` +
- * `allow-popups`), which Electron's `setWindowOpenHandler` intercepts
- * and routes to the system browser.
+ * Security: iframe uses `sandbox` attribute without `allow-scripts`,
+ * blocking all JavaScript execution. `allow-same-origin` is included
+ * so CSS and images resolve correctly.
  */
 
 import * as React from 'react'
@@ -73,21 +70,20 @@ class HtmlBlockErrorBoundary extends React.Component<
 // ── HTML preprocessing ───────────────────────────────────────────────────────
 
 /**
- * Inject `<base target="_blank">` into HTML so link clicks open a new
- * browsing context instead of navigating the preview iframe. Combined
- * with `allow-popups` (and no `allow-top-navigation`) in the sandbox,
- * this lets Electron's `setWindowOpenHandler` intercept the new window
- * and open the URL in the system browser.
+ * Inject `<base target="_top">` into HTML so link clicks navigate the top frame
+ * instead of the iframe. Combined with `allow-top-navigation-by-user-activation`
+ * in the sandbox, this lets Electron's `will-navigate` handler intercept the
+ * navigation and open the URL in the system browser.
  */
 function injectBaseTarget(html: string): string {
   if (/<base\s/i.test(html)) return html
   if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/(<head[^>]*>)/i, '$1<base target="_blank">')
+    return html.replace(/(<head[^>]*>)/i, '$1<base target="_top">')
   }
   if (/<html[^>]*>/i.test(html)) {
-    return html.replace(/(<html[^>]*>)/i, '$1<head><base target="_blank"></head>')
+    return html.replace(/(<html[^>]*>)/i, '$1<head><base target="_top"></head>')
   }
-  return `<head><base target="_blank"></head>${html}`
+  return `<head><base target="_top"></head>${html}`
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
@@ -197,11 +193,11 @@ export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
             <button
               onClick={() => setIsFullscreen(true)}
               className={cn(
-                "p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity] select-none",
+                "p-1 rounded-[6px] transition-all select-none",
                 "bg-background shadow-minimal",
                 "text-muted-foreground/50 hover:text-foreground",
                 "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100",
-                hasMultiple ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                hasMultiple ? "opacity-100" : "opacity-0 group-hover:opacity-100"
               )}
               title={t('common.viewFullscreen')}
             >
@@ -219,7 +215,7 @@ export function MarkdownHtmlBlock({ code, className }: MarkdownHtmlBlockProps) {
             return (
               <iframe
                 key={item.src}
-                sandbox="allow-popups"
+                sandbox="allow-same-origin allow-top-navigation-by-user-activation"
                 srcDoc={processed}
                 title={item.label || spec.title || t('preview.htmlPreview')}
                 className="w-full border-0 bg-white"

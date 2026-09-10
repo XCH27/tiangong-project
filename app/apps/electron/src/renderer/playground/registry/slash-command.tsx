@@ -19,7 +19,7 @@ function SlashCommandDemo() {
   const [activeCommands, setActiveCommands] = React.useState<SlashCommandId[]>([])
   const [buttonMenuOpen, setButtonMenuOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState('')
-  const permissionMode: PermissionMode = 'ask'
+  const [permissionMode, setPermissionMode] = React.useState<PermissionMode>('ask')
   const [model, setModel] = React.useState('claude-sonnet-4-20250514')
 
   // FreeFormInput depends on Electron bridge APIs (attachments, clipboard, etc.)
@@ -65,7 +65,7 @@ function SlashCommandDemo() {
               <button
                 key={id}
                 onClick={() => setActiveCommands(prev => prev.filter(c => c !== id))}
-                className="h-6 px-2 text-[11px] font-medium rounded flex items-center gap-1.5 transition-[color,background-color,border-color] border"
+                className="h-6 px-2 text-[11px] font-medium rounded flex items-center gap-1.5 transition-all border"
                 style={{
                   backgroundColor: `${color}1A`, // 10% opacity
                   color: color,
@@ -136,6 +136,7 @@ function SlashCommandDemo() {
           currentModel={model}
           onModelChange={setModel}
           permissionMode={permissionMode}
+          onPermissionModeChange={setPermissionMode}
           inputValue={inputValue}
           onInputChange={setInputValue}
           sessionId="playground-session"

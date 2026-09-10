@@ -136,12 +136,8 @@ export default function ServerSettingsPage() {
   }
 
   const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      toast.success(t('settings.server.copiedToClipboard', { label }))
-    }).catch((err) => {
-      console.error('Failed to copy to clipboard:', err)
-      toast.error(t('common.failed'))
-    })
+    navigator.clipboard.writeText(text)
+    toast.success(t('settings.server.copiedToClipboard', { label }))
   }
 
   const handleBrowseCert = async () => {
@@ -246,10 +242,10 @@ export default function ServerSettingsPage() {
                 <SettingsRow label={t("settings.server.certificate")}>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {form.tlsCertPath || t('settings.server.notConfigured')}
+                      {form.tlsCertPath || 'Not configured'}
                     </span>
                     <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 shrink-0" onClick={handleBrowseCert}>
-                      {t('common.browse')}
+                      Browse
                     </Button>
                   </div>
                 </SettingsRow>
@@ -257,10 +253,10 @@ export default function ServerSettingsPage() {
                 <SettingsRow label={t("settings.server.privateKey")}>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {form.tlsKeyPath || t('settings.server.notConfigured')}
+                      {form.tlsKeyPath || 'Not configured'}
                     </span>
                     <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 shrink-0" onClick={handleBrowseKey}>
-                      {t('common.browse')}
+                      Browse
                     </Button>
                   </div>
                 </SettingsRow>
@@ -286,11 +282,11 @@ export default function ServerSettingsPage() {
           {(isDirty || error) && (
             <SettingsCardFooter>
               <Button variant="outline" size="sm" onClick={handleReset} disabled={isSaving}>
-                {t('common.reset')}
+                Reset
               </Button>
               <Button size="sm" onClick={handleSave} disabled={isSaving}>
                 {isSaving ? <Spinner className="mr-1.5" /> : null}
-                {t('common.save')}
+                Save
               </Button>
             </SettingsCardFooter>
           )}

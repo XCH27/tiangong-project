@@ -33,8 +33,6 @@ export interface SettingsTextareaProps {
   className?: string
   /** Whether inside a card */
   inCard?: boolean
-  /** Blur handler (e.g. live-save editors) */
-  onBlur?: () => void
 }
 
 /**
@@ -62,7 +60,6 @@ export function SettingsTextarea({
   error,
   className,
   inCard = false,
-  onBlur,
 }: SettingsTextareaProps) {
   const id = React.useId()
   const charCount = value.length
@@ -95,7 +92,6 @@ export function SettingsTextarea({
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
           placeholder={placeholder}
           rows={rows}
           disabled={disabled}

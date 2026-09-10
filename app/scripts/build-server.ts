@@ -399,7 +399,9 @@ function copyProductionDeps(config: ServerBuildConfig): void {
   // 0.2.113 the SDK ships only sdk.mjs in the main package; the native
   // `claude` binary lives in this per-platform optional dep. The server runs
   // on its host platform/arch so we ship only the matching one.
-  const sdkPlatformPkg = `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
+  const sdkPlatformPkg = platform === 'win32'
+    ? `@anthropic-ai/claude-agent-sdk-win32-${arch}`
+    : `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
 
   const PLATFORM_DEPS = [
     `@img/sharp-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch}`,

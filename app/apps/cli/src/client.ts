@@ -62,13 +62,7 @@ export class CliRpcClient {
     if (this._destroyed) throw new Error('Client destroyed')
 
     return new Promise<string>((resolve, reject) => {
-      // Guards against a second settle: after the timeout rejects and closes
-      // the socket, onclose would otherwise fire and call reject() again.
-      let settled = false
-
       const timer = setTimeout(() => {
-        if (settled) return
-        settled = true
         reject(new Error(`Connection timeout (${this.connectTimeout}ms)`))
         this.ws?.close()
       }, this.connectTimeout)
@@ -97,20 +91,15 @@ export class CliRpcClient {
 
         if (envelope.type === 'handshake_ack') {
           clearTimeout(timer)
-          settled = true
           this._clientId = envelope.clientId ?? null
           this._connected = true
-          // Switch to normal message handler and drop the handshake-era
-          // error/close handlers (replaced below with the steady-state ones).
+          // Switch to normal message handler
           this.ws!.onmessage = (e) => {
             this.onMessage(typeof e.data === 'string' ? e.data : String(e.data))
           }
-          this.ws!.onerror = null
           resolve(this._clientId!)
         } else if (envelope.type === 'error') {
           clearTimeout(timer)
-          if (settled) return
-          settled = true
           const err = new Error(envelope.error?.message ?? 'Connection rejected')
           ;(err as any).code = envelope.error?.code
           reject(err)
@@ -118,17 +107,15 @@ export class CliRpcClient {
       }
 
       this.ws.onerror = () => {
-        if (!settled && !this._connected) {
+        if (!this._connected) {
           clearTimeout(timer)
-          settled = true
           reject(new Error('WebSocket connection error'))
         }
       }
 
       this.ws.onclose = () => {
-        if (!settled && !this._connected) {
+        if (!this._connected) {
           clearTimeout(timer)
-          settled = true
           reject(new Error('WebSocket closed before handshake'))
         }
         this._connected = false

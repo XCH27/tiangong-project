@@ -527,12 +527,6 @@ html[data-font="inter"] {
   }
 }
 
-/* Annotation block marker: an inset outline without inventing a shadow token. */
-[data-ca-block-annotated="true"] {
-  outline: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
-  outline-offset: -1px;
-}
-
 .animate-shimmer {
   position: relative;
   overflow: hidden;

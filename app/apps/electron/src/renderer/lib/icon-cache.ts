@@ -703,54 +703,17 @@ async function loadIconFile(
 
 /**
  * Sanitize SVG content for safe inline rendering via dangerouslySetInnerHTML.
- *
- * DOMParser-based (regex sanitizers are bypassable via unquoted attributes,
- * entity-encoded payloads, and constructs like <use href>). Parses the document
- * and walks the tree with an allowlist: anything not explicitly permitted —
- * including <script>, <foreignObject>, event handler attributes, and non-fragment
- * hrefs — is dropped. Also strips width/height so the SVG fills its container.
+ * Removes script tags, event handlers, and JavaScript URLs.
+ * Also strips width/height attributes so SVG fills its container.
  */
-const ALLOWED_SVG_TAGS = new Set([
-  'svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon',
-  'defs', 'clippath', 'mask', 'lineargradient', 'radialgradient', 'stop',
-  'title', 'desc',
-])
-
-function sanitizeSvgElement(el: Element): void {
-  for (const attr of Array.from(el.attributes)) {
-    const name = attr.name.toLowerCase()
-    if (name.startsWith('on')) {
-      el.removeAttribute(attr.name)
-    } else if (name === 'href' || name === 'xlink:href') {
-      // Only fragment references survive — blocks javascript: and external URLs
-      if (!attr.value.trim().startsWith('#')) {
-        el.removeAttribute(attr.name)
-      }
-    }
-  }
-  for (const child of Array.from(el.children)) {
-    if (!ALLOWED_SVG_TAGS.has(child.tagName.toLowerCase())) {
-      child.remove()
-    } else {
-      sanitizeSvgElement(child)
-    }
-  }
-}
-
 function sanitizeSvgForInline(svg: string): string {
-  try {
-    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
-    const root = doc.documentElement
-    if (!root || root.tagName.toLowerCase() !== 'svg' || root.querySelector('parsererror')) {
-      return ''
-    }
-    sanitizeSvgElement(root)
-    root.removeAttribute('width')
-    root.removeAttribute('height')
-    return root.outerHTML
-  } catch {
-    return ''
-  }
+  return svg
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/on\w+="[^"]*"/gi, '')
+    .replace(/on\w+='[^']*'/gi, '')
+    .replace(/javascript:/gi, '')
+    .replace(/\s+width="[^"]*"/gi, '')
+    .replace(/\s+height="[^"]*"/gi, '')
 }
 
 /**

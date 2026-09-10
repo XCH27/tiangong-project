@@ -80,6 +80,10 @@ export function getPanelTypeFromRoute(route: ViewRoute): PanelType {
   }
 }
 
+export function getDefaultLaneForType(_type: PanelType): PanelLaneId {
+  return 'main'
+}
+
 function createEntry(route: ViewRoute, proportion: number, id?: string): PanelStackEntry {
   const panelType = getPanelTypeFromRoute(route)
   return {

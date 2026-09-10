@@ -15,10 +15,11 @@
  * Used by: CodePreviewOverlay, TerminalPreviewOverlay, GenericOverlay, etc.
  */
 
-import { useEffect } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import * as ReactDOM from 'react-dom'
+import { type LucideIcon } from 'lucide-react'
 import { useOverlayMode, OVERLAY_LAYOUT } from '../../lib/layout'
-import { FullscreenOverlayBase, type FullscreenOverlayBaseProps } from './FullscreenOverlayBase'
+import { FullscreenOverlayBase } from './FullscreenOverlayBase'
 import { FullscreenOverlayBaseHeader } from './FullscreenOverlayBaseHeader'
 import { OverlayErrorBanner } from './OverlayErrorBanner'
 import type { PreviewBadgeVariant } from '../ui/PreviewHeader'
@@ -29,20 +30,47 @@ export type BadgeVariant = PreviewBadgeVariant
 /** Shared background class for all overlay modes - single source of truth */
 const OVERLAY_BG = 'bg-background'
 
-export interface PreviewOverlayProps extends Omit<
-  FullscreenOverlayBaseProps,
-  'accessibleTitle' | 'copyContent' | 'typeBadge'
-> {
+export interface PreviewOverlayProps {
+  /** Whether the overlay is visible */
+  isOpen: boolean
+  /** Callback when the overlay should close */
+  onClose: () => void
   /** Theme mode */
   theme?: 'light' | 'dark'
 
-  /** Preview overlays always identify their tool or format. */
-  typeBadge: NonNullable<FullscreenOverlayBaseProps['typeBadge']> & {
+  /** Type badge configuration — tool/format indicator */
+  typeBadge: {
+    icon: LucideIcon
+    label: string
     variant: BadgeVariant
   }
 
+  /** File path — shows dual-trigger menu badge with "Open" + "Reveal in {file manager}" */
+  filePath?: string
+  /** Title — displayed as badge. Fallback when no file path. */
+  title?: string
+  /** Callback when title badge is clicked (only used when no filePath) */
+  onTitleClick?: () => void
+  /** Optional subtitle (e.g., line range info) */
+  subtitle?: string
+
+  /** Optional error state */
+  error?: {
+    label: string
+    message: string
+  }
+
+  /** Actions to show in header right side */
+  headerActions?: ReactNode
+
+  /** Main content */
+  children: ReactNode
+
   /** Render inline (no dialog/portal) — for embedding in design system playground */
   embedded?: boolean
+
+  /** Custom class names for the overlay container (e.g., to override bg-background) */
+  className?: string
 }
 
 export function PreviewOverlay({
@@ -51,7 +79,6 @@ export function PreviewOverlay({
   theme = 'light',
   typeBadge,
   filePath,
-  filePathActions = true,
   title,
   onTitleClick,
   subtitle,
@@ -88,7 +115,6 @@ export function PreviewOverlay({
       onClose={onClose}
       typeBadge={typeBadge}
       filePath={filePath}
-      filePathActions={filePathActions}
       title={title}
       onTitleClick={onTitleClick}
       subtitle={subtitle}
@@ -147,7 +173,6 @@ export function PreviewOverlay({
         onClose={onClose}
         typeBadge={typeBadge}
         filePath={filePath}
-        filePathActions={filePathActions}
         title={title}
         onTitleClick={onTitleClick}
         subtitle={subtitle}

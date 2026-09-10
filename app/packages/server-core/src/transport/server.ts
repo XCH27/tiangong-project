@@ -7,7 +7,7 @@
  * Same class used locally (127.0.0.1, no auth) and remotely (0.0.0.0, auth).
  */
 
-import { WebSocketServer, type RawData, type WebSocket } from 'ws'
+import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer as createHttpServer, type Server as HttpServer } from 'node:http'
 import { createServer as createHttpsServer, type Server as HttpsServer } from 'node:https'
 import { randomUUID } from 'node:crypto'
@@ -38,20 +38,10 @@ interface BufferedEvent {
   timestamp: number
 }
 
-/**
- * Largest WebSocket message the server accepts (ws `maxPayload`).
- * Sized above the chunked-transfer path (~2.8MB base64 envelope per 2MB chunk)
- * with headroom for inline image attachments; larger payloads must use
- * transfer:start/chunk/commit.
- */
-const WS_MAX_PAYLOAD_BYTES = 64 * 1024 * 1024
-
 interface ClientConnection {
   id: string
   ws: WebSocket
   workspaceId: string | null
-  /** Extra Workspace event streams explicitly opened by the desktop Project overview. */
-  sessionWorkspaceIds: Set<string>
   webContentsId: number | null
   capabilities: Set<string>
   missedPongs: number
@@ -125,33 +115,6 @@ export interface WsRpcServerOptions {
 
 const transportLog = createLogger('ws-rpc-server')
 
-/**
- * Sanitize error messages before sending them to clients. Known filesystem
- * error codes are replaced with fixed copy to avoid leaking sensitive paths
- * or internal host information. Other messages pass through unchanged.
- */
-export function sanitizeErrorMessage(err: unknown): string {
-  if (err instanceof Error) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'ENOENT') return 'File or directory not found'
-    if (code === 'EACCES' || code === 'EPERM') return 'Permission denied'
-    if (code === 'EISDIR') return 'Expected a file but found a directory'
-    if (code === 'ENOTDIR') return 'Expected a directory but found a file'
-    if (code === 'ENOSPC') return 'Insufficient disk space'
-    if (code === 'EROFS') return 'Filesystem is read-only'
-    if (code === 'EBUSY') return 'Resource is busy'
-    if (code === 'EMFILE') return 'Too many open files'
-    if (code === 'ENAMETOOLONG') return 'File name is too long'
-    // Unrecognized filesystem error codes — don't leak the original message
-    // which may contain server paths or internal structure.
-    if (typeof code === 'string' && code.startsWith('E')) {
-      return 'Filesystem error'
-    }
-    return err.message
-  }
-  return String(err)
-}
-
 // ---------------------------------------------------------------------------
 // WsRpcServer
 // ---------------------------------------------------------------------------
@@ -161,8 +124,6 @@ export class WsRpcServer implements RpcServer {
   private httpServer: HttpServer | null = null
   private httpsServer: HttpsServer | null = null
   private clients = new Map<string, ClientConnection>()
-  /** O(1) WebSocket → client lookup for the per-message hot path. */
-  private clientsByWs = new Map<WebSocket, ClientConnection>()
   private handlers = new Map<string, HandlerFn>()
   private pendingInvokes = new Map<string, PendingInvoke>()
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
@@ -317,7 +278,7 @@ export class WsRpcServer implements RpcServer {
           this.httpHandler,
         )
 
-        this.wss = new WebSocketServer({ server: this.httpsServer, maxPayload: WS_MAX_PAYLOAD_BYTES })
+        this.wss = new WebSocketServer({ server: this.httpsServer })
 
         this.httpsServer.on('error', (err) => reject(err))
 
@@ -333,7 +294,7 @@ export class WsRpcServer implements RpcServer {
         // Plain WS + HTTP handler: create an HTTP server for both.
         this._protocol = 'ws'
         this.httpServer = createHttpServer(this.httpHandler)
-        this.wss = new WebSocketServer({ server: this.httpServer, maxPayload: WS_MAX_PAYLOAD_BYTES })
+        this.wss = new WebSocketServer({ server: this.httpServer })
 
         this.httpServer.on('error', (err) => reject(err))
 
@@ -351,7 +312,6 @@ export class WsRpcServer implements RpcServer {
         this.wss = new WebSocketServer({
           host: this.host,
           port: this.requestedPort,
-          maxPayload: WS_MAX_PAYLOAD_BYTES,
         })
 
         this.wss.on('listening', () => {
@@ -429,11 +389,7 @@ export class WsRpcServer implements RpcServer {
       }
     }, 5_000)
 
-    // Route through a .catch wrapper: the listener awaits auth validation and
-    // request dispatch, and a rejection must never surface as an unhandled
-    // rejection per message. Reply generically and close — the client will
-    // re-handshake on reconnect.
-    const handleMessage = async (raw: RawData): Promise<void> => {
+    ws.on('message', async (raw) => {
       let envelope: MessageEnvelope
       try {
         envelope = deserializeEnvelope(raw.toString())
@@ -516,7 +472,6 @@ export class WsRpcServer implements RpcServer {
               prevClient.alive = true
               prevClient.missedPongs = 0
               handshakeCompleted = true
-              this.clientsByWs.set(ws, prevClient)
 
               // Determine replay vs stale using the per-client delivery sequence.
               // Retained buffers continue collecting events while the client is disconnected,
@@ -605,7 +560,6 @@ export class WsRpcServer implements RpcServer {
           id: clientId,
           ws,
           workspaceId: envelope.workspaceId ?? null,
-          sessionWorkspaceIds: new Set(),
           webContentsId: envelope.webContentsId ?? null,
           capabilities: new Set(envelope.clientCapabilities ?? []),
           missedPongs: 0,
@@ -615,7 +569,6 @@ export class WsRpcServer implements RpcServer {
           lastSentSeq: 0,
         }
         this.clients.set(clientId, client)
-        this.clientsByWs.set(ws, client)
         handshakeCompleted = true
 
         // Send handshake_ack
@@ -672,15 +625,6 @@ export class WsRpcServer implements RpcServer {
           }
         }
       }
-    }
-
-    ws.on('message', (raw) => {
-      handleMessage(raw).catch((err) => {
-        transportLog.error('Message handling failed', {
-          error: err instanceof Error ? err.message : String(err),
-        })
-        ws.close(1011, 'Internal error')
-      })
     })
 
     ws.on('error', () => {
@@ -715,35 +659,13 @@ export class WsRpcServer implements RpcServer {
       webContentsId: client.webContentsId,
     }
 
-    let timeoutId: ReturnType<typeof setTimeout> | undefined
-    let timedOut = false
-    const handlerPromise = Promise.resolve().then(() => handler(ctx, ...(args ?? [])))
-    // The timeout path replies and moves on while the handler keeps running.
-    // Observe its late settlement so it neither rejects unhandled nor mutates
-    // state invisibly — log and swallow, per the race contract.
-    void handlerPromise.then(
-      () => {
-        if (timedOut) transportLog.warn('Handler settled after timeout', { channel, id })
-      },
-      (lateErr) => {
-        if (timedOut) {
-          transportLog.warn('Handler rejected after timeout', {
-            channel,
-            id,
-            error: lateErr instanceof Error ? lateErr.message : String(lateErr),
-          })
-        }
-      },
-    )
     try {
       const result = await Promise.race([
-        handlerPromise,
-        new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            timedOut = true
-            reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`))
-          }, WsRpcServer.HANDLER_TIMEOUT_MS)
-        }),
+        handler(ctx, ...(args ?? [])),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`)),
+            WsRpcServer.HANDLER_TIMEOUT_MS),
+        ),
       ])
       const response: MessageEnvelope = {
         id,
@@ -753,12 +675,10 @@ export class WsRpcServer implements RpcServer {
       }
       this.safeSend(client.ws, serializeEnvelope(response))
     } catch (err) {
-      const message = sanitizeErrorMessage(err)
+      const message = err instanceof Error ? err.message : String(err)
       const rawCode = (err as { code?: unknown } | null)?.code
       const code: ErrorCode = isErrorCode(rawCode) ? rawCode : 'HANDLER_ERROR'
       this.sendResponseError(client.ws, id, channel, code, message)
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId)
     }
   }
 
@@ -785,8 +705,6 @@ export class WsRpcServer implements RpcServer {
         client.ws.ping()
       }
     }, HEARTBEAT_INTERVAL_MS)
-    // Don't keep the Node.js event loop alive solely for heartbeat pings.
-    this.heartbeatTimer.unref?.()
   }
 
   // -------------------------------------------------------------------------
@@ -798,11 +716,6 @@ export class WsRpcServer implements RpcServer {
     ws.on('close', () => {
       transportLog.info('Client disconnected', { clientId: client.id })
       this.clients.delete(client.id)
-      // Drop the ws mapping only if it still points at this socket — on
-      // reconnect the client already moved to a newer WebSocket.
-      if (this.clientsByWs.get(ws) === client) {
-        this.clientsByWs.delete(ws)
-      }
 
       // Retain buffer for potential reconnect
       const timer = setTimeout(() => {
@@ -892,10 +805,6 @@ export class WsRpcServer implements RpcServer {
       case 'workspace':
         if (target.exclude && client.id === target.exclude) return false
         return client.workspaceId === target.workspaceId
-      case 'session-workspace':
-        if (target.exclude && client.id === target.exclude) return false
-        return client.workspaceId === target.workspaceId
-          || client.sessionWorkspaceIds.has(target.workspaceId)
       case 'client':
         return client.id === target.clientId
       default:
@@ -911,19 +820,11 @@ export class WsRpcServer implements RpcServer {
     }
   }
 
-  /**
-   * Replace the desktop client's additional Session-event subscriptions.
-   * This does not affect Sources, Skills, settings, messaging, or any other
-   * Workspace-targeted channel.
-   */
-  updateClientSessionWorkspaces(clientId: string, workspaceIds: readonly string[]): void {
-    const client = this.clients.get(clientId)
-    if (!client) return
-    client.sessionWorkspaceIds = new Set(workspaceIds.filter(Boolean))
-  }
-
   private findClientByWs(ws: WebSocket): ClientConnection | undefined {
-    return this.clientsByWs.get(ws)
+    for (const client of this.clients.values()) {
+      if (client.ws === ws) return client
+    }
+    return undefined
   }
 
   /** Handler/request errors — sent as type:'response' with error field. */

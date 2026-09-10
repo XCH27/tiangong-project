@@ -13,6 +13,7 @@ import { CompactSessionMenu } from "./CompactSessionMenu"
 import { SessionStatusIcon } from "./SessionStatusIcon"
 import { SessionBadges } from "./SessionBadges"
 import { SessionProjectColorWrapper } from "./SessionProjectColorWrapper"
+import { hasTransferTargets } from "./transfer-targets"
 import { useProjectColorTreatment } from "@/hooks/useProjectColorTreatment"
 import { getSessionTitle, getSessionPreviewText, highlightMatch, hasUnreadMeta, shortTimeLocale } from "@/utils/session"
 import { useSessionListContext } from "@/context/SessionListContext"
@@ -26,11 +27,11 @@ import { extractLabelId } from "@craft-agent/shared/labels"
 const PLATFORM_PILL: Record<'telegram' | 'whatsapp', { label: string; colorClass: string }> = {
   telegram: {
     label: 'Telegram',
-    colorClass: 'bg-info/10 text-info',
+    colorClass: 'bg-sky-500/10 text-sky-600 dark:bg-sky-400/15 dark:text-sky-300',
   },
   whatsapp: {
     label: 'WhatsApp',
-    colorClass: 'bg-success/10 text-success',
+    colorClass: 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300',
   },
 }
 
@@ -58,7 +59,7 @@ export function SessionItem({
 }: SessionItemProps) {
   const ctx = useSessionListContext()
   const { workspaces, isCompactMode } = useAppShellContext()
-  const hasRemoteWorkspaces = workspaces?.some(w => w.remoteServer) ?? false
+  const canSendToWorkspace = hasTransferTargets(workspaces)
   const { hotkey: nextHotkey } = useActionLabel('chat.nextSearchMatch')
   const { hotkey: prevHotkey } = useActionLabel('chat.prevSearchMatch')
   const title = getSessionTitle(item)
@@ -97,11 +98,7 @@ export function SessionItem({
     if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
       // Cmd+Shift+Click: open session in a new panel
       e.preventDefault()
-      navigate(routes.view.sessionHome({
-        id: item.id,
-        workingDirectory: item.workingDirectory,
-        workspaceId: item.workspaceId,
-      }), { newPanel: true })
+      navigate(routes.view.allSessions(item.id), { newPanel: true })
       return
     }
     if ((e.metaKey || e.ctrlKey) && onToggleSelect) {
@@ -143,28 +140,22 @@ export function SessionItem({
       menuContent={
         <SessionMenu
           item={item}
+          sessionStatuses={ctx.sessionStatuses}
+          labels={ctx.labels}
+          onLabelsChange={ctx.onLabelsChange ? (ls) => ctx.onLabelsChange!(item.id, ls) : undefined}
           onRename={() => ctx.onRenameClick(item.id, title)}
           onFlag={() => ctx.onFlag?.(item.id)}
           onUnflag={() => ctx.onUnflag?.(item.id)}
           onArchive={() => ctx.onArchive?.(item.id)}
           onUnarchive={() => ctx.onUnarchive?.(item.id)}
+          onMarkUnread={() => ctx.onMarkUnread(item.id)}
+          onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
+          onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
-          hasRemoteWorkspaces={hasRemoteWorkspaces}
+          hasTransferTargets={canSendToWorkspace}
           onDelete={() => ctx.onDelete(item.id)}
           projects={ctx.projects}
           onSetProjectId={ctx.onSetProjectId ? (pid) => ctx.onSetProjectId!(item.id, pid) : undefined}
-          sessionStatuses={ctx.sessionStatuses}
-          onSessionStatusChange={
-            ctx.onSessionStatusChange
-              ? (state) => ctx.onSessionStatusChange(item.id, state)
-              : undefined
-          }
-          labels={ctx.labels}
-          onLabelsChange={
-            ctx.onLabelsChange
-              ? (next) => ctx.onLabelsChange!(item.id, next)
-              : undefined
-          }
         />
       }
       contextMenuContent={ctx.isMultiSelectActive && isInMultiSelect ? <BatchSessionMenu /> : undefined}
@@ -176,28 +167,20 @@ export function SessionItem({
           trigger={null}
           title={title}
           item={item}
-          hasRemoteWorkspaces={hasRemoteWorkspaces}
+          sessionStatuses={ctx.sessionStatuses}
+          labels={ctx.labels}
+          hasTransferTargets={canSendToWorkspace}
+          onLabelsChange={ctx.onLabelsChange ? (ls) => ctx.onLabelsChange!(item.id, ls) : undefined}
           onRename={() => ctx.onRenameClick(item.id, title)}
           onFlag={() => ctx.onFlag?.(item.id)}
           onUnflag={() => ctx.onUnflag?.(item.id)}
           onArchive={() => ctx.onArchive?.(item.id)}
           onUnarchive={() => ctx.onUnarchive?.(item.id)}
+          onMarkUnread={() => ctx.onMarkUnread(item.id)}
+          onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
+          onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
           onDelete={() => ctx.onDelete(item.id)}
-          projects={ctx.projects}
-          onSetProjectId={ctx.onSetProjectId ? (pid) => ctx.onSetProjectId!(item.id, pid) : undefined}
-          sessionStatuses={ctx.sessionStatuses}
-          onSessionStatusChange={
-            ctx.onSessionStatusChange
-              ? (state) => ctx.onSessionStatusChange(item.id, state)
-              : undefined
-          }
-          labels={ctx.labels}
-          onLabelsChange={
-            ctx.onLabelsChange
-              ? (next) => ctx.onLabelsChange!(item.id, next)
-              : undefined
-          }
         />
       )}
       icon={
@@ -205,7 +188,7 @@ export function SessionItem({
           <SessionStatusIcon item={item} />
           <div className={cn(
             "flex items-center justify-center overflow-hidden gap-1",
-            "transition-opacity duration-200 ease-out",
+            "transition-all duration-200 ease-out",
             (item.isProcessing || hasUnreadMeta(item) || item.lastMessageRole === 'plan' || hasPendingPrompt)
               ? "opacity-100 ml-0"
               : "!w-0 opacity-0 -ml-[10px]"
@@ -262,11 +245,14 @@ export function SessionItem({
       titleTrailing={hasMatch ? (
         <span
           className={cn(
-            "inline-flex items-center justify-center min-w-[24px] px-1 py-0.5 rounded-[6px] text-[10px] font-medium tabular-nums leading-tight whitespace-nowrap",
+            "inline-flex items-center justify-center min-w-[24px] px-1 py-0.5 rounded-[6px] text-[10px] font-medium tabular-nums leading-tight whitespace-nowrap shadow-tinted",
             isSelected
-              ? "bg-info/20 border border-info text-info"
-              : "bg-info/10 border border-info/30 text-info"
+              ? "bg-yellow-300/50 border border-yellow-500 text-yellow-900"
+              : "bg-yellow-300/10 border border-yellow-600/20 text-yellow-800"
           )}
+          style={{
+            '--shadow-color': isSelected ? '234, 179, 8' : '133, 77, 14',
+          } as React.CSSProperties}
           title={`Matches found (${nextHotkey} next, ${prevHotkey} prev)`}
         >
           {chatMatchCount}
@@ -276,7 +262,7 @@ export function SessionItem({
           <Flag className="h-3.5 w-3.5 text-info" />
         </div>
       ) : item.lastMessageAt ? (
-        <span className="text-[11px] text-foreground/40 whitespace-nowrap tabular-nums">
+        <span className="text-[11px] text-foreground/40 whitespace-nowrap">
           {formatDistanceToNowStrict(new Date(item.lastMessageAt), { locale: shortTimeLocale as Locale, roundingMethod: 'floor' })}
         </span>
       ) : undefined}

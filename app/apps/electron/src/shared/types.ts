@@ -61,10 +61,7 @@ export type { LoadedSource, FolderSourceConfig, SourceConnectionStatus };
 
 // Skill types
 import type { LoadedSkill, SkillMetadata } from '@craft-agent/shared/skills/types';
-import type { SkillScope, SkillScopeResult } from '@craft-agent/shared/skills/scope';
-import type { ExpertSkill } from '@craft-agent/shared/labels/skill-routing';
-import type { KitInstallResult } from '@craft-agent/shared/labels/kit-install';
-export type { LoadedSkill, SkillMetadata, SkillScope, SkillScopeResult };
+export type { LoadedSkill, SkillMetadata };
 
 // Resource bundle types (cross-workspace export/import)
 import type { ExportResourcesOptions, ExportResult, ResourceImportMode, ResourceBundle, ResourceImportResult } from '@craft-agent/shared/resources';
@@ -111,50 +108,6 @@ export interface BrowserPaneCreateOptions {
   id?: string
   show?: boolean
   bindToSessionId?: string
-}
-
-export interface BrowserPaneEmbedBounds {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-export interface GitWorkingTreeFile {
-  path: string
-  indexStatus: string
-  workingTreeStatus: string
-  additions: number
-  deletions: number
-}
-
-export interface GitWorktreeEntry {
-  path: string
-  branch: string | null
-  bare: boolean
-}
-
-export interface GitWorkingTreeSnapshot {
-  repoRoot: string
-  branch: string | null
-  files: GitWorkingTreeFile[]
-  totals: {
-    additions: number
-    deletions: number
-  }
-  worktrees: GitWorktreeEntry[]
-}
-
-export interface GitFileDiff {
-  path: string
-  diff: string
-  truncated: boolean
-}
-
-export interface TerminalCommandResult {
-  output: string
-  exitCode: number
-  timedOut: boolean
 }
 
 /**
@@ -244,6 +197,7 @@ import type {
   PermissionResponseOptions,
   CredentialResponse,
   SessionCommand,
+  ShareResult,
   RefreshTitleResult,
   FileSearchResult,
   SessionSearchResult,
@@ -254,7 +208,6 @@ import type {
   SessionFile,
   OAuthResult,
   McpToolsResult,
-  GetSessionsOptions,
   GitBashStatus,
   ClaudeOAuthResult,
   UpdateInfo,
@@ -272,7 +225,7 @@ import type {
 
 export interface ElectronAPI {
   // Session management
-  getSessions(options?: GetSessionsOptions): Promise<Session[]>
+  getSessions(): Promise<Session[]>
   getUnreadSummary(): Promise<UnreadSummary>
   markAllSessionsRead(workspaceId: string): Promise<void>
   getSessionMessages(sessionId: string): Promise<Session | null>
@@ -301,7 +254,7 @@ export interface ElectronAPI {
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
 
   // Consolidated session command handler
-  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | string | RefreshTitleResult | { count: number }>
+  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>
@@ -355,7 +308,7 @@ export interface ElectronAPI {
   getWindowWorkspace(): Promise<string | null>
   getWindowMode(): Promise<string | null>
   openWorkspace(workspaceId: string): Promise<void>
-  openSessionInNewWindow(workspaceId: string, sessionId: string, workingDirectory?: string | null): Promise<void>
+  openSessionInNewWindow(workspaceId: string, sessionId: string): Promise<void>
   switchWorkspace(workspaceId: string): Promise<void>
   closeWindow(): Promise<void>
   confirmCloseWindow(): Promise<void>
@@ -381,7 +334,7 @@ export interface ElectronAPI {
   openFileDialog(): Promise<string[]>
   readFileAttachment(path: string): Promise<FileAttachment | null>
   /** Re-read a user-attached file by absolute path (bypasses workspace-dir validation).
-   *  Used by composer attach + draft hydration for paths the user explicitly picked via OS dialog / drag. */
+   *  Used only by draft hydration for paths the user explicitly picked via OS dialog / drag. */
   readUserAttachment(path: string): Promise<FileAttachment | null>
   storeAttachment(sessionId: string, attachment: FileAttachment): Promise<import('../../../../packages/core/src/types/index.ts').StoredAttachment>
   generateThumbnail(base64: string, mimeType: string): Promise<string | null>
@@ -482,39 +435,14 @@ export interface ElectronAPI {
   copilotLogout(connectionSlug: string): Promise<{ success: boolean }>
   onCopilotDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
 
-  // xAI Grok subscription OAuth
-  startXaiOAuth(connectionSlug: string): Promise<{ success: boolean; error?: string }>
-  cancelXaiOAuth(): Promise<{ success: boolean }>
-  getXaiAuthStatus(connectionSlug: string): Promise<{ authenticated: boolean; expiresAt?: number; hasRefreshToken?: boolean }>
-  xaiLogout(connectionSlug: string): Promise<{ success: boolean }>
-  onXaiDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
-
   /** Unified LLM connection setup */
   setupLlmConnection(setup: LlmConnectionSetup): Promise<{ success: boolean; error?: string }>
-  discoverLlmModels(params: import('@craft-agent/shared/protocol').DiscoverLlmModelsParams): Promise<import('@craft-agent/shared/protocol').DiscoverLlmModelsResult>
   /** Unified connection test — spawns a lightweight agent subprocess to validate credentials */
   testLlmConnectionSetup(params: TestLlmConnectionParams): Promise<TestLlmConnectionResult>
   // Pi provider discovery (main process only — Pi SDK can't run in renderer)
   getPiApiKeyProviders(): Promise<Array<{ key: string; label: string; placeholder: string }>>
   getPiProviderBaseUrl(provider: string): Promise<string | undefined>
-  getPiProviderModels(provider: string): Promise<{
-    models: Array<{
-      id: string
-      name: string
-      shortName: string
-      description: string
-      provider: 'pi'
-      costInput: number
-      costOutput: number
-      contextWindow: number
-      reasoning: boolean
-      supportsThinking: boolean
-      supportedReasoningEfforts: readonly string[]
-      supportsFastMode?: boolean
-      supportsImages?: boolean
-    }>
-    totalCount: number
-  }>
+  getPiProviderModels(provider: string): Promise<{ models: Array<{ id: string; name: string; costInput: number; costOutput: number; contextWindow: number; reasoning: boolean }>; totalCount: number }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
@@ -573,28 +501,6 @@ export interface ElectronAPI {
   getSkills(workspaceId: string, workingDirectory?: string): Promise<LoadedSkill[]>
   getSkillFiles?(workspaceId: string, skillSlug: string): Promise<SkillFile[]>
   deleteSkill(workspaceId: string, skillSlug: string): Promise<void>
-  /**
-   * Move a skill between scopes. Resolves with a refusal rather than rejecting
-   * when the target name is taken or the source is missing — those are answers
-   * the surface renders, not errors.
-   */
-  /**
-   * Write a kit's skill files and create the kit that names them, in one call —
-   * a half-installed kit is worse than an uninstalled one.
-   */
-  installKit?(
-    workspaceId: string,
-    name: string,
-    skills: ExpertSkill[],
-    systemPromptPreset?: string,
-  ): Promise<KitInstallResult>
-  moveSkillScope?(
-    workspaceId: string,
-    skillSlug: string,
-    fromScope: SkillScope,
-    toScope: SkillScope,
-    workingDirectory?: string,
-  ): Promise<SkillScopeResult>
   openSkillInEditor(workspaceId: string, skillSlug: string): Promise<void>
   openSkillInFinder(workspaceId: string, skillSlug: string): Promise<void>
 
@@ -609,7 +515,6 @@ export interface ElectronAPI {
   // Labels (workspace-scoped)
   listLabels(workspaceId: string): Promise<import('@craft-agent/shared/labels').LabelConfig[]>
   createLabel(workspaceId: string, input: import('@craft-agent/shared/labels').CreateLabelInput): Promise<import('@craft-agent/shared/labels').LabelConfig>
-  updateLabel(workspaceId: string, labelId: string, input: import('@craft-agent/shared/labels').UpdateLabelInput): Promise<import('@craft-agent/shared/labels').LabelConfig>
   deleteLabel(workspaceId: string, labelId: string): Promise<{ stripped: number }>
   onLabelsChanged(callback: (workspaceId: string) => void): () => void
 
@@ -702,12 +607,6 @@ export interface ElectronAPI {
 
   // Git operations
   getGitBranch(dirPath: string): Promise<string | null>
-  getGitWorkingTree(sessionId: string): Promise<GitWorkingTreeSnapshot | null>
-  getGitFileDiff(sessionId: string, path: string): Promise<GitFileDiff | null>
-  runTerminalCommand(sessionId: string, command: string): Promise<TerminalCommandResult>
-  handshakeCliRuntimes(): Promise<
-    import('@craft-agent/shared/protocol').CliRuntimeHandshake[]
-  >
 
   // Git Bash (Windows)
   checkGitBash(): Promise<GitBashStatus>
@@ -741,8 +640,6 @@ export interface ElectronAPI {
     reload(id: string): Promise<void>
     stop(id: string): Promise<void>
     focus(id: string): Promise<void>
-    embed(id: string, bounds: BrowserPaneEmbedBounds): Promise<void>
-    detach(id: string): Promise<void>
     emptyStateLaunch(payload: BrowserEmptyStateLaunchPayload): Promise<BrowserEmptyStateLaunchResult>
     onStateChanged(callback: (info: BrowserInstanceInfo) => void): () => void
     onRemoved(callback: (id: string) => void): () => void
@@ -754,9 +651,6 @@ export interface ElectronAPI {
   listLlmConnectionsWithStatus(): Promise<LlmConnectionWithStatus[]>
   getLlmConnection(slug: string): Promise<LlmConnection | null>
   getLlmConnectionApiKey(slug: string): Promise<string | null>
-  getSubscriptionQuota(
-    slug: string,
-  ): Promise<import('@craft-agent/shared/protocol').SubscriptionQuotaSnapshot>
   saveLlmConnection(connection: LlmConnection): Promise<{ success: boolean; error?: string }>
   deleteLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   testLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
@@ -906,23 +800,13 @@ export type WhatsAppUiEvent =
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
   | { type: 'history' }
-  | { type: 'workbench' }
   | { type: 'none' }
 
 /**
  * Session filter options
- *
- * Product model (R1 / P9):
- * - `projectSessions` — folder-bound work under 项目 (optional one-workspace focus)
- * - `conversations` — folder-less work under 对话
- * - `allSessions` — legacy alias kept for URL/compat; list code treats it like unscoped project+loose
  */
 export type SessionFilter =
   | { kind: 'allSessions' }
-  /** Folder-bound sessions (has workingDirectory). Optional workspaceId focuses one project. */
-  | { kind: 'projectSessions'; workspaceId?: string }
-  /** Sessions with no folder / working directory. */
-  | { kind: 'conversations' }
   | { kind: 'flagged' }
   | { kind: 'state'; stateId: string }
   | { kind: 'label'; labelId: string }
@@ -1055,7 +939,7 @@ export const isProjectsNavigation = (
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
-  filter: { kind: 'projectSessions' },
+  filter: { kind: 'allSessions' },
   details: null,
 }
 
@@ -1094,7 +978,6 @@ export const getNavigationStateKey = (state: NavigationState): string => {
   if (f.kind === 'state') base = `state:${f.stateId}`
   else if (f.kind === 'label') base = `label:${f.labelId}`
   else if (f.kind === 'view') base = `view:${f.viewId}`
-  else if (f.kind === 'projectSessions' && f.workspaceId) base = `projectSessions:${encodeURIComponent(f.workspaceId)}`
   else base = f.kind
   if (state.details) {
     return `${base}/chat/${state.details.sessionId}`
@@ -1156,14 +1039,6 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   const parseSessionsKey = (filterKey: string, sessionId?: string): NavigationState | null => {
     let filter: SessionFilter
     if (filterKey === 'allSessions') filter = { kind: 'allSessions' }
-    else if (filterKey === 'projectSessions') filter = { kind: 'projectSessions' }
-    else if (filterKey.startsWith('projectSessions:')) {
-      const workspaceId = filterKey.slice('projectSessions:'.length)
-      if (!workspaceId) return null
-      // Serialized with encodeURIComponent (see getNavigationStateKey / session-list-collapse)
-      filter = { kind: 'projectSessions', workspaceId: decodeURIComponent(workspaceId) }
-    }
-    else if (filterKey === 'conversations') filter = { kind: 'conversations' }
     else if (filterKey === 'flagged') filter = { kind: 'flagged' }
     else if (filterKey === 'archived') filter = { kind: 'archived' }
     else if (filterKey.startsWith('state:')) {

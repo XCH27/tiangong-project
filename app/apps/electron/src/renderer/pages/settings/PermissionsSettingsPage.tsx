@@ -1,11 +1,7 @@
 /**
  * PermissionsSettingsPage
  *
- * Permission authority only (orthogonal to work phase / Composer modes):
- * - Default execution approval (ask | allow-all) for when the phase is Execute
- * - Explore-mode allow patterns (permissions.json)
- *
- * Work phase defaults live on Project settings; do not configure phase here.
+ * Displays permissions configuration for Explore mode.
  * Shows both default patterns (from ~/.craft-agent/permissions/default.json)
  * and custom workspace additions (from workspace permissions.json).
  *
@@ -18,15 +14,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
-
+import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
 import { useAppShellContext, useActiveWorkspace } from '@/context/AppShellContext'
 import { type PermissionsConfigFile } from '@craft-agent/shared/agent/modes'
-import {
-  EXECUTION_PERMISSION_MODES,
-  type ExecutionPermissionMode,
-} from '@craft-agent/shared/agent/work-mode'
 import {
   PermissionsDataTable,
   type PermissionRow,
@@ -34,11 +25,10 @@ import {
 import {
   SettingsSection,
   SettingsCard,
-  SettingsMenuSelectRow,
 } from '@/components/settings'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { getDocUrl } from '@craft-agent/shared/docs/doc-links'
-
+import { routes } from '@/lib/navigate'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
 export const meta: DetailsPageMeta = {
@@ -150,8 +140,6 @@ export default function PermissionsSettingsPage() {
   const [defaultConfig, setDefaultConfig] = useState<PermissionsConfigFile | null>(null)
   const [defaultPermissionsPath, setDefaultPermissionsPath] = useState<string | null>(null)
   const [customConfig, setCustomConfig] = useState<PermissionsConfigFile | null>(null)
-  const [executionPermissionMode, setExecutionPermissionMode] =
-    useState<ExecutionPermissionMode>('ask')
 
   // Build default permissions data from ~/.craft-agent/permissions/default.json
   const defaultPermissionsData = useMemo(() => buildDefaultPermissionsData(defaultConfig), [defaultConfig])
@@ -186,21 +174,10 @@ export default function PermissionsSettingsPage() {
         setDefaultConfig(defaults)
         setDefaultPermissionsPath(defaultsPath)
 
-        // Load project-scoped permission rules and the default approval policy
-        // from their existing stores. This page is only a shared settings surface.
+        // Load workspace permissions if we have an active workspace
         if (activeWorkspaceId) {
-          const [workspacePermissions, workspaceSettings] = await Promise.all([
-            window.electronAPI.getWorkspacePermissionsConfig(activeWorkspaceId),
-            window.electronAPI.getWorkspaceSettings(activeWorkspaceId),
-          ])
-          setCustomConfig(workspacePermissions)
-          setExecutionPermissionMode(
-            workspaceSettings?.executionPermissionMode
-              ?? (workspaceSettings?.permissionMode === 'allow-all' ? 'allow-all' : 'ask')
-          )
-        } else {
-          setCustomConfig(null)
-          setExecutionPermissionMode('ask')
+          const workspace = await window.electronAPI.getWorkspacePermissionsConfig(activeWorkspaceId)
+          setCustomConfig(workspace)
         }
       } catch (error) {
         console.error('Failed to load permissions:', error)
@@ -225,36 +202,9 @@ export default function PermissionsSettingsPage() {
     return unsubscribe
   }, [])
 
-  const handleExecutionApprovalChange = async (value: string) => {
-    if (!window.electronAPI || !activeWorkspaceId) return
-
-    const nextMode: ExecutionPermissionMode =
-      value === 'allow-all' ? 'allow-all' : 'ask'
-    if (nextMode === executionPermissionMode) return
-
-    const previousMode = executionPermissionMode
-    setExecutionPermissionMode(nextMode)
-    try {
-      await window.electronAPI.updateWorkspaceSetting(
-        activeWorkspaceId,
-        'executionPermissionMode',
-        nextMode
-      )
-    } catch (error) {
-      setExecutionPermissionMode(previousMode)
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      toast.error(
-        t('settings.workspace.failedToSave', {
-          setting: t('settings.workspace.defaultMode'),
-        }),
-        { description: message }
-      )
-    }
-  }
-
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.permissions.title")} />
+      <PanelHeader title={t("settings.permissions.title")} actions={<HeaderMenu route={routes.view.settings('permissions')} helpFeature="permissions" />} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">
@@ -265,13 +215,16 @@ export default function PermissionsSettingsPage() {
                 </div>
               ) : (
                 <>
-                  {/* What the page controls — concrete axes before the controls themselves */}
+                  {/* About Section */}
                   <SettingsSection title={t("settings.permissions.aboutPermissions")}>
                     <SettingsCard className="px-4 py-3.5">
-                      <div className="text-sm text-muted-foreground leading-relaxed space-y-2">
-                        <p>{t("settings.permissions.aboutText1")}</p>
-                        <p>{t("settings.permissions.aboutText2")}</p>
-                        <p>{t("settings.permissions.aboutText3")}</p>
+                      <div className="text-sm text-muted-foreground leading-relaxed space-y-1.5">
+                        <p>
+                          {t("settings.permissions.aboutText1")}
+                        </p>
+                        <p>
+                          {t("settings.permissions.aboutText2")}
+                        </p>
                         <p>
                           <button
                             type="button"
@@ -282,27 +235,6 @@ export default function PermissionsSettingsPage() {
                           </button>
                         </p>
                       </div>
-                    </SettingsCard>
-                  </SettingsSection>
-
-                  <SettingsSection
-                    title={t('mode.executionApproval')}
-                    description={t('mode.executionApprovalDesc')}
-                  >
-                    <SettingsCard>
-                      <SettingsMenuSelectRow
-                        label={t('settings.permissions.executionApprovalDefault')}
-                        description={t('settings.permissions.executionApprovalDefaultDesc')}
-                        value={executionPermissionMode}
-                        onValueChange={handleExecutionApprovalChange}
-                        disabled={!activeWorkspaceId}
-                        menuWidth={360}
-                        options={EXECUTION_PERMISSION_MODES.map((mode) => ({
-                          value: mode,
-                          label: t(`mode.execution.${mode}.title`),
-                          description: t(`mode.execution.${mode}.description`),
-                        }))}
-                      />
                     </SettingsCard>
                   </SettingsSection>
 

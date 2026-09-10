@@ -1,9 +1,15 @@
-import type { ListSessionsOptions, SessionToolContext } from '../context.ts';
+import type { SessionToolContext } from '../context.ts';
 import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
 
-/** Tool arguments share the same filtering contract as the injected callback. */
-export type ListSessionsArgs = ListSessionsOptions;
+export interface ListSessionsArgs {
+  status?: string;
+  label?: string;
+  search?: string;
+  sortBy?: 'recent' | 'name' | 'status';
+  limit?: number;
+  offset?: number;
+}
 
 export async function handleListSessions(
   ctx: SessionToolContext,

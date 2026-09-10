@@ -22,9 +22,6 @@ function createFullMessage(): Message {
     role: 'tool',
     content: 'Tool output',
     timestamp: 1700000000000,
-    requestModel: 'test-model',
-    requestConnection: 'test-connection',
-    requestWorkMode: 'execute',
     toolName: 'Read',
     toolUseId: 'tu-123',
     toolInput: { file_path: '/test.ts' },
@@ -117,7 +114,6 @@ describe('messageToStored/storedToMessage round-trip', () => {
     // Known StoredMessage keys (update this list when adding fields)
     const expectedKeys = [
       'id', 'type', 'content', 'timestamp',
-      'requestModel', 'requestConnection', 'requestWorkMode',
       'toolName', 'toolUseId', 'toolInput', 'toolResult', 'toolStatus',
       'toolDuration', 'toolIntent', 'toolDisplayName', 'toolDisplayMeta',
       'parentToolUseId',
@@ -147,9 +143,6 @@ describe('messageToStored/storedToMessage round-trip', () => {
     expect(restored.id).toBe(original.id)
     expect(restored.content).toBe(original.content)
     expect(restored.timestamp).toBe(original.timestamp)
-    expect(restored.requestModel).toBe(original.requestModel)
-    expect(restored.requestConnection).toBe(original.requestConnection)
-    expect(restored.requestWorkMode).toBe(original.requestWorkMode)
     expect(restored.toolName).toBe(original.toolName)
     expect(restored.toolUseId).toBe(original.toolUseId)
     expect(restored.toolInput).toEqual(original.toolInput)

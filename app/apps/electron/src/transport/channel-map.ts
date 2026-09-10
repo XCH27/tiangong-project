@@ -158,13 +158,6 @@ export const CHANNEL_MAP = {
   copilotLogout: invoke(RPC_CHANNELS.copilot.LOGOUT),
   onCopilotDeviceCode: listener(RPC_CHANNELS.copilot.DEVICE_CODE),
 
-  // xAI Grok subscription OAuth
-  startXaiOAuth: invoke(RPC_CHANNELS.xai.START_OAUTH),
-  cancelXaiOAuth: invoke(RPC_CHANNELS.xai.CANCEL_OAUTH),
-  getXaiAuthStatus: invoke(RPC_CHANNELS.xai.GET_AUTH_STATUS),
-  xaiLogout: invoke(RPC_CHANNELS.xai.LOGOUT),
-  onXaiDeviceCode: listener(RPC_CHANNELS.xai.DEVICE_CODE),
-
   // Server info (REMOTE_ELIGIBLE)
   getServerHomeDir: invoke(RPC_CHANNELS.server.HOME_DIR),
 
@@ -175,7 +168,6 @@ export const CHANNEL_MAP = {
 
   // Settings - API Setup
   setupLlmConnection: invoke(RPC_CHANNELS.settings.SETUP_LLM_CONNECTION),
-  discoverLlmModels: invoke(RPC_CHANNELS.settings.DISCOVER_LLM_MODELS),
   testLlmConnectionSetup: invoke(RPC_CHANNELS.settings.TEST_LLM_CONNECTION_SETUP),
   getDefaultThinkingLevel: invoke(RPC_CHANNELS.settings.GET_DEFAULT_THINKING_LEVEL),
   setDefaultThinkingLevel: invoke(RPC_CHANNELS.settings.SET_DEFAULT_THINKING_LEVEL),
@@ -248,8 +240,6 @@ export const CHANNEL_MAP = {
 
   // Skills
   getSkills: invoke(RPC_CHANNELS.skills.GET),
-  moveSkillScope: invoke(RPC_CHANNELS.skills.MOVE_SCOPE),
-  installKit: invoke(RPC_CHANNELS.skills.INSTALL_KIT),
   getSkillFiles: invoke(RPC_CHANNELS.skills.GET_FILES),
   deleteSkill: invoke(RPC_CHANNELS.skills.DELETE),
   openSkillInEditor: invoke(RPC_CHANNELS.skills.OPEN_EDITOR),
@@ -264,7 +254,6 @@ export const CHANNEL_MAP = {
   // Labels
   listLabels: invoke(RPC_CHANNELS.labels.LIST),
   createLabel: invoke(RPC_CHANNELS.labels.CREATE),
-  updateLabel: invoke(RPC_CHANNELS.labels.UPDATE),
   deleteLabel: invoke(RPC_CHANNELS.labels.DELETE),
   onLabelsChanged: listener(RPC_CHANNELS.labels.CHANGED),
 
@@ -348,10 +337,6 @@ export const CHANNEL_MAP = {
 
   // Git
   getGitBranch: invoke(RPC_CHANNELS.git.GET_BRANCH),
-  getGitWorkingTree: invoke(RPC_CHANNELS.git.GET_WORKING_TREE),
-  getGitFileDiff: invoke(RPC_CHANNELS.git.GET_FILE_DIFF),
-  runTerminalCommand: invoke(RPC_CHANNELS.terminal.RUN_COMMAND),
-  handshakeCliRuntimes: invoke(RPC_CHANNELS.terminal.HANDSHAKE_RUNTIMES),
   checkGitBash: invoke(RPC_CHANNELS.gitbash.CHECK),
   browseForGitBash: invoke(RPC_CHANNELS.gitbash.BROWSE),
   setGitBashPath: invoke(RPC_CHANNELS.gitbash.SET_PATH),
@@ -382,8 +367,6 @@ export const CHANNEL_MAP = {
   'browserPane.reload': invoke(RPC_CHANNELS.browserPane.RELOAD),
   'browserPane.stop': invoke(RPC_CHANNELS.browserPane.STOP),
   'browserPane.focus': invoke(RPC_CHANNELS.browserPane.FOCUS),
-  'browserPane.embed': invoke(RPC_CHANNELS.browserPane.EMBED),
-  'browserPane.detach': invoke(RPC_CHANNELS.browserPane.DETACH),
   'browserPane.emptyStateLaunch': invoke(RPC_CHANNELS.browserPane.LAUNCH),
   'browserPane.onStateChanged': listener(RPC_CHANNELS.browserPane.STATE_CHANGED),
   'browserPane.onRemoved': listener(RPC_CHANNELS.browserPane.REMOVED),
@@ -394,9 +377,6 @@ export const CHANNEL_MAP = {
   listLlmConnectionsWithStatus: invoke(RPC_CHANNELS.llmConnections.LIST_WITH_STATUS),
   getLlmConnection: invoke(RPC_CHANNELS.llmConnections.GET),
   getLlmConnectionApiKey: invoke(RPC_CHANNELS.llmConnections.GET_API_KEY),
-  getSubscriptionQuota: invoke(
-    RPC_CHANNELS.llmConnections.GET_SUBSCRIPTION_QUOTA,
-  ),
   saveLlmConnection: invoke(RPC_CHANNELS.llmConnections.SAVE),
   deleteLlmConnection: invoke(RPC_CHANNELS.llmConnections.DELETE),
   testLlmConnection: invoke(RPC_CHANNELS.llmConnections.TEST),

@@ -60,10 +60,7 @@ export function isEmbeddedServerEnabled(): boolean {
 }
 
 export const FEATURE_FLAGS = {
-  /**
-   * Enable first-party Anthropic fast mode when the selected model advertises
-   * support. Transport/model validation still happens in SessionManager.
-   */
+  /** Enable Opus 4.7 fast mode (speed:"fast" + beta header). 6x pricing. */
   fastMode: false,
   /**
    * Enable agent developer feedback tool.

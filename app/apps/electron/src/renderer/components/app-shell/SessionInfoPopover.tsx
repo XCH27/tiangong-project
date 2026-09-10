@@ -6,13 +6,6 @@ import { Input } from '@/components/ui/input'
 import { useAppShellContext, useSession } from '@/context/AppShellContext'
 import { cn } from '@/lib/utils'
 import { SessionFilesSection } from '../right-sidebar/SessionFilesSection'
-import { SettingsMenuSelectRow } from '@/components/settings'
-import {
-  EXECUTION_PERMISSION_MODES,
-  type ExecutionPermissionMode,
-} from '@craft-agent/shared/agent/work-mode'
-import { defaultSessionOptions } from '@/hooks/useSessionOptions'
-import { currentContextTokens } from './input/context-usage'
 
 interface SessionInfoPopoverProps {
   sessionId: string
@@ -108,19 +101,7 @@ export function SessionInfoPopover({
 function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId: string; sessionFolderPath?: string }) {
   const { t } = useTranslation()
   const session = useSession(sessionId)
-  const {
-    onRenameSession,
-    onSessionOptionsChange,
-    sessionOptions,
-  } = useAppShellContext()
-  const executionPermissionMode =
-    sessionOptions.get(sessionId)?.executionPermissionMode
-      ?? defaultSessionOptions.executionPermissionMode
-  const tokenUsage = session?.tokenUsage
-  const currentContext = currentContextTokens(tokenUsage)
-  const contextPercent = tokenUsage?.contextWindow && tokenUsage.contextWindow > 0 && currentContext != null
-    ? Math.min(100, (currentContext / tokenUsage.contextWindow) * 100)
-    : null
+  const { onRenameSession } = useAppShellContext()
   const [name, setName] = React.useState('')
   const renameTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -152,13 +133,6 @@ function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId
     }, 500)
   }, [onRenameSession, sessionId])
 
-  const handleExecutionPermissionModeChange = React.useCallback((value: string) => {
-    if (!EXECUTION_PERMISSION_MODES.includes(value as ExecutionPermissionMode)) return
-    onSessionOptionsChange(sessionId, {
-      executionPermissionMode: value as ExecutionPermissionMode,
-    })
-  }, [onSessionOptionsChange, sessionId])
-
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="shrink-0 p-3 border-b border-border/50">
@@ -174,50 +148,6 @@ function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId
           />
         </div>
       </div>
-      <div className="shrink-0 border-b border-border/50">
-        <SettingsMenuSelectRow
-          inCard={false}
-          className="px-3"
-          label={t('mode.executionApproval')}
-          value={executionPermissionMode}
-          onValueChange={handleExecutionPermissionModeChange}
-          options={EXECUTION_PERMISSION_MODES.map((mode) => ({
-            value: mode,
-            label: t(`mode.execution.${mode}.title`),
-            description: t(`mode.execution.${mode}.description`),
-          }))}
-        />
-      </div>
-      {tokenUsage && (
-        <div className="shrink-0 border-b border-border/50 px-3 py-3">
-          <div className="mb-2 text-xs font-medium text-muted-foreground">{t('chat.context')}</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div>
-              <div className="text-muted-foreground">{t('chat.contextCurrent')}</div>
-              <div className="font-medium">{formatInfoTokens(currentContext ?? 0)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">{t('chat.contextWindow')}</div>
-              <div className="font-medium">
-                {tokenUsage.contextWindow ? formatInfoTokens(tokenUsage.contextWindow) : t('common.unknown')}
-              </div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">{t('chat.contextOutput')}</div>
-              <div className="font-medium">{formatInfoTokens(tokenUsage.outputTokens)}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">{t('chat.contextCost')}</div>
-              <div className="font-medium">${tokenUsage.costUsd.toFixed(4)}</div>
-            </div>
-          </div>
-          {contextPercent !== null && (
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-foreground/10">
-              <div className="h-full rounded-full bg-foreground/70" style={{ width: `${contextPercent}%` }} />
-            </div>
-          )}
-        </div>
-      )}
       <div className="flex-1 min-h-0 overflow-hidden">
         <SessionFilesSection
           sessionId={sessionId}
@@ -228,10 +158,4 @@ function SessionInfoPopoverContent({ sessionId, sessionFolderPath }: { sessionId
       </div>
     </div>
   )
-}
-
-function formatInfoTokens(value: number): string {
-  if (value < 1000) return String(value)
-  if (value < 1_000_000) return `${(value / 1000).toFixed(value >= 10_000 ? 0 : 1)}K`
-  return `${(value / 1_000_000).toFixed(1)}M`
 }

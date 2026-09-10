@@ -89,12 +89,6 @@ export type PermissionCallback = (request: {
 export type PlanCallback = (planPath: string) => void;
 
 /**
- * Called when agent enters Plan phase via EnterPlan (does not pause the turn).
- * Return `{ activated: false }` when already in Plan (Grok activate_from_tool no-op).
- */
-export type EnterPlanCallback = (reason?: string) => { activated: boolean } | void;
-
-/**
  * Auth request callback signature.
  * Called when a source requires authentication.
  */
@@ -616,9 +610,6 @@ export interface AgentBackend {
 
   /** Called when agent submits a plan */
   onPlanSubmitted: PlanCallback | null;
-
-  /** Called when agent enters Plan phase mid-turn (no abort) */
-  onEnterPlan: EnterPlanCallback | null;
 
   /** Called when a source requires authentication */
   onAuthRequest: AuthCallback | null;

@@ -9,11 +9,6 @@ import {
   UsageTracker,
   createUsageTracker,
 } from '../usage-tracker.ts';
-import {
-  PROVIDER_CACHE_PROFILES,
-  normalizeProviderUsage,
-  summarizeCacheEconomy,
-} from '../cache-economy.ts';
 
 describe('UsageTracker', () => {
   let tracker: UsageTracker;
@@ -32,7 +27,7 @@ describe('UsageTracker', () => {
 
     it('should record message usage', () => {
       tracker.recordMessageUsage({
-        inputTokens: 1300,
+        inputTokens: 1000,
         outputTokens: 500,
         cacheReadTokens: 200,
         cacheCreationTokens: 100,
@@ -40,7 +35,7 @@ describe('UsageTracker', () => {
 
       const usage = tracker.getLastMessageUsage();
       expect(usage).not.toBe(null);
-      expect(usage!.inputTokens).toBe(1300); // Already normalized by the provider adapter
+      expect(usage!.inputTokens).toBe(1300); // 1000 + 200 + 100
       expect(usage!.outputTokens).toBe(500);
       expect(usage!.cacheReadTokens).toBe(200);
       expect(usage!.cacheCreationTokens).toBe(100);
@@ -59,7 +54,7 @@ describe('UsageTracker', () => {
 
     it('should return current input tokens', () => {
       tracker.recordMessageUsage({
-        inputTokens: 6500,
+        inputTokens: 5000,
         cacheReadTokens: 1000,
         cacheCreationTokens: 500,
       });
@@ -77,14 +72,14 @@ describe('UsageTracker', () => {
 
     it('should accumulate usage on turn complete', () => {
       tracker.recordMessageUsage({
-        inputTokens: 1200,
+        inputTokens: 1000,
         outputTokens: 500,
         cacheReadTokens: 200,
       });
       tracker.recordTurnComplete();
 
       tracker.recordMessageUsage({
-        inputTokens: 2300,
+        inputTokens: 2000,
         outputTokens: 800,
         cacheReadTokens: 300,
       });
@@ -183,14 +178,14 @@ describe('UsageTracker', () => {
   describe('Usage Updates', () => {
     it('should build usage update object', () => {
       tracker.recordMessageUsage({
-        inputTokens: 60000,
+        inputTokens: 50000,
         outputTokens: 1000,
         cacheReadTokens: 10000,
       });
       tracker.recordTurnComplete();
 
       const update = tracker.buildUsageUpdate();
-      expect(update.inputTokens).toBe(60000); // Already normalized by the provider adapter
+      expect(update.inputTokens).toBe(60000); // 50k + 10k cache
       expect(update.contextWindow).toBe(200000);
       expect(update.cacheHitRate).toBeGreaterThan(0);
     });
@@ -235,53 +230,6 @@ describe('UsageTracker', () => {
     it('should preserve context window on reset', () => {
       tracker.reset();
       expect(tracker.getContextWindow()).toBe(200000);
-    });
-  });
-
-  describe('Cache economy summary', () => {
-    it('folds per-turn adapter usage through summarizeCacheEconomy', () => {
-      const turn1 = normalizeProviderUsage({
-        input_tokens: 1000,
-        cache_creation_input_tokens: 4000,
-        output_tokens: 100,
-      });
-      const turn2 = normalizeProviderUsage({
-        input_tokens: 200,
-        cache_read_input_tokens: 5000,
-        output_tokens: 300,
-      });
-
-      tracker.recordTurnComplete({
-        inputTokens: turn1.totalInputTokens,
-        outputTokens: turn1.outputTokens,
-        cacheReadTokens: turn1.cacheReadTokens,
-        cacheCreationTokens: turn1.cacheWriteTokens,
-        cacheUsage: turn1,
-      });
-      tracker.recordTurnComplete({
-        inputTokens: turn2.totalInputTokens,
-        outputTokens: turn2.outputTokens,
-        cacheReadTokens: turn2.cacheReadTokens,
-        cacheCreationTokens: turn2.cacheWriteTokens,
-        cacheUsage: turn2,
-      });
-
-      const profile = PROVIDER_CACHE_PROFILES.anthropic;
-      expect(tracker.getCacheEconomySummary(profile)).toEqual(
-        summarizeCacheEconomy(profile, [turn1, turn2]),
-      );
-      expect(tracker.getTurnCacheUsages()).toEqual([turn1, turn2]);
-    });
-
-    it('clears turn cache usage on reset', () => {
-      tracker.recordTurnComplete({
-        inputTokens: 1000,
-        outputTokens: 10,
-        cacheReadTokens: 200,
-      });
-      tracker.reset();
-      expect(tracker.getTurnCacheUsages()).toEqual([]);
-      expect(tracker.getCacheEconomySummary(PROVIDER_CACHE_PROFILES.anthropic).turns).toBe(0);
     });
   });
 

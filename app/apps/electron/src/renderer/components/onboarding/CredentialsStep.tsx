@@ -5,7 +5,7 @@
  * with StepFormLayout for the onboarding wizard context.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Check, ExternalLink } from "lucide-react"
 import type { ApiSetupMethod } from "./APISetupStep"
@@ -62,53 +62,30 @@ export function CredentialsStep({
   const isClaudeOAuth = apiSetupMethod === 'claude_oauth'
   const isChatGptOAuth = apiSetupMethod === 'pi_chatgpt_oauth'
   const isCopilotOAuth = apiSetupMethod === 'pi_copilot_oauth'
-  const isXaiOAuth = apiSetupMethod === 'pi_xai_oauth'
   const isAnthropicApiKey = apiSetupMethod === 'anthropic_api_key'
   const isPiApiKey = apiSetupMethod === 'pi_api_key'
   const isApiKey = isAnthropicApiKey || isPiApiKey
 
   // Copilot device code clipboard handling
   const [copiedCode, setCopiedCode] = useState(false)
-  const copiedResetRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Show the "copied" badge briefly; the timer is always cleaned up so an
-  // unmounted step never calls setState.
-  const flashCopiedBadge = useCallback(() => {
-    setCopiedCode(true)
-    if (copiedResetRef.current) {
-      clearTimeout(copiedResetRef.current)
-    }
-    copiedResetRef.current = setTimeout(() => {
-      copiedResetRef.current = null
-      setCopiedCode(false)
-    }, 2000)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (copiedResetRef.current) {
-        clearTimeout(copiedResetRef.current)
-      }
-    }
-  }, [])
 
   // Auto-copy device code to clipboard when it appears
   useEffect(() => {
     if (copilotDeviceCode?.userCode) {
       navigator.clipboard.writeText(copilotDeviceCode.userCode).then(() => {
-        flashCopiedBadge()
+        setCopiedCode(true)
+        setTimeout(() => setCopiedCode(false), 2000)
       }).catch(() => {
         // Clipboard write failed, user can still click to copy
       })
     }
-  }, [copilotDeviceCode?.userCode, flashCopiedBadge])
+  }, [copilotDeviceCode?.userCode])
 
   const handleCopyCode = () => {
     if (copilotDeviceCode?.userCode) {
       navigator.clipboard.writeText(copilotDeviceCode.userCode).then(() => {
-        flashCopiedBadge()
-      }).catch(() => {
-        // Clipboard write failed, user can still click to copy
+        setCopiedCode(true)
+        setTimeout(() => setCopiedCode(false), 2000)
       })
     }
   }
@@ -154,15 +131,11 @@ export function CredentialsStep({
   }
 
   // --- Copilot OAuth flow (device flow) ---
-  if (isCopilotOAuth || isXaiOAuth) {
-    const providerName = isXaiOAuth ? 'xAI' : 'GitHub'
-    const connectionName = isXaiOAuth ? 'Grok Subscription' : 'GitHub Copilot'
+  if (isCopilotOAuth) {
     return (
       <StepFormLayout
-        title={isXaiOAuth ? t("onboarding.credentials.connectGrok") : t("onboarding.credentials.connectGitHub")}
-        description={isXaiOAuth
-          ? t("onboarding.credentials.connectGrokDesc")
-          : t("onboarding.credentials.connectGitHubDesc")}
+        title={t("onboarding.credentials.connectGitHub")}
+        description={t("onboarding.credentials.connectGitHubDesc")}
         actions={
           <>
             <BackButton onClick={onBack} disabled={status === 'validating'} />
@@ -173,7 +146,7 @@ export function CredentialsStep({
               loadingText={t("onboarding.credentials.waitingForAuth")}
             >
               <ExternalLink className="size-4" />
-              {isXaiOAuth ? t("onboarding.credentials.signInXai") : t("onboarding.credentials.signInGitHub")}
+              {t("onboarding.credentials.signInGitHub")}
             </ContinueButton>
           </>
         }
@@ -182,7 +155,7 @@ export function CredentialsStep({
           {copilotDeviceCode ? (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm space-y-3">
               <p className="text-muted-foreground text-center">
-                {t("onboarding.credentials.enterCodeOnProvider", { provider: providerName })}
+                {t("onboarding.credentials.enterCodeOnGitHub")}
               </p>
               <div className="flex flex-col items-center justify-center gap-2">
                 <button
@@ -198,12 +171,12 @@ export function CredentialsStep({
                 </span>
               </div>
               <p className="text-muted-foreground text-xs text-center">
-                {t("onboarding.credentials.browserOpenedToProvider", { provider: providerName })}
+                {t("onboarding.credentials.browserOpenedGitHub")}
               </p>
             </div>
           ) : (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm text-muted-foreground text-center">
-              <p>{t("onboarding.credentials.continueToConnect", { connection: connectionName })}</p>
+              <p>{t("onboarding.credentials.clickToSignInGitHub")}</p>
             </div>
           )}
           {status === 'error' && errorMessage && (
@@ -213,7 +186,7 @@ export function CredentialsStep({
           )}
           {status === 'success' && (
             <div className="rounded-lg bg-success/10 text-success text-sm p-3 text-center">
-              {t("onboarding.credentials.connectionConnected", { connection: connectionName })}
+              {t("onboarding.credentials.copilotConnected")}
             </div>
           )}
         </div>

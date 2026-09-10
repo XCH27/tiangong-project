@@ -303,17 +303,6 @@ describe('runPreToolUseChecks', () => {
       expect(result.type).toBe('call_llm_intercept');
     });
 
-    it('skips source check for built-in MCP servers (craft-agents-docs)', () => {
-      const result = runPreToolUseChecks(createInput({
-        toolName: 'mcp__craft-agents-docs__search',
-        input: {},
-        activeSourceSlugs: [],
-      }));
-
-      // Should pass through (not source_activation_needed)
-      expect(result.type).toBe('allow');
-    });
-
     it('skips source check for non-MCP tools', () => {
       const result = runPreToolUseChecks(createInput({
         toolName: 'Bash',
@@ -919,10 +908,6 @@ describe('shouldPromptInAskMode', () => {
   beforeEach(() => {
     pm = createMockPermissionManager();
     mockShouldAllowToolInMode.mockReset();
-    // Default: safe mode considers the tool read-only (allowed). Tests for
-    // mutations override this — shouldPromptInAskMode consults safe mode for
-    // mcp__/unknown tools.
-    mockShouldAllowToolInMode.mockImplementation(() => ({ allowed: true, reason: '' }));
     mockIsApiEndpointAllowed.mockReset();
     mockIsApiEndpointAllowed.mockImplementation(() => false);
     mockIsReadOnlyBashCommandWithConfig.mockReset();

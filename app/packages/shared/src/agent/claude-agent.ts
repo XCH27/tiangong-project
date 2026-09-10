@@ -21,6 +21,7 @@ import {
   resolveAuthEnvVars,
 } from '../config/llm-connections.ts';
 import type { McpClientPool } from '../mcp/mcp-pool.ts';
+import { proxyToolName } from '../mcp/proxy-tool-name.ts';
 import { loadPlanFromPath, type SessionConfig as Session } from '../sessions/storage.ts';
 import { loadProjectById, getProjectAssetsPath, listProjectAssets, getProjectMemoryPath, loadProjectMemory } from '../projects/storage.ts';
 import { DEFAULT_MODEL, isClaudeModel, isAdaptiveThinkingAlwaysOnModel, getDefaultSummarizationModel, getModelContextWindow } from '../config/models.ts';
@@ -34,7 +35,6 @@ import { guardLargeResult } from '../utils/large-response.ts';
 import { SourceActivationDrainController } from './source-activation-drain.ts';
 import { resolveKeepBackgroundTasksAlive, createPushableInputStream, type PushableInputStream } from './backend/claude/persistent-input.ts';
 import { classifyClaudeTaskNotification } from './backend/claude/task-notification.ts';
-import type { NormalizedCacheUsage } from './core/cache-economy.ts';
 import {
   getSessionPlansDir,
   getLastPlanFilePath,
@@ -96,7 +96,6 @@ import {
   isSpawnEnoent as detectSpawnEnoent,
 } from './spawn-helpers.ts';
 import { IMAGE_LIMITS } from '../utils/files.ts';
-import { getDocsMcpUrl } from '../docs/doc-links.ts';
 
 /** Image extensions that may need size-guard in PreToolUse (matches Read tool's image detection) */
 const IMAGE_READ_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff']);
@@ -253,10 +252,6 @@ const DANGEROUS_COMMANDS = new Set([
   'curl', 'wget', 'ssh', 'scp', 'rsync',
   'git push', 'git reset', 'git rebase', 'git checkout',
 ]);
-
-// Max time a permission prompt may sit unanswered before it is denied, so an
-// orphaned prompt can never hang a turn forever.
-const PERMISSION_REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ============================================================
 // Global Tool Permission System
@@ -446,7 +441,9 @@ function createSourceProxyServers(pool: McpClientPool): Record<string, ReturnTyp
     if (mcpTools.length === 0) continue;
 
     const proxyTools = mcpTools.map(mcpTool => {
-      const proxyName = `mcp__${slug}__${mcpTool.name}`;
+      // Must match the pool's dispatch-map key (mcp-pool.ts sanitizes dotted
+      // names), or pool.callTool(proxyName) would miss for dotted tools (#864).
+      const proxyName = proxyToolName(slug, mcpTool.name);
       return tool(
         mcpTool.name,
         mcpTool.description || `Tool from ${slug}`,
@@ -531,10 +528,6 @@ export class ClaudeAgent extends BaseAgent {
   private persistentAbortController: AbortController | null = null;
   /** True while the single always-on consumer loop is running. */
   private persistentConsumerActive = false;
-  /** Resolves when the consumer loop has fully exited (including its finally). */
-  private persistentConsumerDone: Promise<void> | null = null;
-  /** Bumped on every teardown so a stale, still-exiting consumer can't touch a newer query. */
-  private persistentGeneration = 0;
   /** The current turn's SDK-message channel; the consumer routes into it, chatImpl drains it. */
   private activeTurnChannel: PushableInputStream<SDKMessage> | null = null;
   /** Sink for background task events that arrive between turns (wired by the session layer). */
@@ -561,33 +554,17 @@ export class ClaudeAgent extends BaseAgent {
     this.persistentAbortController = null;
     this.activeTurnChannel = null;
     this.persistentConsumerActive = false;
-    // Invalidate the torn-down consumer: its loop may still be unwinding
-    // (iterator.return() resolves asynchronously) and must not run teardown
-    // against a newer query. persistentConsumerDone stays set so the next
-    // beginPersistentTurn can await the old consumer's full exit.
-    this.persistentGeneration++;
   }
 
   /**
    * Begin a turn in persistent streaming-input mode. First call builds the one
    * long-lived query (with this turn's resume/fork options) + starts the single
    * consumer; later calls reuse it. Always sets up a fresh per-turn channel and
-   * pushes the user message. Resolves to the channel stream for chatImpl to
-   * drain — ending that channel at `result` completes the turn WITHOUT closing
-   * the real query (the subprocess, and its background sub-agents, stay alive).
-   * Awaits any still-exiting previous consumer before building a replacement
-   * query, so stale messages can never route into the new turn's channel.
+   * pushes the user message. Returns the channel stream for chatImpl to drain —
+   * ending that channel at `result` completes the turn WITHOUT closing the real
+   * query (the subprocess, and its background sub-agents, stay alive).
    */
-  private async beginPersistentTurn(prompt: SDKUserMessage, options: Options): Promise<AsyncIterable<SDKMessage>> {
-    // A torn-down query's consumer may still be exiting (iterator.return()
-    // resolves asynchronously). Wait for it before building the replacement —
-    // otherwise late old-iterator messages could route into the new turn's
-    // channel, and the stale consumer's teardown could kill the new query.
-    if ((!this.persistentInput || !this.currentQuery) && this.persistentConsumerDone) {
-      const consumerDone = this.persistentConsumerDone;
-      this.persistentConsumerDone = null;
-      await consumerDone;
-    }
+  private beginPersistentTurn(prompt: SDKUserMessage, options: Options): AsyncIterable<SDKMessage> {
     if (!this.persistentInput || !this.currentQuery) {
       // First turn: create the persistent query + consumer.
       this.persistentInput = createPushableInputStream<SDKUserMessage>();
@@ -624,8 +601,7 @@ export class ClaudeAgent extends BaseAgent {
       this.persistentConsumerActive = false;
       return;
     }
-    const generation = this.persistentGeneration;
-    this.persistentConsumerDone = (async () => {
+    void (async () => {
       try {
         while (true) {
           const { done, value } = await iterator.next();
@@ -647,11 +623,7 @@ export class ClaudeAgent extends BaseAgent {
       } catch (err) {
         this.debug(`[bg-lifecycle] persistent consumer error: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
-        // Skip teardown if a newer generation replaced this consumer while it
-        // was unwinding — the stale exit must not tear down the new query.
-        if (this.persistentGeneration === generation) {
-          this.teardownPersistentQuery('consumer-exit');
-        }
+        this.teardownPersistentQuery('consumer-exit');
       }
     })();
   }
@@ -775,9 +747,6 @@ export class ClaudeAgent extends BaseAgent {
   // Callback when a plan is submitted - set by application to display plan message
   public onPlanSubmitted: ((planPath: string) => void) | null = null;
 
-  // Callback when agent enters Plan phase mid-turn (no abort)
-  public onEnterPlan: ((reason?: string) => { activated: boolean } | void) | null = null;
-
   // Callback when authentication is requested (unified auth flow)
   // This follows the SubmitPlan pattern:
   // 1. Tool calls onAuthRequest
@@ -877,10 +846,6 @@ export class ClaudeAgent extends BaseAgent {
       onPlanSubmitted: (planPath) => {
         this.onDebug?.(`[ClaudeAgent] onPlanSubmitted received: ${planPath}`);
         this.onPlanSubmitted?.(planPath);
-      },
-      onEnterPlan: (reason) => {
-        this.onDebug?.(`[ClaudeAgent] onEnterPlan received${reason ? `: ${reason}` : ''}`);
-        return this.onEnterPlan?.(reason);
       },
       onAuthRequest: (request) => {
         this.onDebug?.(`[ClaudeAgent] onAuthRequest received: ${request.sourceSlug} (type: ${request.type})`);
@@ -985,6 +950,60 @@ export class ClaudeAgent extends BaseAgent {
 
   // isInSafeMode() is now inherited from BaseAgent
 
+  /**
+   * Check if a tool requires permission and handle it
+   * Returns true if allowed, false if denied
+   */
+  private async checkToolPermission(
+    toolName: string,
+    input: Record<string, unknown>,
+    toolUseId: string
+  ): Promise<{ allowed: boolean; updatedInput: Record<string, unknown> }> {
+    // Bash commands require permission
+    if (toolName === 'Bash') {
+      const command = typeof input.command === 'string' ? input.command : JSON.stringify(input);
+      const baseCommand = command.trim().split(/\s+/)[0] || command;
+      const requestId = `perm-${toolUseId}`;
+
+      // Create a promise that will be resolved when user responds
+      const permissionPromise = new Promise<boolean>((resolve) => {
+        this.pendingPermissions.set(requestId, {
+          resolve,
+          toolName,
+          command,
+          baseCommand,
+        });
+      });
+
+      // Notify application of permission request via callback (not event yield)
+      if (this.onPermissionRequest) {
+        this.onPermissionRequest({
+          requestId,
+          toolName,
+          command,
+          description: `Execute bash command: ${command}`,
+        });
+      } else {
+        // No permission handler - deny by default for safety
+        this.pendingPermissions.delete(requestId);
+        return { allowed: false, updatedInput: input };
+      }
+
+      // Wait for user response
+      const allowed = await permissionPromise;
+      return { allowed, updatedInput: input };
+    }
+
+    // All other tools are auto-approved
+    return { allowed: true, updatedInput: input };
+  }
+
+  private async getToken(): Promise<string | null> {
+    // Only return token if explicitly provided via config
+    // Sources handle their own authentication
+    return this.config.mcpToken ?? null;
+  }
+
   protected async *chatImpl(
     userMessage: string,
     attachments?: FileAttachment[],
@@ -1073,17 +1092,9 @@ export class ClaudeAgent extends BaseAgent {
       }
 
       // Build full MCP servers set first, then filter for mini agents
-      const docsMcpUrl = getDocsMcpUrl();
       const fullMcpServers: Options['mcpServers'] = {
         // Session-scoped tools (SubmitPlan, source_test, update_user_preferences, transform_data, etc.)
         session: getSessionScopedTools(sessionId, this.workspaceRootPath),
-        // R2-C1: docs tools are optional and require an explicitly configured endpoint.
-        ...(docsMcpUrl ? {
-          'craft-agents-docs': {
-            type: 'http' as const,
-            url: docsMcpUrl,
-          },
-        } : {}),
         // Per-source proxy servers from centralized MCP pool (MCP + API sources)
         // Each source gets its own SDK server keyed by slug (e.g., 'linear', 'github', 'gmail')
         // so the SDK produces correct tool names: mcp__{slug}__{toolName}
@@ -1445,17 +1456,8 @@ export class ClaudeAgent extends BaseAgent {
                   debug(`[PreToolUse] Requesting permission for ${input.tool_name}: ${command}`);
 
                   const permissionPromise = new Promise<boolean>((resolve) => {
-                    const timeout = setTimeout(() => {
-                      if (this.pendingPermissions.delete(requestId)) {
-                        debug(`[PreToolUse] Permission request ${requestId} timed out; denying`);
-                        resolve(false);
-                      }
-                    }, PERMISSION_REQUEST_TIMEOUT_MS);
                     this.pendingPermissions.set(requestId, {
-                      resolve: (allowed) => {
-                        clearTimeout(timeout);
-                        resolve(allowed);
-                      },
+                      resolve,
                       toolName: input.tool_name,
                       command,
                       baseCommand,
@@ -1578,12 +1580,10 @@ export class ClaudeAgent extends BaseAgent {
               }
             : {}),
         mcpServers,
-        // NOTE: This callback is NOT called by the SDK because we set `permissionMode: 'bypassPermissions'` above.
+        // No `canUseTool`: `permissionMode: 'bypassPermissions'` shadows it (SDK never calls it,
+        // and since SDK 0.3.198 the combination triggers a runtime warning on every query).
         // All permission logic is handled via the PreToolUse hook instead (see hooks.PreToolUse above).
         // Bash permission logic is in PreToolUse where it actually executes.
-        canUseTool: async (_toolName, input) => {
-          return { behavior: 'allow' as const, updatedInput: input as Record<string, unknown> };
-        },
         // Selectively disable tools - file tools are disabled (use MCP), web/code controlled by settings
         disallowedTools,
         // No plugins — skills are handled by BaseAgent.chat() via read-before-execute
@@ -1660,7 +1660,7 @@ This is a branched conversation. All prior messages in this conversation are par
       let turnMessageSource: AsyncIterable<SDKMessage>;
       if (this.keepBackgroundTasksAlive && !isSlashCommand) {
         const sdkMessage = this.buildSDKUserMessage(effectiveUserMessage, attachments);
-        turnMessageSource = await this.beginPersistentTurn(sdkMessage, optionsWithAbort);
+        turnMessageSource = this.beginPersistentTurn(sdkMessage, optionsWithAbort);
       } else if (isSlashCommand) {
         // Send slash commands directly to SDK without context wrapping.
         // The SDK processes these as internal commands (e.g., /compact triggers compaction).
@@ -1871,31 +1871,6 @@ This is a branched conversation. All prior messages in this conversation are par
 
             if (event.type === 'complete') {
               receivedComplete = true;
-            }
-            // Feed the session usage ledger (UsageTracker) from the same events
-            // the session layer sees: per-message snapshots on usage_update,
-            // whole-turn cumulative totals on complete. Error-path usage
-            // (tagged `errored` by the adapter) is skipped — the retried turn
-            // carries the replacement totals.
-            if (event.type === 'usage_update') {
-              this.usageTracker.recordMessageUsage({
-                inputTokens: event.usage.inputTokens,
-                cacheReadTokens: event.usage.cacheReadTokens,
-                cacheCreationTokens: event.usage.cacheCreationTokens,
-                cacheUsage: (event.usage as { cacheUsage?: NormalizedCacheUsage }).cacheUsage,
-              });
-            } else if (
-              event.type === 'complete' &&
-              event.usage &&
-              !(event.usage as { errored?: boolean }).errored
-            ) {
-              this.usageTracker.recordTurnComplete({
-                inputTokens: event.usage.inputTokens,
-                outputTokens: event.usage.outputTokens,
-                cacheReadTokens: event.usage.cacheReadTokens,
-                cacheCreationTokens: event.usage.cacheCreationTokens,
-                cacheUsage: (event.usage as { cacheUsage?: NormalizedCacheUsage }).cacheUsage,
-              });
             }
             yield event;
           }
@@ -2937,10 +2912,6 @@ This is a branched conversation. All prior messages in this conversation are par
     // WS2: tear down the persistent streaming-input query (if any) so no
     // subprocess/background sub-agents leak past the agent's lifetime.
     this.teardownPersistentQuery('destroy');
-    // Deny any unanswered permission prompts so awaiting turns don't hang.
-    for (const pending of this.pendingPermissions.values()) {
-      pending.resolve(false);
-    }
     this.pendingPermissions.clear();
 
     // Clear pinned system prompt state

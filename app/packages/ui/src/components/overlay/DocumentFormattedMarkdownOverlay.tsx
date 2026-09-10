@@ -34,8 +34,6 @@ export interface DocumentFormattedMarkdownOverlayProps {
   onOpenFile?: (path: string) => void
   /** Optional file path — shows badge with "Open" / "Reveal in {file manager}" menu */
   filePath?: string
-  /** Whether filePath represents a real host path that can expose system actions. */
-  filePathActions?: boolean
   /** Optional type badge — tool/format indicator (e.g. "Write") shown in header */
   typeBadge?: OverlayTypeBadge
   /** Optional error message — renders a tinted error banner above the content card */
@@ -68,7 +66,6 @@ export function DocumentFormattedMarkdownOverlay({
   onOpenUrl,
   onOpenFile,
   filePath,
-  filePathActions = true,
   typeBadge,
   error,
   sessionId,
@@ -86,7 +83,6 @@ export function DocumentFormattedMarkdownOverlay({
       isOpen={isOpen}
       onClose={onClose}
       filePath={filePath}
-      filePathActions={filePathActions}
       typeBadge={typeBadge}
       copyContent={content}
       error={error ? { label: 'Write Failed', message: error } : undefined}

@@ -12,11 +12,10 @@ import * as React from 'react'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
-
+import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { ScrollArea } from '@/components/ui/scroll-area'
-
+import { routes } from '@/lib/navigate'
 import { Spinner } from '@craft-agent/ui'
-import { toast } from 'sonner'
 import {
   SettingsSection,
   SettingsCard,
@@ -92,26 +91,6 @@ export default function PreferencesPage() {
   const isInitialLoadRef = useRef(true)
   const formStateRef = useRef(formState)
   const lastSavedRef = useRef<string | null>(null)
-  // Writes are serialized through this chain so overlapping debounced saves
-  // cannot resolve out of order.
-  const saveChainRef = useRef<Promise<void>>(Promise.resolve())
-
-  const enqueueSave = useCallback((json: string) => {
-    saveChainRef.current = saveChainRef.current.then(async () => {
-      try {
-        const result = await window.electronAPI.writePreferences(json)
-        if (result.success) {
-          lastSavedRef.current = json
-        } else {
-          console.error('Failed to save preferences:', result.error)
-          toast.error(t('common.failed'))
-        }
-      } catch (err) {
-        console.error('Failed to save preferences:', err)
-        toast.error(t('common.failed'))
-      }
-    })
-  }, [t])
 
   // Keep formStateRef in sync for use in cleanup
   useEffect(() => {
@@ -152,8 +131,18 @@ export default function PreferencesPage() {
     }
 
     // Debounce save by 500ms
-    saveTimeoutRef.current = setTimeout(() => {
-      enqueueSave(serializePreferences(formState))
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const json = serializePreferences(formState)
+        const result = await window.electronAPI.writePreferences(json)
+        if (result.success) {
+          lastSavedRef.current = json
+        } else {
+          console.error('Failed to save preferences:', result.error)
+        }
+      } catch (err) {
+        console.error('Failed to save preferences:', err)
+      }
     }, 500)
 
     return () => {
@@ -161,7 +150,7 @@ export default function PreferencesPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [formState, isLoading, enqueueSave])
+  }, [formState, isLoading])
 
   // Force save on unmount if there are unsaved changes
   useEffect(() => {
@@ -174,11 +163,13 @@ export default function PreferencesPage() {
       // Check if there are unsaved changes and save immediately
       const currentJson = serializePreferences(formStateRef.current)
       if (lastSavedRef.current !== currentJson && !isInitialLoadRef.current) {
-        // Fire and forget - we can't await in cleanup; the chain keeps order
-        enqueueSave(currentJson)
+        // Fire and forget - we can't await in cleanup
+        window.electronAPI.writePreferences(currentJson).catch((err) => {
+          console.error('Failed to save preferences on unmount:', err)
+        })
       }
     }
-  }, [enqueueSave])
+  }, [])
 
   const updateField = useCallback(<K extends keyof PreferencesFormState>(
     field: K,
@@ -197,7 +188,7 @@ export default function PreferencesPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.preferences.title")} />
+      <PanelHeader title={t("settings.preferences.title")} actions={<HeaderMenu route={routes.view.settings('preferences')} helpFeature="preferences" />} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto space-y-8">

@@ -591,40 +591,7 @@ async function main(): Promise<void> {
   esbuildContexts.push(toolbarPreloadContext);
   console.log("👀 Watching browser toolbar preload...");
 
-  // `context.watch()` schedules its own initial rebuild and resolves when watch
-  // mode is installed, not when that rebuild has finished writing. Starting
-  // Electron immediately can therefore read a partially overwritten 40+ MB
-  // main.cjs and fail with `SyntaxError: Unexpected end of input`, even though
-  // the one-shot build above was valid. Treat the watcher output as a second
-  // build boundary and verify it before launching the runtime.
-  console.log("⏳ Waiting for watcher build output...");
-  const [watchedMainStable, watchedPreloadStable, watchedToolbarPreloadStable] = await Promise.all([
-    waitForFileStable(mainCjsPath),
-    waitForFileStable(preloadCjsPath),
-    waitForFileStable(toolbarPreloadCjsPath),
-  ]);
-  if (!watchedMainStable || !watchedPreloadStable || !watchedToolbarPreloadStable) {
-    console.error("❌ Watcher build files did not stabilize");
-    await Promise.all(esbuildContexts.map(ctx => ctx.dispose()));
-    process.exit(1);
-  }
-
-  const [watchedMainValid, watchedPreloadValid, watchedToolbarPreloadValid] = await Promise.all([
-    verifyJsFile(mainCjsPath),
-    verifyJsFile(preloadCjsPath),
-    verifyJsFile(toolbarPreloadCjsPath),
-  ]);
-  if (!watchedMainValid.valid || !watchedPreloadValid.valid || !watchedToolbarPreloadValid.valid) {
-    console.error("❌ Watcher build output is invalid", {
-      main: watchedMainValid.error,
-      preload: watchedPreloadValid.error,
-      toolbarPreload: watchedToolbarPreloadValid.error,
-    });
-    await Promise.all(esbuildContexts.map(ctx => ctx.dispose()));
-    process.exit(1);
-  }
-
-  // 5. Start Electron only after the active watcher output is valid.
+  // 5. Start Electron (build already verified)
   console.log("🚀 Starting Electron...\n");
 
   const electronProc = spawn({

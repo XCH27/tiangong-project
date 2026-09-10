@@ -6,15 +6,15 @@ export const actions = {
   // ═══════════════════════════════════════════
   'app.newChat': {
     id: 'app.newChat',
-    label: 'New Task',
-    description: 'Create a new task',
+    label: 'New Chat',
+    description: 'Create a new chat session',
     defaultHotkey: 'mod+n',
     category: 'General',
   },
   'app.newChatInPanel': {
     id: 'app.newChatInPanel',
-    label: 'New Task in Panel',
-    description: 'Create a new task in a new panel',
+    label: 'New Chat in Panel',
+    description: 'Create a new chat session in a new panel',
     defaultHotkey: 'mod+t',
     category: 'General',
   },
@@ -34,15 +34,8 @@ export const actions = {
   },
   'app.search': {
     id: 'app.search',
-    label: 'Global Search',
-    description: 'Search tasks, projects, files, settings, and navigation',
-    defaultHotkey: 'mod+k',
-    category: 'General',
-  },
-  'session.search': {
-    id: 'session.search',
-    label: 'Search Current Task List',
-    description: 'Filter the current task list and search task content',
+    label: 'Search',
+    description: 'Open search panel',
     defaultHotkey: 'mod+f',
     category: 'General',
   },
@@ -193,6 +186,13 @@ export const actions = {
     category: 'Chat',
     scope: 'chat',
     when: '!hasSelection',  // Let browser clear selection first; overlays handled by hasOpenOverlay() in enabled callback
+  },
+  'chat.cyclePermissionMode': {
+    id: 'chat.cyclePermissionMode',
+    label: 'Cycle Permission Mode',
+    description: 'Switch between Explore, Ask, and Execute modes',
+    defaultHotkey: 'shift+tab',
+    category: 'Chat',
   },
   'chat.nextSearchMatch': {
     id: 'chat.nextSearchMatch',

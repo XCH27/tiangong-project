@@ -304,6 +304,7 @@ export class Commands {
         threadId: msg.threadId,
       })
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       this.log.error('failed to create session from chat', {
         event: 'session_create_failed',
         workspaceId: this.workspaceId,
@@ -311,11 +312,7 @@ export class Commands {
         channelId: msg.channelId,
         error: err,
       })
-      await adapter.sendText(
-        msg.channelId,
-        'Failed to create the session. Check the desktop app for details.',
-        replyOpts,
-      )
+      await adapter.sendText(msg.channelId, `Failed to create session: ${errorMsg}`, replyOpts)
     }
   }
 

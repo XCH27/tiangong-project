@@ -217,7 +217,7 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
         deps.platform.logger.info('[OPEN_URL] Handling as deep link')
         const { handleDeepLink } = await import('../deep-link')
         const resolver = (wcId: number) => windowManager.getClientIdForWindow(wcId)
-        const result = await handleDeepLink(url, windowManager, server.push.bind(server), resolver, ctx.clientId, { allowActions: true })
+        const result = await handleDeepLink(url, windowManager, server.push.bind(server), resolver, ctx.clientId)
         deps.platform.logger.info('[OPEN_URL] Deep link result:', result)
         return
       }
@@ -238,11 +238,7 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
     try {
       const expanded = path.startsWith('~') ? path.replace(/^~/, homedir()) : path
       const absolutePath = resolve(expanded)
-      // Prefer host-registered workspace over client-declared workspaceId.
-      const hostWs = ctx.webContentsId != null
-        ? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId) ?? null
-        : null
-      const workspaceId = hostWs ?? ctx.workspaceId
+      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
       const safePath = await validateFilePath(absolutePath, getWorkspaceAllowedDirs(workspaceId))
       const result = await requestClientOpenPath(server, ctx.clientId, safePath)
       if (result.error) throw new Error(result.error)
@@ -257,10 +253,7 @@ export function registerSystemCoreHandlers(server: RpcServer, deps: HandlerDeps)
     try {
       const expanded = path.startsWith('~') ? path.replace(/^~/, homedir()) : path
       const absolutePath = resolve(expanded)
-      const hostWs = ctx.webContentsId != null
-        ? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId) ?? null
-        : null
-      const workspaceId = hostWs ?? ctx.workspaceId
+      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
       const safePath = await validateFilePath(absolutePath, getWorkspaceAllowedDirs(workspaceId))
       await requestClientShowInFolder(server, ctx.clientId, safePath)
     } catch (error) {

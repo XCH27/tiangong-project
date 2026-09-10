@@ -14,11 +14,8 @@
 import {
   type ModelDefinition,
   ANTHROPIC_MODELS,
-  getModelById,
-  modelSupportsFastMode,
   normalizeDeprecatedModelId,
 } from './models';
-import type { ModelPricing } from './model-pricing.ts';
 import type { CredentialManager } from '../credentials/manager.ts';
 
 // ============================================================
@@ -95,13 +92,9 @@ export type LlmAuthType =
 /**
  * Ownership mode for a connection's model list.
  * - automaticallySyncedFromProvider: provider defaults are synced automatically.
- * - userSelected: the user's enabled model set is preserved.
- * - userDefined3Tier: legacy persisted value; treated as userSelected.
+ * - userDefined3Tier: user-picked Best/Balanced/Fast list is preserved.
  */
-export type ModelSelectionMode =
-  | 'automaticallySyncedFromProvider'
-  | 'userSelected'
-  | 'userDefined3Tier';
+export type ModelSelectionMode = 'automaticallySyncedFromProvider' | 'userDefined3Tier';
 
 /**
  * Protocol for custom API endpoints.
@@ -168,35 +161,9 @@ export interface LlmConnection {
   defaultModel?: string;
 
   /**
-   * User-stated rates, keyed by model ID.
-   *
-   * OpenAI-compatible responses carry no cost field, so for every custom
-   * endpoint — which is all seven CN providers, every self-hosted model and
-   * every proxy — nothing in the system can price a turn unless the user says
-   * what they are paying. Without this the usage view reports `$0.00` for the
-   * majority of a mixed setup, which is not a small inaccuracy: it is confident
-   * and always low.
-   *
-   * Kept beside `models` rather than inside it because that array holds bare
-   * strings as well as full definitions.
-   */
-  modelPricing?: Record<string, ModelPricing>;
-
-  /**
-   * Optional model for low-cost internal work such as title generation,
-   * summaries, and mini-agent calls. When omitted, Fleet resolves a suitable
-   * small model from this connection's enabled model catalog.
-   *
-   * This is intentionally one override rather than separate title/summary
-   * authorities: those jobs share the same economy policy.
-   */
-  utilityModel?: string;
-
-  /**
    * Ownership mode for the model list.
    * - automaticallySyncedFromProvider: provider defaults are kept in sync.
-   * - userSelected: preserve the user's enabled model set.
-   * - userDefined3Tier: legacy persisted value with the same preservation semantics.
+   * - userDefined3Tier: preserve user-selected Best/Balanced/Fast list.
    */
   modelSelectionMode?: ModelSelectionMode;
 
@@ -292,9 +259,9 @@ export function isDeniedMiniModelId(modelId: string, piAuthProvider?: string): b
  * Used for mini agent, title generation, and mini completions.
  */
 export function getMiniModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
 ): string | undefined {
-  return resolveUtilityModel(connection);
+  return findSmallModel(connection);
 }
 
 /**
@@ -305,21 +272,8 @@ export function getMiniModel(
  * Used for response summarization and API tool summarization.
  */
 export function getSummarizationModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
 ): string | undefined {
-  return resolveUtilityModel(connection);
-}
-
-function resolveUtilityModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
-): string | undefined {
-  const explicit = connection.utilityModel?.trim();
-  if (explicit && connection.models?.some((model) => {
-    const id = typeof model === 'string' ? model : model.id;
-    return id === explicit && !isDeniedMiniModelId(id, connection.piAuthProvider);
-  })) {
-    return explicit;
-  }
   return findSmallModel(connection);
 }
 
@@ -607,76 +561,6 @@ export function modelSupportsImages(
   return connection.customEndpoint?.supportsImages ?? false;
 }
 
-function modelIdsMatch(left: string, right: string): boolean {
-  const normalize = (value: string) => normalizeDeprecatedModelId(
-    value.startsWith('pi/') ? value.slice(3) : value,
-  );
-  return normalize(left) === normalize(right);
-}
-
-/**
- * Resolve capability metadata for the effective model on one connection.
- *
- * Connection-owned discovery wins over the static registry so runtime-refreshed
- * Pi catalogs remain authoritative. String-only custom endpoint entries carry
- * no capability metadata and deliberately resolve to `undefined`; callers must
- * not guess reasoning, speed, image, or context capabilities for them.
- */
-export function resolveConnectionModelDefinition(
-  connection: Pick<LlmConnection, 'providerType' | 'piAuthProvider' | 'models'> | null | undefined,
-  modelId: string | null | undefined,
-): ModelDefinition | undefined {
-  if (!modelId) return undefined;
-
-  const connectionEntry = connection?.models?.find((candidate) =>
-    modelIdsMatch(typeof candidate === 'string' ? candidate : candidate.id, modelId),
-  );
-  if (connectionEntry && typeof connectionEntry !== 'string') return connectionEntry;
-
-  if (connection) {
-    const discovered = getModelsForProviderType(connection.providerType, connection.piAuthProvider)
-      .find(candidate => modelIdsMatch(candidate.id, modelId));
-    if (discovered) return discovered;
-
-    // Compatible/custom endpoints own their capability declarations. A model
-    // name that happens to match a built-in provider model is not evidence that
-    // this transport accepts the same effort, speed, or multimodal parameters.
-    if (isCompatProvider(connection.providerType)) return undefined;
-
-    // Persisted first-party connections may still carry model lists as string
-    // IDs. Falling through to the built-in registry is safe for those provider
-    // types, but never for compatible endpoints.
-    if (connectionEntry) {
-      return getModelById(modelId)
-        ?? getModelById(modelId.startsWith('pi/') ? modelId.slice(3) : `pi/${modelId}`);
-    }
-  }
-
-  return getModelById(modelId)
-    ?? getModelById(modelId.startsWith('pi/') ? modelId.slice(3) : `pi/${modelId}`);
-}
-
-/**
- * Fast mode is a transport capability, not only a model label.
- *
- * Fleet applies a provider-advertised request fragment through its Anthropic
- * or OpenAI protocol adapter. Compatible endpoints remain excluded because a
- * matching model name does not prove that their transport accepts the mode.
- */
-export function connectionSupportsFastMode(
-  connection: Pick<LlmConnection, 'providerType' | 'piAuthProvider' | 'models'> | null | undefined,
-  modelId: string | null | undefined,
-): boolean {
-  if (!connection || (connection.providerType !== 'anthropic' && connection.providerType !== 'pi')) {
-    return false;
-  }
-  const definition = resolveConnectionModelDefinition(connection, modelId);
-  if (!modelSupportsFastMode(definition)) return false;
-  // Static first-party Anthropic definitions retain the built-in adapter
-  // fallback. Dynamic Pi models require an exact provider mode declaration.
-  return connection.providerType === 'anthropic' || definition?.runtimeModes?.fast !== undefined;
-}
-
 /**
  * Get the default model list for a provider type from the registry.
  * For *_compat providers, returns empty array - those should use connection.models instead.
@@ -720,7 +604,9 @@ export function getModelsForProviderType(providerType: LlmProviderType, piAuthPr
  * Format: bare model IDs (without pi/ prefix). Matched against pi/{id} or pi/{id}-*.
  */
 export const PI_PREFERRED_DEFAULTS: Record<string, string[]> = {
-  anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-fable-5', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  // TODO(opus-4.6-sunset): drop 'claude-opus-4-6' from anthropic and amazon-bedrock
+  // when Opus 4.6 is deprecated.
+  anthropic: ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-fable-5', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   openai: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.2', 'gpt-5.1', 'gpt-5', 'o4-mini', 'o3', 'gpt-4o'],
   'openai-codex': ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.2', 'gpt-5.1', 'gpt-5', 'o4-mini', 'o3', 'gpt-4o'],
   // Stable models first so the connection-setup test (which uses
@@ -730,9 +616,8 @@ export const PI_PREFERRED_DEFAULTS: Record<string, string[]> = {
   // April 2026 — and are deliberately excluded from defaults.
   google: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview'],
   deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'],
-  xai: ['grok-build-0.1', 'grok-4.5', 'grok-4.3', 'grok-code-fast-1'],
   'github-copilot': ['claude-sonnet-4-6', 'gpt-5', 'o4-mini', 'claude-haiku-4-5'],
-  'amazon-bedrock': ['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  'amazon-bedrock': ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
 };
 
 export function getDefaultModelsForConnection(providerType: LlmProviderType, piAuthProvider?: string): Array<ModelDefinition | string> {
@@ -828,69 +713,6 @@ export function isSessionConnectionUnavailable(
 }
 
 /**
- * Recover a stored session after a provider connection was recreated under a
- * provider-native slug. A unique model match is safe; ambiguous matches remain
- * unavailable so the UI never silently routes a session to the wrong account.
- */
-export function resolveStoredSessionConnectionSlug(
-  sessionConnection: string | undefined,
-  sessionModel: string | undefined,
-  connections: Pick<LlmConnectionWithStatus, 'slug' | 'models' | 'defaultModel'>[],
-): string | undefined {
-  if (!sessionConnection) return undefined
-  if (connections.some(connection => connection.slug === sessionConnection)) {
-    return sessionConnection
-  }
-  if (!sessionModel) return undefined
-
-  const normalize = (modelId: string) =>
-    modelId.startsWith('pi/') ? modelId.slice(3) : modelId
-  const target = normalize(sessionModel)
-  const matches = connections.filter((connection) => {
-    if (
-      connection.defaultModel
-      && normalize(connection.defaultModel) === target
-    ) {
-      return true
-    }
-    return connection.models?.some((model) =>
-      normalize(typeof model === 'string' ? model : model.id) === target
-    ) ?? false
-  })
-
-  return matches.length === 1 ? matches[0]?.slug : undefined
-}
-
-/**
- * Decide whether a session's stored connection slug should be rewritten.
- * Returns the remapped slug only when recovery is unambiguous and different
- * from the stored value — callers persist at most once (never per ChatPage mount).
- */
-export function planSessionConnectionNormalization(input: {
-  sessionId: string
-  model: string | undefined
-  llmConnection: string | undefined
-  connections: Pick<LlmConnectionWithStatus, 'slug' | 'models' | 'defaultModel'>[]
-  /** Session ids already normalized this process lifetime. */
-  alreadyNormalized: ReadonlySet<string>
-}): { action: 'none' } | { action: 'persist'; sessionId: string; connectionSlug: string; model: string } {
-  if (input.alreadyNormalized.has(input.sessionId)) return { action: 'none' }
-  if (!input.model || !input.llmConnection) return { action: 'none' }
-  const resolved = resolveStoredSessionConnectionSlug(
-    input.llmConnection,
-    input.model,
-    input.connections,
-  )
-  if (!resolved || resolved === input.llmConnection) return { action: 'none' }
-  return {
-    action: 'persist',
-    sessionId: input.sessionId,
-    connectionSlug: resolved,
-    model: input.model,
-  }
-}
-
-/**
  * Check if an auth type uses browser OAuth flow.
  * @param authType - LLM auth type
  * @returns true if OAuth browser flow should be triggered
@@ -936,11 +758,13 @@ const BEDROCK_MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-6': 'us.anthropic.claude-sonnet-4-6',
   'claude-haiku-4-5-20251001': 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
   // Older models (for migration of existing connections)
+  'claude-opus-4-6': 'us.anthropic.claude-opus-4-6-v1',
   'claude-opus-4-5-20251101': 'us.anthropic.claude-opus-4-5-20251101-v1:0',
   'claude-sonnet-4-5-20250929': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
   // Also map base IDs (without region prefix) to US inference profiles
   'anthropic.claude-opus-4-8': 'us.anthropic.claude-opus-4-8',
   'anthropic.claude-opus-4-7': 'us.anthropic.claude-opus-4-7',
+  'anthropic.claude-opus-4-6-v1': 'us.anthropic.claude-opus-4-6-v1',
   'anthropic.claude-fable-5': 'us.anthropic.claude-fable-5',
   'anthropic.claude-sonnet-5': 'us.anthropic.claude-sonnet-5',
   'anthropic.claude-sonnet-4-6': 'us.anthropic.claude-sonnet-4-6',
@@ -959,6 +783,7 @@ const BEDROCK_REVERSE_MAP: Record<string, string> = {
   'us.anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'us.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'us.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'us.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   'us.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
   'us.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
   // EU inference profiles
@@ -969,6 +794,7 @@ const BEDROCK_REVERSE_MAP: Record<string, string> = {
   'eu.anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'eu.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'eu.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'eu.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   'eu.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
   'eu.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
   // Global inference profiles
@@ -979,6 +805,7 @@ const BEDROCK_REVERSE_MAP: Record<string, string> = {
   'global.anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'global.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'global.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'global.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   // Base IDs (no region prefix)
   'anthropic.claude-opus-4-8': 'claude-opus-4-8',
   'anthropic.claude-fable-5': 'claude-fable-5',
@@ -987,6 +814,7 @@ const BEDROCK_REVERSE_MAP: Record<string, string> = {
   'anthropic.claude-sonnet-5': 'claude-sonnet-5',
   'anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
   'anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
+  'anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
   'anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
   'anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
 }

@@ -13,12 +13,10 @@ import { successResponse, errorResponse } from '../response.ts';
 import { spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { createScriptRuntimeEnv } from '../runtime/sandbox-env.ts';
 import { isPathWithinDirectory, isPathWithinDirectoryForCreation } from '../runtime/path-security.ts';
 import { resolveScriptRuntime } from '../runtime/resolve-script-runtime.ts';
-import { applyNetworkIsolation } from '../runtime/network-isolation.ts';
-import { applyFilesystemIsolation } from '../runtime/filesystem-isolation.ts';
 
 export interface TransformDataArgs {
   language: 'python3' | 'node' | 'bun';
@@ -28,9 +26,6 @@ export interface TransformDataArgs {
 }
 
 const TRANSFORM_DATA_TIMEOUT_MS = 30_000;
-// Same streaming output cap as script_sandbox — bounds memory even if the
-// script floods stdout/stderr.
-const MAX_OUTPUT_CHARS = 20_000;
 
 /**
  * Handle the transform_data tool call.
@@ -87,14 +82,9 @@ export async function handleTransformData(
     mkdirSync(dataDir, { recursive: true });
   }
 
-  // Write script to a unique file inside the session data dir — never a
-  // predictable name in the shared tmpdir.
+  // Write script to temp file
   const ext = args.language === 'python3' ? '.py' : '.js';
-  const transformScriptDir = join(dataDir, '.transform-scripts');
-  if (!existsSync(transformScriptDir)) {
-    mkdirSync(transformScriptDir, { recursive: true });
-  }
-  const tempScript = join(transformScriptDir, `craft-transform-${ctx.sessionId}-${randomUUID()}${ext}`);
+  const tempScript = join(tmpdir(), `craft-transform-${ctx.sessionId}-${Date.now()}${ext}`);
   writeFileSync(tempScript, args.script, 'utf-8');
 
   try {
@@ -102,43 +92,6 @@ export async function handleTransformData(
     const runtime = resolveScriptRuntime(args.language);
     const cmd = runtime.command;
     const spawnArgs = [...runtime.argsPrefix, tempScript, ...resolvedInputs, resolvedOutput];
-
-    // Require the same network + filesystem isolation as script_sandbox
-    // (LLM-authored code executes in all permission modes).
-    let networkIsolation = applyNetworkIsolation(cmd, spawnArgs);
-    let filesystemIsolation = applyFilesystemIsolation(cmd, spawnArgs, sessionDir);
-
-    if (process.platform === 'darwin') {
-      // macOS: compose network + filesystem restrictions in a SINGLE sandbox-exec profile
-      // to avoid nested sandbox-exec wrapping failures.
-      filesystemIsolation = applyFilesystemIsolation(cmd, spawnArgs, sessionDir, {
-        includeNetworkDeny: true,
-      });
-      networkIsolation = {
-        status: filesystemIsolation.status,
-        backend: filesystemIsolation.status === 'enforced' ? 'sandbox-exec' : 'none',
-        command: cmd,
-        args: spawnArgs,
-      };
-    } else {
-      if (networkIsolation.status !== 'enforced') {
-        return errorResponse(
-          'transform_data requires network isolation in all permission modes, but no supported isolation backend is available on this platform/runtime.'
-        );
-      }
-
-      filesystemIsolation = applyFilesystemIsolation(
-        networkIsolation.command,
-        networkIsolation.args,
-        sessionDir
-      );
-    }
-
-    if (networkIsolation.status !== 'enforced' || filesystemIsolation.status !== 'enforced') {
-      return errorResponse(
-        'transform_data requires network and filesystem isolation in all permission modes, but no supported isolation backend is available on this platform/runtime.'
-      );
-    }
 
     // Strip sensitive env vars + redirect runtime cache/temp paths to session data dir
     const env = createScriptRuntimeEnv({
@@ -150,7 +103,7 @@ export async function handleTransformData(
     // We can't rely on spawn()'s built-in `timeout` option because it only sends
     // SIGTERM, which can be caught/ignored — leaving the promise hanging forever.
     const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolvePromise, reject) => {
-      const child = spawn(filesystemIsolation.command, filesystemIsolation.args, {
+      const child = spawn(cmd, spawnArgs, {
         cwd: dataDir,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -165,16 +118,8 @@ export async function handleTransformData(
         child.kill('SIGKILL');
       }, TRANSFORM_DATA_TIMEOUT_MS);
 
-      child.stdout.on('data', (data: Buffer) => {
-        if (stdout.length < MAX_OUTPUT_CHARS) {
-          stdout += data.toString().slice(0, MAX_OUTPUT_CHARS - stdout.length);
-        }
-      });
-      child.stderr.on('data', (data: Buffer) => {
-        if (stderr.length < MAX_OUTPUT_CHARS) {
-          stderr += data.toString().slice(0, MAX_OUTPUT_CHARS - stderr.length);
-        }
-      });
+      child.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+      child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       child.on('close', (code) => {
         clearTimeout(killTimer);

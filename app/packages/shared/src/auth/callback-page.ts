@@ -8,21 +8,6 @@ import { CRAFT_LOGO_HTML } from '../branding.ts';
 
 export type AppType = 'terminal' | 'electron';
 
-/** Escape HTML special characters to prevent XSS in interpolated strings. */
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-/** Escape a string for safe inclusion inside a JavaScript single-quoted string. */
-function escapeJsString(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')
-}
-
 /**
  * Generate a minimal, clean callback page matching the app's design system.
  * Logo at top, status message in a card below.
@@ -34,24 +19,20 @@ export function generateCallbackPage(options: {
   appType?: AppType;
   deeplinkUrl?: string;
 }): string {
-  const { title, isSuccess, deeplinkUrl } = options;
-  const safeErrorDetail = options.errorDetail ? escapeHtml(options.errorDetail) : '';
-  const safeTitle = escapeHtml(title);
-  const safeDeeplinkUrl = deeplinkUrl ? escapeHtml(deeplinkUrl) : '';
-  const safeDeeplinkJs = deeplinkUrl ? escapeJsString(deeplinkUrl) : '';
+  const { title, isSuccess, errorDetail, deeplinkUrl } = options;
 
   // Status message based on success/error
   const statusMessage = isSuccess
     ? 'Authorization successful'
-    : safeErrorDetail
-      ? `Authorization failed: ${safeErrorDetail}`
+    : errorDetail
+      ? `Authorization failed: ${errorDetail}`
       : 'Authorization failed';
 
   // Generate deeplink redirect and auto-close for success
   const autoCloseScript = isSuccess
     ? `
     setTimeout(() => {
-      ${safeDeeplinkJs ? `window.location.href = '${safeDeeplinkJs}';` : ''}
+      ${deeplinkUrl ? `window.location.href = '${deeplinkUrl}';` : ''}
       window.close();
     }, 1500);`
     : '';
@@ -62,7 +43,7 @@ export function generateCallbackPage(options: {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Craft - ${safeTitle}</title>
+  <title>Craft - ${title}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -194,7 +175,7 @@ export function generateCallbackPage(options: {
       <div class="status">${statusMessage}</div>
     </div>
     <div class="hint">${isSuccess ? 'You can now return to the application.' : 'Please close this window and try again.'}</div>
-    ${safeDeeplinkUrl ? `<a href="${safeDeeplinkUrl}" class="return-link">Craft Agents</a>` : ''}
+    ${deeplinkUrl ? `<a href="${deeplinkUrl}" class="return-link">Craft Agents</a>` : ''}
   </div>
   <script>${autoCloseScript}</script>
 </body>

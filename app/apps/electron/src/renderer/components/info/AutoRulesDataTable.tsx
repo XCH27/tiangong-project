@@ -24,7 +24,6 @@ import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import { toast } from 'sonner'
 import type { LabelConfig, AutoLabelRule } from '@craft-agent/shared/labels'
-import { getLocalizedLabelName } from '@/utils/label-display-name'
 
 /**
  * Flattened auto-rule row: associates a rule with its parent label
@@ -93,11 +92,11 @@ function getColumns(t: TFunction): ColumnDef<AutoRuleRow>[] {
     {
       id: 'label',
       header: ({ column }) => <SortableHeader column={column} title={t("table.label")} />,
-      accessorFn: (row) => getLocalizedLabelName(t, row.label),
+      accessorFn: (row) => row.label.name,
       cell: ({ row }) => (
         <div className="p-1.5 pl-2.5 flex items-center gap-1.5">
           <LabelIcon label={row.original.label} size="xs" />
-          <span className="text-sm truncate">{getLocalizedLabelName(t, row.original.label)}</span>
+          <span className="text-sm truncate">{row.original.label.name}</span>
         </div>
       ),
       minSize: 100,
@@ -204,7 +203,7 @@ export function AutoRulesDataTable({
     <button
       onClick={() => setIsFullscreen(true)}
       className={cn(
-        'p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity]',
+        'p-1 rounded-[6px] transition-all',
         'opacity-0 group-hover:opacity-100',
         'bg-background/80 backdrop-blur-sm shadow-minimal',
         'text-muted-foreground/50 hover:text-foreground',
@@ -223,7 +222,7 @@ export function AutoRulesDataTable({
         data={rows}
         searchable={searchable ? { placeholder: t("table.searchRules") } : false}
         maxHeight={maxHeight}
-        emptyContent={t("settings.expertKits.noAutoApplyRules")}
+        emptyContent={t("settings.labels.noAutoApplyRules")}
         floatingAction={fullscreenButton}
         className={cn(fullscreen && 'group', className)}
       />
@@ -241,7 +240,7 @@ export function AutoRulesDataTable({
             columns={columns}
             data={rows}
             searchable={searchable ? { placeholder: t("table.searchRules") } : false}
-            emptyContent={t("settings.expertKits.noAutoApplyRules")}
+            emptyContent={t("settings.labels.noAutoApplyRules")}
           />
         </DataTableOverlay>
       )}

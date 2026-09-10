@@ -22,8 +22,7 @@ interface DirectoryPickerResult {
 }
 
 export function useDirectoryPicker(
-  onSelect: (path: string) => void,
-  onCancel?: () => void,
+  onSelect: (path: string) => void
 ): DirectoryPickerResult {
   const { t } = useTranslation()
   const connectionState = useTransportConnectionState()
@@ -46,19 +45,17 @@ export function useDirectoryPicker(
     try {
       const path = await window.electronAPI.openFolderDialog()
       if (path) onSelect(path)
-      else onCancel?.()
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       toast.error(t('toast.failedToOpenFolderPicker'), {
         description: message,
       })
     }
-  }, [isRemote, onSelect, onCancel])
+  }, [isRemote, onSelect])
 
   const cancelServerBrowser = useCallback(() => {
     setShowServerBrowser(false)
-    onCancel?.()
-  }, [onCancel])
+  }, [])
 
   const confirmServerBrowser = useCallback((path: string) => {
     setShowServerBrowser(false)

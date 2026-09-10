@@ -19,15 +19,6 @@
 import type { EntityColor } from '../colors/types.ts'
 
 /**
- * The two kinds that may be written.
- *
- * Declared here rather than in `kind-normalize.ts` so the write-input types can
- * reference it without the data module importing its own normalizer; the
- * normalizer re-exports it, so callers still have one import site.
- */
-export type NormalizedLabelKind = 'functional' | 'expert';
-
-/**
  * Auto-label rule: regex pattern that scans user messages and automatically
  * applies labels with extracted values.
  *
@@ -53,7 +44,7 @@ export interface AutoLabelRule {
  * Array position = display order (no explicit order field needed).
  */
 export interface LabelConfig {
-  /** Stable identity ID used by sessions and capability bindings; never use a translated name. */
+  /** Unique ID — simple slug, globally unique across the tree (e.g., 'bug', 'frontend') */
   id: string;
 
   /** Display name */
@@ -80,43 +71,6 @@ export interface LabelConfig {
    * Multiple rules = multiple ways to trigger (evaluated in order, all matches collected).
    */
   autoRules?: AutoLabelRule[];
-
-  /**
-   * Role of this label in the catalog (Decision E10 — one label store).
-   * Omit or `functional` = organize/filter/automate only.
-   * `expert` = a specialist definition: prompt preset plus an `expertKit`.
-   *
-   * @deprecated `'identity'` — expert kits grew out of the identity-label design,
-   * so stored catalogs still contain it and every read path accepts it. Do not
-   * write it. Normalize on read with `normalizeLabelKind()`; anything reasoning
-   * about experts should ask `isExpertLabel()` rather than comparing this field.
-   */
-  kind?: 'functional' | 'expert' | 'identity';
-
-  /**
-   * For expert labels: text injected when building agent context for a session
-   * that carries this label id. Does not grant tools or bypass the permission path.
-   */
-  systemPromptPreset?: string;
-
-  /**
-   * What this expert carries: skills, sources, tools, and the permission mode it
-   * *requests*.
-   *
-   * Previously this was the documented gap — an expert was a paragraph of text
-   * and every session saw every tool regardless of its role, which is a
-   * measurable accuracy cost rather than a tidiness one (Decision H13). The kit
-   * narrows what the agent *sees*; it never widens what it may *do*, and the
-   * permission path still decides (H14).
-   *
-   * Shape and budget rules: `labels/expert-kit.ts`.
-   */
-  expertKit?: {
-    skills?: string[];
-    sources?: string[];
-    tools?: string[];
-    requestedPermissionMode?: 'safe' | 'ask' | 'allow-all';
-  };
 }
 
 /**
@@ -139,64 +93,15 @@ export interface CreateLabelInput {
   color?: EntityColor;
   parentId?: string; // Target parent label ID (null = root)
   valueType?: 'string' | 'number' | 'date' | 'link';
-  /**
-   * Write paths accept `expert`, never `identity`.
-   *
-   * `LabelConfig` still reads `identity` because config files on disk contain
-   * it, but nothing should be able to *create* more of it — that is what makes
-   * the rename finish rather than accumulate a second spelling forever.
-   */
-  kind?: NormalizedLabelKind;
-  systemPromptPreset?: string;
-  /**
-   * The kit payload: which installed skills this role carries, which sources it
-   * reads, which registered tools it is offered, and the permission mode it
-   * *requests*.
-   *
-   * Writable since 2026-09-10. It was declared on `LabelConfig` and absent from
-   * both inputs, so it was readable and unwritable — the same defect the `kind`
-   * rename left behind one field over, and the reason `assessExpertKit` measured
-   * an always-empty value (H36). Slugs resolve against the installed skills via
-   * `kit-resolve.ts`; a slug that names nothing is reported, not dropped.
-   *
-   * `requestedPermissionMode` stays a request. The permission path decides and
-   * may return something narrower — a kit that could widen permissions would be
-   * a second authority over the same decision.
-   */
-  expertKit?: {
-    skills?: string[];
-    sources?: string[];
-    tools?: string[];
-    requestedPermissionMode?: 'safe' | 'ask' | 'allow-all';
-  };
 }
 
 /**
- * Input for updating an existing label (cannot change ID or hierarchy position).
+ * Input for updating an existing label (name, color, valueType — cannot change ID or hierarchy)
  */
 export interface UpdateLabelInput {
   name?: string;
-  /** Pass null to clear color */
-  color?: EntityColor | null;
-  /** Pass empty string / falsy via '' to clear valueType */
-  valueType?: 'string' | 'number' | 'date' | 'link' | '';
-  /** Write paths accept `expert`, never `identity`. See {@link CreateLabelInput}. */
-  kind?: NormalizedLabelKind;
-  /** Pass empty string to clear */
-  systemPromptPreset?: string;
-  /**
-   * Replaces the whole payload; an empty payload clears the field.
-   *
-   * Whole-object replace rather than a merge, because a partial merge makes
-   * "remove the last skill" unexpressible — the caller would have to send a
-   * sentinel to distinguish it from "leave skills alone". See {@link CreateLabelInput}.
-   */
-  expertKit?: {
-    skills?: string[];
-    sources?: string[];
-    tools?: string[];
-    requestedPermissionMode?: 'safe' | 'ask' | 'allow-all';
-  };
+  color?: EntityColor;
+  valueType?: 'string' | 'number' | 'date' | 'link';
 }
 
 /**

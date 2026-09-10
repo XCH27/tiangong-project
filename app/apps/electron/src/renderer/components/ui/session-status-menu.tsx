@@ -6,7 +6,6 @@ import { cn } from '@/lib/utils'
 import {
   type SessionStatusId,
   type SessionStatus,
-  getLocalizedStatusLabel,
   getStateIcon,
   getStateColor,
   getStatusIconStyle,
@@ -27,9 +26,11 @@ const MENU_ITEM_STYLE = 'flex cursor-pointer select-none items-center gap-3 roun
 // StateItemContent - Shared item rendering
 // ============================================================================
 
+const DEFAULT_STATUS_IDS = new Set(['backlog', 'todo', 'needs-review', 'done', 'cancelled'])
+
 function StateItemContent({ state }: { state: SessionStatus }) {
   const { t } = useTranslation()
-  const label = getLocalizedStatusLabel(t, state)
+  const label = DEFAULT_STATUS_IDS.has(state.id) ? t(`status.${state.id}`, state.label) : state.label
   return (
     <>
       <span className="shrink-0 flex items-center" style={getStatusIconStyle(state)}>
@@ -110,7 +111,7 @@ export function SessionStatusMenu({
           return (
             <CommandPrimitive.Item
               key={state.id}
-              value={getLocalizedStatusLabel(t, state)}
+              value={state.label}
               onSelect={() => onSelect(state.id)}
               className={cn(
                 MENU_ITEM_STYLE,
@@ -158,7 +159,7 @@ export function SessionStatusMenu({
               <span className="shrink-0 flex items-center opacity-60">
                 {isArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
               </span>
-              <div className="flex-1 min-w-0">{t(isArchived ? 'sessionMenu.unarchive' : 'sessionMenu.archive')}</div>
+              <div className="flex-1 min-w-0">{isArchived ? 'Unarchive' : 'Archive'}</div>
             </CommandPrimitive.Item>
           </>
         )}

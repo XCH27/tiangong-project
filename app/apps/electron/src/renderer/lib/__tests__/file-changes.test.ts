@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { ActivityItem } from '@craft-agent/ui'
-import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity, summarizeFileChanges } from '../file-changes'
+import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from '../file-changes'
 
 function activity(overrides: Partial<ActivityItem>): ActivityItem {
   return {
@@ -88,16 +88,5 @@ describe('collectFileChangesFromActivities', () => {
     ])
 
     expect(getFirstFileChangeIdForActivity('edit-4', changes)).toBe('edit-4-/src/a.ts')
-  })
-})
-
-describe('summarizeFileChanges', () => {
-  it('counts unique files and both supported diff formats', () => {
-    expect(summarizeFileChanges([
-      { id: '1', filePath: '/a.ts', toolType: 'Edit', original: 'old\nline', modified: 'new\nline\nadded' },
-      { id: '2', filePath: '/a.ts', toolType: 'Edit', original: '', modified: '', unifiedDiff: '--- a/a.ts\n+++ b/a.ts\n-old\n+new\n+more' },
-      { id: '3', filePath: '/b.ts', toolType: 'Write', original: '', modified: 'one\ntwo' },
-      { id: '4', filePath: '/ignored.ts', toolType: 'Write', original: '', modified: 'bad', error: 'failed' },
-    ])).toEqual({ fileCount: 2, additions: 7, deletions: 3 })
   })
 })

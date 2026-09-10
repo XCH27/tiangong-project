@@ -145,30 +145,6 @@ export default [
     },
   },
 
-  // Product surfaces must compose the shared wrappers. Importing Radix
-  // primitives directly here creates a second menu/dialog/popover language
-  // and bypasses the keyboard, elevation, spacing, and portal defaults.
-  {
-    files: ['src/renderer/**/*.{ts,tsx}'],
-    ignores: ['src/renderer/components/ui/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-imports': ['error', {
-        paths: [
-          {
-            name: 'react-hotkeys-hook',
-            message: 'Use useAction from @/actions instead. See actions/index.ts',
-          },
-        ],
-        patterns: [
-          {
-            group: ['@radix-ui/react-*'],
-            message: 'Use the matching shared component from @/components/ui instead of creating a second interaction primitive.',
-          },
-        ],
-      }],
-    },
-  },
-
   // Temporary exceptions for unresolved shadow migrations.
   {
     files: [

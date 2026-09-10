@@ -76,11 +76,9 @@ export class PermissionManager {
   constructor(config: PermissionManagerConfig) {
     this.config = config;
     // Build permissions context for loading custom permissions
-    // PermissionsContext expects workspaceRootPath (absolute path to workspace).
-    // Prefer the authoritative workspace root — the session cwd may be a
-    // subdirectory, and permissions.json / source permissions load from the root.
+    // PermissionsContext expects workspaceRootPath (absolute path to workspace)
     this.permissionsContext = {
-      workspaceRootPath: config.workspaceRootPath ?? config.workingDirectory ?? '',
+      workspaceRootPath: config.workingDirectory ?? '',
     };
   }
 
@@ -309,12 +307,7 @@ export class PermissionManager {
    */
   updateWorkingDirectory(path: string): void {
     this.config.workingDirectory = path;
-    // The permissions root follows the cwd only when no authoritative
-    // workspace root was provided — otherwise permissions.json stays rooted
-    // at the workspace regardless of the session's working directory.
-    if (!this.config.workspaceRootPath) {
-      this.permissionsContext.workspaceRootPath = path;
-    }
+    this.permissionsContext.workspaceRootPath = path;
   }
 
   /**

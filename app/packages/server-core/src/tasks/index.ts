@@ -1,14 +1,14 @@
 /**
  * @craft-agent/server-core/tasks
  *
- * Delegation Kernel (TaskRunner / Conductor) — the in-process DAG runner for
- * Tasks. Builds on the spec, validation, and storage primitives in
- * @craft-agent/shared/tasks and the SessionManager completion/output seams.
- * Sole scheduling authority; no second team/task store.
+ * The Conductor — the in-process DAG runner for Tasks. Builds on the spec,
+ * validation, and storage primitives in @craft-agent/shared/tasks and the
+ * SessionManager completion/output seams.
  */
 export { TaskRunner } from './TaskRunner';
+export { createTaskFromSpec, finishTaskOrchestrator, resolveCreateTaskProjectId } from './create-task';
+export type { CreateTaskFromSpecResult, TaskOrchestratorSetupResult } from './create-task';
 export type {
-  ChildSessionRuntimeState,
   ConductorSessionHost,
   TaskRunnerDeps,
   RunOptions,

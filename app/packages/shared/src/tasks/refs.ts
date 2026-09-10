@@ -32,45 +32,14 @@ export interface ParamRef {
 export type Ref = NodeRef | ParamRef;
 
 /**
- * Optional validation summary when a structured RunReport was checked against
- * a TaskContract (see @craft-agent/shared/agent run-report-validate).
- */
-export interface NodeOutputValidation {
-  ok: boolean;
-  suggestedVerdict?: string;
-  issues?: string[];
-}
-
-/**
  * A node's persisted output.
  *  - `text` is the free-form final answer (the child's last assistant message).
- *    Always present for backward compatibility and `${nodes.X.output}` refs.
  *  - `params` holds typed values from the param/artifact split (v1 usually empty;
  *    `${nodes.X.output.field}` resolves against it).
- *  - `report` is a parsed RunReport when the child returned structured JSON.
- *  - `validation` is the kernel's deterministic check of that report (when run).
  */
 export interface NodeOutput {
   text: string;
   params?: Record<string, unknown>;
-  /** Structured outbound envelope when parseable (agent RunReport shape). */
-  report?: {
-    outcome: string;
-    criteria: Array<{
-      id: string;
-      status: 'met' | 'unmet' | 'unknown';
-      evidence?: unknown[];
-      note?: string;
-    }>;
-    changedPaths?: string[];
-    artifacts?: unknown[];
-    evidence?: unknown[];
-    decisions?: string[];
-    open?: string[];
-    status: string;
-    [key: string]: unknown;
-  };
-  validation?: NodeOutputValidation;
 }
 
 // nodes.<id>.output | nodes.<id>.output.<field> | params.<name>

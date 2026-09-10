@@ -66,50 +66,6 @@ function getInternalState(registry: MessagingGatewayRegistry, workspaceId: strin
 }
 
 describe('MessagingGatewayRegistry.allowPendingSender — reason branching', () => {
-  it("promotes a WhatsApp 'not-owner' reject to the WhatsApp owners list", () => {
-    const { registry, workspaceId } = makeRegistry()
-    const state = getInternalState(registry, workspaceId)!
-    state.gateway.getPendingStore().recordRejection({
-      platform: 'whatsapp',
-      senderId: 'wa-stranger',
-      senderName: 'WA Bob',
-      reason: 'not-owner',
-    })
-
-    const result = registry.allowPendingSender(workspaceId, 'whatsapp', 'wa-stranger')
-
-    expect(result.owners).toEqual([
-      expect.objectContaining({ userId: 'wa-stranger', displayName: 'WA Bob' }),
-    ])
-    expect(registry.getPlatformOwners(workspaceId, 'whatsapp')).toEqual(result.owners)
-    expect(registry.getPlatformOwners(workspaceId, 'telegram')).toEqual([])
-  })
-
-  it("allows a Lark binding-scoped pending sender without promoting workspace ownership", () => {
-    const { registry, workspaceId } = makeRegistry()
-    const state = getInternalState(registry, workspaceId)!
-    const store = state.gateway.getBindingStore()
-    const binding = store.bind('ws-test', 'sess-A', 'lark', 'chat-A', undefined, {
-      accessMode: 'allow-list',
-      allowedSenderIds: ['alice'],
-    })
-    state.gateway.getPendingStore().recordRejection({
-      platform: 'lark',
-      senderId: 'bob',
-      reason: 'not-on-binding-allowlist',
-      bindingId: binding.id,
-    })
-
-    const result = registry.allowPendingSender(workspaceId, 'lark', 'bob', {
-      reason: 'not-on-binding-allowlist',
-      bindingId: binding.id,
-    })
-
-    expect(result.owners).toEqual([])
-    expect(store.getAll().find((entry: { id: string }) => entry.id === binding.id)!
-      .config.allowedSenderIds).toEqual(['alice', 'bob'])
-  })
-
   it("'not-owner' reject is promoted to platform owner", () => {
     const { registry, workspaceId } = makeRegistry()
     const state = getInternalState(registry, workspaceId)!

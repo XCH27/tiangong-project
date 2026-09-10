@@ -159,7 +159,7 @@ export function MarkdownJsonBlock({ code, className }: MarkdownJsonBlockProps) {
           <span className="text-muted-foreground font-medium uppercase tracking-wide">json</span>
           <button
             onClick={handleCopy}
-            className="opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+            className="opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
             aria-label={t('common.copyJson')}
           >
             {copied ? (
@@ -186,7 +186,7 @@ export function MarkdownJsonBlock({ code, className }: MarkdownJsonBlockProps) {
                 const isCopied = (props as Record<string, unknown>)['data-copied']
                 return isCopied ? (
                   <Check
-                    className="ml-1.5 inline-flex cursor-pointer text-success"
+                    className="ml-1.5 inline-flex cursor-pointer text-green-500"
                     size={10}
                     onClick={props.onClick}
                   />

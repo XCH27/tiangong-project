@@ -17,7 +17,7 @@ export type MobileMenuPageId = 'root' | 'settings' | 'help' | 'debug'
  */
 export type MobileMenuAction =
   | { kind: 'navigate'; to: MobileMenuPageId }
-  | { kind: 'callback'; key: 'newChat' | 'newWindow' | 'openGlobalSearch' | 'openSettings' | 'openWhatsNew' }
+  | { kind: 'callback'; key: 'newChat' | 'newWindow' | 'openSettings' }
   | { kind: 'settingsSubpage'; subpage: SettingsMenuItem['id'] }
   | { kind: 'url'; url: string }
   | { kind: 'electronApi'; method: 'checkForUpdates' | 'installUpdate' | 'menuToggleDevTools' }
@@ -61,12 +61,6 @@ export function buildMobileMenuPages({ hasNewWindow, isDebugMode }: BuildOptions
       iconName: 'SquarePen',
       labelKey: ROOT_MENU.newChat.labelKey,
       action: { kind: 'callback', key: 'newChat' },
-    },
-    {
-      id: 'global-search',
-      iconName: 'Search',
-      labelKey: 'globalSearch.open',
-      action: { kind: 'callback', key: 'openGlobalSearch' },
     },
   ]
   if (hasNewWindow) {
@@ -143,14 +137,6 @@ export function buildMobileMenuPages({ hasNewWindow, isDebugMode }: BuildOptions
         },
       }
     })
-
-  const installUpdateIndex = debugRows.findIndex(row => row.id === 'installUpdate')
-  debugRows.splice(installUpdateIndex + 1, 0, {
-    id: 'whats-new',
-    iconName: 'Cake',
-    labelKey: 'sidebar.whatsNew',
-    action: { kind: 'callback', key: 'openWhatsNew' },
-  })
 
   return [
     { id: 'root', titleKey: 'menu.craftMenu', rows: rootRows },

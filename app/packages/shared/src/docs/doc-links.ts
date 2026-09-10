@@ -3,34 +3,7 @@
  * Summaries provide quick context; "Learn more" opens the full docs.
  */
 
-/**
- * Docs-site base for "Learn more"/Help links.
- *
- * Service class (Decision P8 / spec R2-C4): bundled summaries in DOCS below are
- * the local-first help; the full docs site is a **visibly external** link that
- * currently points at upstream Craft's hosted docs — an upstream reference,
- * never fetched silently (every use is an explicit user click that opens the
- * system browser). Set FLEET_DOCS_BASE_URL to a docs deployment you own to
- * route these links to your own site.
- */
-const DEFAULT_DOC_BASE_URL = 'https://agents.craft.do/docs'
-
-function getDocsBaseUrl(): string {
-  // Renderer bundles have no process env; they keep the default. The override
-  // applies where the environment exists (main process, server, tests).
-  const override = typeof process !== 'undefined' ? process.env.FLEET_DOCS_BASE_URL?.trim() : undefined
-  return override || DEFAULT_DOC_BASE_URL
-}
-
-export function getDocsHomeUrl(): string {
-  return getDocsBaseUrl()
-}
-
-export function getDocsMcpUrl(): string | null {
-  const override = typeof process !== 'undefined' ? process.env.FLEET_DOCS_MCP_URL?.trim() : undefined
-  if (!override || override === 'off') return null
-  return override
-}
+const DOC_BASE_URL = 'https://thecraftagents.com/docs'
 
 export type DocFeature =
   | 'sources'
@@ -49,7 +22,7 @@ export type DocFeature =
   | 'messaging'
 
 export interface DocInfo {
-  /** Path relative to the docs base URL */
+  /** Path relative to DOC_BASE_URL */
   path: string
   /** Display title for the help popover */
   title: string
@@ -98,7 +71,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
     path: '/core-concepts/permissions',
     title: 'Permissions',
     summary:
-      'Choose Auto, Explore, Plan, or Execute for the work phase. Execution approval is configured separately, so Execute can still ask before privileged actions.',
+      'Control how much autonomy your agent has. Explore mode is read-only, Ask to Edit prompts before changes, and Execute mode runs without prompts.',
   },
   labels: {
     path: '/labels/overview',
@@ -148,7 +121,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
  * Get the full documentation URL for a feature
  */
 export function getDocUrl(feature: DocFeature): string {
-  return `${getDocsBaseUrl()}${DOCS[feature].path}`
+  return `${DOC_BASE_URL}${DOCS[feature].path}`
 }
 
 /**

@@ -1,14 +1,6 @@
-import { BrowserWindow, webContents } from 'electron'
-import {
-  RPC_CHANNELS,
-  type BrowserPaneCreateOptions,
-  type BrowserEmptyStateLaunchPayload,
-  type BrowserPaneEmbedBounds,
-  type BrowserInstanceInfo,
-} from '../../shared/types'
+import { RPC_CHANNELS, type BrowserPaneCreateOptions, type BrowserEmptyStateLaunchPayload } from '../../shared/types'
 import type { BrowserScreenshotOptions } from '../browser-pane-manager'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
-import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import type { HandlerDeps } from './handler-deps'
 
 export const HANDLED_CHANNELS = [
@@ -21,8 +13,6 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.browserPane.RELOAD,
   RPC_CHANNELS.browserPane.STOP,
   RPC_CHANNELS.browserPane.FOCUS,
-  RPC_CHANNELS.browserPane.EMBED,
-  RPC_CHANNELS.browserPane.DETACH,
   RPC_CHANNELS.browserPane.LAUNCH,
   RPC_CHANNELS.browserPane.SNAPSHOT,
   RPC_CHANNELS.browserPane.CLICK,
@@ -33,79 +23,16 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.browserPane.SCROLL,
 ] as const
 
-/**
- * Resolve the host-registered workspace for this desktop window.
- * Never treats client-declared `ctx.workspaceId` as authorization.
- */
-function resolveHostWorkspaceId(
-  deps: HandlerDeps,
-  ctx: { workspaceId: string | null; webContentsId: number | null },
-): string | null {
-  if (ctx.webContentsId == null) return null
-  const desktopWindows = deps.windowManager
-  if (!desktopWindows) return null
-  if (!desktopWindows.getWindowByWebContentsId(ctx.webContentsId)) return null
-  return desktopWindows.getWorkspaceForWindow(ctx.webContentsId)
-}
-
-/**
- * Local + remote-mirror workspace ids visible to this host window.
- * Mirrors renderer filterInstancesForWorkspace so remote-stamped tabs remain
- * visible without leaking other workspaces' instances.
- */
-function resolveVisibleWorkspaceIds(
-  deps: HandlerDeps,
-  ctx: { workspaceId: string | null; webContentsId: number | null },
-): { localId: string | null; remoteId: string | null } {
-  const localId = resolveHostWorkspaceId(deps, ctx)
-  if (!localId) return { localId: null, remoteId: null }
-  const remoteId = getWorkspaceByNameOrId(localId)?.remoteServer?.remoteWorkspaceId ?? null
-  return { localId, remoteId }
-}
-
-function instanceVisibleToWorkspace(
-  instance: BrowserInstanceInfo,
-  localId: string | null,
-  remoteId: string | null,
-): boolean {
-  // Unbound / legacy (missing workspaceId) — visible to every desktop window.
-  if (!instance.workspaceId) return true
-  if (localId && instance.workspaceId === localId) return true
-  if (remoteId && instance.workspaceId === remoteId) return true
-  return false
-}
-
 export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): void {
   const { browserPaneManager, platform } = deps
   if (!browserPaneManager) return
 
-  /**
-   * Authorization for every id-scoped browser op.
-   * Anchor in the main-process window registry — never in client handshake fields.
-   */
-  const requireBrowserInstance = (
-    ctx: { workspaceId: string | null; webContentsId: number | null },
-    id: string,
-  ) => {
-    if (ctx.webContentsId == null) {
-      throw new Error('Browser pane actions require a desktop window')
-    }
-    const { localId, remoteId } = resolveVisibleWorkspaceIds(deps, ctx)
-    if (!localId) {
-      throw new Error('Browser pane actions require a desktop window')
-    }
-    const instance = browserPaneManager.listInstances().find((candidate) => candidate.id === id)
-    if (!instance) throw new Error(`Browser instance not found: ${id}`)
-    if (!instanceVisibleToWorkspace(instance, localId, remoteId)) {
-      throw new Error('Browser instance is not available in the current workspace')
-    }
-    return instance
-  }
-
   server.handle(RPC_CHANNELS.browserPane.CREATE, (ctx, input?: string | BrowserPaneCreateOptions) => {
-    // Prefer host-registered workspace so manual UI tabs cannot be stamped
-    // into a foreign workspace via a forged handshake workspaceId.
-    const workspaceId = resolveHostWorkspaceId(deps, ctx) ?? ctx.workspaceId ?? null
+    // Stamp the window with the requester's workspace so manual UI-opened
+    // tabs stay scoped to the workspace where the user clicked. If
+    // ctx.workspaceId is null (no workspace context — e.g. CLI / agent
+    // harness), the window stays globally visible (legacy behavior).
+    const workspaceId = ctx.workspaceId ?? null
 
     if (typeof input === 'string') {
       return browserPaneManager.createInstance(input, { workspaceId })
@@ -121,29 +48,20 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     return browserPaneManager.createInstance(input?.id, { show: input?.show, workspaceId })
   })
 
-  server.handle(RPC_CHANNELS.browserPane.DESTROY, (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.DESTROY, (_ctx, id: string) => {
     browserPaneManager.destroyInstance(id)
   })
 
-  server.handle(RPC_CHANNELS.browserPane.LIST, (ctx) => {
-    // Filter on the host. Using only client workspaceId would either leak
-    // every workspace's tabs (previous behavior) or hide remote-mirror tabs.
-    // Host local id + remoteServer.remoteWorkspaceId matches the renderer
-    // filterInstancesForWorkspace contract.
-    const { localId, remoteId } = resolveVisibleWorkspaceIds(deps, ctx)
-    const all = browserPaneManager.listInstances()
-    if (!localId && !remoteId) {
-      // No trusted desktop identity — do not leak instance inventory.
-      // CLI/agent harnesses that need browser panes go through session-owned
-      // agent APIs (requireOwnedInstance), not this UI LIST channel.
-      return []
-    }
-    return all.filter((instance) => instanceVisibleToWorkspace(instance, localId, remoteId))
+  server.handle(RPC_CHANNELS.browserPane.LIST, () => {
+    // Return all instances. Workspace isolation is enforced renderer-side
+    // (filterInstancesForWorkspace), which knows BOTH the local workspace id
+    // and the remote-mirror workspace id for the active workspace. A server-
+    // side filter on ctx.workspaceId would miss remote-stamped tabs because
+    // ctx.workspaceId is always the local id (set by updateClientWorkspace).
+    return browserPaneManager.listInstances()
   })
 
-  server.handle(RPC_CHANNELS.browserPane.NAVIGATE, async (ctx, id: string, url: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.NAVIGATE, async (_ctx, id: string, url: string) => {
     try {
       return await browserPaneManager.navigate(id, url)
     } catch (err) {
@@ -152,8 +70,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.GO_BACK, async (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.GO_BACK, async (_ctx, id: string) => {
     try {
       return await browserPaneManager.goBack(id)
     } catch (err) {
@@ -162,8 +79,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.GO_FORWARD, async (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.GO_FORWARD, async (_ctx, id: string) => {
     try {
       return await browserPaneManager.goForward(id)
     } catch (err) {
@@ -172,34 +88,16 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.RELOAD, (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.RELOAD, (_ctx, id: string) => {
     browserPaneManager.reload(id)
   })
 
-  server.handle(RPC_CHANNELS.browserPane.STOP, (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.STOP, (_ctx, id: string) => {
     browserPaneManager.stop(id)
   })
 
-  server.handle(RPC_CHANNELS.browserPane.FOCUS, (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.FOCUS, (_ctx, id: string) => {
     browserPaneManager.focus(id)
-  })
-
-  server.handle(RPC_CHANNELS.browserPane.EMBED, (ctx, id: string, bounds: BrowserPaneEmbedBounds) => {
-    requireBrowserInstance(ctx, id)
-    const hostContents = ctx.webContentsId ? webContents.fromId(ctx.webContentsId) : null
-    const hostWindow = hostContents ? BrowserWindow.fromWebContents(hostContents) : null
-    if (!hostWindow) {
-      throw new Error('Browser module host window is unavailable')
-    }
-    browserPaneManager.embedInstance(id, hostWindow, bounds)
-  })
-
-  server.handle(RPC_CHANNELS.browserPane.DETACH, (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
-    browserPaneManager.detachInstance(id)
   })
 
   server.handle(RPC_CHANNELS.browserPane.LAUNCH, async (ctx, payload: BrowserEmptyStateLaunchPayload) => {
@@ -211,8 +109,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.SNAPSHOT, async (ctx, id: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.SNAPSHOT, async (_ctx, id: string) => {
     try {
       return await browserPaneManager.getAccessibilitySnapshot(id)
     } catch (err) {
@@ -221,8 +118,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.CLICK, async (ctx, id: string, ref: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.CLICK, async (_ctx, id: string, ref: string) => {
     try {
       return await browserPaneManager.clickElement(id, ref)
     } catch (err) {
@@ -231,8 +127,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.FILL, async (ctx, id: string, ref: string, value: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.FILL, async (_ctx, id: string, ref: string, value: string) => {
     try {
       return await browserPaneManager.fillElement(id, ref, value)
     } catch (err) {
@@ -241,8 +136,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.SELECT, async (ctx, id: string, ref: string, value: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.SELECT, async (_ctx, id: string, ref: string, value: string) => {
     try {
       return await browserPaneManager.selectOption(id, ref, value)
     } catch (err) {
@@ -251,8 +145,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.SCREENSHOT, async (ctx, id: string, options?: BrowserScreenshotOptions) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.SCREENSHOT, async (_ctx, id: string, options?: BrowserScreenshotOptions) => {
     try {
       const result = await browserPaneManager.screenshot(id, options)
       return {
@@ -266,8 +159,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.EVALUATE, async (ctx, id: string, expression: string) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.EVALUATE, async (_ctx, id: string, expression: string) => {
     try {
       return await browserPaneManager.evaluate(id, expression)
     } catch (err) {
@@ -276,8 +168,7 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
     }
   })
 
-  server.handle(RPC_CHANNELS.browserPane.SCROLL, async (ctx, id: string, direction: string, amount?: number) => {
-    requireBrowserInstance(ctx, id)
+  server.handle(RPC_CHANNELS.browserPane.SCROLL, async (_ctx, id: string, direction: string, amount?: number) => {
     const validDirections = ['up', 'down', 'left', 'right']
     if (!validDirections.includes(direction)) {
       throw new Error(`Invalid scroll direction: ${direction}`)
@@ -291,10 +182,17 @@ export function registerBrowserHandlers(server: RpcServer, deps: HandlerDeps): v
   })
 
   // Forward browser events to all locally-connected renderers. Workspace
-  // isolation for *mutations* is enforce above via requireBrowserInstance.
-  // STATE_CHANGED still broadcasts to all because remote-mirror workspace ids
-  // differ from transport-level workspaceId; renderers re-filter with
-  // filterInstancesForWorkspace (local + remote ids).
+  // isolation is enforced renderer-side (filterInstancesForWorkspace), which
+  // handles both the local workspace id and the remote-mirror workspace id.
+  //
+  // We can't route STATE_CHANGED to `{ to: 'workspace', workspaceId }` here
+  // because the broadcast routing uses the client's transport-level workspaceId
+  // (the local Craft Agents window's id, set by `updateClientWorkspace`),
+  // while remote-bridged instances are stamped with the remote server's
+  // workspaceId. The two never match, so a workspace-targeted broadcast would
+  // silently fail to reach the renderer. Broadcast to all + filter in the
+  // renderer is the contract that actually works in both local-only and
+  // remote-mirror deployments.
   browserPaneManager.onStateChange((info) => {
     pushTyped(server, RPC_CHANNELS.browserPane.STATE_CHANGED, { to: 'all' }, info)
   })

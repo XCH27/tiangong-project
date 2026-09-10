@@ -5,7 +5,7 @@ import { setCurrentZone } from '@/actions/keybinding-context'
 /**
  * Focus zone identifiers - ordered for Tab navigation
  */
-export type FocusZoneId = 'sidebar' | 'navigator' | 'chat' | 'right-workbench'
+export type FocusZoneId = 'sidebar' | 'navigator' | 'chat'
 
 /**
  * Focus intent - describes WHY the focus changed.
@@ -26,7 +26,7 @@ export interface FocusZoneOptions {
   moveFocus?: boolean
 }
 
-const ZONE_ORDER: FocusZoneId[] = ['sidebar', 'navigator', 'chat', 'right-workbench']
+const ZONE_ORDER: FocusZoneId[] = ['sidebar', 'navigator', 'chat']
 
 interface FocusZone {
   id: FocusZoneId

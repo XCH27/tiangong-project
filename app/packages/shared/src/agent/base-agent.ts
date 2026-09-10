@@ -34,7 +34,6 @@ import type {
   ChatOptions,
   PermissionCallback,
   PlanCallback,
-  EnterPlanCallback,
   AuthCallback,
   SourceChangeCallback,
   SourceActivationCallback,
@@ -47,12 +46,6 @@ import type {
 import { AbortReason } from './backend/types.ts';
 import type { AuthRequest } from './session-scoped-tools.ts';
 import type { Workspace } from '../config/storage.ts';
-import {
-  formatTaskBriefMessage,
-  taskBriefFromLegacyPrompt,
-  validateTaskBrief,
-  type TaskBrief,
-} from './delegation-contract.ts';
 
 // Core modules
 import { PermissionManager } from './core/permission-manager.ts';
@@ -98,7 +91,6 @@ export interface MiniAgentConfig {
 // ============================================================
 
 export interface SpawnSessionRequest {
-  /** Child first message body — always a formatted TaskBrief (or pass-through brief text). */
   prompt: string;
   name?: string;
   llmConnection?: string;
@@ -119,12 +111,6 @@ export interface SpawnSessionResult {
   status: 'started';
   connection?: string;
   model?: string;
-  /**
-   * True when the caller supplied only a bare `prompt` and the server converted
-   * it via taskBriefFromLegacyPrompt({ fillDefaults: true }). Prefer structured
-   * TaskBrief fields on new call sites (Decision C3).
-   */
-  briefCompat?: boolean;
 }
 
 export interface SpawnSessionHelpResult {
@@ -145,148 +131,6 @@ export interface SpawnSessionHelpResult {
   defaults: {
     defaultConnection: string | null;
     permissionMode: string;
-  };
-}
-
-/** True when prompt already carries the TaskBrief markers (GOAL: + ACCEPTANCE:). */
-export function looksLikeTaskBriefMessage(prompt: string): boolean {
-  return prompt.includes('GOAL:') && prompt.includes('ACCEPTANCE:');
-}
-
-function normalizeAcceptance(value: unknown): string[] | undefined {
-  if (Array.isArray(value)) {
-    const items = value.map((v) => String(v).trim()).filter(Boolean);
-    return items.length ? items : undefined;
-  }
-  if (typeof value === 'string' && value.trim()) {
-    return [value.trim()];
-  }
-  return undefined;
-}
-
-function asStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.map((v) => String(v));
-}
-
-function hasStructuredBriefFields(input: Record<string, unknown>): boolean {
-  return (
-    (typeof input.goal === 'string' && input.goal.trim().length > 0) ||
-    input.acceptance !== undefined ||
-    (typeof input.deliverable === 'string' && input.deliverable.trim().length > 0) ||
-    input.scopePaths !== undefined ||
-    input.reservedPaths !== undefined ||
-    input.knownFacts !== undefined ||
-    input.constraints !== undefined ||
-    input.budget !== undefined ||
-    input.references !== undefined
-  );
-}
-
-/**
- * Resolve spawn_session input into a child message body under Decision C3.
- * Structured brief → validate + format; bare prompt → pass-through or fillDefaults.
- */
-export function resolveSpawnSessionBrief(input: Record<string, unknown>): {
-  ok: true;
-  prompt: string;
-  briefCompat: boolean;
-  brief?: TaskBrief;
-} | {
-  ok: false;
-  message: string;
-} {
-  const rawPrompt = typeof input.prompt === 'string' ? input.prompt : undefined;
-  const rawGoal = typeof input.goal === 'string' ? input.goal : undefined;
-  const hasPrompt = Boolean(rawPrompt?.trim());
-  const hasGoal = Boolean(rawGoal?.trim());
-
-  if (!hasPrompt && !hasGoal) {
-    return {
-      ok: false,
-      message:
-        'goal or prompt is required when not in help mode. Prefer a TaskBrief ' +
-        '(goal, acceptance, deliverable). Call with help=true to see available options.',
-    };
-  }
-
-  const permissionMode = input.permissionMode as TaskBrief['permissionMode'] | undefined;
-  const workingDirectory =
-    typeof input.workingDirectory === 'string' ? input.workingDirectory : undefined;
-  const model = typeof input.model === 'string' ? input.model : undefined;
-  const llmConnection = typeof input.llmConnection === 'string' ? input.llmConnection : undefined;
-  const labels = asStringArray(input.labels);
-  const name = typeof input.name === 'string' ? input.name : undefined;
-
-  // Structured TaskBrief fields take precedence over a bare prompt dump.
-  if (hasStructuredBriefFields(input)) {
-    const acceptance = normalizeAcceptance(input.acceptance);
-    const candidate = {
-      goal: (rawGoal?.trim() || rawPrompt?.trim() || '') as string,
-      acceptance,
-      deliverable: typeof input.deliverable === 'string' ? input.deliverable : undefined,
-      scopePaths: asStringArray(input.scopePaths),
-      reservedPaths: asStringArray(input.reservedPaths),
-      knownFacts: asStringArray(input.knownFacts),
-      references: asStringArray(input.references),
-      constraints: asStringArray(input.constraints),
-      budget: input.budget && typeof input.budget === 'object' ? input.budget : undefined,
-      contextFork: input.contextFork,
-      contextForkLastN: input.contextForkLastN,
-      permissionMode,
-      model,
-      llmConnection,
-      labels,
-      workingDirectory,
-      taskPath: typeof input.taskPath === 'string' ? input.taskPath : undefined,
-      contractVersion: typeof input.contractVersion === 'string' ? input.contractVersion : undefined,
-    };
-    const validated = validateTaskBrief(candidate);
-    if (!validated.ok) {
-      return {
-        ok: false,
-        message:
-          'spawn_session TaskBrief invalid: ' +
-          validated.errors.map((e) => `${e.field}: ${e.message}`).join('; '),
-      };
-    }
-    return {
-      ok: true,
-      prompt: formatTaskBriefMessage(validated.brief),
-      briefCompat: false,
-      brief: validated.brief,
-    };
-  }
-
-  // Bare prompt path
-  const prompt = rawPrompt!.trim();
-  if (looksLikeTaskBriefMessage(prompt)) {
-    return { ok: true, prompt, briefCompat: false };
-  }
-
-  const converted = taskBriefFromLegacyPrompt({
-    prompt,
-    name,
-    permissionMode,
-    workingDirectory,
-    model,
-    llmConnection,
-    labels,
-    fillDefaults: true,
-  });
-  if (!converted.ok) {
-    return {
-      ok: false,
-      message:
-        'spawn_session TaskBrief invalid: ' +
-        converted.errors.map((e) => `${e.field}: ${e.message}`).join('; '),
-    };
-  }
-  return {
-    ok: true,
-    prompt: formatTaskBriefMessage(converted.brief),
-    briefCompat: true,
-    brief: converted.brief,
   };
 }
 
@@ -409,7 +253,6 @@ export abstract class BaseAgent implements AgentBackend {
   // ============================================================
   onPermissionRequest: PermissionCallback | null = null;
   onPlanSubmitted: PlanCallback | null = null;
-  onEnterPlan: EnterPlanCallback | null = null;
   onAuthRequest: AuthCallback | null = null;
   onSourceChange: SourceChangeCallback | null = null;
   onSourcesListChange: ((sources: LoadedSource[]) => void) | null = null;
@@ -439,7 +282,6 @@ export abstract class BaseAgent implements AgentBackend {
       workspaceId: config.workspace.id,
       sessionId: this._sessionId,
       workingDirectory: this.workingDirectory,
-      workspaceRootPath: config.workspace.rootPath,
       plansFolderPath: getSessionPlansPath(config.workspace.rootPath, this._sessionId),
       dataFolderPath: getSessionDataPath(config.workspace.rootPath, this._sessionId),
     });
@@ -583,8 +425,6 @@ export abstract class BaseAgent implements AgentBackend {
    * CALLBACKS FIRED:
    * - SubmitPlan → this.onPlanSubmitted(planPath)
    *   → Electron reads plan file, shows plan card, calls interruptForHandoff(PlanSubmitted)
-   * - EnterPlan → this.onEnterPlan(reason)
-   *   → SessionManager projects workMode=plan (no abort; agent continues)
    * - Auth tools → this.onAuthRequest(authRequest)
    *   → Electron shows auth dialog, calls interruptForHandoff(AuthRequest)
    */
@@ -601,15 +441,6 @@ export abstract class BaseAgent implements AgentBackend {
     if (toolName === 'SubmitPlan' && args.planPath) {
       this.debug(`SubmitPlan completed: ${args.planPath}`);
       this.onPlanSubmitted?.(args.planPath as string);
-      return;
-    }
-
-    // EnterPlan — switch work phase to Plan without pausing the turn.
-    // (In-process handlers already invoke onEnterPlan; this path is for MCP completion.)
-    if (toolName === 'EnterPlan') {
-      const reason = typeof args.reason === 'string' ? args.reason : undefined;
-      this.debug(`EnterPlan completed${reason ? `: ${reason}` : ''}`);
-      this.onEnterPlan?.(reason);
       return;
     }
 
@@ -1330,9 +1161,6 @@ ${formattedMessages}
   /**
    * Pre-execute a spawn_session request: handle help mode or delegate to onSpawnSession.
    * Shared across all backends.
-   *
-   * Decision C3 — no bare subagent spawn: the child message is always a TaskBrief
-   * envelope (structured fields, pass-through brief text, or legacy fillDefaults).
    */
   protected async preExecuteSpawnSession(
     input: Record<string, unknown>
@@ -1342,21 +1170,18 @@ ${formattedMessages}
       return this.getSpawnSessionHelp();
     }
 
+    // Spawn mode — validate and delegate
+    const prompt = input.prompt as string | undefined;
+    if (!prompt?.trim()) {
+      throw new Error('prompt is required when not in help mode. Call with help=true to see available options.');
+    }
+
     if (!this.onSpawnSession) {
       throw new Error('spawn_session is not available in this context.');
     }
 
-    const resolved = resolveSpawnSessionBrief(input);
-    if (!resolved.ok) {
-      throw new Error(resolved.message);
-    }
-
-    const workingDirectory = typeof input.workingDirectory === 'string' && input.workingDirectory
-      ? expandPath(input.workingDirectory)
-      : undefined;
-
     const request: SpawnSessionRequest = {
-      prompt: resolved.prompt,
+      prompt,
       name: input.name as string | undefined,
       llmConnection: input.llmConnection as string | undefined,
       model: input.model as string | undefined,
@@ -1364,16 +1189,14 @@ ${formattedMessages}
       permissionMode: input.permissionMode as SpawnSessionRequest['permissionMode'],
       thinkingLevel: input.thinkingLevel as SpawnSessionRequest['thinkingLevel'],
       labels: input.labels as string[] | undefined,
-      workingDirectory,
+      workingDirectory: typeof input.workingDirectory === 'string' && input.workingDirectory
+        ? expandPath(input.workingDirectory)
+        : undefined,
       projectId: input.projectId as string | undefined,
       attachments: input.attachments as SpawnSessionRequest['attachments'],
     };
 
-    const result = await this.onSpawnSession(request);
-    if (resolved.briefCompat) {
-      return { ...result, briefCompat: true };
-    }
-    return result;
+    return this.onSpawnSession(request);
   }
 
   /**

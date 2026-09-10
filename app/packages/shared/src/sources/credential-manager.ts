@@ -28,7 +28,7 @@ import type { CredentialId, StoredCredential } from '../credentials/types.ts';
 import { getCredentialManager } from '../credentials/index.ts';
 import { CraftOAuth, getMcpBaseUrl, prepareMcpOAuth, exchangeMcpOAuth, type OAuthCallbacks, type OAuthTokens } from '../auth/oauth.ts';
 import { type OAuthSessionContext } from '../auth/types.ts';
-import { getOAuthRelayCallbackUrl, wrapPreparedOAuthFlowForRelay } from '../auth/oauth-relay.ts';
+import { OAUTH_RELAY_CALLBACK_URL, wrapPreparedOAuthFlowForRelay } from '../auth/oauth-relay.ts';
 import type { PreparedOAuthFlow, OAuthExchangeParams, OAuthExchangeResult, OAuthProvider } from '../auth/oauth-flow-types.ts';
 import {
   startGoogleOAuth,
@@ -417,14 +417,11 @@ export class SourceCredentialManager {
   ): Promise<PreparedOAuthFlow> {
     const { callbackPort } = options;
     const relayReturnTo = options.callbackUrl;
-    // With a user-operated relay configured, the provider-facing redirect_uri
-    // stays stable and the relay unwraps the real callback target from the
-    // outer state. With no relay (the default — Fleet ships none, R2-C5), the
-    // flow uses the given callback URL directly and the provider must have it
-    // registered. The desktop callbackPort path is unaffected either way.
-    const relayCallbackUrl = relayReturnTo ? getOAuthRelayCallbackUrl() : null;
+    // When callbackUrl is provided (WebUI), keep the provider-facing redirect_uri
+    // stable so providers like Google only need a single registered callback.
+    // The relay unwraps the real server callback target from the outer state.
     const providerCallbackUrl = relayReturnTo
-      ? (relayCallbackUrl ?? relayReturnTo)
+      ? OAUTH_RELAY_CALLBACK_URL
       : undefined;
     const provider = this.detectProvider(source);
 
@@ -529,8 +526,8 @@ export class SourceCredentialManager {
       }
     }
 
-    return relayReturnTo && relayCallbackUrl
-      ? wrapPreparedOAuthFlowForRelay(prepared, relayReturnTo, relayCallbackUrl)
+    return relayReturnTo
+      ? wrapPreparedOAuthFlowForRelay(prepared, relayReturnTo)
       : prepared;
   }
 

@@ -1,11 +1,61 @@
 import * as React from 'react'
 import { useTranslation } from "react-i18next"
-import { Check } from 'lucide-react'
+import { Check, Globe, Copy, RefreshCw, Link2Off } from 'lucide-react'
 import type { MenuComponents } from '@/components/ui/menu-context'
-import { getLocalizedStatusLabel, getStatusIconStyle, type SessionStatusId, type SessionStatus } from '@/config/session-status-config'
+import { getStatusIconStyle, type SessionStatusId, type SessionStatus } from '@/config/session-status-config'
 import { sortLabelsForDisplay, type LabelConfig } from '@craft-agent/shared/labels'
 import { LabelIcon } from '@/components/ui/label-icon'
-import { getLocalizedLabelName } from '@/utils/label-display-name'
+
+export interface ShareMenuItemsProps {
+  /** Open the published share URL in the system browser. */
+  onOpenInBrowser: () => void
+  /** Copy the published share URL to the clipboard. */
+  onCopyLink: () => void | Promise<void>
+  /** Re-publish the share (bumps the snapshot). */
+  onUpdateShare: () => void | Promise<void>
+  /** Revoke the share. */
+  onRevokeShare: () => void | Promise<void>
+  menu: Pick<MenuComponents, 'MenuItem' | 'Separator'>
+}
+
+/**
+ * Render-only — side effects come from `useSessionMenuActions`. Both the
+ * desktop dropdown and the compact drawer wire the same hook callbacks
+ * through this component (compact uses its own row primitives, but the
+ * action set is identical).
+ */
+export function ShareMenuItems({
+  onOpenInBrowser,
+  onCopyLink,
+  onUpdateShare,
+  onRevokeShare,
+  menu,
+}: ShareMenuItemsProps) {
+  const { t } = useTranslation()
+  const { MenuItem, Separator } = menu
+
+  return (
+    <>
+      <MenuItem onClick={onOpenInBrowser}>
+        <Globe className="h-3.5 w-3.5" />
+        <span className="flex-1">{t("sessionMenu.openInBrowser")}</span>
+      </MenuItem>
+      <MenuItem onClick={onCopyLink}>
+        <Copy className="h-3.5 w-3.5" />
+        <span className="flex-1">{t("sessionMenu.copyLink")}</span>
+      </MenuItem>
+      <MenuItem onClick={onUpdateShare}>
+        <RefreshCw className="h-3.5 w-3.5" />
+        <span className="flex-1">{t("sessionMenu.updateShare")}</span>
+      </MenuItem>
+      <Separator />
+      <MenuItem onClick={onRevokeShare} variant="destructive">
+        <Link2Off className="h-3.5 w-3.5" />
+        <span className="flex-1">{t("sessionMenu.stopSharing")}</span>
+      </MenuItem>
+    </>
+  )
+}
 
 export interface StatusMenuItemsProps {
   sessionStatuses: SessionStatus[]
@@ -20,7 +70,6 @@ export function StatusMenuItems({
   onSelect,
   menu,
 }: StatusMenuItemsProps) {
-  const { t } = useTranslation()
   const { MenuItem } = menu
 
   return (
@@ -38,7 +87,7 @@ export function StatusMenuItems({
             <span style={getStatusIconStyle(state)}>
               {bareIcon}
             </span>
-            <span className="flex-1">{getLocalizedStatusLabel(t, state)}</span>
+            <span className="flex-1">{state.label}</span>
           </MenuItem>
         )
       })}
@@ -82,7 +131,6 @@ export function LabelMenuItems({
   onToggle,
   menu,
 }: LabelMenuItemsProps) {
-  const { t } = useTranslation()
   const { MenuItem, Separator, Sub, SubTrigger, SubContent } = menu
   const displayLabels = React.useMemo(() => sortLabelsForDisplay(labels), [labels])
 
@@ -99,7 +147,7 @@ export function LabelMenuItems({
             <Sub key={label.id}>
               <SubTrigger className="pr-2">
                 <LabelIcon label={label} size="sm" hasChildren />
-                <span className="flex-1">{getLocalizedLabelName(t, label)}</span>
+                <span className="flex-1">{label.name}</span>
                 {subtreeCount > 0 && (
                   <span className="text-[10px] text-foreground/50 tabular-nums -mr-2.5">
                     {subtreeCount}
@@ -114,7 +162,7 @@ export function LabelMenuItems({
                   }}
                 >
                   <LabelIcon label={label} size="sm" hasChildren />
-                  <span className="flex-1">{getLocalizedLabelName(t, label)}</span>
+                  <span className="flex-1">{label.name}</span>
                   <span className="w-3.5 ml-4">
                     {isApplied && <Check className="h-3.5 w-3.5 text-foreground" />}
                   </span>
@@ -135,7 +183,7 @@ export function LabelMenuItems({
             }}
           >
             <LabelIcon label={label} size="sm" />
-            <span className="flex-1">{getLocalizedLabelName(t, label)}</span>
+            <span className="flex-1">{label.name}</span>
             <span className="w-3.5 ml-4">
               {isApplied && <Check className="h-3.5 w-3.5 text-foreground" />}
             </span>

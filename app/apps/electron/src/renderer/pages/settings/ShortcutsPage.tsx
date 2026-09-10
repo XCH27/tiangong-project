@@ -77,7 +77,6 @@ const ACTION_LABEL_KEYS: Partial<Record<ActionId, string>> = {
   'app.settings': 'shortcuts.action.settings',
   'app.toggleTheme': 'shortcuts.action.toggleTheme',
   'app.search': 'shortcuts.action.search',
-  'session.search': 'shortcuts.action.sessionSearch',
   'app.keyboardShortcuts': 'shortcuts.action.keyboardShortcuts',
   'app.newWindow': 'shortcuts.action.newWindow',
   'app.quit': 'shortcuts.action.quit',
@@ -96,6 +95,7 @@ const ACTION_LABEL_KEYS: Partial<Record<ActionId, string>> = {
   'panel.focusNext': 'shortcuts.action.focusNextPanel',
   'panel.focusPrev': 'shortcuts.action.focusPrevPanel',
   'chat.stopProcessing': 'shortcuts.action.stopProcessing',
+  'chat.cyclePermissionMode': 'shortcuts.action.cyclePermissionMode',
   'chat.nextSearchMatch': 'shortcuts.action.nextSearchMatch',
   'chat.prevSearchMatch': 'shortcuts.action.prevSearchMatch',
 }

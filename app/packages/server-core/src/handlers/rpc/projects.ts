@@ -2,7 +2,6 @@ import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
-import { assertCallerWorkspaceBound } from '../utils'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.projects.GET,
@@ -25,8 +24,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   }
 
   // List all projects for a workspace
-  server.handle(RPC_CHANNELS.projects.GET, async (ctx, workspaceId: string) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
+  server.handle(RPC_CHANNELS.projects.GET, async (_ctx, workspaceId: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) {
       log.error(`PROJECTS_GET: Workspace not found: ${workspaceId}`)
@@ -37,8 +35,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Get one project (by id or slug)
-  server.handle(RPC_CHANNELS.projects.GET_ONE, async (ctx, workspaceId: string, projectIdOrSlug: string) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
+  server.handle(RPC_CHANNELS.projects.GET_ONE, async (_ctx, workspaceId: string, projectIdOrSlug: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) return null
     const { loadProject, loadProjectById } = await import('@craft-agent/shared/projects')
@@ -47,8 +44,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Create a new project
-  server.handle(RPC_CHANNELS.projects.CREATE, async (ctx, workspaceId: string, input: import('@craft-agent/shared/projects').CreateProjectInput) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
+  server.handle(RPC_CHANNELS.projects.CREATE, async (_ctx, workspaceId: string, input: import('@craft-agent/shared/projects').CreateProjectInput) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
     const { createProject } = await import('@craft-agent/shared/projects')
@@ -66,12 +62,11 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Update project (partial patch). Slug stays stable.
   server.handle(RPC_CHANNELS.projects.UPDATE, async (
-    ctx,
+    _ctx,
     workspaceId: string,
     projectSlug: string,
     patch: Partial<Omit<import('@craft-agent/shared/projects').ProjectConfig, 'id' | 'slug' | 'createdAt'>>,
   ) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
     const { updateProject } = await import('@craft-agent/shared/projects')
@@ -81,8 +76,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Delete a project; unbinds projectId from any sessions that referenced it.
-  server.handle(RPC_CHANNELS.projects.DELETE, async (ctx, workspaceId: string, projectSlug: string) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
+  server.handle(RPC_CHANNELS.projects.DELETE, async (_ctx, workspaceId: string, projectSlug: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
 
@@ -101,8 +95,7 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // List assets in a project
-  server.handle(RPC_CHANNELS.projects.LIST_ASSETS, async (ctx, workspaceId: string, projectSlug: string) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
+  server.handle(RPC_CHANNELS.projects.LIST_ASSETS, async (_ctx, workspaceId: string, projectSlug: string) => {
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) return []
     const { listProjectAssets } = await import('@craft-agent/shared/projects')
@@ -111,12 +104,11 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Upload an asset (base64 / text / sourcePath)
   server.handle(RPC_CHANNELS.projects.UPLOAD_ASSET, async (
-    ctx,
+    _ctx,
     workspaceId: string,
     projectSlug: string,
     input: import('@craft-agent/shared/projects').UploadProjectAssetInput,
   ) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
     const { uploadProjectAsset } = await import('@craft-agent/shared/projects')
@@ -128,12 +120,11 @@ export function registerProjectsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Delete an asset by filename
   server.handle(RPC_CHANNELS.projects.DELETE_ASSET, async (
-    ctx,
+    _ctx,
     workspaceId: string,
     projectSlug: string,
     filename: string,
   ) => {
-    assertCallerWorkspaceBound(ctx, deps, workspaceId)
     const workspace = getWorkspaceByNameOrId(workspaceId)
     if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`)
     const { deleteProjectAsset } = await import('@craft-agent/shared/projects')

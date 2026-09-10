@@ -51,6 +51,7 @@ const playgroundValue: AppShellContextType = {
   onArchiveSession: logCall('onArchiveSession'),
   onUnarchiveSession: logCall('onUnarchiveSession'),
   onMarkSessionRead: logCall('onMarkSessionRead'),
+  onMarkSessionUnread: logCall('onMarkSessionUnread'),
   onSetActiveViewingSession: logCall('onSetActiveViewingSession'),
   onSessionStatusChange: logCall('onSessionStatusChange'),
   onDeleteSession: async () => {

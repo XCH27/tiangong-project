@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import { setupI18n } from '@craft-agent/shared/i18n/setupI18n'
-import i18n from 'i18next'
 
 // Bootstrap i18next with bundled English resources before importing the
-// component-under-test so its t() calls return real strings.
+// component-under-test so its top-level i18n.t() calls return real strings.
 setupI18n()
 
 import {
@@ -11,10 +10,6 @@ import {
   shouldShowTransportConnectionBanner,
 } from '../TransportConnectionBanner'
 import type { TransportConnectionState } from '../../../../shared/types'
-
-// Obtain a t function for testing getTransportBannerCopy (which now requires
-// a TFunction parameter instead of calling the i18n singleton directly).
-const t = i18n.getFixedT(null, 'translation')
 
 function state(overrides: Partial<TransportConnectionState>): TransportConnectionState {
   return {
@@ -54,7 +49,7 @@ describe('getTransportBannerCopy', () => {
     const copy = getTransportBannerCopy(state({
       status: 'failed',
       lastError: { kind: 'auth', message: 'Invalid token', code: 'AUTH_FAILED' },
-    }), t)
+    }))
 
     expect(copy.title).toContain('Cannot connect')
     expect(copy.description).toContain('CRAFT_SERVER_TOKEN')
@@ -68,7 +63,7 @@ describe('getTransportBannerCopy', () => {
       attempt: 3,
       nextRetryInMs: 2000,
       lastError: { kind: 'network', message: 'Connection lost' },
-    }), t)
+    }))
 
     expect(copy.title).toContain('Reconnecting')
     expect(copy.description).toContain('attempt 3')
