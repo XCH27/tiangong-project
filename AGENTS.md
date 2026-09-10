@@ -98,6 +98,31 @@ Three things a newcomer gets wrong, stated plainly:
    names its reason so a surface can explain itself — that pattern is deliberate
    and repeated (workbench toggle, connect form, revert, install, promotion).
 
+## Preflight: the reference roots may not be mounted
+
+`源码参考/` and `UI参考/` are symlinks into `/Volumes/AIGC/天工参考/`, and neither is tracked by this
+repository (both are gitignored; the last tracked mirror content is reachable at
+`backup/pre-r0-audit-2026-09-09`). When that volume is not mounted, every "compare Craft first"
+instruction in rule 1, `07-PLAYBOOK.md` step 2 and `CRAFT-UI-BASELINE.md` is **unexecutable**.
+Check before any intake, UI or reference work:
+
+```bash
+ls 源码参考/software/craft-agents-oss-v0.10.5 >/dev/null 2>&1 && echo "mirror OK" || echo "mirror MISSING"
+```
+
+`mirror MISSING` is a **classified limitation** (rule 6), not permission to proceed from memory or
+from a screenshot. Report it, and either mount the volume or stop the packet — do not substitute a
+guess for the v0.10.5 baseline.
+
+> **Corrected 2026-09-09.** Until `c487815ec` these roots were also a permanent source of 73
+> phantom deletions, and this file, `05-ROADMAP.md`, `specs/R0-baseline-audit.md` and `README.md`
+> all blamed an unmounted volume. That was wrong and cost a month: `源码参考/` became a symlink on
+> 2026-08-08 while 73 regular-file entries stayed in the git index, and **git does not traverse a
+> symlink**, so the entries reported as deleted whether or not the volume was mounted. Mounting
+> could never have fixed it. The index entries are gone; the disk is untouched. If you ever see
+> a whole tracked directory reported as deleted while its files plainly exist, check whether the
+> path became a symlink before you check the mount.
+
 ## Routing table
 
 | Your task involves… | Read |
@@ -123,7 +148,7 @@ Three things a newcomer gets wrong, stated plainly:
 | **Anything that moves** — whether to animate at all, easing, duration, press feedback | `docs/design-library/22-motion.md` |
 | Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |
 | Starting a big feature | `docs/FEATURE-REGISTRY.md` (register your boundary) |
-| Upstream Craft behavior/docs | `源码参考/craft-docs/`, Craft pins `源码参考/software/craft-agents-oss-v0.10.5/` and `源码参考/software/craft-agents-oss/` (best-of candidates, not “do-not-sync” lists) |
+| Upstream Craft behavior/docs | External reference root `/Volumes/AIGC/天工参考/源码参考/` (workspace symlink `源码参考/`), including `craft-docs/`, Craft pins `software/craft-agents-oss-v0.10.5/` and `software/craft-agents-oss/` (best-of candidates, not “do-not-sync” lists) |
 
 ## Working method (one paragraph)
 

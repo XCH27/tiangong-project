@@ -84,6 +84,7 @@ preview-gated page's *design* (layout, states, wording) while its status remains
 | Renderer components | `app/apps/electron/src/renderer/**/__tests__/` | `bun test <path>` |
 | i18n parity/coverage | lint scripts | `bun run lint:i18n:*` |
 | Incremental UI contract | renderer additions + shared primitive import seam | `bun run lint:ui-contract` |
+| Repo/packaging scripts | `app/scripts/*.test.ts` (e.g. `distribution-safety.test.ts`) | `bun run test:repo-scripts`; typed by `typecheck:scripts` |
 | Cross-package gates | — | `validate:dev` / `validate:ci` |
 
 Keep this table honest: if a new test area appears (e.g. smoke scripts under `app/scripts/`), add
@@ -134,6 +135,31 @@ For prompt/tool projection changes, verification must also prove:
 5. Canonical docs whose contract/status changed are updated.
 6. Honest status reported; user-visible surfaces are handed to the owner with the intentional delta
    and a short CHECK THIS list.
+
+## Known measurement blind spots (2026-07-28 code-health pass, still open)
+
+A whole-project pass on 2026-07-28 found that `typecheck` and `lint` had been green throughout a
+period the owner was reporting broken features — *because the codebase disabled the checks that
+would have caught them*. Ten fields the server sent were dropped by the renderer, including the
+entire work-mode/plan-mode system, `goal` and `thinkingLevel`, and `tsc` stayed silent because a
+hand-written duplicate type plus an `as SessionMeta` cast told it to. That single mechanism explains
+a large share of the "根本没实现 / 我根本没在前端看到" reports.
+
+Three fixes landed then (`SessionMeta` is now derived from the wire `Session` with no return cast;
+`DismissibleLayerRegistration` and `RecoveryAction` collapsed to single authorities), and three more
+have landed since (`ListSessionsArgs` aliased to `ListSessionsOptions`; `AgentError extends
+TypedError`; `PANEL_TOP_EDGE_INSET === PANEL_EDGE_INSET`). **Still open, verified 2026-08-15:**
+
+| Blind spot | Why it is a verification problem, not a feature request |
+|---|---|
+| `TokenUsage.contextWindow` drift between `packages/core` and the shared session token shape | the Token ring reads this field; a drifting duplicate makes the ring silently wrong rather than absent |
+| `PreviewOverlayProps` / `FullscreenOverlayBaseProps` 75% overlap | two overlay contracts that a typecheck cannot relate |
+| four near-identical menu implementations (`mention-menu`, `slash-command-menu`, `label-menu`, `skill-mention-menu`) | every new menu is written by copying the last, so each arrives with a subtly different interaction language and no gate notices |
+| message rewind / session checkpoint | no rewind or checkpoint symbol exists in the session layer; a UI verb here would imply an undo that does not exist (Decision S5) |
+
+The rule these produce: **a hand-maintained duplicate of a type that crosses a process boundary is a
+verification failure, not a style issue.** Derive it, or re-export it — never re-declare it. When you
+find one, collapse it in the same slice.
 
 ## What quality is not
 

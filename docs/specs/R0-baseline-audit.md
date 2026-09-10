@@ -3,12 +3,33 @@
 > Spec status: `active`
 > Owner acceptance date: —
 >
-> **State 2026-07-26 (per the roadmap R0 row, the single release-state edit point):** landing
-> complete — groups landed 2026-07-20, test/typecheck/i18n/doc gates green (R0-C2..C6). The tree
-> was clean at the landing claim; it currently carries the 2026-07-26 remediation edits
-> (UI-SPEC §6 correction, tooling script, this doc sync), so R0-C1 must be re-verified with an
-> empty porcelain at tag time. Open, owner-owned: R0-C7 — `fleet-baseline-r0` tag (does not exist
-> yet) + owner walkthrough.
+> **State 2026-09-09 (per the roadmap R0 row, the single release-state edit point): the working
+> tree is landed; R0-C7 is the only criterion left.** The 2026-08-15 measurement (385 porcelain
+> entries, `app/` at 247 files) was re-taken fresh at execution time and came to **395 entries**.
+> Every one is now in a landed commit: 17 groups, no `G-unknown`, 18 revertable commits on
+> `work/fresh-base-spine` beginning at `c487815ec`. `backup/pre-r0-audit-2026-09-09` snapshots the
+> dirty tree as it stood before the first landing commit (`backup/pre-r0-audit` is from 2026-07-20
+> and never covered this tree; keep both until the owner accepts R0).
+>
+> Two blockers were found in the gate itself, not in the code under it, and both are fixed:
+> the test suite read the developer's `~/.craft-agent` for `config-defaults.json`, so 9 tests failed
+> on CI and on any fresh checkout; and `bun install --frozen-lockfile` failed on a drifted
+> `@types/bun`, which fails CI before a single check runs. `validate:dev`, the three `validate:ci`
+> i18n checks, the doc-contract validator and `bun install --frozen-lockfile` are all green, and
+> the headless server boots with no fatal errors.
+>
+> The reference-mirror entry is **closed and its recorded cause was wrong**: `源码参考/` became a
+> symlink on 2026-08-08 while 73 regular-file entries stayed in the git index, and git does not
+> traverse a symlink — the deletions were reported whether or not `/Volumes/AIGC` was mounted, so
+> "mount the volume" could never have fixed them. Index entries dropped in `c487815ec`; no file on
+> disk was touched.
+>
+> Status by criterion: R0-C1 met (`git status --porcelain` empty) · R0-C2 met (17 separately
+> revertable group commits) · R0-C3 met with one stated limit — each group ran scoped typecheck via
+> the pre-commit gate and its own targeted tests, but the groups were verified as a set against the
+> complete tree; no intermediate commit is claimed to build in isolation · R0-C4 met · R0-C5 met for
+> the headless server; the Electron dev launch rides with the owner walkthrough · R0-C6 met by this
+> sync · **R0-C7 open — owner walkthrough, then the tag.**
 >
 > **Execution boundary:** this release contains Git-history and destructive operations. It is run
 > by one agent working with the owner present at the marked checkpoints — it is not a fire-and-forget

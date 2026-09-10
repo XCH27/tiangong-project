@@ -4,31 +4,35 @@
 > editing** — the tree changes and these paths are orientation, not a contract. All paths are under
 > `app/`.
 >
-> **Last path verification:** 2026-07-26 against the R0-landed tree (project audit sweep). Entry
-> points below were spot-checked with `ls`/`rg`; one stale path corrected (`contexts/` →
-> `context/`). Re-run the existence check and update this line after the next large landing.
+> **Last path verification:** 2026-08-15 against the working tree at `f8a340021` + 385 uncommitted
+> paths. Every entry point below was re-confirmed with `ls`/`rg`; the delegation, R3-acceptance,
+> runtime-mode and shell-layout modules that landed between 2026-07-31 and 2026-08-15 were missing
+> from this map entirely and are now listed. Re-run the existence check and update this line after
+> the next large landing.
 
 ## Baseline facts
 
 - **App root:** `app/` — a Bun monorepo. `app/package.json` = `0.11.1` (upstream Craft v0.11 line).
 - **Implementation reality:** current `app/` is Craft v0.11.1-derived; intentional/convergence
   deltas are listed in [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md).
-- **Product/interaction baseline:** `源码参考/software/craft-agents-oss-v0.10.5/` at official tag
+- **Product/interaction baseline:** `源码参考/software/craft-agents-oss-v0.10.5/` (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag
   `v0.10.5` / commit `c9d9a26f`.
-- **Selective-update reference:** `源码参考/software/craft-agents-oss/` at official tag `v0.11.2` /
+- **Selective-update reference:** `源码参考/software/craft-agents-oss/` (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag `v0.11.2` /
   commit `a60ebc1a5a7c`; compare independent fixes/backend mechanisms, never merge wholesale.
 
 ## Reference roots (do not mix their authority)
 
+> **External Reference Root:** `/Volumes/AIGC/天工参考/` contains all complete source repositories (`源码参考/`) and reverse-engineered UI design kits (`UI参考/`). Local workspace directories are symlinks to this external drive.
+
 | Reference | Location | Use |
 |---|---|---|
 | Fleet product authority | `docs/` numbered set + `specs/` | Decisions, boundaries, route, code entries |
-| Product/interaction baseline | `源码参考/software/craft-agents-oss-v0.10.5/` | Exact Craft v0.10.5 behavior for shell, navigation, composer, menus and Session actions |
-| Selective-update implementation | `源码参考/software/craft-agents-oss/` | Exact Craft v0.11.2 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
+| Product/interaction baseline | `源码参考/software/craft-agents-oss-v0.10.5/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss-v0.10.5/`) | Exact Craft v0.10.5 behavior for shell, navigation, composer, menus and Session actions |
+| Selective-update implementation | `源码参考/software/craft-agents-oss/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss/`) | Exact Craft v0.11.2 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
 | Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.11.2 |
 | Mirror index and provenance | `源码参考/craft-docs/README.md`, `SYNC-MANIFEST.txt` | Locate source docs, verify downloaded bytes, known Craft-operated service list |
 | Owner design notes | `docs/design-library/` | Owner intent; open the relevant note after checking code |
-| UI component kits | local `UI参考/` | Optional untracked samples for human study; not build input |
+| UI component kits & reverse engineering | local `UI参考/` (`/Volumes/AIGC/天工参考/UI参考/`) | UI kits (Doubao, Trae Work, UI designs, screenshots) for human & design study |
 
 Refresh the hosted mirror with `scripts/sync-craft-official-docs.sh`, then review its diff. A mirror
 refresh is upstream intake, not permission to change application behavior.
@@ -48,17 +52,17 @@ refresh is upstream intake, not permission to change application behavior.
 
 ## File size: a navigability constraint, not a style preference
 
-Measured 2026-07-24 on `work/fresh-base-spine`: **54 files exceed 900 lines.** The largest are
+Re-measured 2026-08-15 on the current working tree (2026-07-24 values in brackets):
 
 | File | Lines | Consequence |
 |---|---|---|
-| `packages/server-core/src/sessions/SessionManager.ts` | 8,920 | the session authority is one file |
-| `apps/electron/src/renderer/components/app-shell/AppShell.tsx` | 3,926 | **every** shell change lands here |
+| `packages/server-core/src/sessions/SessionManager.ts` | **9,394** [8,920] | the session authority is one file |
+| `apps/electron/src/renderer/components/app-shell/AppShell.tsx` | **4,166** [3,926] | **every** shell change lands here |
 | `apps/electron/src/main/browser-pane-manager.ts` | 3,613 | |
 | `packages/ui/src/components/chat/TurnCard.tsx` | 3,279 | |
 | `packages/shared/src/agent/claude-agent.ts` | 3,168 | |
 | `apps/electron/src/renderer/.../input/FreeFormInput.tsx` | 2,512 | composer changes land here |
-| `apps/electron/src/renderer/.../ChatDisplay.tsx` | 2,383 | |
+| `apps/electron/src/renderer/.../ChatDisplay.tsx` | **2,626** [2,383] | |
 | `apps/electron/src/renderer/App.tsx` | 2,269 | |
 
 This is inherited from upstream, not caused by Fleet, and it is not a cleanup backlog — most of these
@@ -73,6 +77,20 @@ files are stable and untouched. It is recorded here because of one specific fail
 must either (a) extract the affected concern into a new module in the same slice, or (b) name in the
 Goal why extraction is unsafe. Applies to `apps/electron/src/renderer/`. Backend files above are a
 recorded condition, not an open work item; touch them only when a slice already requires it.
+
+> **The rule is currently in violation, recorded 2026-08-15.** `AppShell.tsx` gained +240 net lines
+> and `ChatDisplay.tsx` +243 since the 2026-07-24 measurement, with no extraction and no named
+> exemption. A whole-project code-health pass on 2026-07-28 measured `AppShellContent` at
+> **cyclomatic complexity 498, nest depth 12, 31 `useState` · 31 `useEffect` · 72 `useCallback` ·
+> 25 `useMemo` · 16 `useRef`**, alongside `FreeFormInput` (300 / d12) and `NavigationProvider`
+> (234), plus **756 cross-file duplicated 8-line blocks** and ~1,450 type escape hatches
+> (`as T` 1,250 · `as any` 153 · `as unknown as` 51). The same pass disproved the standing
+> hypothesis that the growth was defensive padding: guard density exceeds 12% of lines in exactly
+> **one** file out of 1,537, and the test-to-source ratio is 0.27. The growth is god components and
+> copy-paste. **A function at complexity 498 cannot be edited safely at any level of review
+> quality** — that is the mechanism behind the 2026-07-24 frontend drift and the
+> `d25b763f6`→`fa5ee7460` / `7762c8bc4`→`2136b1ea9` revert churn. Repay this by extraction, not by
+> amending the rule.
 
 ## Spine primitives that already exist
 
@@ -149,6 +167,51 @@ repository and the executor's only job is to refuse anything the plan did not au
 | Memory scope, promotion and tool facts | `packages/shared/src/memory/memory-scope.ts` | Delegates return findings and write nothing; curated layers are consolidation-only |
 | Delegation routing and cost escalation | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only |
 | Review diff normalization | `apps/electron/src/renderer/components/app-shell/workbench/review/review-diff-model.ts` | Unifies working-tree and session-snapshot sources; directory rollup; lazy patch predicate |
+
+## Bounded delegation (Decisions C3/C5/C7/C9/C11 — R6 domain layer, landed early)
+
+Landed ahead of R4/R5 by owner direction (roadmap change log, 2026-08-15). **These types are
+`candidate`, not frozen** (`16-SYSTEM-SUITES.md` rule 2): R4 and R5 may change their shape without a
+deprecation cycle. Do not build a suite against them as if they were promoted contracts.
+
+| Concern | Real code | Note |
+|---|---|---|
+| Delegation envelopes | `packages/shared/src/agent/delegation-contract.ts` | `TaskContract` locked per attempt; `TaskBrief` in, `RunReport` out; transcripts never cross the boundary. Zod-validated |
+| Organization policy | `packages/shared/src/agent/delegation-policy.ts` | `direct` / `single-verifier` / `bounded-parallel` / `serial-isolated`, with a human-readable reason every time. Learned routing is R17 and deliberately absent |
+| Inline delegation projection | `packages/shared/src/agent/delegation-projection.ts` | Pure projection of child Session state for `DelegationStrip` (H11); a surface never owns orchestration state |
+| Requirement/cost routing | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only (H10) |
+| Path write leases | `packages/shared/src/agent/path-lease.ts` | One writer per path; reserved paths need the integrator role; leases expire so a crashed agent cannot hold a file |
+| Permission intersection | `packages/shared/src/agent/permission-intersection.ts` | `effective = parent ∩ requested ∩ workspacePolicy ∩ runtimeCapability`. Privilege never expands past the parent; unattended work that resolves to `ask` waits, it does not escalate |
+| RunReport validation | `packages/shared/src/agent/run-report-validate.ts` | Deterministic schema/criterion/evidence/path/budget checks against the locked contract (C9). The executor cannot self-certify |
+| Kernel integration | `packages/server-core/src/tasks/TaskRunner.ts`, `packages/shared/src/agent/base-agent.ts`, `agent/index.ts` | Where the envelopes are actually consumed |
+| Inline surface | `apps/electron/src/renderer/components/app-shell/DelegationStrip.tsx` (mounted in `ChatDisplay.tsx`) | The strip is real; the tree/brief/report inspector is `not implemented` (P-20) |
+
+Not yet built behind this layer: PreToolUse `TaskContract` gates, the independent read-only
+verifier, and worktree apply/discard. Those are R6's own acceptance and remain `not implemented`.
+
+## R3 acceptance convention (fixture, not R3)
+
+| Concern | Real code | Note |
+|---|---|---|
+| Deliverable acceptance helper | `packages/shared/src/workspaces/deliverable-acceptance.ts` | Copies the accepted file into `deliverables/` with a parseable provenance header (session, source, SHA-256, evidence, recovery). Refuses path escape, missing source, and overwrite of a different file. **Not ArtifactRef** — bytes stay in the Project folder |
+| Agent-facing tool | `packages/session-tools-core/src/handlers/accept-deliverable.ts`, registered in `tool-defs.ts` as `accept_deliverable` | May set `needs-review`; never sets `done` or `cancelled` — closing a Session is the owner's decision |
+
+`specs/R3-first-production-chain.md` R3-C1..C8 still require a real owner-run chain. This fixture is
+not a stand-in for them.
+
+## Shell layout, composer and session-option modules (landed 2026-08)
+
+| Concern | Real code |
+|---|---|
+| Shell layout + sidebar visibility model | `renderer/components/app-shell/{shell-layout,sidebar-visibility}.ts`, `SidebarPanelSlot.tsx` |
+| Plan approval with compaction | `renderer/components/app-shell/input/{approve-plan-with-compact-coordinator,use-approve-plan-with-compact}.ts` |
+| Session option sync / optimistic commands | `renderer/hooks/session-options-sync.ts`, `renderer/lib/optimistic-session-command.ts`, `lib/session-connection-normalize.ts` |
+| Background task cancellation | `renderer/hooks/background-task-kill.ts` |
+| Product-surface classification | `renderer/lib/product-surface.ts` |
+| Browser action model / automation batch ops | `renderer/components/browser/browser-action.ts`, `renderer/components/automations/batch-operation.ts` |
+| Markdown sanitize schema | `packages/ui/src/components/markdown/sanitize-schema.ts` |
+| Classified provider runtime modes | `packages/shared/src/config/runtime-modes.ts` (Page Architecture §3B; reasoning effort and Fast stay separate axes) |
+| Messaging gateway atomic write | `packages/messaging-gateway/src/atomic-write.ts` |
 
 Not yet built, in order: the git executor behind `snapshot-plan`, the per-turn capture hook in
 `SessionManager`, the content store, the operation log, and the two surfaces (review file tree,

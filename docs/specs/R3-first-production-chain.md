@@ -2,6 +2,15 @@
 
 > Spec status: `draft`
 > Owner acceptance date: —
+>
+> **Fixture slice 2026-08-12:** the acceptance convention helper
+> (`packages/shared/src/workspaces/deliverable-acceptance.ts`) and the
+> `accept_deliverable` session tool are `wired but not visually checked`.
+> The helper copies an accepted file into `deliverables/` with a parseable
+> provenance header and refuses escape / overwrite / unattributed copies.
+> The tool calls that helper, may set `needs-review`, and never sets
+> `done`. C1–C8 still require a real owner-run chain — this slice is not
+> a mocked stand-in for those criteria.
 
 ## Outcome
 
@@ -27,10 +36,14 @@ engine.
    Decision S5 the chain therefore states recovery truthfully: `none`, unless the Project folder is
    a Git repository (then agent-run `git` under permission is the recovery path). The friction this
    causes is a recorded R5 input — not something to paper over here.
-5. **Acceptance.** The owner says “Accept this version.” The agent (a) marks the Session with the existing
-   status/label mechanism (e.g. status → `done`, label `accepted`), and (b) copies the exact
-   accepted file into the Project's `deliverables/` folder with a provenance header (source
-   session, date, evidence links). Both writes go through existing permissioned paths.
+5. **Acceptance.** The owner says “Accept this version.” The agent does **not** set a closed
+   status (`done` / `cancelled`) — `set_session_status` refuses those as the owner's decision.
+   It (a) sets the open status `needs-review` through the existing status tool, (b) adds a
+   workspace label named `accepted` only if that label already exists in the catalog, and
+   (c) copies the exact accepted file into the Project's `deliverables/` folder with a
+   provenance header (session, date, source path, SHA-256, evidence refs, recovery). The
+   copy is the `acceptDeliverable` helper; both status/label writes stay on the existing
+   Session tools. The owner then closes the Session on the list if they want `done`.
 6. **Inspection.** Later, anyone can trace: which session produced the deliverable, which evidence
    it cites, which revisions happened, where acceptance was declared — using only existing surfaces
    (timeline, files, labels).
@@ -107,6 +120,24 @@ No reference project is copied in this release.
   needed affordance is recorded as an R4/R5 input.
 - **Risk:** "chain worked once" theater → C6 requires a repeatable second run from documentation.
 - **Rollback:** the convention is procedure + docs; removing it deletes no state.
+
+## Repeatable acceptance procedure (R3-C5)
+
+Use only existing Session tools plus `acceptDeliverable`. Do not add a second store.
+
+1. Write or revise the Markdown deliverable in the Project folder with the ordinary file tools.
+2. Capture evidence as existing timeline / source / browser events. Record their ids or paths.
+3. When the owner accepts: call `acceptDeliverable` with the workspace root, the current
+   Session id, the source path, and those evidence refs. The helper writes
+   `<workspace>/deliverables/<basename>` as header + original bytes. The body after the
+   header must match the accepted file; the header names session, source, SHA-256, evidence
+   and recovery (`none`, or `git` if `.git` exists).
+4. Set Session status to `needs-review`. Do not set `done` or `cancelled`.
+5. If the workspace label catalog already contains `accepted`, add it with
+   `set_session_labels`. Do not create a new label type or system label for this convention.
+6. If the copy is denied (path escape, missing source, overwrite of a different file), leave
+   the existing deliverable untouched and report the helper's reason. Recovery of earlier
+   file versions is `none` unless the Project is a Git repository.
 
 ## Verification plan
 

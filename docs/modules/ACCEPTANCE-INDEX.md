@@ -39,6 +39,7 @@ with a concrete code path, evidence command and status. They are intentionally n
 | EXEC-12-A | Invite/collaborative grant changes explicit grants and records public side effects before commit | owner checkpoint |
 | EXEC-13-A | Git/branch/PR actions are attributed, permissioned, reviewable and cannot replace the Task/Session authority | Git fixture + permission trace |
 | EXEC-14-A | One Craft-owned effective prompt/tool projection is versioned, scoped and attributable; profile changes cannot silently weaken policy or create a second harness | prompt/profile fixture + policy regression |
+| EXEC-15-A | An approved external-environment action proves the narrowest reliable route was tried first, binds environment/display identity and a live expiring grant, and refuses on a stale observation; a route that is not needed closes `NO_GAP` with evidence | route-exhaustion trace + stale-frame refusal fixture |
 | INTEL-01-A | Context projection lists included/excluded evidence and can be compared before sending | projection fixture |
 | INTEL-02-A | Token/cache optimization lowers cost per accepted outcome on a sealed model×harness×task comparison, preserves quality and a switch-off path | usage + acceptance benchmark |
 | INTEL-03-A | Model capability negotiation rejects unsupported parameters before execution | adapter test |

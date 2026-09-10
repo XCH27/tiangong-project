@@ -28,5 +28,5 @@ an executing Agent must use the packet-index anchor and ACTIVE roadmap spec.
 
 ## Not here
 
-- Interface component kits, icon packs, page HTML dumps → local untracked `UI参考/`
-- Open-source product checkouts → [`../../源码参考/`](../../源码参考/README.md)
+- Interface component kits, icon packs, page HTML dumps → `/Volumes/AIGC/天工参考/UI参考/` (symlinked locally as `UI参考/`)
+- Open-source product checkouts → `/Volumes/AIGC/天工参考/源码参考/` ([`../../源码参考/`](../../源码参考/README.md))

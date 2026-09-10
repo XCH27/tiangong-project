@@ -24,14 +24,17 @@ model calls themselves in this spec.
   the complete context count without adding cache tokens again. The real-shaped adapter→tracker
   regression fixture lives in `src/agent/__tests__/pi-event-adapter.test.ts`.
 
-Capability status: the accounting utility is `usable` at its tested interface; the session-level
-measurement and visible product capability are `not implemented` until the slices below close.
+Capability status: the accounting utility is `usable` at its tested interface. TE1 S1 is landed:
+both event adapters attach `NormalizedCacheUsage` per turn via `normalizeProviderUsage`;
+UsageTracker folds those turns; SessionManager can project a per-session `CacheEconomySummary`
+from the existing `tokenUsage` ledger (no second store). Session-level measurement is
+`wired but not visually checked`. Visible product columns remain `not implemented` until S4.
 
 ## Remaining slices (each = one bounded task, in order)
 
 | # | Slice | Where (verified entry points) | Acceptance |
 |---|---|---|---|
-| S1 | Feed summaries: both event adapters attach normalized cache usage per turn; SessionManager exposes a per-session `CacheEconomySummary` | `packages/shared/src/agent/backend/claude/event-adapter.ts` (`AssistantUsage`, ~line 250), `backend/pi/event-adapter.ts` (`lastUsage`, ~line 88/267), `core/usage-tracker.ts` | TE1-C1 |
+| S1 | ~~Feed summaries~~ **landed**: both event adapters attach normalized cache usage per turn; SessionManager exposes a per-session `CacheEconomySummary` from the existing usage ledger | `packages/shared/src/agent/backend/claude/event-adapter.ts`, `backend/pi/event-adapter.ts`, `core/usage-tracker.ts`, `SessionManager.getCacheEconomySummary` | TE1-C1 |
 | S3 | Prefix snapshots: at prompt assembly, capture `{stableZone: [systemPrompt, toolDefsSerialized], logZone: messageIds}` per request; count breaks via `diagnoseCacheBreak`; emit on the existing usage/debug event path (no new store) | `claude-agent.ts` (system prompt + `preset` assembly), `pi-agent.ts` equivalent | TE1-C3 |
 | S4 | Surface it: session info/cost display gains cache columns (hit rate, saved fraction, saved USD when price known, prefix breaks) — smallest honest UI per P5, no new page | existing session usage/info surface (find with `rg usage_update` in renderer) | TE1-C4 + owner CHECK |
 | S5 | Baseline harness: during R0 replay one recorded label/status trace to prove the measurement path; after R0 record the current Claude-full and Pi-current profiles on a sealed task. R3 later becomes the cross-domain trace. Store machine output or concise numbers, not a new report | script under `app/scripts/`, read-only vs. providers or mocked usage fixtures | TE1-C5 |

@@ -127,12 +127,21 @@
 
 ## C. Identity, teams, and delegation
 
-- **C1 — Two-layer agent identity.** A global low-context Manager Agent and per-project Agents are
-  separate identities. No privileged backdoor; the Manager never bypasses permission. (2026-07-08)
+- **C1 — Agent identity is per session and per project; no identity class is privileged.** A
+  session's effective identity comes from its expert kit and its Project/Workspace scope. No
+  identity has a backdoor, and no identity bypasses the permission path. **Amended 2026-08-15:**
+  the original entry described "a global low-context **Manager Agent** and per-project Agents" as
+  two identity layers. That layer is retired — **H28 (2026-07-30) establishes that there is no
+  manager agent and no captain role**, so the only surviving content of this decision is the
+  no-backdoor / no-permission-bypass invariant, which binds unchanged. Delegation is a
+  relationship any session enters by calling `spawn_session`, not a configured identity class.
+  (2026-07-08; manager-agent layer superseded by H28, amended in place 2026-08-15)
 - **C2 — Fleet owns the team; a CLI owns one run.** Cross-runtime orchestration uses stable agent
-  seats, runtime-specific lanes, and bounded team-run requests. A CLI leader may *request* a member
-  run through a narrow authenticated bridge, never directly owning another runtime's tools.
-  "Multi-agent" must not mean "multiple chat bubbles." (2026-07-08)
+  seats, runtime-specific lanes, and bounded team-run requests. A **delegating session** may
+  *request* a member run through a narrow authenticated bridge, never directly owning another
+  runtime's tools. "Multi-agent" must not mean "multiple chat bubbles." (2026-07-08; "a CLI leader"
+  reworded to "a delegating session" 2026-08-15 — relationship semantics per H28, no leader class
+  exists. The bridge constraint itself is unchanged and still binding.)
 - **C3 — No bare subagent spawn.** Spawning requires a **TaskBrief** (goal, scope paths, known
   facts, constraints, deliverable, budget); the child returns a **RunReport** (summary +
   artifact/evidence refs), not a transcript dump. Large outputs pass as pointers. Unscoped "explore
@@ -357,6 +366,141 @@
   are not smuggled into R1/R2 or TE1. OpenHands, Hermes and OpenClaw remain mechanism evidence, not
   replacement runtimes or authorities. (owner-approved documentation direction, 2026-07-20)
 
+
+- **E14 — Fleet does not become "everything is a plugin"; it adopts the capability-seam discipline
+  without the microkernel.** DeepSeek Harness (`dsh`, MIT, `47f943859bef`) is the strongest
+  available implementation of the plugin-first agent runtime: Cordis dependency injection,
+  **167 packages across 39 groups**, a Service Definition / Service Provider / Consumer role split
+  per capability, per-session composition mounted from a preset `cordis.yml`, and a `dsh-tool-cordis`
+  toolset with which the agent inspects and mounts plugins in its own live runtime. The owner asked
+  whether Fleet should be rebuilt in that shape. **It should not**, for four reasons that are about
+  Fleet specifically rather than about plugin architecture in general:
+
+  1. **It is the second kernel this project already refused.** 03 §1 forbids a second agent harness
+     or provider capability policy beside the existing Craft/Fleet paths, and E13 refuses promoting
+     any profile or reference into a second kernel. A Cordis rewrite is not a variation on that
+     question — it is the largest possible instance of it. P2 forbids a second app.
+  2. **Different product, different unit of value.** `dsh` is a harness: the runtime *is* the
+     product and third-party plugins are its surface (`dsh-plugin` GitHub topic, published npm
+     scope). Fleet is a local-first workbench whose value is the *environment* — one Project
+     boundary, one evidence timeline, artifact lineage, permissioned recovery (01-WHITEPAPER §1).
+     Fleet's users are the owner and their agents, not plugin authors composing an agent. Adopting
+     the architecture would import the other product's identity along with it.
+  3. **The tax is paid in the currency Fleet is currently short of.** Once every surface is a
+     plugin, nothing guarantees a surface still exists: `dsh` needs a generated cordis catalog, an
+     *independent* AST walk over every `declare module 'cordis'` merge, fail-closed
+     `SERVICE_WALK_EXEMPTIONS` / `EVENT_WALK_EXEMPTIONS` maps, per-package `./invariant` manifests,
+     HMR disposal tests, and real-composition boot tests — because a plugin that silently fails to
+     register looks identical to one that was never written (their 2026-08-09 note found 25
+     surfaces documented nowhere). Fleet's own 2026-07-28 audit found the same failure class
+     already present *without* a microkernel: ten fields dropped between wire and renderer while
+     `tsc` stayed green. Adding indirection to a codebase whose gates were measuring nothing
+     multiplies that class rather than removing it.
+  4. **Measured runtime cost, from their own note.** Per-session composition costs ~1.31 MB and
+     ~135 ms per agent on their standard preset; the object graph does not leak but *the lifecycle
+     does* — nothing disposes an agent, so a web host retains every session it has touched. Fleet
+     inherits Electron's memory profile already and has an explicit resource-honesty decision (E8).
+
+  **What is admitted (mechanism reference, no code import — MIT permits rework, F3 language rule
+  satisfied since it is TypeScript):**
+
+  - **The capability-seam role split**, as vocabulary and a boundary rule rather than a framework:
+    a swappable capability has a **Service Definition** (the contract and its vocabulary), one or
+    more **Service Providers** (implementations), and one or more **Consumers** (what the model and
+    other callers program against) — so replacing a local executor with a sandboxed one never
+    churns the model-facing schema. Fleet already has this shape unnamed in
+    `artifacts/history-backend.ts` (one routing definition, three backends), in
+    `terminal/terminal-capability.ts` versus the R18 bounded runner and the gated PTY, and in the
+    provider lanes behind EXEC-05. Naming the roles is free; splitting packages preemptively is not
+    — their own rule is that a capability with one conceivable provider and one Consumer stays one
+    package until a second appears. Recorded in `14-MODULE-ARCHITECTURE.md` §2.
+  - **Four per-session-composition invariants** that Fleet's expert-kit design (H13–H23) does not
+    yet state and needs: the composition a session was **created** with is a durable session fact
+    and a resume rebuilds *that* composition, never today's default; switching is refused once a
+    turn has run, because logged tool calls would be stranded by a different toolset; a per-session
+    composition may not publish a process-global service; and **authoring** a composition is a
+    privileged operation while listing and selecting are ordinary, because a composition names the
+    capabilities a session runs — reading one is reconnaissance and writing one is arbitrary
+    capability.
+  - **Three enforcement rules** stated more sharply than Fleet states them today, each of which
+    names a defect Fleet has already shipped: *enforce a decision in the operation that makes it*
+    (schema omission, prompt filtering, facades and listener order are not enforcement when a
+    direct caller can bypass them — precisely the shape of `PermissionManager.evaluateToolCall`
+    defaulting to allow); *publish state only at its commit point*; and *represent one asynchronous
+    operation with one lifecycle controller*.
+
+  **What is rejected outright:** Cordis or any DI microkernel as Fleet's composition root; the
+  167-package split; `ctx.<name>` property-proxy injection; and — most firmly — the
+  self-modification toolset that lets the agent mount and unmount plugins in its own live runtime.
+  That last one is a genuinely impressive capability and a direct contradiction of this product:
+  C7 forbids an executing agent rewriting its own harness, and 01-WHITEPAPER's entire claim is that
+  every consequential action is inspectable, permissioned and recoverable. An agent that can
+  re-compose the runtime enforcing those properties has no such guarantee left to offer.
+
+  **Anti-oscillation clause:** re-open this only with new evidence of a *specific* Fleet failure
+  that the existing Craft registration seams (`SESSION_TOOL_DEFS`, Skills, Sources, MCP, views —
+  E1/E2 already say capabilities register rather than rewire the core) provably cannot carry, or
+  with an owner request. "It would be cleaner" and "DeepSeek does it" are not triggers. Note the
+  diagnosis this decision rests on: Fleet's problem is not that it lacks a plugin architecture —
+  it is that its existing registration seams are underused while a complexity-498 shell component
+  bypasses them. A rewrite would relocate that problem, not solve it. Adopting the plugin
+  architecture would be a product fork and therefore an owner checkpoint regardless
+  (`OWNER-GUIDE.md`); this entry is the agent's technical recommendation against it, recorded so
+  the question is not re-litigated from a README. (2026-08-15)
+
+
+- **E15 — The runtime adapter contract is capability-gated, capability facts carry an origin, and
+  approval never becomes an adapter verb.** EXEC-05 has been carrying "one adapter contract:
+  start/attach/send/cancel/approve/health/stop" as a sentence with no implementation behind it. A
+  source-level pass on 2026-08-15 over four independent implementations — AionCore (Rust,
+  Apache-2.0), omnigent (Python, Apache-2.0, Databricks), cindy (TypeScript, Apache-2.0) and waku
+  (Rust, GPL-3.0, already recorded) — converged on a shape sharper than that sentence, and each
+  correction below names a defect the sentence permits:
+
+  1. **Two contracts, not one.** A *connection/factory* (`open_session(spec, config)`,
+     `close_session`, `capabilities()`) is distinct from a *per-session actor*
+     (`dispatch(command)`, `events()`, `terminate()`, `pending_permission_requests()`). Folding
+     them makes session lifetime and process lifetime the same thing, which they are not.
+  2. **Dispatch is capability-gated and fails loudly.** An unsupported verb returns a typed
+     `CommandNotSupported`, never a silent no-op. A capability's absence is checked *twice* —
+     against the declared capability record, then against the optional method's presence — because
+     a declaration can drift from the implementation. cindy's `NotSupportedError(capability,
+     status)` carries `reason: 'sdk-missing' | 'not-implemented' | 'platform-limited'`, which is
+     what lets a surface grey a control out with a tooltip instead of hiding it.
+  3. **`unknown` is not `unsupported`.** omnigent's capability record uses `None` to mean *no
+     claim*, reported as `UNKNOWN` and distinct from a declared `false`. This is the same rule
+     Fleet already applies to cost (H29): absence of information is not a value.
+  4. **A declared capability is a claim that gets tested.** omnigent runs a bench that live-probes
+     interrupt/streaming/tool-calling and flags drift from the declaration. Fleet's adapters must
+     not be allowed to declare what they cannot do.
+  5. **Capability facts carry an origin, and declaration beats stale discovery.** AionCore's
+     `CapabilityOrigin { DirectDescriptor, InternalDescriptor }` and
+     `effective_agent_capabilities(backend, persisted)` overlay constructed truth onto persisted
+     ACP-discovered JSON, with the rule that a constructed `false` is authoritative *so stale
+     discovery cannot re-enable a transport*. This generalises H7 from agents to capabilities.
+  6. **Never advertise a verb nothing routes.** AionCore keeps `accepts_proactive_input` separate
+     from `supported_commands.steer` precisely because advertising an unrouted verb produces a dead
+     button.
+  7. **Pin a verified runtime version and report drift as a notice, not a failure.**
+     `VERIFIED_CLAUDE_VERSION` / `VERIFIED_CODEX_VERSION` with a
+     `{Verified, Older, Newer, Unknown}` verdict. Note that AionCore *removed* CLI bundling on
+     purpose: bundled-versus-user-installed divergence proved worse than drift.
+  8. **`approve` is not an adapter verb.** This is the strongest finding and it is unanimous:
+     none of the four implementations puts approval on the adapter. AionCore defaults
+     `request_external_permission` to `Denied`; omnigent translates every harness's native hook
+     payload into one `EvaluationRequest` against a single policy authority and **fails closed** on
+     an unreachable or malformed response. Six vendors, one permission path. That is independent
+     confirmation of 03 §1 and Decision S1 at a scale Fleet has not reached, and it means EXEC-05's
+     verb list should drop `approve` rather than implement it per-lane.
+
+  **Model routing stays out of the adapter.** cindy proves the boundary is package-enforceable:
+  `@cindy/maker-core` (harness orchestration) and `@cindy/model-providers` (catalog + routing)
+  do not import each other at all — the host is the only place they meet, `Provider` fans out over
+  harnesses as `models[agent]` / `routing[agent]`, and `resolveRoute` is a pure function that reads
+  no storage. Fleet already separates these by accident; E15 makes it a rule. Consequence for R6
+  and the delegation kernel: an adapter declares and executes, a router chooses, and neither owns
+  the other. Evidence and exact symbols: `references/REFERENCE-REGISTRY.md`. (2026-08-15)
+
 ## F. Compliance (hard product requirements)
 
 - **F1 — No quota bypass, stealth/anti-detection automation, credential/cookie extraction,
@@ -504,8 +648,14 @@
   catalog is declarative, and `transport: 'legacy-probe'` marks what has not migrated yet so the
   debt is visible in the type rather than buried in a service file. Contract:
   `packages/shared/src/cli-agents/cli-agent-connection.ts`. (2026-07-30)
-- **H7 — Detection and configuration are separate layers.** Borrowed from AionUi, whose
-  `DetectedAgent` type states it outright: what is installed on this machine is a fact to discover;
+- **H7 — Detection and configuration are separate layers.** Borrowed from AionUi. **Provenance
+  corrected 2026-08-15:** a source-level pass over the pinned AionUi checkout found **no symbol
+  `DetectedAgent`**. What the checkout actually carries is `ManagedAgent`
+  (`tests/unit/settings/agentFilters.test.ts`, consumed by `filterAgentsByAvailability`), whose
+  fields separate discovered facts (`installed`, `status: 'online'|'offline'|'missing'`) from
+  chosen configuration (`enabled`) — so the *idea* is confirmed and the *name* was wrong. The
+  decision below is unchanged; only its citation is. The type Fleet's design was described against
+  states it outright: what is installed on this machine is a fact to discover;
   what the user chose is a configuration that *references* those facts. The settings page currently
   renders probe results directly as the configuration, so a transient handshake failure silently
   drops the user's configured agent and there is no way to express "I want Claude Code" on a machine

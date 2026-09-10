@@ -80,8 +80,8 @@ implementation or an evidence-backed `NO_GAP` decision, never an unowned “some
 | [`core/README.md`](core/README.md) | Core framework index without a second authority | Navigating stable framework documents |
 | [`references/`](references/README.md) | Fixed-commit source/product/license audits | Selecting or absorbing any external project |
 | [`design-library/`](design-library/README.md) | Owner-intent source notes and legacy design material | Only the note for the active slice; migrate durable module design into `modules/` |
-| [`源码参考/`](../源码参考/README.md) | Read-only code evidence + official Craft docs mirror | Comparing upstream/reference behavior |
-| local `UI参考/` | Optional untracked visual material | Human visual study only |
+| [`源码参考/`](../源码参考/README.md) | Read-only code evidence + official Craft docs mirror (`/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) | Comparing upstream/reference behavior |
+| local `UI参考/` | UI component kits & reverse-engineered designs (`/Volumes/AIGC/天工参考/UI参考/`, symlinked locally) | Human visual & design study only |
 
 There are no other *document classes* that may silently become Fleet authority. The folders below
 are deliberately different kinds of authority, and their scopes must not be mixed:
@@ -109,15 +109,34 @@ criterion silently. The full evidence and claim check lives in [`15-DOC-AUDIT.md
   UI. Intake is **best-of admission**: compare current `app/`, pinned Craft trees, and fix/UI/backend
   candidates; take the better mechanism that preserves one authority (see
   [`CRAFT-UI-BASELINE.md`](CRAFT-UI-BASELINE.md), Decision P2). **Release state has one edit point:
-  the R0 row in [`05-ROADMAP.md`](05-ROADMAP.md)**. Working tree may still be dirty after local
-  slices; status vocabulary remains honest (`wired but not visually checked` until owner walkthrough
-  accepts `usable`). Evidence: R1 shell, R2 independence slices, v0.11.2 mid-stream/task-notification
-  fixes, R7 canvas preview, and the R1 overlap execution map under `design-library/`.
+  the R0 row in [`05-ROADMAP.md`](05-ROADMAP.md)**. Status vocabulary remains honest
+  (`wired but not visually checked` until owner walkthrough accepts `usable`). Evidence: R1 shell,
+  R2 independence slices, v0.11.2 mid-stream/task-notification fixes, R7 canvas preview, and the R1
+  overlap execution map under `design-library/`.
+- **R0's working tree is landed (2026-09-09); the tag is not.** R0 recurred twice — the 2026-07-26
+  "tree clean, gates green" claim was retracted, and a second unaudited tree of ~395 paths then sat
+  on the branch for six weeks. It is now inventoried fresh and committed as 17 groups / 18
+  revertable commits, nothing dropped, with `backup/pre-r0-audit-2026-09-09` holding the dirty tree.
+  "Working tree may still be dirty after local slices" is the sentence this project kept using to
+  normalize the exact condition R0 was created to end; the tree is clean now, and the way to keep it
+  that way is to land work in groups rather than accumulate it. **`fleet-baseline-r0` still does not
+  exist** — it waits on the owner walkthrough (R0-C7), and every Wave 1/2 packet branches from it.
+  Wave plan: [`WORK-ORDER.md`](WORK-ORDER.md) §Parallel dispatch queue.
+- **The reference roots may not be mounted.** `源码参考/` and `UI参考/` link into an external
+  volume and are no longer tracked. When it is absent, every "compare Craft v0.10.5 first"
+  instruction is unexecutable. (The 73 "phantom deletions" this note used to warn about were never
+  about mounting: the path became a symlink while its file entries stayed in the git index, and git
+  does not traverse a symlink. Closed 2026-09-09 in `c487815ec`.) Run the preflight in
+  [`AGENTS.md`](../AGENTS.md) before any intake, UI or reference work.
 - **Fleet capability:** the differentiating loops have a **landed, typechecked domain layer and
-  almost no wiring** (Decisions H1–H28, 2026-07-30). Expert kits, skill routing, delegation routing
-  and cost, artifact-history routing, git snapshot rules, memory scope and foreign import, CLI-agent
-  connection, terminal admission and derived session activity all exist as pure modules with tests;
-  none of them is reachable from a surface yet. Treat them as *designed and proven in isolation*,
+  very little wiring** (Decisions H1–H33). Expert kits, skill routing, delegation routing and cost,
+  artifact-history routing, git snapshot rules, memory scope and foreign import, CLI-agent
+  connection, terminal admission and derived session activity all exist as pure modules with tests.
+  Two surfaces have since been reached: the expert-kit settings page and the inline
+  `DelegationStrip` on the parent conversation. A bounded-delegation kernel (TaskContract/TaskBrief/
+  RunReport, path leases, permission intersection) landed 2026-08 **ahead of R4/R5 by owner
+  direction** — its envelope types are `candidate`, not frozen, and R6's own gates are still
+  `not implemented`. Everything else in that layer remains unreachable from a surface. Treat them as *designed and proven in isolation*,
   never as shipped: `06-CODE-MAP.md` names each module and what remains unbuilt behind it. Governed
   cross-caller actions, versioned artifact handoff, canvas and workflows remain `not implemented`
   outright. Craft's inherited capabilities are real and listed in

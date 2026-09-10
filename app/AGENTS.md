@@ -6,7 +6,7 @@ These rules apply inside `app/` and refine the repository-root `AGENTS.md`.
   behavior before replacing it.
 - Preserve the existing session, workspace/project, permission, task, source, skill, automation,
   browser, and settings authorities — never invent a second one.
-- Treat pinned Craft trees under `源码参考/software/craft-agents-oss*` as **best-of candidates**:
+- Treat pinned Craft trees under `源码参考/software/craft-agents-oss*` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss*`) as **best-of candidates**:
   compare them and admit the better interaction, fix, or backend mechanism into this tree. Do not
   maintain a “do not sync” list; do not copy a whole checkout over the working tree.
 - Trace complete behavior through renderer → atom/hook → RPC → handler → existing store/service.

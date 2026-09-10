@@ -1,7 +1,7 @@
 # Module packet index and execution bridge
 
 This is the cross-document join between the breadth registry, page surfaces and executable specs.
-Every one of the 68 registry rows appears once. A blank packet/spec is an explicit gap, not
+Every one of the 69 registry rows appears once. A blank packet/spec is an explicit gap, not
 permission for an implementer to invent a module boundary.
 
 Repository-grounded paths, absence checks and runnable evidence commands are recorded in
@@ -62,6 +62,7 @@ packets; it does not promote implementation status or create suite-owned state.
 | EXEC-12 | Governed Execution / product | — | — | R14 + owner checkpoint / EXEC-12-A | BREADTH_ONLY |
 | EXEC-13 | Integrations / product | — | P-54, P-60 | R14 / EXEC-13-A (diff ladder starts R3-era per C4) | BREADTH_ONLY |
 | EXEC-14 | Governed Execution / capability | suites/SYS-03-context-economy.md | P-55 | TE1,R3 / EXEC-14-A | PACKET_DRAFT |
+| EXEC-15 | Governed Execution / adapter | — | P-15,P-24 | R16 / EXEC-15-A | BREADTH_ONLY |
 | INTEL-01 | Intelligence / capability | suites/SYS-03-context-economy.md | P-29 | TE1,R3,R9 / INTEL-01-A | PACKET_DRAFT |
 | INTEL-02 | Intelligence / capability | suites/SYS-03-context-economy.md | P-29 | TE1,R3 / INTEL-02-A | PACKET_DRAFT |
 | INTEL-03 | Intelligence / adapter | suites/SYS-03-context-economy.md | P-30 | R17 / INTEL-03-A | PACKET_DRAFT |

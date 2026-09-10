@@ -62,7 +62,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | EXEC-01 | Permissions, approvals and safety | EXTEND | breadth | usable | mode-manager + PreToolUse |
 | EXEC-02 | Actions and caller-aware action seam | NEW/EXTEND | breadth | not implemented | one executor/policy/evidence path |
 | EXEC-03 | Terminal and local execution | EXTEND | breadth | usable | Bash/background; PTY gated |
-| EXEC-04 | Multi-agent delegation | EXTEND | breadth | not implemented | Session/Task tree |
+| EXEC-04 | Multi-agent delegation | EXTEND | breadth | wired but not visually checked (kernel + spawn TaskBrief + DelegationStrip; R4/R5/R6 close still open) | Session/Task tree + TaskRunner as Delegation Kernel |
 | EXEC-05 | Runtime/provider adapters | EXTEND | breadth | Claude+Pi lanes usable; generic adapter contract not implemented | capability negotiation |
 | EXEC-06 | Adaptive organization/router | NEW | breadth | not implemented | measured Task/Session policy |
 | EXEC-07 | Worktree isolation | NEW | breadth | not implemented | Git/process lifecycle |
@@ -73,6 +73,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | EXEC-12 | Collaboration, sharing and invites | EXTEND | breadth | online sharing removed 2026-07-26; invites/collaborative grants not implemented | explicit grants/side effects |
 | EXEC-13 | Git repository, branch and PR review delivery | EXTEND/NEW | breadth | not implemented | governed Git/PR adapter; never a task authority |
 | EXEC-14 | System prompt, effective execution profile and agent identity configuration | EXTEND | breadth | not implemented | one prompt/tool projection over provider + permission seams |
+| EXEC-15 | External computer/environment control | EXTEND/NEW | breadth | BrowserPane structured path usable in its current Craft scope; general computer control not implemented | narrowest reliable route first (native action → structured adapter → accessibility → pixel); environment/display identity, live expiring grant and observation freshness; never a second permission or session authority |
 
 ## Intelligence economics and memory
 

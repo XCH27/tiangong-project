@@ -6,10 +6,10 @@
 ## Authority
 
 Fleet's product and interaction baseline is Craft Agents v0.10.5. The current implementation tree
-is v0.11.1-derived, so UI work compares both pinned snapshots before editing:
+is v0.11.1-derived, so UI work compares both pinned snapshots (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally via `源码参考/`) before editing:
 
-- `源码参考/software/craft-agents-oss-v0.10.5` — product/interaction baseline, official tag `v0.10.5`
-- `源码参考/software/craft-agents-oss` — selective-update reference, official tag `v0.11.2`
+- `源码参考/software/craft-agents-oss-v0.10.5` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss-v0.10.5`) — product/interaction baseline, official tag `v0.10.5`
+- `源码参考/software/craft-agents-oss` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss`) — selective-update reference, official tag `v0.11.2`
 - `源码参考/software/craft-agents-oss/README.md` — official build and product overview
 - `源码参考/software/craft-agents-oss/CONTRIBUTING.md` — official development workflow
 - `源码参考/software/craft-agents-oss/apps/electron/README.md` — Electron architecture and playground
@@ -32,7 +32,7 @@ Generic web design systems, screenshot approximations, and unrelated reference a
 behavior, but they do not override Craft's component language.
 
 Owner-intent design notes live under `docs/design-library/`. Optional **UI component kits** and page
-samples may live under the local untracked `UI参考/` cache (kits, tokens, icons and page showcases;
+samples live under `/Volumes/AIGC/天工参考/UI参考/` (symlinked locally as `UI参考/`; contains Doubao, Trae Work, UI designs, and screenshots;
 not product authority or a build input). When present, start at its local index, then the kit's own `README.md` / `SKILL.md` /
 `colors_and_type.css`. Neither overrides Craft components, tokens, or this baseline. Do not import
 unlicensed third-party SVGs, CSS, or components into production.
