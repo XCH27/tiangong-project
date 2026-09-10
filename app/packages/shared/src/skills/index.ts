@@ -19,3 +19,11 @@ export {
   skillNeedsIconDownload,
   downloadSkillIcon,
 } from './storage.ts';
+export {
+  isValidSkillSlug,
+  skillScopeDir,
+  skillScopePath,
+  writeSkillToScope,
+  moveSkillScope,
+} from './scope.ts';
+export type { SkillScope, SkillScopeRoots, SkillScopeResult, SkillScopeFailure } from './scope.ts';

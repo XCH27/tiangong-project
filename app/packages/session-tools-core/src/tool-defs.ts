@@ -40,6 +40,7 @@ import { handleSetSessionGoal } from './handlers/set-session-goal.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleAcceptDeliverable } from './handlers/accept-deliverable.ts';
 import { handleListExpertKits, handleManageExpertKit } from './handlers/expert-kits.ts';
+import { handleManageSkill } from './handlers/manage-skill.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleListBackgroundTasks } from './handlers/list-background-tasks.ts';
@@ -212,6 +213,14 @@ export const AcceptDeliverableSchema = z.object({
     kind: z.enum(['file', 'session-evidence', 'url']).describe('Evidence kind'),
     id: z.string().describe('Evidence id or path'),
   })).optional().describe('Optional evidence refs recorded in the provenance header.'),
+});
+
+export const ManageSkillSchema = z.object({
+  action: z.enum(['write', 'move']).describe('Write a new skill, or move an existing one to a different scope.'),
+  slug: z.string().describe('Directory name for the skill. Letters, digits, dots, dashes and underscores only.'),
+  scope: z.enum(['global', 'workspace', 'project']).optional().describe('Where the skill should end up. "global" is ~/.agents/skills and applies in every workspace on this machine — it is shared with other agent tools. "workspace" is this workspace only. "project" lives in the project folder and travels with the repository.'),
+  fromScope: z.enum(['global', 'workspace', 'project']).optional().describe('Current scope. Required for move.'),
+  content: z.string().optional().describe('Complete SKILL.md content including YAML frontmatter with name and description. Required for write.'),
 });
 
 export const ListExpertKitsSchema = z.object({
@@ -539,6 +548,13 @@ Omit sessionId to target the current session.
 
 IMPORTANT: never move a task into a closed status (such as "done" or "cancelled") yourself — closing a task is the user's decision, made on the board. You may prepare and hand off work by setting an open status like "needs-review"; the user reviews and closes it. Closed-status calls are rejected.`,
 
+  manage_skill: `Write a new skill, or move an existing skill between scopes.
+
+A skill is a directory holding a SKILL.md whose YAML frontmatter carries name and description; both are required or the loader skips it silently.
+
+Scope decides where it applies. "global" (~/.agents/skills) reaches every workspace on this machine and is shared with other agent tools, so writing there is visible outside this app and moving out of it takes the skill away from them too. "workspace" is this workspace only. "project" lives in the project folder and travels with the repository.
+
+Nothing overwrites: a name already taken at the target is refused, with the reason.`,
   list_expert_kits: `List the expert kits in this workspace and, by default, the installed skills they could carry.
 
 Each kit reports the skills that resolve, the declared slugs that are NOT installed, its sources, tools and requested permission mode. Each available skill reports its scope: "global" applies in every workspace (~/.agents/skills), "workspace" only in this one, "project" only inside this project folder.
@@ -660,6 +676,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
   { name: 'set_session_goal', description: TOOL_DESCRIPTIONS.set_session_goal, inputSchema: SetSessionGoalSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionGoal },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
+  { name: 'manage_skill', description: TOOL_DESCRIPTIONS.manage_skill, inputSchema: ManageSkillSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageSkill },
   { name: 'list_expert_kits', description: TOOL_DESCRIPTIONS.list_expert_kits, inputSchema: ListExpertKitsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListExpertKits },
   { name: 'manage_expert_kit', description: TOOL_DESCRIPTIONS.manage_expert_kit, inputSchema: ManageExpertKitSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageExpertKit },
   { name: 'accept_deliverable', description: TOOL_DESCRIPTIONS.accept_deliverable, inputSchema: AcceptDeliverableSchema, executionMode: 'registry', safeMode: 'block', handler: handleAcceptDeliverable },
