@@ -400,6 +400,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.skills.GET_FILES,
   RPC_CHANNELS.skills.DELETE,
   RPC_CHANNELS.skills.MOVE_SCOPE,
+  RPC_CHANNELS.skills.INSTALL_KIT,
   RPC_CHANNELS.skills.CHANGED,
 
   // statuses — workspace metadata

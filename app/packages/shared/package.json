@@ -96,6 +96,7 @@
     "./labels/kind-normalize": "./src/labels/kind-normalize.ts",
     "./labels/kit-sources": "./src/labels/kit-sources.ts",
     "./labels/kit-resolve": "./src/labels/kit-resolve.ts",
+    "./labels/kit-install": "./src/labels/kit-install.ts",
     "./labels/memory-curator-kit": "./src/labels/memory-curator-kit.ts",
     "./memory/foreign-memory": "./src/memory/foreign-memory.ts"
   },

@@ -62,6 +62,8 @@ export type { LoadedSource, FolderSourceConfig, SourceConnectionStatus };
 // Skill types
 import type { LoadedSkill, SkillMetadata } from '@craft-agent/shared/skills/types';
 import type { SkillScope, SkillScopeResult } from '@craft-agent/shared/skills/scope';
+import type { ExpertSkill } from '@craft-agent/shared/labels/skill-routing';
+import type { KitInstallResult } from '@craft-agent/shared/labels/kit-install';
 export type { LoadedSkill, SkillMetadata, SkillScope, SkillScopeResult };
 
 // Resource bundle types (cross-workspace export/import)
@@ -576,6 +578,16 @@ export interface ElectronAPI {
    * when the target name is taken or the source is missing — those are answers
    * the surface renders, not errors.
    */
+  /**
+   * Write a kit's skill files and create the kit that names them, in one call —
+   * a half-installed kit is worse than an uninstalled one.
+   */
+  installKit?(
+    workspaceId: string,
+    name: string,
+    skills: ExpertSkill[],
+    systemPromptPreset?: string,
+  ): Promise<KitInstallResult>
   moveSkillScope?(
     workspaceId: string,
     skillSlug: string,

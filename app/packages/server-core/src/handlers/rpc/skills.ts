@@ -2,6 +2,7 @@ import { join } from 'path'
 import { existsSync, readdirSync, statSync } from 'fs'
 import { RPC_CHANNELS, type SkillFile } from '@craft-agent/shared/protocol'
 import type { SkillScope } from '@craft-agent/shared/skills'
+import type { ExpertSkill } from '@craft-agent/shared/labels/skill-routing'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -12,6 +13,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.skills.GET_FILES,
   RPC_CHANNELS.skills.DELETE,
   RPC_CHANNELS.skills.MOVE_SCOPE,
+  RPC_CHANNELS.skills.INSTALL_KIT,
   RPC_CHANNELS.skills.OPEN_EDITOR,
   RPC_CHANNELS.skills.OPEN_FINDER,
 ] as const
@@ -130,6 +132,37 @@ export function registerSkillsHandlers(server: RpcServer, deps: HandlerDeps): vo
       // Refusals are returned, not thrown: "a skill with that name is already
       // there" is an answer the surface should render, not a stack trace.
       deps.platform.logger?.info(`SKILLS_MOVE_SCOPE: ${skillSlug} ${fromScope}->${toScope}: ${result.message}`)
+      return result
+    },
+  )
+
+  // Install a kit: write its skill files, then create the kit that names them.
+  // One call because a half-installed kit — skills belonging to nothing, or a
+  // kit whose every slug resolves to nothing — is the failure this page exists
+  // to stop showing.
+  server.handle(
+    RPC_CHANNELS.skills.INSTALL_KIT,
+    async (
+      ctx,
+      workspaceId: string,
+      name: string,
+      skills: ExpertSkill[],
+      systemPromptPreset?: string,
+    ) => {
+      assertCallerWorkspaceBound(ctx, deps, workspaceId)
+      const workspace = getWorkspaceByNameOrId(workspaceId)
+      if (!workspace) throw new Error('Workspace not found')
+
+      const { installKit } = await import('@craft-agent/shared/labels/kit-install')
+      const result = installKit({
+        workspaceRoot: workspace.rootPath,
+        name,
+        skills,
+        ...(systemPromptPreset ? { systemPromptPreset } : {}),
+      })
+      deps.platform.logger?.info(
+        `SKILLS_INSTALL_KIT: ${name} -> ${result.ok ? `${result.skillsWritten.length} skills` : result.message}`,
+      )
       return result
     },
   )

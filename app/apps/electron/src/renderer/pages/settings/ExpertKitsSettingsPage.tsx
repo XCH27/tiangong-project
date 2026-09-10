@@ -66,6 +66,13 @@ import {
   type NormalizedLabelKind,
 } from '@craft-agent/shared/labels/kind-normalize'
 import { assessExpertKit, type ExpertKit } from '@craft-agent/shared/labels/expert-kit'
+import {
+  KIT_CATEGORIES,
+  summarizeKitCard,
+  type KitListing,
+} from '@craft-agent/shared/labels/kit-gallery'
+import { EXAMPLE_KITS } from '@craft-agent/shared/labels/example-kits'
+import { cn } from '@/lib/utils'
 import { resolveKitCatalog } from '@craft-agent/shared/labels/kit-resolve'
 import type { LoadedSkill } from '@craft-agent/shared/skills'
 
@@ -252,20 +259,17 @@ export default function ExpertKitsSettingsPage() {
                 </div>
               ) : (
                 <>
-                  <SettingsSection title={t('settings.expertKits.about')}>
-                    <SettingsCard className="px-4 py-3.5">
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {t('settings.expertKits.aboutText1')}{' '}
-                        <button
-                          type="button"
-                          onClick={() => window.electronAPI?.openUrl(getDocUrl('labels'))}
-                          className="text-foreground/70 hover:text-foreground underline underline-offset-2"
-                        >
-                          {t('chat.learnMore')}
-                        </button>
-                      </p>
-                    </SettingsCard>
-                  </SettingsSection>
+                  <KitGallery
+                    installedKits={flatLabels.filter((l) => normalizeLabelKind(l.kind) === 'expert')}
+                    installedSkills={installedSkills}
+                    busy={busy}
+                    onInstalled={(labelId) => {
+                      setSelectedId(labelId)
+                      refresh()
+                      refreshSkills()
+                    }}
+                    onSelectInstalled={setSelectedId}
+                  />
 
                   <SettingsSection
                     title={t('settings.expertKits.hierarchy')}
@@ -710,6 +714,219 @@ function KitPayload({
       <p className="text-xs leading-relaxed text-foreground/40">
         {t('settings.expertKits.payloadHint')}
       </p>
+    </div>
+  )
+}
+
+/**
+ * The kit gallery — what a kit is, shown rather than described.
+ *
+ * This replaced a card of prose explaining the concept. A person deciding
+ * whether they want an expert kit is not helped by a definition; they are
+ * helped by seeing a Code review kit that carries eight skills, and installing
+ * it.
+ *
+ * Two counted tabs rather than two pages, and the retired second-level detail
+ * page is deliberate: everything about a listing that matters on the decision —
+ * what it carries, whether it routes, who published it — belongs on the card,
+ * and a listing whose card cannot say that has a card problem, not a missing
+ * page.
+ *
+ * The gallery source is what Fleet actually ships (`EXAMPLE_KITS`) plus what is
+ * installed. There is no remote registry, and inventing listings that cannot be
+ * installed would make the whole surface a mockup.
+ */
+function KitGallery({
+  installedKits,
+  installedSkills,
+  busy,
+  onInstalled,
+  onSelectInstalled,
+}: {
+  installedKits: readonly LabelConfig[]
+  installedSkills: readonly LoadedSkill[]
+  busy: boolean
+  onInstalled: (labelId: string) => void
+  onSelectInstalled: (labelId: string) => void
+}) {
+  const { t } = useTranslation()
+  const { activeWorkspaceId } = useAppShellContext()
+  const [tab, setTab] = React.useState<'gallery' | 'installed'>('gallery')
+  const [category, setCategory] = React.useState<string>('all')
+  const [installing, setInstalling] = React.useState<string | null>(null)
+
+  const installedNames = React.useMemo(
+    () => new Set(installedKits.map((kit) => kit.name.toLowerCase())),
+    [installedKits],
+  )
+
+  const listings = React.useMemo<KitListing[]>(
+    () =>
+      EXAMPLE_KITS.map((kit) => ({
+        id: kit.id,
+        name: kit.name,
+        description: kit.audience.join(' · '),
+        version: '1.0.0',
+        categories: [],
+        skills: kit.skills,
+        installed: installedNames.has(kit.name.toLowerCase()),
+      })),
+    [installedNames],
+  )
+
+  const install = React.useCallback(
+    async (listing: KitListing) => {
+      if (!activeWorkspaceId) return
+      const api = window.electronAPI.installKit
+      if (!api) return
+      setInstalling(listing.id)
+      try {
+        const result = await api(activeWorkspaceId, listing.name, [...listing.skills])
+        if (result?.ok) {
+          toast.success(
+            t('settings.expertKits.installed', {
+              name: listing.name,
+              count: result.skillsWritten.length,
+            }),
+          )
+          onInstalled(result.label.id)
+          setTab('installed')
+        } else {
+          toast.error(result?.message ?? t('settings.expertKits.saveFailed'))
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t('settings.expertKits.saveFailed'))
+      } finally {
+        setInstalling(null)
+      }
+    },
+    [activeWorkspaceId, onInstalled, t],
+  )
+
+  const visible = tab === 'gallery' ? listings : []
+
+  return (
+    <div className="space-y-3">
+      {/* Counted tabs. The count is the point — an empty gallery should say so
+          on the tab, not by looking broken once you click it. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          {(
+            [
+              ['gallery', t('settings.expertKits.galleryTab'), listings.length],
+              ['installed', t('settings.expertKits.installedTab'), installedKits.length],
+            ] as const
+          ).map(([id, label, count]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={cn(
+                'flex items-center gap-1.5 text-sm transition-colors',
+                tab === id ? 'text-foreground font-medium' : 'text-foreground/50 hover:text-foreground/70',
+              )}
+            >
+              {label}
+              <span className="rounded-[4px] bg-foreground/[0.07] px-1.5 text-xs tabular-nums text-foreground/60">
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'gallery' && (
+        <div className="flex flex-wrap gap-1.5">
+          {[{ id: 'all', labelKey: 'settings.expertKits.categoryAll' }, ...KIT_CATEGORIES].map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setCategory(cat.id)}
+              className={cn(
+                'rounded-[6px] px-2 py-1 text-xs transition-colors',
+                category === cat.id
+                  ? 'bg-foreground/[0.07] text-foreground'
+                  : 'text-foreground/50 hover:bg-foreground/[0.05] hover:text-foreground/70',
+              )}
+            >
+              {t(cat.labelKey)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'installed' ? (
+        installedKits.length === 0 ? (
+          <p className="py-6 text-center text-sm text-foreground/40">
+            {t('settings.expertKits.noneInstalled')}
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {installedKits.map((kit) => {
+              const { catalog, unresolved } = resolveKitCatalog(kit.expertKit?.skills, installedSkills)
+              return (
+                <button
+                  key={kit.id}
+                  type="button"
+                  onClick={() => onSelectInstalled(kit.id)}
+                  className="rounded-[8px] border border-border/60 bg-foreground/[0.02] p-3 text-left transition-colors hover:bg-foreground/[0.05]"
+                >
+                  <div className="truncate text-sm font-medium">{getLocalizedLabelName(t, kit)}</div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-foreground/50">
+                    <span>{t('settings.expertKits.skillCount', { count: catalog.length })}</span>
+                    {unresolved.length > 0 && (
+                      <span className="text-info">
+                        {t('settings.expertKits.missingCount', { count: unresolved.length })}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {visible.map((listing) => {
+            const summary = summarizeKitCard(listing)
+            return (
+              <div
+                key={listing.id}
+                className="rounded-[8px] border border-border/60 bg-foreground/[0.02] p-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{listing.name}</div>
+                    <div className="truncate text-xs text-foreground/50">{listing.description}</div>
+                  </div>
+                  {/* The action says what happens, not what the state is —
+                      "installed" tells a reader nothing they can act on. */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || listing.installed || installing === listing.id}
+                    onClick={() => void install(listing)}
+                  >
+                    {listing.installed
+                      ? t('settings.expertKits.alreadyInstalled')
+                      : installing === listing.id
+                        ? t('settings.expertKits.installing')
+                        : t('settings.expertKits.install')}
+                  </Button>
+                </div>
+                <div className="mt-2.5 flex items-center gap-2 text-xs text-foreground/50">
+                  <span>{t('settings.expertKits.skillCount', { count: summary.skillCount })}</span>
+                  <span className="text-foreground/30">·</span>
+                  <span>v{listing.version}</span>
+                  {summary.warning === 'loads-everything' && (
+                    <span className="text-info">{t('settings.expertKits.loadsEverything')}</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

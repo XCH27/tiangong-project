@@ -273,6 +273,7 @@ const EXPECTED_CHANNELS: string[] = [
   'skills:delete',
   'skills:get',
   'skills:getFiles',
+  'skills:installKit',
   'skills:moveScope',
   'skills:openEditor',
   'skills:openFinder',
