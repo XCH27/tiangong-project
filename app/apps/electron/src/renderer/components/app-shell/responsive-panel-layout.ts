@@ -17,6 +17,12 @@ interface ResponsivePanelLayoutInput {
   navigatorWidth: number
   workbenchVisible: boolean
   workbenchWidth: number
+  /**
+   * Per-module floor from session-pane-layout (R18). Defaults to the compact
+   * workbench minimum so callers that have not resolved the active module keep
+   * the historical behaviour.
+   */
+  workbenchMinWidth?: number
 }
 
 export interface ResponsivePanelLayout {
@@ -54,6 +60,7 @@ function fitWorkbenchWidth(
   sidebarWidth: number,
   navigatorWidth: number,
   requestedWidth: number,
+  workbenchMinWidth: number = RIGHT_WORKBENCH_MIN_WIDTH,
 ): number {
   if (requestedWidth <= 0) return 0
 
@@ -67,7 +74,7 @@ function fitWorkbenchWidth(
     - PANEL_GAP
     - PANEL_MIN_WIDTH
 
-  if (available < RIGHT_WORKBENCH_MIN_WIDTH) return 0
+  if (available < workbenchMinWidth) return 0
 
   return Math.min(requestedWidth, available)
 }
@@ -130,12 +137,14 @@ export function resolveResponsivePanelLayout(
   // flipped state, `workbenchWidth` stayed 0, and `isRightWorkbenchRendered`
   // silently rendered nothing.
   const requestedWorkbenchWidth = input.workbenchVisible ? input.workbenchWidth : 0
+  const workbenchMinWidth = input.workbenchMinWidth ?? RIGHT_WORKBENCH_MIN_WIDTH
 
   const fit = () => fitWorkbenchWidth(
     input.containerWidth,
     sidebarWidth,
     navigatorWidth,
     requestedWorkbenchWidth,
+    workbenchMinWidth,
   )
   const contentIsComfortable = (workbenchWidth: number) => hasComfortableContentWidth(
     input.containerWidth,

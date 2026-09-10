@@ -131,8 +131,8 @@ export interface AppShellContextType {
   onOpenStoredUserPreferences: () => void
   onReset: () => void
 
-  // Unified session options callback
-  onSessionOptionsChange: (sessionId: string, updates: SessionOptionUpdates) => void
+  // Unified session options callback (async: awaits backend; callers may void it)
+  onSessionOptionsChange: (sessionId: string, updates: SessionOptionUpdates) => void | Promise<void>
 
   // Input draft callback
   onInputChange: (sessionId: string, value: string) => void

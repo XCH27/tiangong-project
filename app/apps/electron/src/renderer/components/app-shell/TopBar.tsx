@@ -21,6 +21,7 @@ import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
 import { AppMenu } from "../AppMenu"
+import type { SidebarVisibilityProjection } from "./sidebar-visibility"
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
 const RIGHT_SLOT_TWO_BADGES_THRESHOLD = 300
@@ -46,6 +47,10 @@ interface TopBarProps {
   onToggleFocusMode: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
+  /** Projected sidebar pressed state — must match rendered width (not only stored preference). */
+  sidebarAriaPressed?: boolean
+  /** Full sidebar projection when available (preferred over bare aria-pressed). */
+  sidebarProjection?: SidebarVisibilityProjection
 }
 
 export function TopBar({
@@ -68,6 +73,8 @@ export function TopBar({
   onToggleSidebar,
   onToggleFocusMode,
   isCompact,
+  sidebarAriaPressed,
+  sidebarProjection,
 }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
@@ -129,7 +136,22 @@ export function TopBar({
         {!isCompact && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <TopBarButton onClick={onToggleSidebar} aria-label={t("menu.toggleSidebar")}>
+            <TopBarButton
+              onClick={onToggleSidebar}
+              aria-label={t("menu.toggleSidebar")}
+              aria-pressed={sidebarProjection?.ariaPressed ?? sidebarAriaPressed}
+              title={t("menu.toggleSidebar")}
+              data-sidebar-chrome="toggle"
+              data-sidebar-rendered-width={String(
+                sidebarProjection?.renderedWidth
+                  ?? (sidebarAriaPressed ? 1 : 0),
+              )}
+              data-sidebar-visible={
+                (sidebarProjection?.isRendered ?? !!sidebarAriaPressed)
+                  ? 'true'
+                  : 'false'
+              }
+            >
               <PanelLeftRounded className="h-[18px] w-[18px] text-foreground/70" />
             </TopBarButton>
           </TooltipTrigger>

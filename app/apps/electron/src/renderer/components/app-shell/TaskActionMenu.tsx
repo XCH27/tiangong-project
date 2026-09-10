@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useTranslation } from "react-i18next"
-import { ChevronDown, Square, ArrowUpRight, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react'
+import { useSetAtom } from 'jotai'
+import { ChevronDown, Square, ArrowUpRight, CheckCircle2, XCircle, AlertTriangle, X } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -11,7 +12,7 @@ import {
 import { Spinner } from '@craft-agent/ui'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-import type { BackgroundTask } from './ActiveTasksBar'
+import { backgroundTasksAtomFamily, dismissBackgroundTask, type BackgroundTask } from '@/atoms/sessions'
 
 /** Terminal data for overlay display */
 export interface TerminalOverlayData {
@@ -64,8 +65,9 @@ export interface TaskActionMenuProps {
 export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, onShowTerminalOverlay, className }: TaskActionMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
+  const setTasks = useSetAtom(backgroundTasksAtomFamily(sessionId))
 
-  const isTerminal = task.status !== 'running'
+  const isTerminal = task.status !== 'running' && task.status !== 'stale'
 
   // Wall-clock timer for RUNNING tasks. The async-by-default agent path emits no
   // task_progress events, so deriving elapsed from startTime (rather than relying
@@ -122,6 +124,14 @@ export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, o
     setOpen(false)
   }
 
+  // Manually remove this chip from the bar. The chip is renderer-only state, so
+  // dismissing it just hides the indicator — it never kills the underlying task
+  // (shells use Stop for that). Escape hatch for a stuck 'running'/'stale' chip.
+  const handleDismiss = () => {
+    setTasks((prev) => dismissBackgroundTask(prev, task.id))
+    setOpen(false)
+  }
+
   // Status → icon + tint. Running shows the spinner; terminal/orphaned states
   // are visually distinct so a chip never falsely reads as "still running".
   const statusTint = cn(
@@ -129,19 +139,20 @@ export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, o
     "hover:bg-white/80 dark:hover:bg-white/15",
     "data-[state=open]:bg-white/80 dark:data-[state=open]:bg-white/15",
     task.status === 'failed' && "bg-destructive/10 hover:bg-destructive/15 dark:bg-destructive/15",
-    task.status === 'orphaned' && "bg-amber-500/10 hover:bg-amber-500/15 dark:bg-amber-500/15",
+    (task.status === 'orphaned' || task.status === 'stale') && "bg-info/5 hover:bg-info/10 dark:bg-info/10",
   )
 
   const StatusIcon = () => {
     switch (task.status) {
       case 'completed':
-        return <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-500" />
+        return <CheckCircle2 className="h-3.5 w-3.5 text-success" />
       case 'failed':
         return <XCircle className="h-3.5 w-3.5 text-destructive" />
       case 'stopped':
         return <Square className="h-3 w-3 opacity-60" />
       case 'orphaned':
-        return <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-500" />
+      case 'stale':
+        return <AlertTriangle className="h-3.5 w-3.5 text-info" />
       default:
         return <Spinner className="text-xs" />
     }
@@ -152,11 +163,14 @@ export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, o
     failed: t('chat.taskStatusFailed', 'failed'),
     stopped: t('chat.taskStatusStopped', 'stopped'),
     orphaned: t('chat.taskStatusOrphaned', 'orphaned'),
+    stale: t('common.unknown'),
   }
 
   const chipTitle = task.status === 'orphaned'
     ? t('chat.taskOrphanedHint', 'This background task was terminated when its turn ended.')
-    : t("chat.clickForTaskActions")
+    : task.status === 'stale'
+      ? t('chat.taskStaleHint', 'No lifecycle signal received. The task may still be running.')
+      : t("chat.clickForTaskActions")
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -166,7 +180,7 @@ export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, o
           className={cn(
             "h-[30px] pl-2.5 pr-2 text-xs font-medium rounded-[8px]",
             "flex items-center gap-1.5 shrink-0 select-none",
-            "transition-all shadow-minimal cursor-pointer",
+            "transition-[color,background-color,box-shadow] shadow-minimal cursor-pointer",
             statusTint,
             className
           )}
@@ -231,8 +245,14 @@ export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, o
           {t('chat.viewOutput')}
         </StyledDropdownMenuItem>
 
-        {/* Stop Task - Only show for shell tasks (inserts kill command into input) */}
-        {task.type === 'shell' && (
+        {/* Dismiss - remove the chip (renderer-only; does not kill the task) */}
+        <StyledDropdownMenuItem onClick={handleDismiss}>
+          <X />
+          {t('common.dismiss')}
+        </StyledDropdownMenuItem>
+
+        {/* Stop Task - shell has an authoritative kill path; agent/workflow refuse honestly. */}
+        {(task.type === 'shell' || task.type === 'agent' || task.type === 'workflow') && !isTerminal && (
           <>
             <StyledDropdownMenuSeparator />
             <StyledDropdownMenuItem onClick={handleStopTask}>

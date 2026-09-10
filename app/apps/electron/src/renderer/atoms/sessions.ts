@@ -517,12 +517,13 @@ export const forceSessionMessagesReloadAtom = atom(
 /**
  * Lifecycle status of a background task chip.
  * - `running`  — backgrounded, no terminal signal yet (chip shows a spinner + live elapsed).
+ * - `stale` — no lifecycle signal; shown as Unknown and remains recoverable (v0.11.4 admit).
  * - `completed`/`failed`/`stopped` — a real task_completed notification arrived.
  * - `orphaned` — the turn that owned the task ended before it finished, so it was
  *   terminated with that turn's subprocess. Shown distinctly instead of a false
  *   "running". Not produced once WS2 keep-alive is enabled.
  */
-export type BackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'stopped' | 'orphaned'
+export type BackgroundTaskStatus = 'running' | 'stale' | 'completed' | 'failed' | 'stopped' | 'orphaned'
 
 export interface BackgroundTask {
   /** Task or shell ID */
@@ -539,6 +540,8 @@ export interface BackgroundTask {
   startTime: number
   /** Elapsed seconds (from progress events; the chip also derives it from startTime) */
   elapsedSeconds: number
+  /** Last renderer-observed lifecycle/progress signal; falls back to startTime. */
+  lastSignalAt?: number
   /** Task intent/description */
   intent?: string
   /** Lifecycle status; defaults to 'running' when added */
@@ -549,6 +552,44 @@ export interface BackgroundTask {
   outputFile?: string
   /** Short summary, set when task_completed arrives */
   summary?: string
+}
+
+/** Result of a kill attempt — never silently drops a still-live task from the UI. */
+export type KillBackgroundTaskResult =
+  | { ok: true; removed: true }
+  | { ok: true; removed: false; status: BackgroundTaskStatus }
+  | { ok: false; reason: string; reasonKey?: string }
+
+/**
+ * Apply an honest kill outcome to the task list.
+ * Shell kills that confirm termination mark stopped (or remove when already terminal).
+ * Agent/workflow kills that the backend cannot perform keep the chip and surface a reason.
+ */
+export function applyKillBackgroundTaskResult(
+  tasks: BackgroundTask[],
+  taskId: string,
+  result: KillBackgroundTaskResult,
+): BackgroundTask[] {
+  if (result.ok && result.removed) {
+    return tasks.filter((t) => t.id !== taskId)
+  }
+  if (result.ok && !result.removed) {
+    return tasks.map((t) =>
+      t.id === taskId
+        ? { ...t, status: result.status, completedAt: t.completedAt ?? Date.now() }
+        : t,
+    )
+  }
+  // Failed kill: leave the task visible unchanged.
+  return tasks
+}
+
+/** Pure dismiss — removes chip only; never kills an underlying process. */
+export function dismissBackgroundTask(
+  tasks: BackgroundTask[],
+  taskId: string,
+): BackgroundTask[] {
+  return tasks.filter((t) => t.id !== taskId)
 }
 
 /**

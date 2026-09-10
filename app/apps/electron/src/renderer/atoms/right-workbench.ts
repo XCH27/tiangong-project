@@ -9,8 +9,8 @@ export type WorkbenchModuleKind =
   | 'task-board'
   | 'browser'
   | 'review'
-  | 'canvas'
   | 'terminal'
+  | 'canvas'
 
 export interface WorkbenchModuleEntry {
   id: string
@@ -55,15 +55,16 @@ export function getActiveWorkbenchBrowserResource(
 export async function prepareWorkbenchRendererOverlay(
   state: RightWorkbenchState,
   detach: (resourceId: string) => Promise<unknown>,
-): Promise<boolean> {
+): Promise<{ ok: true } | { ok: false; reason: string; resourceId: string }> {
   const resourceId = getActiveWorkbenchBrowserResource(state)
-  if (!resourceId) return true
+  if (!resourceId) return { ok: true }
 
   try {
     await detach(resourceId)
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { ok: false, reason: reason || 'detach failed', resourceId }
   }
 }
 
@@ -142,8 +143,8 @@ const WORKBENCH_MODULE_KINDS = new Set<WorkbenchModuleKind>([
   'task-board',
   'browser',
   'review',
-  'canvas',
   'terminal',
+  'canvas',
 ])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -169,6 +170,10 @@ export function getPersistableWorkbenchState(
  * Treat renderer preferences as untrusted input. Invalid/stale entries are
  * discarded, duplicate ids cannot create ambiguous close/select behaviour,
  * and an invalid active id falls back to the first surviving entry.
+ *
+ * R18 modules (including task-board / review / terminal / canvas) are restored
+ * when structurally valid. The top-level Board gate is separate and must not
+ * silently strip workbench projections from restored state.
  */
 export function restorePersistedWorkbenchState(
   value: unknown,
@@ -197,14 +202,41 @@ export function restorePersistedWorkbenchState(
     })
   }
 
-  // A deliberate "close every module" state is valid and must restore as the
-  // compact launcher rather than silently recreating the default task board.
-  if (entries.length === 0 && value.entries.length !== 0) return fallback
+  // Empty after validation: stay empty (launcher), do not invent a tab.
+  if (entries.length === 0) {
+    return { entries: [], activeId: null }
+  }
 
   const activeId = typeof value.activeId === 'string' && ids.has(value.activeId)
     ? value.activeId
     : entries[0]?.id ?? null
   return { entries, activeId }
+}
+
+/**
+ * Drop side-task tabs whose Session no longer exists so a deleted/archived
+ * session cannot leave a falsely live workbench tab.
+ */
+export function reconcileWorkbenchSideTasks(
+  state: RightWorkbenchState,
+  sessionExists: (sessionId: string) => boolean,
+): RightWorkbenchState {
+  const entries = state.entries.filter((entry) => {
+    if (entry.kind !== 'side-task') return true
+    if (!entry.sessionId) return false
+    return sessionExists(entry.sessionId)
+  })
+  if (entries.length === state.entries.length) return state
+
+  if (entries.length === 0) {
+    return { entries: [], activeId: null }
+  }
+
+  const activeStillPresent = entries.some((entry) => entry.id === state.activeId)
+  return {
+    entries,
+    activeId: activeStillPresent ? state.activeId : entries[0]?.id ?? null,
+  }
 }
 
 export function createWorkbenchModule(

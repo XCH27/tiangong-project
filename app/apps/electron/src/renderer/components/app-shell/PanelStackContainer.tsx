@@ -32,10 +32,10 @@ import { isDetailNavState } from '@/lib/nav-helpers'
 import { PanelSlot } from './PanelSlot'
 import { PanelResizeSash } from './PanelResizeSash'
 import { CompactPanelTransition } from './CompactPanelTransition'
+import { SidebarPanelSlot } from './SidebarPanelSlot'
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
-  PANEL_SIDEBAR_GAP,
   PANEL_STACK_VERTICAL_OVERFLOW,
   RADIUS_EDGE,
   RADIUS_INNER,
@@ -205,22 +205,13 @@ export function PanelStackContainer({
         style={{ gap: PANEL_GAP, flexGrow: 1, minWidth: 0 }}
       >
         {/* === SIDEBAR SLOT === */}
-        <motion.div
-          data-panel-role="sidebar"
-          initial={false}
-          animate={{
-            width: hasSidebar ? sidebarWidth : 0,
-            marginRight: hasSidebar ? PANEL_SIDEBAR_GAP - PANEL_GAP : -PANEL_GAP,
-            opacity: hasSidebar ? 1 : 0,
-          }}
+        <SidebarPanelSlot
+          sidebarWidth={sidebarWidth}
+          visible={hasSidebar}
           transition={transition}
-          className="h-full relative shrink-0"
-          style={{ overflowX: 'clip', overflowY: 'visible' }}
         >
-          <div className="h-full" style={{ width: sidebarWidth }}>
-            {sidebarSlot}
-          </div>
-        </motion.div>
+          {sidebarSlot}
+        </SidebarPanelSlot>
 
         {/* === NAVIGATOR SLOT === */}
         <motion.div

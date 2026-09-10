@@ -21,7 +21,7 @@ import {
   Image,
   LayoutList,
   Link2,
-  MonitorUp,
+  Paintbrush,
   Plus,
   RefreshCw,
   SquareTerminal,
@@ -29,6 +29,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { LoadingIndicator, Spinner, TerminalOutput, UnifiedDiffViewer } from '@craft-agent/ui'
 import { groupMessagesByTurn } from '@craft-agent/ui/chat/turn-utils'
 import type { TodoItem } from '@craft-agent/ui/chat/TurnCard'
@@ -56,11 +57,13 @@ import {
   getWorkbenchHeaderMode,
   openWorkbenchModuleAtom,
   prepareWorkbenchRendererOverlay,
+  reconcileWorkbenchSideTasks,
   rightWorkbenchAtom,
   selectWorkbenchModuleAtom,
   type WorkbenchModuleEntry,
   type WorkbenchModuleKind,
 } from '@/atoms/right-workbench'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { browserInstancesMapAtom, removedBrowserInstanceIdsAtom } from '@/atoms/browser-pane'
 import { BrowserToolbar } from '@/components/browser/BrowserToolbar'
 import { Button } from '@/components/ui/button'
@@ -84,6 +87,7 @@ import {
   StyledDropdownMenuItem,
 } from '@/components/ui/styled-dropdown'
 import { cn } from '@/lib/utils'
+import { isWorkbenchModuleOpenable } from '@/lib/product-surface'
 import { observeOpenOverlay } from '@/lib/open-overlay-observer'
 import { isExpertLabel } from '@craft-agent/shared/labels/kind-normalize'
 import { getLocalizedLabelName } from '@/utils/label-display-name'
@@ -103,18 +107,24 @@ const MODULE_ICONS: Record<WorkbenchModuleKind, React.ComponentType<{ className?
   'task-board': LayoutList,
   browser: Globe,
   review: FileCode,
-  canvas: MonitorUp,
   terminal: SquareTerminal,
+  canvas: Paintbrush,
 }
 
+/** R18 launcher catalog — top-level Board stays gated elsewhere; task-board is the session projection. */
 const WORKBENCH_MODULE_ORDER: WorkbenchModuleKind[] = [
   'task-board',
   'browser',
   'review',
-  'canvas',
   'terminal',
   'side-task',
+  'canvas',
 ]
+
+/** Open menu follows product-surface openable set (all R18 modules, Canvas display-only). */
+const WORKBENCH_ADD_MODULE_ORDER: WorkbenchModuleKind[] = WORKBENCH_MODULE_ORDER.filter(
+  (kind) => isWorkbenchModuleOpenable(kind),
+)
 
 const READ_ONLY_ENTITY_BUTTON_PROPS = {
   disabled: true,
@@ -736,13 +746,17 @@ function ReviewModule({
       .then((nextDiff) => {
         if (requestId === diffRequestIdRef.current) setFileDiff(nextDiff)
       })
-      .catch(() => {
+      .catch((error) => {
         if (requestId === diffRequestIdRef.current) setFileDiff(null)
+        toast.error(t('rightWorkbench.review.diffFailed', {
+          defaultValue: 'Could not load the file diff: {{reason}}',
+          reason: error instanceof Error ? error.message : String(error),
+        }))
       })
       .finally(() => {
         if (requestId === diffRequestIdRef.current) setDiffLoading(false)
       })
-  }, [sessionId])
+  }, [sessionId, t])
 
   // The panel renders one normalized shape and never branches on where a diff
   // came from; today that is the working tree, and session snapshots join the
@@ -1022,18 +1036,6 @@ function TerminalModule({
   )
 }
 
-function CanvasModule() {
-  const { t } = useTranslation()
-  return (
-    <EntityListEmptyScreen
-      icon={<MonitorUp />}
-      title={t('rightWorkbench.canvas.title')}
-      description={t('rightWorkbench.canvas.description')}
-      className="h-full"
-    />
-  )
-}
-
 export function RightWorkbench({
   sessionId,
   workingDirectory,
@@ -1044,10 +1046,11 @@ export function RightWorkbench({
   onCreateSideTask,
 }: RightWorkbenchProps) {
   const { t } = useTranslation()
-  const [state] = useAtom(rightWorkbenchAtom)
+  const [state, setWorkbenchState] = useAtom(rightWorkbenchAtom)
   const selectModule = useSetAtom(selectWorkbenchModuleAtom)
   const openModule = useSetAtom(openWorkbenchModuleAtom)
   const closeModule = useSetAtom(closeWorkbenchModuleAtom)
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const [rendererOverlayOpen, setRendererOverlayOpen] = React.useState(false)
   const [browserInteractionSuspended, setBrowserInteractionSuspended] = React.useState(false)
   const [addMenuOpen, setAddMenuOpen] = React.useState(false)
@@ -1066,6 +1069,16 @@ export function RightWorkbench({
   })
 
   React.useEffect(() => observeOpenOverlay(setRendererOverlayOpen), [])
+
+  // Reconcile side-task tabs against the live Session authority so deleted
+  // sessions never leave a falsely live workbench tab.
+  React.useEffect(() => {
+    const reconciled = reconcileWorkbenchSideTasks(
+      state,
+      (sessionId) => sessionMetaMap.has(sessionId),
+    )
+    if (reconciled !== state) setWorkbenchState(reconciled)
+  }, [sessionMetaMap, setWorkbenchState, state])
 
   const handleOverlayMenuOpenChange = async (
     menu: 'add' | 'overflow',
@@ -1088,8 +1101,12 @@ export function RightWorkbench({
       (resourceId) => window.electronAPI.browserPane.detach(resourceId),
     )
     if (token !== overlayMenuTokenRef.current) return
-    if (!prepared) {
+    if (!prepared.ok) {
       setBrowserInteractionSuspended(false)
+      toast.error(t('rightWorkbench.browser.detachFailed', {
+        defaultValue: 'Could not release the browser surface: {{reason}}',
+        reason: prepared.reason,
+      }))
       return
     }
     setOpen(true)
@@ -1102,9 +1119,18 @@ export function RightWorkbench({
       setBrowserInteractionSuspended(true)
       try {
         await window.electronAPI.browserPane.detach(resourceId)
-      } catch {
+      } catch (error) {
         // A stale native id must not trap the user on an uncloseable tab.
-        void window.electronAPI.browserPane.destroy(resourceId)
+        try {
+          await window.electronAPI.browserPane.destroy(resourceId)
+        } catch (destroyError) {
+          toast.error(t('rightWorkbench.browser.detachFailed', {
+            defaultValue: 'Could not release the browser surface: {{reason}}',
+            reason: destroyError instanceof Error ? destroyError.message : String(error),
+          }))
+          if (token === selectionTokenRef.current) setBrowserInteractionSuspended(false)
+          return
+        }
       }
     }
     if (token !== selectionTokenRef.current) return
@@ -1117,29 +1143,56 @@ export function RightWorkbench({
       if (entry.id === state.activeId) {
         try {
           await window.electronAPI.browserPane.detach(entry.resourceId)
-        } catch {
+        } catch (error) {
+          toast.error(t('rightWorkbench.browser.detachFailed', {
+            defaultValue: 'Could not release the browser surface: {{reason}}',
+            reason: error instanceof Error ? error.message : String(error),
+          }))
           // Continue with destroy/close so a stale native resource cannot make
           // the renderer tab permanently uncloseable.
         }
       }
-      void window.electronAPI.browserPane.destroy(entry.resourceId)
+      try {
+        await window.electronAPI.browserPane.destroy(entry.resourceId)
+      } catch (error) {
+        toast.error(t('rightWorkbench.browser.closeFailed', {
+          defaultValue: 'Could not close the browser surface: {{reason}}',
+          reason: error instanceof Error ? error.message : String(error),
+        }))
+      }
     }
     closeModule(entry.id)
-  }, [closeModule, state.activeId])
+  }, [closeModule, state.activeId, t])
 
   const handleOpenModule = async (kind: WorkbenchModuleKind) => {
+    // Refuse half-built modules so the "+" menu cannot open a dead surface.
+    if (!isWorkbenchModuleOpenable(kind)) {
+      toast.error(t('rightWorkbench.moduleNotOpenable', {
+        defaultValue: 'This workbench module is not available.',
+      }))
+      return
+    }
+
     if (kind !== 'side-task') {
       openModule(kind)
       return
     }
 
-    const createdSessionId = await onCreateSideTask()
-    if (!createdSessionId) return
-    openModule({ kind, sessionId: createdSessionId })
+    try {
+      const createdSessionId = await onCreateSideTask()
+      if (!createdSessionId) {
+        toast.error(t('toast.failedToCreateSession'))
+        return
+      }
+      openModule({ kind, sessionId: createdSessionId })
+    } catch (error) {
+      toast.error(t('toast.failedToCreateSession'))
+      console.error('[RightWorkbench] side-task create failed:', error)
+    }
   }
 
   const moduleLabel = (kind: WorkbenchModuleKind) => t(`rightWorkbench.modules.${kind}`)
-  const moduleMenuItems = WORKBENCH_MODULE_ORDER.map((kind) => {
+  const moduleMenuItems = WORKBENCH_ADD_MODULE_ORDER.map((kind) => {
     const Icon = MODULE_ICONS[kind]
     return (
       <StyledDropdownMenuItem
@@ -1392,14 +1445,30 @@ export function RightWorkbench({
               {entry.kind === 'review' && (
                 <ReviewModule active={active} sessionId={sessionId} workingDirectory={workingDirectory} />
               )}
-              {entry.kind === 'canvas' && <CanvasModule />}
               {entry.kind === 'terminal' && (
                 <TerminalModule sessionId={sessionId} workingDirectory={workingDirectory} />
+              )}
+              {entry.kind === 'canvas' && (
+                <CanvasModule />
               )}
             </div>
           )
         })}
       </div>
     </aside>
+  )
+}
+
+/** R18 Canvas entry — honest display-only; no canvas document or execution authority. */
+function CanvasModule() {
+  const { t } = useTranslation()
+  return (
+    <EntityListEmptyScreen
+      icon={<Paintbrush />}
+      title={t('rightWorkbench.modules.canvas')}
+      description={t('rightWorkbench.canvas.displayOnly', {
+        defaultValue: 'Canvas is display-only in this release. It does not own a document or run workflows.',
+      })}
+    />
   )
 }

@@ -77,10 +77,16 @@ import {
   springTransition as collapsibleSpring,
 } from "@/components/ui/collapsible"
 import { SessionList, type ChatGroupingMode } from "./SessionList"
+import { FabNewChat } from "./FabNewChat"
 import { MainContentPanel } from "./MainContentPanel"
 import { PanelStackContainer } from "./PanelStackContainer"
 import { RightWorkbench } from "./RightWorkbench"
-import { isRightWorkbenchAvailable } from "@/atoms/right-workbench"
+import {
+  isRightWorkbenchAvailable,
+  rightWorkbenchAtom,
+} from "@/atoms/right-workbench"
+import { resolveShellLayout } from "./shell-layout"
+import { BOARD_VIEW_ENABLED } from "@/lib/product-surface"
 import { useDirectoryPicker } from "@/hooks/useDirectoryPicker"
 import { ServerDirectoryBrowser } from "@/components/ServerDirectoryBrowser"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
@@ -167,7 +173,10 @@ import {
   RADIUS_EDGE,
   RADIUS_INNER,
 } from "./panel-constants"
-import { resolveResponsivePanelLayout } from "./responsive-panel-layout"
+import {
+  applySidebarToggle,
+  resolveSidebarVisibility,
+} from "./sidebar-visibility"
 import { hasOpenOverlay } from "@/lib/overlay-detection"
 import { clearSourceIconCaches } from "@/lib/icon-cache"
 import { dispatchFocusInputEvent } from "./input/focus-input-events"
@@ -283,6 +292,14 @@ function AppShellContent({
     return storage.get(storage.KEYS.rightWorkbenchWidth, 420)
   })
   const rightWorkbenchWidthRef = React.useRef(rightWorkbenchWidth)
+  // Live mirrors so the resize effect below registers global listeners only when
+  // isResizing toggles, not on every width change during a drag.
+  const isSidebarVisibleRef = React.useRef(isSidebarVisible)
+  isSidebarVisibleRef.current = isSidebarVisible
+  const sidebarWidthRef = React.useRef(sidebarWidth)
+  sidebarWidthRef.current = sidebarWidth
+  const sessionListWidthRef = React.useRef(sessionListWidth)
+  sessionListWidthRef.current = sessionListWidth
 
   // Hides both sidebar and navigator (CMD+. toggle)
   // Seed from either focused window param or persisted preference, then keep it toggleable.
@@ -345,11 +362,22 @@ function AppShellContent({
     isRightWorkbenchAvailableForRoute
     && navState.rightSidebar?.type === 'workbench'
     && !isAutoCompact
+  const rightWorkbenchState = useAtomValue(rightWorkbenchAtom)
+  const activeWorkbenchKind = rightWorkbenchState.entries.find(
+    (entry) => entry.id === rightWorkbenchState.activeId,
+  )?.kind ?? rightWorkbenchState.entries[0]?.kind ?? 'task-board'
+  // Ref mirrors the latest fit probe so the toggle handler stays stable while
+  // still refusing a no-op open with an explicit localized reason.
+  const canFitRightWorkbenchRef = React.useRef(true)
 
   const handleToggleRightWorkbench = useCallback(() => {
     if (!isRightWorkbenchAvailableForRoute) return
+    if (!canFitRightWorkbenchRef.current && !isRightWorkbenchVisible) {
+      toast.info(t('rightWorkbench.toggleTooNarrow'))
+      return
+    }
     updateRightSidebar(isRightWorkbenchVisible ? undefined : { type: 'workbench' })
-  }, [isRightWorkbenchAvailableForRoute, isRightWorkbenchVisible, updateRightSidebar])
+  }, [isRightWorkbenchAvailableForRoute, isRightWorkbenchVisible, updateRightSidebar, t])
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel and still
@@ -402,50 +430,59 @@ function AppShellContent({
   // only for domains that still require a dedicated list (sources, skills, settings,
   // automations, and project detail routes). This prevents a hidden second session list
   // from retaining width, focus targets, filters, and menu state.
-  const isBoardView = isSessionsNavigation(navState) && navState.viewMode === 'board'
+  const isBoardView =
+    BOARD_VIEW_ENABLED && isSessionsNavigation(navState) && navState.viewMode === 'board'
   const isNavigatorPanelNeeded = !isBoardView && !isSessionsNavigation(navState)
-  const responsivePanelLayout = resolveResponsivePanelLayout({
-    containerWidth: shellWidth,
+
+  // Single production layout authority: sidebar projection + session-pane
+  // chat/workbench split (resolveSessionPaneLayout) + navigator yield.
+  const shellLayout = resolveShellLayout({
+    shellWidth,
     compact: isAutoCompact,
     focusMode: isSidebarAndNavigatorHidden,
-    sidebarVisible: isSidebarVisible,
-    sidebarWidth,
-    navigatorVisible: isNavigatorPanelNeeded,
-    navigatorWidth: sessionListWidth,
-    workbenchVisible: isRightWorkbenchVisible,
-    workbenchWidth: rightWorkbenchWidth,
+    sidebarStoredVisible: isSidebarVisible,
+    sidebarStoredWidth: sidebarWidth,
+    navigatorNeeded: isNavigatorPanelNeeded,
+    navigatorStoredWidth: sessionListWidth,
+    workbenchRequested: isRightWorkbenchVisible,
+    workbenchStoredWidth: rightWorkbenchWidth,
+    workbenchKind: activeWorkbenchKind,
   })
+  const sidebarProjection = shellLayout.sidebar
+  const layoutSidebarWidth = shellLayout.sidebarWidth
+  const layoutNavigatorWidth = shellLayout.navigatorWidth
+  const layoutWorkbenchWidth = shellLayout.workbenchWidth
   const isRightWorkbenchRendered =
-    isRightWorkbenchVisible && responsivePanelLayout.workbenchWidth > 0
+    isRightWorkbenchVisible && shellLayout.workbenchVisible && layoutWorkbenchWidth > 0
 
-  // A width-blocked workbench must not present as an enabled toggle that does
-  // nothing. `isRightWorkbenchVisible` is only the requested state; the resolver
-  // decides whether the shell can actually host the panel. Probe it with the
-  // workbench requested so the control can say honestly why it is unavailable
-  // instead of silently flipping `aria-pressed` with nothing on screen.
+  // Probe with workbench requested so the toggle can refuse honestly when
+  // session-pane would block by width (same production resolver).
+  const workbenchFitProbe = resolveShellLayout({
+    shellWidth,
+    compact: isAutoCompact,
+    focusMode: isSidebarAndNavigatorHidden,
+    sidebarStoredVisible: isSidebarVisible,
+    sidebarStoredWidth: sidebarWidth,
+    navigatorNeeded: isNavigatorPanelNeeded,
+    navigatorStoredWidth: sessionListWidth,
+    workbenchRequested: true,
+    workbenchStoredWidth: rightWorkbenchWidth,
+    workbenchKind: activeWorkbenchKind,
+  })
   const canFitRightWorkbench =
     isRightWorkbenchAvailableForRoute
     && !isAutoCompact
     && (
       shellWidth <= 0
-      || resolveResponsivePanelLayout({
-        containerWidth: shellWidth,
-        compact: isAutoCompact,
-        focusMode: isSidebarAndNavigatorHidden,
-        sidebarVisible: isSidebarVisible,
-        sidebarWidth,
-        navigatorVisible: isNavigatorPanelNeeded,
-        navigatorWidth: sessionListWidth,
-        workbenchVisible: true,
-        workbenchWidth: rightWorkbenchWidth,
-      }).workbenchWidth > 0
+      || (workbenchFitProbe.workbenchVisible && !workbenchFitProbe.workbenchBlockedByWidth)
     )
+  canFitRightWorkbenchRef.current = canFitRightWorkbench
   const effectiveSidebarAndNavigatorHidden =
-    isSidebarAndNavigatorHidden
-    || isAutoCompact
-    || (
-      responsivePanelLayout.sidebarWidth === 0
-      && responsivePanelLayout.navigatorWidth === 0
+    !sidebarProjection.isRendered
+    && (
+      isSidebarAndNavigatorHidden
+      || isAutoCompact
+      || layoutNavigatorWidth === 0
     )
 
   // Derive source filter from navigation state (only when in sources navigator)
@@ -777,7 +814,7 @@ function AppShellContent({
     onSelectWorkspace(targetWorkspaceId)
   }, [onSelectWorkspace])
   const {
-    automations, automationTestResults,
+    automations, automationLoadError, retryLoadAutomations, automationTestResults,
     automationPendingDelete, pendingDeleteAutomation, setAutomationPendingDelete,
     handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, confirmDeleteAutomation,
     getAutomationHistory, handleReplayAutomation,
@@ -1006,12 +1043,15 @@ function AppShellContent({
   }, [])
 
   const handleToggleSidebar = useCallback(() => {
-    if (isSidebarAndNavigatorHidden) {
-      setIsSidebarAndNavigatorHidden(false)
-      return
-    }
-    setIsSidebarVisible(v => !v)
-  }, [isSidebarAndNavigatorHidden])
+    const next = applySidebarToggle({
+      storedVisible: isSidebarVisibleRef.current,
+      storedWidth: sidebarWidthRef.current,
+      focusMode: isSidebarAndNavigatorHidden,
+      autoCompact: isAutoCompact,
+    })
+    setIsSidebarVisible(next.storedVisible)
+    setIsSidebarAndNavigatorHidden(next.focusMode)
+  }, [isSidebarAndNavigatorHidden, isAutoCompact])
 
   // Sidebar toggle (CMD+B)
   useAction('view.toggleSidebar', handleToggleSidebar)
@@ -1139,7 +1179,14 @@ function AppShellContent({
           setSidebarHandleY(e.clientY - rect.top)
         }
       } else if (isResizing === 'session-list') {
-        const offset = isSidebarVisible ? sidebarWidth : 0
+        // Resize offset tracks the projected (rendered) sidebar, never a hidden
+        // preference that would shift the sash by a phantom width.
+        const offset = resolveSidebarVisibility({
+          storedVisible: isSidebarVisibleRef.current,
+          storedWidth: sidebarWidthRef.current,
+          focusMode: isSidebarAndNavigatorHidden,
+          autoCompact: isAutoCompact,
+        }).resizeOffset
         const newWidth = Math.min(Math.max(e.clientX - offset, 240), 480)
         setSessionListWidth(newWidth)
         if (sessionListHandleRef.current) {
@@ -1158,10 +1205,10 @@ function AppShellContent({
 
     const handleMouseUp = () => {
       if (isResizing === 'sidebar') {
-        storage.set(storage.KEYS.sidebarWidth, sidebarWidth)
+        storage.set(storage.KEYS.sidebarWidth, sidebarWidthRef.current)
         setSidebarHandleY(null)
       } else if (isResizing === 'session-list') {
-        storage.set(storage.KEYS.sessionListWidth, sessionListWidth)
+        storage.set(storage.KEYS.sessionListWidth, sessionListWidthRef.current)
         setSessionListHandleY(null)
       } else if (isResizing === 'right-workbench') {
         storage.set(storage.KEYS.rightWorkbenchWidth, rightWorkbenchWidthRef.current)
@@ -1176,13 +1223,7 @@ function AppShellContent({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [
-    isResizing,
-    sidebarWidth,
-    sessionListWidth,
-    rightWorkbenchWidth,
-    isSidebarVisible,
-  ])
+  }, [isResizing, isSidebarAndNavigatorHidden, isAutoCompact])
 
   // Spring transition config - shared between sidebar and header
   // Critical damping (no bounce): damping = 2 * sqrt(stiffness * mass)
@@ -2528,6 +2569,8 @@ function AppShellContent({
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
           isCompact={isAutoCompact}
+          sidebarAriaPressed={sidebarProjection.ariaPressed}
+          sidebarProjection={sidebarProjection}
         />
         <GlobalSearchDialog
           open={globalSearchOpen}
@@ -2842,15 +2885,15 @@ function AppShellContent({
             </div>
           </div>
           }
-          sidebarWidth={responsivePanelLayout.sidebarWidth}
+          sidebarWidth={layoutSidebarWidth}
           navigatorSlot={isNavigatorPanelNeeded ? (
             <div
               style={{ width: isAutoCompact ? '100%' : sessionListWidth }}
               className="h-full flex flex-col min-w-0 relative z-panel"
             >
             <PanelHeader
-              title={isSidebarVisible ? listTitle : undefined}
-              compensateForStoplight={!isSidebarVisible}
+              title={sidebarProjection.titleFromSidebar ? listTitle : undefined}
+              compensateForStoplight={sidebarProjection.compensateForStoplight}
               badge={automationFilter?.automationType === 'scheduled' ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -3705,6 +3748,8 @@ function AppShellContent({
               /* Automations List - filtered by type if automationFilter is active */
               <AutomationsListPanel
                 automations={automations}
+                loadError={automationLoadError}
+                onRetryLoad={retryLoadAutomations}
                 automationFilter={automationFilter ? { kind: AUTOMATION_TYPE_TO_FILTER_KIND[automationFilter.automationType] ?? 'all' } : undefined}
                 onAutomationClick={handleAutomationSelect}
                 onTestAutomation={handleTestAutomation}
@@ -3809,9 +3854,16 @@ function AppShellContent({
                 />
               </>
             )}
+            {/* Compact/mobile FAB — same Craft placement: only on the session
+                list itself, never over an open chat (would cover the composer).
+                Use hasSessionDetail (not navState.details): sequential navigator
+                type-guards above exhaustively narrow navState to never for TS. */}
+            {isAutoCompact && isSessionsNavigation(navState) && !hasSessionDetail && (
+              <FabNewChat onClick={() => handleNewChat()} />
+            )}
             </div>
           ) : null}
-          navigatorWidth={responsivePanelLayout.navigatorWidth}
+          navigatorWidth={layoutNavigatorWidth}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
           isRightSidebarVisible={isRightWorkbenchRendered}
           isCompact={isAutoCompact}
@@ -3821,7 +3873,7 @@ function AppShellContent({
         {isRightWorkbenchRendered && (
           <div
             className="relative h-full shrink-0"
-            style={{ width: responsivePanelLayout.workbenchWidth }}
+            style={{ width: layoutWorkbenchWidth }}
           >
             <div
               ref={rightWorkbenchHandleRef}
@@ -3874,7 +3926,7 @@ function AppShellContent({
         )}
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
-        {responsivePanelLayout.sidebarWidth > 0 && (
+        {layoutSidebarWidth > 0 && (
         <div
           ref={resizeHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('sidebar') }}
@@ -3890,8 +3942,8 @@ function AppShellContent({
             width: PANEL_SASH_HIT_WIDTH,
             top: PANEL_STACK_VERTICAL_OVERFLOW,
             bottom: PANEL_STACK_VERTICAL_OVERFLOW,
-            left: responsivePanelLayout.sidebarWidth > 0
-              ? responsivePanelLayout.sidebarWidth + (PANEL_SIDEBAR_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH
+            left: layoutSidebarWidth > 0
+              ? layoutSidebarWidth + (PANEL_SIDEBAR_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH
               : -PANEL_GAP,
             transition: isResizing === 'sidebar' ? undefined : 'left 0.15s ease-out',
           }}
@@ -3907,7 +3959,7 @@ function AppShellContent({
         )}
 
         {/* Session List Resize Handle (absolute, hidden in focused mode and board view) */}
-        {responsivePanelLayout.navigatorWidth > 0 && (
+        {layoutNavigatorWidth > 0 && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}
@@ -3924,10 +3976,10 @@ function AppShellContent({
             top: PANEL_STACK_VERTICAL_OVERFLOW,
             bottom: PANEL_STACK_VERTICAL_OVERFLOW,
             left:
-              (responsivePanelLayout.sidebarWidth > 0
-                ? responsivePanelLayout.sidebarWidth + PANEL_SIDEBAR_GAP
+              (layoutSidebarWidth > 0
+                ? layoutSidebarWidth + PANEL_SIDEBAR_GAP
                 : PANEL_EDGE_INSET) +
-              responsivePanelLayout.navigatorWidth +
+              layoutNavigatorWidth +
               (PANEL_GAP / 2) -
               PANEL_SASH_HALF_HIT_WIDTH,
             transition: isResizing === 'session-list' ? undefined : 'left 0.15s ease-out',

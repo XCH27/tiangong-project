@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { resolveStoredSessionConnectionSlug } from '../llm-connections'
+import {
+  planSessionConnectionNormalization,
+  resolveStoredSessionConnectionSlug,
+} from '../llm-connections'
 
 describe('stored session connection recovery', () => {
   const deepSeek = {
@@ -38,5 +41,49 @@ describe('stored session connection recovery', () => {
       'pi/deepseek-v4-pro',
       [deepSeek, { ...deepSeek, slug: 'deepseek-2' }],
     )).toBeUndefined()
+  })
+})
+
+describe('planSessionConnectionNormalization (once per session)', () => {
+  const deepSeek = {
+    slug: 'deepseek',
+    defaultModel: 'pi/deepseek-v4-pro',
+    models: ['pi/deepseek-v4-pro', 'pi/deepseek-v4-flash'],
+  }
+
+  it('plans a single persist when the stored slug remaps uniquely', () => {
+    expect(planSessionConnectionNormalization({
+      sessionId: 's1',
+      model: 'pi/deepseek-v4-pro',
+      llmConnection: 'pi-api-key',
+      connections: [deepSeek],
+      alreadyNormalized: new Set(),
+    })).toEqual({
+      action: 'persist',
+      sessionId: 's1',
+      connectionSlug: 'deepseek',
+      model: 'pi/deepseek-v4-pro',
+    })
+  })
+
+  it('does not plan a second write for a session already normalized this process', () => {
+    expect(planSessionConnectionNormalization({
+      sessionId: 's1',
+      model: 'pi/deepseek-v4-pro',
+      llmConnection: 'pi-api-key',
+      connections: [deepSeek],
+      alreadyNormalized: new Set(['s1']),
+    })).toEqual({ action: 'none' })
+  })
+
+  it('does not plan a write when two ChatPage mounts would have raced (same resolved slug)', () => {
+    // Already remapped in store — main chat + side-task must not both write.
+    expect(planSessionConnectionNormalization({
+      sessionId: 's1',
+      model: 'pi/deepseek-v4-pro',
+      llmConnection: 'deepseek',
+      connections: [deepSeek],
+      alreadyNormalized: new Set(),
+    })).toEqual({ action: 'none' })
   })
 })

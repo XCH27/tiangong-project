@@ -862,6 +862,35 @@ export function resolveStoredSessionConnectionSlug(
 }
 
 /**
+ * Decide whether a session's stored connection slug should be rewritten.
+ * Returns the remapped slug only when recovery is unambiguous and different
+ * from the stored value — callers persist at most once (never per ChatPage mount).
+ */
+export function planSessionConnectionNormalization(input: {
+  sessionId: string
+  model: string | undefined
+  llmConnection: string | undefined
+  connections: Pick<LlmConnectionWithStatus, 'slug' | 'models' | 'defaultModel'>[]
+  /** Session ids already normalized this process lifetime. */
+  alreadyNormalized: ReadonlySet<string>
+}): { action: 'none' } | { action: 'persist'; sessionId: string; connectionSlug: string; model: string } {
+  if (input.alreadyNormalized.has(input.sessionId)) return { action: 'none' }
+  if (!input.model || !input.llmConnection) return { action: 'none' }
+  const resolved = resolveStoredSessionConnectionSlug(
+    input.llmConnection,
+    input.model,
+    input.connections,
+  )
+  if (!resolved || resolved === input.llmConnection) return { action: 'none' }
+  return {
+    action: 'persist',
+    sessionId: input.sessionId,
+    connectionSlug: resolved,
+    model: input.model,
+  }
+}
+
+/**
  * Check if an auth type uses browser OAuth flow.
  * @param authType - LLM auth type
  * @returns true if OAuth browser flow should be triggered

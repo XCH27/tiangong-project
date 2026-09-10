@@ -10,6 +10,7 @@ import {
   isRightWorkbenchAvailable,
   openWorkbenchModule,
   prepareWorkbenchRendererOverlay,
+  reconcileWorkbenchSideTasks,
   restorePersistedWorkbenchState,
   type RightWorkbenchState,
 } from '../right-workbench'
@@ -135,13 +136,13 @@ describe('right workbench model', () => {
       await Promise.resolve()
       events.push('detached')
     })
-    if (prepared) events.push('open')
+    if (prepared.ok) events.push('open')
 
     expect(events).toEqual(['detach:pane-1', 'detached', 'open'])
-    expect(prepared).toBe(true)
+    expect(prepared).toEqual({ ok: true })
   })
 
-  it('keeps a renderer menu closed when native browser detach fails', async () => {
+  it('keeps a renderer menu closed when native browser detach fails with an explicit reason', async () => {
     const state: RightWorkbenchState = {
       entries: [{ id: 'browser-tab', kind: 'browser', resourceId: 'pane-1' }],
       activeId: 'browser-tab',
@@ -149,7 +150,11 @@ describe('right workbench model', () => {
 
     expect(await prepareWorkbenchRendererOverlay(state, async () => {
       throw new Error('detach failed')
-    })).toBe(false)
+    })).toEqual({
+      ok: false,
+      reason: 'detach failed',
+      resourceId: 'pane-1',
+    })
   })
 
   it('keeps several module tabs visible at the minimum workbench width without scrolling', () => {
@@ -163,7 +168,7 @@ describe('right workbench model', () => {
       { id: 'one', kind: 'task-board' as const },
       { id: 'two', kind: 'browser' as const },
       { id: 'three', kind: 'review' as const },
-      { id: 'four', kind: 'canvas' as const },
+      { id: 'four', kind: 'terminal' as const },
     ]
 
     expect(getVisibleWorkbenchEntries(entries, 'four', 2).map((entry) => entry.id)).toEqual([
@@ -182,6 +187,7 @@ describe('right workbench model', () => {
         { id: 'board', kind: 'task-board' },
         { id: 'browser', kind: 'browser', resourceId: 'native-pane-from-old-renderer' },
         { id: 'terminal', kind: 'terminal' },
+        { id: 'canvas', kind: 'canvas' },
       ],
       activeId: 'browser',
     })
@@ -190,10 +196,19 @@ describe('right workbench model', () => {
       id: 'browser',
       kind: 'browser',
     })
-    expect(restorePersistedWorkbenchState(persisted, fallback)).toEqual(persisted)
+    // R18 modules restore; native BrowserView resource ids do not.
+    expect(restorePersistedWorkbenchState(persisted, fallback)).toEqual({
+      entries: [
+        { id: 'board', kind: 'task-board' },
+        { id: 'browser', kind: 'browser' },
+        { id: 'terminal', kind: 'terminal' },
+        { id: 'canvas', kind: 'canvas' },
+      ],
+      activeId: 'browser',
+    })
   })
 
-  it('keeps an intentional empty workbench but rejects malformed persisted entries', () => {
+  it('keeps an intentional empty workbench and drops only malformed modules', () => {
     const fallback: RightWorkbenchState = {
       entries: [{ id: 'default-board', kind: 'task-board' }],
       activeId: 'default-board',
@@ -203,6 +218,7 @@ describe('right workbench model', () => {
       entries: [],
       activeId: null,
     })
+    // Duplicate ids: first terminal kept; second review with same id dropped.
     expect(restorePersistedWorkbenchState({
       entries: [{ id: 'duplicate', kind: 'terminal' }, { id: 'duplicate', kind: 'review' }],
       activeId: 'missing',
@@ -210,5 +226,28 @@ describe('right workbench model', () => {
       entries: [{ id: 'duplicate', kind: 'terminal' }],
       activeId: 'duplicate',
     })
+    // openable module survives; duplicate id still rejected for the second entry
+    expect(restorePersistedWorkbenchState({
+      entries: [{ id: 'side', kind: 'side-task' }, { id: 'side', kind: 'browser' }],
+      activeId: 'side',
+    }, fallback)).toEqual({
+      entries: [{ id: 'side', kind: 'side-task' }],
+      activeId: 'side',
+    })
+  })
+
+  it('reconciles stale side-task tabs against Session existence', () => {
+    const state: RightWorkbenchState = {
+      entries: [
+        { id: 'live', kind: 'side-task', sessionId: 's-live' },
+        { id: 'dead', kind: 'side-task', sessionId: 's-gone' },
+        { id: 'board', kind: 'task-board' },
+        { id: 'orphan', kind: 'side-task' },
+      ],
+      activeId: 'dead',
+    }
+    const next = reconcileWorkbenchSideTasks(state, (id) => id === 's-live')
+    expect(next.entries.map((e) => e.id)).toEqual(['live', 'board'])
+    expect(next.activeId).toBe('live')
   })
 })

@@ -20,6 +20,9 @@ const base = {
 describe('workbench module floors', () => {
   it('scales the floor to what the module actually needs', () => {
     expect(workbenchModuleWidthMin('task-board')).toBe(WORKBENCH_WIDTH_MIN_COMPACT)
+    expect(workbenchModuleWidthMin('side-task')).toBe(WORKBENCH_WIDTH_MIN_COMPACT)
+    expect(workbenchModuleWidthMin('canvas')).toBe(WORKBENCH_WIDTH_MIN_COMPACT)
+    expect(workbenchModuleWidthMin('browser')).toBe(WORKBENCH_WIDTH_MIN_CONTENT)
     expect(workbenchModuleWidthMin('terminal')).toBe(WORKBENCH_WIDTH_MIN_CONTENT)
     expect(workbenchModuleWidthMin('review')).toBe(WORKBENCH_WIDTH_MIN_CONTENT)
     expect(workbenchModuleWidthMin('review', { diffStyle: 'split' }))

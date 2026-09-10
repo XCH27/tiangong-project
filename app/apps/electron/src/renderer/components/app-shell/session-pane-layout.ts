@@ -50,10 +50,10 @@ export function workbenchModuleWidthMin(
         : WORKBENCH_WIDTH_MIN_CONTENT
     case 'browser':
     case 'terminal':
-    case 'canvas':
       return WORKBENCH_WIDTH_MIN_CONTENT
     case 'task-board':
     case 'side-task':
+    case 'canvas':
       return WORKBENCH_WIDTH_MIN_COMPACT
     default:
       return kind satisfies never
