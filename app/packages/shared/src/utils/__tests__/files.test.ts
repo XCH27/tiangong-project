@@ -1,9 +1,9 @@
 import { describe, test, expect, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Buffer } from 'node:buffer'
-import { getFileType, getMimeType, readFileAttachment } from '../files'
+import { atomicWriteFileSync, getFileType, getMimeType, readFileAttachment, recoverAtomicWriteSync } from '../files'
 
 const cleanups: Array<() => void> = []
 
@@ -96,5 +96,32 @@ describe('readFileAttachment — audio fixture', () => {
     expect(att?.type).toBe('text')
     expect(att?.text).toBe('hello world')
     expect(att?.base64).toBeUndefined()
+  })
+})
+
+describe('atomicWriteFileSync', () => {
+  test('replaces an existing file through the recoverable Windows fallback', () => {
+    const dir = makeTmp()
+    const path = join(dir, 'config.json')
+    writeFileSync(path, 'old')
+
+    atomicWriteFileSync(path, 'new', { forceBackupFallback: true })
+
+    expect(readFileSync(path, 'utf-8')).toBe('new')
+    expect(existsSync(path + '.atomic-backup')).toBe(false)
+    expect(existsSync(path + '.tmp')).toBe(false)
+  })
+
+  test('restores the previous copy after interruption between unlink and install', () => {
+    const dir = makeTmp()
+    const path = join(dir, 'session.jsonl')
+    const backupPath = path + '.atomic-backup'
+    writeFileSync(path, 'durable-old')
+    renameSync(path, backupPath)
+
+    recoverAtomicWriteSync(path)
+
+    expect(readFileSync(path, 'utf-8')).toBe('durable-old')
+    expect(existsSync(backupPath)).toBe(false)
   })
 })

@@ -5,7 +5,7 @@
  * Format: Line 1 = SessionHeader, Lines 2+ = StoredMessage (one per line)
  */
 
-import { openSync, readSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
+import { openSync, readSync, closeSync, readFileSync } from 'fs';
 import { open, readFile } from 'fs/promises';
 import { dirname } from 'path';
 import type { SessionHeader, StoredSession, StoredMessage, SessionTokenUsage } from './types.ts';
@@ -13,7 +13,7 @@ import type { PermissionMode } from '../agent/mode-types.ts';
 import { parsePermissionMode } from '../agent/mode-types.ts';
 import { toPortablePath, expandPath, normalizePath } from '../utils/paths.ts';
 import { debug } from '../utils/debug.ts';
-import { safeJsonParse } from '../utils/files.ts';
+import { atomicWriteFileSync, recoverAtomicWriteSync, safeJsonParse } from '../utils/files.ts';
 import { pickSessionFields } from './utils.ts';
 
 // ============================================================
@@ -79,6 +79,7 @@ function normalizeHeaderPermissionModes<T extends SessionHeader>(header: T): T {
  */
 export function readSessionHeader(sessionFile: string): SessionHeader | null {
   try {
+    recoverAtomicWriteSync(sessionFile);
     const fd = openSync(sessionFile, 'r');
     const buffer = Buffer.alloc(8192); // 8KB is plenty for metadata header
     const bytesRead = readSync(fd, buffer, 0, 8192, 0);
@@ -102,6 +103,7 @@ export function readSessionHeader(sessionFile: string): SessionHeader | null {
  */
 export function readSessionJsonl(sessionFile: string): StoredSession | null {
   try {
+    recoverAtomicWriteSync(sessionFile);
     const content = readFileSync(sessionFile, 'utf-8');
     const lines = content.split('\n').filter(Boolean);
 
@@ -156,24 +158,7 @@ export function writeSessionJsonl(sessionFile: string, session: StoredSession): 
     ...session.messages.map(m => makeSessionPathPortable(JSON.stringify(m), sessionDir)),
   ];
 
-  const tmpFile = sessionFile + '.tmp';
-  writeFileSync(tmpFile, lines.join('\n') + '\n');
-  // POSIX `renameSync` atomically replaces an existing target. Windows'
-  // `renameSync` fails with EEXIST/EPERM when the target exists, so fall
-  // back to unlink-then-rename only there. The previous implementation
-  // unlinked first on ALL platforms, opening a window where neither the
-  // old nor the new file existed — a crash in that window lost data.
-  try {
-    renameSync(tmpFile, sessionFile);
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === 'EEXIST' || code === 'EPERM') {
-      try { unlinkSync(sessionFile); } catch { /* target already gone */ }
-      renameSync(tmpFile, sessionFile);
-    } else {
-      throw err;
-    }
-  }
+  atomicWriteFileSync(sessionFile, lines.join('\n') + '\n');
 }
 
 /**

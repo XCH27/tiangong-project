@@ -19,7 +19,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { expandPath, toPortablePath } from '../utils/paths.ts';
-import { atomicWriteFileSync, readJsonFileSync } from '../utils/files.ts';
+import { atomicWriteFileSync, readJsonFileSync, recoverAtomicWriteSync } from '../utils/files.ts';
 import { getDefaultStatusConfig, saveStatusConfig, ensureDefaultIconFiles } from '../statuses/storage.ts';
 import { getDefaultLabelConfig, saveLabelConfig } from '../labels/storage.ts';
 import { loadConfigDefaults } from '../config/storage.ts';
@@ -103,6 +103,7 @@ export function getWorkspaceSkillsPath(rootPath: string): string {
  */
 export function loadWorkspaceConfig(rootPath: string): WorkspaceConfig | null {
   const configPath = join(rootPath, 'config.json');
+  recoverAtomicWriteSync(configPath);
   if (!existsSync(configPath)) return null;
 
   try {

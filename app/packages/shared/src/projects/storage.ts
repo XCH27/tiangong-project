@@ -20,7 +20,7 @@ import {
 } from 'fs';
 import { basename, extname, join } from 'path';
 import { randomUUID } from 'crypto';
-import { atomicWriteFileSync, readJsonFileSync, getMimeType } from '../utils/files.ts';
+import { atomicWriteFileSync, readJsonFileSync, getMimeType, recoverAtomicWriteSync } from '../utils/files.ts';
 import { debug } from '../utils/debug.ts';
 import { expandPath, toPortablePath } from '../utils/paths.ts';
 import { estimateTokensDensityAware } from '../utils/large-response.ts';
@@ -100,6 +100,7 @@ export function loadProjectConfig(
   projectSlug: string,
 ): ProjectConfig | null {
   const configPath = join(getProjectPath(workspaceRootPath, projectSlug), 'config.json');
+  recoverAtomicWriteSync(configPath);
   if (!existsSync(configPath)) return null;
 
   try {
