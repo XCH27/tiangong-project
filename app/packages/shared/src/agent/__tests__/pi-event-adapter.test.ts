@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { PiEventAdapter } from '../backend/pi/event-adapter.ts';
 import { UsageTracker } from '../core/usage-tracker.ts';
+import { normalizeProviderUsage } from '../core/cache-economy.ts';
 import { toolMetadataStore } from '../../interceptor-common.ts';
 
 // Helper: collect all events from a generator
@@ -60,6 +61,12 @@ describe('PiEventAdapter', () => {
         totalTokens: 1600,
         cost: { total: 0.01 },
       };
+      const cacheUsage = normalizeProviderUsage({
+        input: rawUsage.input,
+        output: rawUsage.output,
+        cacheRead: rawUsage.cacheRead,
+        cacheWrite: rawUsage.cacheWrite,
+      });
 
       const messageEvents = collect(adapter.adaptEvent({
         type: 'message_end',
@@ -78,6 +85,7 @@ describe('PiEventAdapter', () => {
           cacheReadTokens: 300,
           cacheCreationTokens: 100,
           contextWindow: 200000,
+          cacheUsage,
         },
       });
 
@@ -91,6 +99,7 @@ describe('PiEventAdapter', () => {
           cacheCreationTokens: 100,
           costUsd: 0.01,
           contextWindow: 200000,
+          cacheUsage,
         },
       });
 

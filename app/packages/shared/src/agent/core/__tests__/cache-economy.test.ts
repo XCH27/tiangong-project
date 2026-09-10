@@ -16,6 +16,8 @@ import {
   fingerprintZone,
   diagnoseCacheBreak,
   summarizeCacheEconomy,
+  cacheUsageFromLedger,
+  summarizeSessionCacheEconomy,
 } from '../cache-economy.ts';
 
 describe('normalizeProviderUsage', () => {
@@ -187,5 +189,34 @@ describe('summarizeCacheEconomy', () => {
     expect(summary.savedUsd).toBeDefined();
     // Turn 1 loses (write 1.25x), turns 2-3 win big (0.1x reads) → net positive
     expect(summary.savedInputCostFraction).toBeGreaterThan(0);
+  });
+
+  it('projects session totals from the existing complete-input ledger', () => {
+    const profile = PROVIDER_CACHE_PROFILES.anthropic;
+    const fromRaw = normalizeProviderUsage({
+      input_tokens: 1000,
+      cache_read_input_tokens: 8000,
+      cache_creation_input_tokens: 2000,
+      output_tokens: 500,
+    });
+    const fromLedger = cacheUsageFromLedger({
+      inputTokens: 11000,
+      outputTokens: 500,
+      cacheReadTokens: 8000,
+      cacheCreationTokens: 2000,
+    });
+    expect(fromLedger).toEqual(fromRaw);
+
+    const summary = summarizeSessionCacheEconomy(profile, {
+      inputTokens: 11000,
+      outputTokens: 500,
+      cacheReadTokens: 8000,
+      cacheCreationTokens: 2000,
+    });
+    expect(summary.turns).toBe(1);
+    expect(summary.totalInputTokens).toBe(11000);
+    expect(summary.totalCacheReadTokens).toBe(8000);
+    expect(summary.totalUncachedInputTokens).toBe(1000);
+    expect(summary.cacheHitRate).toBeCloseTo(8000 / 11000, 10);
   });
 });

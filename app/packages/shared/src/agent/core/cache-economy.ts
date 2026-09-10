@@ -391,6 +391,45 @@ export interface CacheEconomySummary {
   confidence: Confidence;
 }
 
+/**
+ * Project NormalizedCacheUsage from already-folded complete-input ledger
+ * fields (UsageTracker / SessionManager.tokenUsage). inputTokens already
+ * includes cache read/write; this inverts that so we do not keep a second
+ * ledger. Clamp at zero matches splitUsage() if a producer was exclusive.
+ */
+export function cacheUsageFromLedger(usage: {
+  inputTokens: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+}): NormalizedCacheUsage {
+  const read = usage.cacheReadTokens ?? 0;
+  const write = usage.cacheCreationTokens ?? 0;
+  return finalize(
+    Math.max(0, usage.inputTokens - read - write),
+    read,
+    write,
+    usage.outputTokens ?? 0,
+  );
+}
+
+/**
+ * Session-level fold from the existing usage ledger. SessionManager stores
+ * cumulative totals, not per-turn rows, so this is one combined turn.
+ */
+export function summarizeSessionCacheEconomy(
+  profile: ProviderCacheProfile,
+  usage: {
+    inputTokens: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
+  },
+  options: EconomicsOptions & { prefixSnapshots?: PromptPrefixSnapshot[] } = {},
+): CacheEconomySummary {
+  return summarizeCacheEconomy(profile, [cacheUsageFromLedger(usage)], options);
+}
+
 export function summarizeCacheEconomy(
   profile: ProviderCacheProfile,
   turns: NormalizedCacheUsage[],

@@ -354,8 +354,8 @@ export interface TurnCardProps {
   /** Animate response appearance (for playground demos) */
   animateResponse?: boolean
   /** Compact-footer layout. Used by EditPopover (popover embedding) and ChatPage in
-   *  auto-compact / WebUI mobile. Hides Copy / Markdown / Branch actions; keeps the
-   *  Accept Plan dropdown when a plan is the last response. */
+   *  auto-compact / WebUI mobile. Hides Markdown / Branch; Copy stays reachable
+   *  without hover. Keeps Accept Plan when a plan is the last response. */
   compactMode?: boolean
   /** Callback to branch the session from a specific message */
   onBranch?: (messageId: string, options?: { newPanel?: boolean }) => void
@@ -947,7 +947,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
                 }
               }}
               className={cn(
-                "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0",
+                "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity shrink-0",
                 "hover:bg-muted/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               )}
             >
@@ -1198,7 +1198,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
               }
             }}
             className={cn(
-              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0",
+              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity shrink-0",
               "hover:bg-muted/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             )}
           >
@@ -1337,7 +1337,7 @@ function ActivityGroupRow({ group, expandedGroups: externalExpandedGroups, onExp
               }
             }}
             className={cn(
-              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0",
+              "p-0.5 rounded-[3px] opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity shrink-0",
               "hover:bg-muted/80 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             )}
           >
@@ -1418,8 +1418,8 @@ export interface ResponseCardProps {
   isLastResponse?: boolean
   /** Whether to show the Accept Plan button (default: true) */
   showAcceptPlan?: boolean
-  /** Compact-footer layout. Hides Copy / Markdown / Branch in the response footer;
-   *  keeps the Accept Plan dropdown when a plan is the last response. */
+  /** Compact-footer layout. Hides Markdown / Branch in the response footer;
+   *  Copy stays reachable without hover. Accept Plan stays on the last plan. */
   compactMode?: boolean
   /** Callback to branch the session from this response */
   onBranch?: (options?: { newPanel?: boolean }) => void
@@ -1686,6 +1686,10 @@ export function ResponseCard({
   const lastUpdateRef = useRef(Date.now())
   // Copy to clipboard state
   const [copied, setCopied] = useState(false)
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+  }, [])
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false)
   // Dark mode detection - scroll fade only shown in dark mode
@@ -1783,7 +1787,8 @@ export function ResponseCard({
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       console.error('Failed to copy:', err)
     }
@@ -2462,7 +2467,7 @@ export function ResponseCard({
           <button
             onClick={() => setIsFullscreen(true)}
             className={cn(
-              "absolute top-2 right-2 p-1 rounded-[6px] transition-all z-10 select-none",
+              "absolute top-2 right-2 p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity] z-10 select-none",
               "opacity-0 group-hover:opacity-100",
               "bg-background shadow-minimal",
               "text-muted-foreground/50 hover:text-foreground",
@@ -2516,7 +2521,7 @@ export function ResponseCard({
           </div>
 
           {/* Desktop footer with actions (Copy / Markdown / Accept Plan / Branch).
-              Compact mode falls through to the slim Accept-Plan-only footer below. */}
+              Compact mode uses the slim footer below: Copy stays, Markdown/Branch do not. */}
           {!compactMode && (
             <div className={cn(
               "pl-4 pr-2.5 py-2 border-t border-border/30 flex items-center justify-between bg-muted/20",
@@ -2565,7 +2570,7 @@ export function ResponseCard({
                 {isPlan && showAcceptPlan && onAccept && onAcceptWithCompact && (
                   <div
                     className={cn(
-                      "flex items-center gap-3 transition-all duration-200",
+                      "flex items-center gap-3 transition-[opacity,transform] duration-200",
                       isLastResponse
                         ? "opacity-100 translate-x-0"
                         : "opacity-0 translate-x-2 pointer-events-none"
@@ -2584,23 +2589,46 @@ export function ResponseCard({
             </div>
           )}
 
-          {/* Compact footer — Accept Plan only (mobile / auto-compact / popover).
-              Uses a bottom-sheet drawer to match the CompactPermissionModeSelector
-              / CompactModelSelector pattern. Guarded by isLastResponse so older
-              plans don't render an empty strip with a hidden-but-focusable button. */}
-          {compactMode && isPlan && showAcceptPlan && isLastResponse && onAccept && onAcceptWithCompact && (
+          {/* Compact footer — Copy stays reachable without hover (mobile / auto-compact
+              / popover). Markdown and Branch stay desktop-only. Accept Plan keeps the
+              bottom-sheet drawer; still last-response-only so older plans do not show it. */}
+          {compactMode && (
             <div
               className={cn(
-                "pl-3 pr-2 py-1.5 border-t border-border/30 flex items-center justify-end bg-muted/20",
+                "pl-3 pr-2 py-1.5 border-t border-border/30 flex items-center justify-between bg-muted/20",
                 SIZE_CONFIG.fontSize
               )}
             >
-              <CompactAcceptPlanDrawer
-                onAccept={onAccept}
-                onAcceptWithCompact={onAcceptWithCompact}
-                acceptLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.acceptPlan')}
-                acceptOptionLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.accept')}
-              />
+              <button
+                type="button"
+                onClick={() => { void handleCopy() }}
+                data-touch-reveal="true"
+                className={cn(
+                  "turn-action-btn flex items-center gap-1.5 select-none",
+                  copied ? "text-success" : "text-muted-foreground hover:text-foreground",
+                  "focus:outline-none focus-visible:underline"
+                )}
+              >
+                {copied ? (
+                  <>
+                    <Check className={SIZE_CONFIG.iconSize} />
+                    <span>{t("common.copied")}</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className={SIZE_CONFIG.iconSize} />
+                    <span>{t("common.copy")}</span>
+                  </>
+                )}
+              </button>
+              {isPlan && showAcceptPlan && isLastResponse && onAccept && onAcceptWithCompact && (
+                <CompactAcceptPlanDrawer
+                  onAccept={onAccept}
+                  onAcceptWithCompact={onAcceptWithCompact}
+                  acceptLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.acceptPlan')}
+                  acceptOptionLabel={hasActiveFollowUpAnnotations ? t('plan.acceptAndSendFollowups') : t('plan.accept')}
+                />
+              )}
             </div>
           )}
         </div>

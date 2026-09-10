@@ -25,6 +25,7 @@ import { BaseEventAdapter } from '../base-event-adapter.ts';
 import { PI_TOOL_NAME_MAP } from './constants.ts';
 import { toolMetadataStore } from '../../../interceptor-common.ts';
 import { parseError } from '../../errors.ts';
+import { normalizeProviderUsage, type NormalizedCacheUsage } from '../../core/cache-economy.ts';
 
 /**
  * Pi SDK auto-compaction race signature — the AbortController crash described
@@ -63,14 +64,24 @@ type PiUsage = {
  * Craft's AgentEventUsage.inputTokens is the complete context size, so the
  * provider-specific fields must be folded exactly once at this adapter seam.
  */
-function normalizePiUsage(usage: PiUsage, contextWindow?: number): AgentEventUsage {
+function normalizePiUsage(
+  usage: PiUsage,
+  contextWindow?: number,
+): AgentEventUsage & { cacheUsage: NormalizedCacheUsage } {
+  const cacheUsage = normalizeProviderUsage({
+    input: usage.input,
+    output: usage.output,
+    cacheRead: usage.cacheRead,
+    cacheWrite: usage.cacheWrite,
+  });
   return {
-    inputTokens: usage.input + (usage.cacheRead || 0) + (usage.cacheWrite || 0),
-    outputTokens: usage.output,
-    cacheReadTokens: usage.cacheRead,
-    cacheCreationTokens: usage.cacheWrite,
+    inputTokens: cacheUsage.totalInputTokens,
+    outputTokens: cacheUsage.outputTokens,
+    cacheReadTokens: cacheUsage.cacheReadTokens,
+    cacheCreationTokens: cacheUsage.cacheWriteTokens,
     costUsd: usage.cost.total,
     contextWindow,
+    cacheUsage,
   };
 }
 
@@ -406,14 +417,16 @@ export class PiEventAdapter extends BaseEventAdapter {
         if (msg.usage && typeof msg.usage.input === 'number') {
           this.lastUsage = msg.usage;
           const normalizedUsage = normalizePiUsage(msg.usage, this.contextWindow);
+          const usageUpdate = {
+            inputTokens: normalizedUsage.inputTokens,
+            cacheReadTokens: normalizedUsage.cacheReadTokens,
+            cacheCreationTokens: normalizedUsage.cacheCreationTokens,
+            contextWindow: this.contextWindow,
+            cacheUsage: normalizedUsage.cacheUsage,
+          };
           yield {
             type: 'usage_update',
-            usage: {
-              inputTokens: normalizedUsage.inputTokens,
-              cacheReadTokens: normalizedUsage.cacheReadTokens,
-              cacheCreationTokens: normalizedUsage.cacheCreationTokens,
-              contextWindow: this.contextWindow,
-            },
+            usage: usageUpdate,
           };
         }
         break;

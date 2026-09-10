@@ -9,6 +9,11 @@ import {
   UsageTracker,
   createUsageTracker,
 } from '../usage-tracker.ts';
+import {
+  PROVIDER_CACHE_PROFILES,
+  normalizeProviderUsage,
+  summarizeCacheEconomy,
+} from '../cache-economy.ts';
 
 describe('UsageTracker', () => {
   let tracker: UsageTracker;
@@ -230,6 +235,53 @@ describe('UsageTracker', () => {
     it('should preserve context window on reset', () => {
       tracker.reset();
       expect(tracker.getContextWindow()).toBe(200000);
+    });
+  });
+
+  describe('Cache economy summary', () => {
+    it('folds per-turn adapter usage through summarizeCacheEconomy', () => {
+      const turn1 = normalizeProviderUsage({
+        input_tokens: 1000,
+        cache_creation_input_tokens: 4000,
+        output_tokens: 100,
+      });
+      const turn2 = normalizeProviderUsage({
+        input_tokens: 200,
+        cache_read_input_tokens: 5000,
+        output_tokens: 300,
+      });
+
+      tracker.recordTurnComplete({
+        inputTokens: turn1.totalInputTokens,
+        outputTokens: turn1.outputTokens,
+        cacheReadTokens: turn1.cacheReadTokens,
+        cacheCreationTokens: turn1.cacheWriteTokens,
+        cacheUsage: turn1,
+      });
+      tracker.recordTurnComplete({
+        inputTokens: turn2.totalInputTokens,
+        outputTokens: turn2.outputTokens,
+        cacheReadTokens: turn2.cacheReadTokens,
+        cacheCreationTokens: turn2.cacheWriteTokens,
+        cacheUsage: turn2,
+      });
+
+      const profile = PROVIDER_CACHE_PROFILES.anthropic;
+      expect(tracker.getCacheEconomySummary(profile)).toEqual(
+        summarizeCacheEconomy(profile, [turn1, turn2]),
+      );
+      expect(tracker.getTurnCacheUsages()).toEqual([turn1, turn2]);
+    });
+
+    it('clears turn cache usage on reset', () => {
+      tracker.recordTurnComplete({
+        inputTokens: 1000,
+        outputTokens: 10,
+        cacheReadTokens: 200,
+      });
+      tracker.reset();
+      expect(tracker.getTurnCacheUsages()).toEqual([]);
+      expect(tracker.getCacheEconomySummary(PROVIDER_CACHE_PROFILES.anthropic).turns).toBe(0);
     });
   });
 

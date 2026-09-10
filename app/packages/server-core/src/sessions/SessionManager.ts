@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'path'
 import { existsSync } from 'fs'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { randomUUID } from 'node:crypto'
-import { type AgentEvent, setPermissionMode, hydratePreviousPermissionMode, getPermissionModeDiagnostics, type PermissionMode, unregisterSessionScopedToolCallbacks, mergeSessionScopedToolCallbacks, AbortReason, type AuthRequest, type AuthResult, type CredentialAuthRequest, type BrowserPaneFns, generateConversationSummary, resolveKeepBackgroundTasksAlive } from '@craft-agent/shared/agent'
+import { type AgentEvent, setPermissionMode, hydratePreviousPermissionMode, getPermissionModeDiagnostics, type PermissionMode, unregisterSessionScopedToolCallbacks, mergeSessionScopedToolCallbacks, AbortReason, type AuthRequest, type AuthResult, type CredentialAuthRequest, type BrowserPaneFns, generateConversationSummary, resolveKeepBackgroundTasksAlive, resolveChildPermission, summarizeSessionCacheEconomy, PROVIDER_CACHE_PROFILES, type CacheEconomySummary, type ProviderCacheProfile } from '@craft-agent/shared/agent'
 import {
   deriveLegacyWorkModeState,
   formatWorkModeInstruction,
@@ -39,8 +39,10 @@ import {
   getDefaultThinkingLevel,
   getThinkingLevelsForModel,
   connectionSupportsFastMode,
+  isSelectableGenericRuntimeMode,
   resetManagedAnthropicAuthEnvVars,
   resolveConnectionModelDefinition,
+  resolveSessionRuntimeModePayload,
   resolveMidStreamBehavior,
   getPersistedUiLanguage,
   resolveTitleLanguageName,
@@ -923,6 +925,8 @@ interface ManagedSession {
   thinkingLevel?: ThinkingLevel
   /** Provider low-latency mode. Runtime is recreated before the next turn. */
   fastMode?: boolean
+  /** Classified non-fast provider runtime mode. Recreated before the next turn. */
+  runtimeMode?: string
   // System prompt preset for mini agents ('default' | 'mini')
   systemPromptPreset?: 'default' | 'mini' | string
   // Role/type of the last message (for badge display without loading messages)
@@ -3105,6 +3109,7 @@ export class SessionManager implements ISessionManager {
       llmConnection: options?.llmConnection,
       thinkingLevel: resolvedThinkingLevel,
       fastMode: false,
+      runtimeMode: undefined,
       systemPromptPreset: options?.systemPromptPreset,
       enabledSourceSlugs: defaultEnabledSourceSlugs,
       branchFromMessageId: validatedBranch?.sourceMessageId,
@@ -3225,6 +3230,45 @@ export class SessionManager implements ISessionManager {
    *  sessions inherit the orchestrator's cwd). Undefined if the session has none or is unknown. */
   getSessionWorkingDirectory(sessionId: string): string | undefined {
     return this.sessions.get(sessionId)?.workingDirectory
+  }
+
+  /**
+   * Project cache economics from the existing tokenUsage ledger.
+   * No second store: numbers come from adapter complete events already accumulated.
+   */
+  getCacheEconomySummary(
+    sessionId: string,
+    profile: ProviderCacheProfile = PROVIDER_CACHE_PROFILES.anthropic,
+  ): CacheEconomySummary | undefined {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return undefined
+    return summarizeSessionCacheEconomy(profile, managed.tokenUsage ?? {
+      inputTokens: 0,
+      outputTokens: 0,
+    })
+  }
+
+  /** Permission mode of a live session (Conductor intersects parent ∩ child request). */
+  getSessionPermissionMode(sessionId: string): PermissionMode | undefined {
+    return this.sessions.get(sessionId)?.permissionMode
+  }
+
+  /**
+   * Runtime reconcile view for an in-flight child after restart.
+   * Used by TaskRunner so chargeable work is never silently re-dispatched.
+   */
+  getSessionRuntimeState(sessionId: string): {
+    exists: boolean
+    isProcessing: boolean
+    finalText?: string
+  } {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return { exists: false, isProcessing: false }
+    return {
+      exists: true,
+      isProcessing: !!managed.isProcessing,
+      finalText: this.getSessionFinalText(sessionId),
+    }
   }
 
   private async disposeManagedAgentRuntime(managed: ManagedSession, reason: string): Promise<void> {
@@ -3513,17 +3557,19 @@ export class SessionManager implements ISessionManager {
       // Per-session env overrides
       const miniModel = connection ? (getMiniModel(connection) ?? connection.defaultModel) : undefined
       const selectedModelDefinition = resolveConnectionModelDefinition(connection, managed.model)
-      const fastRuntimeMode = managed.fastMode
-        ? selectedModelDefinition?.runtimeModes?.fast
-        : undefined
+      const selectedRuntimeMode = resolveSessionRuntimeModePayload({
+        fastMode: managed.fastMode,
+        runtimeMode: managed.runtimeMode,
+        definition: selectedModelDefinition,
+      })
       const envOverrides: Record<string, string> = {
         CRAFT_WORKSPACE_PATH: managed.workspace.rootPath,
         // Pass mini model to SDK subprocess so built-in tools like WebFetch
         // use the correct model for summarization (instead of hardcoded Haiku)
         ...(miniModel ? { ANTHROPIC_DEFAULT_HAIKU_MODEL: miniModel } : {}),
         ...(managed.fastMode ? { CRAFT_FAST_MODE: '1' } : {}),
-        ...(fastRuntimeMode
-          ? { CRAFT_MODEL_RUNTIME_MODE: JSON.stringify(fastRuntimeMode) }
+        ...(selectedRuntimeMode
+          ? { CRAFT_MODEL_RUNTIME_MODE: JSON.stringify(selectedRuntimeMode) }
           : {}),
       }
       managed.envOverrides = envOverrides
@@ -4347,12 +4393,24 @@ export class SessionManager implements ISessionManager {
       managed.agent.onSpawnSession = async (request) => {
         sessionLog.info(`Spawn session request from session ${managed.id}:`, request.name || '(unnamed)')
 
+        // Permission is monotonically non-increasing across delegation (PR0 / C11).
+        // An explicit request that exceeds the parent is rejected; omitted request inherits parent.
+        const perm = resolveChildPermission({
+          parent: managed.permissionMode,
+          requested: request.permissionMode,
+          unattended: false,
+          approvalAvailable: true,
+        })
+        if (!perm.ok) {
+          throw new Error(perm.message)
+        }
+
         const session = await this.createSession(managed.workspace.id, {
           name: request.name,
           llmConnection: request.llmConnection ?? managed.llmConnection,
           model: request.model ?? managed.model,
           enabledSourceSlugs: request.enabledSourceSlugs ?? managed.enabledSourceSlugs,
-          permissionMode: request.permissionMode ?? managed.permissionMode,
+          permissionMode: perm.mode,
           thinkingLevel: request.thinkingLevel ?? managed.thinkingLevel,
           labels: request.labels ?? managed.labels,
           workingDirectory: request.workingDirectory,
@@ -5375,6 +5433,11 @@ export class SessionManager implements ISessionManager {
         managed.fastMode = false
         sessionLog.info(`[updateSessionModel] Cleared unsupported fast mode for ${effectiveModel ?? 'unresolved model'}`)
       }
+      const nextModelDefinition = resolveConnectionModelDefinition(sessionConn, effectiveModel)
+      if (managed.runtimeMode && !isSelectableGenericRuntimeMode(nextModelDefinition, managed.runtimeMode)) {
+        sessionLog.info(`[updateSessionModel] Cleared unsupported runtime mode ${managed.runtimeMode} for ${effectiveModel ?? 'unresolved model'}`)
+        managed.runtimeMode = undefined
+      }
       const normalizedThinkingLevel = normalizeThinkingLevelForModel(
         sessionConn,
         effectiveModel,
@@ -5605,9 +5668,17 @@ export class SessionManager implements ISessionManager {
     // If processing is in progress, force-abort via Query.close() and wait for cleanup
     if (managed.isProcessing && managed.agent) {
       managed.agent.forceAbort(AbortReason.UserStop)
-      // Brief wait for the query to finish tearing down before we delete session files.
-      // Prevents file corruption from overlapping writes during rapid delete operations.
-      await new Promise(resolve => setTimeout(resolve, 100))
+      // Wait for the chat loop to drain and onProcessingStopped to clear
+      // isProcessing before deleting session files — prevents file corruption
+      // from overlapping writes during rapid delete operations. Bounded so a
+      // stuck backend can never block deletion.
+      const teardownDeadline = Date.now() + 2_000
+      while (managed.isProcessing && Date.now() < teardownDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      if (managed.isProcessing) {
+        sessionLog.warn(`deleteSession: agent teardown did not finish within 2s for ${sessionId} — proceeding with delete`)
+      }
     }
 
     // Clean up delta flush timers to prevent orphaned timers
@@ -7740,6 +7811,29 @@ export class SessionManager implements ISessionManager {
     sessionLog.info(`Session ${sessionId}: fast mode ${enabled ? 'enabled' : 'disabled'}`)
   }
 
+  /** Generic runtime modes are process configuration; recreate the backend for the next turn. */
+  async setSessionRuntimeMode(sessionId: string, mode: string | null): Promise<void> {
+    const managed = this.sessions.get(sessionId)
+    const next = mode && mode.length > 0 ? mode : undefined
+    if (!managed || managed.runtimeMode === next) return
+    if (managed.isProcessing) {
+      throw new Error('Runtime mode cannot change while the session is processing')
+    }
+    if (next) {
+      const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+      const connection = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
+      const modelId = managed.model ?? wsConfig?.defaults?.model ?? connection?.defaultModel
+      const definition = resolveConnectionModelDefinition(connection, modelId)
+      if (!isSelectableGenericRuntimeMode(definition, next)) {
+        throw new Error(`Runtime mode is not supported by the selected model${modelId ? `: ${modelId}` : ''}`)
+      }
+    }
+    managed.runtimeMode = next
+    await this.disposeManagedAgentRuntime(managed, 'runtime mode changed')
+    this.persistSession(managed)
+    sessionLog.info(`Session ${sessionId}: runtime mode ${next ?? 'cleared'}`)
+  }
+
   /**
    * Generate an AI title for a session from the user's first message.
    * Uses the agent's generateTitle() method which handles provider-specific SDK calls.
@@ -8214,7 +8308,7 @@ export class SessionManager implements ISessionManager {
               type: 'usage_update',
               sessionId,
               tokenUsage: {
-                inputTokens: managed.tokenUsage.inputTokens,
+                inputTokens: managed.tokenUsage.contextTokens,
                 contextWindow: managed.tokenUsage.contextWindow,
               },
             }, workspaceId)
@@ -8577,6 +8671,11 @@ export class SessionManager implements ISessionManager {
         // Complete event from CraftAgent - accumulate usage from this turn
         // Actual 'complete' sent to renderer comes from the finally block in sendMessage
         if (event.usage) {
+          // Error-path usage is tagged `errored` by the claude event adapter
+          // (adaptResult): a failed turn's usage is skipped because the retried
+          // turn's complete event carries the replacement totals — accumulating
+          // both would double-count cost/tokens.
+          if ((event.usage as { errored?: boolean }).errored) break
           // Initialize tokenUsage if not set
           if (!managed.tokenUsage) {
             managed.tokenUsage = {
@@ -8587,16 +8686,21 @@ export class SessionManager implements ISessionManager {
               costUsd: 0,
             }
           }
-          // inputTokens = current context size (full conversation sent this turn), NOT accumulated
-          // Each API call sends the full conversation history, so we use the latest value
-          managed.tokenUsage.inputTokens = event.usage.inputTokens
-          // outputTokens and costUsd are accumulated across all turns (total session usage)
+          // All token fields are cumulative across turns. This keeps the
+          // persisted shape coherent for splitUsage()/rollUpUsage(): fresh
+          // input = inputTokens - cacheReadTokens - cacheCreationTokens must be
+          // the SUM of per-turn fresh inputs, which only holds if the cache
+          // fields accumulate too. A snapshot inputTokens mixed with cumulative
+          // output/cost double- or under-counts multi-turn sessions.
+          managed.tokenUsage.inputTokens += event.usage.inputTokens
           managed.tokenUsage.outputTokens += event.usage.outputTokens
           managed.tokenUsage.totalTokens = managed.tokenUsage.inputTokens + managed.tokenUsage.outputTokens
           managed.tokenUsage.costUsd += event.usage.costUsd ?? 0
-          // Cache tokens reflect current state, not accumulated
-          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens ?? 0
-          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens ?? 0
+          managed.tokenUsage.cacheReadTokens = (managed.tokenUsage.cacheReadTokens ?? 0) + (event.usage.cacheReadTokens ?? 0)
+          managed.tokenUsage.cacheCreationTokens = (managed.tokenUsage.cacheCreationTokens ?? 0) + (event.usage.cacheCreationTokens ?? 0)
+          // contextTokens carries the current-context snapshot (what the last
+          // turn actually sent) — the value inputTokens used to hold.
+          managed.tokenUsage.contextTokens = event.usage.inputTokens
           // Update context window (use latest value - may change if model switches)
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
@@ -8617,13 +8721,10 @@ export class SessionManager implements ISessionManager {
               costUsd: 0,
             }
           }
-          // Current-request fields replace the previous request's values. Session-level
-          // output and cost still settle on complete.
-          managed.tokenUsage.inputTokens = event.usage.inputTokens
-          managed.tokenUsage.totalTokens =
-            event.usage.inputTokens + managed.tokenUsage.outputTokens
-          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens
-          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens
+          // Current-request snapshot goes to contextTokens only — inputTokens
+          // and the cache fields are cumulative session totals (settled on
+          // complete) and must not be clobbered mid-turn.
+          managed.tokenUsage.contextTokens = event.usage.inputTokens
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
           }
@@ -9107,6 +9208,7 @@ export class SessionManager implements ISessionManager {
       connectionLocked: header.connectionLocked,
       thinkingLevel: header.thinkingLevel,
       fastMode: header.fastMode,
+      runtimeMode: header.runtimeMode,
       hidden: header.hidden,
       transferredSessionSummary: header.transferredSessionSummary,
       transferredSessionSummaryApplied: header.transferredSessionSummaryApplied,
