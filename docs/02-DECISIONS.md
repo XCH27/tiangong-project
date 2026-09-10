@@ -1098,3 +1098,31 @@
   nothing here decides it — this makes the existing field honest, it does not decide where capability
   belongs. `requestedPermissionMode` remains a request the permission path may narrow (H14).
   (2026-09-10)
+- **H39 — Where a skill lives is where it applies, and that is a choice the product must offer.**
+  `LoadedSkill.source` has always reported three tiers and nothing surfaced or changed them, so
+  "make this skill global instead" had no answer and a skill could only be authored by hand on disk.
+  `skills/scope.ts` makes the tiers one vocabulary: **`global`** is `~/.agents/skills/<slug>/`,
+  reaching every workspace on this machine and **shared with other agent tools** that follow the same
+  convention (Cindy writes there too — `references/REFERENCE-REGISTRY.md`, 2026-09-10); **`workspace`**
+  is that workspace only; **`project`** lives in the project folder and travels with the repository.
+  Because global is shared, every result names which scope it touched: writing there changes something
+  outside the product the user was looking at, and moving out of there removes the skill from those
+  other tools too. Reporting that is not politeness, it is the difference between a scope control and a
+  surprise.
+  Three refusals are load-bearing and each guards a specific failure. **Nothing overwrites** — a slug
+  already taken at the target belongs to whoever wrote it, and a failed move leaves the source where it
+  was rather than nowhere. **A slug is one safe path segment**, checked here rather than trusted from a
+  caller or a model, because these paths are joined into the user's home directory. **Writes stage and
+  rename**, with a copy fallback for the cross-filesystem case, because a partial `SKILL.md` is parsed
+  by `loadAllSkills` into a skill claiming capabilities its body never describes. `manage_skill`
+  additionally validates frontmatter before writing: a file missing `name` or `description` is skipped
+  silently by the loader, so the agent would report success for a skill that never appears.
+  **The permission line is unchanged and is the one place this differs from the request as put.** The
+  owner asked that the agent be able to install, enable, disable and change permissions. The first
+  three are agent-callable — a kit narrows what an agent *sees*, never what it *may do*. The fourth is
+  a **request only**: `requestedPermissionMode` records what a role asks for and the permission path
+  decides, possibly narrower. A tool that let an agent widen its own mode would be a second authority
+  over the one decision the permission path exists to make, and every other control in the product
+  would become decorative (H14; `agent/permission-intersection.ts` — privilege never expands past the
+  parent). `manage_expert_kit` says so in its own response payload so the model cannot conclude it just
+  granted itself something. (2026-09-10)
