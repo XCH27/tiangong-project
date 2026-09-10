@@ -148,6 +148,27 @@ export interface CreateLabelInput {
    */
   kind?: NormalizedLabelKind;
   systemPromptPreset?: string;
+  /**
+   * The kit payload: which installed skills this role carries, which sources it
+   * reads, which registered tools it is offered, and the permission mode it
+   * *requests*.
+   *
+   * Writable since 2026-09-10. It was declared on `LabelConfig` and absent from
+   * both inputs, so it was readable and unwritable — the same defect the `kind`
+   * rename left behind one field over, and the reason `assessExpertKit` measured
+   * an always-empty value (H36). Slugs resolve against the installed skills via
+   * `kit-resolve.ts`; a slug that names nothing is reported, not dropped.
+   *
+   * `requestedPermissionMode` stays a request. The permission path decides and
+   * may return something narrower — a kit that could widen permissions would be
+   * a second authority over the same decision.
+   */
+  expertKit?: {
+    skills?: string[];
+    sources?: string[];
+    tools?: string[];
+    requestedPermissionMode?: 'safe' | 'ask' | 'allow-all';
+  };
 }
 
 /**
@@ -163,6 +184,19 @@ export interface UpdateLabelInput {
   kind?: NormalizedLabelKind;
   /** Pass empty string to clear */
   systemPromptPreset?: string;
+  /**
+   * Replaces the whole payload; an empty payload clears the field.
+   *
+   * Whole-object replace rather than a merge, because a partial merge makes
+   * "remove the last skill" unexpressible — the caller would have to send a
+   * sentinel to distinguish it from "leave skills alone". See {@link CreateLabelInput}.
+   */
+  expertKit?: {
+    skills?: string[];
+    sources?: string[];
+    tools?: string[];
+    requestedPermissionMode?: 'safe' | 'ask' | 'allow-all';
+  };
 }
 
 /**

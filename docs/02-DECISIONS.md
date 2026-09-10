@@ -1066,3 +1066,35 @@
   truth: drop `expertKit` from the record and the budget assessment from the page, and let a kit be
   the named role with a prompt preset it demonstrably is. Both are smaller than the present state.
   Not an option: leaving a surface that measures a value it cannot obtain. (2026-09-10)
+- **H38 — A kit selects over the skills that already exist; the host was never missing.** H37 put
+  the ruling as "build the host or shrink to the truth", and reading the tree settles it: Fleet
+  already loads skills from disk across three tiers — `{workspace}/skills/`,
+  `{project}/.agents/skills/`, `~/.agents/skills/` — parses their SKILL.md frontmatter with
+  `gray-matter`, exposes them over RPC, and reaches the agent through `loadAllSkills` in
+  `base-agent.ts` and the tier resolution in `pre-tool-use.ts`. `~/.agents/skills/` is the same
+  convention Cindy writes into, so the two products already agree on where a skill lives. What was
+  absent was never a subsystem — it was the one function between `LoadedSkill` and the `ExpertSkill`
+  that `routeSkills` has always consumed. So the classification is **REUSE/EXTEND, not NEW**, and
+  the kit becomes a *selection over installed skills* rather than a parallel declaration. That is
+  also why the ambition in H37 Option A to "project the tool subset" is not needed as a bespoke
+  layer: tools arrive through MCP, which Fleet already has, exactly as Qoder's plugins declare
+  theirs in a plain `.mcp.json`.
+  Landed 2026-09-10, three changes and nothing more: `labels/kit-resolve.ts` maps declared slugs to
+  `ExpertSkill`s against the installed set; `CreateLabelInput`/`UpdateLabelInput` and `crud.ts`
+  accept `expertKit`, closing the readable-and-unwritable defect H36 recorded; and `SkillMetadata`
+  gains an optional `triggers` list.
+  Three rules the implementation enforces, each guarding a silent failure. **A declared slug that
+  matches no installed skill is reported, never dropped** — silent dropping surfaces as a specialist
+  that "just cannot do that", which reads as a bad model rather than a missing file. **Triggers are
+  declared or they are the skill's own slug and name, never its description** — a description makes
+  almost everything match almost everything, and `routeSkills` ranks a skill with many triggers last
+  precisely because a catch-all beating a precise match is how the wrong step loads. **The fallback
+  is chosen after trimming**, because deciding on raw length and trimming afterwards turns
+  `triggers: ['  ']` into `auditCatalog`'s `unreachable` reached silently; a test caught that in the
+  first implementation. Update replaces the whole payload rather than merging, since a merge makes
+  "remove the last skill" unexpressible; an empty payload deletes the field, so a plain functional
+  label stays a plain record on disk.
+  Still open and unchanged by this: the layer-ownership rule H37 asks for is an owner ruling, and
+  nothing here decides it — this makes the existing field honest, it does not decide where capability
+  belongs. `requestedPermissionMode` remains a request the permission path may narrow (H14).
+  (2026-09-10)

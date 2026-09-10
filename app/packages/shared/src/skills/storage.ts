@@ -36,10 +36,11 @@ export const GLOBAL_AGENT_SKILLS_DIR = join(homedir(), '.agents', 'skills');
 export const PROJECT_AGENT_SKILLS_DIR = '.agents/skills';
 
 /**
- * Normalize requiredSources frontmatter to a clean string array.
+ * Normalize a frontmatter list field to a clean string array.
  * Accepts a single string or array of strings, trims whitespace, and deduplicates.
+ * Shared by `requiredSources` and `triggers` — one normalizer, not one per field.
  */
-function normalizeRequiredSources(value: unknown): string[] | undefined {
+function normalizeStringList(value: unknown): string[] | undefined {
   const asArray = typeof value === 'string'
     ? [value]
     : Array.isArray(value)
@@ -85,7 +86,8 @@ function parseSkillFile(content: string): { metadata: SkillMetadata; body: strin
         globs: parsed.data.globs as string[] | undefined,
         alwaysAllow: parsed.data.alwaysAllow as string[] | undefined,
         icon,
-        requiredSources: normalizeRequiredSources(parsed.data.requiredSources),
+        requiredSources: normalizeStringList(parsed.data.requiredSources),
+        triggers: normalizeStringList(parsed.data.triggers),
       },
       body: parsed.content,
     };

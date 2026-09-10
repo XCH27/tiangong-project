@@ -28,6 +28,46 @@ function generateLabelSlug(name: string): string {
  * Inserts into the specified parent's children array, or at root level.
  * Generates a globally unique slug from the name.
  */
+
+/**
+ * Normalize a kit payload for disk: trim, drop empties, deduplicate, and return
+ * `undefined` when nothing survives.
+ *
+ * `undefined` rather than `{}` matters — the absence of the field is what makes
+ * a plain functional label stay a plain record, the same discipline `kind` and
+ * `systemPromptPreset` already follow. An empty object on disk would read as
+ * "this kit carries nothing", which is a different claim from "this is not a kit".
+ */
+function normalizeExpertKitPayload(
+  input: CreateLabelInput['expertKit'],
+): LabelConfig['expertKit'] | undefined {
+  if (!input) return undefined;
+
+  const list = (value: string[] | undefined): string[] | undefined => {
+    if (!Array.isArray(value)) return undefined;
+    const cleaned = Array.from(new Set(
+      value.filter((entry): entry is string => typeof entry === 'string')
+        .map(entry => entry.trim())
+        .filter(Boolean),
+    ));
+    return cleaned.length > 0 ? cleaned : undefined;
+  };
+
+  const skills = list(input.skills);
+  const sources = list(input.sources);
+  const tools = list(input.tools);
+  const mode = input.requestedPermissionMode;
+
+  if (!skills && !sources && !tools && !mode) return undefined;
+
+  return {
+    ...(skills && { skills }),
+    ...(sources && { sources }),
+    ...(tools && { tools }),
+    ...(mode && { requestedPermissionMode: mode }),
+  };
+}
+
 export function createLabel(
   workspaceRootPath: string,
   input: CreateLabelInput
@@ -53,6 +93,10 @@ export function createLabel(
     // spelling — stays readable but can no longer be created.
     ...(input.kind === 'expert' && { kind: 'expert' as const }),
     ...(input.systemPromptPreset?.trim() && { systemPromptPreset: input.systemPromptPreset.trim() }),
+    ...((): Partial<LabelConfig> => {
+      const kit = normalizeExpertKitPayload(input.expertKit);
+      return kit ? { expertKit: kit } : {};
+    })(),
   };
 
   if (input.parentId) {
@@ -191,6 +235,11 @@ export function updateLabel(
     const text = updates.systemPromptPreset.trim();
     if (text) label.systemPromptPreset = text;
     else delete label.systemPromptPreset;
+  }
+  if (updates.expertKit !== undefined) {
+    const kit = normalizeExpertKitPayload(updates.expertKit);
+    if (kit) label.expertKit = kit;
+    else delete label.expertKit;
   }
 
   saveLabelConfig(workspaceRootPath, config);

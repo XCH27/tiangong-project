@@ -26,6 +26,17 @@ export interface SkillMetadata {
   icon?: string;
   /** Optional source slugs to auto-enable when this skill is invoked */
   requiredSources?: string[];
+  /**
+   * Optional phrases that select this skill when a kit routes over its catalog.
+   *
+   * Absent is the honest default, not a gap: without declared triggers a skill
+   * is reachable by its own name and by an explicit @mention, which is what it
+   * was already. Deriving triggers from `description` instead would make every
+   * skill match almost every request, and `routeSkills` ranks a skill with many
+   * triggers *last* precisely because a catch-all beating a precise match is how
+   * the wrong step gets loaded.
+   */
+  triggers?: string[];
 }
 
 /** Source of a loaded skill */
