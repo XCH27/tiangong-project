@@ -150,6 +150,8 @@ import { SourcesListPanel } from "./SourcesListPanel"
 import { SkillsListPanel } from "./SkillsListPanel"
 import { AutomationsListPanel } from "../automations/AutomationsListPanel"
 import { ProjectsListPanel } from "./ProjectsListPanel"
+import { SourceTypeFilterMenu, AutomationTypeFilterMenu } from "./EntityTypeFilterMenu"
+import { NavigatorAddButton } from "./NavigatorAddButton"
 import { APP_EVENTS, AGENT_EVENTS, type AutomationFilterKind, AUTOMATION_TYPE_TO_FILTER_KIND } from "../automations/types"
 import { useAutomations } from "@/hooks/useAutomations"
 import { useProjects } from "@/hooks/useProjects"
@@ -2679,13 +2681,9 @@ function AppShellContent({
                     SidebarMenu,
                     MoreHorizontal,
                     DropdownMenuProvider,
-                    sourceFilter,
-                    sourceTypeCounts,
                     skills,
                     expertKitCount,
                     automations,
-                    automationFilter,
-                    automationTypeCounts,
                     isExpanded,
                     toggleExpanded,
                     openAddSource,
@@ -2695,14 +2693,9 @@ function AppShellContent({
                     setGlobalSearchOpen,
                     unboundSessionItems,
                     handleSourcesClick,
-                    handleSourcesApiClick,
-                    handleSourcesMcpClick,
                     handleSkillsClick,
                     handleSettingsClick,
                     handleAutomationsClick,
-                    handleAutomationsScheduledClick,
-                    handleAutomationsEventClick,
-                    handleAutomationsAgenticClick,
                     handleConversationsClick,
                     isSkillsNavigation,
                     isSourcesNavigation,
@@ -3485,54 +3478,58 @@ function AppShellContent({
                     </DropdownMenu>
                     )
                   )}
-                  {/* Add Source button (only for sources mode) - uses filter-aware edit config */}
+                  {/* Type filter for sources / automations. These were five sidebar
+                      rows that each navigated to the same list with one predicate
+                      applied; a predicate over one list belongs to its header. */}
+                  {isSourcesNavigation(navState) && (
+                    <SourceTypeFilterMenu
+                      activeType={sourceFilter?.kind === 'type' ? sourceFilter.sourceType : null}
+                      totalCount={sources.length}
+                      apiCount={sourceTypeCounts.api}
+                      mcpCount={sourceTypeCounts.mcp}
+                      onAll={handleSourcesClick}
+                      onApi={handleSourcesApiClick}
+                      onMcp={handleSourcesMcpClick}
+                    />
+                  )}
+                  {isAutomationsNavigation(navState) && (
+                    <AutomationTypeFilterMenu
+                      activeType={automationFilter?.kind === 'type' ? automationFilter.automationType : null}
+                      totalCount={automations.length}
+                      scheduledCount={automationTypeCounts.scheduled}
+                      eventCount={automationTypeCounts.event}
+                      agenticCount={automationTypeCounts.agentic}
+                      onAll={handleAutomationsClick}
+                      onScheduled={handleAutomationsScheduledClick}
+                      onEvent={handleAutomationsEventClick}
+                      onAgentic={handleAutomationsAgenticClick}
+                    />
+                  )}
                   {isSourcesNavigation(navState) && activeWorkspace && (
-                    <EditPopover
-                      trigger={
-                        <HeaderIconButton
-                          icon={<Plus className="h-4 w-4" />}
-                          tooltip={t("sidebarMenu.addSource")}
-                          data-tutorial="add-source-button"
-                        />
-                      }
-                      {...getEditConfig(
-                        sourceFilter?.kind === 'type' ? `add-source-${sourceFilter.sourceType}` as EditContextKey : 'add-source',
-                        activeWorkspace.rootPath
-                      )}
+                    <NavigatorAddButton
+                      tooltip={t("sidebarMenu.addSource")}
+                      dataTutorial="add-source-button"
+                      workspaceRootPath={activeWorkspace.rootPath}
+                      editContext={sourceFilter?.kind === 'type' ? `add-source-${sourceFilter.sourceType}` as EditContextKey : 'add-source'}
                     />
                   )}
-                  {/* Add Skill button (only for skills mode) */}
                   {isSkillsNavigation(navState) && activeWorkspace && (
-                    <EditPopover
-                      trigger={
-                        <HeaderIconButton
-                          icon={<Plus className="h-4 w-4" />}
-                          tooltip={t("sidebarMenu.addSkill")}
-                          data-tutorial="add-skill-button"
-                        />
-                      }
-                      {...getEditConfig('add-skill', activeWorkspace.rootPath)}
+                    <NavigatorAddButton
+                      tooltip={t("sidebarMenu.addSkill")}
+                      dataTutorial="add-skill-button"
+                      workspaceRootPath={activeWorkspace.rootPath}
+                      editContext="add-skill"
                     />
                   )}
-                  {/* Add Automation button (only for automations mode) */}
                   {isAutomationsNavigation(navState) && activeWorkspace && (
-                    <EditPopover
-                      trigger={
-                        <HeaderIconButton
-                          icon={<Plus className="h-4 w-4" />}
-                          tooltip={t("sidebarMenu.addAutomation")}
-                        />
-                      }
-                      {...getEditConfig('automation-config', activeWorkspace.rootPath)}
+                    <NavigatorAddButton
+                      tooltip={t("sidebarMenu.addAutomation")}
+                      workspaceRootPath={activeWorkspace.rootPath}
+                      editContext="automation-config"
                     />
                   )}
-                  {/* Add Project button (only for projects mode) */}
                   {isProjectsNavigation(navState) && activeWorkspace && (
-                    <HeaderIconButton
-                      icon={<Plus className="h-4 w-4" />}
-                      tooltip={t("sidebarMenu.addProject")}
-                      onClick={openAddProject}
-                    />
+                    <NavigatorAddButton tooltip={t("sidebarMenu.addProject")} onClick={openAddProject} />
                   )}
                 </>
               }
@@ -3561,35 +3558,18 @@ function AppShellContent({
                 selectedSkillSlug={isSkillsNavigation(navState) && navState.details?.type === 'skill' ? navState.details.skillSlug : null}
               />
             )}
-            {isProjectsNavigation(navState) && activeWorkspaceId && (
-              /* R1: folder-Projects live in the sidebar. Nested v0.11 list is not the product home.
-                 Keep panel for ProjectInfo deep links (details); list mode points users to settings. */
-              navState.details?.projectSlug ? (
-                <ProjectsListPanel
-                  projects={projects}
-                  workspaceId={activeWorkspaceId}
-                  onProjectClick={(slug) => navigate(routes.view.projects(slug))}
-                  onAddProject={openAddProject}
-                  onJumpToSessions={handleJumpToProjectSessions}
-                  selectedProjectSlug={navState.details.projectSlug}
-                />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    {t('sidebar.projectsListRedirectHint', {
-                      defaultValue:
-                        'Projects are folders in the sidebar. Open Project settings to edit name, icon, and folder.',
-                    })}
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(routes.view.settings('workspace'))}
-                  >
-                    {t('sidebarMenu.manageProjects')}
-                  </Button>
-                </div>
-              )
+            {isProjectsNavigation(navState) && activeWorkspaceId && navState.details?.projectSlug && (
+              /* R1: folder-Projects live in the sidebar; this panel exists only to
+                 carry a ProjectInfo deep link. There is no list mode — a panel whose
+                 entire body reads "open Settings instead" is not a panel. */
+              <ProjectsListPanel
+                projects={projects}
+                workspaceId={activeWorkspaceId}
+                onProjectClick={(slug) => navigate(routes.view.projects(slug))}
+                onAddProject={openAddProject}
+                onJumpToSessions={handleJumpToProjectSessions}
+                selectedProjectSlug={navState.details.projectSlug}
+              />
             )}
             {isAutomationsNavigation(navState) && (
               /* Automations List - filtered by type if automationFilter is active */

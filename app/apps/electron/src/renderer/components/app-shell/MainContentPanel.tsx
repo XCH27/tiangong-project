@@ -272,14 +272,11 @@ export function MainContentPanel({
         </Panel>
       )
     }
-    // No source selected - empty state
-    return wrapWithStoplight(
-      <Panel variant="grow" className={className}>
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">{t("sourcesList.noSourcesConfigured")}</p>
-        </div>
-      </Panel>
-    )
+    // Nothing selected. The list beside this panel already says the list is
+    // empty, with an icon and the action that fixes it; repeating the same
+    // sentence here as bare grey text gives the person two empty states for one
+    // emptiness and no second thing to do. The detail pane is for a selection.
+    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
   }
 
   // Skills navigator - show skill info, multi-select panel, or empty state
@@ -307,14 +304,11 @@ export function MainContentPanel({
         </Panel>
       )
     }
-    // No skill selected - empty state
-    return wrapWithStoplight(
-      <Panel variant="grow" className={className}>
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">{t("skillsList.noSkillsConfigured")}</p>
-        </div>
-      </Panel>
-    )
+    // Nothing selected. The list beside this panel already says the list is
+    // empty, with an icon and the action that fixes it; repeating the same
+    // sentence here as bare grey text gives the person two empty states for one
+    // emptiness and no second thing to do. The detail pane is for a selection.
+    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
   }
 
   // Automations navigator - show automation info, multi-select panel, or empty state
@@ -350,13 +344,8 @@ export function MainContentPanel({
         )
       }
     }
-    return wrapWithStoplight(
-      <Panel variant="grow" className={className}>
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">{t("automations.noAutomationsConfigured")}</p>
-        </div>
-      </Panel>
-    )
+    // Same as sources and skills: one emptiness, one empty state, in the list.
+    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
   }
 
   // Projects navigator - show project detail page or empty state
@@ -369,13 +358,7 @@ export function MainContentPanel({
         </Panel>
       )
     }
-    return wrapWithStoplight(
-      <Panel variant="grow" className={className}>
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">{t("projectsList.noProjectSelected")}</p>
-        </div>
-      </Panel>
-    )
+    return wrapWithStoplight(<Panel variant="grow" className={className}>{null}</Panel>)
   }
 
   // Chats navigator - show chat, multi-select panel, or empty state

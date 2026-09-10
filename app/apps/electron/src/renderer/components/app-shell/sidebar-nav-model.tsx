@@ -1,22 +1,33 @@
 /**
  * The left sidebar's item tree, as data.
  *
- * These 223 lines lived inside `AppShellContent`, which is how a component
- * reaches 4,188 lines: the nav model is pure construction — no state, no
- * effects, just state in and items out — and it had no reason to be inside a
- * component except that it was written there.
+ * The order here is the product's claim about what this software is for. It
+ * used to read: search, data sources, skills, expert kits, automations,
+ * projects, conversations — every surface you configure once, above the two you
+ * open every day. A person launching Fleet met four settings screens before
+ * reaching their own work.
  *
- * Moved verbatim. The body is unchanged and every value it reads arrives through
- * one destructured parameter, so this is a relocation rather than a rewrite:
- * behaviour cannot drift, and the diff of the body is empty.
+ * So the tree is now in two blocks with a separator between them: **work**
+ * (projects and their conversations) and **what work runs on** (sources,
+ * skills, kits, automations). Craft v0.10.5 makes the same claim in its own
+ * vocabulary — `nav:allSessions` is its first row and sources/skills/automations
+ * sit below — so this restores the baseline's shape rather than inventing one.
+ *
+ * The five type rows that used to hang under Sources and Automations
+ * (`nav:sources:api`, `:mcp`, `nav:automations:scheduled`, `:event`,
+ * `:agentic`) are gone from the sidebar. They were filters wearing the costume
+ * of places: each navigated to a route that showed the same list with one
+ * predicate applied. The filters themselves are not gone — they moved into the
+ * list panel's own header menu, beside the session filter that was already
+ * there, and every `sources/api`-style route still resolves. Simplifying is not
+ * deleting.
  */
 
 import type { ReactNode } from 'react'
 import {
-  Search, DatabaseZap, Globe, Zap, Layers, ListTodo, Clock, Radio, Bot,
+  Search, DatabaseZap, Zap, Layers, ListTodo,
   Folder, MessageSquareText, FolderKanban, Plus,
 } from 'lucide-react'
-import { McpIcon } from '@/components/icons/McpIcon'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,13 +53,9 @@ export interface SidebarNavInput {
   SidebarMenu: any
   MoreHorizontal: any
   DropdownMenuProvider: any
-  sourceFilter: any
-  sourceTypeCounts: any
   skills: any
   expertKitCount: any
   automations: any
-  automationFilter: any
-  automationTypeCounts: any
   isExpanded: any
   toggleExpanded: any
   openAddSource: any
@@ -58,14 +65,9 @@ export interface SidebarNavInput {
   setGlobalSearchOpen: any
   unboundSessionItems: any
   handleSourcesClick: any
-  handleSourcesApiClick: any
-  handleSourcesMcpClick: any
   handleSkillsClick: any
   handleSettingsClick: any
   handleAutomationsClick: any
-  handleAutomationsScheduledClick: any
-  handleAutomationsEventClick: any
-  handleAutomationsAgenticClick: any
   handleConversationsClick: any
   isSkillsNavigation: any
   isSourcesNavigation: any
@@ -96,13 +98,9 @@ export function buildSidebarNav(input: SidebarNavInput): SidebarItem[] {
     SidebarMenu,
     MoreHorizontal,
     DropdownMenuProvider,
-    sourceFilter,
-    sourceTypeCounts,
     skills,
     expertKitCount,
     automations,
-    automationFilter,
-    automationTypeCounts,
     isExpanded,
     toggleExpanded,
     openAddSource,
@@ -112,14 +110,9 @@ export function buildSidebarNav(input: SidebarNavInput): SidebarItem[] {
     setGlobalSearchOpen,
     unboundSessionItems,
     handleSourcesClick,
-    handleSourcesApiClick,
-    handleSourcesMcpClick,
     handleSkillsClick,
     handleSettingsClick,
     handleAutomationsClick,
-    handleAutomationsScheduledClick,
-    handleAutomationsEventClick,
-    handleAutomationsAgenticClick,
     handleConversationsClick,
     isSkillsNavigation,
     isSourcesNavigation,
@@ -139,122 +132,7 @@ export function buildSidebarNav(input: SidebarNavInput): SidebarItem[] {
                       // Same trailing slot as source/skill counts — hotkey when known
                       label: globalSearchHotkey || undefined,
                     },
-                    { id: "separator:search-tools", type: "separator" },
-                    // --- Sources & Skills Section ---
-                    {
-                      id: "nav:sources",
-                      title: t("sidebar.sources"),
-                      label: String(sources.length),
-                      icon: DatabaseZap,
-                      variant: (isSourcesNavigation(navState) && !sourceFilter) ? "default" : "ghost",
-                      onClick: handleSourcesClick,
-                      dataTutorial: "sources-nav",
-                      expandable: true,
-                      expanded: isExpanded('nav:sources'),
-                      onToggle: () => toggleExpanded('nav:sources'),
-                      contextMenu: {
-                        type: 'sources',
-                        onAddSource: () => openAddSource(),
-                      },
-                      items: [
-                        {
-                          id: "nav:sources:api",
-                          title: t("sidebar.apis"),
-                          label: String(sourceTypeCounts.api),
-                          icon: Globe,
-                          variant: (sourceFilter?.kind === 'type' && sourceFilter.sourceType === 'api') ? "default" : "ghost",
-                          onClick: handleSourcesApiClick,
-                          contextMenu: {
-                            type: 'sources' as const,
-                            onAddSource: () => openAddSource('api'),
-                            sourceType: 'api',
-                          },
-                        },
-                        {
-                          id: "nav:sources:mcp",
-                          title: t("sidebar.mcps"),
-                          label: String(sourceTypeCounts.mcp),
-                          icon: <McpIcon className="h-3.5 w-3.5" />,
-                          variant: (sourceFilter?.kind === 'type' && sourceFilter.sourceType === 'mcp') ? "default" : "ghost",
-                          onClick: handleSourcesMcpClick,
-                          contextMenu: {
-                            type: 'sources' as const,
-                            onAddSource: () => openAddSource('mcp'),
-                            sourceType: 'mcp',
-                          },
-                        },
-                      ],
-                    },
-                    {
-                      id: "nav:skills",
-                      title: t("sidebar.skills"),
-                      label: String(skills.length),
-                      icon: Zap,
-                      variant: isSkillsNavigation(navState) ? "default" : "ghost",
-                      onClick: handleSkillsClick,
-                      contextMenu: {
-                        type: 'skills',
-                        onAddSkill: openAddSkill,
-                      },
-                    },
-                    {
-                      // Expert kits sat only in Settings, three levels from the
-                      // sidebar that already lists Skills and Data sources — the
-                      // two things a kit is made of. A capability reachable only
-                      // through a settings page is a capability most people
-                      // never find.
-                      id: "nav:expertKits",
-                      title: t("sidebar.expertKits"),
-                      label: String(expertKitCount),
-                      icon: Layers,
-                      variant: "ghost",
-                      onClick: () => handleSettingsClick('expert-kits'),
-                    },
-                    {
-                      id: "nav:automations",
-                      title: t("sidebar.automations"),
-                      label: String(automations.length),
-                      icon: ListTodo,
-                      variant: (isAutomationsNavigation(navState) && !automationFilter) ? "default" : "ghost",
-                      onClick: handleAutomationsClick,
-                      expandable: true,
-                      expanded: isExpanded('nav:automations'),
-                      onToggle: () => toggleExpanded('nav:automations'),
-                      contextMenu: {
-                        type: 'automations' as const,
-                        onAddAutomation: openAddAutomation,
-                      },
-                      items: [
-                        {
-                          id: "nav:automations:scheduled",
-                          title: t("sidebar.scheduled"),
-                          label: String(automationTypeCounts.scheduled),
-                          icon: Clock,
-                          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'scheduled') ? "default" : "ghost",
-                          onClick: handleAutomationsScheduledClick,
-                          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
-                        },
-                        {
-                          id: "nav:automations:event",
-                          title: t("sidebar.eventBased"),
-                          label: String(automationTypeCounts.event),
-                          icon: Radio,
-                          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'event') ? "default" : "ghost",
-                          onClick: handleAutomationsEventClick,
-                          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
-                        },
-                        {
-                          id: "nav:automations:agentic",
-                          title: t("sidebar.agentic"),
-                          label: String(automationTypeCounts.agentic),
-                          icon: Bot,
-                          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'agentic') ? "default" : "ghost",
-                          onClick: handleAutomationsAgenticClick,
-                          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
-                        },
-                      ],
-                    },
-                    { id: "separator:tools-projects", type: "separator" },
+                    { id: "separator:search-work", type: "separator" },
                     {
                       id: "nav:projects",
                       title: t("sidebar.projects"),
@@ -350,6 +228,57 @@ export function buildSidebarNav(input: SidebarNavInput): SidebarItem[] {
                         </button>
                       ),
                       items: unboundSessionItems,
+                    },
+                    { id: "separator:work-tools", type: "separator" },
+                    {
+                      id: "nav:sources",
+                      title: t("sidebar.sources"),
+                      label: String(sources.length),
+                      icon: DatabaseZap,
+                      variant: isSourcesNavigation(navState) ? "default" : "ghost",
+                      onClick: handleSourcesClick,
+                      dataTutorial: "sources-nav",
+                      contextMenu: {
+                        type: 'sources',
+                        onAddSource: () => openAddSource(),
+                      },
+                    },
+                    {
+                      id: "nav:skills",
+                      title: t("sidebar.skills"),
+                      label: String(skills.length),
+                      icon: Zap,
+                      variant: isSkillsNavigation(navState) ? "default" : "ghost",
+                      onClick: handleSkillsClick,
+                      contextMenu: {
+                        type: 'skills',
+                        onAddSkill: openAddSkill,
+                      },
+                    },
+                    {
+                      // Expert kits sat only in Settings, three levels from the
+                      // sidebar that already lists Skills and Data sources — the
+                      // two things a kit is made of. A capability reachable only
+                      // through a settings page is a capability most people
+                      // never find.
+                      id: "nav:expertKits",
+                      title: t("sidebar.expertKits"),
+                      label: String(expertKitCount),
+                      icon: Layers,
+                      variant: "ghost",
+                      onClick: () => handleSettingsClick('expert-kits'),
+                    },
+                    {
+                      id: "nav:automations",
+                      title: t("sidebar.automations"),
+                      label: String(automations.length),
+                      icon: ListTodo,
+                      variant: isAutomationsNavigation(navState) ? "default" : "ghost",
+                      onClick: handleAutomationsClick,
+                      contextMenu: {
+                        type: 'automations' as const,
+                        onAddAutomation: openAddAutomation,
+                      },
                     },
   ]
 }

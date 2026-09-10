@@ -3,7 +3,7 @@
 # `bun run lint:file-size`. Regenerate with `--update` after making a file smaller.
 
 9395 packages/server-core/src/sessions/SessionManager.ts
-4014 apps/electron/src/renderer/components/app-shell/AppShell.tsx
+3994 apps/electron/src/renderer/components/app-shell/AppShell.tsx
 3822 apps/electron/src/main/browser-pane-manager.ts
 3385 packages/ui/src/components/chat/TurnCard.tsx
 3268 apps/electron/src/renderer/components/app-shell/input/FreeFormInput.tsx

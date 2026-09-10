@@ -1,9 +1,8 @@
 # UI-SPEC — the measurable half of the UI baseline
 
 > **Scope:** the decidable numbers an agent needs to render a surface without inventing a visual
-> language. It is not a second authority: [`UI-SPEC.md`](UI-SPEC.md) still owns
-> *which component to start from* and *how the change is reviewed*; this file owns *what the values
-> are*. When a value here disagrees with the pinned v0.10.5 component, the component wins and this
+> language. This file owns *what the values are*; the pinned v0.10.5 component owns *which
+> component to start from*. When a value here disagrees with the pinned v0.10.5 component, the component wins and this
 > file is corrected in the same slice.
 >
 > **Provenance:** every table below is measured from
@@ -321,7 +320,7 @@ Unless the owner's Goal explicitly authorizes it, a UI change may not:
 4. locally recreate a shared primitive listed in §8;
 5. add a hero, a marketing surface, or an entrance animation;
 6. add a page, toolbar, sidebar section, or settings category when an existing surface can host it
-   ([`UI-SPEC.md`](UI-SPEC.md) owner UI rules; Decision P5);
+   (owner UI rules; Decision P5);
 7. change navigation structure, the default surface set, or which capability is primary — those are
    owner decisions recorded in [`02-DECISIONS.md`](02-DECISIONS.md), not implementation choices;
 8. ship a control whose behavior is not connected, outside the preview-gated frontend track
