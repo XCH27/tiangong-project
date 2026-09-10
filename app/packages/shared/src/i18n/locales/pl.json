@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "Zestawy, tagi i ich zawartość",
   "settings.expertKits.editExampleSelected": "Zaktualizuj #{{id}}: ustaw kind i systemPromptPreset",
   "settings.expertKits.editWithAgent": "Edit with agent",
+  "settings.expertKits.editorDesc": "Do czego służy ten zestaw i jakie umiejętności niesie.",
   "settings.expertKits.galleryTab": "Galeria",
   "settings.expertKits.hierarchy": "Hierarchia",
   "settings.expertKits.hierarchyDesc": "Drzewo z labels/config.json. Rozwiń wiersze, aby zobaczyć elementy podrzędne; kliknij wiersz, aby edytować go poniżej.",

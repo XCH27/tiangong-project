@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "Kits, tags and what they carry",
   "settings.expertKits.editExampleSelected": "Update #{{id}}: set kind and systemPromptPreset",
   "settings.expertKits.editWithAgent": "Edit with agent",
+  "settings.expertKits.editorDesc": "What this kit is for, and the skills it carries.",
   "settings.expertKits.galleryTab": "Gallery",
   "settings.expertKits.hierarchy": "Hierarchy",
   "settings.expertKits.hierarchyDesc": "Tree from labels/config.json. Expand rows for children; click a row to edit it below.",

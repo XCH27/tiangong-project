@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "Készletek, címkék és a rakományuk",
   "settings.expertKits.editExampleSelected": "#{{id}} frissítése: kind és systemPromptPreset beállítása",
   "settings.expertKits.editWithAgent": "Edit with agent",
+  "settings.expertKits.editorDesc": "Mire való ez a készlet, és milyen készségeket hordoz.",
   "settings.expertKits.galleryTab": "Galéria",
   "settings.expertKits.hierarchy": "Hierarchia",
   "settings.expertKits.hierarchyDesc": "Fa a labels/config.json fájlból. Nyisd ki a sorokat a gyermekekért; kattints egy sorra, hogy lent szerkeszd.",

@@ -271,196 +271,23 @@ export default function ExpertKitsSettingsPage() {
                     onSelectInstalled={setSelectedId}
                   />
 
-                  <SettingsSection
-                    title={t('settings.expertKits.hierarchy')}
-                    description={t('settings.expertKits.hierarchyDesc')}
-                    action={
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 px-2"
-                          disabled={busy || !activeWorkspaceId}
-                          onClick={() => setAdding((v) => !v)}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          {t('settings.expertKits.add')}
-                        </Button>
-                        {labelsConfigPath && (
-                          <>
-                            <EditPopover
-                              trigger={<EditButton />}
-                              context={agentEditContext}
-                              example={
-                                selected
-                                  ? t('settings.expertKits.editExampleSelected', { id: selected.id })
-                                  : labelsEditConfig.example
-                              }
-                              displayLabel={labelsEditConfig.displayLabel}
-                              model={labelsEditConfig.model}
-                              systemPromptPreset={labelsEditConfig.systemPromptPreset}
-                              secondaryAction={editFileAction}
-                            />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 px-2"
-                              onClick={openConfigFile}
-                              title={t('common.editFile')}
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    }
-                  >
-                    {adding && (
-                      <SettingsCard className="mb-3 p-4 space-y-3">
-                        <div className="text-sm font-medium">{t('settings.expertKits.addTitle')}</div>
-                        <SettingsInput
-                          value={newName}
-                          onChange={setNewName}
-                          placeholder={t('settings.expertKits.addNamePlaceholder')}
-                          disabled={busy}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleCreate()
-                            if (e.key === 'Escape') {
-                              setAdding(false)
-                              setNewName('')
-                            }
-                          }}
-                        />
-                        {selected && (
-                          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="rounded border-border"
-                              checked={asChildOfSelected}
-                              onChange={(e) => setAsChildOfSelected(e.target.checked)}
-                            />
-                            {t('settings.expertKits.addAsChild', {
-                              name: getLocalizedLabelName(t, selected),
-                            })}
-                          </label>
-                        )}
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => {
-                              setAdding(false)
-                              setNewName('')
-                              setAsChildOfSelected(false)
-                            }}
-                          >
-                            {t('common.cancel')}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={busy || !newName.trim()}
-                            onClick={handleCreate}
-                          >
-                            {t('settings.expertKits.addConfirm')}
-                          </Button>
-                        </div>
-                      </SettingsCard>
-                    )}
-
-                    <SettingsCard className="p-0">
-                      {labels.length > 0 ? (
-                        <LabelsDataTable
-                          data={labels}
-                          searchable
-                          maxHeight={320}
-                          fullscreen
-                          fullscreenTitle={t('settings.expertKits.hierarchy')}
-                          selectedLabelId={selected?.id}
-                          onLabelSelect={setSelectedId}
-                          showPurposeColumn
-                        />
-                      ) : (
-                        <div className="p-8 text-center text-muted-foreground">
-                          <p className="text-sm">{t('settings.expertKits.noLabels')}</p>
-                          <p className="text-xs mt-1 text-foreground/40">
-                            {t('settings.expertKits.noLabelsDesc')}
-                          </p>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="mt-4"
-                            disabled={!activeWorkspaceId}
-                            onClick={() => setAdding(true)}
-                          >
-                            <Plus className="mr-1 h-3.5 w-3.5" />
-                            {t('settings.expertKits.add')}
-                          </Button>
-                        </div>
-                      )}
-                    </SettingsCard>
-
-                    {selected && (
-                      <div className="mt-3">
-                        <LabelEditor
-                          key={selected.id}
-                          label={selected}
-                          disabled={busy}
-                          isDark={isDark}
-                          installedSkills={installedSkills}
-                          onSkillsChanged={refreshSkills}
-                          onPatch={(updates) => persist(selected.id, updates)}
-                          onDelete={handleDelete}
-                        />
-                      </div>
-                    )}
-
-                    {labelsConfigPath && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        <button
-                          type="button"
-                          onClick={openConfigFile}
-                          className="font-mono text-foreground/50 hover:text-foreground underline underline-offset-2"
-                        >
-                          {labelsConfigPath}
-                        </button>
-                        <span className="mx-1.5 text-foreground/30">·</span>
-                        <span className="text-foreground/40">{t('settings.expertKits.cliHint')}</span>
-                      </p>
-                    )}
-                  </SettingsSection>
-
-                  <SettingsSection
-                    title={t('settings.expertKits.autoApplyRules')}
-                    description={t('settings.expertKits.autoApplyRulesDesc')}
-                    action={
-                      labelsConfigPath ? (
-                        <EditPopover
-                          trigger={<EditButton />}
-                          context={autoRulesEditConfig.context}
-                          example={autoRulesEditConfig.example}
-                          displayLabel={autoRulesEditConfig.displayLabel}
-                          model={autoRulesEditConfig.model}
-                          systemPromptPreset={autoRulesEditConfig.systemPromptPreset}
-                          secondaryAction={editFileAction}
-                        />
-                      ) : undefined
-                    }
-                  >
-                    <SettingsCard className="p-0">
-                      <AutoRulesDataTable
-                        data={labels}
-                        searchable
-                        maxHeight={300}
-                        fullscreen
-                        fullscreenTitle={t('settings.expertKits.autoApplyRules')}
+                  {selected && normalizeLabelKind(selected.kind) === 'expert' ? (
+                    <SettingsSection
+                      title={getLocalizedLabelName(t, selected)}
+                      description={t('settings.expertKits.editorDesc')}
+                    >
+                      <KitEditor
+                        key={selected.id}
+                        label={selected}
+                        disabled={busy}
+                        installedSkills={installedSkills}
+                        onPatch={(updates) => persist(selected.id, updates)}
+                        onDelete={handleDelete}
+                        onSkillsChanged={refreshSkills}
                       />
-                    </SettingsCard>
-                  </SettingsSection>
+                    </SettingsSection>
+                  ) : null}
+
                 </>
               )}
             </div>
@@ -471,10 +298,9 @@ export default function ExpertKitsSettingsPage() {
   )
 }
 
-function LabelEditor({
+function KitEditor({
   label,
   disabled,
-  isDark,
   installedSkills,
   onPatch,
   onDelete,
@@ -482,7 +308,6 @@ function LabelEditor({
 }: {
   label: LabelConfig
   disabled?: boolean
-  isDark: boolean
   installedSkills: readonly LoadedSkill[]
   onPatch: (updates: UpdateLabelInput) => void
   onDelete: () => void
@@ -492,9 +317,6 @@ function LabelEditor({
   const [name, setName] = React.useState(label.name)
   const [prompt, setPrompt] = React.useState(label.systemPromptPreset ?? '')
   const kind = normalizeLabelKind(label.kind)
-  const hex = label.color
-    ? resolveEntityColor(label.color, isDark) || COLOR_PRESETS[0]
-    : COLOR_PRESETS[0]
 
   React.useEffect(() => {
     setName(label.name)
@@ -542,52 +364,6 @@ function LabelEditor({
         />
       </SettingsRow>
 
-      <SettingsRow label={t('common.color')} description={t('settings.expertKits.colorDesc')}>
-        <InlineColorPickerRow
-          value={hex}
-          presets={COLOR_PRESETS}
-          onChange={(h) => {
-            if (disabled) return
-            onPatch({ color: { light: h, dark: h } })
-          }}
-          onClear={label.color ? () => onPatch({ color: null }) : undefined}
-          clearLabel={t('common.clear')}
-        />
-      </SettingsRow>
-
-      <SettingsRow label={t('settings.expertKits.kindHeader')} description={t('settings.expertKits.kindDesc')}>
-        <div className={disabled ? 'pointer-events-none opacity-50' : undefined}>
-          <SettingsSegmentedControl
-            value={kind}
-            onValueChange={(v) => onPatch({ kind: v as NormalizedLabelKind })}
-            options={[
-              { value: 'functional', label: t('settings.expertKits.kindFunctional') },
-              { value: 'expert', label: t('settings.expertKits.kindExpert') },
-            ]}
-          />
-        </div>
-      </SettingsRow>
-
-      <SettingsRow label={t('common.type')} description={t('settings.expertKits.valueTypeDesc')}>
-        <SettingsMenuSelect
-          value={label.valueType ?? 'none'}
-          disabled={disabled}
-          menuWidth={240}
-          onValueChange={(v) => {
-            if (v === 'none') onPatch({ valueType: '' })
-            else onPatch({ valueType: v as 'string' | 'number' | 'date' | 'link' })
-          }}
-          options={[
-            { value: 'none', label: t('settings.expertKits.valueTypeNone') },
-            { value: 'string', label: t('sidebar.labelValueType.string') },
-            { value: 'number', label: t('sidebar.labelValueType.number') },
-            { value: 'date', label: t('sidebar.labelValueType.date') },
-            { value: 'link', label: t('sidebar.labelValueType.link') },
-          ]}
-        />
-      </SettingsRow>
-
-      {/* Full-width block: SettingsRow truncates long descriptions and squeezes textareas */}
       <div className="space-y-2 border-t border-border/50 px-4 py-3.5">
         <div className="text-sm font-medium">{t('settings.expertKits.promptHeader')}</div>
         <p className="text-xs text-muted-foreground leading-relaxed">
@@ -612,7 +388,7 @@ function LabelEditor({
         />
       </div>
 
-      {kind === 'expert' && (
+      {(
         <KitPayload
           label={label}
           installedSkills={installedSkills}

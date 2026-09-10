@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "套件、标记，以及它们携带的东西",
   "settings.expertKits.editExampleSelected": "更新 #{{id}}：设置 kind 与 systemPromptPreset",
   "settings.expertKits.editWithAgent": "智能体编辑",
+  "settings.expertKits.editorDesc": "这个套件做什么，以及它带哪些技能。",
   "settings.expertKits.galleryTab": "套件广场",
   "settings.expertKits.hierarchy": "层级",
   "settings.expertKits.hierarchyDesc": "来自 labels/config.json 的树。展开行查看子项，点击行在下方编辑。",

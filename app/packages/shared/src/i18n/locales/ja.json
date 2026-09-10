@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "キット、タグ、そして中身",
   "settings.expertKits.editExampleSelected": "#{{id}} を更新: kind と systemPromptPreset を設定",
   "settings.expertKits.editWithAgent": "Edit with agent",
+  "settings.expertKits.editorDesc": "このキットの目的と、それが持つスキル。",
   "settings.expertKits.galleryTab": "ギャラリー",
   "settings.expertKits.hierarchy": "階層",
   "settings.expertKits.hierarchyDesc": "labels/config.json のツリー。行を展開すると子が出ます。行をクリックすると下で編集できます。",

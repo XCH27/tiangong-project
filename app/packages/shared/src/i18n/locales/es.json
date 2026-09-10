@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "Kits, etiquetas y lo que llevan",
   "settings.expertKits.editExampleSelected": "Actualizar #{{id}}: define kind y systemPromptPreset",
   "settings.expertKits.editWithAgent": "Edit with agent",
+  "settings.expertKits.editorDesc": "Para qué sirve este kit y las habilidades que lleva.",
   "settings.expertKits.galleryTab": "Galería",
   "settings.expertKits.hierarchy": "Jerarquía",
   "settings.expertKits.hierarchyDesc": "Árbol de labels/config.json. Expande filas para ver hijos; haz clic en una fila para editarla abajo.",

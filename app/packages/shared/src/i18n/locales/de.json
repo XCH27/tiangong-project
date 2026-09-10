@@ -1226,6 +1226,7 @@
   "settings.expertKits.description": "Kits, Tags und ihre Nutzlast",
   "settings.expertKits.editExampleSelected": "#{{id}} aktualisieren: kind und systemPromptPreset setzen",
   "settings.expertKits.editWithAgent": "Edit with agent",
+  "settings.expertKits.editorDesc": "Wofür dieses Kit da ist und welche Skills es trägt.",
   "settings.expertKits.galleryTab": "Galerie",
   "settings.expertKits.hierarchy": "Hierarchie",
   "settings.expertKits.hierarchyDesc": "Baum aus labels/config.json. Zeilen aufklappen für Unterelemente; Zeile anklicken, um sie unten zu bearbeiten.",
