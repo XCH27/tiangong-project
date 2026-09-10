@@ -65,10 +65,11 @@ export function skillToExpertSkill(skill: LoadedSkill): ExpertSkill {
 /**
  * Resolve a kit's declared skill slugs against the skills actually installed.
  *
- * `installed` is what `loadAllSkills(workspaceRoot, projectRoot)` returns. When
- * two tiers provide the same slug the first occurrence wins, matching the
- * precedence `loadAllSkills` already applies — this function does not re-decide
- * tier precedence, it only reads the order it was given.
+ * `installed` is what `loadAllSkills(workspaceRoot, projectRoot)` returns, which
+ * has already resolved tier precedence and holds one entry per slug (project
+ * beats workspace beats global). This function therefore never re-decides which
+ * tier wins; the first-occurrence rule below only governs a caller that passes a
+ * list containing duplicates.
  */
 export function resolveKitCatalog(
   declaredSlugs: readonly string[] | undefined,

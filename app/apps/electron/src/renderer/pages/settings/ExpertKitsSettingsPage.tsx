@@ -29,6 +29,7 @@ import { Loader2, Plus, Trash2, FileText, TriangleAlert } from 'lucide-react'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { getDocUrl } from '@craft-agent/shared/docs/doc-links'
 import { useAppShellContext, useActiveWorkspace } from '@/context/AppShellContext'
@@ -65,6 +66,16 @@ import type { LoadedSkill } from '@craft-agent/shared/skills'
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
   slug: 'expert-kits',
+}
+
+/**
+ * A skill's tier is its scope, and the words have to say so plainly — "global"
+ * means every workspace on this machine, not "the default one".
+ */
+const SKILL_SCOPE_KEY: Record<LoadedSkill['source'], string> = {
+  global: 'settings.expertKits.scopeGlobal',
+  workspace: 'settings.expertKits.scopeWorkspace',
+  project: 'settings.expertKits.scopeProject',
 }
 
 const COLOR_PRESETS = [
@@ -764,7 +775,17 @@ function KitSkillsPicker({
               key={skill.slug}
               inCard={false}
               className="px-0"
-              label={skill.metadata.name || skill.slug}
+              label={
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate">{skill.metadata.name || skill.slug}</span>
+                  {/* Where a skill lives is where it applies, and that is not
+                      guessable from its name: global reaches every workspace,
+                      workspace only this one, project only this folder. */}
+                  <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px] font-medium">
+                    {t(SKILL_SCOPE_KEY[skill.source])}
+                  </Badge>
+                </span>
+              }
               description={skill.metadata.description}
               checked={selected.has(skill.slug)}
               disabled={disabled}

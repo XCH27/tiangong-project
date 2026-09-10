@@ -39,6 +39,7 @@ import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
 import { handleSetSessionGoal } from './handlers/set-session-goal.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleAcceptDeliverable } from './handlers/accept-deliverable.ts';
+import { handleListExpertKits, handleManageExpertKit } from './handlers/expert-kits.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
 import { handleListBackgroundTasks } from './handlers/list-background-tasks.ts';
@@ -211,6 +212,19 @@ export const AcceptDeliverableSchema = z.object({
     kind: z.enum(['file', 'session-evidence', 'url']).describe('Evidence kind'),
     id: z.string().describe('Evidence id or path'),
   })).optional().describe('Optional evidence refs recorded in the provenance header.'),
+});
+
+export const ListExpertKitsSchema = z.object({
+  includeAvailableSkills: z.boolean().optional().describe('Also list the installed skills a kit could carry, with their scope. Default true.'),
+});
+
+export const ManageExpertKitSchema = z.object({
+  action: z.enum(['create', 'update', 'delete']).describe('What to do.'),
+  labelId: z.string().optional().describe('Kit id. Required for update and delete.'),
+  name: z.string().optional().describe('Kit name. Required for create.'),
+  systemPromptPreset: z.string().optional().describe('Role instructions injected when the kit is active.'),
+  skills: z.array(z.string()).optional().describe('Slugs of installed skills this kit carries. Replaces the list whole. A slug that names no installed skill is refused.'),
+  requestedPermissionMode: z.enum(['safe', 'ask', 'allow-all']).optional().describe('The permission mode this role REQUESTS. It is not a grant — the permission path decides and may return something narrower.'),
 });
 
 export const GetSessionInfoSchema = z.object({
@@ -525,6 +539,16 @@ Omit sessionId to target the current session.
 
 IMPORTANT: never move a task into a closed status (such as "done" or "cancelled") yourself — closing a task is the user's decision, made on the board. You may prepare and hand off work by setting an open status like "needs-review"; the user reviews and closes it. Closed-status calls are rejected.`,
 
+  list_expert_kits: `List the expert kits in this workspace and, by default, the installed skills they could carry.
+
+Each kit reports the skills that resolve, the declared slugs that are NOT installed, its sources, tools and requested permission mode. Each available skill reports its scope: "global" applies in every workspace (~/.agents/skills), "workspace" only in this one, "project" only inside this project folder.
+
+Read-only. Use it before manage_expert_kit so you propose skills that actually exist.`,
+  manage_expert_kit: `Create, update or delete an expert kit — a named role that carries a set of installed skills and role instructions.
+
+Use it to assemble a kit in conversation: ask what the person does, propose skills from list_expert_kits, then write the kit. skills replaces the list whole, so pass the full set you want.
+
+requestedPermissionMode records what the role ASKS for. It never grants anything: the permission path decides and may return something narrower.`,
   accept_deliverable: `Copy an accepted Project file into deliverables/ with a provenance header (R3 acceptance).
 
 Call this when the owner accepts a revision. The helper writes <project>/deliverables/<basename> as header + original bytes. Path escape, missing source, and overwrite of a different file return an explicit error and write nothing.
@@ -636,6 +660,8 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
   { name: 'set_session_goal', description: TOOL_DESCRIPTIONS.set_session_goal, inputSchema: SetSessionGoalSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionGoal },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
+  { name: 'list_expert_kits', description: TOOL_DESCRIPTIONS.list_expert_kits, inputSchema: ListExpertKitsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListExpertKits },
+  { name: 'manage_expert_kit', description: TOOL_DESCRIPTIONS.manage_expert_kit, inputSchema: ManageExpertKitSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageExpertKit },
   { name: 'accept_deliverable', description: TOOL_DESCRIPTIONS.accept_deliverable, inputSchema: AcceptDeliverableSchema, executionMode: 'registry', safeMode: 'block', handler: handleAcceptDeliverable },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
