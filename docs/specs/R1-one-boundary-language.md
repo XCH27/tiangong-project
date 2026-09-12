@@ -1,6 +1,8 @@
 # SPEC — R1 Upstream baseline convergence + one Session list + language
 
-> Spec status: `draft` (READY after R0) — pre-landed 2026-07-26: the slice-1 source inventory
+> Spec status: **superseded as a “restore v0.10.5 AppShell” program.** Keep only the one-list /
+> Project=folder clauses if they still match [`PRODUCT.md`](../PRODUCT.md).
+> Pre-landed 2026-07-26: the slice-1 source inventory
 > (`aaa09b094`, satisfies R1-C1 — see the inventory section below) and the clause 1–3 boundary
 > shell (`2d08364f7`), both `wired but not visually checked`. Trailing-meta visibility was
 > trialed and reverted twice on 2026-07-26 (`7762c8bc4`→`2136b1ea9`, `d25b763f6`→`fa5ee7460`)

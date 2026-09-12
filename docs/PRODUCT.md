@@ -18,7 +18,7 @@ consulted on the others.
 
 | Source | What it decides | What it does **not** decide |
 |---|---|---|
-| **Craft Agents** (Apache-2.0, v0.10.5 pinned) | The **look and interaction style**. Fleet is its fork; the shell, spacing, type, colour and motion stay Craft's | Product concepts, capability ownership |
+| **Craft Agents** (Apache-2.0; current `app/` tracks **v0.13.3**) | The **look** and the **agent/runtime base** we fork. Spacing, type, colour, motion, tokens, session/agent SDK, connections, and Craft's own capabilities (including Pages). Not Fleet's product concepts | Product concepts, capability ownership, pane vs page |
 | **Cindy** (Apache-2.0) | **Feature implementation and front/back interaction logic** — how a capability is actually built and how the surface talks to the backend | Visual style |
 | **OpenChamber** (MIT) | **Git and GitHub**: which PR belongs to a branch, review, and the browser-control seam | Everything else |
 | **Fleet's own** | The **built-in production surfaces**: the infinite canvas, document editing, video and animation. No reference project has these | — |
@@ -87,12 +87,29 @@ Borrowed from Cindy, because Fleet has no answer of its own and needs one:
 **Core stays pure.** No personal, team or industry-specific workflow enters it. When the boundary is
 unclear, prove the capability as a Skill or a plugin first.
 
-Two consequences that are currently violated and must be fixed:
+Two consequences:
 
-1. A kit is not a label. Storing kits in `labels/config.json` is an implementation fact; it is not a
-   reason for kits and tags to share a page, an editor, or a concept.
-2. Determinism belongs in code. Branching, validation, state machines, permission control, error
+1. **An assistant is an identity, not a label and not a Qoder “expert kit”.** The person creates one
+   by hand, or the agent creates one. Either way it is the same record: its own system prompt,
+   commands, model, permission request, skills, MCP servers and plugins. The *effect* to match is
+   AionUi's assistant (`源码参考/software/AionUi`, Apache-2.0). The *runtime* to steal from is Cindy's
+   (approved snapshot, install/loadout, permission is a request never a grant). Storage is its own
+   authority — never `labels/config.json`. The kit-as-label store was dropped in the 2026-09-10
+   rebase; do not rebuild it.
+
+   **Who wears it is not the identity.** AionUi binds an assistant to a CLI engine. Fleet does not.
+   The same record can be worn by this conversation, by a delegate, or optionally wrapped around a
+   CLI — and wrapping a CLI is a choice, never a requirement. Mid-conversation change is allowed;
+   casual costume-change is not. If this conversation already has an identity and the next need is a
+   different specialty (research while implementing, review while writing), the default is to
+   **delegate** that identity as a sub-agent, not to swap who *this* conversation is. Switching the
+   session's own identity is a confirmed action for when the job of this conversation actually
+   changed. Any session may delegate (H28); there is no captain mode.
+2. **Determinism belongs in code.** Branching, validation, state machines, permission control, error
    handling and retry are written; the prompt carries only what genuinely needs language.
+3. **Do not patch Craft's `AppShell` to express a new surface.** A surface is a pane on the layout
+   tree (`packages/shared/src/layout`). Adding an `isXNavigation` branch, a sidebar row, or a
+   second-level page is the discarded window model.
 
 ## How the interface behaves
 

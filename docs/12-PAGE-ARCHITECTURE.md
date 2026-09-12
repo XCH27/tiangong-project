@@ -6,21 +6,40 @@
 > Visual/component rules stay in [`UI-SPEC.md`](UI-SPEC.md); owner UI
 > philosophy (“do not add entities without necessity”; simplify Craft, do not invent) binds everything here.
 
-## 1. Shell regions (exists today, Craft)
+## 1. Shell regions
 
-| Region       | Code                                  | Notes                                                                                                                               |
-| ------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Global shell | `AppShell.tsx`                        | hosts everything below                                                                                                              |
-| Left sidebar | `LeftSidebar.tsx` | owns global and Session navigation with Project and Conversations scopes; `SessionList` is not mounted as a parallel desktop navigator; saved and archived management stay out of primary navigation |
-| Main content | `MainContentPanel.tsx`                | routes pages                                                                                                                        |
-| Conversation | `ChatDisplay.tsx` / `ChatPage.tsx`    | timeline, composer, permission prompts                                                                                              |
-| BrowserPane  | Electron browser surface              | governed browser/evidence                                                                                                           |
-| Dialog layer | shared dialog/drawer components       | pickers, confirmations, "send to…"                                                                                                  |
+The window is a layout tree (`app/packages/shared/src/layout`). A surface is a pane. Craft supplies
+look (tokens, type, motion), not this structure.
 
-Target deltas bound by P6/P10 and delivered in R1: restore v0.10.5 shell behavior, keep one
-Session list with sibling Project and Conversations scopes, expose the same New Task flow globally
-and per Project, preserve Session actions, and converge workspace/folder/project controls on one
-switcher. Search, labels and archive are list states; Project home does not repeat Sessions.
+`AppShell.tsx` + `MainContentPanel.tsx` are Craft's page host: a navigation state that shows a list,
+then a second-level page. That host is being replaced (roadmap R18). **Do not add a capability by
+adding an `isXNavigation` branch, a sidebar row, or another settings page.**
+
+| Region | Code | Notes |
+| --- | --- | --- |
+| Layout engine | `packages/shared/src/layout` (model landed; renderer `not implemented`) | Cindy's tree: pane names only `panelKind`; unregistered kinds hide and reflow |
+| Nav sidebar | pane `nav-sidebar` | chrome, not a destination |
+| Navigator | pane `navigator` | Session/Project list — a pane, not the app |
+| Main | pane `main` | conversation is one pane |
+| Workbench | pane `workbench` | plugin and tool surfaces |
+| Production surfaces | pane kinds (`surface:canvas`, documents, browser, timeline) | Fleet's own; open as panes, never as sidebar rows |
+| Dialog layer | shared dialog/drawer components | pickers, confirmations |
+
+What still runs today is Craft **v0.13.3** `AppShell` + `PanelStackContainer`. That is the current
+host. Cindy work is capabilities (plugins, skills, remote, assistants), not a new overlay chrome.
+
+> **Settled, not open.** The owner rejected building the infinite canvas now ("你不应该现在做无限
+> 画布，而且你现在做的无限画布根本都是错误的"), and `FleetLayout` was reverted to
+> `PanelStackContainer` because it ignored sashes, board and chrome. On 2026-09-11 the residue of
+> that revert — `renderer/layout/{FleetLayout,LayoutRoot,LayoutBridge,registry,ledger,builtinPanels}`
+> and `renderer/surfaces/canvas/CanvasPane.tsx`, all with zero production callers, plus three
+> orphaned `canvas.*` i18n keys — was removed from the working tree. `packages/shared/src/layout/tree.ts`
+> stays: it is committed, and R18 already records it as an unmounted model.
+>
+> So the current host is Craft `AppShell` + `PanelStackContainer`, and `board`/`pages` navigate by
+> replacing the content panel. The pane sentences above describe the **R7/R18 target shape**, not
+> today's structure. When a production surface finally needs a second pane it brings the minimum host
+> seam with it (roadmap R7), and R18 decides generalized docking only after two real panes exist.
 
 ## 2. Page inventory — current (real code, `app/apps/electron/src/renderer/pages/`)
 
@@ -31,13 +50,17 @@ switcher. Search, labels and archive are list states; Project home does not repe
 | Nested v0.11 ProjectInfoPage                                                                                                                            | `display-only`    | compatibility route only; not the canonical Project authority                                                                                                                                             |
 | ShortcutsPage                                                                                                                                           | `usable`          |                                                                                                                                                                                                           |
 | AutomationInfoPage                                                                                                                                      | `usable`          | routed automation detail/configuration surface in `MainContentPanel`                                                                                                                                      |
-| Board (kanban, in app-shell)                                                                                                                            | `not implemented` | dormant v0.11 compatibility code; no R1 product entry                                                                                                                                                     |
-| Settings: AI · App · Appearance · Input · Labels · Messaging · Permissions · Preferences · Server · Shortcuts · Workspace (+ navigator) | mixed             | Settings → AI is the single visible provider/model configuration home over one Fleet LLM connection authority; the legacy Models route is a compatibility alias; the remaining inherited Settings pages retain their row status |
+| Board (kanban)                                                                                                                                          | `usable`          | Own navigator (`board`), not a session-list view mode. Conversation stays on `sessions`. Clicking a tile opens that session.                                                                              |
+| Pages (Craft v0.13.3)                                                                                                                                   | `wired but not visually checked` | Craft-admitted mini-apps (`pages` navigator). Not Fleet's infinite canvas.                                                                                                                                |
+| Settings: AI · App · Appearance · Input · Labels · Messaging · Permissions · Preferences · Remote connection · Shortcuts · Workspace (+ navigator) | mixed | `server` is **远程连接**, two blocks: 当前设备 (accept connections, Add a device → one-time access link, and the list of devices allowed in, each revocable) and 远程设备 (paste a name + link to reach another computer; removing one is confirmed because it deletes that Workspace's credentials and data). Same width as every other settings page (`max-w-3xl`). One icon for the concept — `Monitor`, a computer, never `Cloud` (P8: this is another machine, not a service). Add workspace uses the same name and the same icon, is for creating a folder/project on the remote device rather than configuring it, and routes to Settings when nothing is paired. |
+| Composer — run target chip | `wired but not visually checked` | "Which computer this conversation runs on", on a new conversation only: this computer or a paired one, with that computer's running-session count and a named reason when it cannot be chosen (not reachable / no project yet). Hidden entirely when nothing is paired. Picking a computer selects one of its Workspaces and the existing create flow does the rest — no second session-creation path. Lives in `app-shell/input/{ComposerLeadingChips,NewSessionRunTarget}` because `FreeFormInput` is over the file-size budget. |
 | Design-system playground window                                                                                                                         | `display-only`    | debug-only preview host; never a product authority                                                                                                                                                        |
 | Browser empty-state page                                                                                                                                | `usable`          | BrowserPane auxiliary window entry                                                                                                                                                                        |
 | Onboarding · Reauth · WorkspacePicker startup screens                                                                                                   | `usable`          | pre-shell startup and recovery surfaces                                                                                                                                                                   |
 
-Every change to these starts from the matching upstream component (UI baseline rule).
+These pages are what Craft **v0.13.3** mounts. Look (tokens, type, motion) still comes from
+[`UI-SPEC.md`](UI-SPEC.md). Add Fleet production surfaces as panes/capabilities, not as extra
+sidebar rows.
 
 ## 3. Page inventory — target (the full product)
 

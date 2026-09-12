@@ -2,7 +2,6 @@ import * as React from 'react'
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  Paperclip,
   ArrowUp,
   Square,
   Check,
@@ -83,8 +82,9 @@ import {
   addRecentWorkingDir,
 } from './working-directory-history'
 import { WorkingDirectorySelector, formatPathForDisplay } from './WorkingDirectorySelector'
-import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
-import { CompactModelSelector } from './CompactModelSelector'
+import { CompactSessionLoadout } from './CompactSessionLoadout'
+import { ComposerAttachChip } from './ComposerLeadingChips'
+import { NewSessionRunTarget } from './NewSessionRunTarget'
 import {
   formatTokenCount,
   groupConnectionsByProvider,
@@ -1805,38 +1805,23 @@ export function FreeFormInput({
               dropdowns inside render via portals, so they aren't clipped. */}
           {compactMode && (
           <div className="flex items-center gap-1 min-w-0 shrink overflow-hidden">
-          {onPermissionModeChange && (
-            <CompactPermissionModeSelector
-              permissionMode={permissionMode}
-              onPermissionModeChange={onPermissionModeChange}
-            />
-          )}
-          {enableCompactModelPicker && (
-            <CompactModelSelector
-              currentModel={currentModel}
-              currentConnection={currentConnection}
-              onModelChange={onModelChange}
-              onConnectionChange={onConnectionChange}
-              thinkingLevel={thinkingLevel}
-              onThinkingLevelChange={onThinkingLevelChange}
-              isEmptySession={isEmptySession}
-              connectionUnavailable={connectionUnavailable}
-              contextStatus={contextStatus}
-            />
-          )}
-          <FreeFormInputContextBadge
-            icon={<Paperclip className="h-4 w-4" />}
-            label={attachments.length > 0
-              ? t("chat.filesCount", { count: attachments.length })
-              : t("chat.attach")
-            }
-            isExpanded={false}
-            hasSelection={attachments.length > 0}
-            showChevron={false}
-            onClick={handleAttachClick}
-            tooltip={t("chat.attachFilesTooltip")}
-            disabled={disabled}
+          <NewSessionRunTarget isEmptySession={isEmptySession} workspaceId={workspaceId} disabled={disabled} />
+          <CompactSessionLoadout
+            sessionId={sessionId}
+            permissionMode={permissionMode}
+            onPermissionModeChange={onPermissionModeChange}
+            enableCompactModelPicker={enableCompactModelPicker}
+            currentModel={currentModel}
+            currentConnection={currentConnection}
+            onModelChange={onModelChange}
+            onConnectionChange={onConnectionChange}
+            thinkingLevel={thinkingLevel}
+            onThinkingLevelChange={onThinkingLevelChange}
+            isEmptySession={isEmptySession}
+            connectionUnavailable={connectionUnavailable}
+            contextStatus={contextStatus}
           />
+          <ComposerAttachChip variant="compact" attachmentCount={attachments.length} onClick={handleAttachClick} isExpanded={false} disabled={disabled} />
           {onSourcesChange && (
             <div className="relative shrink min-w-0">
               <FreeFormInputContextBadge
@@ -1923,20 +1908,11 @@ export function FreeFormInput({
           {/* Desktop: full badges row with labels and working directory */}
           {!compactMode && (
           <div className="flex items-center gap-1 min-w-32 shrink overflow-hidden">
+          {/* 0. Which computer this conversation runs on — new sessions only */}
+          <NewSessionRunTarget isEmptySession={isEmptySession} workspaceId={workspaceId} isExpanded disabled={disabled} />
+
           {/* 1. Attach Files Badge */}
-          <FreeFormInputContextBadge
-            icon={<Paperclip className="h-4 w-4" />}
-            label={attachments.length > 0
-              ? t("chat.filesCount", { count: attachments.length })
-              : t("chat.attachFiles")
-            }
-            isExpanded={isEmptySession}
-            hasSelection={attachments.length > 0}
-            showChevron={false}
-            onClick={handleAttachClick}
-            tooltip={t("chat.attachFilesTooltip")}
-            disabled={disabled}
-          />
+          <ComposerAttachChip variant="desktop" attachmentCount={attachments.length} onClick={handleAttachClick} isExpanded={isEmptySession} disabled={disabled} />
 
           {/* 2. Source Selector Badge - only show if onSourcesChange is provided */}
           {onSourcesChange && (

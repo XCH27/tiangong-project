@@ -6,26 +6,35 @@
 > **Write rule:** add an entry only when a durable direction is decided, with a date. When a
 > decision changes, edit the entry in place and note the change — do not keep a diary of dead
 > states. A current owner request always outranks any entry here.
+>
+> **2026-09-10:** [`PRODUCT.md`](PRODUCT.md) outranks this file. Entries that assume (a) Craft's
+> `AppShell` is the product window, (b) the canvas is a session-graph projection, (c) general
+> external-application control, or (d) 3D scene / panorama / shot-grid authoring, are superseded.
+> **2026-09-11 implementation reset:** the Craft v0.13.3 rebase discarded the old
+> ExpertKit-as-label, delegation, memory, artifact-history, CLI-adapter and workbench modules. H1–H27
+> remain rationale only where they state a durable invariant. Their old `Contract:` paths and
+> `landed` wording are historical, not current implementation status. H15 as revised and
+> [`PRODUCT.md`](PRODUCT.md) make `packages/shared/src/assistants/` the sole identity/loadout
+> authority; no later entry may recreate `LabelConfig.expertKit`.
 
 ## A. Product shape
 
 - **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and
   the bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
-- **P2 — Build on Craft without inheriting every upstream product change.** The committed `app/`
-  remains the one implementation tree. Pinned Craft releases and hosted docs are comparison
-  candidates: admit the better interaction, fix, or backend mechanism only after code comparison
-  proves it preserves Fleet's one Project boundary and existing authorities. Never merge a checkout
-  wholesale or create a second app. (2026-07-08; revised by owner direction 2026-07-21 and
-  2026-07-28)
-- **P3 — Retain the Craft shell.** The spatial canvas is a first-class *project surface* hosted
-  inside the shell, not a replacement shell. (2026-07-09)
+- **P2 — One `app/` tree; Craft is the look and runtime base, not the product.** The committed
+  `app/` remains the one implementation tree and tracks the latest Craft OSS tag (**v0.13.3** as of
+  2026-09-11). Do not overlay discarded Fleet pages back onto `AppShell`. Do not import Qoder/TRAE
+  product concepts. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11)
+- **P3 — Craft look, Cindy *features*.** Spacing, type, colour and motion stay Craft's. Cindy
+  decides how a capability is built and how the surface talks to the backend — plugins, skills,
+  remote connection, assistants. Rearranging chrome is not Cindy work. (2026-07-09; revised
+  2026-09-10, 2026-09-11)
 - **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription. (2026-07-08)
-- **P5 — UI baseline is clean Craft v0.10.5; later upstream UI is comparison evidence only.** Start
-  from the older shell, navigation, composer, menus and session actions. Preserve useful controls
-  before changing their placement. New surfaces exist only when a capability must be visible and no
-  existing surface can host it. v0.11 Projects/Board UI is never the default starting point, though
-  a bounded interaction or backend mechanism may pass P2's selective-intake gate. (owner, binding,
-  2026-07-10; baseline corrected 2026-07-21)
+- **P5 — Craft look is tokens and interaction style, not “restore the v0.10.5 page host”.** Compare
+  pins for the better look. Current base is v0.13.3. Do not restore an older AppShell as the
+  product. Board may remain a separate navigator when it projects the existing Session/Task
+  authorities; it never creates another Project, task or conversation store and does not restore a
+  list/Board view toggle. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11)
 - **P6 — One user concept: Project = Workspace = one folder.** The user meets exactly one work
   boundary — **Project**, which is a chosen folder on disk. Creating a project is picking or
   creating that folder; opening a folder is opening a project. Workspace remains the invisible
@@ -71,6 +80,26 @@
 **Rationale**: Default-visible controls with no actual behavior violate 03-NON-NEGOTIABLES.md §2. Owner decision 2026-07-26.
 
 **Impact**: EXEC-12 implementation status updated; P-28 surface removed; viewer boundary retained as forward guard in 03-NON-NEGOTIABLES.md.
+
+### P8-rev-2 (2026-09-11): Share control becomes local Markdown export
+
+**Decision**: Craft v0.13.3 reintroduced online conversation sharing. Replace that path with a local export of the current chat as Markdown (header Download action, session menu, `exportMarkdown` session command). Do not upload to a viewer.
+
+**Rationale**: Owner request 2026-09-11. Local-first: the conversation leaves the machine only as a file the user chose to save.
+
+**Impact**: `shareToViewer` / `updateShare` / `revokeShare` and Craft viewer fetch are gone; session JSONL is still the conversation authority.
+
+### P9-rev (2026-09-11): Remote connection is a thin client; code delivery is GitHub
+
+**Decision**: 远程连接 is one product name. The host publishes an access link; the client pastes name + link. Sessions, tools and workspace files execute on the host. The local window is UI + RPC.
+
+The access link is one pasteable blob. The host packs **every usable address on this machine** (public, overlay, LAN) and the client tries them in order. The user does not pick a network mode and does not type a VPN/tunnel hostname. Fleet does not run a relay cloud. SSH host management and Cindy remote-desktop are not this surface.
+
+Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on the host; the controller uses the same repo. Do not invent a second file-sync over the pairing socket.
+
+**Rationale**: Owner 2026-09-11: install, a few clicks, then it should work at home, on a VPS, or across different networks. Do not ship a special “VPN mode”. Screen control and SSH install are different products.
+
+**Impact**: Settings `server` is this page. Add workspace uses the same name; if unpaired it opens Settings. EXEC-09 uses Craft transport. EXEC-13 remains the GitHub delivery slice.
 
 - **P9 — "Cloud mode" is a user-owned remote execution profile, not a Fleet cloud service.** A cloud
   target is the same Fleet runtime on user/team-controlled hardware, reached via P7 transport.
@@ -128,7 +157,7 @@
 ## C. Identity, teams, and delegation
 
 - **C1 — Agent identity is per session and per project; no identity class is privileged.** A
-  session's effective identity comes from its expert kit and its Project/Workspace scope. No
+  session's effective identity comes from its worn Assistant and its Project/Workspace scope. No
   identity has a backdoor, and no identity bypasses the permission path. **Amended 2026-08-15:**
   the original entry described "a global low-context **Manager Agent** and per-project Agents" as
   two identity layers. That layer is retired — **H28 (2026-07-30) establishes that there is no
@@ -408,13 +437,13 @@
     a swappable capability has a **Service Definition** (the contract and its vocabulary), one or
     more **Service Providers** (implementations), and one or more **Consumers** (what the model and
     other callers program against) — so replacing a local executor with a sandboxed one never
-    churns the model-facing schema. Fleet already has this shape unnamed in
-    `artifacts/history-backend.ts` (one routing definition, three backends), in
-    `terminal/terminal-capability.ts` versus the R18 bounded runner and the gated PTY, and in the
-    provider lanes behind EXEC-05. Naming the roles is free; splitting packages preemptively is not
+    churns the model-facing schema. Fleet currently demonstrates parts of this shape in
+    `terminal/terminal-capability.ts` and the provider lanes behind EXEC-05; the earlier artifact
+    history and workbench examples were discarded. Naming the roles is free; splitting packages
+    preemptively is not
     — their own rule is that a capability with one conceivable provider and one Consumer stays one
     package until a second appears. Recorded in `14-MODULE-ARCHITECTURE.md` §2.
-  - **Four per-session-composition invariants** that Fleet's expert-kit design (H13–H23) does not
+  - **Four per-session-composition invariants** that Fleet's Assistant/loadout design does not
     yet state and needs: the composition a session was **created** with is a durable session fact
     and a resume rebuilds *that* composition, never today's default; switching is refused once a
     turn has run, because logged tool calls would be stranded by a different toolset; a per-session
@@ -571,7 +600,7 @@
   Conversations-scoped tasks — no project binding, so they may read across projects.~~
   **Superseded by H28 (2026-07-30): there is no management agent.** Delegation is a relationship any
   session enters by calling `spawn_session`, not a configured class; a session needing to read across
-  projects is an ordinary Conversations-scoped task whose expert kit declares those sources. UI copy,
+  projects is an ordinary Conversations-scoped task whose Assistant requests those sources. UI copy,
   menu labels and the seven locale files converge on this noun; entity/code names (Session)
   stay unchanged — this is product vocabulary, not a data-model rename. (2026-07-26)
 - **G9 — Mark All Read returns in the session-list header menu.** The v0.10.5 capability lost its
@@ -595,7 +624,8 @@
   PNG in git and a large generated `.ts` in the content store. Unknown extensions default to text,
   because misfiling a text file costs storage while misfiling a binary costs a diff nobody can read.
   The "never touch a ref" rule from the original design is scoped to the **git backend**; a content
-  store has no refs to protect. Contract: `packages/shared/src/artifacts/history-backend.ts`.
+  store has no refs to protect. The prior `artifacts/history-backend.ts` implementation was discarded;
+  this router is `not implemented`.
   Rejected: git-lfs — it requires a server, which Decision P8 forbids as a startup dependency.
   (2026-07-30)
 - **H2 — Attribution is orthogonal to history and required by all three backends.** Every change
@@ -646,8 +676,9 @@
   agents with a shared registry. Gemini CLI speaks it natively (`--acp`); Claude Code and Codex have
   adapters (`claude-agent-acp`, `codex-acp`). Decision: one ACP client replaces the probes, the
   catalog is declarative, and `transport: 'legacy-probe'` marks what has not migrated yet so the
-  debt is visible in the type rather than buried in a service file. Contract:
-  `packages/shared/src/cli-agents/cli-agent-connection.ts`. (2026-07-30)
+  debt is visible in the type rather than buried in a service file. The prior
+  `cli-agents/cli-agent-connection.ts` implementation was discarded; the general adapter is
+  `not implemented`. (2026-07-30; status corrected 2026-09-11)
 - **H7 — Detection and configuration are separate layers.** Borrowed from AionUi. **Provenance
   corrected 2026-08-15:** a source-level pass over the pinned AionUi checkout found **no symbol
   `DetectedAgent`**. What the checkout actually carries is `ManagedAgent`
@@ -694,9 +725,10 @@
   "escalate when someone is unhappy". The savings come from step three: guessing the tier up front is
   wrong in both directions and expensive in one of them, while trying cheap and escalating pays the
   premium price only for the tasks that needed it. An escalation must strictly increase cost or
-  context, otherwise it is a retry wearing a different name. The escalation path is computed at
-  routing time so the captain can show its plan before spending anything. Contract:
-  `packages/shared/src/agent/delegation-routing.ts`. (2026-07-30)
+  context, otherwise it is a retry wearing a different name. A future escalation path is computed at
+  routing time so the parent can show its plan before spending anything. The prior
+  `agent/delegation-routing.ts` implementation was discarded; requirement/cost routing is
+  `not implemented`. (2026-07-30; status corrected 2026-09-11)
 - **H11 — Sub-agents appear inline in the conversation; the session list stays clean.** Sub-agents
   are real sessions, and the code already excludes them from the left list (`!s.parentSessionId` in
   `AppShell`) while the board groups them under their parent. Both are right and neither is enough:
@@ -724,22 +756,23 @@
   pricing sorts *last*: it cannot be shown to be cheap, and guessing in its favour is how an
   expensive model becomes the silent default. Contract:
   `packages/shared/src/config/model-pricing.ts`. (2026-07-30)
-- **H13 — An identity label is a loadout, and attention is the budget it spends.** `LabelConfig`
-  already has `kind: 'identity'` and carries one thing — a `systemPromptPreset` — with its own
-  comment recording the gap: *"Skill/Source/permission bindings are not implemented"*. So an identity
-  is a paragraph of text and every session sees the same tools whatever role it is playing. That is
+- **H13 — An identity loadout spends an attention budget.** The original implementation put this
+  payload on `LabelConfig`; that store was discarded and H15 now assigns it to Assistant. The
+  underlying problem remains: an identity that is only a paragraph while every Session sees the same
+  tools has no effective loadout. That is
   wrong for a measurable reason: agent accuracy degrades once tool counts pass roughly 10–15 and
   tool-selection accuracy collapses toward 13% on large tool sets, because functions blur together
   in attention and irrelevant parameter descriptions occupy working memory that should be spent on
   the request. OpenAI's guidance is under 20 tools per turn; Anthropic documents degradation past
   30–50. Giving every session every tool is therefore not generosity, it is an accuracy tax paid
   every turn. The published remedy is specialisation — the 2026 HTAA framing is an orchestrator plus
-  specialists carrying 5–10 focused tools each — which is exactly what an identity label describes.
+  specialists carrying 5–10 focused tools each — which is exactly what an Assistant describes.
   Thresholds are recorded as `TOOL_BUDGET` (focused ≤10, crowded ≤15, over-budget >15) and skills and
   sources count against the same budget, because they arrive in the same window and compete for the
   same attention. An over-budget role is told to **split**, not trim: trimming loses capability while
-  splitting keeps it and hands the parts to agents that can each hold their share. Contract:
-  `packages/shared/src/labels/identity-loadout.ts`. (2026-07-30)
+  splitting keeps it and hands the parts to agents that can each hold their share. The old
+  `labels/identity-loadout.ts` contract no longer exists; routing/loadout enforcement is
+  `not implemented`. (2026-07-30; implementation status corrected 2026-09-11)
 - **H14 — A loadout narrows what an agent sees; it never widens what it may do.** Grants stay on the
   permission path (`03-NON-NEGOTIABLES.md` §1). `requestedPermissionMode` is a *request* the
   permission path may answer more narrowly, and a session carrying several identity labels takes the
@@ -749,14 +782,15 @@
   identity defines the specialist, the tool budget says when a role must split, delegation reaches
   the specialist instead of growing the current one, and permission decides what any of them may
   actually do. (2026-07-30)
-- **H15 — Identity labels become expert kits; the field carries the kit.** Renaming follows the
-  substance: an identity was a paragraph of text, an expert is a specialist definition. `LabelConfig`
-  gains `expertKit { skills, sources, tools, requestedPermissionMode }` and `kind: 'expert'`;
-  `kind: 'identity'` stays readable so stored catalogs keep working, and new writes use `expert`.
-  Types renamed accordingly (`ExpertKit`, `assessExpertKit`, `unionExpertKits`,
-  `describeExpertKit`, `rankExpertKits`); contract moves to
-  `packages/shared/src/labels/expert-kit.ts`. (2026-07-30)
-- **H16 — Delegates return findings; only the captain's session promotes memory.** D5 and the memory
+- **H15 — An assistant is a wearable identity; labels are not the store.** An identity was a
+  paragraph of text. The payload is now system prompt, commands, model, permission *request*,
+  skills, MCP and plugins — AionUi's assistant effect, Cindy's runtime. It does **not** live on
+  `LabelConfig` and is **not** welded to a CLI. The same record is worn by this session, by a
+  delegate, or optionally by a CLI wrap. If the session already has an identity and the next need
+  is a different specialty, the default wearer is `delegate` (H10/H28), not a self-swap.
+  `kind: 'identity'` remains readable in old label files. Contract:
+  `packages/shared/src/assistants/`. (2026-07-30; revised 2026-09-10)
+- **H16 — Delegates return findings; only the parent Session promotes memory.** D5 and the memory
   packet settle layers, floors and retrieval, and neither mentions delegation — the packet was
   written for one agent per session and the phrase "sub-agent" does not appear in it. The gap has two
   failure modes pulling opposite ways. If every sub-agent writes memory, working notes become the
@@ -765,17 +799,18 @@
   notes as independent corroboration — an echo chamber with source pointers attached. If no sub-agent
   records anything, every finding dies with the sub-session and the next run rediscovers it at full
   price, which is the cost delegation exists to avoid. So the rule is asymmetric: **a delegate reads
-  a narrow slice and returns a `DelegateFinding`; only the captain's session promotes anything
+  a narrow slice and returns a `DelegateFinding`; only the parent Session promotes anything
   durable, and only the consolidation pass writes curated layers.** A report is evidence; memory is a
   claim about what is true. Keeping delegates on the evidence side leaves one writer per task and one
   place a contradiction must be resolved. Delegates are refused *every* layer rather than given a
   private scratch: a scratch nothing reads wastes disk and attention, and one something reads is the
   echo chamber again. Promotion refusals are explicit (`no-source-pointer`, `low-confidence`,
-  `sensitive`, `cross-project`) because each names something the captain could go and fix.
-  Contract: `packages/shared/src/memory/memory-scope.ts`. (2026-07-30)
-- **H17 — A delegate's memory read is scoped by its expert kit, for the same reason its tools are.**
+  `sensitive`, `cross-project`) because each names something the parent run could go and fix. The
+  prior `memory/memory-scope.ts` contract was discarded; this remains unimplemented design guidance.
+  (2026-07-30; status corrected 2026-09-11)
+- **H17 — A delegate's memory read is scoped by its Assistant, for the same reason its tools are.**
   Handing a specialist the whole memory is the same attention tax as handing it every tool (H13). A
-  delegate reads its kit's domain files and the `tool` partition and nothing else: it was given one
+  delegate reads its Assistant's domain files and the `tool` partition and nothing else: it was given one
   bounded job, and the user profile or another domain's long-term memory is context it cannot act on
   but must still pay attention for. `sensitive-quarantine` and `archive` appear in no scope at all —
   quarantine is never injected (D5 floor 1) and an archived entry reaching a prompt would undo the
@@ -789,23 +824,23 @@
   so two independent observations is the threshold. Invalidation is by the tool disappearing or the
   convention changing, never by age: time-based expiry drops a correct fact about a stable repository
   while keeping a wrong one about a moving API. (2026-07-30)
-- **H19 — A kit's catalog is not its loadout; the attention budget governs the active set.** H13 fixed
-  the tool budget to the whole declared kit, which calls every substantial kit over-budget and tells
+- **H19 — An Assistant's catalog is not its active loadout; attention governs the active set.** H13
+  originally fixed the tool budget to the whole declared catalog, which calls every substantial
+  Assistant over-budget and tells
   the author to split. Real workflows are long — a design kit spanning problem framing, research, IA,
   flows, visual direction, motion, accessibility and engineering handoff is twenty-plus steps — and
-  splitting one into three kits makes the user choose a kit *before* they know which step they are
+  splitting one into three identities makes the user choose *before* they know which step they are
   on. Reference kits in the wild ship well past the threshold and are right to. The mistake was
   conflating two counts: **catalog** (everything a kit can do; large is fine) and **active** (what is
   in the window this turn; this is what costs attention). A kit is a catalog you route within, not a
   bundle you carry, so twenty-eight skills can cost less attention than a loadout of twelve. This is
   the retrieval-based selection the measurements favour — choosing a subset before the model reads
-  anything roughly tripled tool-selection accuracy while halving prompt tokens. `assessExpertKit`
-  now measures the active set and distinguishes the two remedies: an unrouted kit is told to
-  `add-skill-routing`, which loses no step; only a kit still over budget *after* routing is told to
-  `split-into-specialists`. Contract: `packages/shared/src/labels/skill-routing.ts`. (2026-07-30)
+  anything roughly tripled tool-selection accuracy while halving prompt tokens. The earlier
+  `assessExpertKit` and `labels/skill-routing.ts` implementation was discarded; Assistant routing is
+  `not implemented`. (2026-07-30; implementation status corrected 2026-09-11)
 - **H20 — Routing happens before the model reads, and exclusions are first-class.** Two refinements
-  over the kit designs this borrows from. **Route mechanically, not by asking the model to choose.**
-  A kit that relies on the model picking from twenty-eight skill descriptions reintroduces the
+  over the catalog designs this borrows from. **Route mechanically, not by asking the model to choose.**
+  An Assistant that relies on the model picking from twenty-eight skill descriptions reintroduces the
   problem it was built to solve: those descriptions are long, and reading all of them to select one
   is exactly the attention cost being avoided. Matching runs on declared triggers and only the
   winner's full text is loaded. **A skill must be able to say what it is *not* for.** Without
@@ -816,22 +851,20 @@
   chain is a suggestion about what usually comes next, and auto-loading it turns a twenty-eight-step
   workflow into a twenty-eight-skill prompt one step at a time. Ranking prefers the skill with fewer
   triggers, because a catch-all beating a precise match is how the wrong step gets loaded.
-  `auditCatalog` reports the failures that make routing feel broken — ambiguous triggers, dangling
-  successors, unreachable skills — since the symptom is otherwise indistinguishable from the model
-  simply choosing badly. Two example kits ship as data (`labels/example-kits.ts`): one small enough
-  to load whole, one large enough that routing is the only thing that makes it usable. (2026-07-30)
-- **H21 — A kit's catalog is unbounded; the budget never caps capability.** H19 measured the active
-  set instead of the catalog, but its vocabulary still read as rationing — an author was told to
-  "split" a kit for being large. That is the wrong trade. Capability is the product; token cost is an
-  implementation detail, and a kit trimmed to satisfy a threshold is simply a worse kit — the user
+  A future catalog audit must report ambiguous triggers, dangling successors and unreachable skills,
+  since the symptom is otherwise indistinguishable from the model choosing badly. The earlier
+  example-kit and routing files were discarded. (2026-07-30; status corrected 2026-09-11)
+- **H21 — An Assistant's catalog is unbounded; the budget never caps capability.** H19 measures the
+  active set instead of the catalog. Capability is the product; token cost is an implementation
+  detail, and a catalog trimmed to satisfy a threshold is simply worse — the user
   came for the twenty-eight-step workflow, not for twelve of its steps. So the catalog has no limit
   and never earns a warning. The only finding that matters is **architectural**: a kit with no
   routing loads all of itself, which `add-skill-routing` fixes at zero cost to the kit. A routed kit
   whose active set is still large reports `consider-splitting` as *information* — splitting
   distributes the same capability across agents that can each hold their share, and trimming, the one
   option that actually loses something, is never suggested. (2026-07-30)
-- **H22 — The expert-kit gallery is a first-class surface, and a card says what installing costs.**
-  A kit is only worth defining if it can be found, so the catalog needs browsing: role- and
+- **H22 — A future Assistant/catalog browser must say what activation costs.** An installable
+  package is only useful if it can be found, so the catalog needs browsing: role- and
   industry-shaped categories (people look for "the thing for my job", not "the thing that reads
   files"), an installed/available split, popular/newest ordering, and search. Installed kits sort
   first in either order — someone scanning is usually looking for something they already have, and
@@ -842,43 +875,39 @@
   installation rather than warn — a kit whose skills all fail on first use is worse than one never
   installed, because the failure presents as the agent being bad at the job. An unrouted kit is
   admitted with a warning: it works, it simply costs more attention than its size suggests, and that
-  is the user's call. Unknown adoption sorts last rather than as zero, so a local kit does not
-  silently outrank a marketplace one that has no count yet. Contract:
-  `packages/shared/src/labels/kit-gallery.ts`. (2026-07-30)
-- **H23 — `kind: 'identity'` is deprecated, readable forever, and normalized in one place.** Expert
-  kits grew out of the identity-label design, so stored catalogs still contain the old value. It is
-  never rewritten on read — rewriting a user's label store during a read is how a bug in the reader
-  becomes a bug in their data — and it drains out through ordinary editing via
-  `withNormalizedKind()`. New code must not write it, must not compare `kind` directly, and asks
-  `isExpertLabel()` / `normalizeLabelKind()` instead: scattered `kind === 'identity'` checks are how
-  half a codebase keeps accepting a value the other half has forgotten. **For any agent picking this
-  up later: expert kits *are* the old identity labels, renamed and given a real payload.** That is
-  the whole of the history worth carrying. Contract:
-  `packages/shared/src/labels/kind-normalize.ts`. (2026-07-30)
-- **H24 — Data sources are declared by a kit, not connected globally.** A globally-connected source
+  is the user's call. Unknown adoption sorts last rather than as zero, so a local package does not
+  silently outrank a marketplace one that has no count yet. The old `labels/kit-gallery.ts`
+  implementation was discarded; this surface is `not implemented`.
+  (2026-07-30; status corrected 2026-09-11)
+- **H23 — Legacy `kind: 'identity'` labels remain readable but are not Assistants.** Stored label
+  catalogs may contain the old value. Do not rewrite them merely by reading; a future migration must
+  use one explicit path rather than scattered direct comparisons. **They must not be upgraded into
+  Assistants or used as an identity store.** The old normalizer was discarded. (2026-07-30; revised
+  2026-09-11)
+- **H24 — Data sources are requested by an Assistant, not injected globally.** A globally-connected source
   is either always in scope — attention spent on data the current role cannot use — or toggled per
-  session, which is a step nobody performs reliably. Once kits define roles the binding belongs to
-  the kit, alongside its skills and tools, and it carries the two things a global connection cannot
-  express: whether the kit *needs* it, and how sensitive the contents are. Missing **required**
+  session, which is a step nobody performs reliably. Once Assistants define roles the binding belongs to
+  the Assistant, alongside its skills and tools, and it carries the two things a global connection cannot
+  express: whether the Assistant *needs* it, and how sensitive the contents are. Missing **required**
   sources refuse activation; missing optional ones degrade and say so, because a curator that quietly
   ran over two of its five archives produces a plausible result, and nobody re-runs a result that
   looks fine. A binding declared read-write but not granted write is refused rather than downgraded
-  to read: silently downgrading leaves the kit failing later at a write it was told it could perform,
-  which reads as the kit being broken. Contract: `packages/shared/src/labels/kit-sources.ts`.
-  (2026-07-30)
+  to read: silently downgrading leaves the Assistant failing later at a write it was told it could perform,
+  which reads as the Assistant being broken. The old `labels/kit-sources.ts` implementation was
+  discarded; binding enforcement is `not implemented`. (2026-07-30; status corrected 2026-09-11)
 - **H25 — An imported archive is searched, never absorbed.** A chat export from another application
   is somebody's correspondence. It is exactly the material a memory curator wants and exactly the
   material that must never be injected wholesale or promoted into durable memory — treating it as
   "just another source" is how a private conversation ends up in `MEMORY.md` with a source pointer
   attached. So `local-archive` is forced to `sensitive` **regardless of what the binding declares**:
-  the kit author is not the person whose correspondence it points at, and their judgement is not the
+  the package author is not the person whose correspondence it points at, and their judgement is not the
   one that should decide. Its disposition is `search-only`, and nothing derived from it is promotable
   automatically. This is not a restriction on usefulness — the value of an archive is the *pattern*
   across it (this team always ships behind a flag; this API is the one that keeps breaking), and a
   pattern is a new claim the curator states and sources, not a passage it lifts. (2026-07-30)
-- **H26 — The memory-curator kit, and why its defaults are Hermes'.** A worked example of the whole
-  design: kit-declared sources, routed skills, and a consolidation loop that earns its keep. It is
-  the kit that makes every other kit better, because what it produces is what the rest of the system
+- **H26 — The future memory curator, and why its defaults are Hermes'.** A worked example of the
+  design: Assistant-requested sources, routed skills, and a consolidation loop that earns its keep. It is
+  the pass that makes every other Assistant better, because what it produces is what the rest of the system
   reads. Four choices are taken from Hermes' curator, which solves the same problem — an agent that
   saves a skill whenever it solves something novel accumulates dozens of narrow near-duplicates that
   pollute the catalog and cost tokens every turn. **Idle-triggered, not scheduled**: a pass needs
@@ -897,7 +926,8 @@
   is how a correction gets overwritten by the mistake it corrected. A log line naming no entries, or
   promoting with no sources, is rejected — a consolidation log exists so a person can disagree with a
   pass they were not present for, and "merged 3 entries" is a receipt rather than an explanation.
-  Contract: `packages/shared/src/labels/memory-curator-kit.ts`. (2026-07-30)
+  The prior curator contract file was discarded; no curator is implemented. (2026-07-30; status
+  corrected 2026-09-11)
 - **H27 — Foreign memory is never imported as memory; foreign history is imported as an archive.**
   Every competing product ships "import your Claude / Cursor / Coze memories". It is the wrong
   feature here, and not because it is hard. Another product's curated memory is a set of claims *it*
@@ -918,18 +948,19 @@
   of somebody's chat log and storing it as memory is the exact failure the module prevents, and it is
   easy to commit by accident when the original phrasing is already good. Mined claims carry their
   `archiveId`, so dropping an import drops what was derived from it and a revocable import stays
-  revocable. Contract: `packages/shared/src/memory/foreign-memory.ts`. (2026-07-30)
+  revocable. The prior `memory/foreign-memory.ts` contract was discarded; no foreign-memory import
+  path is implemented. (2026-07-30; status corrected 2026-09-11)
 - **H28 — There is no manager agent and no captain role. Delegation is a relationship, not a class.**
   Earlier planning assumed a "管理 Agent" — a Conversations-scoped session configured to coordinate
-  others — and a captain/delegate distinction the user would choose between. Expert kits, kit-declared
+  others — and a captain/delegate distinction the user would choose between. Assistants, requested
   sources, capability-and-cost routing and scoped memory remove the need for both. **Any session
   becomes a captain the moment it delegates**, and the same session is a delegate to whatever spawned
   it; the relationship lasts exactly as long as one delegation. There is no mode to enter, nothing to
   configure, and the UI must not offer either — a session that delegates is an ordinary conversation
   whose turn happened to call `spawn_session`. Naming these as user-facing roles would recreate
-  precisely what kits removed: a decision the user has to make up front about a capability that was
-  always available. `MemoryWriteRole`'s `captain` / `delegate` values are positions in a delegation
-  and are documented as such at the type. Supersedes the management-agent direction recorded under
+  precisely what Assistants avoid: a role decision the user should not have to make up front.
+  “Parent” and “delegate” are positions in one run relationship, not identity classes. Supersedes the
+  management-agent direction recorded under
   G8. (2026-07-30)
 - **H29 — A cost with no rate behind it is reported as unknown, never as zero.** `SessionTokenUsage.costUsd`
   carries three different meanings behind one number: Claude and Pi backends write a real figure from the
@@ -964,27 +995,15 @@
   The editor is on the Usage page next to the "no rate" it fixes, not in AI settings; four fields, because
   collapsing cache into input is the standard way a self-built cost display goes wrong, and agent work is
   overwhelmingly cache-heavy. (2026-07-31)
-- **H32 — There is one settings page over the label store, and it is Expert kits.** The rename to
-  expert kits (H21) changed the type and the vocabulary and then stopped: a separate read-only
-  "Expert kits" page was added beside the existing "Labels" page, over the same
-  `labels/config.json`. Two categories for one store is the [`UI-SPEC.md`](UI-SPEC.md) §11.6
-  violation stated exactly — a settings category added where an existing surface could host it — and
-  it did something worse than duplicate: it left the retired word in navigation, so from the outside
-  the rename looked like it had never happened. The CRUD page absorbed the kit view; the `labels`
-  category is gone; the `settings.labels.*` key namespace is gone; the `/labels` deep link resolves
-  to the surviving page so existing bookmarks do not break. **A functional label and an expert kit
-  are the same record** — one carries a payload — so they are edited in one place rather than behind
-  a decision the user has to make before they have seen either. (2026-07-31)
-- **H33 — Write paths accept `expert`; only reads still understand `identity`.** H21 widened
-  `LabelConfig.kind` to include `expert` and left `CreateLabelInput` / `UpdateLabelInput` at
-  `'functional' | 'identity'`. The new kind was therefore readable and **unwritable** — every UI
-  control that appeared to set it was typed against an input that rejected it, and `crud.ts` still
-  wrote `identity` unconditionally. A rename that only lands on the read side is not a rename; it is
-  a second spelling with extra steps. `NormalizedLabelKind` is now declared in `labels/types.ts`
-  (where the data lives, so the input types can reference it without importing their own normalizer)
-  and re-exported from `kind-normalize.ts` so callers keep one import site. `identity` stays readable
-  forever — config on disk contains it, and rewriting a user's store on read is how a reader bug
-  becomes a data bug. (2026-07-31)
+- **H32 — Labels and Assistants are separate authorities with separate meanings.** Labels remain
+  metadata over work. Assistants own identity and requested loadout under
+  `packages/shared/src/assistants/`. A settings surface may navigate to both, but it must never expose
+  two editors over one store or place Assistant payloads in `labels/config.json`. Supersedes the
+  ExpertKit-as-label ruling. (2026-07-31; revised 2026-09-11)
+- **H33 — Legacy identity-label values are migration input only.** Existing label files may still be
+  read without mutation, but new Assistant writes use only the Assistant authority. Compatibility
+  must not turn an old label into a second spelling of Assistant. The old ExpertKit normalizer and
+  write path were discarded. (2026-07-31; revised 2026-09-11)
 - **H34 — The UI guard now rejects raw palette colours, because that is what it missed.**
   `check-ui-contract.ts` enforced opacity, radius, type, elevation and stroke width, and said nothing
   about colour — so `bg-amber-500`, `bg-emerald-500`, `bg-blue-500`, `text-amber-600` and `bg-primary`
@@ -1010,94 +1029,24 @@
   them (no springs, no stagger, no bounce), because those references are written for product apps in
   general and this is a workbench. (2026-07-31)
 
-- **H36 — The expert kit declares what nothing hosts, so it carries one paragraph of text.** H13
-  defines a kit as a label with a real payload — skills, sources, tools, a requested permission
-  mode — and `LabelConfig.expertKit` declares exactly that. Measured 2026-09-10: `CreateLabelInput`
-  and `UpdateLabelInput` carry only `kind` and `systemPromptPreset`, so **the payload has no writer
-  in the tree**; and outside `ExpertKitsSettingsPage.tsx` nothing reads `label.expertKit`, so it has
-  **no reader**. Every exported symbol of `skill-routing.ts` (`routeSkills`, `resolveChain`,
-  `auditCatalog`, `skillApplies`, `isBlockingProblem`), `kit-gallery.ts` (`browseKits`,
-  `admitInstall`, and six more), `example-kits.ts` and `kit-sources.ts` has zero consumers outside
-  `packages/shared/src/labels/` itself; skill routing is never called from `prompts/`, `agent/` or
-  `server-core/`. The only part of a kit that survives to runtime is `systemPromptPreset`, injected
-  through `prompt-builder.ts` — which is precisely the state `expert-kit.ts`'s own header calls the
-  wrong shape: *"an identity is a paragraph of text, and every session sees the same tools
-  regardless of the role it is playing."*
-  Two consequences are decided here, not deferred. **(a)** This is the same defect H33 fixed one
-  field over: H33 widened `kind` because a rename landing only on the read side is not a rename, and
-  left `expertKit` readable-and-unwritable. **(b)** The settings page runs `assessExpertKit` over
-  `label.expertKit?.skills ?? []`, which cannot be anything but empty, and renders a tool-budget
-  verdict and a "this kit loads everything" warning as statements about it — so the surface reports
-  a measurement of an unreachable value. Under the status vocabulary the kit payload is
-  `not implemented`; only name, colour, kind, value type and prompt are `usable`. The page's own
-  agent-edit context compounds it by instructing the model *"Do not invent skill/source/permission
-  binding fields"*, closing the one path by which a payload could have been authored.
-  H19 and H21's catalog-versus-active distinction is unobservable for the same reason: it needs
-  routing to exist, so the two counts always coincide and the only suggestion the assessment can
-  emit is `add-skill-routing` for a kit with no skills. (2026-09-10)
-- **H37 — Capability comes from a live binding, never from a field that says so. Which layer owns a
-  capability is an OPEN owner ruling.** Three reference products state the same rule in unrelated
-  domains (`references/REFERENCE-REGISTRY.md`, 2026-09-10 intake). OpenChamber's browser broker:
-  *"Capability belongs to the connection, not to configuration"* — a client declares it can drive a
-  page by opening its event stream with `browser=1`, which only a Chromium host does, so the flag
-  lives and dies with that connection and there is no setting to enable. Cindy's skill slot: what
-  the approval dialog showed must be byte-identical to what the agent later reads, enforced by one
-  checker shared by both ends, with the link pointing at an approved snapshot rather than a mutable
-  directory. Orca's accounts: an account is a directory with an ownership marker and "active" is a
-  pointer, so a switch never overwrites a credential. In each case the declaration is backed by
-  something that exists. H36 is what happens without that.
-  **What Fleet is missing is upstream of the kit.** `03-NON-NEGOTIABLES.md` forbids a second
-  authority and `05-ROADMAP.md` fixes integration order, but no document answers *which layer owns
-  this capability*. So capability lands wherever it is written — a settings-tree label record trying
-  to bind skills, sources, tools and permission — and R15 marketplaces and R10 authoring will hit
-  the same wall for the same reason. Cindy's `core-product-principles.md` §§5–6 is a working answer
-  under a compatible licence: **Core** carries only what the host must provide for everyone; a
-  **Skill** describes how work is done; a **plugin** carries rich interaction; and 「Core 永远保持
-  纯粹」 bars personal, team or industry workflow from Core behind four conjunctive conditions, with
-  an unclear boundary defaulting to "prove it as a Skill or plugin first". Its companion rule is
-  that determinism belongs in code — branching, validation, state machines, orchestration,
-  permission control, error handling, retry and fallback — with prompt carrying only what needs
-  language; a kit whose whole payload collapsed into a prompt string is the counter-example.
-  **Owner ruling required (G1: this is a product boundary, not an engineering route).** Adopt a
-  Fleet layer-ownership rule of that shape, then decide what an expert kit is. Option A — build the
-  host: widen the write inputs, add a skill resolver that turns a slug into something a harness
-  reads, project the tool subset (Craft v0.12's `proxy-tool-name.ts` is the prerequisite), and route
-  the requested permission mode through the existing permission path. Option B — shrink to the
-  truth: drop `expertKit` from the record and the budget assessment from the page, and let a kit be
-  the named role with a prompt preset it demonstrably is. Both are smaller than the present state.
-  Not an option: leaving a surface that measures a value it cannot obtain. (2026-09-10)
-- **H38 — A kit selects over the skills that already exist; the host was never missing.** H37 put
-  the ruling as "build the host or shrink to the truth", and reading the tree settles it: Fleet
-  already loads skills from disk across three tiers — `{workspace}/skills/`,
-  `{project}/.agents/skills/`, `~/.agents/skills/` — parses their SKILL.md frontmatter with
-  `gray-matter`, exposes them over RPC, and reaches the agent through `loadAllSkills` in
-  `base-agent.ts` and the tier resolution in `pre-tool-use.ts`. `~/.agents/skills/` is the same
-  convention Cindy writes into, so the two products already agree on where a skill lives. What was
-  absent was never a subsystem — it was the one function between `LoadedSkill` and the `ExpertSkill`
-  that `routeSkills` has always consumed. So the classification is **REUSE/EXTEND, not NEW**, and
-  the kit becomes a *selection over installed skills* rather than a parallel declaration. That is
-  also why the ambition in H37 Option A to "project the tool subset" is not needed as a bespoke
-  layer: tools arrive through MCP, which Fleet already has, exactly as Qoder's plugins declare
-  theirs in a plain `.mcp.json`.
-  Landed 2026-09-10, three changes and nothing more: `labels/kit-resolve.ts` maps declared slugs to
-  `ExpertSkill`s against the installed set; `CreateLabelInput`/`UpdateLabelInput` and `crud.ts`
-  accept `expertKit`, closing the readable-and-unwritable defect H36 recorded; and `SkillMetadata`
-  gains an optional `triggers` list.
-  Three rules the implementation enforces, each guarding a silent failure. **A declared slug that
-  matches no installed skill is reported, never dropped** — silent dropping surfaces as a specialist
-  that "just cannot do that", which reads as a bad model rather than a missing file. **Triggers are
-  declared or they are the skill's own slug and name, never its description** — a description makes
-  almost everything match almost everything, and `routeSkills` ranks a skill with many triggers last
-  precisely because a catch-all beating a precise match is how the wrong step loads. **The fallback
-  is chosen after trimming**, because deciding on raw length and trimming afterwards turns
-  `triggers: ['  ']` into `auditCatalog`'s `unreachable` reached silently; a test caught that in the
-  first implementation. Update replaces the whole payload rather than merging, since a merge makes
-  "remove the last skill" unexpressible; an empty payload deletes the field, so a plain functional
-  label stays a plain record on disk.
-  Still open and unchanged by this: the layer-ownership rule H37 asks for is an owner ruling, and
-  nothing here decides it — this makes the existing field honest, it does not decide where capability
-  belongs. `requestedPermissionMode` remains a request the permission path may narrow (H14).
-  (2026-09-10)
+- **H36 — A declared capability without a live writer, resolver and runtime consumer is `not
+  implemented`.** This finding exposed the old ExpertKit-as-label design: its fields described skills,
+  sources, tools and permission, but no complete production path enforced them. That implementation
+  was discarded. The same honesty rule now applies to Assistant loadouts and marketplace metadata:
+  never render a measured or active state that the runtime cannot obtain. (2026-09-10; revised
+  2026-09-11)
+- **H37 — Capability comes from a live binding, never from a field that says so.** The owner ruling
+  is now [`PRODUCT.md`](PRODUCT.md): Core carries only the common host; a Skill describes how work is
+  done; a plugin carries rich structured interaction; an Assistant is the independent wearable
+  identity/loadout; deterministic branching, validation, permission and recovery stay in code. The
+  writer, resolver, permission decision and runtime consumer must agree on one approved snapshot.
+  Otherwise shrink the surface to the truth. (2026-09-10; resolved 2026-09-11)
+- **H38 — An Assistant selects over installed Skills; it never declares a parallel Skill store.**
+  Fleet already loads Skills from disk across its supported scopes. Assistant loadout resolution is
+  therefore `REUSE/EXTEND`: declared IDs resolve against that installed set, unresolved IDs are named
+  rather than dropped, and routing uses explicit triggers/exclusions rather than descriptions. The
+  old `labels/kit-resolve.ts` implementation was discarded; current Assistant-to-runtime resolution
+  remains `not implemented`. (2026-09-10; revised 2026-09-11)
 - **H39 — Where a skill lives is where it applies, and that is a choice the product must offer.**
   `LoadedSkill.source` has always reported three tiers and nothing surfaced or changed them, so
   "make this skill global instead" had no answer and a skill could only be authored by hand on disk.
@@ -1119,10 +1068,9 @@
   silently by the loader, so the agent would report success for a skill that never appears.
   **The permission line is unchanged and is the one place this differs from the request as put.** The
   owner asked that the agent be able to install, enable, disable and change permissions. The first
-  three are agent-callable — a kit narrows what an agent *sees*, never what it *may do*. The fourth is
-  a **request only**: `requestedPermissionMode` records what a role asks for and the permission path
+  three are agent-callable — an Assistant narrows what an agent *sees*, never what it *may do*. The fourth is
+  a **request only**: `requestedPermissionMode` records what an Assistant asks for and the permission path
   decides, possibly narrower. A tool that let an agent widen its own mode would be a second authority
   over the one decision the permission path exists to make, and every other control in the product
-  would become decorative (H14; `agent/permission-intersection.ts` — privilege never expands past the
-  parent). `manage_expert_kit` says so in its own response payload so the model cannot conclude it just
-  granted itself something. (2026-09-10)
+  would become decorative. Assistant wearing must report that result explicitly so the model cannot
+  conclude it granted itself something. (2026-09-10; revised 2026-09-11)

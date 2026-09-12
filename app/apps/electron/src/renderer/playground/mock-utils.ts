@@ -228,6 +228,29 @@ export const mockElectronAPI = {
     return null
   },
 
+  saveTextFile: async ({ defaultFileName }: { content: string; defaultFileName: string }) => {
+    console.log('[Playground] saveTextFile called:', defaultFileName)
+    return { canceled: true }
+  },
+
+  remoteSsh: {
+    list: async () => ({ hosts: [] }),
+    reloadConfig: async () => ({ hosts: [] }),
+    add: async () => { throw new Error('playground') },
+    update: async () => { throw new Error('playground') },
+    remove: async () => { throw new Error('playground') },
+    connect: async () => { throw new Error('playground') },
+    disconnect: async () => { throw new Error('playground') },
+    setAutoConnect: async () => { throw new Error('playground') },
+    listLocalKeys: async () => ({ keys: [] }),
+    generateKey: async () => { throw new Error('playground') },
+    readPubkey: async () => { throw new Error('playground') },
+    buildInstallCmd: async () => { throw new Error('playground') },
+    buildInstallCmdInline: async () => { throw new Error('playground') },
+    addKeyToAgent: async () => { throw new Error('playground') },
+    onStatusChanged: () => () => {},
+  },
+
   getTaskOutput: async (taskId: string) => {
     console.log('[Playground] getTaskOutput called:', taskId)
     return `Output for task ${taskId}:\n\nThis is a mock output in the playground.\nIn the real app, this would show the actual task output.`

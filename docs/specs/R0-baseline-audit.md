@@ -1,144 +1,140 @@
-# SPEC — R0 Baseline audit
+# SPEC — R0 Craft v0.13.3 baseline stabilization
 
-> Spec status: `active`
+> Spec status: **active**
 > Owner acceptance date: —
 >
-> **State 2026-09-09 (per the roadmap R0 row, the single release-state edit point): the working
-> tree is landed; R0-C7 is the only criterion left.** The 2026-08-15 measurement (385 porcelain
-> entries, `app/` at 247 files) was re-taken fresh at execution time and came to **395 entries**.
-> Every one is now in a landed commit: 17 groups, no `G-unknown`, 18 revertable commits on
-> `work/fresh-base-spine` beginning at `c487815ec`. `backup/pre-r0-audit-2026-09-09` snapshots the
-> dirty tree as it stood before the first landing commit (`backup/pre-r0-audit` is from 2026-07-20
-> and never covered this tree; keep both until the owner accepts R0).
+> This contract replaces the closed 2026-09-09 audit of `work/fresh-base-spine`. That branch and its
+> renderer were discarded by the Craft rebase. Do not resume its visual walkthrough, recreate its
+> `fleet-baseline-r0` tag, restore the v0.10.5 `AppShell`, or treat its landed/typechecked claims as
+> evidence for the current tree.
 >
-> Two blockers were found in the gate itself, not in the code under it, and both are fixed:
-> the test suite read the developer's `~/.craft-agent` for `config-defaults.json`, so 9 tests failed
-> on CI and on any fresh checkout; and `bun install --frozen-lockfile` failed on a drifted
-> `@types/bun`, which fails CI before a single check runs. `validate:dev`, the three `validate:ci`
-> i18n checks, the doc-contract validator and `bun install --frozen-lockfile` are all green, and
-> the headless server boots with no fatal errors.
->
-> The reference-mirror entry is **closed and its recorded cause was wrong**: `源码参考/` became a
-> symlink on 2026-08-08 while 73 regular-file entries stayed in the git index, and git does not
-> traverse a symlink — the deletions were reported whether or not `/Volumes/AIGC` was mounted, so
-> "mount the volume" could never have fixed them. Index entries dropped in `c487815ec`; no file on
-> disk was touched.
->
-> Status by criterion: R0-C1 met (`git status --porcelain` empty) · R0-C2 met (17 separately
-> revertable group commits) · R0-C3 met with one stated limit — each group ran scoped typecheck via
-> the pre-commit gate and its own targeted tests, but the groups were verified as a set against the
-> complete tree; no intermediate commit is claimed to build in isolation · R0-C4 met · R0-C5 met for
-> the headless server; the Electron dev launch rides with the owner walkthrough · R0-C6 met by this
-> sync · **R0-C7 open — owner walkthrough, then the tag.**
->
-> **Execution boundary:** this release contains Git-history and destructive operations. It is run
-> by one agent working with the owner present at the marked checkpoints — it is not a fire-and-forget
-> task. Deleting anything follows [`../03-NON-NEGOTIABLES.md`](../03-NON-NEGOTIABLES.md) §6.
-
-## Goal execution boundary
-
-R0 may be the persistent Goal, but it is not one autonomous edit slice. Each continuation selects
-one inventory/app/doc group and one acceptance criterion, then finishes that reversible slice before
-moving on. Read-only inventory, classification, scoped fixes, tests, and diff preparation may run
-without interruption; backup branches, commits, tags, destructive drops, and owner visual acceptance
-remain checkpoints. Resume from the Goal/thread state plus fresh `git status`/`git log` evidence —
-do not append progress logs to this spec or reread the entire documentation corpus.
+> **Current reality:** `app/package.json` is Craft **v0.13.3** and the branch name
+> `work/craft-0.12-rebase` is historical. The working tree is large, uncommitted and contains both
+> useful integration work and half-finished surfaces. Nothing in this spec says that tree is clean,
+> green, visually accepted, or ready to release until the corresponding criterion has fresh evidence.
 
 ## Outcome
 
-The uncommitted working tree on `work/fresh-base-spine` (a mixed set of app code, doc rewrites,
-deletions, and new tooling — **count it fresh at execution time**; it drifts) is audited and
-resolved **group by group**: each coherent group is landed (verified, committed, documented), fixed
-then landed, or dropped (deleted with its unique facts recorded). At the end, the branch is green
-(`validate:dev`), runnable, tagged, and the docs describe the actual state.
+Produce one trustworthy Craft v0.13.3 working baseline: preserve the current Craft runtime and look,
+repair security and recovery defects in the modifications already present, remove or disconnect
+unreachable/discarded implementation, and make every capability claim match a real caller and data
+path. The result is runnable and fully verified; any remaining uncommitted entry is explicitly
+accounted for rather than hidden behind an old commit or release claim.
 
-## Walkthrough (system)
+## Current slice
 
-1. **Check Git health (owner checkpoint only if blocked).** Run `git status` first. If
-   `.git/index.lock` blocks Git, do **not** delete it blindly: close other sessions using this
-   folder, confirm no Git process owns it, then remove the stale lock with the owner present and
-   rerun `git status`. If Git is healthy, proceed without manufacturing a checkpoint.
-2. **Fresh inventory.** Run `git status --porcelain`, group every entry into coherent groups. The
-   expected groups (verify against the actual diff, do not assume):
-   - **G-docs:** the 2026-07-16/17 documentation restructure (new/rewritten `docs/`, root
-     `AGENTS.md`/`README.md`) — one commit of its own.
-   - **G-design-asset-migration:** design-library notes retain only durable product-design value.
-     Confirm their content is mapped through `docs/modules/MIGRATION-MAP.md`; superseded milestone,
-     process and duplicate-owner documents are deleted after unique facts migrate. Do not create a
-     retired/archive directory in the product tree.
-   - **G-app-\<feature\>:** app code groups (zh-Hans i18n + lints; Project=Workspace presentation;
-     identity labels/system-labels; settings pages; service-independence tests; scripts/tooling;
-     husky). One group = one commit, landed only after its ladder passes.
-   - **G-unknown:** anything that fits no group → owner decision.
-3. **Per app group, smallest first:** classify (REUSE/EXTEND/NEW) → ladder levels 1–3
-   ([`../09-QUALITY.md`](../09-QUALITY.md)) → land as one commit with its docs, **or drop** the
-   hunks, recording any unique surviving fact. A group that cannot reach
-   `wired but not visually checked` within the stop
-   rules is dropped or returned to `G-unknown` for an owner decision, not force-landed or silently deferred.
-4. **Integrate:** `validate:dev`, non-interactive dev-launch smoke, tag `fleet-baseline-r0`.
-5. **Sync docs:** update `../PRODUCT.md` (current state), `../UI-SPEC.md` (delta list),
-   `FEATURE-REGISTRY.md`, matrix rows whose status changed, roadmap (R0 done → next ACTIVE), this
-   spec.
+- **Objective:** stabilize the current v0.13.3 implementation and documentation as one coherent
+  baseline.
+- **Context paths:** the current `app/` diff and new files; root instructions; canonical product,
+  roadmap, capability, page and code maps.
+- **Constraints:** preserve Craft v0.13.3; no wholesale donor merge; no new authority; no new remote
+  target, relay or file-sync product; no general computer-control layer; no replacement UI shell;
+  no tag or commit required by this contract.
+- **Acceptance evidence:** fresh Git inventory, existence/caller checks, targeted tests, relevant
+  typechecks and linters, `validate:dev`, a non-interactive launch smoke, and owner visual acceptance
+  for visible changes.
+- **Next safe action:** classify the current dirty paths by behavior, then fix or drop one coherent
+  group at a time without overwriting unrelated work.
 
 ## Scope
 
-- **In:** everything dirty/untracked in the repo; branch state; the step-5 docs.
-- **Out (non-goals):** new features; refactors beyond landing needs; upstream version bump;
-  branding rename.
-- **Reserved paths:** this spec; test harness configuration (except lints the landed groups
-  themselves add).
+### In
 
-## Pages touched
+- Explain every modified or untracked path in the current working tree and identify half-finished,
+  unreachable and superseded groups.
+- Stabilize modifications already in scope, especially permission/security boundaries, retry and
+  recovery, local-only behavior, current Craft capability intake and honest feature gating.
+- Preserve one authority for Sessions, tasks, permissions, settings, assistants, Pages and remote
+  Workspace transport.
+- Remove dead integration residue only after checking for a caller and migrating any unique current
+  fact.
+- Calibrate capability/page/module documentation against the current tree.
 
-R0 audits existing implementation only; no new route is created. These visible baselines must be
-rechecked after each landing group:
+### Out
 
-| Surface ID | Create/extend/wire | Adapter/data contract | Permission | States exercised | Owner visual checkpoint |
-|---|---|---|---|---|---|
-| P-01 | audit shell/navigation | existing navigation state | existing workspace/session policy | empty/error/narrow/i18n | shell + sidebar |
-| P-02 | audit chat | existing Session RPC/events | existing permission prompt | loading/empty/error/denied/offline | conversation + composer |
-| P-04 | audit v0.11-derived Board candidate without accepting it as baseline | existing Task store/RPC | existing task policy | loading/empty/error/narrow/i18n | classify for R1 KEEP/LATER/REMOVE |
-| P-05 | audit settings | existing settings RPC | existing settings policy | loading/empty/error/narrow/i18n | settings navigator/forms |
+- Restoring any discarded v0.10.5/v0.11/v0.12 renderer or workbench.
+- Building a replacement layout shell, production canvas, document-format editor, marketplace,
+  GitHub delivery product, relay service, RemoteTarget abstraction or general computer control.
+- Treating Board as a new task/session authority. Its current independent navigator may remain only
+  as a projection over the existing Session/Task authorities.
+- Public release, tag creation, pushing, or destructive Git history operations.
+
+## Working method
+
+1. Run a fresh `git status --porcelain` and group entries by one user-visible behavior or shared
+   authority. File count and group shape are evidence, never a completion percentage.
+2. For each group, confirm installation/process/permission/input/connectivity reality first, locate
+   its capability row, and classify `REUSE`, `EXTEND` or `NEW` against the two Craft pins.
+3. Trace every new exported component, handler and model to a production caller. An unmounted surface
+   is `not implemented`; a test or type alone never promotes it.
+4. Keep, fix or drop the group. A kept group must include normal and relevant failure/recovery paths.
+   Two non-progressing state-changing attempts trigger the repository stop rule.
+5. Run the cheapest sufficient targeted checks as groups settle, then the integrated verification
+   ladder below. Do not edit dependency or harness configuration merely to make a check pass.
+6. Synchronize only canonical facts changed by the baseline. Owner performs final rendered
+   look-and-feel acceptance; until then use `wired but not visually checked`.
+
+## Surface truths this baseline must preserve
+
+| Surface | Baseline contract |
+|---|---|
+| Conversation | Existing Craft Session authority and composer remain the production path. |
+| Board | Separate navigator is allowed by the current owner direction, but it projects existing Session/Task state and creates no second store or duplicate Conversations list. |
+| Pages | Local mini-app capability may remain; hosted publication is outside Fleet. Existing remote copies retain a reachable cleanup/unpublish path. |
+| Assistant | Independent `packages/shared/src/assistants` authority; never `labels/config.json`. A component with no production caller is `not implemented`. |
+| Remote connection | Existing Workspace transport only. Listener, pairing and disconnect/recovery must be honest; no relay, RemoteTarget or pairing-socket file sync is added. |
+| Documents | File preview may be `usable`; direct real-format editing stays `not implemented` until a production caller and round-trip path exist. |
+| Canvas/layout | Production canvas and generalized pane renderer are `not implemented`. Do not revive discarded workbench or use a shell rewrite as a substitute. |
 
 ## Acceptance criteria
 
 | ID | Criterion | Verified by |
 |---|---|---|
-| R0-C1 | Every working-tree entry from the fresh inventory is in a landed commit or an explicit drop note; `git status --porcelain` is empty (ignored files aside) | command output |
-| R0-C2 | Core doc changes, historical-material recovery/drop decisions and app code groups are separate revertable commits | `git log` shape + recovery/drop ledger |
-| R0-C3 | Each landed group passed scoped typecheck + its targeted tests, with an honest status line | commit messages + evidence |
-| R0-C4 | `bun run validate:dev` passes on the integrated result | command output |
-| R0-C5 | Dev launch shows no new fatal errors | smoke log |
-| R0-C6 | Step-5 docs match observed state | doc diff review |
-| R0-C7 | Tag exists; owner has accepted the changed visible surfaces (zh-Hans pages, Board, settings) | `git tag` + owner acceptance |
-
-## References consumed
-
-- Craft v0.10.5 is the product/interaction baseline; v0.11.1 and the current repository tree are
-  implementation/selective-update comparisons. No external project is admitted or copied by R0.
-- The exact code roots and verification commands are listed in [`../06-CODE-MAP.md`](../06-CODE-MAP.md)
-  and [`../09-QUALITY.md`](../09-QUALITY.md).
-
-## Dependencies and unresolved edges
-
-None upstream. Produces the trustworthy base every later release consumes.
-
-## Risks and rollback
-
-- **Half-working group landed** → per-group ladder + drop-by-default under stop rules.
-- **Deleting unique value** → 03 §6: inspect, migrate the surviving fact, then drop.
-- **Rollback:** create `backup/pre-r0-audit` from the dirty tree **before the first landing commit**
-  (owner checkpoint: this snapshot is the safety net); delete it only after the owner accepts R0.
-- **Git operations** (lock removal, commits, tag, backup-branch deletion) happen at owner-present
-  checkpoints; no force operations.
+| R0-C1 | Every current modified/untracked path belongs to an explained keep/fix/drop group; no unknown or secretly inherited group remains. A dirty tree is allowed only when every remaining entry is accounted for. | fresh `git status --porcelain`, grouped diff review |
+| R0-C2 | Security, permission, external-network and destructive paths in retained groups fail closed and expose recovery; no forbidden hosted default or silent second authority remains. | targeted boundary tests + code-path review |
+| R0-C3 | Every retained feature claim has a production caller and real data path. Unmounted, deleted or test-only implementation is documented as `not implemented`; obsolete residue is removed or explicitly disconnected. | `rg` caller/existence audit + targeted tests |
+| R0-C4 | All applicable targeted tests, package typechecks, lint checks and `bun run validate:dev` pass on the integrated working tree without weakening the harness. | fresh command output |
+| R0-C5 | Electron or the cheapest equivalent production bootstrap completes a non-interactive smoke with no new fatal error; required services shut down cleanly. | smoke log + process/port cleanup check |
+| R0-C6 | `PRODUCT.md`, roadmap, capability map, matrix, page architecture, module registry and code map agree with observed code and use the fixed capability-status vocabulary. | doc diff + `scripts/validate-doc-contracts.py` + semantic searches |
+| R0-C7 | Owner has inspected changed visible surfaces. Anything not inspected remains `wired but not visually checked`; no agent upgrades it to `usable`. | owner acceptance |
 
 ## Verification plan
 
-Ladder 1–3 per group; one smoke at the end; `validate:dev` at integration. Owner CHECK THIS:
-zh-Hans settings/workspace surfaces and label menus in both languages. The Board is classified for
-R1 and is not a required acceptance surface.
+Run from `app/` unless a command says otherwise:
 
-## Doc updates on completion
+1. Targeted tests for each retained behavior and its relevant denied/offline/retry/recovery branch.
+2. Applicable package and Electron typechecks.
+3. `bun run lint:ui-contract` for rendered-value changes and `bun run lint:i18n:coverage` for UI copy.
+4. `bun run validate:dev` on the integrated tree.
+5. A bounded non-interactive production bootstrap/smoke followed by process and listener cleanup.
+6. From the repository root, `python3 scripts/validate-doc-contracts.py` plus existence/caller and
+   forbidden-product semantic searches.
 
-`../PRODUCT.md`, `../UI-SPEC.md`, `FEATURE-REGISTRY.md`,
-[`../11-PRODUCT-MATRIX.md`](../11-PRODUCT-MATRIX.md) rows, `05-ROADMAP.md`, this spec.
+Failures are reported as evidence. A passing subset is never described as a passing baseline.
+
+## References consumed
+
+- [`../PRODUCT.md`](../PRODUCT.md) is the product authority.
+- Craft v0.10.5 is the look pin; the rolling Craft mirror and current `app/` are v0.13.3 comparison
+  and implementation reality. Admit bounded fixes/mechanisms only.
+- [`../08-CRAFT-CAPABILITY-MAP.md`](../08-CRAFT-CAPABILITY-MAP.md) supplies per-capability
+  `REUSE`/`EXTEND`/`NEW` classification.
+- [`../09-QUALITY.md`](../09-QUALITY.md) supplies the verification ladder.
+
+## Risks and recovery
+
+- **Mixed authorship in one dirty tree:** inspect the current diff and callers before editing; never
+  overwrite or reset unrelated work. A pre-stabilization recovery copy exists outside the working
+  tree; it is recovery evidence, not an implementation source to merge wholesale.
+- **Old documentation promotes deleted code:** existence and caller checks override historical
+  `landed`, `wired` and typecheck statements.
+- **A cleanup removes unique value:** migrate the one still-current fact first; use a recoverable
+  deletion when practical and stop at the owner checkpoint for material removal.
+- **External/public effects:** prepare locally, but publication, push, release and new production
+  dependencies require owner approval.
+
+## Completion update
+
+When R0-C1 through R0-C6 have fresh evidence and R0-C7 is resolved or explicitly left as the owner
+visual gate, update the R0 roadmap row and activate exactly one next release. Do not create a dated
+progress report, a baseline tag requirement, or another execution queue.

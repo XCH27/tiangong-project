@@ -65,6 +65,12 @@ export const CHANNEL_MAP = {
   updateWorkspaceRemoteServer: invoke(RPC_CHANNELS.workspaces.UPDATE_REMOTE),
   testRemoteConnection: invoke(RPC_CHANNELS.remote.TEST_CONNECTION),
 
+  // 远程连接 device grants (LOCAL_ONLY — this machine decides who may reach it)
+  createRemoteInvite: invoke(RPC_CHANNELS.remote.CREATE_INVITE),
+  listRemoteDevices: invoke(RPC_CHANNELS.remote.LIST_DEVICES),
+  revokeRemoteDevice: invoke(RPC_CHANNELS.remote.REVOKE_DEVICE),
+  clearRevokedRemoteDevices: invoke(RPC_CHANNELS.remote.CLEAR_REVOKED_DEVICES),
+
   // Server-level workspace operations (REMOTE_ELIGIBLE)
   getServerWorkspaces: invoke(RPC_CHANNELS.server.GET_WORKSPACES),
   createServerWorkspace: invoke(RPC_CHANNELS.server.CREATE_WORKSPACE),
@@ -257,6 +263,12 @@ export const CHANNEL_MAP = {
   deleteLabel: invoke(RPC_CHANNELS.labels.DELETE),
   onLabelsChanged: listener(RPC_CHANNELS.labels.CHANGED),
 
+  listAssistants: invoke(RPC_CHANNELS.assistants.LIST),
+  createAssistant: invoke(RPC_CHANNELS.assistants.CREATE),
+  wearAssistant: invoke(RPC_CHANNELS.assistants.WEAR),
+  assistantWornBy: invoke(RPC_CHANNELS.assistants.WORN),
+  onAssistantsChanged: listener(RPC_CHANNELS.assistants.CHANGED),
+
   // LLM connections change listener
   onLlmConnectionsChanged: listener(RPC_CHANNELS.llmConnections.CHANGED),
 
@@ -393,6 +405,31 @@ export const CHANNEL_MAP = {
   uploadProjectAsset: invoke(RPC_CHANNELS.projects.UPLOAD_ASSET),
   deleteProjectAsset: invoke(RPC_CHANNELS.projects.DELETE_ASSET),
   onProjectsChanged: listener(RPC_CHANNELS.projects.CHANGED),
+
+  // Pages
+  getPages: invoke(RPC_CHANNELS.pages.GET),
+  getPage: invoke(RPC_CHANNELS.pages.GET_ONE),
+  createPage: invoke(RPC_CHANNELS.pages.CREATE),
+  updatePage: invoke(RPC_CHANNELS.pages.UPDATE),
+  deletePage: invoke(RPC_CHANNELS.pages.DELETE),
+  getPageContent: invoke(RPC_CHANNELS.pages.GET_CONTENT),
+  setPageContent: invoke(RPC_CHANNELS.pages.SET_CONTENT),
+  getPageData: invoke(RPC_CHANNELS.pages.GET_DATA),
+  listPageGrants: invoke(RPC_CHANNELS.pages.LIST_GRANTS),
+  issuePageGrant: invoke(RPC_CHANNELS.pages.ISSUE_GRANT),
+  revokePageGrant: invoke(RPC_CHANNELS.pages.REVOKE_GRANT),
+  createPageLease: invoke(RPC_CHANNELS.pages.CREATE_LEASE),
+  releasePageLease: invoke(RPC_CHANNELS.pages.RELEASE_LEASE),
+  executePageAction: invoke(RPC_CHANNELS.pages.EXECUTE_ACTION),
+  cancelPageAction: invoke(RPC_CHANNELS.pages.CANCEL_ACTION),
+  getPageShareCapabilities: invoke(RPC_CHANNELS.pages.GET_SHARE_CAPABILITIES),
+  getPageShareDataScan: invoke(RPC_CHANNELS.pages.GET_SHARE_DATA_SCAN),
+  publishPage: invoke(RPC_CHANNELS.pages.PUBLISH),
+  setPagePublicationPassword: invoke(RPC_CHANNELS.pages.SET_PUBLICATION_PASSWORD),
+  unpublishPage: invoke(RPC_CHANNELS.pages.UNPUBLISH),
+  getPageThumbnail: invoke(RPC_CHANNELS.pages.GET_THUMBNAIL),
+  regeneratePageThumbnail: invoke(RPC_CHANNELS.pages.REGENERATE_THUMBNAIL),
+  onPagesChanged: listener(RPC_CHANNELS.pages.CHANGED),
 
   // Automations
   getAutomations: invoke(RPC_CHANNELS.automations.GET),

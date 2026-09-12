@@ -12,13 +12,34 @@
 
 ## Baseline facts
 
-- **App root:** `app/` — a Bun monorepo. `app/package.json` = `0.11.1` (upstream Craft v0.11 line).
-- **Implementation reality:** current `app/` is Craft v0.11.1-derived; intentional/convergence
+- **App root:** `app/` — a Bun monorepo. `app/package.json` = `0.13.3`, matching the rolling Craft
+  pin. (Until 2026-09-11 this section said `0.11.1`, `v0.11.1-derived` and `v0.11.2` alongside
+  `v0.13.3`; three of those were stale.)
+- **Implementation reality:** current `app/` is Craft **v0.13.3**-derived; intentional/convergence
   deltas are listed in [`UI-SPEC.md`](UI-SPEC.md).
-- **Product/interaction baseline:** `源码参考/software/craft-agents-oss-v0.10.5/` (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag
-  `v0.10.5` / commit `c9d9a26f`.
-- **Selective-update reference:** `源码参考/software/craft-agents-oss/` (stored in `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag `v0.11.2` /
-  commit `a60ebc1a5a7c`; compare independent fixes/backend mechanisms, never merge wholesale.
+- **Look pin:** `源码参考/software/craft-agents-oss-v0.10.5/` at tag `v0.10.5` — tokens and
+  interaction *style*, not a product shell to restore.
+- **Selective-update reference:** `源码参考/software/craft-agents-oss/` (stored in
+  `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag **`v0.13.3`**; compare
+  independent fixes/backend mechanisms, never merge wholesale.
+
+## Remote connection (远程连接)
+
+| Concern | Where |
+|---|---|
+| Device grants, invites, scope, revocation | `packages/shared/src/remote/devices.ts` |
+| Persistence (`~/.craft-agent/remote-access.json`, 0600) + this machine's stable id | `packages/shared/src/remote/store.ts` |
+| What the listener accepts: a device token, or a one-time invite | `packages/shared/src/remote/authenticate.ts` |
+| One-shot hand-back of a freshly minted grant | `packages/shared/src/remote/mint-ledger.ts` |
+| Access link v3 (invite, not credential) + legacy v1/v2 parsing | `packages/shared/src/remote/invite-link.ts` |
+| What the published addresses actually reach | `packages/shared/src/remote/reachability.ts` |
+| Concurrent candidate racing, last-good preference | `packages/shared/src/remote/endpoint-race.ts` |
+| Workspaces projected into the computers you can run on | `packages/shared/src/remote/run-targets.ts` |
+| Public listener — the single writer of the LAN socket | `apps/electron/src/main/server-mode.ts` |
+| Invite / device-list / revoke handlers (LOCAL_ONLY) | `apps/electron/src/main/handlers/remote-devices.ts` |
+| Settings → 远程连接, two blocks | `apps/electron/src/renderer/pages/settings/ServerSettingsPage.tsx` |
+| "Which computer does this run on" chip | `.../app-shell/input/{ComposerLeadingChips,NewSessionRunTarget,use-run-targets}` |
+| SSH library, parked (no IPC registered) | `packages/remote-ssh/` |
 
 ## Reference roots (do not mix their authority)
 
@@ -27,9 +48,10 @@
 | Reference | Location | Use |
 |---|---|---|
 | Fleet product authority | `docs/` numbered set + `specs/` | Decisions, boundaries, route, code entries |
-| Product/interaction baseline | `源码参考/software/craft-agents-oss-v0.10.5/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss-v0.10.5/`) | Exact Craft v0.10.5 behavior for shell, navigation, composer, menus and Session actions |
-| Selective-update implementation | `源码参考/software/craft-agents-oss/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss/`) | Exact Craft v0.11.2 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
-| Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.11.2 |
+| Look pin | `源码参考/software/craft-agents-oss-v0.10.5/` | Tokens, type, motion — not a shell to restore |
+| Rolling Craft base | `源码参考/software/craft-agents-oss/` @ `v0.13.3` | Current `app/` donor |
+| Selective-update implementation | `源码参考/software/craft-agents-oss/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss/`) | Exact Craft v0.13.3 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
+| Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.13.3 |
 | Mirror index and provenance | `源码参考/craft-docs/README.md`, `SYNC-MANIFEST.txt` | Locate source docs, verify downloaded bytes, known Craft-operated service list |
 | Owner design notes | `docs/design-library/` | Owner intent; open the relevant note after checking code |
 | UI component kits & reverse engineering | local `UI参考/` (`/Volumes/AIGC/天工参考/UI参考/`) | UI kits (Doubao, Trae Work, UI designs, screenshots) for human & design study |

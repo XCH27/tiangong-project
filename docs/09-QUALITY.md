@@ -126,6 +126,30 @@ For prompt/tool projection changes, verification must also prove:
 - the previous profile remains selectable for rollback;
 - no second prompt, loadout, ledger or capability authority was introduced.
 
+## Admitting a package whose tests are written for Vitest
+
+The runner is `bun test` (`scripts/test-all.sh`). Cindy, OpenChamber and most other
+candidate sources use Vitest. Bun's `vitest` shim covers `vi.fn` / `vi.mock` / `vi.spyOn`
+and nothing else, and it fails in ways that read like product bugs — so check these
+five before you diagnose the admitted code:
+
+| Vitest feature | Under `bun test` | What to write instead |
+|---|---|---|
+| `vi.waitFor(fn)` | `undefined` → `TypeError` | a local bounded poll loop |
+| `vi.useFakeTimers` + `advanceTimersByTimeAsync` | `undefined` → `TypeError` | make the timeout an injectable dep and run in real time |
+| `vi.hoisted(() => x)` | `undefined` → `TypeError` | a plain `const` — bun's `vi.mock` is not hoisted above it |
+| `vi.mock(id, (importOriginal) => …)` | `importOriginal` is `undefined`; a dynamic self-import inside the factory **deadlocks** | an explicit stub module listing only the bindings the subject imports |
+| `it('…', async ({ skip }) => …)` | bun reads the single parameter as `done` → **5 s timeout, not a skip** | `async () => {}` with an early `return` |
+| `vi.mock` module registry | **global for the whole run**, so one file's mock leaks into the next | rename to `*.isolated.ts` — `test-all.sh` runs those one per process |
+
+Also import `vi` from `bun:test` (it is exported there), not from `'vitest'`: the latter
+resolves at runtime but has no types, so the package fails `typecheck:all`.
+
+A file that still cannot be ported is renamed out of both globs with a header naming
+the invariants that therefore have **no** coverage — never left red and never deleted.
+`packages/remote-ssh/src/__tests__/remoteHostConnectRace.vitest-port-pending.ts` is the
+worked example.
+
 ## Definition of done (per slice)
 
 1. Spec acceptance criteria for the slice: met, with evidence refs.

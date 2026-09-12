@@ -41,6 +41,18 @@ Violating this is how the product fragments into disconnected utilities.
 - Do not require, silently call, or visually imply a required Craft-operated account, server, relay,
   viewer, updater, docs site, or MCP endpoint (Decision P8).
 - Do not model "cloud" as a Fleet-owned control plane (Decision P9).
+- **Remote admission is default-deny.** A channel is reachable from another machine only
+  by appearing in `REMOTE_ELIGIBLE_CHANNELS`; ask `isRemoteAllowed` / `remoteRefusalFor`,
+  never `!isLocalOnly(...)`. Phrasing it as a negation makes every newly added channel
+  remote-reachable by default and turns a forgotten classification into an exposure. The
+  check runs twice — caller before sending, host before dispatch — and the host's is the
+  authoritative one. Never admitted: window/UI control, native dialogs, shell side
+  effects, credential reads or writes, the updater, writes to the host's own global
+  settings, and raw store writes that bypass a business handler.
+- **A remote credential is per device, hashed, scoped and revocable (Decision P7).** Never
+  hand a remote client this machine's own server token, and never put a standing credential
+  in an access link — the link carries a single-use, expiring invite, and redeeming it mints
+  that device its own grant. One device revoked must not affect any other.
 - Do not treat a component library or another product's screenshot as license to replace Craft's
   navigation, settings architecture, or product identity wholesale.
 
@@ -87,8 +99,9 @@ authority in `02-DECISIONS.md`, then migrate. "It would be cleaner" is not a tri
   stash.** Loose objects are invisible to `git status`, `git log`, and every UI the user has open,
   and `gc` collects them if abandoned. Anything touching a ref is visible history, and an agent
   silently committing or stashing under a user is the most destructive thing this capability can do
-  — which is exactly what "just stash it" produces. The allow-list is explicit and each refusal
-  carries its reason in code (`packages/shared/src/git/snapshot-plan.ts`).
+  — which is exactly what "just stash it" produces. The snapshot helper named by the original H
+  decision was discarded in the rebase; this remains a boundary for any future implementation, not
+  a claim that the helper exists.
 - **Do not put media in a git tree, and do not put a canvas there either.** History is routed by
   artifact kind (H1). Reaching for git because it is already there is how a repository becomes
   unusable one video at a time.
@@ -118,8 +131,9 @@ a neighbor.
 | project/workspace bytes and permissions | Craft Workspace filesystem paths and `permissions.json` | preserve; no second permission tree |
 | settings, credentials, sources, skills | existing Craft stores and managers | reuse |
 | R5/R8/R11 artifacts, workflows and jobs | no Fleet authority exists yet | define the smallest authority at its ordered row when an implemented real loop needs it |
-| R9 memory | **contract landed, no store yet** — `packages/shared/src/memory/` fixes scope, promotion, foreign import and tool facts (H16–H18, H27); no memory file, index or consolidation pass exists | build the store behind the landed contract; do not design a second one |
-| Expert kits and delegation | **contract landed, unwired** — `packages/shared/src/labels/`, `agent/delegation-routing.ts` (H10–H21) | `LabelConfig.expertKit` is the store; no second kit registry |
+| Assistant identity and requested loadout | `packages/shared/src/assistants/`; independent catalog and per-Session wearing map | never store an Assistant in `labels/config.json`; loadout permission is a request evaluated by the existing permission path |
+| R6 delegation | Craft child Sessions/Tasks are the only current authority; Fleet TaskBrief/RunReport policy and projection are not implemented | extend Session/TaskRunner when R4/R5 provide real callers; no captain/manager store |
+| R9 memory | no Fleet store, index or consolidation pass exists; H16–H18/H27 retain design principles only | extract the smallest store from repeated real chains; one consolidation writer, no delegate-written shadow memory |
 
 ## 5. Safety and compliance (hard)
 

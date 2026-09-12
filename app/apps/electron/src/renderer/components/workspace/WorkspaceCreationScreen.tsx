@@ -10,6 +10,7 @@ import { AddWorkspaceStep_Choice } from "./AddWorkspaceStep_Choice"
 import { AddWorkspaceStep_CreateNew } from "./AddWorkspaceStep_CreateNew"
 import { AddWorkspaceStep_OpenFolder } from "./AddWorkspaceStep_OpenFolder"
 import { AddWorkspaceStep_ConnectRemote } from "./AddWorkspaceStep_ConnectRemote"
+import { AddWorkspaceStep_RemoteWorkspace } from "./AddWorkspaceStep_RemoteWorkspace"
 import type { Workspace } from "../../../shared/types"
 import { toast } from "sonner"
 
@@ -25,6 +26,8 @@ interface WorkspaceCreationScreenProps {
   reconnectWorkspace?: Workspace
   /** Reconnect an existing remote workspace and resolve only on real success. */
   onReconnectWorkspace?: (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => Promise<void>
+  /** Open Settings → 远程连接 when pairing is not done yet. */
+  onOpenRemoteSettings?: () => void
 }
 
 /**
@@ -41,6 +44,7 @@ export function WorkspaceCreationScreen({
   className,
   reconnectWorkspace,
   onReconnectWorkspace,
+  onOpenRemoteSettings,
 }: WorkspaceCreationScreenProps) {
   const { t } = useTranslation()
   // Start at 'remote' step directly when reconnecting
@@ -81,19 +85,6 @@ export function WorkspaceCreationScreen({
     }
   }, [onWorkspaceCreated])
 
-  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => {
-    if (!onReconnectWorkspace) {
-      throw new Error('Reconnect handler not configured')
-    }
-
-    setIsCreating(true)
-    try {
-      await onReconnectWorkspace(workspaceId, remoteServer)
-    } finally {
-      setIsCreating(false)
-    }
-  }, [onReconnectWorkspace])
-
   const renderStep = () => {
     switch (step) {
       case 'choice':
@@ -124,19 +115,30 @@ export function WorkspaceCreationScreen({
         )
 
       case 'remote':
+        if (reconnectWorkspace?.remoteServer && onReconnectWorkspace) {
+          return (
+            <AddWorkspaceStep_ConnectRemote
+              mode="reconnect"
+              onBack={onClose}
+              reconnectWorkspace={{
+                id: reconnectWorkspace.id,
+                name: reconnectWorkspace.name,
+                remoteWorkspaceId: reconnectWorkspace.remoteServer.remoteWorkspaceId,
+                lastEndpoint: reconnectWorkspace.remoteServer.url,
+              }}
+              onUpdate={onReconnectWorkspace}
+            />
+          )
+        }
         return (
-          <AddWorkspaceStep_ConnectRemote
-            onBack={reconnectWorkspace ? onClose : () => setStep('choice')}
-            onCreate={handleCreateWorkspace}
+          <AddWorkspaceStep_RemoteWorkspace
+            onBack={() => setStep('choice')}
+            onCreated={onWorkspaceCreated}
+            onOpenSettings={() => {
+              onClose()
+              onOpenRemoteSettings?.()
+            }}
             isCreating={isCreating}
-            initialUrl={reconnectWorkspace?.remoteServer?.url}
-            initialToken={reconnectWorkspace?.remoteServer?.token}
-            reconnectWorkspace={reconnectWorkspace?.remoteServer ? {
-              id: reconnectWorkspace.id,
-              name: reconnectWorkspace.name,
-              remoteWorkspaceId: reconnectWorkspace.remoteServer.remoteWorkspaceId,
-            } : undefined}
-            onUpdate={handleReconnectWorkspace}
           />
         )
 

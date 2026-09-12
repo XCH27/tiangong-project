@@ -13,7 +13,6 @@
  */
 
 import { RPC_CHANNELS } from './types'
-import { FEATURE_FLAGS } from '@craft-agent/shared/feature-flags'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -299,7 +298,7 @@ export const HELP_LINKS: MenuItemUrl[] = [
     type: 'url',
     id: 'helpAndDocs',
     labelKey: 'menu.helpAndDocs',
-    url: 'https://thecraftagents.com/docs',
+    url: 'fleet-local://docs',
     icon: 'HelpCircle',
   },
 ]
@@ -387,7 +386,7 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
   permissions: 'ShieldCheck',
   labels: 'Tag',
   messaging: 'MessageSquare',
-  server: 'Server',
+  server: 'Monitor',
   shortcuts: 'Keyboard',
   preferences: 'UserCircle',
 }
@@ -397,7 +396,6 @@ const SETTINGS_ICONS: Record<SettingsSubpage, string> = {
  * Order is determined by SETTINGS_PAGES in settings-registry.ts
  */
 export const SETTINGS_ITEMS: SettingsMenuItem[] = SETTINGS_PAGES
-  .filter(page => page.id !== 'server' || FEATURE_FLAGS.embeddedServer)
   .map(page => ({
     id: page.id,
     labelKey: page.labelKey,

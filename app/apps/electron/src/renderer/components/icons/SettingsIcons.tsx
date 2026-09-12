@@ -11,7 +11,7 @@ import {
   Keyboard,
   MessageSquare,
   Palette,
-  Server,
+  Monitor,
   ShieldCheck,
   Sparkles,
   Tag,
@@ -30,7 +30,7 @@ export const WorkspaceIcon = ({ className }: IconProps) => <Building2 className=
 export const PermissionsIcon = ({ className }: IconProps) => <ShieldCheck className={className} />
 export const LabelsIcon = ({ className }: IconProps) => <Tag className={className} />
 export const MessagingSettingsIcon = ({ className }: IconProps) => <MessageSquare className={className} />
-export const ServerSettingsIcon = ({ className }: IconProps) => <Server className={className} />
+export const ServerSettingsIcon = ({ className }: IconProps) => <Monitor className={className} />
 export const ShortcutsIcon = ({ className }: IconProps) => <Keyboard className={className} />
 export const PreferencesIcon = ({ className }: IconProps) => <UserCircle className={className} />
 

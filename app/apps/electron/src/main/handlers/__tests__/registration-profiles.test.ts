@@ -88,12 +88,14 @@ function createMockDeps(): HandlerDeps {
 async function getExpectedCoreChannels(): Promise<Set<string>> {
   // Core handler channels (now in server-core)
   const [
+    assistants,
     auth,
     automations,
     files,
     labels,
     llm,
     oauth,
+    pages,
     projects,
     sessions,
     settings,
@@ -107,12 +109,14 @@ async function getExpectedCoreChannels(): Promise<Set<string>> {
     resources,
     transfer,
   ] = await Promise.all([
+    import('@craft-agent/server-core/handlers/rpc/assistants'),
     import('@craft-agent/server-core/handlers/rpc/auth'),
     import('@craft-agent/server-core/handlers/rpc/automations'),
     import('@craft-agent/server-core/handlers/rpc/files'),
     import('@craft-agent/server-core/handlers/rpc/labels'),
     import('@craft-agent/server-core/handlers/rpc/llm-connections'),
     import('@craft-agent/server-core/handlers/rpc/oauth'),
+    import('@craft-agent/server-core/handlers/rpc/pages'),
     import('@craft-agent/server-core/handlers/rpc/projects'),
     import('@craft-agent/server-core/handlers/rpc/sessions'),
     import('@craft-agent/server-core/handlers/rpc/settings'),
@@ -128,6 +132,7 @@ async function getExpectedCoreChannels(): Promise<Set<string>> {
   ])
 
   return new Set([
+    ...assistants.HANDLED_CHANNELS,
     ...auth.HANDLED_CHANNELS,
     ...automations.HANDLED_CHANNELS,
     ...files.HANDLED_CHANNELS,
@@ -135,6 +140,7 @@ async function getExpectedCoreChannels(): Promise<Set<string>> {
     ...llm.HANDLED_CHANNELS,
     ...oauth.HANDLED_CHANNELS,
     ...projects.HANDLED_CHANNELS,
+    ...pages.HANDLED_CHANNELS,
     ...sessions.HANDLED_CHANNELS,
     ...settings.HANDLED_CHANNELS,
     ...skills.HANDLED_CHANNELS,

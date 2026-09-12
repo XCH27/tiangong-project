@@ -30,6 +30,8 @@ task evidence that makes implementation unnecessary. It cannot be left as an uno
 - **READY** — dependencies met; can be activated by finishing the ACTIVE one or by owner request.
 - **DEP** — waiting on a named dependency edge (listed in its row).
 - **GATED** — waiting on a named non-time gate (a benchmark, a real caller, a measured failure).
+- **CLOSED** — the release contract was completed, replaced, or closed as `NO_GAP`; it is not in the
+  executable queue. The row states which case applies.
 
 Two standing tracks run **beside** the release queue and are never blocked by it:
 
@@ -50,34 +52,33 @@ Two standing tracks run **beside** the release queue and are never blocked by it
 
 | # | Release | Outcome (one line) | State | Dependency / gate |
 |---|---|---|---|---|
-| R0 | **Baseline audit** | The dirty working tree is audited feature-by-feature: land, fix, or drop; `main` green, tagged, runnable. | **ACTIVE** — landing done, tag and walkthrough outstanding. History, in one line each: the 2026-07-26 "tree clean / gates green" claim was retracted (the gate ran 3 of 703 test files and `typecheck:all` could not pass at all); the gate was repaired 2026-07-30; a second unaudited tree then accumulated and was re-measured 2026-08-15 at 385 porcelain entries. **2026-09-09 — that tree is landed.** All 395 entries measured fresh, assigned to 17 groups with no `G-unknown`, and committed as 18 revertable commits beginning at `c487815ec` and ending with this doc sync, after `backup/pre-r0-audit-2026-09-09` snapshotted the dirty tree. Two gate defects found and fixed on the way: the suite read the developer's `~/.craft-agent` and so could never pass on CI, and `bun install --frozen-lockfile` failed. `git status --porcelain` is empty; `scripts/fleet-verify.sh` is green; the headless server boots clean. R0-C1..C6 met. **Remaining: R0-C7 only** — the owner walkthrough of the changed surfaces, then the `fleet-baseline-r0` tag |  — |
-| R1 | **Upstream baseline convergence + one Session list + language** | Restore the v0.10.5 interaction baseline; show folder-bound Sessions under Projects and folder-less Sessions under Conversations through one list implementation; keep one context-bound New Task flow, archive/labels/session actions, direct folder picking, no permanent All Sessions or default Kanban; then finish Project=folder wording and zh-Hans. | READY — pre-landed 2026-07-26: slice-1 inventory (R1-C1, `aaa09b094`), boundary shell (`2d08364f7`), overlap-audit wave 1, and G8 seven-locale noun pass; `wired but not visually checked`. G7/G8/G9 decided; the 147-entry overlap audit is the execution map | R0 |
-| R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | READY — slices C2–C5 landed 2026-07-26 (`wired but not visually checked`; see [`specs/R2-independence.md`](specs/R2-independence.md)). C1's `FLEET_DOCS_MCP_URL` override and docs-link routing landed in `8cbc572a6`; the Craft-operated default remains pending owner decision, and the network-blocked smoke is still required. C6 inventory + C7 acceptance open | R0 |
-| R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | DEP | R0 (R1/R2 improve it) |
+| R0 | **Craft v0.13.3 baseline stabilization** | Audit the current dirty tree, retain/fix/drop each behavior, close security and recovery gaps, calibrate every status, and prove one runnable v0.13.3 baseline. | **ACTIVE** — no clean-tree, tag, green-build or visual-acceptance claim exists until fresh R0 evidence proves it. | — |
+| R1 | **One Session list + language** | Preserve one Session authority and one create flow; Project=folder wording and zh-Hans. Board may be a separate navigator only as a projection of existing Session/Task state. | **CLOSED** — the restore-v0.10.5-shell program was replaced; current boundary checks belong to R0. | — |
+| R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, hosted sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | **DEP** — current v0.13.3 inherited-service paths must first be inventoried by R0; prior branch status is not evidence for this tree. | R0 |
+| R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | **DEP** | R0 + R2 |
 | R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
 | R5 | **Artifact handoff** | ArtifactRef v1: exact version + provenance; one real producer→consumer pair; stale-writer rejection. | DEP | R3 (supplies the real artifact + friction list) |
-| R6 | **Bounded delegation + contract gates** | TaskBrief → child run → validated RunReport over Craft TaskRunner; budget circuit-breaker; first mechanized TaskContract gates in PreToolUse. | DEP — **domain layer landed early 2026-08-15 (owner-directed, see change log)**: `agent/delegation-{contract,policy,projection}.ts`, `path-lease.ts`, `permission-intersection.ts`, `run-report-validate.ts`, consumed by `TaskRunner.ts`. Those types stay **candidate** (`modules/REGISTRY.md` rule 2) until R4/R5 supply real callers, and R6's own acceptance — PreToolUse TaskContract gates and the independent read-only verifier — remains `not implemented` | R4 (governed actions), R5 (referenced artifacts) |
-| R7 | **Canvas v1 (projection only)** | DOM-family renderer per Decision E5a (React Flow default, custom DOM+SVG in-family fallback — the spike picks within the family, it does not reopen the family); canvas projects the real artifact/session graph per [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) §4. No executable edges. | GATED | gate: R5 artifact graph exists; E5a in-family spike passes before deep investment |
+| R6 | **Bounded delegation + contract gates** | TaskBrief → child run → validated RunReport over Craft TaskRunner; budget circuit-breaker; first mechanized TaskContract gates in PreToolUse. | **DEP** — the earlier candidate kernel and `DelegationStrip` were discarded in the rebase; current child-Session/TaskRunner mechanisms are only a starting point. | R4 + R5 |
+| R7 | **Infinite canvas (production surface)** | One surface: generate, edit and lay out images, video, websites and decks. A person and an agent edit the same board. This is not a Session-graph projection or playground page. | **DEP** — the slice owns the minimum registered-pane host seam it needs; it does not wait for generalized docking. | R4 + R5 |
 | R8 | **Workflow extraction** | Promote the completed R3 chain into one finite versioned DAG over governed Craft actions and TaskRunner state. | DEP | R4 + R5 |
-| R9 | **Layered agent memory** | Working notes → autonomous distillation into curated layers with a logged consolidation pass; optional human curation (pin/correct/delete); hard secrecy/scope floors (D5). | GATED — **contract landed 2026-07-30** (`packages/shared/src/memory/`, `labels/memory-curator-kit.ts`; H16–H18, H26–H27): scope, promotion refusals, foreign import and the curator's ageing/trigger defaults are fixed and typechecked. No file, index or pass exists. The gate is unchanged | gate: repeated completed chains from R3+ exist |
+| R9 | **Layered agent memory** | Working notes → autonomous distillation into curated layers with a logged consolidation pass; optional human curation (pin/correct/delete); hard secrecy/scope floors (D5). | **GATED** — design principles remain; the earlier memory contract files were discarded and no store, index or consolidation pass exists. | gate: repeated completed R3 chains exist |
 | R10 | **Design + web authoring** | One native design document and one versioned web artifact edit/preview/export loop, both inside the Craft shell and ArtifactRef path. | DEP | R4 + R5 + R7 |
 | R11 | **Job spine + image generation** | Extract one cancellable Job lifecycle from a real image-generation producer→consumer loop; record provenance and cost in existing authorities. | DEP | R4 + R5 |
 | R12 | **Video + audio production** | Import media, edit a sequence, maintain captions/audio provenance, render with cancel/retry, and deliver an exact output version. | DEP | R11 |
-| R13 | **Deck, motion and spatial media** | Native deck/motion export plus 3D scene, panorama/relight and shot-grid manifests over the R11/R12 Job and Artifact seams. | DEP | R10 + R11 + R12 |
+| R13 | **Deck and motion (on the canvas)** | Decks and motion live on the R7 canvas. **3D scene authoring, panorama relighting and multi-camera shot grids are out of product** ([`PRODUCT.md`](PRODUCT.md)) — close those as `NO_GAP`, do not design them. | DEP | R7 |
 | R14 | **Remote office + messaging** | User-owned remote target, worktree/Git/PR delivery, scoped grants and Workspace-scoped message routing with honest disconnect/recovery. | DEP | R6 |
-| R15 | **Skill/plugin/MCP marketplaces** | Local-first discovery, trust review, install/loadout/runtime separation, update/rollback and revoke through Craft settings, Skills/Sources and permission paths. | DEP | R6 + R9 |
-| R16 | **External computer environment** | On one approved task, exhaust Craft-native BrowserPane/file/shell/API/remote routes; then either add the smallest accessibility/pixel fallback with live grant and stale-frame checks or close `NO_GAP`. | DEP | R14 |
+| R15 | **Skill/plugin/MCP marketplaces** | Local-first discovery, trust review, install/loadout/runtime separation, update/rollback and revoke. Assistants consume the loadout; remote Workspace transport stays R14. | **DEP** — not part of baseline stabilization; activation requires a bounded spec and resolved SYS-01/SYS-03 seams. | R2 + R6 + R9 |
+| R16 | **External computer environment** | General control of external applications is not a Fleet capability. Driving Blender/Godot for a specific job remains an outside-tool path. | **CLOSED — `NO_GAP`** by [`PRODUCT.md`](PRODUCT.md). It has no implementation queue or downstream dependency. | — |
 | R17 | **Adaptive model/organization policy** | Use accumulated accepted-outcome traces to either add explainable overrideable routing/organization on Craft Task/Session/provider seams or close `NO_GAP`. | DEP | R6 + R9 + R12 |
-| R18 | **Conditional shell/layout closure** | For interactive PTY, stronger OS sandbox and docking, run the named real-caller/risk/UI gates; implement only proven Craft extensions and close every unmet row as `NO_GAP`. | DEP | R10 + R12 + R16 |
+| R18 | **Generalized layout closure** | Decide whether real production panes require docking beyond the minimum host seam landed with their first caller; otherwise close `NO_GAP`. Never wrap `AppShell` merely to change chrome. | **GATED** — layout model is unmounted and the current host is Craft v0.13.3 `PanelStackContainer`. | gate: at least two real production panes demonstrate a docking/restore need |
 
 ### R0 acceptance summary
 
-R0 is complete only when every fresh `git status --porcelain` entry is assigned to a verified
-land/fix/drop group; each landed app group has scoped checks and honest capability status; the
-integrated branch passes `validate:dev` plus a non-interactive launch smoke; and the owner accepts
-the visible surfaces before the baseline tag is created. The full fixed contract and destructive
-Git checkpoints remain in [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md); this summary
-does not replace it.
+R0 is complete only when every fresh `git status --porcelain` entry is assigned to an explained
+keep/fix/drop group; retained behavior has scoped security/recovery checks and honest capability
+status; the integrated working tree passes `validate:dev` plus a non-interactive launch smoke; and
+visible surfaces are either owner-accepted or remain `wired but not visually checked`. A tag and a
+clean tree are not R0 criteria. See [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md).
 
 Specs: [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md) ·
 [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md) ·
@@ -87,19 +88,16 @@ Specs: [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md) ·
 its dependency/gate is close (writing frozen detail earlier repeats the plans-outrun-code failure —
 D6/G2); its *breadth* design already lives in the matrix and page architecture now.
 
-CONDITIONAL capabilities (interactive PTY, OS sandbox, model routing/fusion, context projection,
-docking layout) are **not** out of the product — each has a matrix row with a named gate; they enter
-this queue when their gate fires.
+Conditional capabilities such as interactive PTY, model routing, context projection and generalized
+docking remain behind their named real-caller gates. A second OS sandbox and general external-
+computer control are explicitly out of product and remain closed `NO_GAP`.
 
 ## Why this order (once)
 
-- **R0 first:** nothing is trustworthy while an unaudited dirty tree sits on one branch; every
-  later claim depends on a green, tagged baseline.
-- **R1/R2 next:** the dirty tree contains substantial candidate code for R1 and inherited service
-  paths for R2, but neither percentage nor usability is assumed. R1 first compares every changed
-  navigation/control path with v0.10.5 and drops v0.11-derived duplication. R0 must classify each path as
-  usable, wired but not visually checked, display-only, or not implemented before it is counted.
-  This keeps near-done work valuable without turning file presence into a product claim.
+- **R0 first:** the current v0.13.3 working tree is large and mixed; later release claims are unsafe
+  until its retained behavior, security/recovery paths and status statements have fresh evidence.
+- **R2 next:** the baseline must first expose every inherited hosted-service path. R2 then closes the
+  remaining independence gaps rather than relying on results from the discarded branch.
 - **R3 before R4 (this reverses the old loop order):** the seam contract itself requires extraction
   from real callers; R3 creates the second real caller while proving the product story end-to-end
   with capabilities Craft already ships.
@@ -109,12 +107,10 @@ this queue when their gate fires.
   release or pull R4/R5/R6 forward.
 - **R4→R5→R6:** the Fleet-differentiating spine, each step consuming a verified real input from the
   previous one.
-- **R7–R18 are ordered, not deferred by time horizon:** their gates are objective (validation spike,
-  real artifact graph, completed chains). Their design is already decided in depth where evidence
-  allows — orchestration/canvas interaction design and technology choices live now in
-  [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) and the matrix §G tech routes; the frontend track
-  may build their preview-gated pages whenever the owner wants. When the queue reaches a conditional
-  row, `NO_GAP` with evidence is a valid completion; silence or “later” is not.
+- **R7 owns its minimum host seam:** a production canvas cannot depend on a generalized layout
+  release whose need can only be proven by real surfaces. R18 evaluates broader docking later.
+- **R16 is not a future implementation choice:** its `NO_GAP` closure prevents general external-
+  computer control and a second sandbox from silently returning through another release.
 
 ## Suite-level parallelism
 
@@ -126,7 +122,7 @@ The release queue and suite map intersect at explicit seams:
 | SYS-02 Remote engineering office | R14 remote/Git/message loop | reference audits and isolated-target fixtures | R6 run contract |
 | SYS-03 Token/memory/skill economy | TE1/R3 measurement → R9 memory → R17 policy closure | baseline measurements and optimizer experiments | the current Craft prompt/permission/UsageTracker seams; ContextPack only if its gate lands |
 | SYS-04 Browser/evidence | R3 browser evidence path | capture fixtures and denied/offline tests | SYS-01 policy + ArtifactRef contract |
-| SYS-05 Design/web/spatial | R7 canvas → R10 design/web → R13 spatial media | preview-gated pages and renderer spikes | R4 action + R5 ArtifactRef; E5a benchmark |
+| SYS-05 Design/web/spatial | R7 canvas → R10 design/web → R13 deck/motion → R18 layout closure | preview-gated component experiments and renderer spikes | R4 action + R5 ArtifactRef; minimum pane seam lands with first real surface |
 | SYS-06 AIGC/media | R11 image Job → R12 video/audio → R13 deck/spatial media | media fixtures and reference audits | R4 action + R5 ArtifactRef |
 | SYS-07 Workflow/delivery | R4/R5 real chains → R8 | schema experiments only | real promoted chain and SYS-01 TaskRunner projection |
 | SYS-08 Marketplaces | R15 | manifest/reference audits | R6 policy/run + R9 reviewed experience/loadout facts |
@@ -139,6 +135,14 @@ checkpoint; they do not reorder on their own.
 
 Change log:
 
+- 2026-09-11 — owner: stabilize the current Craft **v0.13.3** tree before expanding product scope.
+  R0 is ACTIVE under its revised baseline contract; this does not revive the discarded v0.10.5
+  restore/tag/Waves program. R15 returns to its dependency row. R14 continues to own remote
+  Workspace transport and Git/GitHub delivery; R18 is a real-caller gate, not a shell-restyle task.
+- 2026-09-10 — owner direction retained where still current: R7 is one production canvas, not a
+  Session-graph projection; R13 keeps decks/motion on that canvas; R16 closes `NO_GAP` for general
+  external-application control. The one-day R18/R15 activation was superseded by the stabilization
+  decision above.
 - 2026-07-16 — route created (replaced the loop-numbered completion order as sequencing authority).
 - 2026-07-17 — time-flavored labels (NOW/NEXT/LATER, "parked") removed in favor of
   ACTIVE/READY/DEP/GATED; coverage split from sequencing (G5); frontend track added (G6);

@@ -13,8 +13,8 @@ packet index ([`PACKET-INDEX.md`](PACKET-INDEX.md)) points to a repository-groun
 containing paths, authority mapping, reference evidence, dependency/rollback steps and acceptance
 IDs. Packet readiness is never an implementation claim.
 
-Every gap class is relative to the Craft v0.10.5 product/interaction baseline plus the current
-implementation authorities. v0.11.2 is selective-update evidence, not the product baseline. `NEW`
+Every gap class is relative to [`PRODUCT.md`](../PRODUCT.md) and the current `app/` (Craft
+**v0.13.3**). v0.10.5 is a look pin, not a shell to restore. `NEW`
 means only that Craft lacks the native domain
 model or adapter named by that row; it never authorizes a new shell, agent kernel, session/task
 system, permission path, timeline, settings home or provider harness. Implementation starts from
@@ -66,7 +66,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | EXEC-05 | Runtime/provider adapters | EXTEND | breadth | Claude+Pi lanes usable; generic adapter contract not implemented | capability negotiation |
 | EXEC-07 | Worktree isolation | NEW | breadth | not implemented | Git/process lifecycle |
 | EXEC-08 | Sandbox and OS isolation | EXTEND/NEW | breadth | wired but not visually checked | tested Fleet filesystem/network/script isolation; full OS/container executor remains gated — Fleet's filesystem, network and script isolation stays and is `wired but not visually checked`. A **second, deeper OS sandbox is out of scope** (PRODUCT.md): the permission path and process boundary already enforce what the candidates enforce on the platform Fleet ships on |
-| EXEC-09 | Remote and cloud execution | EXTEND | breadth | not implemented | direct user-owned Fleet transport |
+| EXEC-09 | Remote and cloud execution | EXTEND | breadth | wired but not visually checked | user-owned Fleet transport; access link + advertised URL; no operator relay |
 | EXEC-10 | Automations and scheduler | EXTEND | breadth | usable | governed actions |
 | EXEC-11 | Messaging and channel adapters | EXTEND | breadth | not implemented | Workspace-scoped gateway |
 | EXEC-13 | Git repository, branch and PR review delivery | EXTEND/NEW | breadth | not implemented | governed Git/PR adapter; never a task authority |

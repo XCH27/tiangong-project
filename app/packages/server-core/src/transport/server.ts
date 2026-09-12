@@ -19,6 +19,7 @@ import {
   EVENT_BUFFER_TTL_MS,
   DISCONNECTED_CLIENT_TTL_MS,
   isErrorCode,
+  remoteRefusalFor,
   type MessageEnvelope,
   type PushTarget,
   type ErrorCode,
@@ -41,6 +42,7 @@ interface BufferedEvent {
 interface ClientConnection {
   id: string
   ws: WebSocket
+  listenerSource: 'local' | 'remote'
   workspaceId: string | null
   webContentsId: number | null
   capabilities: Set<string>
@@ -113,7 +115,33 @@ export interface WsRpcServerOptions {
   httpHandler?: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void
 }
 
+export interface WsRpcPublicListenerOptions {
+  /** Public listeners always require their own bearer-token validator. */
+  validateToken: (token: string) => Promise<boolean>
+  /** TLS applies to this listener only; the loopback renderer listener stays unchanged. */
+  tls?: WsRpcTlsOptions
+}
+
+export interface WsRpcPublicListenerInfo {
+  host: string
+  port: number
+  protocol: 'ws' | 'wss'
+}
+
+interface PublicListenerState extends WsRpcPublicListenerInfo {
+  wss: WebSocketServer
+  server: HttpServer | HttpsServer
+  connections: Set<WebSocket>
+}
+
 const transportLog = createLogger('ws-rpc-server')
+
+function listenerSourceForHost(host: string): 'local' | 'remote' {
+  const normalized = host.replace(/^\[|\]$/g, '').toLowerCase()
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1'
+    ? 'local'
+    : 'remote'
+}
 
 // ---------------------------------------------------------------------------
 // WsRpcServer
@@ -121,6 +149,7 @@ const transportLog = createLogger('ws-rpc-server')
 
 export class WsRpcServer implements RpcServer {
   private wss: WebSocketServer | null = null
+  private publicListener: PublicListenerState | null = null
   private httpServer: HttpServer | null = null
   private httpsServer: HttpsServer | null = null
   private clients = new Map<string, ClientConnection>()
@@ -191,11 +220,13 @@ export class WsRpcServer implements RpcServer {
     const timestamp = Date.now()
 
     for (const client of this.clients.values()) {
+      if (client.listenerSource === 'remote' && remoteRefusalFor(channel) !== null) continue
       if (!this.matchesTarget(client, target)) continue
       this.bufferAndMaybeSendEvent(client, channel, args, timestamp, true)
     }
 
     for (const { client } of this.disconnectedClients.values()) {
+      if (client.listenerSource === 'remote' && remoteRefusalFor(channel) !== null) continue
       if (!this.matchesTarget(client, target)) continue
       this.bufferAndMaybeSendEvent(client, channel, args, timestamp, false)
     }
@@ -329,9 +360,91 @@ export class WsRpcServer implements RpcServer {
       }
 
       this.wss.on('connection', (ws, req) => {
-        this.onConnection(ws, req.headers.cookie ?? null)
+        this.onConnection(ws, req.headers.cookie ?? null, listenerSourceForHost(this.host))
       })
     })
+  }
+
+  /**
+   * Bind an extra LAN listener without touching the primary (localhost) socket.
+   * Used so 远程连接 can turn on without restarting the app.
+   */
+  async listenPublic(
+    host: string,
+    port: number,
+    options: WsRpcPublicListenerOptions,
+  ): Promise<WsRpcPublicListenerInfo> {
+    const protocol = options.tls ? 'wss' : 'ws'
+    const httpsServer = options.tls ? createHttpsServer(options.tls) : null
+    const wss = httpsServer
+      ? new WebSocketServer({ server: httpsServer })
+      : new WebSocketServer({ noServer: true })
+    const httpServer = httpsServer ?? (createHttpServer() as HttpServer | HttpsServer)
+    const connections = new Set<WebSocket>()
+
+    if (!httpsServer) {
+      httpServer.on('upgrade', (request, socket, head) => {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          wss.emit('connection', ws, request)
+        })
+      })
+    }
+
+    wss.on('connection', (ws, req) => {
+      connections.add(ws)
+      ws.once('close', () => connections.delete(ws))
+      this.onConnection(ws, req.headers.cookie ?? null, 'remote', options.validateToken)
+    })
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const listeningTarget = httpServer
+        const onError = (err: Error) => reject(err)
+        listeningTarget.once('error', onError)
+
+        const onListening = () => {
+          listeningTarget.off('error', onError)
+          resolve()
+        }
+
+        listeningTarget.listen(port, host, onListening)
+      })
+    } catch (error) {
+      wss.removeAllListeners()
+      try { wss.close() } catch { /* never started */ }
+      try { httpServer.close() } catch { /* never started */ }
+      throw error
+    }
+
+    wss.on('error', (error) => {
+      transportLog.error('Public WebSocket listener error', { host, port, error })
+    })
+    httpServer.on('error', (error) => {
+      transportLog.error('Public listener error', { host, port, error })
+    })
+
+    const address = httpServer.address()
+    const actualPort = typeof address === 'object' && address ? address.port : port
+    const next: PublicListenerState = {
+      host,
+      port: actualPort,
+      protocol,
+      wss,
+      server: httpServer,
+      connections,
+    }
+
+    const previous = this.publicListener
+    this.publicListener = next
+    if (previous) this.closePublicListener(previous)
+
+    return { host, port: actualPort, protocol }
+  }
+
+  closePublic(): void {
+    const current = this.publicListener
+    this.publicListener = null
+    if (current) this.closePublicListener(current)
   }
 
   close(): void {
@@ -356,6 +469,7 @@ export class WsRpcServer implements RpcServer {
       clearTimeout(entry.timer)
     }
     this.disconnectedClients.clear()
+    this.closePublic()
     this.wss?.close()
     this.wss = null
     this.httpServer?.close()
@@ -368,7 +482,12 @@ export class WsRpcServer implements RpcServer {
   // Connection handling
   // -------------------------------------------------------------------------
 
-  private onConnection(ws: WebSocket, upgradeRequestCookie: string | null): void {
+  private onConnection(
+    ws: WebSocket,
+    upgradeRequestCookie: string | null,
+    listenerSource: 'local' | 'remote',
+    remoteTokenValidator?: (token: string) => Promise<boolean>,
+  ): void {
     // Reject if at capacity
     if (this.maxClients > 0 && this.clients.size >= this.maxClients) {
       transportLog.warn('Connection rejected: at capacity', {
@@ -427,17 +546,20 @@ export class WsRpcServer implements RpcServer {
         }
 
         // Auth check — bearer token OR session cookie (web UI)
-        if (this.requireAuth) {
+        const requireAuth = remoteTokenValidator ? true : this.requireAuth
+        const validateToken = remoteTokenValidator ?? this.validateToken
+        const validateSessionCookie = remoteTokenValidator ? null : this.validateSessionCookie
+        if (requireAuth) {
           let authenticated = false
 
           // 1. Try bearer token (standard path)
-          if (envelope.token && this.validateToken) {
-            authenticated = await this.validateToken(envelope.token)
+          if (envelope.token && validateToken) {
+            authenticated = await validateToken(envelope.token)
           }
 
           // 2. Fallback: try session cookie from HTTP upgrade request (web UI path)
-          if (!authenticated && this.validateSessionCookie && upgradeRequestCookie) {
-            authenticated = await this.validateSessionCookie(upgradeRequestCookie)
+          if (!authenticated && validateSessionCookie && upgradeRequestCookie) {
+            authenticated = await validateSessionCookie(upgradeRequestCookie)
           }
 
           if (!authenticated) {
@@ -456,6 +578,7 @@ export class WsRpcServer implements RpcServer {
 
             // Identity must match (workspace + webContentsId)
             const identityMatch =
+              prevClient.listenerSource === listenerSource &&
               prevClient.workspaceId === (envelope.workspaceId ?? null) &&
               prevClient.webContentsId === (envelope.webContentsId ?? null)
 
@@ -494,7 +617,7 @@ export class WsRpcServer implements RpcServer {
                   protocolVersion: PROTOCOL_VERSION,
                   serverVersion: this.serverVersion || undefined,
                   clientId: prevClient.id,
-                  registeredChannels: [...this.handlers.keys()],
+                  registeredChannels: this.registeredChannelsFor(listenerSource),
                   reconnected: true,
                 }
                 this.safeSend(ws, serializeEnvelope(ack))
@@ -517,7 +640,7 @@ export class WsRpcServer implements RpcServer {
                   protocolVersion: PROTOCOL_VERSION,
                   serverVersion: this.serverVersion || undefined,
                   clientId: prevClient.id,
-                  registeredChannels: [...this.handlers.keys()],
+                  registeredChannels: this.registeredChannelsFor(listenerSource),
                   reconnected: true,
                   stale: true,
                 }
@@ -559,6 +682,7 @@ export class WsRpcServer implements RpcServer {
         const client: ClientConnection = {
           id: clientId,
           ws,
+          listenerSource,
           workspaceId: envelope.workspaceId ?? null,
           webContentsId: envelope.webContentsId ?? null,
           capabilities: new Set(envelope.clientCapabilities ?? []),
@@ -578,7 +702,7 @@ export class WsRpcServer implements RpcServer {
           protocolVersion: PROTOCOL_VERSION,
           serverVersion: this.serverVersion || undefined,
           clientId,
-          registeredChannels: [...this.handlers.keys()],
+          registeredChannels: this.registeredChannelsFor(listenerSource),
         }
         this.safeSend(ws, serializeEnvelope(ack))
 
@@ -647,6 +771,26 @@ export class WsRpcServer implements RpcServer {
       return
     }
 
+    // Default-deny: admission comes from the REMOTE_ELIGIBLE allow-list, so a channel
+    // nobody classified is refused here rather than silently exposed. The refusal names
+    // which case it is, because "local-only by design" and "never admitted" are
+    // different problems for whoever is debugging.
+    if (client.listenerSource === 'remote') {
+      const refusal = remoteRefusalFor(channel)
+      if (refusal) {
+        this.sendResponseError(
+          client.ws,
+          id,
+          channel,
+          'CAPABILITY_UNAVAILABLE',
+          refusal === 'LOCAL_ONLY'
+            ? `Channel is local-only and unavailable over a remote listener: ${channel}`
+            : `Channel is not admitted for remote callers: ${channel}`,
+        )
+        return
+      }
+    }
+
     const handler = this.handlers.get(channel)
     if (!handler) {
       this.sendResponseError(client.ws, id, channel, 'CHANNEL_NOT_FOUND', `No handler for: ${channel}`)
@@ -710,6 +854,22 @@ export class WsRpcServer implements RpcServer {
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
+
+  private registeredChannelsFor(listenerSource: 'local' | 'remote'): string[] {
+    const channels = [...this.handlers.keys()]
+    // Advertise exactly what the dispatch check will admit — default-deny here too,
+    // so an unclassified channel is never announced as available.
+    return listenerSource === 'remote'
+      ? channels.filter((channel) => remoteRefusalFor(channel) === null)
+      : channels
+  }
+
+  private closePublicListener(listener: PublicListenerState): void {
+    for (const ws of listener.connections) ws.terminate()
+    listener.connections.clear()
+    listener.wss.close()
+    listener.server.close()
+  }
 
   /** Wire up close + pong handlers for a WebSocket ↔ ClientConnection pair. */
   private setupClientHandlers(ws: WebSocket, client: ClientConnection): void {

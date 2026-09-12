@@ -17,11 +17,14 @@ only; their product concepts are not importable.
 ## The 10 rules that matter most
 
 1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first — then admit the best.**
-   The current `app/` tree is implementation reality. Pinned Craft trees (v0.10.5, v0.11.2, and any
-   later pin) plus hosted Craft docs are **candidate sources**: compare them and **admit the better
+   The current `app/` tree is implementation reality and tracks Craft OSS **v0.13.3**. Pinned Craft
+   trees (v0.10.5 look pin, rolling `software/craft-agents-oss` on the latest tag) plus hosted Craft
+   docs are **candidate sources**: compare them and **admit the better
    interaction, fix, or backend mechanism** that still lands on one Fleet authority
    (择优录取 / best-of admission). Do not invent a standing “we do not sync X” policy; do not
-   wholesale-merge a checkout over the working tree; do not restore a second Projects/Board home.
+   wholesale-merge a checkout over the working tree; do not create a second Project, Session or task
+   authority. The current Board may remain a separate navigator only as a projection of the existing
+   Session/Task stores; it is not a duplicate Conversations list or a new authority.
    Before writing code, find the capability row in
    [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) and classify:
    **REUSE / EXTEND / NEW**.
@@ -73,31 +76,29 @@ only; their product concepts are not importable.
 - Continue through reversible in-scope work. At a checkpoint, finish safe preparation and request
   the smallest owner decision; never widen the Goal or mark partial work complete.
 
-## The agent platform, in one page (Decisions H1–H28)
+## The agent platform, in one page
 
-Read this before designing anything that touches kits, delegation, memory, git or
-cost. It is the shape the 2026-07-30 design pass settled on, and the reasoning for
-each line is in `02-DECISIONS.md` under the cited ID. **The domain layer is landed
-and typechecked; almost none of it is wired.** `06-CODE-MAP.md` names every module
-and what is still unbuilt.
+Read this before designing anything that touches assistants, delegation, memory, Git or cost.
+[`PRODUCT.md`](docs/PRODUCT.md) and the current tree outrank the 2026-07-30 H-decision implementation
+paths: the rebase discarded the old ExpertKit-as-label, delegation, memory, artifact-history and CLI
+adapter modules. Preserve their still-valid principles, but do not report those modules as landed or
+recreate their old stores.
 
-**One sentence:** an expert kit declares a specialist, routing decides what enters
-the window, delegation reaches other specialists by capability and cost, and
-consolidation turns what happened into what is known.
+**One sentence:** an Assistant declares a wearable identity and requested loadout; routing eventually
+selects only what enters the window, any conversation may delegate through the one Session/Task
+authority, and a future single-writer consolidation pass turns evidence into curated memory.
 
-| Concept | What it is | The trap it exists to avoid |
+| Concept | Current authority / status | Rule that survives |
 |---|---|---|
-| **Expert kit** (H13, H15) | A label with a real payload: skills, sources, tools, a requested permission mode. Grew out of identity labels — `kind: 'identity'` is deprecated but readable forever (H23) | Giving every session every tool. Accuracy degrades past ~10–15 tools; selection accuracy collapses toward 13% on large sets. It is a tax paid every turn, not untidiness |
-| **Catalog vs active** (H19, H21) | A kit's catalog is **unbounded**. The budget measures only what routing put in the window | Trimming capability to pass a check. A kit cut to fit is a worse kit; routing makes size free |
-| **Skill routing** (H20) | Triggers select, exclusions are decisive, successors are offered not loaded | Asking the model to pick from 28 long descriptions — that *is* the attention cost being avoided |
-| **Delegation** (H10, H11, H28) | Requirement first, then cheapest that satisfies, escalate only on mechanical failure. Shown inline in the conversation | "Cheap for simple" is unimplementable: complexity is not observable up front. And there is **no captain role and no manager agent** — delegating is something any conversation does |
-| **Memory** (H16–H18) | Delegates return findings and write nothing; only consolidation writes curated layers; tool memory records the *fact*, not the call | Five delegates writing five accounts of one event — an echo chamber with source pointers attached |
-| **Foreign import** (H27) | History imports as a searchable archive. Curated memory never imports as memory | Another product's claims describe *its* tool surface and carry no evidence this system can follow |
-| **Artifact history** (H1–H4) | Routed by kind: text→git tree, media→content store, canvas/timeline→operation log. Attribution is orthogonal and required by all three | Reaching for git because it is already there. One video at a time makes a repository unusable |
-| **Git snapshots** (03 §4) | Write objects; never move HEAD, index, a ref, a branch, a tag or a stash | An agent silently committing or stashing under a user — the worst thing this capability can do |
-| **Cost** (H12) | Published rates, cache read/write priced separately, context tiers, subscription flagged not free | Collapsing cache into "input" ranks a cache-heavy agent as expensive — backwards, since agent work is iterative |
-| **CLI agents** (H6–H8) | ACP over stdio; resolved binary paths recorded; detection separate from configuration | Regexing `--help` and reading another program's private cache. Bare command names fail for every version-manager install |
-| **Session activity** (H5) | Derived, live, never clicked. `sessionStatus` stays the manual label | An icon answering "what did someone file this as" while the session is actively running |
+| **Assistant** (H15 revised) | `packages/shared/src/assistants/` is the independent identity store; backend/RPC exists, but its selector is not mounted, so the user-facing path is `not implemented` | Never store identity/loadout in `labels/config.json`; permission in a loadout is a request, never a grant |
+| **Catalog vs active** (H19–H21 principle) | Marketplace/routing runtime `not implemented` | A catalog is unbounded; only the selected active context spends attention; do not trim capability to pass a budget |
+| **Delegation** (H10/H11/H28 principle) | Craft child Sessions/Tasks are the starting authority; Fleet TaskBrief/RunReport gates and inline projection are `not implemented` | Any conversation may delegate; no captain/manager role or second task store |
+| **Memory** (H16–H18/H27 principle) | Store/index/consolidation `not implemented` | Delegates return evidence; only one consolidation writer promotes curated memory; foreign history stays searchable evidence, never imported truth |
+| **Artifact history** (H1–H4 principle) | Unified history router `not implemented` | Text, media and operation logs may use different native storage; attribution is orthogonal and required |
+| **Git snapshots** (03 §4) | Snapshot helper `not implemented` | An agent never moves HEAD, index, a ref, branch, tag or stash under the user |
+| **Cost** (H12) | Pricing/session-cost/usage-rollup helpers exist; complete product projection is not implemented | Price cache reads/writes and context tiers separately; unknown is never reported as zero |
+| **CLI agents** (H6–H8 principle) | General ACP catalog/connection adapter `not implemented` | Detection is separate from configuration and records resolved binary paths; never scrape private caches |
+| **Session activity** (H5) | Derived activity helper exists | Activity is live and derived; `sessionStatus` remains the manual label |
 
 Three things a newcomer gets wrong, stated plainly:
 
@@ -121,8 +122,8 @@ Check before any intake, UI or reference work:
 ls 源码参考/software/craft-agents-oss-v0.10.5 >/dev/null 2>&1 && echo "mirror OK" || echo "mirror MISSING"
 # The baseline pin must be ON its pin. These checkouts carry their own .git, so a checkout run
 # inside one silently moves the baseline; on 2026-08-17 this one sat at v0.12.0 for three weeks.
-git -C 源码参考/software/craft-agents-oss-v0.10.5 describe --tags   # expect exactly v0.10.5
-git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin, currently v0.12.0
+git -C 源码参考/software/craft-agents-oss-v0.10.5 describe --tags   # expect exactly v0.10.5 (look pin)
+git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin; must match app/ (currently v0.13.3)
 ```
 
 `mirror MISSING` is a **classified limitation** (rule 6), not permission to proceed from memory or
@@ -148,11 +149,9 @@ guess for the v0.10.5 baseline.
 | Any domain's breadth, gaps, reference projects | `docs/modules/REGISTRY.md`, `docs/11-PRODUCT-MATRIX.md`, `docs/references/` |
 | Module compatibility or a large future capability | `docs/14-MODULE-ARCHITECTURE.md` and `docs/modules/<module>/README.md` |
 | Reference project source/license audit | `docs/references/` and the relevant module packet |
-| Whether a document claim is evidenced | `docs/15-DOC-AUDIT.md` |
 | Frontend pages, states, mock/adapter rules | `docs/12-PAGE-ARCHITECTURE.md` |
 | Finding the code entry point | `docs/06-CODE-MAP.md` |
 | Starting implementation from the approved suite queue | `docs/WORK-ORDER.md` |
-| Broad product context, doc index | `docs/PRODUCT.md`, `docs/PRODUCT.md` |
 | Orchestration, delegation, canvas, workflows | `docs/13-ORCHESTRATION.md` |
 | Context size, prompt assembly, caching, token cost | `docs/modules/suites/SYS-03-context-economy.md` |
 | A design question ("is this already decided?") | `docs/02-DECISIONS.md` |

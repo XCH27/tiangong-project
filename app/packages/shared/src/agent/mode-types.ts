@@ -24,6 +24,32 @@ import { z } from 'zod';
 export type PermissionMode = 'safe' | 'ask' | 'allow-all';
 
 /**
+ * How much a mode is allowed to do, low to high. Only used for comparison.
+ */
+const PERMISSION_MODE_BREADTH: Record<PermissionMode, number> = {
+  safe: 0,
+  ask: 1,
+  'allow-all': 2,
+};
+
+/**
+ * A requested permission mode is a request, never a grant: a delegate or spawned
+ * session can never be broader than the session that asked for it. Returns the
+ * narrower of the two; an absent request means "inherit".
+ *
+ * This is the one place that rule is expressed, so a loadout carrying
+ * `allow-all` cannot widen an `ask` parent by being applied to a child.
+ */
+export function narrowPermissionMode(
+  parent: PermissionMode | undefined,
+  requested: PermissionMode | undefined,
+): PermissionMode | undefined {
+  if (!requested) return parent;
+  if (!parent) return requested;
+  return PERMISSION_MODE_BREADTH[requested] < PERMISSION_MODE_BREADTH[parent] ? requested : parent;
+}
+
+/**
  * Canonical mode names used in user-facing/session-state surfaces.
  */
 export type PermissionModeCanonical = 'explore' | 'ask' | 'execute';

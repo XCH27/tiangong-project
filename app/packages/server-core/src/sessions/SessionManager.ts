@@ -1,4 +1,5 @@
 import type { EventSink, RpcServer } from '@craft-agent/server-core/transport'
+import { narrowPermissionMode } from '@craft-agent/shared/agent/mode-types'
 import { CLIENT_BROWSER_INVOKE } from '@craft-agent/server-core/transport'
 import type { ISessionManager, IBrowserPaneManager, ExecutePromptAutomationInput } from '@craft-agent/server-core/handlers'
 import { RemoteBrowserPaneManager } from './RemoteBrowserPaneManager'
@@ -72,10 +73,14 @@ import {
   type SessionStatus,
   type SessionHeader,
   pickSessionFields,
+  sessionToMarkdown,
+  markdownExportFilename,
 } from '@craft-agent/shared/sessions'
-import { loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, getSourceServerBuilder, type SourceWithCredential, isApiOAuthProvider, hasRenewEndpoint, SERVER_BUILD_ERRORS, TokenRefreshManager, createTokenGetter } from '@craft-agent/shared/sources'
+import { loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, TokenRefreshManager } from '@craft-agent/shared/sources'
 import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@craft-agent/shared/tasks'
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
+import { buildPagesToolCallbacks } from '../pages/tool-callbacks'
+import { buildServersFromSources as buildServersFromSourcesShared } from '../sources/build-servers'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
 import { getValidClaudeOAuthToken } from '@craft-agent/shared/auth'
 import { resolveAuthEnvVars } from '@craft-agent/shared/config'
@@ -366,106 +371,19 @@ async function saveClaudeTurnAnchor(
  * @param sessionPath - Optional path to session folder for saving large API responses
  * @param tokenRefreshManager - Optional TokenRefreshManager for OAuth token refresh
  */
+/**
+ * Session-flavored wrapper around the shared builder: keeps the ~7 existing
+ * call sites unchanged while routing logs through sessionLog. The
+ * implementation lives in ../sources/build-servers.ts so the pages action
+ * executor uses the exact same credential path.
+ */
 async function buildServersFromSources(
   sources: LoadedSource[],
   sessionPath?: string,
   tokenRefreshManager?: TokenRefreshManager,
   summarize?: SummarizeCallback
 ) {
-  const span = perf.span('sources.buildServers', { count: sources.length })
-  const credManager = getSourceCredentialManager()
-  const serverBuilder = getSourceServerBuilder()
-
-  // Load credentials for all sources
-  const sourcesWithCreds: SourceWithCredential[] = await Promise.all(
-    sources.map(async (source) => ({
-      source,
-      token: await credManager.getToken(source),
-      credential: await credManager.getApiCredential(source),
-    }))
-  )
-  span.mark('credentials.loaded')
-
-  // Build token getter for refreshable sources (OAuth + renew-endpoint)
-  // Uses TokenRefreshManager for unified refresh logic (DRY principle)
-  const getTokenForSource = (source: LoadedSource) => {
-    const provider = source.config.provider
-    // Provider-specific OAuth (Google, Slack, Microsoft) or generic OAuth (authType: 'oauth')
-    if (isApiOAuthProvider(provider) || source.config.api?.authType === 'oauth') {
-      const manager = tokenRefreshManager ?? new TokenRefreshManager(credManager, {
-        log: (msg) => sessionLog.debug(msg),
-      })
-      return createTokenGetter(manager, source)
-    }
-    // API renew endpoint — non-OAuth token refresh
-    if (hasRenewEndpoint(source)) {
-      const manager = tokenRefreshManager ?? new TokenRefreshManager(credManager, {
-        log: (msg) => sessionLog.debug(msg),
-      })
-      return createTokenGetter(manager, source)
-    }
-    return undefined
-  }
-
-  // Per-request credential getter for non-OAuth / non-renew API sources
-  // (bearer / header / query / basic auth).
-  //
-  // Without this, the in-process API tool captures the credential as a static
-  // string at build time and keeps using it forever — meaning a fresh JWT
-  // entered via source_credential_prompt is ignored until session restart.
-  //
-  // With this getter, every API call reads the latest credential from the
-  // vault, so credential updates take effect on the next call. OAuth and
-  // renew-endpoint sources have their own refresh logic via TokenRefreshManager
-  // and are skipped here.
-  const getCredentialForSource = (source: LoadedSource) => {
-    if (source.config.type !== 'api') return undefined
-    if (source.config.api?.authType === 'none') return undefined
-    if (isApiOAuthProvider(source.config.provider)) return undefined
-    if (source.config.api?.authType === 'oauth') return undefined
-    if (hasRenewEndpoint(source)) return undefined
-    return async () => credManager.getApiCredential(source)
-  }
-
-  // Pass sessionPath to enable saving large API responses to session folder
-  const result = await serverBuilder.buildAll(
-    sourcesWithCreds,
-    getTokenForSource,
-    sessionPath,
-    summarize,
-    getCredentialForSource,
-  )
-  span.mark('servers.built')
-  span.setMetadata('mcpCount', Object.keys(result.mcpServers).length)
-  span.setMetadata('apiCount', Object.keys(result.apiServers).length)
-
-  // Update source configs for auth errors so UI reflects actual state.
-  // Re-classify AUTH_REQUIRED → TOKEN_EXPIRED when the credential is merely
-  // expired-but-refreshable; in that case the refresh cycle handles recovery
-  // and we must NOT prematurely mark the source as needing re-auth (#710).
-  for (const error of result.errors) {
-    if (error.error !== SERVER_BUILD_ERRORS.AUTH_REQUIRED) continue
-    const source = sources.find(s => s.config.slug === error.sourceSlug)
-    if (!source) continue
-
-    const cred = await credManager.load(source)
-    const isExpiredRefreshable =
-      cred &&
-      (credManager.isExpired(cred) || credManager.needsRefresh(cred)) &&
-      (cred.refreshToken || hasRenewEndpoint(source))
-
-    if (isExpiredRefreshable) {
-      error.error = SERVER_BUILD_ERRORS.TOKEN_EXPIRED
-      sessionLog.debug(`Source ${error.sourceSlug}: TOKEN_EXPIRED — refresh cycle will handle`)
-      continue
-    }
-
-    credManager.markSourceNeedsReauth(source, 'Token missing or expired')
-    sessionLog.info(`Marked source ${error.sourceSlug} as needing re-auth`)
-  }
-
-  span.end()
-  return result
+  return buildServersFromSourcesShared(sources, sessionPath, tokenRefreshManager, summarize, sessionLog)
 }
 
 /**
@@ -803,6 +721,8 @@ interface ManagedSession {
   stopRequested?: boolean
   lastMessageAt: number
   streamingText: string
+  /** Identity of the unfinished assistant text, used for retry discard boundaries. */
+  streamingTurnId?: string
   // Incremented each time a new message starts processing.
   // Used to detect if a follow-up message has superseded the current one (stale-request guard).
   processingGeneration: number
@@ -1305,6 +1225,7 @@ export class SessionManager implements ISessionManager {
   }
 
   private browserPaneManager: IBrowserPaneManager | null = null
+  private enqueuePageThumbnailFn?: (req: { workspaceId: string; workspaceRootPath: string; slug: string }) => void
   private rpcServer: RpcServer | null = null
   private remoteBpms = new Map<string, RemoteBrowserPaneManager>()
   /** Pinned desktop client per session for `client:browser:invoke` routing. */
@@ -1318,6 +1239,24 @@ export class SessionManager implements ISessionManager {
   setBrowserPaneManager(bpm: IBrowserPaneManager): void {
     this.browserPaneManager = bpm
     bpm.setSessionPathResolver((sessionId) => this.getSessionPath(sessionId))
+  }
+
+  /**
+   * Inject the page thumbnail capturer (Electron main only — needs a
+   * BrowserWindow). Headless/WebUI hosts never call this, so
+   * {@link enqueuePageThumbnail} no-ops and tiles fall back to the placeholder.
+   */
+  setPageThumbnailer(fn: (req: { workspaceId: string; workspaceRootPath: string; slug: string }) => void): void {
+    this.enqueuePageThumbnailFn = fn
+  }
+
+  /**
+   * Request a (re)capture of a page's preview poster. Fire-and-forget: the
+   * injected capturer queues it, writes thumbnail.jpg, and stamps page.json
+   * (which broadcasts pages:changed). No-op when no capturer is injected.
+   */
+  enqueuePageThumbnail(workspaceId: string, workspaceRootPath: string, slug: string): void {
+    this.enqueuePageThumbnailFn?.({ workspaceId, workspaceRootPath, slug })
   }
 
   /**
@@ -1618,6 +1557,13 @@ export class SessionManager implements ISessionManager {
         // Notify renderer to re-read automations.json
         this.broadcastAutomationsChanged(workspaceId)
       },
+      onPagesListChange: (pages) => {
+        sessionLog.info(`Pages changed in ${workspaceId} (${pages.length} pages)`)
+        // Rebuild the synthetic page-refresh cron matchers (page.json is the
+        // completion marker, so this also fires after every refresh run)
+        this.automationSystems.get(workspaceRootPath)?.reloadPageRefreshMatchers()
+        this.broadcastPagesChanged(workspaceId, pages)
+      },
       onLlmConnectionsChange: () => {
         sessionLog.info(`LLM connections changed in ${workspaceId}`)
         this.broadcastLlmConnectionsChanged()
@@ -1818,6 +1764,12 @@ export class SessionManager implements ISessionManager {
     if (!this.eventSink) return
     sessionLog.info(`Broadcasting skills changed (${skills.length} skills)`)
     this.eventSink(RPC_CHANNELS.skills.CHANGED, { to: 'workspace', workspaceId }, workspaceId, skills)
+  }
+
+  private broadcastPagesChanged(workspaceId: string, pages: import('@craft-agent/shared/pages').LoadedPage[]): void {
+    if (!this.eventSink) return
+    sessionLog.info(`Broadcasting pages changed (${pages.length} pages)`)
+    this.eventSink(RPC_CHANNELS.pages.CHANGED, { to: 'workspace', workspaceId }, workspaceId, pages)
   }
 
   private broadcastDefaultPermissionsChanged(): void {
@@ -4226,7 +4178,10 @@ export class SessionManager implements ISessionManager {
           llmConnection: request.llmConnection ?? managed.llmConnection,
           model: request.model ?? managed.model,
           enabledSourceSlugs: request.enabledSourceSlugs ?? managed.enabledSourceSlugs,
-          permissionMode: request.permissionMode ?? managed.permissionMode,
+          // A spawn request asks for a permission mode; it never grants one. The
+          // child is the narrower of what the parent has and what was asked for,
+          // so an agent cannot escalate by spawning.
+          permissionMode: narrowPermissionMode(managed.permissionMode, request.permissionMode),
           thinkingLevel: request.thinkingLevel ?? managed.thinkingLevel,
           labels: request.labels ?? managed.labels,
           workingDirectory: request.workingDirectory,
@@ -4353,6 +4308,25 @@ export class SessionManager implements ISessionManager {
           const created = await createTaskFromSpec(this, ws.id, ws.rootPath, parsed.data)
           return { ...created, warnings: [...warnings, ...created.warnings] }
         },
+        // Pages tools (list_pages/get_page/create_page/update_page/
+        // write_page_data/delete_page) — grouped callbacks bound to the
+        // invoking session's workspace. Storage flows are shared with the
+        // pages RPC handlers; after each mutation we poke the watcher (Linux
+        // atomic-rename workaround) and broadcast pages:changed, exactly like
+        // those handlers do.
+        pages: buildPagesToolCallbacks({
+          workspaceId: managed.workspace.id,
+          workspaceRootPath: managed.workspace.rootPath,
+          log: (message: string) => sessionLog.info(message),
+          onPagesMutated: async (pageSlug: string) => {
+            this.notifyConfigFileChange(managed.workspace.rootPath, `pages/${pageSlug}/page.json`)
+            const { loadWorkspacePages } = await import('@craft-agent/shared/pages')
+            this.broadcastPagesChanged(managed.workspace.id, loadWorkspacePages(managed.workspace.rootPath))
+          },
+          onContentChanged: (pageSlug: string) => {
+            this.enqueuePageThumbnail(managed.workspace.id, managed.workspace.rootPath, pageSlug)
+          },
+        }),
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id
           const session = this.sessions.get(targetId)
@@ -4855,170 +4829,27 @@ export class SessionManager implements ISessionManager {
   }
 
   // ============================================
-  // Session Sharing
+  // Conversation export
   // ============================================
 
   /**
-   * Share session to the web viewer
-   * Uploads session data and returns shareable URL
+   * Render the full conversation as Markdown. The client saves the file locally
+   * (native save dialog); nothing is uploaded.
    */
-  async shareToViewer(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
+  async exportMarkdown(sessionId: string): Promise<import('@craft-agent/shared/protocol').ExportMarkdownResult> {
     const managed = this.sessions.get(sessionId)
     if (!managed) {
       return { success: false, error: 'Session not found' }
     }
-
-    // Signal async operation start for shimmer effect
-    managed.isAsyncOperationOngoing = true
-    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
-
-    try {
-      // Load session directly from disk (already in correct format)
-      const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
-      if (!storedSession) {
-        return { success: false, error: 'Session file not found' }
-      }
-
-      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-      const response = await fetch(`${VIEWER_URL}/s/api`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(storedSession)
-      })
-
-      if (!response.ok) {
-        sessionLog.error(`Share failed with status ${response.status}`)
-        if (response.status === 413) {
-          return { success: false, error: 'Session file is too large to share' }
-        }
-        return { success: false, error: 'Failed to upload session' }
-      }
-
-      const data = await response.json() as { id: string; url: string }
-
-      // Store shared info in session
-      managed.sharedUrl = data.url
-      managed.sharedId = data.id
-      const workspaceRootPath = managed.workspace.rootPath
-      await updateSessionMetadata(workspaceRootPath, sessionId, {
-        sharedUrl: data.url,
-        sharedId: data.id,
-      })
-
-      sessionLog.info(`Session ${sessionId} shared at ${data.url}`)
-      // Notify all windows for this workspace
-      this.sendEvent({ type: 'session_shared', sessionId, sharedUrl: data.url }, managed.workspace.id)
-      return { success: true, url: data.url }
-    } catch (error) {
-      sessionLog.error('Share error:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    } finally {
-      // Signal async operation end
-      managed.isAsyncOperationOngoing = false
-      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
+    const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
+    if (!storedSession) {
+      return { success: false, error: 'Session file not found' }
     }
-  }
-
-  /**
-   * Update an existing shared session
-   * Re-uploads session data to the same URL
-   */
-  async updateShare(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) {
-      return { success: false, error: 'Session not found' }
-    }
-    if (!managed.sharedId) {
-      return { success: false, error: 'Session not shared' }
-    }
-
-    // Signal async operation start for shimmer effect
-    managed.isAsyncOperationOngoing = true
-    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
-
-    try {
-      // Load session directly from disk (already in correct format)
-      const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
-      if (!storedSession) {
-        return { success: false, error: 'Session file not found' }
-      }
-
-      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-      const response = await fetch(`${VIEWER_URL}/s/api/${managed.sharedId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(storedSession)
-      })
-
-      if (!response.ok) {
-        sessionLog.error(`Update share failed with status ${response.status}`)
-        if (response.status === 413) {
-          return { success: false, error: 'Session file is too large to share' }
-        }
-        return { success: false, error: 'Failed to update shared session' }
-      }
-
-      sessionLog.info(`Session ${sessionId} share updated at ${managed.sharedUrl}`)
-      return { success: true, url: managed.sharedUrl }
-    } catch (error) {
-      sessionLog.error('Update share error:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    } finally {
-      // Signal async operation end
-      managed.isAsyncOperationOngoing = false
-      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
-    }
-  }
-
-  /**
-   * Revoke a shared session
-   * Deletes from viewer and clears local shared state
-   */
-  async revokeShare(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed) {
-      return { success: false, error: 'Session not found' }
-    }
-    if (!managed.sharedId) {
-      return { success: false, error: 'Session not shared' }
-    }
-
-    // Signal async operation start for shimmer effect
-    managed.isAsyncOperationOngoing = true
-    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
-
-    try {
-      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-      const response = await fetch(
-        `${VIEWER_URL}/s/api/${managed.sharedId}`,
-        { method: 'DELETE' }
-      )
-
-      if (!response.ok) {
-        sessionLog.error(`Revoke failed with status ${response.status}`)
-        return { success: false, error: 'Failed to revoke share' }
-      }
-
-      // Clear shared info
-      delete managed.sharedUrl
-      delete managed.sharedId
-      const workspaceRootPath = managed.workspace.rootPath
-      await updateSessionMetadata(workspaceRootPath, sessionId, {
-        sharedUrl: undefined,
-        sharedId: undefined,
-      })
-
-      sessionLog.info(`Session ${sessionId} share revoked`)
-      // Notify all windows for this workspace
-      this.sendEvent({ type: 'session_unshared', sessionId }, managed.workspace.id)
-      return { success: true }
-    } catch (error) {
-      sessionLog.error('Revoke error:', error)
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-    } finally {
-      // Signal async operation end
-      managed.isAsyncOperationOngoing = false
-      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
+    const title = storedSession.name?.trim() || sessionId
+    return {
+      success: true,
+      markdown: sessionToMarkdown(storedSession),
+      suggestedName: markdownExportFilename(title, sessionId),
     }
   }
 
@@ -5685,24 +5516,6 @@ export class SessionManager implements ISessionManager {
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
-    // Revoke share if session was shared (prevent orphaned viewer copies)
-    if (managed.sharedId) {
-      try {
-        const { VIEWER_URL } = await import('@craft-agent/shared/branding')
-        const response = await fetch(
-          `${VIEWER_URL}/s/api/${managed.sharedId}`,
-          { method: 'DELETE', signal: AbortSignal.timeout(5000) }
-        )
-        if (!response.ok) {
-          sessionLog.warn(`Failed to revoke share for ${sessionId}: HTTP ${response.status}`)
-        } else {
-          sessionLog.info(`Revoked share for deleted session ${sessionId}`)
-        }
-      } catch (error) {
-        sessionLog.warn(`Failed to revoke share for ${sessionId}:`, error)
-      }
-    }
-
     // Clean up delta flush timers to prevent orphaned timers
     const timer = this.deltaFlushTimers.get(sessionId)
     if (timer) {
@@ -6006,6 +5819,7 @@ export class SessionManager implements ISessionManager {
     managed.lastMessageAt = Date.now()
     this.setProcessing(managed, true)
     managed.streamingText = ''
+    managed.streamingTurnId = undefined
     managed.processingGeneration++
     managed.turnStartFinalMessageId = this.getLastFinalAssistantMessageId(managed.messages)
 
@@ -7605,8 +7419,25 @@ export class SessionManager implements ISessionManager {
     switch (event.type) {
       case 'text_delta':
         managed.streamingText += event.text
+        managed.streamingTurnId = event.turnId
         // Queue delta for batched sending (performance: reduces IPC from 50+/sec to ~20/sec)
         this.queueDelta(sessionId, workspaceId, event.text, event.turnId)
+        break
+
+      case 'text_discard':
+        // Discard, NEVER flush, the failed attempt's batch before announcing
+        // backoff. Otherwise a delayed failed token can arrive after retry start.
+        this.discardDelta(sessionId, event.turnId)
+        if (managed.streamingTurnId === event.turnId) {
+          managed.streamingText = ''
+          managed.streamingTurnId = undefined
+        }
+        this.sendEvent({ ...event, sessionId }, workspaceId)
+        break
+
+      case 'retry':
+        // Retry progress is transient; do not persist it as transcript history.
+        this.sendEvent({ ...event, sessionId }, workspaceId)
         break
 
       case 'text_complete': {
@@ -7624,6 +7455,7 @@ export class SessionManager implements ISessionManager {
         }
         managed.messages.push(assistantMessage)
         managed.streamingText = ''
+        managed.streamingTurnId = undefined
 
         // Update lastMessageRole and lastFinalMessageId for badge/unread display (only for final messages)
         if (!event.isIntermediate) {
@@ -8441,6 +8273,15 @@ export class SessionManager implements ISessionManager {
       }, DELTA_BATCH_INTERVAL_MS)
       this.deltaFlushTimers.set(sessionId, timer)
     }
+  }
+
+  /** Remove a failed assistant's unsent batch without affecting another stream. */
+  private discardDelta(sessionId: string, turnId: string): void {
+    if (this.pendingDeltas.get(sessionId)?.turnId !== turnId) return
+    const timer = this.deltaFlushTimers.get(sessionId)
+    if (timer) clearTimeout(timer)
+    this.deltaFlushTimers.delete(sessionId)
+    this.pendingDeltas.delete(sessionId)
   }
 
   /**

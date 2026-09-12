@@ -1,6 +1,12 @@
 import { describe, test, expect } from 'bun:test'
 import { getAllChannelValues, RPC_CHANNELS } from '../channels'
-import { LOCAL_ONLY_CHANNELS, REMOTE_ELIGIBLE_CHANNELS } from '../routing'
+import {
+  LOCAL_ONLY_CHANNELS,
+  REMOTE_ELIGIBLE_CHANNELS,
+  isRemoteAllowed,
+  isRemoteEligible,
+  remoteRefusalFor,
+} from '../routing'
 
 describe('channel routing exhaustiveness', () => {
   const all = getAllChannelValues()
@@ -66,6 +72,38 @@ describe('channel routing behavior', () => {
       if (ch.startsWith('server:')) {
         throw new Error(`server:* channel "${ch}" must be REMOTE_ELIGIBLE, not LOCAL_ONLY`)
       }
+    }
+  })
+})
+
+describe('remote admission is default-deny', () => {
+  test('admits only what the allow-list names', () => {
+    expect(isRemoteAllowed(RPC_CHANNELS.sessions.CREATE)).toBe(isRemoteEligible(RPC_CHANNELS.sessions.CREATE))
+    expect(isRemoteAllowed(RPC_CHANNELS.remote.CLAIM_DEVICE_TOKEN)).toBe(true)
+  })
+
+  test('refuses a channel nobody classified, rather than exposing it', () => {
+    // The shape a forgotten classification takes: present on the wire, in neither set.
+    expect(isRemoteAllowed('someNewDomain:doThing')).toBe(false)
+    expect(remoteRefusalFor('someNewDomain:doThing')).toBe('NOT_ADMITTED')
+  })
+
+  test('distinguishes local-only from never-admitted so a failure can be explained', () => {
+    expect(remoteRefusalFor(RPC_CHANNELS.remote.CREATE_INVITE)).toBe('LOCAL_ONLY')
+    expect(remoteRefusalFor(RPC_CHANNELS.window.CLOSE)).toBe('LOCAL_ONLY')
+    expect(remoteRefusalFor('unknown:channel')).toBe('NOT_ADMITTED')
+  })
+
+  test('admits nothing that is also local-only', () => {
+    for (const channel of LOCAL_ONLY_CHANNELS) {
+      expect(isRemoteAllowed(channel)).toBe(false)
+      expect(remoteRefusalFor(channel)).toBe('LOCAL_ONLY')
+    }
+  })
+
+  test('every admitted channel passes the dispatch check', () => {
+    for (const channel of REMOTE_ELIGIBLE_CHANNELS) {
+      expect(remoteRefusalFor(channel)).toBeNull()
     }
   })
 })
