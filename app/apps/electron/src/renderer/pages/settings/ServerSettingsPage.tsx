@@ -36,6 +36,14 @@ type RemoteDeviceRow = Awaited<ReturnType<typeof window.electronAPI.listRemoteDe
 import { attachRemoteFromAccessLink, attachRemoteFromServerToken } from '@/lib/remote-connect'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
+/**
+ * The command Craft's own server documentation gives for a headless host. Offered
+ * copyable rather than described, because a person setting up a VPS needs the line,
+ * not a paraphrase of it.
+ */
+const HEADLESS_START_COMMAND =
+  'CRAFT_SERVER_TOKEN=$(openssl rand -hex 32) CRAFT_RPC_HOST=0.0.0.0 bun run packages/server/src/index.ts'
+
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
   slug: 'server',
@@ -337,6 +345,34 @@ export default function ServerSettingsPage() {
                   </Button>
                 </SettingsCardFooter>
               </SettingsCard>
+              {remoteDevices.length > 0 && (
+                <SettingsCard>
+                  {remoteDevices.map((ws) => (
+                    <SettingsRow
+                      key={ws.id}
+                      label={ws.name}
+                      description={ws.remoteServer?.url}
+                      action={(
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          aria-label={t('settings.remote.disconnectDevice')}
+                          title={t('settings.remote.disconnectDevice')}
+                          onClick={() => setDisconnecting(ws)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    />
+                  ))}
+                </SettingsCard>
+              )}
+            </SettingsSection>
+
+            {/* §8/§14: manual setup and headless installation are the advanced path,
+                disclosed below the pairing flow rather than offered as a peer button. */}
+            <SettingsSection title={t('settings.remote.advanced')}>
               <SettingsCard>
                 <SettingsInputRow
                   label={t('settings.remote.serverUrl')}
@@ -365,29 +401,30 @@ export default function ServerSettingsPage() {
                 </SettingsCardFooter>
               </SettingsCard>
 
-              {remoteDevices.length > 0 && (
-                <SettingsCard>
-                  {remoteDevices.map((ws) => (
-                    <SettingsRow
-                      key={ws.id}
-                      label={ws.name}
-                      description={ws.remoteServer?.url}
-                      action={(
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          aria-label={t('settings.remote.disconnectDevice')}
-                          title={t('settings.remote.disconnectDevice')}
-                          onClick={() => setDisconnecting(ws)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      )}
-                    />
-                  ))}
-                </SettingsCard>
-              )}
+              <SettingsCard>
+                <SettingsRow
+                  label={t('settings.remote.installOnServer')}
+                  description={t('settings.remote.installOnServerDesc')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <code className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded max-w-[180px] truncate">
+                      {HEADLESS_START_COMMAND}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      aria-label={t('settings.remote.installOnServer')}
+                      onClick={() => {
+                        void navigator.clipboard.writeText(HEADLESS_START_COMMAND)
+                        toast.success(t('settings.server.copiedToClipboard', { label: t('settings.remote.installOnServer') }))
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </SettingsRow>
+              </SettingsCard>
             </SettingsSection>
           </div>
       </ScrollArea>

@@ -27,7 +27,7 @@ import {
   SettingsCard,
 } from '@/components/settings'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
-import { getDocUrl } from '@craft-agent/shared/docs/doc-links'
+import { openLocalDoc } from '@/lib/open-local-doc'
 import { routes } from '@/lib/navigate'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
@@ -228,7 +228,7 @@ export default function PermissionsSettingsPage() {
                         <p>
                           <button
                             type="button"
-                            onClick={() => window.electronAPI?.openUrl(getDocUrl('permissions'))}
+                            onClick={() => void openLocalDoc('permissions')}
                             className="text-foreground/70 hover:text-foreground underline underline-offset-2"
                           >
                             {t("common.learnMore")}

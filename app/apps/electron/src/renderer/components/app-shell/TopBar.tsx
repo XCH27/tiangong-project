@@ -29,7 +29,7 @@ import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
-import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
+import { openLocalDoc } from "@/lib/open-local-doc"
 import { AppMenu } from "../AppMenu"
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
@@ -255,38 +255,41 @@ export function TopBar({
             </TopBarButton>
           </DropdownMenuTrigger>
           <StyledDropdownMenuContent align="end" minWidth="min-w-48">
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('sources'))}>
+            <StyledDropdownMenuItem onClick={() => void openLocalDoc('sources')}>
               <Icons.DatabaseZap className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.sources")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('skills'))}>
+            <StyledDropdownMenuItem onClick={() => void openLocalDoc('skills')}>
               <Icons.Zap className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.skills")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('statuses'))}>
+            <StyledDropdownMenuItem onClick={() => void openLocalDoc('statuses')}>
               <Icons.CheckCircle2 className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.statuses")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('permissions'))}>
+            <StyledDropdownMenuItem onClick={() => void openLocalDoc('permissions')}>
               <Icons.Settings className="h-3.5 w-3.5" />
               <span className="flex-1">{t("settings.permissions.title")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('automations'))}>
+            <StyledDropdownMenuItem onClick={() => void openLocalDoc('automations')}>
               <Icons.Webhook className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.automations")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('messaging'))}>
+            <StyledDropdownMenuItem onClick={() => void openLocalDoc('messaging')}>
               <Icons.MessageSquare className="h-3.5 w-3.5" />
               <span className="flex-1">{t("settings.messaging.title")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
             <StyledDropdownMenuSeparator />
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl('https://thecraftagents.com/docs')}>
+            <StyledDropdownMenuItem onClick={() => {
+              void window.electronAPI.getHomeDir().then((home) =>
+                window.electronAPI.openFile(`${home}/.craft-agent/docs/INDEX.md`))
+            }}>
               <Icons.ExternalLink className="h-3.5 w-3.5" />
               <span className="flex-1">{t("menu.allDocumentation")}</span>
             </StyledDropdownMenuItem>
