@@ -12,16 +12,18 @@ import {
   assessEndpoints,
   encodeInviteLink,
   forgetRevokedDevices,
-  hashRemoteSecret,
   issueEnrollment,
+  revokeDevice,
+  type RemoteDevice,
+} from '@craft-agent/shared/remote'
+import {
+  hashRemoteSecret,
   loadRemoteAccessStore,
   newRemoteId,
   newRemoteSecret,
-  revokeDevice,
   saveRemoteAccessStore,
   updateRemoteAccessStore,
-  type RemoteDevice,
-} from '@craft-agent/shared/remote'
+} from '@craft-agent/shared/remote/node'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.remote.CREATE_INVITE,
@@ -77,22 +79,42 @@ export function registerRemoteDeviceHandlers(
   server: RpcServer,
   deps: {
     listEndpoints: () => Promise<string[]>
+    /** What this machine calls itself, carried in the link so the other side types nothing. */
+    hostName: () => string
     /** Hands over the grant minted for a just-redeemed invite, once. */
     claimMintedToken: (enrollmentId: string) => { deviceId: string; token: string } | null
   },
 ): void {
   // A device that just redeemed its single-use invite exchanges it for the grant it
   // will present from now on. One claim only; a miss means pairing again.
-  server.handle(RPC_CHANNELS.remote.CLAIM_DEVICE_TOKEN, async (_ctx, enrollmentId: string) => {
+  server.handle(RPC_CHANNELS.remote.CLAIM_DEVICE_TOKEN, async (
+    _ctx,
+    enrollmentId: string,
+    identity?: { deviceName?: string; platform?: RemoteDevice['platform'] },
+  ) => {
     if (!enrollmentId) throw new Error('REMOTE_ENROLLMENT_ID_REQUIRED')
     const minted = deps.claimMintedToken(enrollmentId)
     if (!minted) throw new Error('REMOTE_GRANT_ALREADY_CLAIMED')
+
+    // The joining device names itself here. Without this the host would show a
+    // machine it has never seen under a label somebody had to invent for it.
+    const name = (identity?.deviceName ?? '').trim()
+    const platform = identity?.platform
+    if (name || platform) {
+      updateRemoteAccessStore((store) => ({
+        ...store,
+        devices: store.devices.map((device) => device.id === minted.deviceId
+          ? { ...device, name: name || device.name, platform: platform ?? device.platform }
+          : device),
+      }))
+    }
     return { deviceId: minted.deviceId, deviceToken: minted.token }
   })
 
   server.handle(RPC_CHANNELS.remote.CREATE_INVITE, async (_ctx, input: CreateInviteInput) => {
+    // Optional: the device that redeems this invite reports its own name, so nobody
+    // has to name a machine they are not sitting at.
     const deviceName = (input?.deviceName ?? '').trim()
-    if (!deviceName) throw new Error('REMOTE_DEVICE_NAME_REQUIRED')
 
     const endpoints = await deps.listEndpoints()
     if (endpoints.length === 0) throw new Error('REMOTE_NO_REACHABLE_ADDRESS')
@@ -113,7 +135,12 @@ export function registerRemoteDeviceHandlers(
     const result: CreateInviteResult = {
       // The link carries the raw secret; the joining client turns it into the
       // credential it presents on first connect (`formatInviteCredential`).
-      accessLink: encodeInviteLink({ enrollmentId: id, secret, endpoints }),
+      accessLink: encodeInviteLink({
+        enrollmentId: id,
+        secret,
+        endpoints,
+        hostName: deps.hostName(),
+      }),
       expiresAt: enrollment.expiresAt,
       deviceName,
       reach: assessEndpoints(endpoints).verdict,

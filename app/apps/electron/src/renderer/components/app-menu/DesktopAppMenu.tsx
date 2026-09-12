@@ -231,7 +231,15 @@ export function DesktopAppMenu({
               return (
                 <StyledDropdownMenuItem
                   key={link.id}
-                  onClick={() => window.electronAPI.openUrl(link.url)}
+                  onClick={() => {
+                    if (link.url.startsWith('fleet-local://')) {
+                      void window.electronAPI.getHomeDir().then((home) => {
+                        window.electronAPI.openFile(`${home}/.craft-agent/docs/INDEX.md`)
+                      })
+                      return
+                    }
+                    window.electronAPI.openUrl(link.url)
+                  }}
                 >
                   {Icon && <Icon className="h-3.5 w-3.5" />}
                   {t(link.labelKey)}

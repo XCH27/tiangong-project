@@ -66,11 +66,13 @@ import type {
 } from '../../shared/types'
 import {
   isSessionsNavigation,
+  isBoardNavigation,
   isSourcesNavigation,
   isSettingsNavigation,
   isSkillsNavigation,
   isAutomationsNavigation,
   isProjectsNavigation,
+  isPagesNavigation,
   DEFAULT_NAVIGATION_STATE,
 } from '../../shared/types'
 import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/atoms/sessions'
@@ -93,7 +95,7 @@ export type { Route }
 
 // Re-export navigation state types for consumers
 export type { NavigationState, SessionFilter }
-export { isSessionsNavigation, isSourcesNavigation, isSettingsNavigation, isSkillsNavigation, isAutomationsNavigation, isProjectsNavigation }
+export { isSessionsNavigation, isBoardNavigation, isPagesNavigation, isSourcesNavigation, isSettingsNavigation, isSkillsNavigation, isAutomationsNavigation, isProjectsNavigation }
 
 // =============================================================================
 // Context
@@ -634,12 +636,10 @@ export function NavigationProvider({
         }
       }
 
-      // Sessions: auto-select last/first session.
-      // Board view has no per-session detail, so skip auto-selection — otherwise
-      // navigating to the board would immediately resolve into a chat route.
+      // Sessions: auto-select last/first session. Board is a different navigator
+      // and must not resolve into a chat route.
       if (
         isSessionsNavigation(nextState) &&
-        nextState.viewMode !== 'board' &&
         !nextState.details &&
         !options?.skipAutoSelect
       ) {

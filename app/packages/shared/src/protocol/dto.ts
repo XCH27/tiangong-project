@@ -155,6 +155,8 @@ export interface CreateSessionOptions {
   projectId?: string
   /** Mark the new session as a subtask of this parent session (undefined = top-level task). */
   parentSessionId?: string
+  /** Assistant identity the new session wears. */
+  assistantId?: string
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */
   taskSlug?: string
   /** Tasks Conductor: id of the run that spawned this child session (child nodes only). */
@@ -372,6 +374,9 @@ export interface PermissionModeState {
 
 // turnId: Correlation ID from the API's message.id, groups all events in an assistant turn
 export type SessionEvent =
+  | { type: 'text_discard'; sessionId: string; turnId: string }
+  | { type: 'retry'; sessionId: string; phase: 'backoff'; message: string }
+  | { type: 'retry'; sessionId: string; phase: 'active' | 'end' }
   | { type: 'text_delta'; sessionId: string; delta: string; turnId?: string }
   | { type: 'text_complete'; sessionId: string; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; timestamp?: number; messageId?: string }
   | { type: 'tool_start'; sessionId: string; toolName: string; toolUseId: string; toolInput: Record<string, unknown>; toolIntent?: string; toolDisplayName?: string; toolDisplayMeta?: ToolDisplayMeta; turnId?: string; parentToolUseId?: string; timestamp?: number }
@@ -456,9 +461,7 @@ export type SessionCommand =
   | { type: 'setKanbanColumn'; column: string | null }
   | { type: 'showInFinder' }
   | { type: 'copyPath' }
-  | { type: 'shareToViewer' }
-  | { type: 'updateShare' }
-  | { type: 'revokeShare' }
+  | { type: 'exportMarkdown' }
   | { type: 'refreshTitle' }
   | { type: 'setConnection'; connectionSlug: string }
   | { type: 'setPendingPlanExecution'; planPath: string; draftInputSnapshot?: string }
@@ -676,11 +679,15 @@ export interface UnreadSummary {
   hasUnreadByWorkspace: Record<string, boolean>
 }
 
-export interface ShareResult {
+export interface ExportMarkdownResult {
   success: boolean
-  url?: string
+  markdown?: string
+  suggestedName?: string
   error?: string
 }
+
+/** @deprecated Online sharing was replaced by Markdown export. */
+export type ShareResult = ExportMarkdownResult
 
 export interface RefreshTitleResult {
   success: boolean
@@ -768,6 +775,7 @@ export interface ClaudeOAuthResult {
 export type TestAutomationAction =
   | { type: 'prompt'; prompt: string; llmConnection?: string; model?: string; thinkingLevel?: ThinkingLevel }
   | { type: 'webhook'; url: string; method?: string; headers?: Record<string, string>; bodyFormat?: 'json' | 'form' | 'raw'; body?: unknown; captureResponse?: boolean; auth?: { type: 'basic'; username: string; password: string } | { type: 'bearer'; token: string } }
+  | { type: 'script'; script: string; args?: string[]; runtime?: 'bun' | 'node' | 'python3'; timeoutMs?: number; page?: string }
 
 export interface TestAutomationPayload {
   workspaceId: string
@@ -783,6 +791,7 @@ export interface TestAutomationPayload {
 export type TestAutomationActionResult =
   | { type: 'prompt'; success: boolean; stderr?: string; sessionId?: string; duration: number }
   | { type: 'webhook'; success: boolean; url: string; statusCode: number; error?: string; duration: number }
+  | { type: 'script'; success: boolean; script: string; exitCode: number | null; stdout?: string; error?: string; duration: number }
 
 export interface TestAutomationResult {
   actions: TestAutomationActionResult[]

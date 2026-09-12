@@ -16,6 +16,7 @@
 
 import * as React from 'react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { MoreHorizontal } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -146,6 +147,7 @@ export function EntityRow({
   className,
   separatorClassName = 'pl-12 pr-4',
 }: EntityRowProps) {
+  const contentId = React.useId()
   const [menuOpen, setMenuOpen] = useState(false)
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const [compactMenuOpen, setCompactMenuOpen] = useState(false)
@@ -158,6 +160,7 @@ export function EntityRow({
   // Long-press + suppression state. Refs (not React state) because the
   // pointer event handlers run outside React's commit cycle — updating state
   // would re-render the row on every move, which we explicitly don't want.
+  const { t } = useTranslation()
   const pointerDownRef = React.useRef<{
     x: number
     y: number
@@ -273,12 +276,15 @@ export function EntityRow({
         <div className="absolute left-0 inset-y-0 w-[2px] bg-accent" />
       )}
 
-      {/* Main content button */}
+      {/* The row action and slot actions are siblings, never nested buttons. */}
+      <div className="relative">
       <button
         {...(buttonProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
+        type="button"
+        aria-labelledby={buttonProps?.['aria-label'] ? undefined : contentId}
         className={cn(
-          "entity-row-btn flex w-full items-start gap-2 pl-2 pr-4 py-3 text-left text-sm outline-none rounded-[8px]",
-          "transition-[background-color] duration-75",
+          "entity-row-btn absolute inset-0 w-full rounded-[8px] outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          "transition-colors duration-150",
           (isSelected || isInMultiSelect)
             ? "bg-foreground/3"
             : "hover:bg-foreground/2",
@@ -292,6 +298,10 @@ export function EntityRow({
         onPointerCancel={useCompactMenu ? cancelLongPress : undefined}
         onPointerLeave={useCompactMenu ? cancelLongPress : undefined}
         onContextMenu={useCompactMenu ? onContextMenuCompact : undefined}
+      />
+      <div
+        id={contentId}
+        className="pointer-events-none relative flex w-full items-start gap-2 pl-2 pr-4 py-3 text-left text-sm [&_button]:pointer-events-auto [&_a]:pointer-events-auto [&_[role=button]]:pointer-events-auto"
       >
         {/* Content column */}
         <div className="flex flex-col gap-1.5 min-w-0 flex-1">
@@ -341,9 +351,9 @@ export function EntityRow({
                     ) : (
                       <DropdownMenu modal={true} open={menuOpen} onOpenChange={setMenuOpen}>
                         <DropdownMenuTrigger asChild>
-                          <div className="p-1 rounded-[6px] hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer">
+                          <button type="button" aria-label={t('common.more')} className="p-1 rounded-[6px] hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer">
                             <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
+                          </button>
                         </DropdownMenuTrigger>
                         <StyledDropdownMenuContent align="end">
                           <DropdownMenuProvider>
@@ -412,7 +422,8 @@ export function EntityRow({
             </div>
           )}
         </div>
-      </button>
+      </div>
+      </div>
 
       {/* Children rendered below the button */}
       {children}

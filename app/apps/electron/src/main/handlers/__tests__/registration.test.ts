@@ -93,6 +93,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     automations,
     files,
     labels,
+    assistants,
     llm,
     oauth,
     sessions,
@@ -107,11 +108,13 @@ async function getExpectedChannels(): Promise<Set<string>> {
     transfer,
     tasks,
     projects,
+    pages,
   ] = await Promise.all([
     import('@craft-agent/server-core/handlers/rpc/auth'),
     import('@craft-agent/server-core/handlers/rpc/automations'),
     import('@craft-agent/server-core/handlers/rpc/files'),
     import('@craft-agent/server-core/handlers/rpc/labels'),
+    import('@craft-agent/server-core/handlers/rpc/assistants'),
     import('@craft-agent/server-core/handlers/rpc/llm-connections'),
     import('@craft-agent/server-core/handlers/rpc/oauth'),
     import('@craft-agent/server-core/handlers/rpc/sessions'),
@@ -126,6 +129,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     import('@craft-agent/server-core/handlers/rpc/transfer'),
     import('@craft-agent/server-core/handlers/rpc/tasks'),
     import('@craft-agent/server-core/handlers/rpc/projects'),
+    import('@craft-agent/server-core/handlers/rpc/pages'),
   ])
 
   // GUI handler channels (remain in electron)
@@ -141,6 +145,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     ...automations.HANDLED_CHANNELS,
     ...files.HANDLED_CHANNELS,
     ...labels.HANDLED_CHANNELS,
+    ...assistants.HANDLED_CHANNELS,
     ...llm.HANDLED_CHANNELS,
     ...oauth.HANDLED_CHANNELS,
     ...sessions.HANDLED_CHANNELS,
@@ -155,6 +160,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     ...transfer.HANDLED_CHANNELS,
     ...tasks.HANDLED_CHANNELS,
     ...projects.HANDLED_CHANNELS,
+    ...pages.HANDLED_CHANNELS,
     ...browser.HANDLED_CHANNELS,
     ...guiSystem.GUI_HANDLED_CHANNELS,
     ...guiWorkspace.GUI_HANDLED_CHANNELS,

@@ -47,7 +47,7 @@ describe('the public listener accepts exactly two credentials', () => {
       deps({ platform: 'ios' }),
     )
     expect(result.ok).toBe(true)
-    if (!result.ok) return
+    if (!result.ok || result.kind !== 'device') throw new Error('expected a device')
     expect(result.mintedToken).toBe('tok-new')
     expect(result.device.platform).toBe('ios')
     expect(result.device.name).toBe('Laptop')
@@ -57,7 +57,7 @@ describe('the public listener accepts exactly two credentials', () => {
   it('the same invite cannot admit a second device', () => {
     const first = authenticateRemoteCredential(
       invited(), formatInviteCredential({ enrollmentId: 'inv-1', secret: 'sec-1' }), deps())
-    if (!first.ok) throw new Error('expected first redeem to pass')
+    if (!first.ok || first.kind !== 'device') throw new Error('expected first redeem to pass')
     const second = authenticateRemoteCredential(
       first.store, formatInviteCredential({ enrollmentId: 'inv-1', secret: 'sec-1' }), deps())
     expect(second).toEqual({ ok: false, reason: 'ENROLLMENT_ALREADY_REDEEMED' })
@@ -75,10 +75,10 @@ describe('the public listener accepts exactly two credentials', () => {
   it('the minted token authenticates on the next connection', () => {
     const paired = authenticateRemoteCredential(
       invited(), formatInviteCredential({ enrollmentId: 'inv-1', secret: 'sec-1' }), deps())
-    if (!paired.ok) throw new Error('expected redeem')
+    if (!paired.ok || paired.kind !== 'device') throw new Error('expected redeem')
     const again = authenticateRemoteCredential(paired.store, 'tok-new', deps({ now: T0 + 5000 }))
     expect(again.ok).toBe(true)
-    if (!again.ok) return
+    if (!again.ok || again.kind !== 'device') throw new Error('expected a device')
     expect(again.device.id).toBe('dev-new')
     expect(again.mintedToken).toBeUndefined()
   })
@@ -86,7 +86,7 @@ describe('the public listener accepts exactly two credentials', () => {
   it('a revoked device is refused', () => {
     const paired = authenticateRemoteCredential(
       invited(), formatInviteCredential({ enrollmentId: 'inv-1', secret: 'sec-1' }), deps())
-    if (!paired.ok) throw new Error('expected redeem')
+    if (!paired.ok || paired.kind !== 'device') throw new Error('expected redeem')
     const revoked = revokeDevice(paired.store, 'dev-new', T0 + 2000)
     expect(authenticateRemoteCredential(revoked, 'tok-new', deps({ now: T0 + 3000 })))
       .toEqual({ ok: false, reason: 'UNKNOWN_DEVICE' })
@@ -96,6 +96,38 @@ describe('the public listener accepts exactly two credentials', () => {
     expect(authenticateRemoteCredential(invited(), '', deps()))
       .toEqual({ ok: false, reason: 'NO_CREDENTIAL' })
     expect(authenticateRemoteCredential(invited(), 'some-other-token', deps()))
+      .toEqual({ ok: false, reason: 'UNKNOWN_DEVICE' })
+  })
+})
+
+describe('the configured server token stays admitted', () => {
+  it('admits a client holding the server token, as not-a-device', () => {
+    const result = authenticateRemoteCredential(invited(), 'server-token-abc', deps({
+      serverToken: 'server-token-abc',
+    }))
+    expect(result).toEqual({ ok: true, kind: 'server-token' })
+  })
+
+  it('a device grant still wins over the server token', () => {
+    const paired = authenticateRemoteCredential(
+      invited(), formatInviteCredential({ enrollmentId: 'inv-1', secret: 'sec-1' }), deps())
+    if (!paired.ok || paired.kind !== 'device') throw new Error('expected redeem')
+    const again = authenticateRemoteCredential(paired.store, 'tok-new', deps({
+      serverToken: 'server-token-abc', now: T0 + 5000,
+    }))
+    expect(again.ok && again.kind).toBe('device')
+  })
+
+  it('refuses a near-miss and an empty server token', () => {
+    expect(authenticateRemoteCredential(invited(), 'server-token-ab', deps({
+      serverToken: 'server-token-abc',
+    }))).toEqual({ ok: false, reason: 'UNKNOWN_DEVICE' })
+    expect(authenticateRemoteCredential(invited(), 'anything', deps({ serverToken: '' })))
+      .toEqual({ ok: false, reason: 'UNKNOWN_DEVICE' })
+  })
+
+  it('admits nothing when this machine has no server token configured', () => {
+    expect(authenticateRemoteCredential(invited(), 'server-token-abc', deps()))
       .toEqual({ ok: false, reason: 'UNKNOWN_DEVICE' })
   })
 })

@@ -35,7 +35,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'settings'
+export type NavigatorType = 'sessions' | 'board' | 'pages' | 'sources' | 'skills' | 'automations' | 'projects' | 'settings'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -46,8 +46,6 @@ export interface ParsedCompoundRoute {
   sourceFilter?: SourceFilter
   /** Automation filter (only for automations navigator) */
   automationFilter?: AutomationFilter
-  /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view. */
-  viewMode?: 'list' | 'board'
   /** Details page info (null for empty state) */
   details: {
     type: string
@@ -63,7 +61,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'sources', 'skills', 'automations', 'projects', 'pages', 'settings'
 ]
 
 /**
@@ -99,14 +97,10 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   const first = segments[0]
 
-  // Kanban board — standalone route. A view of all sessions in board mode.
-  // Encoded as its own prefix (not `allSessions/board`) so it never collides
-  // with the positional `{filter}/session/{id}` detail parsing below.
+  // Kanban board — its own navigator, not a session-list presentation mode.
   if (first === 'board') {
     return {
-      navigator: 'sessions',
-      sessionFilter: { kind: 'allSessions' },
-      viewMode: 'board',
+      navigator: 'board',
       details: null,
     }
   }
@@ -187,6 +181,20 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       return {
         navigator: 'projects',
         details: { type: 'project', id: segments[2] },
+      }
+    }
+    return null
+  }
+
+  // Pages navigator
+  if (first === 'pages') {
+    if (segments.length === 1) {
+      return { navigator: 'pages', details: null }
+    }
+    if (segments[1] === 'page' && segments[2]) {
+      return {
+        navigator: 'pages',
+        details: { type: 'page', id: segments[2] },
       }
     }
     return null
@@ -325,9 +333,12 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     return `projects/project/${parsed.details.id}`
   }
 
-  // Sessions navigator
-  // Board is a standalone view of all sessions; emit its own prefix.
-  if (parsed.viewMode === 'board') return 'board'
+  if (parsed.navigator === 'pages') {
+    if (!parsed.details) return 'pages'
+    return `pages/page/${parsed.details.id}`
+  }
+
+  if (parsed.navigator === 'board') return 'board'
 
   let base: string
   const filter = parsed.sessionFilter
@@ -459,6 +470,17 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
     return { type: 'view', name: 'project-info', id: compound.details.id, params: {} }
   }
 
+  if (compound.navigator === 'pages') {
+    if (!compound.details) {
+      return { type: 'view', name: 'pages', params: {} }
+    }
+    return { type: 'view', name: 'page-info', id: compound.details.id, params: {} }
+  }
+
+  if (compound.navigator === 'board') {
+    return { type: 'view', name: 'board', params: {} }
+  }
+
   // Sessions
   if (compound.sessionFilter) {
     const filter = compound.sessionFilter
@@ -543,6 +565,10 @@ export function parseRouteToNavigationState(
  * Convert a ParsedCompoundRoute to NavigationState
  */
 function convertCompoundToNavigationState(compound: ParsedCompoundRoute): NavigationState {
+  if (compound.navigator === 'board') {
+    return { navigator: 'board' }
+  }
+
   // Settings
   if (compound.navigator === 'settings') {
     if (!compound.details) {
@@ -605,6 +631,17 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     }
   }
 
+  // Pages
+  if (compound.navigator === 'pages') {
+    if (!compound.details) {
+      return { navigator: 'pages', details: null }
+    }
+    return {
+      navigator: 'pages',
+      details: { type: 'page', pageSlug: compound.details.id },
+    }
+  }
+
   // Sessions
   const filter = compound.sessionFilter || { kind: 'allSessions' as const }
   if (compound.details) {
@@ -617,7 +654,6 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
   return {
     navigator: 'sessions',
     filter,
-    viewMode: compound.viewMode,
     details: null,
   }
 }
@@ -693,6 +729,16 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
         }
       }
       return { navigator: 'projects', details: null }
+    case 'pages':
+      return { navigator: 'pages', details: null }
+    case 'page-info':
+      if (parsed.id) {
+        return {
+          navigator: 'pages',
+          details: { type: 'page', pageSlug: parsed.id },
+        }
+      }
+      return { navigator: 'pages', details: null }
     case 'session':
       if (parsed.id) {
         // Reconstruct filter from params
@@ -808,11 +854,20 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
     }
   }
 
-  // Sessions
+  if (state.navigator === 'pages') {
+    return {
+      navigator: 'pages',
+      details: state.details ? { type: 'page', id: state.details.pageSlug } : null,
+    }
+  }
+
+  if (state.navigator === 'board') {
+    return { navigator: 'board', details: null }
+  }
+
   return {
     navigator: 'sessions',
     sessionFilter: state.filter,
-    viewMode: state.viewMode,
     details: state.details ? { type: 'session', id: state.details.sessionId } : null,
   }
 }

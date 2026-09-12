@@ -60,3 +60,21 @@ describe('older links still explain themselves', () => {
     expect(parseAccessLink('fleet://pair?code=not-base64-json')).toBeNull()
   })
 })
+
+describe('the link carries the host name so the other side types nothing', () => {
+  it('round-trips a host name', () => {
+    const link = encodeInviteLink({
+      enrollmentId: 'inv-1', secret: 'sec-1', endpoints: ENDPOINTS, hostName: 'Studio Mac',
+    })
+    const parsed = parseAccessLink(link)
+    if (!parsed || !isInviteOffer(parsed)) throw new Error('expected a v3 invite')
+    expect(parsed.hostName).toBe('Studio Mac')
+  })
+
+  it('omits it rather than carrying an empty label', () => {
+    const link = encodeInviteLink({ enrollmentId: 'inv-1', secret: 'sec-1', endpoints: ENDPOINTS })
+    const parsed = parseAccessLink(link)
+    if (!parsed || !isInviteOffer(parsed)) throw new Error('expected a v3 invite')
+    expect(parsed.hostName).toBeUndefined()
+  })
+})

@@ -12,11 +12,11 @@ import {
 import {
   EMPTY_REMOTE_ACCESS_STORE,
   formatInviteCredential,
-  hashRemoteSecret,
   issueEnrollment,
   revokeDevice,
   type RemoteAccessStore,
 } from '@craft-agent/shared/remote'
+import { hashRemoteSecret } from '@craft-agent/shared/remote/node'
 
 /** An in-memory device authority, so no test reads or writes the real CONFIG_DIR. */
 function gateway(initial: RemoteAccessStore = EMPTY_REMOTE_ACCESS_STORE): RemoteAccessGateway & {
@@ -99,10 +99,11 @@ describe('server mode application', () => {
       cert: Buffer.from('/cert.pem'),
       key: Buffer.from('/key.pem'),
     })
-    // A remote client authenticates as a device, never with this machine's own
-    // server token — that token stays an internal value for the local listener.
-    expect(await listenerOptions?.validateToken('generated-remote-token')).toBe(false)
-    expect(await listenerOptions?.validateToken('local-renderer-token')).toBe(false)
+    // The configured server token stays admitted — a craft-cli, a thin client, and a
+    // pre-device `ws://host:port#token` link hold it and nothing else. Any other
+    // credential that is not a device grant is still refused.
+    expect(await listenerOptions?.validateToken('generated-remote-token')).toBe(true)
+    expect(await listenerOptions?.validateToken('some-other-token')).toBe(false)
     expect(persisted?.token).toBe('generated-remote-token')
     expect(result.protocol).toBe('wss')
   })

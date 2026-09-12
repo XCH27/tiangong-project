@@ -1737,7 +1737,6 @@ export default function App() {
     navigate(routes.view.settings('preferences'))
   }, [])
 
-  // Show reset confirmation dialog
   const handleReset = useCallback(() => {
     setShowResetDialog(true)
   }, [])

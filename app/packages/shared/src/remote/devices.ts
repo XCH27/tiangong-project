@@ -46,7 +46,7 @@ export interface RemoteEnrollment {
   id: string;
   /** Hash of the invite secret. The secret lives only in the copied link. */
   secretHash: string;
-  /** Device name chosen when the invite was created. */
+  /** Name suggested when the invite was created. Usually empty: the joining device names itself. */
   deviceName: string;
   scope: RemoteDeviceScope;
   createdAt: string;
@@ -70,7 +70,8 @@ export const ENROLLMENT_TTL_MS = 15 * 60 * 1000;
 export type Hasher = (secret: string) => string;
 
 export interface IssueEnrollmentInput {
-  deviceName: string;
+  /** Optional. The joining device supplies its own name when it redeems. */
+  deviceName?: string;
   scope?: RemoteDeviceScope;
   /** Opaque secret that goes into the copied link; only its hash is kept. */
   secret: string;
@@ -84,8 +85,7 @@ export function issueEnrollment(
   input: IssueEnrollmentInput,
   hash: Hasher,
 ): { store: RemoteAccessStore; enrollment: RemoteEnrollment } {
-  const name = input.deviceName.trim();
-  if (!name) throw new Error('REMOTE_DEVICE_NAME_REQUIRED');
+  const name = (input.deviceName ?? '').trim();
   if (!input.secret) throw new Error('REMOTE_ENROLLMENT_SECRET_REQUIRED');
   const createdAt = new Date(input.now).toISOString();
   const enrollment: RemoteEnrollment = {
@@ -121,6 +121,8 @@ export interface RedeemEnrollmentInput {
   secret: string;
   deviceId: string;
   platform: RemoteDevicePlatform;
+  /** What the joining device calls itself. Falls back to the invite's suggestion. */
+  deviceName?: string;
   /** The device's own long-lived token; only its hash is kept. */
   deviceToken: string;
   now: number;
@@ -144,7 +146,7 @@ export function redeemEnrollment(
   const createdAt = new Date(input.now).toISOString();
   const device: RemoteDevice = {
     id: input.deviceId,
-    name: enrollment.deviceName,
+    name: (input.deviceName ?? '').trim() || enrollment.deviceName || input.platform,
     platform: input.platform,
     tokenHash: hash(input.deviceToken),
     scope: enrollment.scope,

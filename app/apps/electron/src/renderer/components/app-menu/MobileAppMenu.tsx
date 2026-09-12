@@ -160,7 +160,13 @@ export function MobileAppMenu(props: AppMenuProps) {
         close()
         return
       case 'url':
-        window.electronAPI.openUrl(row.action.url)
+        if (row.action.url.startsWith('fleet-local://')) {
+          void window.electronAPI.getHomeDir().then((home) => {
+            window.electronAPI.openFile(`${home}/.craft-agent/docs/INDEX.md`)
+          })
+        } else {
+          window.electronAPI.openUrl(row.action.url)
+        }
         close()
         return
       case 'electronApi':

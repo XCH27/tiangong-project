@@ -70,10 +70,42 @@ describe('enrollment invites are single-use and expiring', () => {
     }, hash)).toEqual({ failure: 'ENROLLMENT_NOT_FOUND' })
   })
 
-  it('refuses an unnamed device', () => {
-    expect(() => issueEnrollment(EMPTY_REMOTE_ACCESS_STORE, {
-      deviceName: '   ', secret: 's', id: 'inv-x', now: T0,
-    }, hash)).toThrow('REMOTE_DEVICE_NAME_REQUIRED')
+  it('does not require a name: the joining device names itself', () => {
+    const { enrollment } = issueEnrollment(EMPTY_REMOTE_ACCESS_STORE, {
+      secret: 's', id: 'inv-x', now: T0,
+    }, hash)
+    expect(enrollment.deviceName).toBe('')
+
+    const redeemed = redeemEnrollment({ ...EMPTY_REMOTE_ACCESS_STORE, enrollments: [enrollment] }, {
+      enrollmentId: 'inv-x', secret: 's', deviceId: 'dev-x',
+      platform: 'linux', deviceName: '  build-box  ', deviceToken: 'tok-x', now: T0 + 1,
+    }, hash)
+    if (!('device' in redeemed)) throw new Error('expected a redeem')
+    expect(redeemed.device.name).toBe('build-box')
+  })
+
+  it('falls back to the platform when neither side supplied a name', () => {
+    const { enrollment } = issueEnrollment(EMPTY_REMOTE_ACCESS_STORE, {
+      secret: 's', id: 'inv-y', now: T0,
+    }, hash)
+    const redeemed = redeemEnrollment({ ...EMPTY_REMOTE_ACCESS_STORE, enrollments: [enrollment] }, {
+      enrollmentId: 'inv-y', secret: 's', deviceId: 'dev-y',
+      platform: 'ios', deviceToken: 'tok-y', now: T0 + 1,
+    }, hash)
+    if (!('device' in redeemed)) throw new Error('expected a redeem')
+    expect(redeemed.device.name).toBe('ios')
+  })
+
+  it('a name typed on the host is used when the joining device sends none', () => {
+    const { enrollment } = issueEnrollment(EMPTY_REMOTE_ACCESS_STORE, {
+      deviceName: 'Studio Mac', secret: 's', id: 'inv-z', now: T0,
+    }, hash)
+    const redeemed = redeemEnrollment({ ...EMPTY_REMOTE_ACCESS_STORE, enrollments: [enrollment] }, {
+      enrollmentId: 'inv-z', secret: 's', deviceId: 'dev-z',
+      platform: 'macos', deviceToken: 'tok-z', now: T0 + 1,
+    }, hash)
+    if (!('device' in redeemed)) throw new Error('expected a redeem')
+    expect(redeemed.device.name).toBe('Studio Mac')
   })
 
   it('prunes redeemed and long-expired invites', () => {

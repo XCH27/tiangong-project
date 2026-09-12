@@ -2,8 +2,7 @@
  * Auto-update module using electron-updater
  *
  * Handles checking for updates, downloading, and installing via the standard
- * electron-updater library. Updates are served from https://thecraftagents.com/electron/latest
- * using the generic provider (YAML manifests + binaries on R2/S3).
+ * electron-updater library. Fleet skips checks unless FLEET_UPDATE_FEED is set.
  *
  * Platform behavior:
  * - macOS: Downloads zip, extracts and swaps app bundle atomically
@@ -357,6 +356,10 @@ function checkForExistingDownload(): { exists: boolean; version?: string } {
  * @param options.autoDownload - If false, only checks without downloading (for manual "Check Now")
  */
 export async function checkForUpdates(options: CheckOptions = {}): Promise<UpdateInfo> {
+  if (!process.env.FLEET_UPDATE_FEED) {
+    mainLog.info('[auto-update] No FLEET_UPDATE_FEED set — not contacting Craft or any host')
+    return getUpdateInfo()
+  }
   const { autoDownload = true } = options
 
   // Temporarily override autoDownload for this check if needed

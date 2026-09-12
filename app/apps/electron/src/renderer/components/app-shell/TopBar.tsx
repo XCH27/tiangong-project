@@ -205,6 +205,7 @@ export function TopBar({
                 onWorkspaceCreated={onWorkspaceCreated}
                 onWorkspaceRemoved={onWorkspaceRemoved}
                 workspaceUnreadMap={workspaceUnreadMap}
+                onOpenRemoteSettings={() => onOpenSettingsSubpage('server')}
               />
             ) : (
               <WorkspaceSwitcher
@@ -215,6 +216,7 @@ export function TopBar({
                 onWorkspaceCreated={onWorkspaceCreated}
                 onWorkspaceRemoved={onWorkspaceRemoved}
                 workspaceUnreadMap={workspaceUnreadMap}
+                onOpenRemoteSettings={() => onOpenSettingsSubpage('server')}
               />
             )}
           </div>

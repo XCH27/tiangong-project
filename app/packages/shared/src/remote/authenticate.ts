@@ -1,15 +1,20 @@
 /**
  * What the public listener does with the credential a connecting client presents.
  *
- * Two credentials are accepted, and only two:
+ * Three credentials are accepted, and only three:
  *  - a **device token** — the per-device grant minted at pairing time;
  *  - a **one-time invite** — `fleet-invite:<enrollmentId>:<secret>`, presented by a
  *    device that has not paired yet. Redeeming it mints that device its own token,
- *    exactly once. This is the only way a new device gets in, and it is why the
- *    access link can be shared without handing over permanent access.
+ *    exactly once, which is why an access link can be shared without handing over
+ *    permanent access;
+ *  - the **configured server token** — Craft's own model, and the only thing a
+ *    `craft-cli --token`, a thin client started with `CRAFT_SERVER_TOKEN`, or a
+ *    pre-device `ws://host:port#token` link has. Dropping it does not harden
+ *    anything a user chose; it silently removes clients that already worked, so it
+ *    stays admitted and is simply reported as not being a device: there is nothing
+ *    per-device to revoke, and the surface says so.
  *
- * Everything else fails closed, by name. Nothing here knows about the local
- * renderer's bearer token: a remote client can never authenticate with it.
+ * Everything else fails closed, by name.
  */
 
 import {
@@ -45,7 +50,10 @@ export function parseInviteCredential(presented: string): InviteCredential | nul
 }
 
 export type RemoteAuthOutcome =
-  | { ok: true; device: RemoteDevice; store: RemoteAccessStore; mintedToken?: string }
+  /** A paired device, or one that just redeemed its invite. */
+  | { ok: true; kind: 'device'; device: RemoteDevice; store: RemoteAccessStore; mintedToken?: string }
+  /** The configured server token: admitted, but not a device and not revocable. */
+  | { ok: true; kind: 'server-token' }
   | { ok: false; reason: 'NO_CREDENTIAL' | 'UNKNOWN_DEVICE' | 'ENROLLMENT_NOT_FOUND' | 'ENROLLMENT_ALREADY_REDEEMED' | 'ENROLLMENT_EXPIRED' };
 
 export interface RemoteAuthDeps {
@@ -57,6 +65,12 @@ export interface RemoteAuthDeps {
   /** Platform the connecting client declared; unknown is fine and recorded as such. */
   platform?: RemoteDevicePlatform;
   now?: number;
+  /**
+   * The server token this machine is configured with, when it has one. A client
+   * holding it is a legitimate Craft client (CLI, thin client, a pre-device link);
+   * it is simply not a device. Omit to admit device credentials only.
+   */
+  serverToken?: string;
 }
 
 export function authenticateRemoteCredential(
@@ -79,10 +93,27 @@ export function authenticateRemoteCredential(
       now,
     }, deps.hash);
     if ('failure' in result) return { ok: false, reason: result.failure };
-    return { ok: true, device: result.device, store: result.store, mintedToken };
+    return { ok: true, kind: 'device', device: result.device, store: result.store, mintedToken };
   }
 
   const authenticated = authenticateDevice(store, presented, now, deps.hash);
-  if (!authenticated) return { ok: false, reason: 'UNKNOWN_DEVICE' };
-  return { ok: true, device: authenticated.device, store: authenticated.store };
+  if (authenticated) {
+    return { ok: true, kind: 'device', device: authenticated.device, store: authenticated.store };
+  }
+
+  // Craft's own credential. Checked last so a device grant always wins, and compared
+  // in constant time so a wrong guess leaks nothing about the real token's prefix.
+  if (deps.serverToken && constantTimeEquals(presented, deps.serverToken)) {
+    return { ok: true, kind: 'server-token' };
+  }
+
+  return { ok: false, reason: 'UNKNOWN_DEVICE' };
+}
+
+/** Length-independent comparison: never returns early on the first differing byte. */
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }

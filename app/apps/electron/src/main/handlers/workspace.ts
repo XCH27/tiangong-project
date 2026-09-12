@@ -79,9 +79,18 @@ export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDep
       let deviceToken: string | undefined
       if (invite) {
         try {
+          const { hostname, platform } = await import('node:os')
           const claimed = await client.invoke(
             RPC_CHANNELS.remote.CLAIM_DEVICE_TOKEN,
             invite.enrollmentId,
+            // This machine names itself, so the host's device list is honest without
+            // anyone typing a label for a computer they are not at.
+            {
+              deviceName: hostname(),
+              platform: platform() === 'darwin' ? 'macos'
+                : platform() === 'win32' ? 'windows'
+                  : platform() === 'linux' ? 'linux' : 'unknown',
+            },
           ) as { deviceId: string; deviceToken: string }
           deviceToken = claimed?.deviceToken
         } catch (claimError) {

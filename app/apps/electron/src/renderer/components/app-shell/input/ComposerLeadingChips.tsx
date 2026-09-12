@@ -6,12 +6,21 @@
  */
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import { Command as CommandPrimitive } from 'cmdk'
 import { Check, Monitor, Paperclip } from 'lucide-react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { targetActiveSessions } from './use-run-targets'
 import type { RunTarget } from '@craft-agent/shared/remote'
+
+// Same values as WorkingDirectorySelector / todo-filter-menu — this chip sits next to
+// that one, so it uses that menu, not a second hand-rolled one.
+const MENU_CONTAINER_STYLE =
+  'min-w-[200px] max-w-[400px] overflow-hidden rounded-[8px] bg-background text-foreground shadow-modal-small p-0'
+const MENU_LIST_STYLE = 'max-h-[200px] overflow-y-auto p-1 [&_[cmdk-list-sizer]]:space-y-px'
+const MENU_ITEM_STYLE =
+  'flex cursor-pointer select-none items-center gap-2 rounded-[6px] px-3 py-1.5 text-[13px] outline-none'
 
 export interface RunTargetSelectorProps {
   targets: RunTarget[]
@@ -64,48 +73,52 @@ export function RunTargetSelector({
           tooltip={t('runTarget.tooltip')}
         />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-1">
-        <p className="px-2 py-1.5 text-xs text-foreground/50">{t('runTarget.heading')}</p>
-        {targets.map((target) => {
-          const workspace = target.workspaces.find((w) => w.id === activeWorkspaceId)
-            ?? target.workspaces[0]
-          const isCurrent = target.key === current?.key
-          const running = targetActiveSessions(target)
-          const unreachable = target.kind === 'remote' && target.online === false
-          const noWorkspace = !workspace
-          return (
-            <button
-              key={target.key}
-              type="button"
-              disabled={unreachable || noWorkspace}
-              onClick={() => {
-                if (workspace) onSelectWorkspace(workspace.id)
-                setOpen(false)
-              }}
-              className={cn(
-                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
-                'transition-colors hover:bg-foreground/5',
-                (unreachable || noWorkspace) && 'opacity-50 cursor-not-allowed hover:bg-transparent',
-              )}
-            >
-              <Monitor className="h-4 w-4 shrink-0 text-foreground/60" />
-              <span className="min-w-0 flex-1 truncate">{target.name}</span>
-              {/* Say why it cannot be chosen, rather than just disabling it. */}
-              {unreachable && (
-                <span className="shrink-0 text-xs text-foreground/40">{t('runTarget.unreachable')}</span>
-              )}
-              {!unreachable && noWorkspace && (
-                <span className="shrink-0 text-xs text-foreground/40">{t('runTarget.noProject')}</span>
-              )}
-              {!unreachable && !noWorkspace && running !== undefined && running > 0 && (
-                <span className="shrink-0 text-xs text-foreground/40">
-                  {t('runTarget.running', { count: running })}
-                </span>
-              )}
-              {isCurrent && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
-            </button>
-          )
-        })}
+      <PopoverContent align="start" className={MENU_CONTAINER_STYLE}>
+        <CommandPrimitive>
+          <CommandPrimitive.List className={MENU_LIST_STYLE}>
+            {targets.map((target) => {
+              const workspace = target.workspaces.find((w) => w.id === activeWorkspaceId)
+                ?? target.workspaces[0]
+              const isCurrent = target.key === current?.key
+              const running = targetActiveSessions(target)
+              const unreachable = target.kind === 'remote' && target.online === false
+              const noWorkspace = !workspace
+              const blocked = unreachable || noWorkspace
+              return (
+                <CommandPrimitive.Item
+                  key={target.key}
+                  value={`${target.name} ${target.key}`}
+                  disabled={blocked}
+                  onSelect={() => {
+                    if (workspace) onSelectWorkspace(workspace.id)
+                    setOpen(false)
+                  }}
+                  className={cn(
+                    MENU_ITEM_STYLE,
+                    'data-[selected=true]:bg-foreground/5',
+                    blocked && 'opacity-50 data-[selected=true]:bg-transparent',
+                  )}
+                >
+                  <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate">{target.name}</span>
+                  {/* Say why it cannot be chosen, rather than only dimming it. */}
+                  {unreachable && (
+                    <span className="shrink-0 text-muted-foreground">{t('runTarget.unreachable')}</span>
+                  )}
+                  {!unreachable && noWorkspace && (
+                    <span className="shrink-0 text-muted-foreground">{t('runTarget.noProject')}</span>
+                  )}
+                  {!blocked && running !== undefined && running > 0 && (
+                    <span className="shrink-0 text-muted-foreground">
+                      {t('runTarget.running', { count: running })}
+                    </span>
+                  )}
+                  {isCurrent && <Check className="h-4 w-4 shrink-0" />}
+                </CommandPrimitive.Item>
+              )
+            })}
+          </CommandPrimitive.List>
+        </CommandPrimitive>
       </PopoverContent>
     </Popover>
   )

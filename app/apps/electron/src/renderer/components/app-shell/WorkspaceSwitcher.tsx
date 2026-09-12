@@ -33,6 +33,7 @@ interface WorkspaceSwitcherProps {
   onWorkspaceRemoved?: () => void
   /** workspaceId -> has unread */
   workspaceUnreadMap?: Record<string, boolean>
+  onOpenRemoteSettings?: () => void
 }
 
 /**
@@ -51,6 +52,7 @@ export function WorkspaceSwitcher({
   onWorkspaceCreated,
   onWorkspaceRemoved,
   workspaceUnreadMap,
+  onOpenRemoteSettings,
 }: WorkspaceSwitcherProps) {
   const { t } = useTranslation()
   const [showCreationScreen, setShowCreationScreen] = useState(false)
@@ -180,6 +182,7 @@ export function WorkspaceSwitcher({
             onClose={handleCloseCreationScreen}
             reconnectWorkspace={reconnectTarget ?? undefined}
             onReconnectWorkspace={handleReconnectWorkspace}
+            onOpenRemoteSettings={onOpenRemoteSettings}
           />
         )}
       </AnimatePresence>

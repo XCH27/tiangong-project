@@ -2,15 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
   authenticateRemoteCredential,
+  parseInviteCredential,
+  DeviceMintLedger,
+  type RemoteAccessStore,
+} from '@craft-agent/shared/remote'
+import {
   hashRemoteSecret,
   loadRemoteAccessStore,
   newRemoteId,
   newRemoteSecret,
-  parseInviteCredential,
   saveRemoteAccessStore,
-  DeviceMintLedger,
-  type RemoteAccessStore,
-} from '@craft-agent/shared/remote'
+} from '@craft-agent/shared/remote/node'
 import type { ServerConfig } from '@craft-agent/shared/config/server-config'
 import type {
   WsRpcPublicListenerInfo,
@@ -147,8 +149,14 @@ export async function applyServerModeConfig({
         hash: hashRemoteSecret,
         newDeviceId: remoteAccess.newDeviceId,
         newDeviceToken: remoteAccess.newDeviceToken,
+        // Craft's own credential stays admitted: a craft-cli, a thin client started
+        // with CRAFT_SERVER_TOKEN, and a pre-device `ws://host:port#token` link all
+        // hold it and nothing else. Removing it hardened nothing the user chose — it
+        // just cut off clients that already worked.
+        serverToken: token,
       })
       if (!outcome.ok) return false
+      if (outcome.kind === 'server-token') return true
       remoteAccess.save(outcome.store)
       if (outcome.mintedToken) {
         // The invite it presented stops working now, so hold the new grant for the

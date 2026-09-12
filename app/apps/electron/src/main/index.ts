@@ -6,7 +6,7 @@ loadShellEnv()
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, shell } from 'electron'
 import { writeFile } from 'fs/promises'
 import { randomUUID } from 'crypto'
-import { homedir } from 'os'
+import { homedir, hostname } from 'os'
 
 // Initialize i18n for main process (menus, dialogs, etc.)
 //
@@ -36,7 +36,9 @@ import { registerCoreRpcHandlers, cleanupSessionFileWatchForClient } from '@craf
 import type { PlatformServices } from '../runtime/platform'
 import { createElectronPlatform } from './platform'
 import { applyServerModeConfig, createStoppedServerModeState } from './server-mode'
-import { getHostId } from '@craft-agent/shared/remote'
+import {
+  getHostId,
+} from '@craft-agent/shared/remote/node'
 import type { HandlerDeps } from './handlers/handler-deps'
 import { bootstrapServer, releaseServerLock } from '@craft-agent/server-core/bootstrap'
 import { createMessagingBootstrap, type MessagingBootstrapHandle } from '@craft-agent/messaging-gateway'
@@ -1056,6 +1058,8 @@ app.whenReady().then(async () => {
         registerRemoteDeviceHandlers(instance.wsServer, {
           listEndpoints: listPublicEndpoints,
           claimMintedToken: (enrollmentId) => deviceMintLedger.claim(enrollmentId),
+          // The machine's own hostname, so a pasted link already knows what to call it.
+          hostName: () => hostname(),
         })
       }
 

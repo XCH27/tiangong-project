@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft, Monitor } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Input } from "../ui/input"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader, AddWorkspacePrimaryButton } from "./primitives"
+import { AddWorkspace_RadioOption } from "./AddWorkspace_RadioOption"
 import { slugify } from "@/lib/slugify"
 import { buildRunTargets } from "@craft-agent/shared/remote"
 import type { Workspace } from "../../../shared/types"
@@ -151,25 +152,22 @@ export function AddWorkspaceStep_RemoteWorkspace({
             <div className="space-y-2">
               {devices.map((device) => {
                 const firstWorkspaceId = device.workspaces[0]?.id
-                const isSelected = device.workspaces.some((w) => w.id === selectedId)
                 return (
-                  <button
+                  <AddWorkspace_RadioOption
                     key={device.key}
-                    type="button"
-                    onClick={() => firstWorkspaceId && setSelectedId(firstWorkspaceId)}
-                    className={cn(
-                      "flex w-full items-center gap-3 rounded-lg bg-background p-3 text-left shadow-minimal",
-                      isSelected && "ring-2 ring-ring",
-                    )}
-                  >
-                    <Monitor className="h-4 w-4 shrink-0 text-foreground/70" />
-                    <span className="truncate text-sm font-medium">{device.name}</span>
-                  </button>
+                    name="remote-device"
+                    checked={device.workspaces.some((w) => w.id === selectedId)}
+                    onChange={() => firstWorkspaceId && setSelectedId(firstWorkspaceId)}
+                    disabled={disabled}
+                    title={device.name}
+                    subtitle={device.url ?? ''}
+                  />
                 )
               })}
             </div>
           </label>
         )}
+
         <label className="block space-y-2">
           <span className="text-sm font-medium">{t('workspace.nameLabel')}</span>
           <div className="bg-background shadow-minimal rounded-lg">

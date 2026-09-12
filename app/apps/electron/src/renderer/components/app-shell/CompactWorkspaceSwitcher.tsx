@@ -30,6 +30,7 @@ interface CompactWorkspaceSwitcherProps {
   onWorkspaceCreated?: (workspace: Workspace) => void
   onWorkspaceRemoved?: () => void
   workspaceUnreadMap?: Record<string, boolean>
+  onOpenRemoteSettings?: () => void
 }
 
 /**
@@ -46,6 +47,7 @@ export function CompactWorkspaceSwitcher({
   onWorkspaceCreated,
   onWorkspaceRemoved,
   workspaceUnreadMap,
+  onOpenRemoteSettings,
 }: CompactWorkspaceSwitcherProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -168,6 +170,7 @@ export function CompactWorkspaceSwitcher({
             onClose={handleCloseCreationScreen}
             reconnectWorkspace={reconnectTarget ?? undefined}
             onReconnectWorkspace={handleReconnectWorkspace}
+            onOpenRemoteSettings={onOpenRemoteSettings}
           />
         )}
       </AnimatePresence>

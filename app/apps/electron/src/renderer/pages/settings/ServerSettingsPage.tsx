@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Trash2 } from 'lucide-react'
+import { AlertTriangle, Copy, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -33,7 +33,7 @@ import { parseAccessLink } from '@craft-agent/shared/remote'
 
 /** Exactly what the RPC returns; the renderer never sees a token hash or a scope. */
 type RemoteDeviceRow = Awaited<ReturnType<typeof window.electronAPI.listRemoteDevices>>[number]
-import { attachRemoteFromAccessLink } from '@/lib/remote-connect'
+import { attachRemoteFromAccessLink, attachRemoteFromServerToken } from '@/lib/remote-connect'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
 export const meta: DetailsPageMeta = {
@@ -58,6 +58,13 @@ export default function ServerSettingsPage() {
   const [accessLink, setAccessLink] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState<string | null>(null)
+  // A server you run yourself (VPS, Docker, packages/server) has an address and a
+  // token and cannot mint an access link — Craft's own documented path, and the only
+  // route to a headless host.
+  const [serverUrl, setServerUrl] = useState('')
+  const [serverToken, setServerToken] = useState('')
+  const [serverConnecting, setServerConnecting] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
   // Devices allowed to reach THIS machine. Their own object, not a projection of the
   // Workspace list: one machine can hold several Workspaces, and a phone holds none.
   const [allowed, setAllowed] = useState<RemoteDeviceRow[]>([])
@@ -95,7 +102,6 @@ export default function ServerSettingsPage() {
   const remoteDevices = workspaces.filter((ws) => ws.remoteServer)
 
   const mintInvite = async () => {
-    if (!inviteName.trim()) return
     setMinting(true)
     setInviteError(null)
     try {
@@ -143,7 +149,7 @@ export default function ServerSettingsPage() {
   }
 
   const handleConnect = async () => {
-    if (!parsed || !deviceName.trim()) {
+    if (!parsed) {
       setConnectError(t('settings.remote.pairingInvalid'))
       return
     }
@@ -164,6 +170,32 @@ export default function ServerSettingsPage() {
     }
   }
 
+  const handleConnectServer = async () => {
+    setServerConnecting(true)
+    setServerError(null)
+    try {
+      const workspace = await attachRemoteFromServerToken(
+        deviceName.trim() || serverUrl.trim(),
+        serverUrl,
+        serverToken,
+      )
+      setServerUrl('')
+      setServerToken('')
+      toast.success(t('settings.remote.deviceConnected', { name: workspace.name }))
+      refreshWorkspaces()
+      await load()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setServerError(
+        message === 'invalid-server-url' ? t('settings.remote.serverUrlInvalid')
+          : message === 'invalid-server-token' ? t('settings.remote.serverTokenRequired')
+            : message,
+      )
+    } finally {
+      setServerConnecting(false)
+    }
+  }
+
   if (loading || !config) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -173,11 +205,10 @@ export default function ServerSettingsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex flex-col h-full">
       <PanelHeader title={t('settings.server.title')} />
-      <div className="min-h-0 flex-1 mask-fade-y">
-        <ScrollArea className="h-full">
-          <div className="mx-auto max-w-3xl space-y-8 px-5 py-7">
+      <ScrollArea className="flex-1">
+        <div className="px-5 py-7 max-w-3xl mx-auto space-y-5">
             <SettingsSection title={t('settings.remote.thisDevice')}>
               <SettingsCard>
                 <SettingsToggle
@@ -202,10 +233,10 @@ export default function ServerSettingsPage() {
                   {invite && (
                     <SettingsRow
                       label={invite.deviceName}
-                      description={`${t('settings.remote.inviteOnce')} ${t(`settings.remote.reach.${invite.reach}`)}`}
+                      description={t('settings.remote.inviteOnce')}
                     >
                       <div className="flex items-center gap-1.5">
-                        <code className="max-w-[220px] truncate rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                        <code className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded max-w-[180px] truncate">
                           {invite.accessLink}
                         </code>
                         <Button
@@ -226,8 +257,7 @@ export default function ServerSettingsPage() {
                   <SettingsCardFooter>
                     <Button
                       size="sm"
-                      className="h-7"
-                      disabled={minting || !inviteName.trim()}
+                      disabled={minting}
                       onClick={() => void mintInvite()}
                     >
                       {minting ? <Spinner className="mr-1.5" /> : null}
@@ -235,6 +265,16 @@ export default function ServerSettingsPage() {
                     </Button>
                   </SettingsCardFooter>
                 </SettingsCard>
+              )}
+
+              {/* What this machine can actually be reached on. Upstream puts a fact like
+                  this in a warning strip rather than in a row's description, and it is
+                  the thing a person needs to know before they send the link. */}
+              {invite && invite.reach !== 'anywhere' && (
+                <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span>{t(`settings.remote.reach.${invite.reach}`)}</span>
+                </div>
               )}
 
               {allowed.length > 0 && (
@@ -252,9 +292,9 @@ export default function ServerSettingsPage() {
                       }
                       action={device.revokedAt ? undefined : (
                         <Button
-                          variant="ghost"
+                          variant="outline"
                           size="sm"
-                          className="h-6 px-2 text-xs"
+                          className="h-6 text-[11px] px-2 shrink-0"
                           onClick={() => void revoke(device.id)}
                         >
                           {t('settings.remote.revoke')}
@@ -264,7 +304,7 @@ export default function ServerSettingsPage() {
                   ))}
                   {allowed.some((device) => device.revokedAt) && (
                     <SettingsCardFooter>
-                      <Button variant="outline" size="sm" className="h-7" onClick={() => void clearRevoked()}>
+                      <Button variant="outline" size="sm" onClick={() => void clearRevoked()}>
                         {t('settings.remote.clearRevoked')}
                       </Button>
                     </SettingsCardFooter>
@@ -276,7 +316,7 @@ export default function ServerSettingsPage() {
             <SettingsSection title={t('settings.remote.remoteDevices')}>
               <SettingsCard>
                 <SettingsInputRow
-                  label={t('settings.remote.deviceName')}
+                  label={t('settings.remote.deviceNameOptional')}
                   value={deviceName}
                   onChange={setDeviceName}
                   placeholder={t('settings.remote.deviceNamePlaceholder')}
@@ -291,12 +331,40 @@ export default function ServerSettingsPage() {
                   error={connectError ?? undefined}
                 />
                 <SettingsCardFooter>
-                  <Button size="sm" className="h-7" disabled={connecting || !deviceName.trim() || !parsed} onClick={() => void handleConnect()}>
+                  <Button size="sm" disabled={connecting || !parsed} onClick={() => void handleConnect()}>
                     {connecting ? <Spinner className="mr-1.5" /> : null}
                     {t('settings.remote.connect')}
                   </Button>
                 </SettingsCardFooter>
               </SettingsCard>
+              <SettingsCard>
+                <SettingsInputRow
+                  label={t('settings.remote.serverUrl')}
+                  value={serverUrl}
+                  onChange={(value) => { setServerUrl(value); setServerError(null) }}
+                  placeholder="wss://192.168.1.100:9100"
+                  disabled={serverConnecting}
+                />
+                <SettingsInputRow
+                  label={t('settings.remote.serverToken')}
+                  value={serverToken}
+                  onChange={(value) => { setServerToken(value); setServerError(null) }}
+                  placeholder={t('settings.remote.serverTokenPlaceholder')}
+                  disabled={serverConnecting}
+                  error={serverError ?? undefined}
+                />
+                <SettingsCardFooter>
+                  <Button
+                    size="sm"
+                    disabled={serverConnecting || !serverUrl.trim() || !serverToken.trim()}
+                    onClick={() => void handleConnectServer()}
+                  >
+                    {serverConnecting ? <Spinner className="mr-1.5" /> : null}
+                    {t('settings.remote.connectServer')}
+                  </Button>
+                </SettingsCardFooter>
+              </SettingsCard>
+
               {remoteDevices.length > 0 && (
                 <SettingsCard>
                   {remoteDevices.map((ws) => (
@@ -322,8 +390,7 @@ export default function ServerSettingsPage() {
               )}
             </SettingsSection>
           </div>
-        </ScrollArea>
-      </div>
+      </ScrollArea>
 
       <Dialog open={disconnecting !== null} onOpenChange={open => !open && setDisconnecting(null)}>
         <DialogContent className="sm:max-w-md">

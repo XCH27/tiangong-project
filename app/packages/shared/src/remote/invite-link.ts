@@ -18,6 +18,8 @@ export interface InviteOffer {
   enrollmentId: string;
   secret: string;
   endpoints: string[];
+  /** What the host calls itself, so the joining side needs to type nothing. */
+  hostName?: string;
 }
 
 /** A pre-v3 link: the token *is* the credential, so it cannot be revoked per device. */
@@ -63,6 +65,7 @@ export function encodeInviteLink(offer: Omit<InviteOffer, 'version'>): string {
     e: offer.enrollmentId,
     s: offer.secret,
     endpoints,
+    ...(offer.hostName ? { n: offer.hostName } : {}),
   });
   return `fleet://pair?code=${toBase64Url(payload)}`;
 }
@@ -80,7 +83,8 @@ function offerFromPayload(value: unknown): ParsedOffer | null {
     const enrollmentId = typeof record.e === 'string' ? record.e : '';
     const secret = typeof record.s === 'string' ? record.s : '';
     if (!enrollmentId || !secret) return null;
-    return { version: 3, enrollmentId, secret, endpoints };
+    const hostName = typeof record.n === 'string' && record.n.trim() ? record.n.trim() : undefined;
+    return { version: 3, enrollmentId, secret, endpoints, hostName };
   }
 
   const token = typeof record.token === 'string' ? record.token : '';
