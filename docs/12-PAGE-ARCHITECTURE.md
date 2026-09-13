@@ -41,6 +41,27 @@ host. Cindy work is capabilities (plugins, skills, remote, assistants), not a ne
 > today's structure. When a production surface finally needs a second pane it brings the minimum host
 > seam with it (roadmap R7), and R18 decides generalized docking only after two real panes exist.
 
+## 1b. Regression against a decided shell model (recorded 2026-09-13)
+
+The R1 shell was decided and audited. [`design-library/21-entry-overlap-framework-audit.md`](design-library/21-entry-overlap-framework-audit.md)
+§1 records the skeleton and §1 K3 records the owner decision of **2026-07-25**: the TopBar
+`WorkspaceSwitcher` is *removed*, and the sidebar Project rows are the one switcher, with
+`Project row = Workspace`. The 2026-09-10 rebase onto Craft v0.12/v0.13.3 dropped that model, and
+nothing noticed because §21 was unreachable from the routing table until 2026-09-13.
+
+Measured against the current tree:
+
+| Decided (§21 §1/K3, P6) | Current tree | Evidence |
+|---|---|---|
+| TopBar switcher removed; sidebar rows are the switcher | TopBar renders `WorkspaceSwitcher variant="topbar"` in non-compact mode; the removal-rationale comment §21 cites at `TopBar.tsx:204–207` is gone | `components/app-shell/TopBar.tsx` |
+| `Project row = Workspace` | Sidebar 项目 rows come from `useProjects(activeWorkspaceId)` — **nested** v0.11 projects, and clicking one only *filters* the session list | `AppShell.tsx` `useProjects`, `handleJumpToProjectSessions` |
+| Folder-less Sessions in a sibling **对话 / Conversations** scope | No Conversations section exists | `AppShell.tsx`, no `sidebar.conversations` |
+
+Consequence, and the reason this block exists: today the control **named** 项目 is not the Project
+boundary, while the control that *is* the boundary is named 工作区 — two meanings of "project" on one
+screen, which is precisely overlap cluster **O4**. Do not re-derive this; do not redesign it. The
+target is already decided — restore it, and treat any deviation as a change that needs the owner.
+
 ## 2. Page inventory — current (real code, `app/apps/electron/src/renderer/pages/`)
 
 | Page                                                                                                                                                    | Status            | Notes                                                                                                                                                                                                     |
