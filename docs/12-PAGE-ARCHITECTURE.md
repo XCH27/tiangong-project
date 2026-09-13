@@ -59,8 +59,18 @@ host. Cindy work is capabilities (plugins, skills, remote, assistants), not a ne
 | Onboarding · Reauth · WorkspacePicker startup screens                                                                                                   | `usable`          | pre-shell startup and recovery surfaces                                                                                                                                                                   |
 
 These pages are what Craft **v0.13.3** mounts. Look (tokens, type, motion) still comes from
-[`UI-SPEC.md`](UI-SPEC.md). Add Fleet production surfaces as panes/capabilities, not as extra
-sidebar rows.
+[`UI-SPEC.md`](UI-SPEC.md).
+
+**Every change to one of these starts from the matching upstream component** —
+`源码参考/software/craft-agents-oss/` at the same path. Diff it, then justify each delta. This line
+was deleted on 2026-09-11 and both of this repo's UI regressions followed within two days: an agent
+invented button sizes and a hand-rolled menu, and another produced a redesign image and treated it
+as the spec. Restored, and now also stated as Step 0 in root `AGENTS.md`.
+
+**"Keep Craft's style" is not "keep every old function."** The visual system and the proven
+interactions are what carry over. Which functions live, merge, move or die is the owner's call, made
+per surface — so when a page is retired, migrate what the owner kept and drop what they did not,
+rather than relocating every old button on the assumption that preservation is safety.
 
 ## 3. Page inventory — target (the full product)
 

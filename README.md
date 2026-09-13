@@ -38,6 +38,24 @@ the same place. Fork of Craft Agents (Apache-2.0). What Fleet is and is not:
   [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md), which owns release order. R15 is `DEP`, not ACTIVE.
   Whatever R0 retains, it is not rearranging Craft chrome.
 - R0 on the discarded `work/fresh-base-spine` renderer is closed. Do not cut `fleet-baseline-r0` on that tree.
+- **The working tree is dirty on purpose and R0 is the job of explaining it.** Measured 2026-09-13 at
+  `2ace98743`: 193 uncommitted paths — **126 byte-identical to upstream v0.13.3** (pure intake, no
+  Fleet judgement in them), **38 modified away from upstream**, **23 with no upstream counterpart**.
+  Reproduce the split before touching it:
+
+  ```bash
+  U=源码参考/software/craft-agents-oss
+  git status --porcelain | sed 's/^...//' | while read p; do
+    rel=${p#app/}; [ -f "$U/$rel" ] && cmp -s "$p" "$U/$rel" && echo "INTAKE $p" || echo "FLEET  $p"
+  done
+  ```
+
+  Only the ~61 non-intake paths carry decisions worth reviewing. Do not treat the file count as a
+  completion percentage, and do not reset or overwrite the tree to make it look clean.
+- **P6 is not finished, whatever the R1 row used to say.** 62 zh-Hans strings still say 工作区 beside
+  50 saying 项目; the top bar switches Workspace while the sidebar row named 项目 only filters. See the
+  R1 row in [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md) and OV-008 in
+  [`docs/design-library/OWNER-VOICE.md`](docs/design-library/OWNER-VOICE.md).
 
 `源码参考/` and `UI参考/` are gitignored symlinks. Preflight: [`AGENTS.md`](AGENTS.md).
 

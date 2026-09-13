@@ -27,7 +27,8 @@ only; their product concepts are not importable.
    Session/Task stores; it is not a duplicate Conversations list or a new authority.
    Before writing code, find the capability row in
    [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) and classify:
-   **REUSE / EXTEND / NEW**.
+   **REUSE / EXTEND / NEW**. For anything rendered, "check Craft first" has a literal procedure —
+   see *Before you write UI* → **Step 0**, and do not skip it.
 2. **Never create a second authority.** One session store, one permission path, one timeline, one
    task store, one settings home. Extend the existing one or get owner sign-off first
    ([`docs/03-NON-NEGOTIABLES.md`](docs/03-NON-NEGOTIABLES.md)).
@@ -156,7 +157,10 @@ guess for the v0.10.5 baseline.
 | Context size, prompt assembly, caching, token cost | `docs/modules/suites/SYS-03-context-economy.md` |
 | A design question ("is this already decided?") | `docs/02-DECISIONS.md` |
 | Architecture, invariants, failure modes | `docs/04-ARCHITECTURE.md` |
-| Multi-agent, Git/delivery, templates, reporting | `AGENTS.md` |
+| **The owner asked to simplify, merge, move or remove something** | [`docs/design-library/OWNER-VOICE.md`](docs/design-library/OWNER-VOICE.md) — their verbatim words and which decision now carries each one. OV-008 already settles workspace/folder/project and task-first creation |
+| **Changing a surface that already exists in Craft** | Diff the upstream component first (see *Before you write UI* → Step 0), then `docs/UI-SPEC.md` |
+| **Why a surface is shaped the way it is** (shell, settings, panels, new-task, remote, canvas…) | [`docs/design-library/`](docs/design-library/README.md) — owner-intent notes per area. For Project/Workspace/Session/remote and the **new-task interaction contract**, that is [`20-workspace-project-session-remote-connections.md`](docs/design-library/20-workspace-project-session-remote-connections.md) §11–§14 |
+| Two surfaces seem to overlap / duplicate each other | [`docs/design-library/21-entry-overlap-framework-audit.md`](docs/design-library/21-entry-overlap-framework-audit.md) |
 | Tests, verification, acceptance split | `docs/09-QUALITY.md` |
 | UI structure, which component to start from, review method | `docs/UI-SPEC.md` |
 | **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
@@ -176,9 +180,40 @@ and do not grow documentation faster than implementation.
 
 ## Before you write UI
 
-Two files are not optional, and skipping them is the most expensive mistake available in this repo —
-it produces code that typechecks, renders, passes review, and is wrong in every theme but the one it
-was written in.
+### Step 0 — open the upstream component and diff against it
+
+**This is the step every agent has skipped, and skipping it is how both of this repo's UI
+regressions happened.** Fleet is a fork. Almost every surface you are asked to change already
+exists in `源码参考/software/craft-agents-oss/` at the same path. Before you write a line:
+
+```bash
+U=源码参考/software/craft-agents-oss
+diff app/apps/electron/src/renderer/<path> $U/apps/electron/src/renderer/<path>
+```
+
+Read what upstream does, then justify **each** delta you intend to add. If you cannot name why a
+difference exists, it is not a difference — it is an invention, and it will read as a second UI
+language beside the first.
+
+What this catches, from real cases in this repo:
+
+- A button given `className="h-7"` because `size="sm"` "looked too big" — while upstream uses
+  `size="sm"` everywhere and `h-6 text-[11px] px-2` for inline row actions. Both the override and
+  the later "correction" back to the default were wrong; only the diff says which.
+- A dropdown hand-rolled from `<button>` rows, sitting beside a sibling control that uses
+  `Popover` + `cmdk` with shared `MENU_*` constants.
+- A picker rebuilt from scratch next to two steps of the same flow that already use
+  `AddWorkspace_RadioOption`.
+
+**Never produce a concept mockup, a redesign image, or a "structure draft" as input to an
+implementation.** The owner has rejected this explicitly. The reference is the upstream component
+plus the cloned products in `源码参考/software/`, read as source — not a picture you drew.
+
+**Never dispatch a subagent to decide design, layout or architecture.** They arrive without this
+file, without the design library, and without the owner's history, and they reliably invent. Read
+the sources yourself.
+
+### Then the two value files
 
 1. [`docs/UI-SPEC.md`](docs/UI-SPEC.md) — the values. Six colours and no seventh; the opacity ladder;
    type, radius, elevation and icon slots; the shared primitives you must not re-create; the states

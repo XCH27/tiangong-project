@@ -25,6 +25,19 @@ Violating this is how the product fragments into disconnected utilities.
 
 ## 2. UI and product
 
+- **Do not change a surface Craft already has without first diffing the upstream component** at the
+  same path under `源码参考/software/craft-agents-oss/`, and justifying each delta. An unjustified
+  difference is an invention, and it reads as a second UI language beside the first. Step 0 in root
+  [`AGENTS.md`](../AGENTS.md).
+- **Do not produce a concept mockup, redesign image or "structure draft" as input to an
+  implementation.** The reference is the upstream component and the cloned products read as source.
+  The owner has rejected drawn proposals explicitly: 「你生成的这张图就非常大的问题，你就不应该有这种操作」.
+- **Do not dispatch a subagent to decide design, layout or architecture.** It arrives without the
+  routing table, the design library and the owner's history, and it invents. 「不要乱派子智能体他很多
+  想法都跑偏了」. Read the sources yourself; delegate only bounded, already-specified work.
+- **Do not read "keep Craft's style" as "keep every old function."** The visual system and proven
+  interactions carry over; which functions live, merge, move or die is the owner's call per surface.
+  Relocating every old button is not preservation, it is refusing to make the decision.
 - Do not build a greenfield shell or restore rejected skins when Craft can be simplified/extended.
 - Do not add empty docks, panels, settings, routes, dashboards, or placeholder modules to the
   **default surface**. Ahead-of-behavior pages exist only inside the preview-gated frontend track
