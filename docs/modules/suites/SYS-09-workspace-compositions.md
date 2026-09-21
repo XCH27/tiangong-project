@@ -9,33 +9,38 @@ it is not a second roadmap or an assertion that the data types are already conne
 
 ## Current code boundary
 
-`app/packages/shared/src/components/` contains data-only types, exports, a resolver and tests. There
-is no production consumer, loader, persisted composition writer or validated permission lifecycle.
+`app/packages/shared/src/components/` contains data-only types, exports, a resolver, a bundle
+adapter and tests. Since 2026-09-21 it has **one** production consumer — the right-workbench host
+below. There is still no loader, no persisted composition writer and no validated permission
+lifecycle.
 
-> **There are currently two registries for this concept, and until 2026-09-21 no document said so.**
-> Verified by grep on that date: nothing in `apps/` or `packages/` imports `shared/src/components`,
-> while `apps/electron/src/renderer/components/right-sidebar/registry.ts` **is** live and is called
-> twice by `RightSidebar.tsx`. They are not the same shape —
-> `ComponentContribution {id, slot, label, entry}` against
-> `RightSidebarToolDefinition {type, labelKey, icon, order, source, bodyKind}`.
+> **Converged 2026-09-21 (WORK-ORDER step 2). There is now one model.**
+> `apps/electron/src/renderer/components/right-sidebar/registry.ts` stores and returns
+> `ComponentContribution` values. Its parallel `RightSidebarToolDefinition` is gone, and so is the
+> dead `bodyKind` field, which `RightSidebar.tsx` never read — bodies were always routed by id, so
+> that field was dead the day it was written. `shared/src/components` therefore has its **first
+> production consumer**.
 >
-> This is a **deliberate staging step, not a second authority**: the renderer definition carries
-> `source: 'builtin' | 'component'` and its own comment says `bodyKind` is a "marker for the body
-> renderer *until the Component host supplies a lazy entry*". The open namespace
-> (`(string & {})`) exists so a Component id can register without editing the host.
+> Built-ins are now ordinary contributions —
+> `{id, slot: 'right-workbench', label, entry, order, icon}` — so a built-in and an installed
+> Component are the same shape and neither is a special case. The host refuses a contribution
+> addressed to another slot, refuses to shadow an existing id, sorts an order-less contribution
+> last instead of dropping it, and returns a disposer so activation stays reversible. Nine tests
+> pin those properties, up from two.
 >
-> **The convergence is this suite's job and is unfinished.** Step 2 of the active slice in
-> [`../../WORK-ORDER.md`](../../WORK-ORDER.md) — "connect existing Files/Notes bodies and tool
-> entries through one real registry" — is exactly this work: the renderer registry must end up
-> resolving `ComponentContribution.entry` instead of `bodyKind`, so `slot: 'right-workbench'`
-> contributions and built-in tools come from one model. Until then, treat the renderer registry as
-> the working host and `shared/src/components` as the target shape, and do not add a third.
+> **`icon` is a name, not a component reference, and that is deliberate.** This package is
+> data-only and browser-safe and must never import React — that constraint is exactly why the
+> renderer had to keep a parallel type before. The host resolves the name and renders nothing for
+> one it does not recognize, so an unknown icon from a Component degrades to a label-only rail
+> entry rather than a crash.
 >
-> **`shared/src/components/bundle-adapter.ts` was added on 2026-09-21 to the unused side.** It reads
-> Claude/Codex/Cursor/Agent bundles into `ComponentManifest` and is pure and tested, but it widened
-> the gap rather than closing it, and it was built ahead of the host in spite of §16.4 of
-> [`../../design-library/12-capability---skill---plugin-system.md`](../../design-library/12-capability---skill---plugin-system.md)
-> saying "Component host first, adapter second". Close the convergence before extending it further.
+> **Still open in this loop, so do not read the convergence as a working Component system:**
+> `entry` is carried but not executed — bodies remain host components selected by id, making
+> `entry: 'builtin:files'` a stable identifier rather than a lazy load. Persisted composition, the
+> loader and the permission lifecycle are `not implemented`, and `left-rail` has no host at all.
+> `shared/src/components/bundle-adapter.ts` still sits ahead of this loop: it was written on
+> 2026-09-21 against the then-unused model, before the host existed, contrary to §16.4 of
+> [`../../design-library/12-capability---skill---plugin-system.md`](../../design-library/12-capability---skill---plugin-system.md).
 Dependency `version` is declared but not enforced by that resolver; optional installed dependencies
 are currently traversed too. Its `active` array is not proof of runtime activation. Do not present
 these helpers as an installed or working Component system.
