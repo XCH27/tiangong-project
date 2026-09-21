@@ -21,6 +21,7 @@ import {
 } from './styled-dropdown'
 import { type DocFeature } from '@craft-agent/shared/docs/doc-links'
 import { openLocalDoc } from '@/lib/open-local-doc'
+import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
 interface HeaderMenuProps {
   /** Route string for Open in New Window action */
@@ -33,6 +34,7 @@ interface HeaderMenuProps {
 
 export function HeaderMenu({ route, children, helpFeature }: HeaderMenuProps) {
   const { t } = useTranslation()
+  const appShell = useOptionalAppShellContext()
   const handleOpenInNewWindow = async () => {
     const separator = route.includes('?') ? '&' : '?'
     const url = `craftagents://${route}${separator}window=focused`
@@ -44,7 +46,7 @@ export function HeaderMenu({ route, children, helpFeature }: HeaderMenuProps) {
   }
 
   const handleLearnMore = helpFeature ? () => {
-    void openLocalDoc(helpFeature)
+    if (appShell?.onOpenFile) void openLocalDoc(helpFeature, appShell.onOpenFile)
   } : undefined
 
   return (

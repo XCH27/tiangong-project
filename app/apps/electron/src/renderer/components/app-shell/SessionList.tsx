@@ -20,12 +20,13 @@ import { SessionSearchHeader } from "./SessionSearchHeader"
 import { SessionItem } from "./SessionItem"
 import { SessionListProvider, type SessionListContextValue } from "@/context/SessionListContext"
 import { useSessionSelection, useSessionSelectionStore } from "@/hooks/useSession"
-import { useSessionSearch, type FilterMode } from "@/hooks/useSessionSearch"
+import { compareSessionsForDisplay, useSessionSearch, type FilterMode } from "@/hooks/useSessionSearch"
 import { useSessionActions } from "@/hooks/useSessionActions"
 import { useEntityListInteractions } from "@/hooks/useEntityListInteractions"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useEscapeInterrupt } from "@/context/EscapeInterruptContext"
 import { useNavigation, useNavigationState, routes, isSessionsNavigation } from "@/contexts/NavigationContext"
+import type { SessionFilter } from '../../../shared/types'
 import { useFocusContext } from "@/context/FocusContext"
 import { sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import type { ViewConfig } from "@craft-agent/shared/views"
@@ -40,6 +41,8 @@ export interface SessionListRow {
 export type ChatGroupingMode = 'date' | 'status' | 'unread' | 'project'
 
 interface SessionListProps {
+  /** Settings reuses the same list without changing the global route into a list view. */
+  filterOverride?: SessionFilter
   items: SessionMeta[]
   onDelete: (sessionId: string, skipConfirmation?: boolean) => Promise<boolean>
   onFlag?: (sessionId: string) => void
@@ -117,6 +120,7 @@ function formatDateGroupLabel(date: Date, t: (key: string) => string, lang: stri
  * - Home/End: Jump to first/last session
  */
 export function SessionList({
+  filterOverride,
   items,
   onDelete,
   onFlag,
@@ -169,7 +173,7 @@ export function SessionList({
   const flatLabels = useMemo(() => flattenLabels(labels), [labels])
 
   // Get current filter from navigation state (for preserving context in tab routes)
-  const currentFilter = isSessionsNavigation(navState) ? navState.filter : undefined
+  const currentFilter = filterOverride ?? (isSessionsNavigation(navState) ? navState.filter : undefined)
 
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null)
@@ -287,7 +291,14 @@ export function SessionList({
     // flatItems only contains visible (expanded + paginated) items.
     // collapsedGroupsMeta provides key + count for collapsed groups so we
     // can insert header-only placeholder groups in the correct position.
-    const rows: SessionListRow[] = flatItems.map(item => ({ item }))
+    const pinnedRows = flatItems.filter(item => item.isFlagged).sort(compareSessionsForDisplay).map(item => ({ item }))
+    const rows: SessionListRow[] = flatItems.filter(item => !item.isFlagged).map(item => ({ item }))
+    const withPinned = (groups: EntityListGroup<SessionListRow>[]) => {
+      const orderedGroups: EntityListGroup<SessionListRow>[] = pinnedRows.length > 0
+        ? [{ key: 'pinned', label: t('sidebar.flagged'), items: pinnedRows, collapsible: false }, ...groups]
+        : groups
+      return { rows: orderedGroups.flatMap(group => group.items), groups: orderedGroups }
+    }
 
     if (groupingMode === 'unread') {
       // Two fixed buckets: unread on top, read below. Within each, items keep
@@ -330,10 +341,7 @@ export function SessionList({
         },
       ]
 
-      return {
-        rows: orderedGroups.flatMap(g => g.items),
-        groups: orderedGroups,
-      }
+      return withPinned(orderedGroups)
     }
 
     if (groupingMode === 'status') {
@@ -382,10 +390,7 @@ export function SessionList({
         orderedGroups[0].collapsible = false
       }
 
-      return {
-        rows: orderedGroups.flatMap(g => g.items),
-        groups: orderedGroups,
-      }
+      return withPinned(orderedGroups)
     }
 
     if (groupingMode === 'project') {
@@ -443,13 +448,12 @@ export function SessionList({
         orderedGroups[0].collapsible = false
       }
 
-      return {
-        rows: orderedGroups.flatMap(g => g.items),
-        groups: orderedGroups,
-      }
+      return withPinned(orderedGroups)
     }
 
-    // Default: group by date
+    // Default: pinned sessions stay in a dedicated first group. They remain
+    // part of the same Session list and use the same row/menu actions; the
+    // group only makes the existing pin predicate visible and stable.
     const groupsByKey = new Map<string, EntityListGroup<SessionListRow>>()
     const groupDates = new Map<string, Date>()
 
@@ -496,10 +500,7 @@ export function SessionList({
       orderedGroups[0].collapsible = false
     }
 
-    return {
-      rows,
-      groups: orderedGroups,
-    }
+    return withPinned(orderedGroups)
   }, [isSearchMode, matchingFilterItems, otherResultItems, flatItems, groupingMode, sessionStatuses, projects, collapsedGroupsMeta, t])
 
   const flatRows = rowData.rows
@@ -757,7 +758,7 @@ export function SessionList({
           }}
           className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-[8px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors"
         >
-          {t("session.newSession")}
+          {t("kanban.newTask")}
         </button>
       </EntityListEmptyScreen>
     )

@@ -23,3 +23,6 @@ __pycache__/
 # Local agent-tool state (never product tree)
 /.workbuddy/
 /assets/
+
+# Ad-hoc agent screenshots are not application source.
+/.grok-screenshots-*.png

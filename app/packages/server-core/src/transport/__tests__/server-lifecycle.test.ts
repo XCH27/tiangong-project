@@ -8,9 +8,10 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import WebSocket from 'ws'
 import { WsRpcServer } from '../server'
-import { PROTOCOL_VERSION } from '@craft-agent/shared/protocol'
+import { PROTOCOL_VERSION, RPC_CHANNELS } from '@craft-agent/shared/protocol'
 
 const TEST_TOKEN = 'test-token-with-enough-entropy-to-pass'
+const REMOTE_TOKEN = 'remote-token-with-enough-entropy'
 
 function createServer(opts?: {
   maxClients?: number
@@ -27,7 +28,7 @@ function createServer(opts?: {
   })
 }
 
-function handshake(url: string, token: string): Promise<{ ws: WebSocket; clientId: string }> {
+function handshake(url: string, token: string): Promise<{ ws: WebSocket; clientId: string; registeredChannels: string[] }> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url)
     const timeout = setTimeout(() => {
@@ -47,7 +48,7 @@ function handshake(url: string, token: string): Promise<{ ws: WebSocket; clientI
       const msg = JSON.parse(data.toString())
       if (msg.type === 'handshake_ack') {
         clearTimeout(timeout)
-        resolve({ ws, clientId: msg.clientId })
+        resolve({ ws, clientId: msg.clientId, registeredChannels: msg.registeredChannels ?? [] })
       } else if (msg.type === 'error') {
         clearTimeout(timeout)
         reject(new Error(`Auth error: ${msg.error?.message}`))
@@ -62,6 +63,22 @@ function handshake(url: string, token: string): Promise<{ ws: WebSocket; clientI
       clearTimeout(timeout)
       reject(err)
     })
+  })
+}
+
+function invoke(ws: WebSocket, channel: string): Promise<Record<string, any>> {
+  return new Promise((resolve, reject) => {
+    const id = crypto.randomUUID()
+    const timeout = setTimeout(() => reject(new Error(`RPC timeout: ${channel}`)), 5_000)
+    const onMessage = (data: WebSocket.RawData) => {
+      const message = JSON.parse(data.toString())
+      if (message.type !== 'response' || message.id !== id) return
+      clearTimeout(timeout)
+      ws.off('message', onMessage)
+      resolve(message)
+    }
+    ws.on('message', onMessage)
+    ws.send(JSON.stringify({ id, type: 'request', channel }))
   })
 }
 
@@ -125,6 +142,49 @@ describe('WsRpcServer lifecycle', () => {
     })
 
     expect(closeCode).toBe(4005)
+  })
+
+  it('uses a separate token and blocks LOCAL_ONLY channels on the public listener', async () => {
+    server = createServer()
+    server.handle(RPC_CHANNELS.settings.GET_SERVER_CONFIG, () => ({ secret: true }))
+    server.handle(RPC_CHANNELS.server.GET_STATUS, () => ({ ok: true }))
+    await server.listen()
+    const publicListener = await server.listenPublic('127.0.0.1', 0, {
+      validateToken: async (token) => token === REMOTE_TOKEN,
+    })
+    const publicUrl = `${publicListener.protocol}://127.0.0.1:${publicListener.port}`
+
+    await expect(handshake(publicUrl, TEST_TOKEN)).rejects.toThrow()
+
+    const { ws, registeredChannels } = await handshake(publicUrl, REMOTE_TOKEN)
+    openSockets.push(ws)
+    expect(registeredChannels).not.toContain(RPC_CHANNELS.settings.GET_SERVER_CONFIG)
+    expect(registeredChannels).toContain(RPC_CHANNELS.server.GET_STATUS)
+
+    const blocked = await invoke(ws, RPC_CHANNELS.settings.GET_SERVER_CONFIG)
+    expect(blocked.error?.code).toBe('CAPABILITY_UNAVAILABLE')
+    expect(blocked.error?.message).toContain('local-only')
+
+    const allowed = await invoke(ws, RPC_CHANNELS.server.GET_STATUS)
+    expect(allowed.result).toEqual({ ok: true })
+  })
+
+  it('keeps the existing public listener when a replacement bind fails', async () => {
+    server = createServer()
+    server.handle(RPC_CHANNELS.server.GET_STATUS, () => ({ ok: true }))
+    await server.listen()
+    const current = await server.listenPublic('127.0.0.1', 0, {
+      validateToken: async (token) => token === REMOTE_TOKEN,
+    })
+    const url = `${current.protocol}://127.0.0.1:${current.port}`
+
+    await expect(server.listenPublic('127.0.0.1', current.port, {
+      validateToken: async (token) => token === 'replacement-token',
+    })).rejects.toThrow()
+
+    const { ws } = await handshake(url, REMOTE_TOKEN)
+    openSockets.push(ws)
+    expect((await invoke(ws, RPC_CHANNELS.server.GET_STATUS)).result).toEqual({ ok: true })
   })
 
   // -- Capacity tests --

@@ -1,4 +1,4 @@
-import { writeFile, rename, unlink } from 'fs/promises'
+import { writeFile, rename } from 'fs/promises'
 import { dirname } from 'path'
 import type { StoredSession, SessionHeader } from './types.js'
 import { getSessionFilePath, ensureSessionsDir, ensureSessionDir } from './storage.js'
@@ -77,7 +77,9 @@ class SessionPersistenceQueue {
     }
 
     const timer = setTimeout(() => {
-      void this.write(session.id)
+      void this.flush(session.id).catch(error => {
+        console.error(`[PersistenceQueue] Failed to write session ${session.id}:`, error)
+      })
     }, this.debounceMs)
 
     this.pending.set(session.id, { data: session, timer })
@@ -151,17 +153,17 @@ class SessionPersistenceQueue {
       // during unlink/rename are correctly identified as self-writes.
       // Without this, onSessionMetadataChange sees the stale signature
       // and reverts in-memory metadata on idle sessions.
-      const finalSignature = getHeaderMetadataSignature(header)
-      this.lastWrittenHeaderSignature.set(sessionId, finalSignature)
-
       const tmpFile = filePath + '.tmp'
       await writeFile(tmpFile, lines.join('\n') + '\n', 'utf-8')
-      // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
-      try { await unlink(filePath) } catch { /* ignore if doesn't exist */ }
+      // Never delete the last good journal before its atomic replacement.
       await rename(tmpFile, filePath)
+      this.lastWrittenHeaderSignature.set(sessionId, getHeaderMetadataSignature(header))
       debug(`[PersistenceQueue] Wrote session ${sessionId}`)
     } catch (error) {
-      console.error(`[PersistenceQueue] Failed to write session ${sessionId}:`, error)
+      // Keep the latest unsaved data for explicit retry, without an automatic
+      // retry loop. A failed flush must reject instead of acknowledging a save.
+      if (!this.pending.has(sessionId)) this.pending.set(sessionId, entry)
+      throw error
     }
   }
 
@@ -172,25 +174,21 @@ class SessionPersistenceQueue {
    */
   async flush(sessionId: string): Promise<void> {
     const entry = this.pending.get(sessionId)
-    if (entry) {
-      clearTimeout(entry.timer)
-
-      // Wait for any in-progress write to complete first
-      const inProgress = this.writeInProgress.get(sessionId)
-      if (inProgress) {
-        await inProgress
-      }
-
-      // Start new write and track it
-      const writePromise = this.write(sessionId)
-      this.writeInProgress.set(sessionId, writePromise)
-
-      try {
-        await writePromise
-      } finally {
-        this.writeInProgress.delete(sessionId)
-      }
+    if (entry) clearTimeout(entry.timer)
+    const inProgress = this.writeInProgress.get(sessionId)
+    if (inProgress) {
+      await inProgress
+      return this.flush(sessionId)
     }
+    if (!this.pending.has(sessionId)) return
+    const writePromise = this.write(sessionId)
+    this.writeInProgress.set(sessionId, writePromise)
+    try {
+      await writePromise
+    } finally {
+      this.writeInProgress.delete(sessionId)
+    }
+    if (this.pending.has(sessionId)) await this.flush(sessionId)
   }
 
   /**
@@ -210,8 +208,8 @@ class SessionPersistenceQueue {
    * Flush all pending sessions. Call this on app quit.
    */
   async flushAll(): Promise<void> {
-    const sessionIds = [...this.pending.keys()]
-    await Promise.all(sessionIds.map(id => this.flush(id)))
+    const sessionIds = new Set([...this.pending.keys(), ...this.writeInProgress.keys()])
+    await Promise.all([...sessionIds].map(id => this.flush(id)))
   }
 
   /**

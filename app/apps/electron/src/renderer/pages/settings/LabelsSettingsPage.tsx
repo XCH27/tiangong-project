@@ -39,7 +39,7 @@ export const meta: DetailsPageMeta = {
 
 export default function LabelsSettingsPage() {
   const { t } = useTranslation()
-  const { activeWorkspaceId } = useAppShellContext()
+  const { activeWorkspaceId, onOpenFile } = useAppShellContext()
   const activeWorkspace = useActiveWorkspace()
   const { labels, isLoading } = useLabels(activeWorkspaceId)
 
@@ -83,7 +83,7 @@ export default function LabelsSettingsPage() {
                         <p>
                           <button
                             type="button"
-                            onClick={() => void openLocalDoc('labels')}
+                            onClick={() => void openLocalDoc('labels', onOpenFile)}
                             className="text-foreground/70 hover:text-foreground underline underline-offset-2"
                           >
                             {t("chat.learnMore")}

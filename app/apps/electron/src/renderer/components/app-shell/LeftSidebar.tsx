@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react"
 import * as React from "react"
-import { AnimatePresence, motion, type Variants } from "motion/react"
 import { ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -59,6 +58,10 @@ export interface SortableConfig {
 }
 
 export interface LinkItem {
+  /** Existing navigator content, relocated here without creating another list. */
+  content?: React.ReactNode
+  /** Hover/focus-revealed 24px actions; siblings of the navigation button. */
+  actions?: React.ReactNode[]
   id: string            // Unique ID for navigation (e.g., 'nav:allSessions')
   title: string
   label?: string        // Optional badge (e.g., count)
@@ -95,7 +98,32 @@ export type SidebarItem = LinkItem | SeparatorItem
 export const isSeparatorItem = (item: SidebarItem): item is SeparatorItem =>
   'type' in item && item.type === 'separator'
 
+/**
+ * Action groups are commonly authored as a Fragment (for example the shared
+ * navigator action set).  Keep the public API as `ReactNode[]`, but flatten
+ * fragments before laying out the fixed 24px action slots.  Without this, a
+ * Fragment is measured as one slot and its children overlap inside that slot.
+ */
+function flattenActionNodes(nodes: React.ReactNode[]): React.ReactNode[] {
+  const flattened: React.ReactNode[] = []
+  const visit = (node: React.ReactNode): void => {
+    if (node == null || typeof node === 'boolean') return
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+      return
+    }
+    if (React.isValidElement(node) && node.type === React.Fragment) {
+      visit(node.props.children)
+      return
+    }
+    flattened.push(node)
+  }
+  nodes.forEach(visit)
+  return flattened
+}
+
 interface LeftSidebarProps {
+  className?: string
   isCollapsed: boolean
   links: SidebarItem[]
   /** Get props for each item (from unified sidebar navigation) */
@@ -108,39 +136,6 @@ interface LeftSidebarProps {
   focusedItemId?: string | null
   /** Whether this is a nested sidebar (child of expandable item) */
   isNested?: boolean
-}
-
-// Stagger animation for child items
-const containerVariants: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.025,
-      delayChildren: 0.01,
-    },
-  },
-  exit: {
-    opacity: 0,
-    transition: {
-      staggerChildren: 0.015,
-      staggerDirection: -1,
-    },
-  },
-}
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, x: -8 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.15, ease: 'easeOut' },
-  },
-  exit: {
-    opacity: 0,
-    x: -8,
-    transition: { duration: 0.1, ease: 'easeIn' },
-  },
 }
 
 /**
@@ -159,7 +154,8 @@ const itemVariants: Variants = {
  *
  * Expandable items:
  * - Show a chevron toggle on hover (replaces icon position)
- * - Children are rendered with animated expand/collapse
+ * - Children are rendered inline when expanded; layout changes stay immediate
+ *   so the sidebar does not stagger or animate height on every navigation.
  * - Nested items have left indentation with vertical line
  *
  * Drag-and-drop:
@@ -167,26 +163,17 @@ const itemVariants: Variants = {
  * - Uses @dnd-kit with DragOverlay portaled to document.body (no clipping)
  * - Two-phase drop animation: overlay fades out, ghost fades in
  */
-export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, isNested }: LeftSidebarProps) {
-  // For nested sidebars, wrap in motion container for stagger effect
-  const NavWrapper = isNested ? motion.nav : 'nav'
-  const navProps = isNested ? {
-    variants: containerVariants,
-    initial: 'hidden',
-    animate: 'visible',
-    exit: 'exit',
-  } : {}
-
+export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, isNested, className }: LeftSidebarProps) {
+  const hasContent = links.some(item => !isSeparatorItem(item) && item.content != null)
   return (
-    <div className={cn("flex flex-col select-none", !isNested && "py-1")}>
-      <NavWrapper
+    <div className={cn("flex flex-col select-none", !isNested && "py-1", hasContent && 'flex-1 min-h-0', className)}>
+      <nav
         className={cn(
-          "grid gap-0.5",
+          hasContent ? 'flex flex-col flex-1 min-h-0 gap-0.5' : 'grid gap-0.5',
           isNested ? "pl-5 pr-0 relative" : "px-2"
         )}
         role="navigation"
         aria-label={isNested ? "Sub navigation" : "Main navigation"}
-        {...navProps}
       >
         {/* Vertical line for nested items - 4px left of chevron center */}
         {isNested && (
@@ -199,7 +186,7 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
           // Handle separator items
           if (isSeparatorItem(item)) {
             return (
-              <div key={item.id} className="py-1 px-2" aria-hidden="true">
+              <div key={item.id} className="shrink-0 py-1 px-2" aria-hidden="true">
                 <div className="h-px bg-foreground/5" />
               </div>
             )
@@ -207,8 +194,7 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
 
           const link = item
           const itemProps = getItemProps?.(link.id)
-          const isFocused = focusedItemId === link.id
-
+          const actionNodes = link.actions ? flattenActionNodes(link.actions) : []
           // Button element shared by both expandable and non-expandable items
           const buttonElement = (
             <SidebarButton
@@ -226,7 +212,8 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
           // ContextMenuTrigger with asChild sets data-state="open" on the button
           // so only the clicked item highlights, not the entire section.
           const content = (
-            <div className="group/section">
+            <div className={cn('group/section min-w-0', link.content != null ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0')}>
+              <div className="relative shrink-0">
               {link.contextMenu ? (
                 <ContextMenu modal={true}>
                   <ContextMenuTrigger asChild>
@@ -258,38 +245,28 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
               ) : (
                 buttonElement
               )}
+              {actionNodes.length > 0 && (
+                <div data-touch-reveal="true" className="absolute inset-y-0 right-1 flex items-center opacity-0 group-hover/section:opacity-100 group-focus-within/section:opacity-100 has-[[data-state=open]]:opacity-100">
+                  {actionNodes.map((action, index) => <div key={index} className="flex h-6 w-6 shrink-0 items-center justify-center [&_button]:h-6 [&_button]:w-6">{action}</div>)}
+                </div>
+              )}
+              </div>
+              {link.content != null && <div className="flex min-h-0 flex-1 flex-col" data-sidebar-content={link.id}>{link.content}</div>}
               {/* Expandable subitems — outside context menu scope so only the
                 * clicked button gets data-state="open", not nested children */}
               {link.expandable && link.items && (
-                <AnimatePresence initial={false}>
-                  {link.expanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
-                      animate={{ height: 'auto', opacity: 1, marginTop: 2, marginBottom: isNested ? 4 : 8 }}
-                      exit={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
-                      transition={{ duration: 0.2, ease: 'easeInOut' }}
-                      className="overflow-hidden"
-                    >
-                      {expandedContent}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                link.expanded ? (
+                  <div className={cn("overflow-hidden mt-0.5", isNested ? "mb-1" : "mb-2")}>
+                    {expandedContent}
+                  </div>
+                ) : null
               )}
             </div>
           )
 
-          // For nested items, wrap in motion.div for stagger animation
-          return isNested ? (
-            <motion.div key={link.id} variants={itemVariants}>
-              {content}
-            </motion.div>
-          ) : (
-            <React.Fragment key={link.id}>
-              {content}
-            </React.Fragment>
-          )
+          return <React.Fragment key={link.id}>{content}</React.Fragment>
         })}
-      </NavWrapper>
+      </nav>
     </div>
   )
 }
@@ -346,7 +323,7 @@ interface SortableStatusListProps {
   onReorder: (orderedIds: string[]) => void
   getItemProps: LeftSidebarProps['getItemProps']
   focusedItemId: string | null | undefined
-  /** Non-sortable items rendered after the sortable list (e.g., Flagged, Archived) */
+  /** Non-sortable items rendered after the sortable list (e.g., Pinned) */
   trailingItems?: LinkItem[]
 }
 
@@ -429,7 +406,7 @@ function SortableStatusList({ items, onReorder, getItemProps, focusedItemId, tra
             />
           )}
         />
-        {/* Non-sortable trailing items (e.g., Flagged, Archived) */}
+        {/* Non-sortable trailing items (e.g., Pinned) */}
         {trailingItems && trailingItems.length > 0 && (
           <>
             <div className="my-1 ml-2" aria-hidden="true">
@@ -488,6 +465,8 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
         }}
         onClick={isOverlay ? undefined : link.onClick}
         data-tutorial={link.dataTutorial}
+        data-sidebar-row={link.id}
+        style={link.actions ? { paddingRight: flattenActionNodes(link.actions).length * 24 + 8 } : undefined}
         className={cn(
           "group flex w-full items-center gap-2 rounded-[6px] text-[13px] select-none outline-none",
           "focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
@@ -531,7 +510,7 @@ const SidebarButton = React.forwardRef<HTMLButtonElement, SidebarButtonProps & R
             renderIcon(link)
           )}
         </span>
-        {link.title}
+        <span className="min-w-0 truncate">{link.title}</span>
         {/* After-title element: type indicator icon, right-aligned before count badge, revealed on hover */}
         {link.afterTitle && (
           <span data-touch-reveal="true" className="ml-auto opacity-0 group-hover/section:opacity-100 group-data-[state=open]:opacity-100 group-data-[edit-active=true]:opacity-100 transition-opacity">

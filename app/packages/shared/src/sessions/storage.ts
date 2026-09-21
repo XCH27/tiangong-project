@@ -189,6 +189,7 @@ export async function createSession(
     isFlagged?: boolean;
     projectId?: string;
     parentSessionId?: string;
+    assistantId?: string;
     taskSlug?: string;
     taskRunId?: string;
     taskNodeId?: string;
@@ -226,6 +227,7 @@ export async function createSession(
     isFlagged: options?.isFlagged,
     projectId: options?.projectId,
     parentSessionId: options?.parentSessionId,
+    assistantId: options?.assistantId,
     taskSlug: options?.taskSlug,
     taskRunId: options?.taskRunId,
     taskNodeId: options?.taskNodeId,
@@ -554,6 +556,7 @@ export async function updateSessionMetadata(
     | 'isArchived'
     | 'archivedAt'
     | 'projectId'
+    | 'assistantId'
   >>
 ): Promise<void> {
   const session = loadSession(workspaceRootPath, sessionId);
@@ -576,6 +579,7 @@ export async function updateSessionMetadata(
   if (updates.isArchived !== undefined) session.isArchived = updates.isArchived;
   if ('archivedAt' in updates) session.archivedAt = updates.archivedAt;
   if ('projectId' in updates) session.projectId = updates.projectId;
+  if ('assistantId' in updates) session.assistantId = updates.assistantId;
 
   await saveSession(session);
 }

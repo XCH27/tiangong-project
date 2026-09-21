@@ -26,6 +26,7 @@
  *   - validation: URL validation
  *   - version: Version and installation management
  *   - workspaces: Workspace management (top-level organizational unit)
+ *   - components: data-only Component manifests and Workspace composition resolution
  */
 
 // Export branding (standalone, no dependencies)

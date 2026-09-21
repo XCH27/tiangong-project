@@ -19,8 +19,8 @@ import {
   ArchiveRestore,
   Trash2,
   Pencil,
-  Flag,
-  FlagOff,
+  Pin,
+  PinOff,
   MailOpen,
   FolderOpen,
   Copy,
@@ -136,7 +136,7 @@ export function SessionMenu({
 
       <Separator />
 
-      {/* Status submenu - includes all statuses plus Flag/Unflag at the bottom */}
+      {/* Status submenu - includes all statuses; pinning stays a separate action */}
       <Sub>
         <SubTrigger className="pr-2">
           <span style={{ color: getStateColor(currentSessionStatus, sessionStatuses) ?? 'var(--foreground)' }}>
@@ -210,15 +210,15 @@ export function SessionMenu({
         </Sub>
       )}
 
-      {/* Flag/Unflag */}
+      {/* Pin/Unpin */}
       {!isFlagged ? (
         <MenuItem onClick={onFlag}>
-          <Flag className="h-3.5 w-3.5 text-info" />
+          <Pin className="h-3.5 w-3.5 text-info" />
           <span className="flex-1">{t("sessionMenu.flag")}</span>
         </MenuItem>
       ) : (
         <MenuItem onClick={onUnflag}>
-          <FlagOff className="h-3.5 w-3.5" />
+          <PinOff className="h-3.5 w-3.5" />
           <span className="flex-1">{t("sessionMenu.unflag")}</span>
         </MenuItem>
       )}

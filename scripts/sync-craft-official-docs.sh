@@ -5,8 +5,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_DIR="$ROOT_DIR/源码参考/craft-docs"
 ONLINE_DIR="$TARGET_DIR/online-current"
-INDEX_URL="https://agents.craft.do/docs/llms.txt"
-SITEMAP_URL="https://agents.craft.do/docs/sitemap.xml"
+# Hosted docs moved: /docs/llms.txt 404s as of 2026-09-11. Try the stub index,
+# keep the previously synced tree if the hosted site is empty.
+INDEX_URL="https://agents.craft.do/llms.txt"
+SITEMAP_URL="https://agents.craft.do/sitemap.xml"
 UPSTREAM_DIR="$ROOT_DIR/源码参考/software/craft-agents-oss"
 
 tmp_dir="$(mktemp -d)"
@@ -26,9 +28,20 @@ while IFS= read -r url; do
   curl -fsSL --retry 3 --max-time 60 "$url" -o "$destination"
 done
 
-mkdir -p "$TARGET_DIR"
-rm -rf "$ONLINE_DIR"
-mv "$tmp_online_dir" "$ONLINE_DIR"
+new_count="$(find "$tmp_online_dir" -type f | wc -l | tr -d ' ')"
+old_count=0
+if [[ -d "$ONLINE_DIR" ]]; then
+  old_count="$(find "$ONLINE_DIR" -type f | wc -l | tr -d ' ')"
+fi
+if [[ "$new_count" -lt 10 && "$old_count" -ge 10 ]]; then
+  printf 'Hosted docs index is a stub (%s files). Keeping existing mirror (%s files).\n' "$new_count" "$old_count"
+  mkdir -p "$TARGET_DIR/hosted-stub"
+  cp "$tmp_dir/llms.txt" "$TARGET_DIR/hosted-stub/llms.txt"
+else
+  mkdir -p "$TARGET_DIR"
+  rm -rf "$ONLINE_DIR"
+  mv "$tmp_online_dir" "$ONLINE_DIR"
+fi
 
 # The official Quickstart remains reachable but is absent from both llms.txt and the sitemap.
 # Preserve it separately so it is available for migration research without presenting it as current.

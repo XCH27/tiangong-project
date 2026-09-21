@@ -60,7 +60,13 @@ const FRACTION_TOLERANCE = 1e-9
  * The panes Fleet ships. Everything else — the production surfaces, plugin
  * panels — arrives through the open namespace below.
  */
-export const BUILTIN_PANEL_KINDS = ['nav-sidebar', 'navigator', 'main', 'workbench'] as const
+export const BUILTIN_PANEL_KINDS = [
+  'nav-sidebar',
+  'navigator',
+  'main',
+  'workbench',
+  'surface:canvas',
+] as const
 export type BuiltinPanelKind = (typeof BUILTIN_PANEL_KINDS)[number]
 
 /**
@@ -146,10 +152,9 @@ export type LayoutOpResult = { layout: Layout; applied: boolean; reason?: string
 // ---------------------------------------------------------------------------
 
 /**
- * The arrangement Fleet has today: the nav sidebar outside the tree, then the
- * navigator list, the main surface and the workbench side by side. The default
- * must reproduce what the person already sees, so mounting the engine changes
- * nothing visually on first run.
+ * Starting arrangement: nav sidebar, then navigator | conversation.
+ * Do not put a canvas pane here. Canvas is not this slice, and an empty
+ * placeholder is not a canvas.
  */
 export function createDefaultLayout(): Layout {
   return {
@@ -160,9 +165,8 @@ export function createDefaultLayout(): Layout {
       id: 'root',
       direction: 'row',
       children: [
-        { fraction: 0.24, node: { type: 'pane', id: 'navigator', panelKind: 'navigator', minWidth: 240 } },
-        { fraction: 0.46, node: { type: 'pane', id: 'main', panelKind: 'main', minWidth: 400 } },
-        { fraction: 0.3, node: { type: 'pane', id: 'workbench', panelKind: 'workbench', minWidth: 280 } },
+        { fraction: 0.28, node: { type: 'pane', id: 'navigator', panelKind: 'navigator', minWidth: 240 } },
+        { fraction: 0.72, node: { type: 'pane', id: 'main', panelKind: 'main', minWidth: 400 } },
       ],
     },
     float: [],

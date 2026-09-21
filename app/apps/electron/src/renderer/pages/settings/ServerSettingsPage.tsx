@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Copy, Trash2 } from 'lucide-react'
+import { Copy, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -33,16 +33,8 @@ import { parseAccessLink } from '@craft-agent/shared/remote'
 
 /** Exactly what the RPC returns; the renderer never sees a token hash or a scope. */
 type RemoteDeviceRow = Awaited<ReturnType<typeof window.electronAPI.listRemoteDevices>>[number]
-import { attachRemoteFromAccessLink, attachRemoteFromServerToken } from '@/lib/remote-connect'
+import { attachRemoteFromAccessLink } from '@/lib/remote-connect'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
-
-/**
- * The command Craft's own server documentation gives for a headless host. Offered
- * copyable rather than described, because a person setting up a VPS needs the line,
- * not a paraphrase of it.
- */
-const HEADLESS_START_COMMAND =
-  'CRAFT_SERVER_TOKEN=$(openssl rand -hex 32) CRAFT_RPC_HOST=0.0.0.0 bun run packages/server/src/index.ts'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -66,13 +58,6 @@ export default function ServerSettingsPage() {
   const [accessLink, setAccessLink] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState<string | null>(null)
-  // A server you run yourself (VPS, Docker, packages/server) has an address and a
-  // token and cannot mint an access link — Craft's own documented path, and the only
-  // route to a headless host.
-  const [serverUrl, setServerUrl] = useState('')
-  const [serverToken, setServerToken] = useState('')
-  const [serverConnecting, setServerConnecting] = useState(false)
-  const [serverError, setServerError] = useState<string | null>(null)
   // Devices allowed to reach THIS machine. Their own object, not a projection of the
   // Workspace list: one machine can hold several Workspaces, and a phone holds none.
   const [allowed, setAllowed] = useState<RemoteDeviceRow[]>([])
@@ -178,32 +163,6 @@ export default function ServerSettingsPage() {
     }
   }
 
-  const handleConnectServer = async () => {
-    setServerConnecting(true)
-    setServerError(null)
-    try {
-      const workspace = await attachRemoteFromServerToken(
-        deviceName.trim() || serverUrl.trim(),
-        serverUrl,
-        serverToken,
-      )
-      setServerUrl('')
-      setServerToken('')
-      toast.success(t('settings.remote.deviceConnected', { name: workspace.name }))
-      refreshWorkspaces()
-      await load()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setServerError(
-        message === 'invalid-server-url' ? t('settings.remote.serverUrlInvalid')
-          : message === 'invalid-server-token' ? t('settings.remote.serverTokenRequired')
-            : message,
-      )
-    } finally {
-      setServerConnecting(false)
-    }
-  }
-
   if (loading || !config) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -275,15 +234,6 @@ export default function ServerSettingsPage() {
                 </SettingsCard>
               )}
 
-              {/* What this machine can actually be reached on. Upstream puts a fact like
-                  this in a warning strip rather than in a row's description, and it is
-                  the thing a person needs to know before they send the link. */}
-              {invite && invite.reach !== 'anywhere' && (
-                <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/20 text-xs text-warning">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>{t(`settings.remote.reach.${invite.reach}`)}</span>
-                </div>
-              )}
 
               {allowed.length > 0 && (
                 <SettingsCard>
@@ -370,62 +320,6 @@ export default function ServerSettingsPage() {
               )}
             </SettingsSection>
 
-            {/* §8/§14: manual setup and headless installation are the advanced path,
-                disclosed below the pairing flow rather than offered as a peer button. */}
-            <SettingsSection title={t('settings.remote.advanced')}>
-              <SettingsCard>
-                <SettingsInputRow
-                  label={t('settings.remote.serverUrl')}
-                  value={serverUrl}
-                  onChange={(value) => { setServerUrl(value); setServerError(null) }}
-                  placeholder="wss://192.168.1.100:9100"
-                  disabled={serverConnecting}
-                />
-                <SettingsInputRow
-                  label={t('settings.remote.serverToken')}
-                  value={serverToken}
-                  onChange={(value) => { setServerToken(value); setServerError(null) }}
-                  placeholder={t('settings.remote.serverTokenPlaceholder')}
-                  disabled={serverConnecting}
-                  error={serverError ?? undefined}
-                />
-                <SettingsCardFooter>
-                  <Button
-                    size="sm"
-                    disabled={serverConnecting || !serverUrl.trim() || !serverToken.trim()}
-                    onClick={() => void handleConnectServer()}
-                  >
-                    {serverConnecting ? <Spinner className="mr-1.5" /> : null}
-                    {t('settings.remote.connectServer')}
-                  </Button>
-                </SettingsCardFooter>
-              </SettingsCard>
-
-              <SettingsCard>
-                <SettingsRow
-                  label={t('settings.remote.installOnServer')}
-                  description={t('settings.remote.installOnServerDesc')}
-                >
-                  <div className="flex items-center gap-1.5">
-                    <code className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded max-w-[180px] truncate">
-                      {HEADLESS_START_COMMAND}
-                    </code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      aria-label={t('settings.remote.installOnServer')}
-                      onClick={() => {
-                        void navigator.clipboard.writeText(HEADLESS_START_COMMAND)
-                        toast.success(t('settings.server.copiedToClipboard', { label: t('settings.remote.installOnServer') }))
-                      }}
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </SettingsRow>
-              </SettingsCard>
-            </SettingsSection>
           </div>
       </ScrollArea>
 

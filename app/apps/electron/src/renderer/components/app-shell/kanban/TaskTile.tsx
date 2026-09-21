@@ -121,6 +121,7 @@ export function TaskTile({
   // Live treatment: an in-flight turn on a tile parked in the active column,
   // gated by the user's live-pulse preference.
   const isLive = livePulseEnabled && !!task.isProcessing && task.column === 'in-progress'
+  const liveStyle = isLive ? ({ '--tw-ring-color': accent } as React.CSSProperties) : undefined
 
   const relativeTime = task.lastMessageAt
     ? formatDistanceToNowStrict(new Date(task.lastMessageAt), {
@@ -144,15 +145,10 @@ export function TaskTile({
       className={cn(
         'group relative overflow-hidden rounded-lg border border-border/60 bg-card shadow-minimal',
         'cursor-pointer transition-colors hover:border-border focus-visible:outline-none',
-        'focus-visible:ring-2 focus-visible:ring-ring/50'
+        'focus-visible:ring-2 focus-visible:ring-ring/50',
+        isLive && 'ring-1 ring-inset',
       )}
-      style={
-        isLive
-          ? {
-              boxShadow: `0 0 0 1px ${accent}, 0 4px 16px -4px color-mix(in srgb, ${accent} 40%, transparent)`,
-            }
-          : undefined
-      }
+      style={liveStyle}
     >
       {showTint && color && (
         <div

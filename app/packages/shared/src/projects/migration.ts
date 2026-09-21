@@ -76,8 +76,39 @@ export interface MigrationPlan {
 
 function describe(value: unknown): string {
   if (value === undefined || value === null) return '';
-  if (Array.isArray(value)) return `${value.length} column(s)`;
+  if (Array.isArray(value)) {
+    const columns = value as KanbanColumnDef[];
+    return `${columns.length} column(s): ${columns.map(column => [
+      `${column.name} [${column.id}]`,
+      column.dropStatusId ? `drop status: ${column.dropStatusId}` : '',
+      column.color ? `color: ${column.color}` : '',
+    ].filter(Boolean).join(', ')).join(' → ')}`;
+  }
   return String(value);
+}
+
+/**
+ * Compare structured values without letting object key insertion order create a
+ * false conflict.  Kanban columns are ordered, so array order remains part of
+ * the identity while each column's keys are normalized before comparison.
+ */
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
+function equivalent(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+  }
+  return a === b;
 }
 
 /**
@@ -115,8 +146,8 @@ export function planNestedProjectMigration(
   const conflicts: FieldConflict[] = [];
 
   const pairs: Array<[FieldConflict['field'], unknown, unknown]> = [
-    // The Workspace always has a name, so this one is always a contest — surfaced
-    // rather than resolved, because "My Workspace" vs "股票交易" is the owner's call.
+    // Preserve distinct existing names as a record-local migration decision.
+    // Example names are test data, not product requirements or framework gates.
     ['name', workspace.name, project.name],
     ['description', workspace.description, project.description],
     ['color', workspace.color, project.color],
@@ -131,7 +162,10 @@ export function planNestedProjectMigration(
     // Both sides agreeing is not a conflict and not a change — there is nothing to
     // decide and nothing to write. Reporting it either way would make a plan that
     // needs no owner input look like one that does.
-    if (existing === incoming) continue;
+    // A Kanban array's length is not its identity. Two layouts with two
+    // columns can still have different ids, labels, order, drop statuses or
+    // colours; only structurally equivalent arrays are conflict-free.
+    if (equivalent(wsValue, pjValue)) continue;
     if (existing) conflicts.push({ field, workspaceValue: existing, projectValue: incoming });
     else merges.push({ field, value: incoming });
   }

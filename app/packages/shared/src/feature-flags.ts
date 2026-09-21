@@ -59,6 +59,15 @@ export function isEmbeddedServerEnabled(): boolean {
   return false;
 }
 
+/**
+ * Fleet does not publish Pages to a hosted service (PRODUCT, R2).
+ * Kept for wire compatibility; an inherited environment flag cannot override
+ * this product boundary. Explicit cleanup of old publications remains available.
+ */
+export function isPagesSharingEnabled(): boolean {
+  return false;
+}
+
 export const FEATURE_FLAGS = {
   /** Enable Opus 4.7 fast mode (speed:"fast" + beta header). 6x pricing. */
   fastMode: false,
@@ -86,5 +95,11 @@ export const FEATURE_FLAGS = {
    */
   get embeddedServer(): boolean {
     return isEmbeddedServerEnabled();
+  },
+  /**
+   * Hosted publication is not a Fleet capability. Legacy cleanup only.
+   */
+  get pagesSharing(): boolean {
+    return isPagesSharingEnabled();
   },
 } as const;

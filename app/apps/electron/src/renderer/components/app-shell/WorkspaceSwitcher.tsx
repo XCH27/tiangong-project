@@ -24,6 +24,7 @@ import { useTransportConnectionState } from "@/hooks/useTransportConnectionState
 import type { Workspace } from "../../../shared/types"
 
 interface WorkspaceSwitcherProps {
+  trigger?: React.ReactElement
   variant?: 'sidebar' | 'topbar'
   isCollapsed?: boolean
   workspaces: Workspace[]
@@ -44,6 +45,7 @@ interface WorkspaceSwitcherProps {
  * - topbar: center top-bar selector trigger
  */
 export function WorkspaceSwitcher({
+  trigger,
   variant = 'sidebar',
   isCollapsed = false,
   workspaces,
@@ -189,7 +191,7 @@ export function WorkspaceSwitcher({
 
       <DropdownMenu onOpenChange={(open) => { if (open) checkRemoteHealth() }}>
         <DropdownMenuTrigger asChild>
-          {variant === 'topbar' ? (
+          {trigger ?? (variant === 'topbar' ? (
             <button
               type="button"
               data-workspace-switcher="topbar"
@@ -243,7 +245,7 @@ export function WorkspaceSwitcher({
                 </>
               )}
             </button>
-          )}
+          ))}
         </DropdownMenuTrigger>
 
         <StyledDropdownMenuContent

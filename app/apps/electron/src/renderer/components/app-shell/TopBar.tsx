@@ -27,15 +27,16 @@ import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
 import { openLocalDoc } from "@/lib/open-local-doc"
 import { AppMenu } from "../AppMenu"
+import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
 const RIGHT_SLOT_TWO_BADGES_THRESHOLD = 300
 
 interface TopBarProps {
+  onToggleTools?: () => void
   workspaces: Workspace[]
   activeWorkspaceId: string | null
   onSelectWorkspace: (workspaceId: string, openInNewWindow?: boolean) => void | Promise<void>
@@ -62,6 +63,7 @@ interface TopBarProps {
 }
 
 export function TopBar({
+  onToggleTools,
   workspaces,
   activeWorkspaceId,
   onSelectWorkspace,
@@ -86,6 +88,7 @@ export function TopBar({
   isCompact,
 }: TopBarProps) {
   const { t } = useTranslation()
+  const appShell = useOptionalAppShellContext()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
 
@@ -207,18 +210,7 @@ export function TopBar({
                 workspaceUnreadMap={workspaceUnreadMap}
                 onOpenRemoteSettings={() => onOpenSettingsSubpage('server')}
               />
-            ) : (
-              <WorkspaceSwitcher
-                variant="topbar"
-                workspaces={workspaces}
-                activeWorkspaceId={activeWorkspaceId}
-                onSelect={onSelectWorkspace}
-                onWorkspaceCreated={onWorkspaceCreated}
-                onWorkspaceRemoved={onWorkspaceRemoved}
-                workspaceUnreadMap={workspaceUnreadMap}
-                onOpenRemoteSettings={() => onOpenSettingsSubpage('server')}
-              />
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -226,6 +218,9 @@ export function TopBar({
       {/* === RIGHT: Browser strip + add + help === */}
       {!isCompact && (
       <div ref={rightSlotRef} className="flex min-w-0 shrink-0 items-center justify-end gap-1" style={{ paddingRight: 12 }}>
+        {onToggleTools && <Tooltip><TooltipTrigger asChild>
+          <TopBarButton onClick={onToggleTools} aria-label={t('settings.tools.title')}><Icons.PanelRight className="h-4 w-4 text-foreground/50" /></TopBarButton>
+        </TooltipTrigger><TooltipContent>{t('settings.tools.title')}</TooltipContent></Tooltip>}
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
@@ -255,32 +250,32 @@ export function TopBar({
             </TopBarButton>
           </DropdownMenuTrigger>
           <StyledDropdownMenuContent align="end" minWidth="min-w-48">
-            <StyledDropdownMenuItem onClick={() => void openLocalDoc('sources')}>
+            <StyledDropdownMenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('sources', appShell.onOpenFile)}>
               <Icons.DatabaseZap className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.sources")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => void openLocalDoc('skills')}>
+            <StyledDropdownMenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('skills', appShell.onOpenFile)}>
               <Icons.Zap className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.skills")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => void openLocalDoc('statuses')}>
+            <StyledDropdownMenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('statuses', appShell.onOpenFile)}>
               <Icons.CheckCircle2 className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.statuses")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => void openLocalDoc('permissions')}>
+            <StyledDropdownMenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('permissions', appShell.onOpenFile)}>
               <Icons.Settings className="h-3.5 w-3.5" />
               <span className="flex-1">{t("settings.permissions.title")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => void openLocalDoc('automations')}>
+            <StyledDropdownMenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('automations', appShell.onOpenFile)}>
               <Icons.Webhook className="h-3.5 w-3.5" />
               <span className="flex-1">{t("sidebar.automations")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
             </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => void openLocalDoc('messaging')}>
+            <StyledDropdownMenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('messaging', appShell.onOpenFile)}>
               <Icons.MessageSquare className="h-3.5 w-3.5" />
               <span className="flex-1">{t("settings.messaging.title")}</span>
               <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
@@ -288,7 +283,7 @@ export function TopBar({
             <StyledDropdownMenuSeparator />
             <StyledDropdownMenuItem onClick={() => {
               void window.electronAPI.getHomeDir().then((home) =>
-                window.electronAPI.openFile(`${home}/.craft-agent/docs/INDEX.md`))
+                appShell?.onOpenFile(`${home}/.craft-agent/docs/INDEX.md`))
             }}>
               <Icons.ExternalLink className="h-3.5 w-3.5" />
               <span className="flex-1">{t("menu.allDocumentation")}</span>

@@ -18,6 +18,7 @@ import {
   type MobileMenuRow,
 } from './mobile-menu-pages'
 import type { AppMenuProps } from './types'
+import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
 const SNAPPY_SPRING = { type: 'spring' as const, stiffness: 400, damping: 36, mass: 0.8 }
 const BACKDROP_FADE = { duration: 0.18 }
@@ -98,6 +99,7 @@ function affordanceFor(action: MobileMenuRow['action']): MobileMenuItemAffordanc
  */
 export function MobileAppMenu(props: AppMenuProps) {
   const { t } = useTranslation()
+  const appShell = useOptionalAppShellContext()
   const [state, dispatch] = useReducer(stackReducer, INITIAL_STATE)
   const [isDebugMode, setIsDebugMode] = useState(false)
 
@@ -162,7 +164,7 @@ export function MobileAppMenu(props: AppMenuProps) {
       case 'url':
         if (row.action.url.startsWith('fleet-local://')) {
           void window.electronAPI.getHomeDir().then((home) => {
-            window.electronAPI.openFile(`${home}/.craft-agent/docs/INDEX.md`)
+            appShell?.onOpenFile(`${home}/.craft-agent/docs/INDEX.md`)
           })
         } else {
           window.electronAPI.openUrl(row.action.url)

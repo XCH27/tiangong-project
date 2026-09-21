@@ -8,13 +8,16 @@ bun test --isolate \
   --path-ignore-patterns='**/dist/**' \
   apps packages
 
+isolated_test_list=$(mktemp "${TMPDIR:-/tmp}/fleet-isolated-tests.XXXXXX")
+trap 'rm -f "$isolated_test_list"' EXIT
+
+# Keep the isolated test list NUL-delimited and run each entry in its own
+# process. The temporary list is removed on either success or failure.
+find apps packages -type f \( -name '*.isolated.ts' -o -name '*.isolated.tsx' \) \
+  -not -path '*/node_modules/*' \
+  -not -path '*/dist/*' \
+  -print0 > "$isolated_test_list"
+
 while IFS= read -r -d '' isolated_test; do
   bun test "./$isolated_test"
-done < <(
-  # .tsx too: a component test that stubs a module barrel needs the same isolation,
-  # because bun's module mocks are global for the whole run.
-  find apps packages -type f \( -name '*.isolated.ts' -o -name '*.isolated.tsx' \) \
-    -not -path '*/node_modules/*' \
-    -not -path '*/dist/*' \
-    -print0
-)
+done < "$isolated_test_list"

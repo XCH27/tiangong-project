@@ -1,7 +1,6 @@
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { pushTyped, type RpcServer, type RequestContext } from '@craft-agent/server-core/transport'
-import { narrowPermissionMode } from '@craft-agent/shared/agent/mode-types'
 import type { HandlerDeps } from '../handler-deps'
 import type { WearAsk } from '@craft-agent/shared/assistants'
 
@@ -38,8 +37,9 @@ export function registerAssistantsHandlers(server: RpcServer, deps: HandlerDeps)
 
   server.handle(RPC_CHANNELS.assistants.WORN, async (ctx, workspaceId: string, sessionId: string) => {
     const workspace = resolveWorkspace(ctx, workspaceId)
-    const { assistantWornBy } = await import('@craft-agent/shared/assistants')
-    return assistantWornBy(workspace.rootPath, sessionId)
+    const session = await deps.sessionManager.getSession(sessionId)
+    if (!session || session.workspaceId !== workspace.id) throw new Error('Session not found in this workspace')
+    return session.assistantId ?? null
   })
 
   server.handle(
@@ -61,44 +61,10 @@ export function registerAssistantsHandlers(server: RpcServer, deps: HandlerDeps)
     RPC_CHANNELS.assistants.WEAR,
     async (ctx, workspaceId: string, sessionId: string, assistantId: string, asked: WearAsk) => {
       const workspace = resolveWorkspace(ctx, workspaceId)
-      const { applyWear, getAssistant } = await import('@craft-agent/shared/assistants')
-      const { updateSessionMetadata } = await import('@craft-agent/shared/sessions')
-      const result = applyWear(workspace.rootPath, sessionId, assistantId, asked)
-
-      if (result.decision.applied && result.decision.wearer === 'session') {
-        await updateSessionMetadata(workspace.rootPath, sessionId, { assistantId })
-      }
-
-      let delegateSessionId: string | undefined
-      if (result.decision.applied && result.decision.wearer === 'delegate') {
-        const assistant = getAssistant(workspace.rootPath, assistantId)
-        const permissionValue = assistant?.loadout.permissionMode
-        const requestedMode =
-          permissionValue?.mode === 'fixed' &&
-          (permissionValue.value === 'safe' || permissionValue.value === 'ask' || permissionValue.value === 'allow-all')
-            ? permissionValue.value
-            : undefined
-        // A loadout asks; it never grants. The delegate can only be narrower than
-        // the session that delegated to it.
-        const parentSession = await deps.sessionManager.getSession(sessionId)
-        const permissionMode = parentSession?.permissionMode
-          ? narrowPermissionMode(parentSession.permissionMode, requestedMode)
-          : requestedMode
-        const child = await deps.sessionManager.createSession(workspace.id, {
-          name: assistant?.name ?? assistantId,
-          parentSessionId: sessionId,
-          assistantId,
-          permissionMode,
-          model: assistant?.loadout.model.mode === 'fixed' ? assistant.loadout.model.value : undefined,
-        })
-        const { applyWear: wearChild } = await import('@craft-agent/shared/assistants')
-        wearChild(workspace.rootPath, child.id, assistantId, 'apply')
-        await updateSessionMetadata(workspace.rootPath, child.id, { assistantId })
-        delegateSessionId = child.id
-      }
+      const result = await deps.sessionManager.wearAssistant(workspace.id, sessionId, assistantId, asked)
 
       pushTyped(server, RPC_CHANNELS.assistants.CHANGED, { to: 'workspace', workspaceId: workspace.id }, workspace.id)
-      return { ...result, delegateSessionId }
+      return result
     },
   )
 }

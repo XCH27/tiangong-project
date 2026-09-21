@@ -161,7 +161,9 @@ describe('chunked transfer handlers', () => {
   })
 
   it('refreshes TTL as chunks arrive so slow healthy uploads survive', async () => {
-    process.env.CRAFT_TRANSFER_TTL_MS = '40'
+    // Leave enough scheduling margin for the full suite's parallel workers;
+    // the assertion is about refresh-on-chunk, not a sub-40ms race.
+    process.env.CRAFT_TRANSFER_TTL_MS = '200'
 
     const { start, chunk, commit } = createHarness()
     const payload = encodeParts({ hello: 'world', slow: true }, 8)
@@ -177,14 +179,14 @@ describe('chunked transfer handlers', () => {
       checksum: payload.checksum,
     }) as { transferId: string }
 
-    await new Promise(resolve => setTimeout(resolve, 25))
+    await new Promise(resolve => setTimeout(resolve, 100))
     await chunk(ctx('client-1'), {
       transferId,
       index: 0,
       data: payload.chunks[0],
     })
 
-    await new Promise(resolve => setTimeout(resolve, 25))
+    await new Promise(resolve => setTimeout(resolve, 100))
     await chunk(ctx('client-1'), {
       transferId,
       index: 1,

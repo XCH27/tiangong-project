@@ -37,8 +37,8 @@ import {
   Columns2,
   Copy,
   Download,
-  Flag,
-  FlagOff,
+  Pin,
+  PinOff,
   FolderOpen,
   MailOpen,
   MessageSquare,
@@ -448,9 +448,9 @@ function RootPane({
       )}
 
       {!isFlagged ? (
-        <Row icon={<Flag className="h-4 w-4 text-info" />} label={t('sessionMenu.flag')} onTap={onFlag} />
+        <Row icon={<Pin className="h-4 w-4 text-info" />} label={t('sessionMenu.flag')} onTap={onFlag} />
       ) : (
-        <Row icon={<FlagOff className="h-4 w-4" />} label={t('sessionMenu.unflag')} onTap={onUnflag} />
+        <Row icon={<PinOff className="h-4 w-4" />} label={t('sessionMenu.unflag')} onTap={onUnflag} />
       )}
 
       {!isArchived ? (

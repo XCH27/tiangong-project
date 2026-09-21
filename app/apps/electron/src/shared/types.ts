@@ -947,6 +947,8 @@ export type WhatsAppUiEvent =
  */
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
+  | { type: 'browser' }
+  | { type: 'notes' }
   | { type: 'history' }
   | { type: 'none' }
 

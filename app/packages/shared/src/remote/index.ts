@@ -13,3 +13,4 @@ export * from './mint-ledger.ts';
 export * from './reachability.ts';
 export * from './endpoint-race.ts';
 export * from './run-targets.ts';
+export * from './peers.ts';

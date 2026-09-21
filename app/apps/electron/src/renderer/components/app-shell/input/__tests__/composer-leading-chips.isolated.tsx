@@ -46,25 +46,28 @@ function targets(options?: { online?: boolean; sessions?: number; noProject?: bo
   )
 }
 
-test('no chip when this computer is the only option', () => {
+test('the chip is present even before anything is paired', () => {
+  // It is the only place a person finds out another computer is possible, so it
+  // must not disappear in exactly the state where that is news.
   const html = renderToStaticMarkup(
     <RunTargetSelector
       targets={buildRunTargets([{ id: 'l1', name: 'Local' }], { localName: 'This computer' })}
       activeWorkspaceId="l1"
-      onSelectWorkspace={() => {}}
+      onSelectWorkspace={() => {}} onAddRemote={() => {}}
     />,
   )
-  expect(html).toBe('')
+  expect(html).not.toBe('')
+  expect(html).toContain('This computer')
 })
 
 test('the chip names the computer the active Workspace lives on', () => {
   const remote = renderToStaticMarkup(
-    <RunTargetSelector targets={targets()} activeWorkspaceId="r1" onSelectWorkspace={() => {}} isExpanded />,
+    <RunTargetSelector targets={targets()} activeWorkspaceId="r1" onSelectWorkspace={() => {}} onAddRemote={() => {}} isExpanded />,
   )
   expect(remote).toContain('Studio Mac')
 
   const local = renderToStaticMarkup(
-    <RunTargetSelector targets={targets()} activeWorkspaceId="l1" onSelectWorkspace={() => {}} isExpanded />,
+    <RunTargetSelector targets={targets()} activeWorkspaceId="l1" onSelectWorkspace={() => {}} onAddRemote={() => {}} isExpanded />,
   )
   expect(local).toContain('This computer')
   expect(local).not.toContain('Studio Mac')

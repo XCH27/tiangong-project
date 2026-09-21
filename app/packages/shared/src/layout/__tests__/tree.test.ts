@@ -42,7 +42,6 @@ describe('the default layout', () => {
       'nav-sidebar',
       'navigator',
       'main',
-      'workbench',
     ])
   })
 })
@@ -51,7 +50,7 @@ describe('validation', () => {
   it('requires exactly one main pane', () => {
     const layout = createDefaultLayout()
     const root = layout.content as SplitNode
-    root.children[2]!.node = { type: 'pane', id: 'main2', panelKind: 'main' }
+    root.children[0]!.node = { type: 'pane', id: 'main2', panelKind: 'main' }
     expect(validateLayout(layout)).toMatchObject({ ok: false })
   })
 
@@ -72,7 +71,7 @@ describe('validation', () => {
   it('rejects duplicate node ids anywhere in the layout', () => {
     const layout = createDefaultLayout()
     const root = layout.content as SplitNode
-    root.children[2]!.node.id = 'navigator'
+    root.children[1]!.node.id = 'navigator'
     expect(validateLayout(layout)).toMatchObject({ ok: false, reason: expect.stringContaining('duplicate') })
   })
 
@@ -111,7 +110,7 @@ describe('validation', () => {
 
   it('accepts an unregistered panel kind — an uninstalled surface is not an illegal tree', () => {
     const layout = createDefaultLayout()
-    ;((layout.content as SplitNode).children[2]!.node as PaneNode).panelKind = 'surface:canvas'
+    ;((layout.content as SplitNode).children[0]!.node as PaneNode).panelKind = 'ghost:plugin'
     expect(validateLayout(layout)).toEqual({ ok: true })
   })
 })
@@ -145,10 +144,10 @@ describe('coercion', () => {
 describe('operations', () => {
   it('collapses a pane and leaves the input untouched', () => {
     const layout = createDefaultLayout()
-    const result = setPaneCollapsed(layout, 'workbench', true)
+    const result = setPaneCollapsed(layout, 'navigator', true)
     expect(result.applied).toBe(true)
-    expect(findPaneById(result.layout, 'workbench')?.collapsed).toBe(true)
-    expect(findPaneById(layout, 'workbench')?.collapsed).toBeUndefined()
+    expect(findPaneById(result.layout, 'navigator')?.collapsed).toBe(true)
+    expect(findPaneById(layout, 'navigator')?.collapsed).toBeUndefined()
   })
 
   it('refuses to collapse the main pane and returns the original by reference', () => {
@@ -195,31 +194,31 @@ describe('operations', () => {
 
   it('docks a new surface without disturbing the invariants', () => {
     const layout = createDefaultLayout()
-    const result = insertRootSplitPane(layout, { id: 'canvas', panelKind: 'surface:canvas' }, 0.3)
+    const result = insertRootSplitPane(layout, { id: 'docs', panelKind: 'surface:documents' }, 0.3)
     expect(result.applied).toBe(true)
-    expect(countPanelKind(result.layout, 'surface:canvas')).toBe(1)
+    expect(countPanelKind(result.layout, 'surface:documents')).toBe(1)
     expect(countPanelKind(result.layout, 'main')).toBe(1)
     expect(sum(result.layout)).toBeCloseTo(1, 10)
   })
 
   it('clamps an absurd share for a newly docked surface', () => {
-    const result = insertRootSplitPane(createDefaultLayout(), { id: 'c', panelKind: 'surface:canvas' }, 5)
+    const result = insertRootSplitPane(createDefaultLayout(), { id: 'c', panelKind: 'surface:documents' }, 5)
     expect(result.applied).toBe(true)
-    const ref = findSplitChildByPanelKind(result.layout, 'surface:canvas')
+    const ref = findSplitChildByPanelKind(result.layout, 'surface:documents')
     expect(ref!.fraction).toBeLessThanOrEqual(0.8)
     expect(ref!.fraction).toBeGreaterThanOrEqual(MIN_SPLIT_CHILD_FRACTION)
   })
 
   it('refuses to dock a pane whose id is already taken', () => {
-    const result = insertRootSplitPane(createDefaultLayout(), { id: 'main', panelKind: 'surface:canvas' })
+    const result = insertRootSplitPane(createDefaultLayout(), { id: 'main', panelKind: 'surface:documents' })
     expect(result.applied).toBe(false)
   })
 
   it('undocks a surface by kind', () => {
-    const docked = insertRootSplitPane(createDefaultLayout(), { id: 'c', panelKind: 'surface:canvas' })
-    const result = removeRootSplitPaneByKind(docked.layout, 'surface:canvas')
+    const docked = insertRootSplitPane(createDefaultLayout(), { id: 'docs', panelKind: 'surface:documents' }, 0.3)
+    const result = removeRootSplitPaneByKind(docked.layout, 'surface:documents')
     expect(result.applied).toBe(true)
-    expect(countPanelKind(result.layout, 'surface:canvas')).toBe(0)
+    expect(countPanelKind(result.layout, 'surface:documents')).toBe(0)
     expect(sum(result.layout)).toBeCloseTo(1, 10)
   })
 
@@ -232,6 +231,7 @@ describe('operations', () => {
     const layout = createDefaultLayout()
     const root = layout.content as SplitNode
     root.children.reverse()
-    expect(findSplitChildByPanelKind(layout, 'workbench')?.childIndex).toBe(0)
+    expect(findSplitChildByPanelKind(layout, 'main')?.childIndex).toBe(0)
+    expect(findSplitChildByPanelKind(layout, 'navigator')?.childIndex).toBe(1)
   })
 })

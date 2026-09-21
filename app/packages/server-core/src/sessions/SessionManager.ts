@@ -93,6 +93,7 @@ import { type Session, type SessionEvent, type FileAttachment, type SendMessageO
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta, type TokenUsage } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
+import { getAssistant, proposeWear, resolveAssistantPermission, type WearAsk, type WearDecision } from '@craft-agent/shared/assistants'
 import { invalidateContextFileCache } from '@craft-agent/shared/prompts/system'
 import { getToolIconsDir, getMiniModel } from '@craft-agent/shared/config'
 import { getDefaultSummarizationModel } from '@craft-agent/shared/config/models'
@@ -776,6 +777,7 @@ interface ManagedSession {
   labels?: string[]
   // Workspace-scoped project binding (undefined = unbound)
   projectId?: string
+  assistantId?: string
   // Parent session id — when set, this session is a subtask of the parent (undefined = top-level task)
   parentSessionId?: string
   // Kanban board column id ('todo' | 'in-progress' | 'done'); independent of sessionStatus
@@ -2558,9 +2560,15 @@ export class SessionManager implements ISessionManager {
     const globalDefaults = loadConfigDefaults()
 
     // Read permission mode from workspace config, fallback to global defaults
-    const defaultPermissionMode = options?.permissionMode
+    let defaultPermissionMode = options?.permissionMode
       ?? wsConfig?.defaults?.permissionMode
       ?? globalDefaults.workspaceDefaults.permissionMode
+
+    if (options?.assistantId) {
+      const assistant = getAssistant(workspaceRootPath, options.assistantId)
+      if (!assistant) throw new Error('Assistant not found in this workspace')
+      defaultPermissionMode = resolveAssistantPermission(assistant, defaultPermissionMode)
+    }
 
     const userDefaultWorkingDir = wsConfig?.defaults?.workingDirectory || undefined
     // Resolve thinking level with caller-first precedence, matching permissionMode above:
@@ -2848,6 +2856,7 @@ export class SessionManager implements ISessionManager {
       isFlagged: options?.isFlagged,
       projectId: resolvedProjectId,
       parentSessionId: options?.parentSessionId,
+      assistantId: options?.assistantId,
       taskSlug: options?.taskSlug,
       taskRunId: options?.taskRunId,
       taskNodeId: options?.taskNodeId,
@@ -7072,6 +7081,37 @@ export class SessionManager implements ISessionManager {
       const watcher = this.configWatchers.get(managed.workspace.rootPath)
       watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
     }
+  }
+
+  /** Identity binding uses the same in-memory Session and journal writer as every other mutation. */
+  async wearAssistant(workspaceId: string, sessionId: string, assistantId: string, asked: WearAsk): Promise<{ decision: WearDecision; delegateSessionId?: string }> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed || managed.workspace.id !== workspaceId) throw new Error('Session not found in this workspace')
+    if (managed.isProcessing) throw new Error('Session is processing; apply an assistant after the turn finishes')
+    const assistant = getAssistant(managed.workspace.rootPath, assistantId)
+    if (!assistant) throw new Error('Assistant not found in this workspace')
+    if (asked === 'cli') throw new Error('Assistant CLI wrapping is not implemented')
+    const decision = proposeWear({ currentAssistantId: managed.assistantId ?? null, requestedAssistantId: assistantId, asked })
+    if (!decision.applied) {
+      await this.flushSession(sessionId)
+      return { decision }
+    }
+    const permissionMode = resolveAssistantPermission(assistant, managed.permissionMode ?? 'safe')
+    if (decision.wearer === 'delegate') {
+      const child = await this.createSession(workspaceId, {
+        name: assistant.name, parentSessionId: sessionId, assistantId,
+        permissionMode, workingDirectory: managed.workingDirectory,
+        model: managed.model, llmConnection: managed.llmConnection,
+      })
+      return { decision, delegateSessionId: child.id }
+    }
+    managed.assistantId = assistantId
+    if (permissionMode !== managed.permissionMode) this.setSessionPermissionMode(sessionId, permissionMode)
+    this.setMetadataWriteGuard(managed)
+    this.persistSession(managed)
+    await this.flushSession(sessionId)
+    this.sendEvent({ type: 'session_metadata_changed', sessionId, changes: { assistantId } }, workspaceId)
+    return { decision }
   }
 
   /**

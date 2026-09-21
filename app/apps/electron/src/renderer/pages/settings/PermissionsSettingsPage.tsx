@@ -132,7 +132,7 @@ function buildCustomPermissionsData(config: PermissionsConfigFile, fallbackLabel
 
 export default function PermissionsSettingsPage() {
   const { t } = useTranslation()
-  const { activeWorkspaceId } = useAppShellContext()
+  const { activeWorkspaceId, onOpenFile } = useAppShellContext()
   const activeWorkspace = useActiveWorkspace()
 
   // Loading and data state
@@ -228,7 +228,7 @@ export default function PermissionsSettingsPage() {
                         <p>
                           <button
                             type="button"
-                            onClick={() => void openLocalDoc('permissions')}
+                            onClick={() => void openLocalDoc('permissions', onOpenFile)}
                             className="text-foreground/70 hover:text-foreground underline underline-offset-2"
                           >
                             {t("common.learnMore")}

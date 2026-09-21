@@ -9,7 +9,7 @@ import { getLocalDocPath, type DocFeature } from '@craft-agent/shared/docs/doc-l
  * affordance reads the local file instead. It is also the text the agent is pointed
  * at when it has to explain a surface, so the person and the agent read one source.
  */
-export async function openLocalDoc(feature: DocFeature): Promise<void> {
+export async function openLocalDoc(feature: DocFeature, onOpenFile: (path: string) => void): Promise<void> {
   const home = await window.electronAPI.getHomeDir()
-  await window.electronAPI.openFile(`${home}/.craft-agent/${getLocalDocPath(feature)}`)
+  onOpenFile(`${home}/.craft-agent/${getLocalDocPath(feature)}`)
 }

@@ -5,6 +5,8 @@ import { tmpdir } from 'os'
 import { exportResources, importResources, validateResourceBundle } from '../resource-bundle'
 import type { ResourceBundle, SourceBundleEntry, SkillBundleEntry, AutomationBundleEntry } from '../types'
 import type { FolderSourceConfig } from '../../sources/types'
+import { isSourceUsable } from '../../sources/storage'
+import type { LoadedSource } from '../../sources/types'
 import type { AutomationMatcher } from '../../automations/types'
 
 // ============================================================
@@ -41,6 +43,10 @@ function createTestSource(wsDir: string, slug: string, config?: Partial<FolderSo
 
   writeFileSync(join(sourceDir, 'config.json'), JSON.stringify(defaultConfig, null, 2))
   writeFileSync(join(sourceDir, 'guide.md'), `# ${slug}\n\nUsage guide.`)
+}
+
+function bundleSourceIsUsable(entry: SourceBundleEntry): boolean {
+  return isSourceUsable({ config: entry.config } as LoadedSource)
 }
 
 function createTestSkill(wsDir: string, slug: string, extraFiles?: Record<string, string>): void {
@@ -138,7 +144,7 @@ describe('resource-bundle', () => {
       const source = bundle.resources.sources![0]!
       expect(source.slug).toBe('github')
       // Auth state should be reset
-      expect(source.config.isAuthenticated).toBe(false)
+      expect(bundleSourceIsUsable(source)).toBe(false)
       expect(source.config.connectionStatus).toBe('needs_auth')
       expect(source.config.connectionError).toBeUndefined()
       expect(source.config.lastTestedAt).toBeUndefined()

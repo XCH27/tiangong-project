@@ -122,7 +122,14 @@ function groupSessionsByDate(sessions: SessionMeta[]): DateGroup[] {
     }))
 }
 
+/** Stable list ordering used before grouping and pagination. */
+export function compareSessionsForDisplay(a: SessionMeta, b: SessionMeta): number {
+  if (!!a.isFlagged !== !!b.isFlagged) return a.isFlagged ? -1 : 1
+  return (b.lastMessageAt || 0) - (a.lastMessageAt || 0)
+}
+
 function getCollapseGroupKey(item: SessionMeta, groupingMode?: 'date' | 'status' | 'unread' | 'project'): string {
+  if (item.isFlagged) return 'pinned'
   if (groupingMode === 'status') return `status-${getSessionStatus(item)}`
   if (groupingMode === 'unread') return item.hasUnread ? 'unread-yes' : 'unread-no'
   if (groupingMode === 'project') return `project-${(item as { projectId?: string }).projectId ?? '__none__'}`
@@ -163,7 +170,7 @@ export function computeCollapsedPagination(
   }
 
   const effectiveCollapsedKeys = new Set(
-    Array.from(collapsedGroups).filter(key => groupKeysInView.has(key))
+    Array.from(collapsedGroups).filter(key => key !== 'pinned' && groupKeysInView.has(key))
   )
 
   if (effectiveCollapsedKeys.size === 0) {
@@ -390,9 +397,11 @@ export function useSessionSearch({
   // Filter out hidden sessions before any processing
   const visibleItems = useMemo(() => items.filter(item => !item.hidden), [items])
 
-  // Sort by most recent activity first
+  // Pinned sessions form the stable first tier; recent activity orders each
+  // tier. This keeps pinning meaningful even when the default date grouping is
+  // active, while preserving the existing recency ordering for everything else.
   const sortedItems = useMemo(() =>
-    [...visibleItems].sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0)),
+    [...visibleItems].sort(compareSessionsForDisplay),
     [visibleItems]
   )
 

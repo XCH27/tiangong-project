@@ -57,6 +57,7 @@ export const SESSION_PERSISTENT_FIELDS = [
   'projectId',
   // Kanban: task/subtask hierarchy + board column
   'parentSessionId',
+  'assistantId',
   'kanbanColumn',
   // Tasks Conductor: link a session back to the task spec / run / DAG node that owns it
   'taskSlug',
@@ -212,6 +213,8 @@ export interface SessionConfig {
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */
   parentSessionId?: string;
+  /** Assistant identity this session wears. Delegates wear their own. */
+  assistantId?: string;
   /** Kanban board column id ('todo' | 'in-progress' | 'done'). Drag-to-move target; independent of sessionStatus. */
   kanbanColumn?: string;
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */
@@ -319,6 +322,8 @@ export interface SessionHeader {
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */
   parentSessionId?: string;
+  /** Assistant identity this session wears. Delegates wear their own. */
+  assistantId?: string;
   /** Kanban board column id ('todo' | 'in-progress' | 'done'). Drag-to-move target; independent of sessionStatus. */
   kanbanColumn?: string;
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */
@@ -415,6 +420,8 @@ export interface SessionMetadata {
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */
   parentSessionId?: string;
+  /** Assistant identity this session wears. Delegates wear their own. */
+  assistantId?: string;
   /** Kanban board column id ('todo' | 'in-progress' | 'done'). Drag-to-move target; independent of sessionStatus. */
   kanbanColumn?: string;
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */

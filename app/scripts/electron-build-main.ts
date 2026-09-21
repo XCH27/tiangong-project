@@ -44,9 +44,7 @@ function loadEnvFile(): void {
   }
 }
 
-// Get build-time defines for esbuild (OAuth, Sentry DSN, etc.)
-// NOTE: Sentry source map upload is intentionally disabled for the main process.
-// To enable in the future, add @sentry/esbuild-plugin. See apps/electron/CLAUDE.md.
+// Get build-time defines for esbuild (OAuth and runtime classification).
 // NOTE: Google OAuth credentials are NOT baked into the build - users provide their own
 // via source config. See README_FOR_OSS.md for setup instructions.
 function getBuildDefines(): string[] {
@@ -55,7 +53,6 @@ function getBuildDefines(): string[] {
     "SLACK_OAUTH_CLIENT_SECRET",
     "MICROSOFT_OAUTH_CLIENT_ID",
     "MICROSOFT_OAUTH_CLIENT_SECRET",
-    "SENTRY_ELECTRON_INGEST_URL",
     "CRAFT_DEV_RUNTIME",
   ];
 
@@ -354,6 +351,7 @@ async function main(): Promise<void> {
       // Electron 39 ships Node 22.x which supports require() of ESM without TLA, so the
       // bundled main.cjs's `require('@anthropic-ai/claude-agent-sdk')` works.
       "--external:@anthropic-ai/claude-agent-sdk",
+      "--external:cpu-features",
       // Replace grammY's bundled polyfills (node-fetch@2 + abort-controller@3)
       // with native Node globals. esbuild otherwise renames the polyfill's
       // `class AbortSignal` to `_AbortSignal` to dodge collision with the

@@ -1,0 +1,307 @@
+> **Fleet local copy.** Downloaded for offline use by people and agents. Not fetched from Craft at runtime. Craft cloud features (online sharing, hosted accounts, official updater) are disabled in Fleet.
+> **本地副本。** 供人和 Agent 离线阅读，运行时不会访问 Craft 云。在线分享、官方更新等云能力已关闭。
+
+> ## Documentation Index
+> Fetch the complete documentation index at: https://agents.craft.do/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Overview
+
+> Connect to any REST API with flexible HTTP tools
+
+<Tip>
+  **Just ask your agent.** The easiest way to connect APIs is to tell your agent what you need:
+
+  * "Connect to the JSONPlaceholder API"
+  * "Add access to my company's internal API"
+  * "Set up the weather API with my API key"
+
+  The agent handles configuration, credentials, and validation automatically.
+</Tip>
+
+API sources provide a flexible HTTP tool that lets your agents connect to virtually any REST API. If a service has an API, your agent can use it - no MCP server required.
+
+## How It Works
+
+When you configure an API source, Craft Agents:
+
+1. **Creates** a flexible HTTP tool for making requests
+2. **Handles auth** by securely storing and injecting credentials
+3. **Validates** the connection using the test endpoint
+4. **Enables** the agent to make any request to the API's base URL
+
+The result: your agent can call any endpoint on the configured API.
+
+## Configuration
+
+API sources are configured with a JSON file:
+
+```json theme={null}
+{
+  "type": "api",
+  "name": "My API",
+  "tagline": "Description of the API",
+  "icon": "https://example.com/icon.png",
+  "api": {
+    "baseUrl": "https://api.example.com/",
+    "testEndpoint": {
+      "method": "GET",
+      "path": "health"
+    },
+    "authType": "bearer"
+  }
+}
+```
+
+### Configuration Fields
+
+| Field               | Required | Description                                                                                           |
+| ------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `type`              | Yes      | Must be `"api"`                                                                                       |
+| `name`              | Yes      | Display name for the source                                                                           |
+| `tagline`           | No       | Short description                                                                                     |
+| `icon`              | No       | Icon URL, emoji, or local file (auto-discovered: `icon.svg`, `icon.png`)                              |
+| `api.baseUrl`       | Yes      | Base URL for all API requests                                                                         |
+| `api.testEndpoint`  | No       | Object to verify connection: `{ method: "GET" \| "POST", path: "endpoint", body?: {}, headers?: {} }` |
+| `api.authType`      | Yes      | Authentication type (see below)                                                                       |
+| `api.headerName`    | No       | Custom header name for `header` auth type                                                             |
+| `api.queryParam`    | No       | Query parameter name for `query` auth type                                                            |
+| `api.authScheme`    | No       | Bearer token prefix for `bearer` auth (default: `"Bearer"`, can be `"Token"`)                         |
+| `api.headerNames`   | No       | Array of header names for multi-header auth (e.g., `["DD-API-KEY", "DD-APPLICATION-KEY"]`)            |
+| `api.oauth`         | No       | Generic OAuth 2.0 config block (see OAuth 2.0 section below)                                          |
+| `api.renewEndpoint` | No       | Optional token renewal config for non-OAuth bearer APIs (see Token Renewal section below)             |
+
+## Authentication Types
+
+API sources support six authentication methods:
+
+### Bearer Token
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "bearer"
+  }
+}
+```
+
+Sends credentials as `Authorization: Bearer {token}`.
+
+### Header Authentication
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "header",
+    "headerName": "X-API-Key"
+  }
+}
+```
+
+Sends credentials in a custom header: `X-API-Key: {token}`.
+
+### Query Parameter Authentication
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "query",
+    "queryParam": "api_key"
+  }
+}
+```
+
+Appends credentials as a query parameter: `?api_key={token}`.
+
+### OAuth 2.0
+
+Two modes: **auto-discovery** (simplest) and **explicit config** (for providers without standard metadata).
+
+#### Auto-discovery (recommended)
+
+If the API supports [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) (OAuth Protected Resource Metadata), just set `authType` — endpoints and client registration are handled automatically:
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://connect.craft.do/my/api/v1/",
+    "authType": "oauth"
+  }
+}
+```
+
+Craft Agents will hit the base URL, read the `WWW-Authenticate` header, discover OAuth metadata, dynamically register a client, and start the authorization flow. No `oauth` config block needed.
+
+#### Explicit config
+
+For providers that don't expose standard OAuth metadata (e.g. GitHub, Linear), provide the endpoints manually:
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.github.com/",
+    "authType": "oauth",
+    "oauth": {
+      "authorizationUrl": "https://github.com/login/oauth/authorize",
+      "tokenUrl": "https://github.com/login/oauth/access_token",
+      "clientId": "your_client_id",
+      "clientSecret": "your_client_secret",
+      "scopes": ["repo", "read:user"]
+    }
+  }
+}
+```
+
+| Field                    | Required | Description                                          |
+| ------------------------ | -------- | ---------------------------------------------------- |
+| `oauth.authorizationUrl` | Yes      | OAuth authorization endpoint                         |
+| `oauth.tokenUrl`         | Yes      | OAuth token exchange endpoint                        |
+| `oauth.clientId`         | Yes      | Your OAuth app's client ID                           |
+| `oauth.clientSecret`     | No       | Client secret (not required for public PKCE clients) |
+| `oauth.scopes`           | No       | Requested OAuth scopes                               |
+| `oauth.audience`         | No       | Auth0-style audience parameter                       |
+| `oauth.extraParams`      | No       | Additional authorization URL params                  |
+
+Full OAuth 2.0 flow with PKCE in both modes. Tokens are automatically refreshed and sent as `Authorization: Bearer {token}`.
+
+<Tip>
+  For Google, Microsoft, and Slack APIs, Craft Agents has built-in OAuth support with predefined scopes — you don't need to configure the `oauth` block manually. Just set the appropriate `provider` field.
+</Tip>
+
+### No Authentication
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "none"
+  }
+}
+```
+
+For public APIs that don't require authentication.
+
+### Basic Authentication
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "basic"
+  }
+}
+```
+
+Sends credentials as `Authorization: Basic {base64(username:password)}`.
+
+### Multi-Header Authentication
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "header",
+    "headerNames": ["X-API-KEY", "X-APP-KEY"]
+  }
+}
+```
+
+Sends multiple credentials as separate headers. Each header name in the array gets its own input field during authentication. All headers are included in every API request.
+
+<Tip>
+  Use multi-header authentication when an API requires two or more authentication headers simultaneously. This is common for services that separate identity from authorization, or require both an API key and an application secret.
+</Tip>
+
+**Common use cases:**
+
+* **Datadog**: `DD-API-KEY` + `DD-APPLICATION-KEY`
+* **APIs with identity + signing keys**: Separate API key and secret
+* **Services with app + user credentials**: Application key plus user token
+
+## Test Endpoint
+
+The `testEndpoint` field specifies an endpoint used to verify the connection works. When you test a source, Craft Agents makes a request to this endpoint to confirm:
+
+* The base URL is reachable
+* Authentication credentials are valid
+* The API responds correctly
+
+Common test endpoints:
+
+| API Type     | Test Endpoint      |
+| ------------ | ------------------ |
+| Health check | `/health`          |
+| User info    | `/me`, `/user`     |
+| API status   | `/status`, `/ping` |
+
+<Tip>
+  Choose a lightweight endpoint that requires authentication. This validates both connectivity and credentials in one request.
+</Tip>
+
+## Token Renewal (Optional)
+
+For bearer-token APIs that provide their own token renewal endpoint (not OAuth), you can configure automatic token refresh with the optional `renewEndpoint` field. When the token expires, Craft Agents calls this endpoint to get a fresh token — no manual re-authentication needed.
+
+```json theme={null}
+{
+  "api": {
+    "baseUrl": "https://api.example.com/",
+    "authType": "bearer",
+    "renewEndpoint": {
+      "path": "auth/refresh",
+      "method": "POST",
+      "tokenField": "access_token",
+      "expiresInField": "expires_in"
+    }
+  }
+}
+```
+
+| Field             | Required | Default          | Description                                                               |
+| ----------------- | -------- | ---------------- | ------------------------------------------------------------------------- |
+| `path`            | Yes      | —                | Renew URL — relative path (resolved against `baseUrl`) or absolute URL    |
+| `method`          | No       | `"POST"`         | HTTP method (`"GET"` or `"POST"`)                                         |
+| `body`            | No       | —                | Request body. Use `{{token}}` as placeholder for the current access token |
+| `headers`         | No       | —                | Extra headers. `{{token}}` substitution applies here too                  |
+| `tokenField`      | No       | `"access_token"` | JSON field name for the new token in the response                         |
+| `expiresInField`  | No       | `"expires_in"`   | JSON field name for expiry in seconds                                     |
+| `fallbackTtlSecs` | No       | —                | Fallback TTL when the response doesn't include expiry                     |
+
+When `body` is omitted, the current token is sent via the Authorization header. When `body` is provided, `{{token}}` placeholders in string values are replaced with the current token (supports nested objects).
+
+<Tip>
+  This is for APIs with custom renewal endpoints, not OAuth. For OAuth-based APIs, use `authType: "oauth"` instead — tokens are refreshed automatically via the standard OAuth flow.
+</Tip>
+
+## Why Use API Sources?
+
+* <h4>Universal Compatibility</h4>Any service with a REST API can be integrated.
+* <h4>Simple Configuration</h4>Just provide the base URL and auth details.
+* <h4>Flexible Requests</h4>The HTTP tool can make any request to the API — JSON bodies by default, with raw body support for plain text, XML, and other content types.
+* <h4>Secure Credentials</h4>API keys are stored encrypted, not in config files.
+
+## Comparison: MCP vs API Sources
+
+| Feature  | MCP Sources               | API Sources                               |
+| -------- | ------------------------- | ----------------------------------------- |
+| Setup    | Need MCP server URL       | Base URL + auth config                    |
+| Tools    | Predefined by server      | Flexible HTTP tool                        |
+| Auth     | OAuth or bearer           | OAuth, bearer, header, query, basic, none |
+| Best for | Services with MCP support | Any REST API                              |
+
+Use MCP sources when available for richer integration with predefined tools. Use API sources for services without MCP support or when you need flexible HTTP access.
+
+<Note>
+  **Need Google, Microsoft, or Slack?** Craft Agents has built-in OAuth support for these services with predefined scopes. Just ask your agent to "connect Google Calendar" or "add Slack" and it will walk you through the OAuth flow.
+
+  **Need any other OAuth provider?** Use `authType: "oauth"` with the `oauth` config block to connect GitHub, Linear, Notion, Spotify, or any other OAuth 2.0 service.
+</Note>
+
+## Next Steps
+
+<Card title="Practical Examples" icon="code" href="/docs/sources/apis/curl-examples" horizontal>
+  Real-world examples of API source configurations.
+</Card>

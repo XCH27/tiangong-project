@@ -7,6 +7,7 @@
  */
 
 import {
+  Archive,
   Building2,
   Keyboard,
   MessageSquare,
@@ -39,6 +40,7 @@ export const PreferencesIcon = ({ className }: IconProps) => <UserCircle classNa
  * Used by both AppMenu and SettingsNavigator for consistent icons.
  */
 export const SETTINGS_ICONS: Record<SettingsSubpage, React.ComponentType<IconProps>> = {
+  archived: Archive,
   app: AppSettingsIcon,
   ai: AiSettingsIcon,
   appearance: AppearanceIcon,

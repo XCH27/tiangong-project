@@ -7,7 +7,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Command as CommandPrimitive } from 'cmdk'
-import { Check, Monitor, Paperclip } from 'lucide-react'
+import { Check, Monitor, Paperclip, Plus } from 'lucide-react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
@@ -28,6 +28,8 @@ export interface RunTargetSelectorProps {
   activeWorkspaceId: string | null
   /** Switching computer means switching to a Workspace that lives on it. */
   onSelectWorkspace: (workspaceId: string) => void
+  /** Open Settings → 远程连接, so the menu always offers a way forward. */
+  onAddRemote: () => void
   /** Expanded chip on desktop, collapsed in the compact toolbar. */
   isExpanded?: boolean
   disabled?: boolean
@@ -45,6 +47,7 @@ export function RunTargetSelector({
   targets,
   activeWorkspaceId,
   onSelectWorkspace,
+  onAddRemote,
   isExpanded,
   disabled,
 }: RunTargetSelectorProps) {
@@ -55,9 +58,6 @@ export function RunTargetSelector({
     () => targets.find((target) => target.workspaces.some((w) => w.id === activeWorkspaceId)) ?? targets[0],
     [targets, activeWorkspaceId],
   )
-
-  // With nothing paired there is no choice to offer, so the chip stays out of the way.
-  if (targets.length <= 1) return null
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -117,6 +117,16 @@ export function RunTargetSelector({
                 </CommandPrimitive.Item>
               )
             })}
+            {/* Always a way forward: with nothing paired the menu is still the place
+                you learn that another computer is possible, and how to add one. */}
+            <CommandPrimitive.Item
+              value="add-remote"
+              onSelect={() => { onAddRemote(); setOpen(false) }}
+              className={cn(MENU_ITEM_STYLE, 'data-[selected=true]:bg-foreground/5')}
+            >
+              <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{t('runTarget.addRemote')}</span>
+            </CommandPrimitive.Item>
           </CommandPrimitive.List>
         </CommandPrimitive>
       </PopoverContent>

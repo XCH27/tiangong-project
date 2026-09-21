@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { RunTargetSelector } from './ComposerLeadingChips'
 import { useRunTargets } from './use-run-targets'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
+import { navigate, routes } from '@/lib/navigate'
 
 export interface NewSessionRunTargetProps {
   /** Only a session with no messages can still choose its machine. */
@@ -50,6 +51,7 @@ export function NewSessionRunTarget({
       targets={targets}
       activeWorkspaceId={workspaceId ?? null}
       onSelectWorkspace={(id) => void onSelectWorkspace(id)}
+      onAddRemote={() => navigate(routes.view.settings('server'))}
       isExpanded={isExpanded}
       disabled={disabled}
     />

@@ -1,5 +1,7 @@
 export * from './debug.ts';
 export * from './files.ts';
+export * from './redaction.ts';
+export * from './slug.ts';
 export * from './open-url.ts';
 export * from './url-safety.ts';
 export * from './cli-icon-resolver.ts';
@@ -11,3 +13,5 @@ export * from './large-response.ts';
 export * from './title-generator.ts';
 export * from './toolNames.ts';
 export * from './workspace.ts';
+export * from './remote-url.ts';
+export * from './listen-addresses.ts';

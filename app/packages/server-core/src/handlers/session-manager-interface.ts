@@ -21,7 +21,7 @@ import type {
   CredentialResponse,
   PermissionModeState,
   UnreadSummary,
-  ShareResult,
+  ExportMarkdownResult,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -88,6 +88,7 @@ export interface ISessionManager {
     opts?: { parentSessionId?: string },
   ): Promise<{ labelId: string } | undefined>
   setSessionProjectId(sessionId: string, projectId: string | null): Promise<void>
+  wearAssistant(workspaceId: string, sessionId: string, assistantId: string, asked: import('@craft-agent/shared/assistants').WearAsk): Promise<{ decision: import('@craft-agent/shared/assistants').WearDecision; delegateSessionId?: string }>
   setKanbanColumn(sessionId: string, column: string | null): Promise<void>
   setTaskNodeCount(sessionId: string, count: number): Promise<void>
   adoptGeneratedTaskOrchestrator(
@@ -178,12 +179,11 @@ export interface ISessionManager {
   acceptPlan(sessionId: string, planPath?: string): Promise<void>
 
   // ---------------------------------------------------------------------------
-  // Sharing
+  // Conversation export
   // ---------------------------------------------------------------------------
 
-  shareToViewer(sessionId: string): Promise<ShareResult>
-  updateShare(sessionId: string): Promise<ShareResult>
-  revokeShare(sessionId: string): Promise<ShareResult>
+  /** Render the full conversation as Markdown. The client saves the file. */
+  exportMarkdown(sessionId: string): Promise<ExportMarkdownResult>
 
   // ---------------------------------------------------------------------------
   // Export / Import
@@ -246,6 +246,13 @@ export interface ISessionManager {
    * Workaround for Bun's fs.watch on Linux not detecting atomic renames.
    */
   notifyConfigFileChange(workspaceRootPath: string, relativePath: string): void
+
+  /**
+   * Request a (re)capture of a page's preview poster. No-op unless a capturer
+   * was injected (Electron main only); headless/WebUI hosts fall back to the
+   * placeholder tile.
+   */
+  enqueuePageThumbnail(workspaceId: string, workspaceRootPath: string, slug: string): void
 
   // ---------------------------------------------------------------------------
   // Server-level observability

@@ -17,6 +17,7 @@ import { formatPreferencesForPrompt } from '../../config/preferences.ts';
 import { formatSessionState } from '../mode-manager.ts';
 import { getDateTimeContext, getWorkingDirectoryContext } from '../../prompts/system.ts';
 import { getSessionPlansPath, getSessionDataPath, getSessionPath } from '../../sessions/storage.ts';
+import { formatAssistantContext } from '../../assistants/prompt.ts';
 import type {
   PromptBuilderConfig,
   ContextBlockOptions,
@@ -153,6 +154,12 @@ export class PromptBuilder {
     const workingDirContext = this.getWorkingDirectoryContext();
     if (workingDirContext) {
       parts.push(workingDirContext);
+    }
+
+    const sessionId = this.config.session?.id;
+    if (sessionId) {
+      const assistantBlock = formatAssistantContext(this.workspaceRootPath, sessionId);
+      if (assistantBlock) parts.push(assistantBlock);
     }
 
     return parts;

@@ -52,7 +52,36 @@ describe('what merges and what is contested', () => {
     expect(plan.merges.map(m => m.field).sort()).toEqual(
       ['color', 'description', 'kanbanColumns', 'workingDirectory'],
     )
-    expect(plan.merges.find(m => m.field === 'kanbanColumns')?.value).toBe('2 column(s)')
+    expect(plan.merges.find(m => m.field === 'kanbanColumns')?.value).toBe('2 column(s): 待办 [todo] → 完成 [done]')
+  })
+
+  it('detects different Kanban definitions even when the column count matches', () => {
+    const workspaceColumns = [
+      { id: 'todo', name: '待办' },
+      { id: 'done', name: '完成' },
+    ]
+    const projectColumns = [
+      { id: 'ideas', name: '想法' },
+      { id: 'shipped', name: '已交付' },
+    ]
+    const plan = planNestedProjectMigration(
+      { ...ws, kanbanColumns: workspaceColumns },
+      [project({ kanbanColumns: projectColumns })],
+    )
+    const conflict = plan.conflicts.find((item) => item.field === 'kanbanColumns')
+    expect(conflict).toEqual({
+      field: 'kanbanColumns',
+      workspaceValue: '2 column(s): 待办 [todo] → 完成 [done]',
+      projectValue: '2 column(s): 想法 [ideas] → 已交付 [shipped]',
+    })
+  })
+
+  it('treats equivalent Kanban definitions with different key order as equal', () => {
+    const plan = planNestedProjectMigration(
+      { ...ws, kanbanColumns: [{ id: 'todo', name: '待办', color: '#6366f1' }] },
+      [project({ kanbanColumns: [{ color: '#6366f1', name: '待办', id: 'todo' }] })],
+    )
+    expect(plan.conflicts.map((item) => item.field)).toEqual(['name'])
   })
 
   it('never silently overwrites a value the Workspace already holds', () => {

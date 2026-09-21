@@ -97,6 +97,12 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   const first = segments[0]
 
+  // Archive management has one Settings home. Preserve detail deep links to
+  // archived conversations; only the old list destination is redirected.
+  if (first === 'archived' && segments.length === 1) {
+    return { navigator: 'settings', details: { type: 'archived', id: 'archived' } }
+  }
+
   // Kanban board — its own navigator, not a session-list presentation mode.
   if (first === 'board') {
     return {
@@ -893,6 +899,7 @@ export function buildRouteFromNavigationState(state: NavigationState): string {
  *   'none' -> { type: 'none' }
  */
 export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel | undefined {
+  if (sidebarStr === 'browser' || sidebarStr === 'notes') return { type: sidebarStr }
   if (!sidebarStr) return undefined
 
   if (sidebarStr === 'history') {
@@ -920,6 +927,9 @@ export function buildRightSidebarParam(panel?: RightSidebarPanel): string | unde
   switch (panel.type) {
     case 'history':
       return 'history'
+    case 'browser':
+    case 'notes':
+      return panel.type
     case 'files':
       return panel.path ? `files/${panel.path}` : 'files'
     default:

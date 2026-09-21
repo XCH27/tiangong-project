@@ -73,7 +73,8 @@
     "./i18n": "./src/i18n/index.ts",
     "./resources": "./src/resources/index.ts",
     "./layout": "./src/layout/index.ts",
-    "./assistants": "./src/assistants/index.ts"
+    "./assistants": "./src/assistants/index.ts",
+    "./components": "./src/components/index.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from './empty'
 import { type DocFeature } from '@craft-agent/shared/docs/doc-links'
 import { openLocalDoc } from '@/lib/open-local-doc'
+import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
 export interface EntityListEmptyScreenProps {
   icon: React.ReactNode
@@ -31,6 +32,7 @@ export function EntityListEmptyScreen({
   className = 'flex-1',
 }: EntityListEmptyScreenProps) {
   const { t } = useTranslation()
+  const appShell = useOptionalAppShellContext()
   const hasActions = docKey || children
 
   return (
@@ -46,7 +48,7 @@ export function EntityListEmptyScreen({
         <EmptyContent>
           {docKey && (
             <button
-              onClick={() => void openLocalDoc(docKey)}
+              onClick={() => appShell?.onOpenFile && void openLocalDoc(docKey, appShell.onOpenFile)}
               className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-[8px] bg-foreground/[0.02] shadow-minimal hover:bg-foreground/[0.05] transition-colors"
             >
               {t("common.learnMore")}

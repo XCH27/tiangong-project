@@ -1175,9 +1175,12 @@ export function NavigationProvider({
 
   const toggleRightSidebar = useCallback((panel?: RightSidebarPanel) => {
     const currentSidebar = rightSidebarRef.current
+    // An explicit panel selects that tool. Without one, toggle the current
+    // tool closed/opening the default Files tool. `none` is a route-level
+    // compatibility value; the live state uses `undefined` for closed.
     const newPanel = panel || (currentSidebar && currentSidebar.type !== 'none'
-      ? { type: 'none' as const }
-      : { type: 'none' as const })
+      ? undefined
+      : { type: 'files' as const })
     updateRightSidebar(newPanel)
   }, [updateRightSidebar])
 
