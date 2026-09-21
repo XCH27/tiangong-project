@@ -48,6 +48,26 @@ Two standing tracks run **beside** the release queue and are never blocked by it
   and TaskBrief savings still land with R5/R6; L3+ remain measured gates
   (`modules/suites/SYS-03-context-economy.md` §6).
 
+## Owner-directed foundation-first slice
+
+The owner's 2026-09-14 request to build the basic framework before domain Components, including
+freely movable/resizable panels, takes precedence over the old blanket R15/R18 gates. The current
+execution contract is [`specs/R18-right-workbench.md`](specs/R18-right-workbench.md), revised
+2026-09-15. It covers the **early host portion of R15/R18**, not an additional release:
+
+scoped baseline + P6 context isolation → real registry using existing Files/Notes → in-window
+resize/move/reorder/float/restore → global/Workspace local Component proof → domain Components.
+
+R0 remains ACTIVE for complete baseline verification. The foundation can proceed through the
+scoped checks above without waiting for R6 delegation or R9 memory; its status remains
+`not implemented` until the host and runtime are actually connected. R15 distribution and R18
+advanced/native multi-window closure remain separate follow-ons. A dependency used by one future
+Component is not a prerequisite for every Component. Do not demand new media panels before creating
+the minimum host which their existing Files/Notes predecessors already exercise.
+
+The current dirty checkout is an audit candidate, not a keep-all decision. An exact rollback target
+and recovery plan still require owner approval; user/test Project names do not select the baseline.
+
 ## The integration queue
 
 | # | Release | Outcome (one line) | State | Dependency / gate |
@@ -67,10 +87,10 @@ Two standing tracks run **beside** the release queue and are never blocked by it
 | R12 | **Video + audio production** | Import media, edit a sequence, maintain captions/audio provenance, render with cancel/retry, and deliver an exact output version. | DEP | R11 |
 | R13 | **Deck and motion (on the canvas)** | Decks and motion live on the R7 canvas. **3D scene authoring, panorama relighting and multi-camera shot grids are out of product** ([`PRODUCT.md`](PRODUCT.md)) — close those as `NO_GAP`, do not design them. | DEP | R7 |
 | R14 | **Remote office + messaging** | User-owned remote target, worktree/Git/PR delivery, scoped grants and Workspace-scoped message routing with honest disconnect/recovery. | DEP | R6 |
-| R15 | **Skill/plugin/MCP marketplaces** | Local-first discovery, trust review, install/loadout/runtime separation, update/rollback and revoke. Assistants consume the loadout; remote Workspace transport stays R14. | **DEP** — not part of baseline stabilization; activation requires a bounded spec and resolved SYS-01/SYS-03 seams. | R2 + R6 + R9 |
+| R15 | **Component distribution and lifecycle closure** | Local-first catalogs, provenance/permission review, staged install, update/rollback and revoke over the early scoped Component host. | **DEP** for external distribution; minimum registry, scoped activation and layout execute first under the owner-directed foundation contract above. | Foundation host + relevant R2 independence + supply-chain/permission evidence. R6/R9 apply only to components that consume delegation/memory. |
 | R16 | **External computer environment** | General control of external applications is not a Fleet capability. Driving Blender/Godot for a specific job remains an outside-tool path. | **CLOSED — `NO_GAP`** by [`PRODUCT.md`](PRODUCT.md). It has no implementation queue or downstream dependency. | — |
 | R17 | **Adaptive model/organization policy** | Use accumulated accepted-outcome traces to either add explainable overrideable routing/organization on Craft Task/Session/provider seams or close `NO_GAP`. | DEP | R6 + R9 + R12 |
-| R18 | **Generalized layout closure** | Decide whether real production panes require docking beyond the minimum host seam landed with their first caller; otherwise close `NO_GAP`. Never wrap `AppShell` merely to change chrome. | **GATED** — layout model is unmounted and the current host is Craft v0.13.3 `PanelStackContainer`. | gate: at least two real production panes demonstrate a docking/restore need |
+| R18 | **Advanced and native multi-window layout closure** | Verify popout/re-dock, cross-window identity/security and additional layout needs beyond the early in-window foundation. | **GATED** for this later closure; requested in-window resize/move/reorder/float/restore is in the foundation, not blocked here. Current production host remains `PanelStackContainer`. | Foundation with real existing panels + explicit packaged-window/protocol and recovery evidence. No dependency back from the minimum host. |
 
 ### R0 acceptance summary
 
@@ -94,8 +114,15 @@ computer control are explicitly out of product and remain closed `NO_GAP`.
 
 ## Why this order (once)
 
-- **R0 first:** the current v0.13.3 working tree is large and mixed; later release claims are unsafe
-  until its retained behavior, security/recovery paths and status statements have fresh evidence.
+- **R0 baseline discipline still applies:** the v0.13.3 tree is large and mixed; retained behavior
+  needs fresh evidence. Scoped foundation work begins with the touched baseline and P6 checks;
+  complete R0 verification is still required before a release claim.
+- **R0 before the v0.13.4 uptake (2026-09-20):** upstream shipped v0.13.4 while this rebase was in
+  flight, and it carries steering/mid-stream, context-window usage and the composer viewport rewrite
+  as upstream code — see the P2 note in [`02-DECISIONS.md`](02-DECISIONS.md). Two consequences for
+  ordering: (a) **do not hand-build those three**, take upstream's when we take the tag; (b) **do not
+  take the tag before `fleet-baseline-r0`** — 41 of its 96 files are already dirty here, so rebasing
+  an unproven tree makes every later regression unattributable.
 - **R2 next:** the baseline must first expose every inherited hosted-service path. R2 then closes the
   remaining independence gaps rather than relying on results from the discarded branch.
 - **R3 before R4 (this reverses the old loop order):** the seam contract itself requires extraction
@@ -108,7 +135,8 @@ computer control are explicitly out of product and remain closed `NO_GAP`.
 - **R4→R5→R6:** the Fleet-differentiating spine, each step consuming a verified real input from the
   previous one.
 - **R7 owns its minimum host seam:** a production canvas cannot depend on a generalized layout
-  release whose need can only be proven by real surfaces. R18 evaluates broader docking later.
+  release whose need can only be proven by real surfaces. Reuse the owner-directed foundation
+  rather than constructing another host; R18 closes advanced/native-window behavior later.
 - **R16 is not a future implementation choice:** its `NO_GAP` closure prevents general external-
   computer control and a second sandbox from silently returning through another release.
 
@@ -125,7 +153,8 @@ The release queue and suite map intersect at explicit seams:
 | SYS-05 Design/web/spatial | R7 canvas → R10 design/web → R13 deck/motion → R18 layout closure | preview-gated component experiments and renderer spikes | R4 action + R5 ArtifactRef; minimum pane seam lands with first real surface |
 | SYS-06 AIGC/media | R11 image Job → R12 video/audio → R13 deck/spatial media | media fixtures and reference audits | R4 action + R5 ArtifactRef |
 | SYS-07 Workflow/delivery | R4/R5 real chains → R8 | schema experiments only | real promoted chain and SYS-01 TaskRunner projection |
-| SYS-08 Marketplaces | R15 | manifest/reference audits | R6 policy/run + R9 reviewed experience/loadout facts |
+| SYS-08 Marketplaces | early R15/R18 foundation → R15 distribution | scoped local host proof and manifest/reference audits | verified host + existing permission/trust + R2 independence for distribution; R6/R9 only for specific dependent components |
+| SYS-09 Workspace compositions | early R15/R18 foundation | existing Files/Notes registry and scoped settings proof | affected baseline/P6 isolation, one effective resolver, lifecycle and in-window layout recovery |
 
 ## How to change this roadmap
 
@@ -135,6 +164,11 @@ checkpoint; they do not reorder on their own.
 
 Change log:
 
+- 2026-09-15 — reconcile the owner's foundation-first and panel-movement requests: the minimum
+  Component registry, scoped activation and in-window layout execute before domain Components;
+  remove R6/R9 as blanket host prerequisites. R0 retains baseline verification; R15 external
+  distribution and R18 native/advanced layout remain distinct closures. Revised contract:
+  `specs/R18-right-workbench.md`. No rollback or live-data rename is authorized by this ordering.
 - 2026-09-11 — owner: stabilize the current Craft **v0.13.3** tree before expanding product scope.
   R0 is ACTIVE under its revised baseline contract; this does not revive the discarded v0.10.5
   restore/tag/Waves program. R15 returns to its dependency row. R14 continues to own remote

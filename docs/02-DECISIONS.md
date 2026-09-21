@@ -6,6 +6,30 @@
 > **Write rule:** add an entry only when a durable direction is decided, with a date. When a
 > decision changes, edit the entry in place and note the change — do not keep a diary of dead
 > states. A current owner request always outranks any entry here.
+
+### Promotion rule for durable decisions
+
+An owner conversation may be recorded as product intent with an owner and date. It becomes an
+**implementation-bearing** decision only when the entry names all of the following: owner intent;
+the invariant it protects; the existing authority it reuses or the smallest justified new seam; at
+least one real writer and consumer; persisted identity and scope; denied/failed/removed recovery;
+acceptance evidence; and any license/platform or owner checkpoint. If one is unknown, the
+implementation-bearing entry remains a proposal or evidence note and cannot create a roadmap
+dependency, capability status, or implementation permission. A field in a type, a test that never
+reaches a production caller, a reference README, or a screenshot is not a writer/consumer and cannot
+promote the decision.
+
+When a later owner decision changes the contract, edit the promoted entry in place, record the
+superseded boundary and update the linked spec/capability row in the same change. Do not preserve
+two live meanings under different names. The compact implementation record is:
+
+```text
+intent → invariant → authority → writer/consumer → persisted scope
+       → failure/recovery/removal → acceptance evidence → status
+```
+
+This rule keeps the whitepaper as vision, this file as the decision ledger, and active specs as the
+only place where a bounded implementation may begin.
 >
 > **2026-09-10:** [`PRODUCT.md`](PRODUCT.md) outranks this file. Entries that assume (a) Craft's
 > `AppShell` is the product window, (b) the canvas is a session-graph projection, (c) general
@@ -24,7 +48,26 @@
 - **P2 — One `app/` tree; Craft is the look and runtime base, not the product.** The committed
   `app/` remains the one implementation tree and tracks the latest Craft OSS tag (**v0.13.3** as of
   2026-09-11). Do not overlay discarded Fleet pages back onto `AppShell`. Do not import Qoder/TRAE
-  product concepts. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11)
+  product concepts. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11, 2026-09-20)
+  > **2026-09-20 — upstream is ahead: v0.13.4 (`b2d6c8a`) exists and we are not on it.** Measured
+  > against the mirror at `源码参考/software/craft-agents-oss`: 96 files, +3366/-1002. It is not a
+  > patch release. It ships, as upstream code, three things this fork has as unbuilt or hand-rolled
+  > work: **agent steering / mid-stream queueing** (`backend/claude/pending-steers.ts`,
+  > `SessionManager.ts` +225, `midstream-queue.test.ts` +238), **context-window usage**
+  > (`agent/context-usage.ts`, `core/types/context-usage.ts`, composer `context-display.ts`), and a
+  > **composer viewport/keyboard rewrite** (`FreeFormInput.tsx` 331 changed, new `input-viewport.ts`,
+  > `useInputAvailableHeight.ts`, `scroll-focused-caret.ts`). It also splits the system prompt
+  > (`prompts/system.ts` -500 net, new `developer-context.ts`, `prompt-sanitize.ts`). We hold **none**
+  > of those files. **Before building any of the above by hand, take upstream's.**
+  > **Rebase cost, measured:** 41 of the 96 files are also dirty in our tree. Most are version bumps;
+  > the real hand-merges are `SessionManager.ts`, `pi-agent.ts`, `prompts/system.ts`,
+  > `agent/core/prompt-builder.ts`, `protocol/dto.ts`, `sessions/{types,storage}.ts`,
+  > `core/types/message.ts`, `pi/event-adapter.ts`, and **all 7 i18n locales** (upstream adds 9 keys
+  > per locale into files our P6 vocabulary work is rewriting — the i18n parity gate will catch it).
+  > **Sequencing:** R0 is still ACTIVE and untagged. Do not start this rebase before the
+  > `fleet-baseline-r0` tag exists; rebasing an unproven baseline destroys the ability to attribute
+  > any regression. Reproduce with:
+  > `git -C 源码参考/software/craft-agents-oss diff --stat v0.13.3 v0.13.4`
 - **P3 — Craft look, Cindy *features*.** Spacing, type, colour and motion stay Craft's. Cindy
   decides how a capability is built and how the surface talks to the backend — plugins, skills,
   remote connection, assistants. Rearranging chrome is not Cindy work. (2026-07-09; revised
@@ -115,19 +158,20 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   preset ships only when R14 lands — no disabled placeholder control before that (G6). (owner
   direction 2026-07-13; location presets + agent-managed worktrees, owner direction 2026-07-20)
 
-- **P10 — One work list and one create flow.** The primary action is **New Task** (「新建任务」),
-  available globally and on each Project row, but it creates work through the existing Session
-  authority; R1 does not require a parallel v0.11 Task record for every conversation. New Task is
-  context-bound: a Project-row trigger supplies that folder, while the global trigger may create a
-  folder-less Session under Conversations. A Session appears once in exactly one of those sibling
-  scopes. There is no permanent **All Sessions** navigation entry: search, status, flagged, labels
-  and archive are filtered states over the same Session-list implementation, never additional
-  conversation homes. Label definitions live only in Settings; Session menus assign them.
-  Selecting a Project opens its documents, assets and settings, not another copy of its Session
-  list. A later Claude/Codex-style task center may project selected Session/Task/Job state through
-  the existing authorities; it is not the v0.11 Kanban Board and does not justify a second store.
-  (owner direction 2026-07-20; corrected after source and interaction review 2026-07-21 and
-  boundary review 2026-07-25)
+- **P10 — One Conversation surface and one create flow.** The primary action is **New Task**
+  (「新建任务」), available globally and from Project context, but it creates work through the
+  existing Session authority; R1 does not require a parallel v0.11 Task record for every
+  conversation. The default shell has one Conversation list implementation and one canonical
+  Conversation surface. Project, label, status, pinned and archive choices are predicates/chips over
+  that list, never sibling conversation homes. A Session appears once in that list; its Project
+  association is shown as metadata/grouping and can be used as a filter. Selecting a Project opens
+  its files, assets and settings in the workbench and applies its list predicate when the user asks
+  to see that Project's conversations — it never renders a second Session list. There is no
+  permanent **All Sessions** entry. Pinned is the UI term for the legacy `isFlagged` session field.
+  Label definitions live only in Settings; Session menus assign them. A later Claude/Codex-style
+  task center may project selected Session/Task/Job state through the existing authorities; it is not
+  the v0.11 Kanban Board and does not justify a second store. (owner direction 2026-07-20; revised
+  after source and interaction review 2026-09-14)
 
 ## B. The spine (agent-native execution)
 
@@ -396,8 +440,11 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   replacement runtimes or authorities. (owner-approved documentation direction, 2026-07-20)
 
 
-- **E14 — Fleet does not become "everything is a plugin"; it adopts the capability-seam discipline
-  without the microkernel.** DeepSeek Harness (`dsh`, MIT, `47f943859bef`) is the strongest
+- **E14 — Fleet does not become a Cordis kernel or wholesale "everything is a plugin" runtime.**
+  **Superseded in the bounded Component-host layer by H41/H43 (2026-09-15):** the rejection below
+  still applies to Cordis, the package split and live self-modification, while the scoped
+  composition, declaration, health and disposal mechanisms are now explicitly admitted for Fleet's
+  Component Host. DeepSeek Harness (`dsh`, MIT, `47f943859bef`) is the strongest
   available implementation of the plugin-first agent runtime: Cordis dependency injection,
   **167 packages across 39 groups**, a Service Definition / Service Provider / Consumer role split
   per capability, per-session composition mounted from a preset `cordis.yml`, and a `dsh-tool-cordis`
@@ -445,12 +492,12 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
     package until a second appears. Recorded in `14-MODULE-ARCHITECTURE.md` §2.
   - **Four per-session-composition invariants** that Fleet's Assistant/loadout design does not
     yet state and needs: the composition a session was **created** with is a durable session fact
-    and a resume rebuilds *that* composition, never today's default; switching is refused once a
-    turn has run, because logged tool calls would be stranded by a different toolset; a per-session
-    composition may not publish a process-global service; and **authoring** a composition is a
-    privileged operation while listing and selecting are ordinary, because a composition names the
-    capabilities a session runs — reading one is reconnaissance and writing one is arbitrary
-    capability.
+    and a resume rebuilds *that* composition, never today's default; a running turn cannot change
+    composition, while an explicit selection may take effect at the next turn boundary and is
+    recorded as a new snapshot event; a per-session composition may not publish a process-global
+    service; and **authoring** a composition is a privileged operation while listing and selecting
+    are ordinary, because a composition names the capabilities a session runs — reading one is
+    reconnaissance and writing one is arbitrary capability.
   - **Three enforcement rules** stated more sharply than Fleet states them today, each of which
     names a defect Fleet has already shipped: *enforce a decision in the operation that makes it*
     (schema omission, prompt filtering, facades and listener order are not enforcement when a
@@ -1074,3 +1121,79 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   over the one decision the permission path exists to make, and every other control in the product
   would become decorative. Assistant wearing must report that result explicitly so the model cannot
   conclude it granted itself something. (2026-09-10; revised 2026-09-11)
+- **H40 — Components are additive workspace capability bundles, not identities or alternate shells.**
+  The owner chose a component model on 2026-09-14: an installable Component may bundle a left-tool-rail
+  entry, right-workbench panels, native domain commands/data, Skills, MCP declarations, knowledge
+  defaults and recommended Assistant settings. Components must use Fleet's Craft-derived design
+  tokens and shared primitives, and may not take over the conversation implementation, patch
+  `AppShell`, or create a second navigator/settings/permission authority. Left/right are default
+  contribution placements: the owner subsequently requested resizing, movement, reordering and
+  floating of conversation/tool views through the one host. A Workspace may enable any
+  number of Components; the product imposes no artificial count limit. Enablement is either global
+  (default for all Workspaces) or explicitly overridden per Workspace. Vendor manifests remain
+  immutable; user/workspace preferences, extra MCPs, knowledge sources and habits are stored as
+  overrides in existing user/Workspace settings; effective Composition is derived, not a duplicate
+  settings store. Resolver order is official default → user
+  default → workspace override → session one-off. Workspace overrides remain in existing Workspace
+  settings; the resolved per-turn snapshot is owned by the existing Session/SessionEvent authority
+  (one immutable snapshot per turn, with an explicit boundary event for a later change), not by a
+  second composition store. DeepSeek Harness supplies slot/lifecycle vocabulary; Cindy supplies
+  capability ownership/install-target and permission-request rules;
+  OpenChatCut supplies the official video bundle reference. OpenChatCut is AGPL-3.0 and is therefore
+  source/product evidence unless an explicit license checkpoint approves direct reuse. The early
+  host uses existing Files/Notes and does not wait for that video choice, R6 delegation, R9 memory
+  or a marketplace; `specs/R18-right-workbench.md` owns its foundation-first acceptance. (owner,
+  binding, 2026-09-14; placement and execution-order clarification 2026-09-15)
+- **H41 — Fleet adopts DeepSeek Harness composition principles without adopting its kernel.**
+  Owner direction 2026-09-14 confirms that the Fleet Component system should follow the reference's
+  "everything is a plugin" model at the capability/slot layer: components declare contributions,
+  dependencies and scope; the host composes them, loads heavy dependencies on demand, and disposes
+  them with their owning scope. Fleet keeps Craft's shell and existing Workspace/Session/Task/
+  Permission/Settings authorities as the host. Cordis, a wholesale micro-package split, or live
+  self-modifying runtime are not imported. This supersedes the narrower E14 wording that treated
+  plugin-first composition only as evidence; the new boundary is Component composition, not a
+  second runtime kernel. (owner, binding, 2026-09-14)
+- **H42 — Craft supplies visual language; Cindy supplies information architecture; OpenChamber
+  supplies selective context-panel mechanics.** The owner wants Craft Agents' typography, colour,
+  spacing, motion and shared primitives, but not Craft's unexamined page hierarchy or repeated
+  conversation entries. Fleet's target is one Conversation surface/list: Project, label, status,
+  pinned and archive are predicates or chips, while Project resources and component tools open in
+  the existing workbench. Cindy's single-surface settings/market panels and right-sidebar registry
+  are the primary structural references; OpenChamber's chat-first `MainLayout` + `ContextPanelRail`
+  is evidence for keeping detail tools beside the conversation. Neither reference may introduce a
+  second Session/Task/Permission authority. (owner, binding, 2026-09-14)
+- **H43 — DeepSeek's implementation contract is Fiber + declaration + proof, not package count.**
+  Source review on 2026-09-15 found four load-bearing mechanisms: (1) a scoped owner Fiber for
+  services, events, stores and disposal; (2) a declaration table that is the render/load
+  authorization and validates duplicate cells/child ownership; (3) a loader that waits for nested
+  rows, reports aggregate failures, preserves disabled entries and rolls back failed subtrees; and
+  (4) a mount audit that rejects inactive rows and process-global service leaks before publication.
+  Presets are immutable inputs; user copies are authored only under a user root with overwrite/path
+  guards, while session composition changes are logged so resume rebuilds the actual later-turn
+  composition. Fleet adopts these as a smaller **Manifest → Plan → Activate → Health → Publish →
+  Dispose** contract over Craft/Fleet Workspace, Session, Permission and Settings. It does not adopt
+  Cordis as a second kernel, property injection, a 167-package split, or live self-modification.
+  (source review, binding implementation direction, 2026-09-15)
+- **H44 — Work trajectory is one event-sourced projection, not a log per Component.** The owner
+  wants every Agent turn, human panel action, Component/MCP call, Job and produced artifact to be
+  traceable so a later instruction can target an exact prior step. DeepSeek Harness source review
+  supplies the mechanism: its append-only `SessionEvent` log is the source of truth; `turn/start`,
+  `step/start`, `tool/call`, `tool/result`, `tool/code-dispatch` parent/child edges, durable source
+  references, and `traceEvent`/`traceSession` queries derive the visible history and lineage. Its
+  surface fold explicitly distinguishes `current`, `shadowed` and `log-only` events, so replacing a
+  displayed message never erases the original evidence. Workflow runs add paired `run-start` /
+  `agent-start` / `agent-end` / `run-end` events in the parent Session, while human commands pair
+  `command/run` / `command/done`; these are recoverable facts, not renderer state. Fleet adopts that shape over its
+  existing Session/SessionEvent, governed Action, Job and ArtifactRef authorities. A Component may
+  emit declared semantic action events, but may not create a private trajectory store or hide outputs
+  outside its native owner.
+
+  Every consequential operation carries a stable `operationId`, `attemptId`, caller kind, Session /
+  Workspace / Component identity, optional turn/step and parent operation, exact input ArtifactRef
+  versions, output ArtifactRef versions, Job id, status, evidence/recovery and source/derived event
+  sequence references. Canvas nodes and edges project these facts; position or a visual connector
+  never becomes provenance. “Modify step”
+  resolves an explicit operation, artifact version or canvas-node target. It creates a new branch or
+  version from that base, leaves the old outputs intact, marks dependent descendants stale or
+  awaiting recompute, and never silently rewrites later history. (owner direction and source review,
+  2026-09-15)
