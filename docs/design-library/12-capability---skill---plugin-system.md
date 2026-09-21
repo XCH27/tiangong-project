@@ -484,3 +484,44 @@ Three references, three different layers, and they do not conflict:
 What **none** of them justifies, and what Fleet must not build: a fourth capability authority beside
 Skill / Source / Component, a per-ecosystem installer or permission path, an account, or a catalog
 whose outage is visible as an empty plugin list.
+
+### 16.10 Team catalogs without a Fleet account
+
+§16.7 left one question open: Cindy scopes catalogs to `organization` / `team`, but that rides on a
+server-owned identity P4 forbids Fleet from building. The resolution is in the P4 clarification of
+2026-09-21 — **borrow identity, never issue it** — and it lands cleanly on the catalog model,
+because a catalog is already just a repository.
+
+| Cindy concept | Fleet form | Who enforces it |
+|---|---|---|
+| `market` (public catalog) | The shipped default catalog: a local seed shard merged with a remote shard | Nobody — it is public data |
+| `team` catalog, `DEPARTMENT_SCOPED` | A **private Git repository** added as a source | **GitHub.** Clone succeeds or it does not |
+| `PRIVATE` | A `{type:'local', path}` source | The filesystem |
+| `personal` vs `organization` owner | The repository's owner | GitHub |
+| Publish with visibility | `git push` to a repo whose visibility the user already chose | GitHub |
+
+Fleet writes no access-control code for this. A user who can clone the repository sees the catalog;
+a user who cannot, does not. Revocation is removing a collaborator, which is a thing teams already
+do and already audit.
+
+What this requires from the source model, and why it is not free:
+
+1. **A private Git source needs a credential at clone time**, so `MarketSource` resolution must be
+   able to ask the identity layer for the active account's token, and must degrade to the
+   per-source `status: 'error'` of §16.7 rather than failing the whole catalog list when it cannot.
+2. **The credential is per-instance** (P4 clarification). A remote Project resolves catalogs with
+   the **remote machine's** GitHub identity, not the controlling machine's. A team catalog visible
+   here may legitimately be invisible there, and the UI must say so rather than showing an empty
+   list.
+3. **Source fingerprinting from §16.7 still applies and matters more here.** A private repo does
+   not make a name trustworthy: ownership is keyed by the fingerprint
+   `JSON.stringify(['git', url, ref ?? null, sparsePaths])`, never by the catalog's self-declared
+   name.
+4. **Signed-out is a first-class state, not an error.** The default catalog, local sources and every
+   installed plugin work with no identity at all. Only private sources are gated, and their absence
+   is reported as "not signed in", never as an empty or broken store.
+
+**Not decided, and an owner call:** whether Fleet ships a default catalog repository at all in the
+first slice, or whether the store starts empty with only "add a source". Shipping one is better
+product and costs a repository; starting empty costs nothing and delays the question of who curates
+it.

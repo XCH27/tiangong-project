@@ -73,6 +73,45 @@ only place where a bounded implementation may begin.
   remote connection, assistants. Rearranging chrome is not Cindy work. (2026-07-09; revised
   2026-09-10, 2026-09-11)
 - **P4 — Fleet is open/free local software.** No Fleet account, login, or subscription. (2026-07-08)
+  > **Clarified 2026-09-21 — P4 forbids Fleet *issuing* identity, not the user *using* theirs.**
+  > The owner asked how to build an account system given OpenChamber appears to need only a GitHub
+  > login. The answer is that Fleet does not build one: **borrow identity, never issue it.**
+  > P4 bans a Fleet account, a Fleet login and a Fleet subscription — a Fleet-owned user database.
+  > It has never banned the user signing in to a third party, and the tree already does this:
+  > `packages/shared/src/sources/` carries `SourceMcpAuthType = 'oauth'` and `ApiOAuthProvider`.
+  > Reading P4 as "no login of any kind" would forbid capability Fleet already ships.
+  >
+  > The model, measured from `源码参考/software/openchamber` @ `MIT`
+  > (`packages/web/src/api/github.ts`, `packages/ui/src/lib/api/types.ts:1131`):
+  > - **GitHub Device Flow.** `authStart()` returns `{deviceCode, userCode, verificationUri,
+  >   expiresIn, interval}`; the user types the code at GitHub; `authComplete(deviceCode)` polls.
+  >   **No client secret and no callback server**, so no Fleet infrastructure exists to operate,
+  >   and P8 is untouched.
+  > - **The local `gh` CLI is a first-class credential source**, not a fallback:
+  >   `ghCli {available, disabled, active, user}` is detectable, disableable and shows whose
+  >   identity it is. A user who already ran `gh auth login` signs in to nothing.
+  > - **Multiple accounts, one active.** `accounts[]` entries carry `source: 'oauth' | 'gh-cli'`
+  >   and `current`; `authActivate(accountId)` switches. This is the answer to the owner's earlier
+  >   question about a second machine having different accounts.
+  > - **Identity is per-instance, not global.** OpenChamber scopes it to the connected runtime —
+  >   "the login lives on the connected instance". That is the same rule as ZCode's
+  >   `buildRemoteEnvironmentKey`: environment-level credential state must not be keyed by
+  >   workspace or session. Under P7, a remote Project uses the **remote machine's** identity.
+  > - **Revocable from both ends.** `authDisconnect()` deletes locally; the user revokes the grant
+  >   at GitHub. Fleet holds nothing that a user cannot destroy without asking us.
+  >
+  > **Rules this sets.** Sign-in is never required: every surface works signed-out, and a login
+  > only unlocks what inherently needs that third party (PRs, private team catalogs). Fleet never
+  > mints, stores or validates an identity of its own, and never treats a third-party identity as a
+  > Fleet entitlement — there is nothing to gate, because there is no paid tier. A team is not a
+  > Fleet concept: **a team is a GitHub org or a repository's collaborators**, so team access
+  > control is GitHub's and Fleet only reads it.
+  >
+  > **Honest limitation.** The device flow needs a registered OAuth App `client_id`. It is public
+  > and safe to ship, but it is a Fleet-controlled identifier: if it were revoked, that path
+  > breaks. This is a dependency on GitHub, not on Fleet-operated infrastructure. The `gh` CLI
+  > path and a pasted personal access token both work with no Fleet `client_id` at all and must
+  > stay supported for exactly that reason. (owner question 2026-09-21)
 - **P5 — Craft look is tokens and interaction style, not “restore the v0.10.5 page host”.** Compare
   pins for the better look. Current base is v0.13.3. Do not restore an older AppShell as the
   product. Board may remain a separate navigator when it projects the existing Session/Task
