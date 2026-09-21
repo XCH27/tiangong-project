@@ -59,7 +59,28 @@ ran no typecheck, i18n or doc-contract gate at all.
 | `main` | Ancestor, 73 commits behind, last moved 2026-07-26. Not a release line. |
 | `backup/pre-r0-audit-2026-09-09` | **Keep.** The last tracked mirror content is reachable here (`AGENTS.md` preflight cites it). |
 | `backup/pre-r0-audit` | **Keep.** Older dirty-tree snapshot, 2026-07-20. |
-| `archive/musing-dubinsky-2026-09-20` (tag) | A removed worktree's final state. 53 of its files are the output of a broken automated link rewrite; archived, not adopted. |
+| `archive/musing-dubinsky-2026-09-20` (tag) | A removed worktree's final state (2157 files). 53 of them are the output of a broken automated link rewrite; archived, not adopted. The worktree itself was 1.8 GB and was deleted on 2026-09-21. |
+| `archive/stash-2026-07-31-unlanded` (tag) | **43 files of work that was never landed** — see below. |
+
+### Unlanded work you would otherwise never find
+
+`git stash` has held **43 files, +1006/−730**, since **2026-07-31**, based on `f8a340021` on
+`work/fresh-base-spine`. Nothing in this repository mentioned it until 2026-09-21, and a `git stash
+clear` would have destroyed it silently, so it is now also reachable as the tag
+`archive/stash-2026-07-31-unlanded`.
+
+It is **not** already in the tree: spot-checked by grepping for the double-settle guard it adds to
+`app/apps/cli/src/client.ts`, which is absent from the current branch. It touches `SessionManager`,
+`transport/server.ts`, `claude-agent.ts`, `pre-tool-use.ts`, `search.ts`, `mode-manager.ts`,
+markdown/HTML-preview components and more, and every file it touches still exists.
+
+**It predates the 2026-09-11 v0.13.3 rebase**, so applying it wholesale will conflict heavily and
+must not be attempted as one operation. Treat it as a salvage list to review hunk by hunk after the
+`fleet-baseline-r0` tag exists, not as a branch to merge. Inspect with:
+
+```bash
+git stash show -p stash@{0}          # or: git show archive/stash-2026-07-31-unlanded
+```
 
   Every branch except the two `backup/*` snapshots is an ancestor of the working line, so there is
   nothing to merge — consolidation here means naming, not integration.
