@@ -383,9 +383,22 @@ Three requirements follow:
    already carry `zh_name`/`zh_description`. Reading them is close to free and is the difference
    between a localized store and an English-only one.
 
-**Still not verified, and required before implementation starts:** how `activation` should map
-across the four bundle formats, and whether any signing story exists that does not require a
-Fleet-operated key service (P8 forbids one).
+**Both remaining questions were settled on 2026-09-21 and are implemented in
+`packages/shared/src/components/bundle-adapter.ts`:**
+
+- **`activation` is not mapped.** In OpenClaw it is load-planner metadata — `onStartup`,
+  `onProviders`, `onChannels`, `onConfigPaths` — and its own type says "planner metadata only;
+  runtime behavior still comes from `register()`". Fleet has no analogue: our activation is
+  `contributions[].slot` plus the lazy `entry` load that `ComponentContribution` already documents.
+  Inventing a mapping for a concept we do not have is worse than passing it through, so `activation`
+  and every other unrecognized key are preserved verbatim under `ComponentManifest.vendor` and never
+  interpreted. This is the same rule §16.6 sets for unknown skill frontmatter, applied to manifests.
+- **Signing is git-native provenance, not a key service.** Trust is "this exact commit, from this
+  exact source fingerprint", which the immutable commit ref and `componentSourceKey` already give,
+  plus the existing `ComponentManifest.integrity` hash for archive sources. P8 forbids a
+  Fleet-operated key service and this design needs none. Repository-level signatures (GPG, gitsign)
+  can be verified additively later against the repository's own keys — Fleet never becomes a
+  certificate authority.
 
 ### 16.7 Cindy — what a real store looks like, and the attack it documents
 
@@ -521,7 +534,8 @@ What this requires from the source model, and why it is not free:
    installed plugin work with no identity at all. Only private sources are gated, and their absence
    is reported as "not signed in", never as an empty or broken store.
 
-**Not decided, and an owner call:** whether Fleet ships a default catalog repository at all in the
-first slice, or whether the store starts empty with only "add a source". Shipping one is better
-product and costs a repository; starting empty costs nothing and delays the question of who curates
-it.
+**Decided 2026-09-21: ship a local seed in-tree, no remote catalog repository in the first slice.**
+A seed costs a directory, guarantees the store is never empty offline, and needs no curation policy,
+no repository to operate and no answer yet to "who curates it". A remote shard merges in later
+without changing the model — seed-only is the degenerate case of the same merge ZCode performs, so
+adopting it later is additive rather than a rewrite.
