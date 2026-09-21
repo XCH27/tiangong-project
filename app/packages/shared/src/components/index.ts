@@ -11,6 +11,7 @@ export type {
   WorkspaceComposition,
 } from './types.ts'
 export { resolveWorkspaceComponents, type ComponentResolution } from './resolve.ts'
+export { isVersionCompatible } from './version.ts'
 export {
   AGENT_MANIFEST_SCHEMA,
   BUNDLE_MANIFEST_PATHS,

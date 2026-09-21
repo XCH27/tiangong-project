@@ -4,9 +4,19 @@
  * These tests verify that OAuth metadata can be discovered from popular MCP servers.
  * They only check that metadata is discoverable - they don't perform full OAuth flows.
  *
- * Tests are skipped if servers are unreachable (network tolerance for CI).
+ * **These hit the real network and are opt-in.** Until 2026-09-21 they ran in the default suite,
+ * where `discovers OAuth metadata` timed out at bun's 5s default often enough to fail roughly half
+ * of all runs — a non-deterministic suite, and a guaranteed failure on an offline machine. The
+ * file's own `isReachable` guard never covered that test.
+ *
+ * Run them deliberately:
+ *
+ *     CRAFT_E2E_NETWORK=1 bun test packages/shared/src/auth/__tests__/oauth.e2e.test.ts
  */
 import { describe, it, expect } from 'bun:test';
+
+/** Opt-in switch. Absent means skip: a unit suite must not depend on a third party being up. */
+const NETWORK_E2E = process.env.CRAFT_E2E_NETWORK === '1';
 import { discoverOAuthMetadata, getMcpBaseUrl } from '../oauth';
 
 // Helper to check if a URL is reachable
@@ -41,7 +51,7 @@ function describeIfReachable(name: string, mcpUrl: string, fn: () => void) {
   });
 }
 
-describe('E2E: OAuth Metadata Discovery', () => {
+describe.skipIf(!NETWORK_E2E)('E2E: OAuth Metadata Discovery', () => {
   describe('GitHub MCP (api.githubcopilot.com)', () => {
     const MCP_URL = 'https://api.githubcopilot.com/mcp/';
 

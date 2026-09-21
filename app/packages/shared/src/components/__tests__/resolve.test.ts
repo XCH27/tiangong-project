@@ -35,3 +35,75 @@ describe('workspace component composition', () => {
     expect(result.unavailable).toEqual([])
   })
 })
+
+describe('dependency version enforcement', () => {
+  const at = (id: string, version: string, dependencies: ComponentManifest['dependencies'] = []): ComponentManifest => ({
+    id, version, publisher: 'fleet', license: 'Apache-2.0', contributions: [], dependencies,
+  })
+
+  it('refuses a dependent whose required version is newer than what is installed', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'lib', version: '2.0.0' }]), at('lib', '1.0.0')],
+      { globalEnabled: ['app'], workspaceEnabled: [], overrides: {} },
+    )
+    expect(result.active.map(item => item.manifest.id)).toEqual([])
+    expect(result.unavailable[0]?.reason).toContain('requires 2.0.0, found 1.0.0')
+  })
+
+  it('refuses across a major boundary even when the installed version is newer', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'lib', version: '1.0.0' }]), at('lib', '2.0.0')],
+      { globalEnabled: ['app'], workspaceEnabled: [], overrides: {} },
+    )
+    expect(result.active.map(item => item.manifest.id)).toEqual([])
+  })
+
+  it('admits a compatible newer minor or patch', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'lib', version: '1.2.0' }]), at('lib', '1.4.1')],
+      { globalEnabled: ['app'], workspaceEnabled: [], overrides: {} },
+    )
+    expect(result.active.map(item => item.manifest.id).sort()).toEqual(['app', 'lib'])
+  })
+
+  it('treats an unparseable version as incompatible rather than admitting it', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'lib', version: 'latest' }]), at('lib', '1.0.0')],
+      { globalEnabled: ['app'], workspaceEnabled: [], overrides: {} },
+    )
+    expect(result.active.map(item => item.manifest.id)).toEqual([])
+  })
+})
+
+describe('optional dependencies are not activated by their dependent', () => {
+  const at = (id: string, version: string, dependencies: ComponentManifest['dependencies'] = []): ComponentManifest => ({
+    id, version, publisher: 'fleet', license: 'Apache-2.0', contributions: [], dependencies,
+  })
+
+  it('does not activate an installed optional dependency the user never enabled', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'extra', version: '1.0.0', optional: true }]), at('extra', '1.0.0')],
+      { globalEnabled: ['app'], workspaceEnabled: [], overrides: {} },
+    )
+    expect(result.active.map(item => item.manifest.id)).toEqual(['app'])
+    expect(result.unavailable).toEqual([])
+  })
+
+  it('still activates an optional dependency the user did enable, with its own settings', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'extra', version: '1.0.0', optional: true }]), at('extra', '1.0.0')],
+      { globalEnabled: ['app', 'extra'], workspaceEnabled: [], overrides: { extra: { settings: { level: 2 } } } },
+    )
+    expect(result.active.map(item => item.manifest.id).sort()).toEqual(['app', 'extra'])
+    expect(result.active.find(item => item.manifest.id === 'extra')?.settings).toEqual({ level: 2 })
+  })
+
+  it('ignores an optional dependency whose installed version is incompatible', () => {
+    const result = resolveWorkspaceComponents(
+      [at('app', '1.0.0', [{ id: 'extra', version: '2.0.0', optional: true }]), at('extra', '1.0.0')],
+      { globalEnabled: ['app'], workspaceEnabled: [], overrides: {} },
+    )
+    expect(result.active.map(item => item.manifest.id)).toEqual(['app'])
+    expect(result.unavailable).toEqual([])
+  })
+})
