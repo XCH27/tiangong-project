@@ -44,6 +44,70 @@ These two are the standing open-source references. Vendor marketplaces above rem
 evidence, not source architecture. Community registries and smaller Skill managers are not retained
 unless a later concrete gap survives both references and a local Craft extension.
 
+## Verified on-disk interop contract (2026-09-21)
+
+The 2026-07-17 rows above were read from vendor **documentation**. This section was read from a
+**working multi-ecosystem implementation**: `源码参考/software/openclaw` @ `f7dae76bee9`,
+`src/plugins/bundle-manifest.ts` (542 lines) and `src/plugins/marketplace.ts` (1295 lines). It
+replaces guesswork about what a "Codex plugin" or "Cursor plugin" physically is.
+
+### One normalized manifest, four adapters
+
+OpenClaw reads four bundle layouts and normalizes every one into a single internal shape
+`{id, name, description, version, skills[], settingsFiles[], hooks[], bundleFormat, activation, capabilities[]}`:
+
+| `bundleFormat` | Manifest path | How capabilities are discovered |
+|---|---|---|
+| `agent` | `plugin.json` at root | **Neutral open standard.** Rejected unless `$schema` is exactly `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`. Skills = `skills/` dir; MCP = `mcp.json` presence. Client behavior rides in `extensions["<reverse.domain>"]` |
+| `claude` | `.claude-plugin/plugin.json` | Richest set: `skills`, `commands`, `agents`, `outputStyles`, `hooks` (default `hooks/hooks.json`), `mcpServers` (default `.mcp.json`), `lspServers` (default `.lsp.json`), `settings.json`. Declared paths merge with existing defaults |
+| `codex` | `.codex-plugin/plugin.json` | `skills` (default `skills/`), `hooks` (default `hooks/`), `mcpServers` (default `.mcp.json`), `apps` (default `.app.json`) |
+| `cursor` | `.cursor-plugin/plugin.json` | `skills` (+ `.cursor/commands`), `subagents`/`agents` (+ `.cursor/agents`), `hooks` (+ `.cursor/hooks.json`), `rules` (+ `.cursor/rules`), `mcpServers` (+ `.mcp.json`) |
+
+Three properties of this design matter more than the table:
+
+1. **Declared-or-conventional.** Every resolver takes the manifest's declared paths *merged with*
+   directory conventions that exist on disk. A plugin that declares nothing still works if it uses
+   the conventional layout — which is why most real plugins install without per-vendor metadata.
+2. **`capabilities[]` is derived, never declared.** The installer computes which primitives a bundle
+   actually contains by looking at the filesystem, so a manifest cannot claim a capability it does
+   not ship, and cannot hide one it does.
+3. **The neutral standard carries identity, not capability.** The live `agent-plugins.org` 1.0.0
+   schema (fetched 2026-09-21) requires only `$schema` and `name`, permits
+   `version`/`description`/`author`/`homepage`/`repository`/`license`/`keywords`/`extensions`, and
+   sets `additionalProperties: false`. It states that it "assigns no semantics to namespace object
+   contents". **Portable identity comes from the schema; portable capability comes from the
+   directory conventions above.** Any design that expects the neutral manifest to describe tools,
+   permissions or hooks is misreading it.
+
+### A marketplace is a Git repository, not a service
+
+`marketplace.json` (or `.claude-plugin/marketplace.json`) is a catalog listing
+`{name, version?, description?, source}`, where `source` is one of
+`path` · `github` · `git` · `git-subdir` · `url`. There is no central server, no account, and no
+API. OpenClaw additionally reads the user's existing `~/.claude/plugins/known_marketplaces.json`,
+so a user's Claude catalogs carry over without re-entry.
+
+**This is the shape P8 requires.** A Fleet marketplace needs no Fleet-operated service to exist; a
+catalog is a repo the user or a team already controls. Guardrails observed in the same file, worth
+copying rather than re-deriving: a 256 MB archive ceiling, a 16 MB catalog-manifest ceiling, a
+256 KB neutral-manifest ceiling, hardlink rejection on manifest reads, immutable-commit-ref checks
+for Git sources, an install transaction, a security scan and an explicit artifact-consent handler.
+
+### What this means for Fleet's existing code
+
+Checked against the current tree on 2026-09-21:
+
+- `app/packages/shared/src/skills/` already implements `SKILL.md` + YAML frontmatter
+  (`name`, `description`, `globs?`, `alwaysAllow?`, `icon?`, `requiredSources?`) across three scopes
+  (`~/.agents/skills`, workspace, `{project}/.agents/skills`). **Skills are REUSE/EXTEND, not NEW** —
+  and `.agents/` is already the cross-product convention, shared with ZCode.
+- `app/packages/shared/src/components/types.ts` `ComponentManifest` already carries `skills[]`,
+  `mcpServers[]`, `contributions[]`, `requestedPermissions[]`, `integrity`, `license`, `publisher` —
+  a **superset** of all four foreign manifests. The gap is not the model; it is the absence of an
+  adapter layer and of `bundleFormat` provenance.
+- `app/packages/shared/src/sources/` already models `mcp` | `api` | `local` connections with OAuth.
+  A bundle's `mcpServers` should install as Sources, not as a second connection authority.
+
 ## Minimum package schemas
 
 | Field | Required for all | Additional by type |

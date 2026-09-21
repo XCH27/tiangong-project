@@ -172,6 +172,31 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   task center may project selected Session/Task/Job state through the existing authorities; it is not
   the v0.11 Kanban Board and does not justify a second store. (owner direction 2026-07-20; revised
   after source and interaction review 2026-09-14)
+- **P11 — A Plugin is a bundle, not an authority; compatibility is one adapter, not four stores.**
+  Fleet has three capability primitives and they already exist: **Skill**
+  (`packages/shared/src/skills/`, `usable`), **Source** (`packages/shared/src/sources/`, `usable`,
+  `mcp`/`api`/`local`) and **Component** (`packages/shared/src/components/`, `not implemented`).
+  A Plugin is a versioned bundle that *installs* some of those three; it never becomes a fourth
+  authority, never gets its own installer, permission path, connection store or skill store.
+  Compatibility with Claude, Codex and Cursor bundles is achieved by **one adapter** that reads
+  `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json` and the
+  neutral `plugin.json` into the existing `ComponentManifest`, which is already a superset of all
+  four. Three properties are required, not optional: declared paths **merge with** conventional
+  ones; `capabilities[]` is **derived from the filesystem**, never trusted from the manifest; and
+  `bundleFormat` provenance **survives install**. Fleet *publishes* the neutral
+  `agent-plugins.org` 1.0.0 format and keeps its own behavior in `extensions["ai.fleet"]`, because
+  that schema sets `additionalProperties: false` and a non-conforming manifest is not portable.
+  **A marketplace is a Git repository** — `marketplace.json` listing
+  `path`/`github`/`git`/`git-subdir`/`url` sources — so distribution needs no Fleet-operated service
+  and P8/P9-rev hold without an exception; there is no store to log into, offline install from a
+  folder or checkout is a first-class origin, and trust is computed locally at install time.
+  Build order is fixed: **Component host → adapter + local install → catalog.** Catalog browsing
+  before local install only adds ways to fail. Evidence and the measured gaps, including that
+  `skills/storage.ts` whitelists six frontmatter keys and silently drops `triggers` — the activation
+  field 220 of 398 real skills use — are in
+  [`design-library/12-capability---skill---plugin-system.md`](design-library/12-capability---skill---plugin-system.md)
+  §16 and [`references/marketplaces/00-MARKETPLACE-BENCHMARK.md`](references/marketplaces/00-MARKETPLACE-BENCHMARK.md).
+  (owner direction 2026-09-21; grounded in source review of `openclaw@f7dae76bee9`, not vendor docs)
 
 ## B. The spine (agent-native execution)
 

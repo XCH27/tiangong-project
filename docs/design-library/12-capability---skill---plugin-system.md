@@ -228,3 +228,149 @@ No Worker may implement these until the W0.1 namespace/schema decision is frozen
 - No plugin shell patching or direct internal-service imports.
 - No separate workflow/action registry.
 - No external plugin marketplace in the first modular workflow slice.
+
+---
+
+## 16. Concrete design for the current tree (2026-09-21)
+
+Everything above §15 is recovered material from the pre-reset project and speaks in `M00`/`M03`/`M12`
+module IDs that no longer exist. This section is grounded in code that exists today and in a working
+multi-ecosystem implementation read at
+[`../references/marketplaces/00-MARKETPLACE-BENCHMARK.md`](../references/marketplaces/00-MARKETPLACE-BENCHMARK.md)
+§*Verified on-disk interop contract*. Where the two disagree, this section wins for implementation
+and §1–§15 remain rationale.
+
+### 16.1 Three primitives, already three modules
+
+Fleet does not need a new capability kernel. It has three and they map cleanly:
+
+| Primitive | Authority that already exists | Status | What it is |
+|---|---|---|---|
+| **Skill** | `packages/shared/src/skills/` | `usable` | `SKILL.md` + frontmatter. Instructions that change how the agent works. No code, no permissions of its own |
+| **Source** | `packages/shared/src/sources/` | `usable` | `mcp` \| `api` \| `local` connection with auth. Where capability and data come from |
+| **Component** | `packages/shared/src/components/` | `not implemented` — types and resolver exist, no production caller | Manifest + UI contribution into `left-rail` / `right-workbench`. Where a surface comes from |
+
+**A Plugin is not a fourth primitive. A Plugin is a signed, versioned bundle that installs some of
+the three.** This is decision 2 in the marketplace benchmark ("bundle is a projection") restated
+against real modules: the bundle is the unit of *distribution*, never a unit of *authority*.
+
+### 16.2 The adapter layer is the whole interop answer
+
+`ComponentManifest` is already a superset of the Claude, Codex, Cursor and neutral manifests. So
+compatibility is **not** an architecture problem and must not become four marketplaces, four
+installers, or a vendor switch in product code. It is one narrow, testable module:
+
+```text
+.claude-plugin/plugin.json ─┐
+.codex-plugin/plugin.json  ─┤
+.cursor-plugin/plugin.json ─┼──> adapter ──> ComponentManifest + bundleFormat ──> one installer
+plugin.json (agent-plugins)─┘                (+ derived capabilities[])          one resolver
+                                                                                 one permission path
+```
+
+Rules the adapter must hold, each taken from behavior observed in a working implementation rather
+than invented here:
+
+1. **Declared paths merge with conventional paths.** Never require a plugin to declare what its
+   directory layout already states, or most real bundles will fail to install.
+2. **`capabilities[]` is derived from the filesystem, never trusted from the manifest.** A bundle
+   cannot claim a capability it does not ship, nor hide one it does. This is the property that makes
+   the permission prompt honest.
+3. **`bundleFormat` is provenance and must survive install.** The user is entitled to know a
+   surface came from a Cursor bundle; a later incompatibility must be attributable.
+4. **The neutral `agent-plugins.org` manifest is the format Fleet *publishes*, and one of four it
+   *reads*.** It is validated strictly (`$schema` exact match, 256 KB ceiling) because it is the
+   only one with a published contract. Fleet-specific behavior belongs in
+   `extensions["ai.fleet"]`, never in new top-level keys — the schema sets
+   `additionalProperties: false` and a non-conforming manifest is not portable.
+5. **A bundle's `mcpServers` install as Sources.** Not as a parallel connection store. One
+   connection authority, per non-negotiable.
+6. **A bundle's skills install into the existing `.agents/skills` scopes.** Not into a plugin-private
+   skill store. `.agents/` is already shared with Craft upstream and ZCode; a private store would
+   break the one thing that is already portable.
+
+### 16.3 The marketplace needs no Fleet service
+
+A catalog is `marketplace.json` listing `{name, version?, description?, source}` where `source` is
+`path` · `github` · `git` · `git-subdir` · `url`. That is the entire distribution backbone, and it
+satisfies **P8** (no Craft-operated dependency) and **P9-rev** (no Fleet relay) without an exception:
+a marketplace is a Git repository that the user or their team already controls.
+
+Consequences that follow, and that the UI must not contradict:
+
+- **There is no "official Fleet store" to log into**, and no listing can require one. Fleet may ship
+  a default catalog *as a repository reference*, removable like any other.
+- **Local-first is the default path, not a fallback.** Install from a folder or a Git checkout is a
+  first-class origin, because offline install is the only way P8 stays true.
+- **Importing the user's existing catalogs is a feature, not a migration.** Reading
+  `~/.claude/plugins/known_marketplaces.json` costs nothing and is the difference between an empty
+  store and a populated one on first run.
+- **Trust is computed locally.** Signature/provenance/license/permission diff are evaluated on this
+  machine at install time; a remote catalog supplies candidates, never verdicts.
+
+### 16.4 Sequencing, and what must not be built first
+
+`08-CRAFT-CAPABILITY-MAP.md` records Component activation as `not implemented` with no production
+caller, and the roadmap's foundation-first slice puts the minimum registry, scoped activation and
+layout ahead of external distribution. That order is right and this section does not reopen it:
+
+1. **Component host first** — a real registry with two production surfaces, per R18. Until a
+   Component can be installed, enabled, rendered and revoked *from a local folder*, a marketplace
+   only adds ways to fail.
+2. **Adapter + local install second** — the four-format reader, derived `capabilities[]`, the
+   permission diff, the install transaction with rollback. Verifiable entirely offline against
+   fixture bundles; no network, no catalog, no UI store.
+3. **Catalog last** — `marketplace.json` reading, Git/GitHub sources, known-marketplace import.
+
+**Prohibited orderings:** building catalog browsing before local install works; adding a second
+installer or second permission path per ecosystem; treating a vendor bundle as an authority that may
+write directly into the shell; shipping a store page whose listings cannot be installed offline.
+
+### 16.5 What is verified and what is not
+
+Verified on 2026-09-21: the three Fleet modules and their contracts; `ComponentManifest` being a
+superset; the four manifest paths and their per-ecosystem resolvers; the marketplace source kinds
+and size ceilings; the live `agent-plugins.org` 1.0.0 schema and its `extensions` rule.
+
+### 16.6 Measured: Fleet silently drops the field most real skills route on
+
+This was the open question in the first draft of this section. It is now answered, and the answer
+changes what the adapter must do.
+
+**398 real `SKILL.md` files across the reference set were parsed on 2026-09-21.** Frontmatter keys,
+by frequency:
+
+| Key | Files | Fleet reads it? |
+|---|---|---|
+| `description` | 397 | yes |
+| `name` | 396 | yes |
+| `triggers` | **220** | **no** |
+| `od:` (vendor namespace block) | 245 nested keys | **no** |
+| `tags` | 61 | **no** |
+| `zh_name` / `en_name` / `zh_description` / `en_description` | 61–65 | **no** |
+| `emoji` | 24 | **no** (Fleet has `icon`) |
+| `version` | present in bundle-published skills | **no** |
+| `globs`, `alwaysAllow`, `requiredSources`, `icon` | Fleet-specific | yes |
+
+`packages/shared/src/skills/storage.ts:82-88` builds `SkillMetadata` from an **explicit six-key
+whitelist**. Everything else is discarded without a warning. The skill still loads — `name` and
+`description` are present — so nothing appears broken, while **the field 55% of real skills use to
+declare when they activate is gone**. Fleet's `globs` is a file-pattern trigger; `triggers` is a
+natural-language phrase list. They are not substitutes.
+
+Three requirements follow:
+
+1. **Preserve unknown frontmatter instead of whitelisting it.** Keep the parsed record and expose
+   the unrecognized remainder. `od:` shows the vendor-namespace pattern already exists in
+   frontmatter, mirroring `extensions` in the neutral JSON schema; dropping it discards the exact
+   data a foreign client needs to keep working after a round trip through Fleet.
+2. **Read `triggers` as a first-class activation input** alongside `globs`, or state in the UI that
+   an imported skill's triggers are not honored. Silently ignoring it is the failure mode this
+   project has a non-negotiable against: a boundary reported by failing quietly.
+3. **The i18n keys are not someone else's problem.** Fleet ships `zh-Hans`; skills in the wild
+   already carry `zh_name`/`zh_description`. Reading them is close to free and is the difference
+   between a localized store and an English-only one.
+
+**Still not verified, and required before implementation starts:** how `activation` should map
+across the four bundle formats, and whether any signing story exists that does not require a
+Fleet-operated key service (P8 forbids one).
