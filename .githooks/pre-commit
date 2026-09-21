@@ -9,6 +9,26 @@ root="$(git rev-parse --show-toplevel)"
 # Doc-contract joins (registry/packet/matrix/page IDs) — stdlib-only, <1s.
 python3 "$root/scripts/validate-doc-contracts.py"
 
+# Every difference from the upstream pin must be declared, and every component upstream mounts
+# must be mounted here or its removal declared. These are the anti-recurrence gates: all three
+# restarts came from an undeclared, rewrite-shaped delta and from functions that vanished with
+# the surfaces that carried them.
+#
+# Exit 2 means the reference mirror is not mounted — that is a classified limitation, not a
+# violation, so it warns and lets the commit through. Blocking every commit whenever
+# /Volumes/AIGC is unplugged would be worse than the problem these gates solve. Exit 1 is a real
+# undeclared divergence and does block.
+# `set -e` is on, so the call must be guarded or the shell exits before $? is read.
+for gate in check-upstream-delta check-orphaned-components; do
+  status=0
+  python3 "$root/scripts/$gate.py" || status=$?
+  if [ "$status" -eq 2 ]; then
+    echo "  (skipped $gate: reference mirror unavailable — verify before pushing)" >&2
+  elif [ "$status" -ne 0 ]; then
+    exit "$status"
+  fi
+done
+
 # Staged typecheck + i18n gates (same commands husky ran).
 cd "$root/app"
 sh .husky/pre-commit
