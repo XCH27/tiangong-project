@@ -111,7 +111,43 @@ Three things a newcomer gets wrong, stated plainly:
    names its reason so a surface can explain itself — that pattern is deliberate
    and repeated (workbench toggle, connect form, revert, install, promotion).
 
-## Preflight: the reference roots may not be mounted
+## Test content is not product intent
+
+Owner-created Session content, Project names and test fixtures are data, not product requirements.
+The owner clarified on 2026-09-15 that stock-trading examples came from chat and feature testing;
+they do not define a default Project. Separately, a future Trading/Market Analysis Component is an
+explicit product proposal, not a Core capability; live orders require a separate safety contract.
+Never make a particular demo name a framework prerequisite. A real migration conflict belongs to
+that record and must preserve its data; do not rename, merge or delete it without the relevant user
+decision. The foundation-first
+execution slice is routed through `docs/WORK-ORDER.md` and `docs/specs/R18-right-workbench.md`;
+component registration and requested panel movement do not wait for a memory system or marketplace.
+
+## Reference retention: inventory first, owner decides removal
+
+Before selecting replacement references, inventory the existing `源码参考/software/`,
+`源码参考/plugins/` and `UI参考/` roots. Check actual repository boundaries, origins, revisions and
+local changes; a stale registry entry or equal HEAD does not prove two directories are disposable.
+Owner direction (2026-09-14): discuss reference exclusions before acting. Do not delete, relocate,
+archive, re-pin, or remove an existing project from the reference set under a general cleanup
+request. Present the exact target, evidence, remaining reference value and recovery plan, then wait
+for approval. A code-import rejection is not a reference-retention decision. Keep historical audit
+commits intact; record a current checkout observation separately instead of changing the commit
+under an earlier finding. Record inventory and retention rules in `docs/references/REFERENCE-REGISTRY.md`,
+not in a new progress report.
+
+## Preflight: run it, do not eyeball it
+
+```bash
+bash scripts/init.sh
+```
+
+One command. It wires the commit gates (`core.hooksPath` is **not** carried by a clone, so a fresh
+checkout runs no typecheck/i18n/doc-contract gate until you run this), checks the toolchain, checks
+that both Craft pins are still *on* their pins, and warns when upstream has moved past the rolling
+pin. Every check below is one of its lines; run the script instead of remembering them.
+
+### The reference roots may not be mounted
 
 `源码参考/` and `UI参考/` are symlinks into `/Volumes/AIGC/天工参考/`, and neither is tracked by this
 repository (both are gitignored; the last tracked mirror content is reachable at
@@ -167,6 +203,7 @@ guess for the v0.10.5 baseline.
 | **Anything that moves** — whether to animate at all, easing, duration, press feedback | `docs/design-library/22-motion.md` |
 | Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |
 | Starting a big feature | `docs/FEATURE-REGISTRY.md` (register your boundary) |
+| **Fresh clone / new machine / gates not firing** | `bash scripts/init.sh`, then `bash scripts/fleet-verify.sh` |
 | Upstream Craft behavior/docs | External reference root `/Volumes/AIGC/天工参考/源码参考/` (workspace symlink `源码参考/`), including `craft-docs/`, Craft pins `software/craft-agents-oss-v0.10.5/` and `software/craft-agents-oss/` (best-of candidates, not “do-not-sync” lists) |
 
 ## Working method (one paragraph)

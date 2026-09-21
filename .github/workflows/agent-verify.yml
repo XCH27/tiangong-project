@@ -2,7 +2,10 @@ name: Agent Verify (CI)
 on:
   pull_request:
   push:
-    branches: [ "main", "work/fresh-base-spine" ]
+    # Until 2026-09-20 this list named only "main" and "work/fresh-base-spine", neither of
+    # which has been the branch anyone commits to since 2026-09-10 — so every push to the
+    # real working line ran no CI at all. "work/**" covers the working lines by convention.
+    branches: [ "main", "work/**" ]
   workflow_dispatch:
 
 jobs:

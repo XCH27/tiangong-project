@@ -4,9 +4,23 @@ A **local-first desktop workbench** where a person and their agents operate the 
 the same place. Fork of Craft Agents (Apache-2.0). What Fleet is and is not:
 [`docs/PRODUCT.md`](docs/PRODUCT.md).
 
+Project vision and the Harness architecture are documented in
+[`docs/WHITEPAPER.md`](docs/WHITEPAPER.md).
+
 > Craft supplies the look and the agent/runtime **base** (currently **v0.13.3**). Cindy supplies
 > how features are implemented and how surfaces talk to the backend — **capabilities, not
 > typesetting**. OpenChamber supplies Git/GitHub. Canvas, documents and video are Fleet's own.
+
+## First run on a new machine
+
+```bash
+bash scripts/init.sh        # wires the commit gates, checks the toolchain and the Craft pins
+bash scripts/fleet-verify.sh   # the full gate
+```
+
+`scripts/init.sh` is not optional. The pre-commit gate is wired through `core.hooksPath`, which
+lives in `.git/config` and **is not carried by a clone** — until 2026-09-20 a fresh clone silently
+ran no typecheck, i18n or doc-contract gate at all.
 
 ## Where to start
 
@@ -30,7 +44,25 @@ the same place. Fork of Craft Agents (Apache-2.0). What Fleet is and is not:
 ## Current state (honest)
 
 - **Base:** `app/` tracks Craft Agents OSS **v0.13.3** (rolling pin `源码参考/software/craft-agents-oss` at tag `v0.13.3`). v0.10.5 remains a *look* measurement pin, not a shell to restore.
-- **Working branch name** `work/craft-0.12-rebase` is historical; the tree is no longer v0.12.0.
+- **Upstream is ahead: v0.13.4 exists and we are not on it.** It is not a patch release — it ships
+  agent steering / mid-stream queueing, context-window usage and a composer viewport rewrite as
+  upstream code, none of which this fork has. **Do not hand-build those three.** Measured delta and
+  rebase cost: the P2 note in [`docs/02-DECISIONS.md`](docs/02-DECISIONS.md). Sequencing: take the
+  tag *after* `fleet-baseline-r0`, never before. `scripts/init.sh` warns when the pin falls behind.
+
+### Branches (one working line)
+
+| Branch | What it is |
+|---|---|
+| `work/craft-0.12-rebase` | **The working line.** HEAD. The name is historical — the tree is v0.13.3, not v0.12.0. |
+| `work/fresh-base-spine` | Ancestor of the working line (0 unique commits). The R0 work done *on its renderer* is closed; do not cut `fleet-baseline-r0` there. |
+| `main` | Ancestor, 73 commits behind, last moved 2026-07-26. Not a release line. |
+| `backup/pre-r0-audit-2026-09-09` | **Keep.** The last tracked mirror content is reachable here (`AGENTS.md` preflight cites it). |
+| `backup/pre-r0-audit` | **Keep.** Older dirty-tree snapshot, 2026-07-20. |
+| `archive/musing-dubinsky-2026-09-20` (tag) | A removed worktree's final state. 53 of its files are the output of a broken automated link rewrite; archived, not adopted. |
+
+  Every branch except the two `backup/*` snapshots is an ancestor of the working line, so there is
+  nothing to merge — consolidation here means naming, not integration.
 - **Board and conversation are separate navigators.** `/board` is not a session-list view mode.
 - **Canvas is `not implemented`.** Do not put an empty pane in the default window. When it is built, the reference is Canvasight's same-board Pages/Tasks/Assets.
 - **Assistants** exist as a domain (`packages/shared/src/assistants`) and are **not** on the chrome yet. A kit is not a label.
@@ -38,10 +70,9 @@ the same place. Fork of Craft Agents (Apache-2.0). What Fleet is and is not:
   [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md), which owns release order. R15 is `DEP`, not ACTIVE.
   Whatever R0 retains, it is not rearranging Craft chrome.
 - R0 on the discarded `work/fresh-base-spine` renderer is closed. Do not cut `fleet-baseline-r0` on that tree.
-- **The working tree is dirty on purpose and R0 is the job of explaining it.** Measured 2026-09-13 at
-  `2ace98743`: 193 uncommitted paths — **126 byte-identical to upstream v0.13.3** (pure intake, no
-  Fleet judgement in them), **38 modified away from upstream**, **23 with no upstream counterpart**.
-  Reproduce the split before touching it:
+- **The working tree is dirty on purpose and R0 is the job of explaining it.** The count changes as
+  intake and review work lands, so never treat it as a completion percentage. Reproduce the split
+  against the rolling Craft pin before touching it:
 
   ```bash
   U=源码参考/software/craft-agents-oss
@@ -50,8 +81,8 @@ the same place. Fork of Craft Agents (Apache-2.0). What Fleet is and is not:
   done
   ```
 
-  Only the ~61 non-intake paths carry decisions worth reviewing. Do not treat the file count as a
-  completion percentage, and do not reset or overwrite the tree to make it look clean.
+  Only the non-intake paths carry Fleet decisions worth reviewing. Do not reset or overwrite the
+  tree to make it look clean.
 - **P6 is not finished, whatever the R1 row used to say.** 62 zh-Hans strings still say 工作区 beside
   50 saying 项目; the top bar switches Workspace while the sidebar row named 项目 only filters. See the
   R1 row in [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md) and OV-008 in

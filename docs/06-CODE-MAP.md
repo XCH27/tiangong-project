@@ -4,11 +4,19 @@
 > editing** — the tree changes and these paths are orientation, not a contract. All paths are under
 > `app/`.
 >
-> **Last path verification:** 2026-08-15 against the working tree at `f8a340021` + 385 uncommitted
-> paths. Every entry point below was re-confirmed with `ls`/`rg`; the delegation, R3-acceptance,
-> runtime-mode and shell-layout modules that landed between 2026-07-31 and 2026-08-15 were missing
-> from this map entirely and are now listed. Re-run the existence check and update this line after
-> the next large landing.
+> **Last path verification: 2026-09-20.** Every `.ts`/`.tsx` path in this file was checked with
+> `ls` against the working tree. Result: **33 absent, 9 present** — the four sections after *Common
+> change routes* describe modules the 2026-09-11 v0.13.3 rebase discarded, and are now marked per
+> row with ✗ rather than presented as "real code". The line this replaces claimed 2026-08-15, three
+> weeks *before* the rebase that invalidated it; that gap is how a reader could `rg expert-kit.ts`,
+> get nothing, and conclude this project's documentation cannot be trusted. Re-run after any large
+> landing:
+>
+> ```bash
+> grep -oE '`[A-Za-z0-9_./@-]+\.tsx?`' docs/06-CODE-MAP.md | tr -d '`' | sort -u |
+>   while read -r f; do find app -path '*/node_modules' -prune -o -path "*$f" -print -quit |
+>     grep -q . || echo "ABSENT $f"; done
+> ```
 
 ## Baseline facts
 
@@ -160,79 +168,90 @@ recorded condition, not an open work item; touch them only when a slice already 
   `modules/suites/SYS-03-context-economy.md`; extend one effective projection before provider
   schema adaptation. Do not couple it to R4 or treat a provider lane as a loadout authority.
 
-## Artifact history and attribution (Decisions H1–H5)
+## Artifact history and attribution (Decisions H1–H5) — MOSTLY DISCARDED (see ✗ per row)
+
+> **Status, verified 2026-09-20 by `ls` on every path below.** The 2026-09-11 Craft v0.13.3 rebase
+> discarded most of this layer (`02-DECISIONS.md` implementation-reset note). Rows are marked **✗**
+> where the file is **absent today** and left unmarked where it still exists — this section is
+> mixed, not uniformly gone. Absent rows are kept, not deleted, because the rule in the right-hand
+> column is still a decision this project stands by; they are **rationale, not a map**. Do not `rg`
+> for a ✗ path expecting a hit, do not report it as landed, and do not recreate its old store.
 
 New domain layer. Pure modules — no git commands, no I/O — so the rules are testable without a
 repository and the executor's only job is to refuse anything the plan did not authorize.
 
-| Concern | Real code | Note |
+| Concern | Path before the rebase (**absent today**) | Rule that survives |
 |---|---|---|
-| Which mechanism owns an artifact's history | `packages/shared/src/artifacts/history-backend.ts` | `text → git-tree`, `media → content-store`, `document-graph → operation-log`. Routing by extension denylist, not size |
+| ✗ Which mechanism owns an artifact's history | `packages/shared/src/artifacts/history-backend.ts` | `text → git-tree`, `media → content-store`, `document-graph → operation-log`. Routing by extension denylist, not size |
 | Change attribution | same file (`ChangeAttribution`, `groupByAuthor`) | `agentId` absent = the human acted directly |
 | Concurrent write admission | same file (`admitWrite`, `WriteLease`) | One writer per path; `document-graph` exempt because record ops commute |
 | Parallel-agent isolation | same file (`AgentIsolation`, `agentPortOffset`) | Worktree **plus** ports/scratch/env; ports by index so they reproduce |
-| Git snapshot safety boundary | `packages/shared/src/git/snapshot-plan.ts` | Explicit allow-list; scratch `GIT_INDEX_FILE`; capability degrades rather than fails |
-| Message revert (file-level) | `packages/shared/src/sessions/revert-model.ts` | Distinct from `branchFromMessageId`, which forks the *conversation* and leaves files alone |
+| ✗ Git snapshot safety boundary | `packages/shared/src/git/snapshot-plan.ts` | Explicit allow-list; scratch `GIT_INDEX_FILE`; capability degrades rather than fails |
+| ✗ Message revert (file-level) | `packages/shared/src/sessions/revert-model.ts` | Distinct from `branchFromMessageId`, which forks the *conversation* and leaves files alone |
 | Derived session activity | `packages/shared/src/sessions/session-activity.ts` | Live; `sessionStatus` stays the manual label |
-| CLI agent connection (ACP + catalog + binary resolution) | `packages/shared/src/cli-agents/cli-agent-connection.ts` | Replaces three hand-written probes; `legacy-probe` marks what has not migrated |
+| ✗ CLI agent connection (ACP + catalog + binary resolution) | `packages/shared/src/cli-agents/cli-agent-connection.ts` | Replaces three hand-written probes; `legacy-probe` marks what has not migrated |
 | Terminal capability and command admission | `packages/shared/src/terminal/terminal-capability.ts` | Classifies before running so `vim` is refused instead of hanging for 30s |
 | Model pricing (cache tiers, context tiers, subscription) | `packages/shared/src/config/model-pricing.ts` | models.dev shape; unknown pricing sorts last so it cannot become the silent default |
 | Cost of a session, with provenance | `packages/shared/src/config/session-cost.ts` | `reported` / `derived` / `subscription` / **`unknown`** — unknown is not a number, so `$0.00` can never stand in for "nobody told us" |
 | Usage rolled up by model, project, day | `packages/shared/src/config/usage-rollup.ts` | Coverage is measured in **tokens, not sessions**; quiet days stay as gaps |
-| Expert kits and the attention budget | `packages/shared/src/labels/expert-kit.ts` | Budget governs the **active** set, not the catalog; union takes the *narrowest* permission request |
-| Skill routing inside a kit | `packages/shared/src/labels/skill-routing.ts` | Triggers + decisive exclusions + offered successors; `auditCatalog` catches what makes routing feel broken |
-| Expert-kit gallery (browse, cards, install admission) | `packages/shared/src/labels/kit-gallery.ts` | Catalog size never warns; missing connectors refuse, missing routing warns |
-| Legacy `kind: 'identity'` normalization | `packages/shared/src/labels/kind-normalize.ts` | **Expert kits are the old identity labels.** Never compare `kind` directly |
-| Kit-declared data sources | `packages/shared/src/labels/kit-sources.ts` | Local archives are forced `sensitive` and `search-only`; missing required sources refuse |
-| Memory-curator kit (worked example) | `packages/shared/src/labels/memory-curator-kit.ts` | Idle-triggered, prune-always/consolidate-opt-in, never deletes, cheap-model requirement |
-| Example kits (data, not advice) | `packages/shared/src/labels/example-kits.ts` | One small kit, one 18-step kit that only works routed |
-| Memory scope, promotion and tool facts | `packages/shared/src/memory/memory-scope.ts` | Delegates return findings and write nothing; curated layers are consolidation-only |
-| Delegation routing and cost escalation | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only |
-| Review diff normalization | `apps/electron/src/renderer/components/app-shell/workbench/review/review-diff-model.ts` | Unifies working-tree and session-snapshot sources; directory rollup; lazy patch predicate |
+| ✗ Expert kits and the attention budget | `packages/shared/src/labels/expert-kit.ts` | Budget governs the **active** set, not the catalog; union takes the *narrowest* permission request |
+| ✗ Skill routing inside a kit | `packages/shared/src/labels/skill-routing.ts` | Triggers + decisive exclusions + offered successors; `auditCatalog` catches what makes routing feel broken |
+| ✗ Expert-kit gallery (browse, cards, install admission) | `packages/shared/src/labels/kit-gallery.ts` | Catalog size never warns; missing connectors refuse, missing routing warns |
+| ✗ Legacy `kind: 'identity'` normalization | `packages/shared/src/labels/kind-normalize.ts` | **Expert kits are the old identity labels.** Never compare `kind` directly |
+| ✗ Kit-declared data sources | `packages/shared/src/labels/kit-sources.ts` | Local archives are forced `sensitive` and `search-only`; missing required sources refuse |
+| ✗ Memory-curator kit (worked example) | `packages/shared/src/labels/memory-curator-kit.ts` | Idle-triggered, prune-always/consolidate-opt-in, never deletes, cheap-model requirement |
+| ✗ Example kits (data, not advice) | `packages/shared/src/labels/example-kits.ts` | One small kit, one 18-step kit that only works routed |
+| ✗ Memory scope, promotion and tool facts | `packages/shared/src/memory/memory-scope.ts` | Delegates return findings and write nothing; curated layers are consolidation-only |
+| ✗ Delegation routing and cost escalation | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only |
+| ✗ Review diff normalization | `apps/electron/src/renderer/components/app-shell/workbench/review/review-diff-model.ts` | Unifies working-tree and session-snapshot sources; directory rollup; lazy patch predicate |
 
-## Bounded delegation (Decisions C3/C5/C7/C9/C11 — R6 domain layer, landed early)
+## Bounded delegation (Decisions C3/C5/C7/C9/C11) — DISCARDED BY THE REBASE
 
 Landed ahead of R4/R5 by owner direction (roadmap change log, 2026-08-15). **These types are
 `candidate`, not frozen** (`modules/REGISTRY.md` rule 2): R4 and R5 may change their shape without a
 deprecation cycle. Do not build a suite against them as if they were promoted contracts.
 
-| Concern | Real code | Note |
+| Concern | Path before the rebase (**absent today**) | Rule that survives |
 |---|---|---|
-| Delegation envelopes | `packages/shared/src/agent/delegation-contract.ts` | `TaskContract` locked per attempt; `TaskBrief` in, `RunReport` out; transcripts never cross the boundary. Zod-validated |
-| Organization policy | `packages/shared/src/agent/delegation-policy.ts` | `direct` / `single-verifier` / `bounded-parallel` / `serial-isolated`, with a human-readable reason every time. Learned routing is R17 and deliberately absent |
-| Inline delegation projection | `packages/shared/src/agent/delegation-projection.ts` | Pure projection of child Session state for `DelegationStrip` (H11); a surface never owns orchestration state |
-| Requirement/cost routing | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only (H10) |
-| Path write leases | `packages/shared/src/agent/path-lease.ts` | One writer per path; reserved paths need the integrator role; leases expire so a crashed agent cannot hold a file |
-| Permission intersection | `packages/shared/src/agent/permission-intersection.ts` | `effective = parent ∩ requested ∩ workspacePolicy ∩ runtimeCapability`. Privilege never expands past the parent; unattended work that resolves to `ask` waits, it does not escalate |
-| RunReport validation | `packages/shared/src/agent/run-report-validate.ts` | Deterministic schema/criterion/evidence/path/budget checks against the locked contract (C9). The executor cannot self-certify |
+| ✗ Delegation envelopes | `packages/shared/src/agent/delegation-contract.ts` | `TaskContract` locked per attempt; `TaskBrief` in, `RunReport` out; transcripts never cross the boundary. Zod-validated |
+| ✗ Organization policy | `packages/shared/src/agent/delegation-policy.ts` | `direct` / `single-verifier` / `bounded-parallel` / `serial-isolated`, with a human-readable reason every time. Learned routing is R17 and deliberately absent |
+| ✗ Inline delegation projection | `packages/shared/src/agent/delegation-projection.ts` | Pure projection of child Session state for `DelegationStrip` (H11); a surface never owns orchestration state |
+| ✗ Requirement/cost routing | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only (H10) |
+| ✗ Path write leases | `packages/shared/src/agent/path-lease.ts` | One writer per path; reserved paths need the integrator role; leases expire so a crashed agent cannot hold a file |
+| ✗ Permission intersection | `packages/shared/src/agent/permission-intersection.ts` | `effective = parent ∩ requested ∩ workspacePolicy ∩ runtimeCapability`. Privilege never expands past the parent; unattended work that resolves to `ask` waits, it does not escalate |
+| ✗ RunReport validation | `packages/shared/src/agent/run-report-validate.ts` | Deterministic schema/criterion/evidence/path/budget checks against the locked contract (C9). The executor cannot self-certify |
 | Kernel integration | `packages/server-core/src/tasks/TaskRunner.ts`, `packages/shared/src/agent/base-agent.ts`, `agent/index.ts` | Where the envelopes are actually consumed |
-| Inline surface | `apps/electron/src/renderer/components/app-shell/DelegationStrip.tsx` (mounted in `ChatDisplay.tsx`) | The strip is real; the tree/brief/report inspector is `not implemented` (P-20) |
+| ✗ Inline surface | `apps/electron/src/renderer/components/app-shell/DelegationStrip.tsx` (mounted in `ChatDisplay.tsx`) | The strip is real; the tree/brief/report inspector is `not implemented` (P-20) |
 
 Not yet built behind this layer: PreToolUse `TaskContract` gates, the independent read-only
 verifier, and worktree apply/discard. Those are R6's own acceptance and remain `not implemented`.
 
-## R3 acceptance convention (fixture, not R3)
+## R3 acceptance convention (fixture, not R3) — DISCARDED BY THE REBASE
 
-| Concern | Real code | Note |
+| Concern | Path before the rebase (**absent today**) | Rule that survives |
 |---|---|---|
-| Deliverable acceptance helper | `packages/shared/src/workspaces/deliverable-acceptance.ts` | Copies the accepted file into `deliverables/` with a parseable provenance header (session, source, SHA-256, evidence, recovery). Refuses path escape, missing source, and overwrite of a different file. **Not ArtifactRef** — bytes stay in the Project folder |
-| Agent-facing tool | `packages/session-tools-core/src/handlers/accept-deliverable.ts`, registered in `tool-defs.ts` as `accept_deliverable` | May set `needs-review`; never sets `done` or `cancelled` — closing a Session is the owner's decision |
+| ✗ Deliverable acceptance helper | `packages/shared/src/workspaces/deliverable-acceptance.ts` | Copies the accepted file into `deliverables/` with a parseable provenance header (session, source, SHA-256, evidence, recovery). Refuses path escape, missing source, and overwrite of a different file. **Not ArtifactRef** — bytes stay in the Project folder |
+| ✗ Agent-facing tool | `packages/session-tools-core/src/handlers/accept-deliverable.ts`, registered in `tool-defs.ts` as `accept_deliverable` | May set `needs-review`; never sets `done` or `cancelled` — closing a Session is the owner's decision |
 
 `specs/R3-first-production-chain.md` R3-C1..C8 still require a real owner-run chain. This fixture is
 not a stand-in for them.
 
-## Shell layout, composer and session-option modules (landed 2026-08)
+## Shell layout, composer and session-option modules — DISCARDED BY THE REBASE
 
-| Concern | Real code |
+> Every path in this section is absent as of 2026-09-20. The 2026-08 "landed" claim predates the
+> v0.13.3 rebase. `sanitize-schema.ts` and `atomic-write.ts` are the only two survivors and are
+> listed under *Spine primitives that already exist* instead.
+
+| Concern | Path before the rebase (**absent today**) |
 |---|---|
-| Shell layout + sidebar visibility model | `renderer/components/app-shell/{shell-layout,sidebar-visibility}.ts`, `SidebarPanelSlot.tsx` |
-| Plan approval with compaction | `renderer/components/app-shell/input/{approve-plan-with-compact-coordinator,use-approve-plan-with-compact}.ts` |
-| Session option sync / optimistic commands | `renderer/hooks/session-options-sync.ts`, `renderer/lib/optimistic-session-command.ts`, `lib/session-connection-normalize.ts` |
-| Background task cancellation | `renderer/hooks/background-task-kill.ts` |
-| Product-surface classification | `renderer/lib/product-surface.ts` |
-| Browser action model / automation batch ops | `renderer/components/browser/browser-action.ts`, `renderer/components/automations/batch-operation.ts` |
+| ✗ Shell layout + sidebar visibility model | `renderer/components/app-shell/{shell-layout,sidebar-visibility}.ts`, `SidebarPanelSlot.tsx` |
+| ✗ Plan approval with compaction | `renderer/components/app-shell/input/{approve-plan-with-compact-coordinator,use-approve-plan-with-compact}.ts` |
+| ✗ Session option sync / optimistic commands | `renderer/hooks/session-options-sync.ts`, `renderer/lib/optimistic-session-command.ts`, `lib/session-connection-normalize.ts` |
+| ✗ Background task cancellation | `renderer/hooks/background-task-kill.ts` |
+| ✗ Product-surface classification | `renderer/lib/product-surface.ts` |
+| ✗ Browser action model / automation batch ops | `renderer/components/browser/browser-action.ts`, `renderer/components/automations/batch-operation.ts` |
 | Markdown sanitize schema | `packages/ui/src/components/markdown/sanitize-schema.ts` |
-| Classified provider runtime modes | `packages/shared/src/config/runtime-modes.ts` (Page Architecture §3B; reasoning effort and Fast stay separate axes) |
+| ✗ Classified provider runtime modes | `packages/shared/src/config/runtime-modes.ts` (Page Architecture §3B; reasoning effort and Fast stay separate axes) |
 | Messaging gateway atomic write | `packages/messaging-gateway/src/atomic-write.ts` |
 
 Not yet built, in order: the git executor behind `snapshot-plan`, the per-turn capture hook in
