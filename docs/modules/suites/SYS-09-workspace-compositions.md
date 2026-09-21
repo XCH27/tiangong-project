@@ -41,9 +41,11 @@ lifecycle.
 > `shared/src/components/bundle-adapter.ts` still sits ahead of this loop: it was written on
 > 2026-09-21 against the then-unused model, before the host existed, contrary to §16.4 of
 > [`../../design-library/12-capability---skill---plugin-system.md`](../../design-library/12-capability---skill---plugin-system.md).
-Dependency `version` is declared but not enforced by that resolver; optional installed dependencies
-are currently traversed too. Its `active` array is not proof of runtime activation. Do not present
-these helpers as an installed or working Component system.
+Both resolver defects recorded here were fixed on 2026-09-21. `version` is now enforced — same
+major and installed >= required, with an unparseable version treated as incompatible — and an
+installed **optional** dependency is no longer activated by its dependent, because installed is not
+enabled (§6). Seven tests pin both. Its `active` array is still not proof of runtime activation: do
+not present these helpers as an installed or working Component system.
 
 `RightSidebar.tsx` still has fixed Files/Browser/Notes/History entries and bodies. No generic
 left-tool contribution registry is mounted. `shared/src/layout/tree.ts` is unmounted and its v1
