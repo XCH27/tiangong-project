@@ -1,6 +1,6 @@
 # Reference registry — evidence status, not dependency approval
 
-Audit date: 2026-07-27
+Audit date: 2026-09-14 (current inventory and owner-requested additions; older source-ledger rows retain their original evidence dates)
 
 The current file-level evidence ledger for the highest-risk routes is
 [`ADMISSION-V2-AUDIT.md`](ADMISSION-V2-AUDIT.md). It records what was actually found in source;
@@ -14,6 +14,67 @@ has now completed a structured Grok source review but remains `INSUFFICIENT_COMP
 admitted reference. The local commit and license facts below were checked directly against the
 checkout; they are not claims that the mechanism has passed product comparison.
 
+## Owner-controlled retention
+
+Owner direction, 2026-09-14: inventory existing source clones before looking for replacements, and
+discuss exclusions with the owner before acting. A general cleanup request does not authorize
+deleting, relocating, archiving, re-pinning or dropping a project from this reference set. Proposals
+must name exact paths, local changes, comparative evidence, remaining reference value and recovery.
+`REJECT` for code admission is not permission to discard source evidence. Matching HEADs, an old
+version, no production import, or a license restriction alone do not establish disposable content.
+Historical source-lock hashes must remain attached to the findings actually obtained from them;
+new checkout observations do not retroactively revalidate those findings.
+
+## Current on-disk inventory
+
+Read-only inspection on 2026-09-14, updated after the owner's requested clones: **45 Git checkouts
+in `software/`, 22 in `plugins/`**. These are 67 checkouts, not 67 distinct upstream products: the
+two Craft pins have different comparison roles.
+
+> **Checkouts refreshed 2026-09-21 (owner-directed "update everything to latest").** 53 of them
+> fast-forwarded; some were very far behind (`hermes-agent` 14757 commits, `browser-use` 5805,
+> `deepseek-harness` 4912, `CLIProxyAPI` 3988, `orca` 2385, `codex` 1377). **The `last-reviewed-head`
+> column in `源码参考/meta/REVIEWED-HEADS.tsv` was deliberately NOT bumped**: moving a checkout is
+> not reviewing it, so every source claim in this file now describes a commit *older* than what is
+> on disk. Re-read the source before citing it as current. Not moved: the three pins declared in
+> `meta/RETENTION.md` (`craft-agents-oss`, `craft-agents-oss-v0.10.5`, `pi-mono`) — a checkout run
+> inside a pin silently moves the baseline. `software/cindy` was detached and 391 behind with no
+> local commits, so it was returned to `main`; `plugins/hyperframes` had 35 Git-LFS pointer files
+> materialized as content (not real work) and they were stashed before the update.
+Names below are the actual directory names, grouped only for navigation, not admission or pruning.
+The reference root is `/Volumes/AIGC/天工参考/源码参考/` (workspace symlink `源码参考/`).
+
+| Root / subject | Count | Existing directories |
+|---|---|---|
+| `software/` — agent clients and workbenches | 23 | `AionCore`, `AionUi`, `browser-harness`, `cindy`, `codex`, `craft-agents-oss`, `craft-agents-oss-v0.10.5`, `deepseek-harness`, `grok-build`, `herdr`, `hermes-agent`, `kimi-code`, `Kun`, `multica`, `omnigent`, `openchamber`, `openclaw`, `opencode`, `OpenHands`, `orca`, `pi-mono`, `waku`, `ZCode` |
+| `software/` — provider configuration tools | 3 | `CLIProxyAPI`, `cc-switch`, `cockpit-tools` |
+| `software/` — canvas, design and documents | 7 | `Cowart`, `genoffice`, `html-anything`, `open-design`, `openpencil`, `penpot`, `tldraw` |
+| `software/` — video and media | 6 | `OpenChatCut`, `OpenMontage`, `opencut`, `opencut-classic`, `openreel-video`, `palmier-pro` |
+| `software/` — browser, workflow, protocol and engineering | 6 | `browser-use`, `dashi-taskboard`, `flowgram.ai`, `mcp-registry`, `OpenSandbox`, `spec-kit` |
+| `plugins/` — layout and interaction | 4 | `dockview`, `react-resizable-panels`, `react-rnd`, `xyflow` |
+| `plugins/` — browser, document and media utilities | 4 | `context7`, `hyperframes`, `markitdown`, `playwright-mcp` |
+| `plugins/` — skills, context, memory and agent tooling | 14 | `agentmemory`, `agentskills`, `caveman`, `claude-mem`, `claude-task-master`, `claude-token-efficient`, `claw-compactor`, `GPTCache`, `letta`, `LLMLingua`, `mem0`, `planning-with-files`, `repomix`, `SuperClaude_Framework` |
+
+All 44 software checkouts have no tracked or untracked changes reported by Git. Of the 22 plugin
+checkouts, 21 report none; **`hyperframes` has 35 tracked modifications** (34 test `compiled.html`
+outputs and one `sample.mp4`). Their origin was not established and they must be preserved. Git
+status does not compare ignored files, unpushed history, or directory contents byte-for-byte.
+
+`UI参考/` contains four non-Git reference collections: `doubao`, `trae-work`, `ui-designs`,
+`ui-screenshots`. These are static kits, an existing HTML design and screenshots, not additional
+source clones. `craft-docs/`, `meta/` and `scripts/` contain reference documents/metadata/utilities,
+not additional top-level Git checkouts. Cowart (`47206abe78c4`) and GenOffice (`d35d77094854`) are
+already present. No PanelUI checkout was found in the inventoried roots; it is a user-nominated
+candidate, not an installed dependency or a replacement decision.
+
+Four directories moved by an earlier turn remain at `/tmp/fleet-old-refs.r97wge/`:
+`hermes-agent-latest`, `openclaw-latest`, `pi-mono-latest`, and
+`opencode.stale-20260727140104` (a non-Git partial source directory). The three Git backups match
+the canonical checkouts' current HEADs and report no tracked/untracked changes; this does not prove
+their ignored content or history is redundant. Original destination paths are currently vacant.
+They remain retained reference material pending the owner's restoration/retention decision, not
+approved exclusions. `/tmp` is temporary storage, not a durable archival policy.
+
 ## Admission vocabulary
 
 | Status | Meaning |
@@ -25,12 +86,24 @@ checkout; they are not claims that the mechanism has passed product comparison.
 | `candidate` | Not yet admitted; fixed commit, exact symbols, comparison, license and deletion test are incomplete. |
 | `REJECT` | No gap, weaker, conflicting authority, or unacceptable license/dependency. |
 
+## Source-review minimum (not README review)
+
+Before a project can influence a Fleet implementation decision, its record must identify, where the
+project provides them: (1) the executable entrypoint and control flow; (2) the state/persistence
+authority; (3) the human and Agent/API callers of the same operation; (4) permission, trust,
+dependency and failure/recovery paths; (5) lifecycle/disposal or update/rollback behavior; (6) the
+tests/fixtures that prove the mechanism; and (7) the exact license boundary of the files and runtime
+dependencies. A README, screenshot, star count or package name may route an investigation, but
+cannot promote a project to `MODULE_REFERENCE`, determine product status, or justify deletion of an
+existing checkout. If a project has only partial code evidence, label the verdict `EVIDENCE_ONLY` or
+`candidate` and state what remains unread.
+
 ## Local checkout cross-check
 
-Every retained checkout path and short SHA in this table was checked against its recorded source;
-the Craft tag commits were also verified against the official upstream tags. `pending` means the
-new admission-v2 source audit has not been recorded; even an exact SHA and a readable LICENSE is
-not a formal reference.
+The following table retains earlier source locks and admission records; it is not a live inventory
+and several recorded revisions differ from current disk HEADs. Use the inventory above for presence
+and read Git for the actual revision before comparison. `pending` means a structured source audit
+has not been recorded; even an exact SHA and a readable LICENSE is not a formal reference.
 
 > **Pin integrity, 2026-09-10.** `software/craft-agents-oss-v0.10.5` was found checked out at
 > `abdc281a` (v0.12.0) — the same commit as the rolling pin — so the two reference roots were
@@ -64,18 +137,23 @@ not a formal reference.
 | `software/pi-mono` | `13437ca82889` | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` |
 | `software/tldraw` | `c26735e45258` | tldraw License (production restrictions) | `pending` |
 | `software/browser-use` | `950eb03617e6` | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
+| `software/browser-harness` | `afbcc381b963` (owner-requested shallow clone, 2026-09-14) | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — CDP browser harness, MCP and editable helper Skills |
+| `software/CLIProxyAPI` | `7fa443dc8bf9` (owner-requested shallow clone, 2026-09-14) | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` — external Go model proxy; not a Fleet model authority |
+| `software/dashi-taskboard` | `c346e8e16c9` (owner-requested shallow clone, 2026-09-14) | Apache-2.0 (text verified) | `source-reviewed / EVIDENCE_ONLY` — separate issue store and Codex injection; no Fleet Task import |
 | `software/flowgram.ai` | `5afd287a989a` | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/grok-build` | `b41c75a578f9` | Apache-2.0 first-party code; vendored code retains original licenses | `source-reviewed / EVIDENCE_ONLY` |
 | `software/mcp-registry` | `29e32c39dcb5` | mixed Apache-2.0/MIT transition; docs CC-BY-4.0 | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/opencut` | `5e0696bc9b92` | MIT (text verified) | `source-reviewed / EVIDENCE_ONLY` |
 | `software/waku` | `9500440002b4` (shallow `main`, owner-requested 2026-08-12) | GPL-3.0-only (text verified) | `source-reviewed / EVIDENCE_ONLY` — competing native host; no code import |
-| `software/deepseek-harness` | `47f943859bef` | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
+| `software/deepseek-harness` | `b150a551b8d4` (existing checkout rechecked 2026-09-14; not cloned in this task) | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — plugin slots, scoped composition and lifecycle |
+| `software/OpenChatCut` | `607e0fcc2b75` (owner-requested shallow clone, 2026-09-14) | AGPL-3.0 (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — video component shape; direct code reuse requires AGPL review |
+| `software/genoffice` | `d35d77094854` (existing checkout rechecked 2026-09-15) | Apache-2.0 root; `ee/` Enterprise License | `source-reviewed / MODULE_REFERENCE candidate` — native Office/document engines, patch saves, AI editor actions and recovery; direct `ee/` reuse excluded |
 | `software/spec-kit` | `bf88c9f9a82f` | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/OpenSandbox` | `f8ed8734ce1f` | Apache-2.0 (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
-| `software/openchamber` | `b63830545` (re-verified 2026-09-10) | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — sync/permissionStore (2026-08-15); GitHub PR resolution + browser-control broker (2026-09-10) |
+| `software/OpenChamber` | `1636fd2bf` (owner-requested fast-forward to fetched `origin/main`; no product merge) | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — Git/PR and browser-control evidence; updating the reference does not admit its full implementation |
 | `software/herdr` | `9166e07b` | Apache-2.0 (text verified) | `source-reviewed / MODULE_REFERENCE candidate` |
 | `software/orca` | `95633a788` (verified 2026-09-10) | MIT (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — max-lines ratchet (2026-08-15); subscription usage + managed accounts (2026-09-10) |
-| `software/cindy` | `dfef7ea0a` (re-verified 2026-09-10) | Apache-2.0 (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — model/agent split (2026-08-15); capability ownership, skill slot, store, right sidebar, creation, settings, remote (2026-09-10) |
+| `software/cindy` | `f4422f816` (owner-requested fast-forward to fetched `origin/main`; no product merge) | Apache-2.0 (text verified) | `source-reviewed / MODULE_REFERENCE candidate` — capability ownership, skill slot, right-sidebar registration and project grouping; updating the reference does not admit its full implementation |
 
 The two Craft snapshots have different roles: v0.10.5 decides R1 product/interaction behavior;
 the v0.11.x line (currently v0.11.2) is inspected only for independent fixes and bounded backend
@@ -126,7 +204,10 @@ shared/CLAUDE.md, zh-Hans locale). Verdicts:
 | `software/browser-use` | `browser_use/browser/session.py`, `browser_use/dom/enhanced_snapshot.py`, `browser_use/dom/views.py` | BrowserPane executor/recovery evidence only |
 | `plugins/playwright-mcp` | `src`, accessibility-snapshot/action tools and tests | deterministic structured action seam; screenshots remain evidence, not selectors |
 | `software/waku` | `src/driver/{mod,acp,claude,codex,opencode,pi}.rs`, `src/command_env.rs`, `src/model_catalog.rs`, `src/grok_session.rs` | CLI-host evidence only. Native protocol per vendor (Claude stream-json, Codex app-server, OpenCode HTTP, Pi RPC); ACP only where that *is* the long-lived session (Cursor, Grok). Login-shell PATH + last-good model cache. GPL-3.0-only forbids import. Do not take GPUI/app shell, persistence, or a second session store. Refines H6: ACP replaces *probes*, not native session transports Fleet already has (Claude SDK / Pi). |
-| `software/deepseek-harness` | `README.md` ("everything is a plugin", Cordis); `packages/README.md` (39-group hierarchy, ~167 packages); `packages/AGENTS.md` (plugin export/injection rules); `.agents/notes/implemented/architecture/2026-06-13-capability-seams.md`; `2026-08-03-per-session-agent-presets.md`; `2026-08-09-cordis-event-walk-backstop.md`; `2026-07-29-package-regrouping.md`; `packages/{core,session,subagent,compaction,sandbox,acp,workflow,extensions}` | **Architecture verdict recorded as Decision E14 (2026-08-15): the plugin-first microkernel is rejected for Fleet; four bounded mechanisms are admitted as reference.** Admitted: the Service Definition / Service Provider / Consumer seam vocabulary; four per-session-composition invariants (created-with composition is durable and restored on resume, switching locked after the first turn, no process-global publish from a per-session composition, authoring is privileged while select/list stay ordinary); three enforcement rules (enforce in the operation that decides, publish at the commit point, one lifecycle controller per async operation). Rejected: Cordis as composition root, the 167-package split, property-proxy injection, and the live self-modification toolset (`packages/extensions`, contradicts C7 and the inspectability claim). Cost evidence Fleet must not ignore if it ever revisits: generated cordis catalog + independent AST walk + fail-closed exemption maps + per-package invariants exist because a plugin that fails to register is indistinguishable from one never written; measured ~1.31 MB / ~135 ms per composed agent with **no agent disposal path** in their host |
+| `software/deepseek-harness` | `README.md` ("everything is a plugin", Cordis); `packages/README.md` (39-group hierarchy, ~167 packages); `packages/AGENTS.md` (plugin export/injection rules); `.agents/notes/implemented/architecture/2026-06-13-capability-seams.md`; `2026-08-03-per-session-agent-presets.md`; `2026-08-09-cordis-event-walk-backstop.md`; `2026-07-29-package-regrouping.md`; `packages/{core,session,subagent,compaction,sandbox,acp,workflow,extensions}` | **Revised by owner direction 2026-09-14:** adopt the plugin-first *composition principles* for Fleet Components, but do not replace Fleet's Craft/Cindy core with Cordis. Admitted: Service Definition / Service Provider / Consumer seams; declared additive UI slots; scoped composition; lazy/optional dependency loading; durable composition snapshots; lifecycle disposal; and "enforce in the operation that decides". Rejected: Cordis as composition root, wholesale 167-package split, property-proxy injection, live self-modification, and any second Session/Task/Permission authority. Cost evidence remains relevant: generated catalogs, independent graph checks and per-package invariants are needed because a failed registration is otherwise indistinguishable from a missing component. |
+| `software/deepseek-harness` | `vendor/loader/src/config/{tree,entry,isolate}.ts`; `vendor/include/src/index.ts`; `vendor/cordis/src/{fiber,context,registry}.ts`; `packages/client/ui-slots/src/{index,renderer,store}.ts`; `packages/preset/agent-presets/src/{mount,discovery,authoring,session}.ts`; `packages/extensions/cordis-host-runner/src/{index,inspect-registry}.ts`; associated loader/slot/preset tests | **Code-level admission, 2026-09-15.** The architecture is a coordinated runtime, not a folder convention: `EntryTree` mounts nested rows and awaits every fiber; a failed subtree is reported as an `AggregateError` and disposed; `disabled` keeps a stable entry while unloading its fiber and reactivates dependency-pending rows; `Context.provide`/`ctx.effect` bind service ownership and teardown to a Fiber; `SlotCore.register` validates declarations, scopes, duplicate cells, child-slot ownership and returns an idempotent disposer; `mountPreset` proves every row is usable and rejects services leaked into the root realm before publishing the mount. Preset composition is input-only (`PresetTree.write()` is intentionally a no-op); user authoring copies a whole preset into a user root, tightens modes, refuses overwrite and leaves shipped roots immutable; session preset changes are logged as events so resume reconstructs the composition the later turns actually used. Fleet should implement these invariants as a smaller Manifest → Plan → Activate → Health → Publish → Dispose pipeline over existing Workspace/Session/Permission/Settings, not import Cordis or its process-wide context kernel. |
+| `software/OpenChatCut` | `README.md`; `skills/openchatcut/`; `.mcp.json`; `server/`; `src/`; `remotion/`; `shared/` | **Reference for the official Video Editing Component, not a drop-in dependency.** Its implemented shape combines a local editable multitrack project, timeline/editor UI, proposal-based agent edits, undo/redo, MCP, 26 on-demand skills, preview and export. Fleet may port the capability contract and user workflow into a Fleet component; direct source reuse is blocked behind AGPL-3.0 obligations, project-format compatibility, and an owner license checkpoint. Its project/media files must remain component-owned artifacts, while permissions, sessions and jobs remain Fleet authorities. |
+| `software/genoffice` | `packages/{docx-engine,pptx-engine,pdf2docx,html2docx,file-parse}`; `apps/{docs,sheets,slides,pdf,shell}`; `apps/docs/src/main/{atomic-write,external-change,docs-main}.ts`; `apps/slides/src/main/ops/{registry,executor}.ts`; `apps/slides/src/preload/index.ts` history/snapshot APIs | **Source-level document-component reference.** The engine parses native OOXML/PDF/HTML formats, applies narrow patches and repacks untouched archive entries; the Docs host tracks dirty state, external changes, autosave recovery and Restore/Discard; Slides exposes operation registries, undo/history batches and AI snapshots through the same IPC surface. The UI/Agent share the document's native operation path rather than editing a flattened preview. Root is Apache-2.0, but `ee/` is development/test-only enterprise licensed and third-party engines retain their own notices; no direct `ee/` reuse. |
 | `software/spec-kit` | `src/specify_cli`, `.spec-kit/templates`, `presets`, `bundles`, `prompts`, `docs` | Spec-Driven Development (SDD) contract evidence, executable specification generation, constitution/principles, task decomposition templates, and role presets/bundles |
 | `software/OpenSandbox` | `specs/`, `server/`, `components/{ingress,egress}`, `sdks/`, `kubernetes/`, `cli/` | General-purpose sandbox platform, unified sandbox lifecycle/execution protocol, Docker/K8s/gVisor runtime adapters, network ingress/egress policy, and credential vault |
 | `software/openchamber` | `electron/`, `web/`, `vscode/`, `mobile/`, `ui/` | Multi-surface workspace, Session Goals auto-continuation, multi-model parallel run & Fusion, guided changes walkthrough, and private relay remote pairing |
@@ -150,7 +231,7 @@ rather than discovered later as an assumed audit.
 | ~~`openchamber`~~ | **audited — moved to the cross-check table**; source-level intake 2026-08-15 and 2026-09-10 | SYS-02 remote office; P-54/P-60 review surfaces; R14 Git/PR; browser seam |
 | `Kun` | local-first GUI **+ TUI over one shared runtime**, task/approval/plan/evidence continuity — **PolyForm Noncommercial licence** | Closest product-shape neighbour to Fleet. Licence forbids import; `PRODUCT_REFERENCE` ceiling at best |
 | ~~`orca`~~, `herdr` | `orca` **audited — moved to the cross-check table** (2026-08-15, 2026-09-10); `herdr` audited 2026-08-15 | CORE-01/CORE-11 shell comparison; `orca` also serves usage/plan visibility and credential switching |
-| `openclaw-latest`, `hermes-agent-latest`, `pi-mono-latest` | newer heads of already-pinned checkouts | re-pin decisions only; do not create a second standing reference |
+| `openclaw-latest`, `hermes-agent-latest`, `pi-mono-latest` | earlier-turn relocated checkouts; see current inventory | retained in temporary storage; restoration or exclusion requires the owner's decision, not an automatic duplicate-retention rule |
 | `kimi-code` | terminal coding agent CLI, MIT | EXEC-05 CLI-lane evidence (H6/H8 binary resolution) |
 | `OpenSandbox` | sandbox/isolation platform, CNCF landscape entry | EXEC-08 / R18 sandbox gate — the strongest candidate to close that gate with evidence |
 | `openpencil`, `open-design` | design-surface engines | CREATE-06 / E11; Penpot remains the pinned comparison |
@@ -214,6 +295,10 @@ reworked locally).
 | `software/orca` | MIT · TypeScript | `src/main/claude-accounts/{managed-auth-path,runtime-selection}.ts`; `src/main/codex-accounts/` | **Port target — the credential-switching design Fleet lacks.** Switching an account is selecting a pointer, never overwriting a token. Each account owns `<userData>/claude-accounts/<accountId>/auth/`, proved to be the app's by a marker file containing the account id created `0o600` with an exclusive `wx` flag; every read and write resolves the real path and refuses a symlink, a path outside the managed root, the wrong depth, or a mismatched account id, and writes atomically at `0600`. "Active" is a per-runtime pointer (`activeClaudeManagedAccountIdsByRuntime`: one for host, one per WSL distro). Because inactive accounts keep their own directories, their remaining quota is fetchable — so the user sees which account has headroom **before** switching. Alternative design in `software/cc-switch` (MIT): rewrite the CLI's config plus a local proxy transforming between responses/chat/codex-chat shapes — larger blast radius, already recorded above as "do not take `src-tauri/**`" |
 | `software/openchamber` | MIT · JavaScript | `packages/web/server/lib/github/{pr-status,auth,device-flow,gh-cli-credential,rate-limit}.js` + its `DOCUMENTATION.md` | **Port target for R14's Git/PR half.** One resolver answers the product question — which PR belongs to this local branch — searching across remotes, forks and upstreams, then enriching with checks, mergeability and permissions; the result is cached once and shared between the session sidebar badge and the full Git view, so both read one entry. Auth is multi-account with an explicit `activateGitHubAuth(accountId)` and an OAuth **device flow** (no client secret in a desktop app); `gh-cli-credential.js` reuses the credentials the user's existing `gh` CLI already holds rather than asking for a pasted token. Storage is `0600` with atomic writes; client id, scopes and account id each have a documented resolution order |
 | `software/openchamber` | MIT · JavaScript + TypeScript | `packages/web/server/lib/browser-control/{broker,routes}.js` + its `DOCUMENTATION.md`; `packages/ui/src/lib/browser/` | **Specification input for the browser seam, and the clearest statement of the pattern this whole intake keeps finding.** The server can never act on a page; it publishes one action and waits. Invariants, each naming the failure it prevents: **capability belongs to the connection, not to configuration** — a client declares it can drive a page by opening its event stream with `browser=1`, which only a Chromium host does, so there is no setting to enable and no restart to remember; exactly one client performs a request, claimed over a separate endpoint because deciding by whose result arrives first is too late — by then each has already clicked; nobody listening is answered immediately with a 503 describing the environment, because a blocked wait followed by a timeout cannot be told apart from a hung page; a client that accepted and vanished still times out, because assuming success reports an interaction that never happened. The UI half adds page annotation (overlay, screenshot, prompt, session) so a human can point at the page and hand that to the agent, plus dev-server discovery, dev tunnel and crash recovery |
+| `software/OpenChamber` | MIT · TypeScript/React | `packages/ui/src/components/layout/{MainLayout,ContextPanel,ContextPanelRail}.tsx`; `packages/ui/src/components/session/sidebar/{SessionSidebar,sidebar/list/SessionProjectCollection,sidebar/projects/*}` | **Selective layout evidence.** `MainLayout` keeps chat as the primary surface and routes Git, files, terminal, browser and other context tools through one `ContextPanel` + draggable rail; the panel stays mounted while tabs switch, preserving local state. Its session sidebar still contains Recent/Chats and Project-grouped sections, so it is useful evidence for ownership-aware grouping, prefetch and bounded virtualization, but **not** a model to copy for Fleet's navigation: Fleet adopts one Conversation list and treats Project/label/status/archive as predicates, avoiding duplicate conversation homes. OpenChamber decides Fleet's Git/PR seam only; Craft remains the visual authority and Cindy/DeepSeek the component composition references |
+| `software/browser-harness` | MIT · Python | `README.md`; `browser-harness`; `agent-workspace/agent_helpers.py`; `docs/MCP.md`; `interaction-skills/` | **Module reference for the browser seam.** The harness exposes one editable CDP websocket, a stdio MCP server and a protected core while domain helpers are authored in the agent workspace; its Skills cover tabs, downloads, uploads, iframes and profiles. Fleet may learn the helper/skill separation and explicit connection failure path, but the built-in BrowserPane remains the user-facing browser authority and Fleet does not add a general external-computer control layer. |
+| `software/CLIProxyAPI` | MIT · Go | `README.md`; `docs/sdk-usage.md`; `test/` compatibility and failover tests | **Do not combine into Fleet's core or provider registry.** It is a local Go proxy translating multiple CLI OAuth/account protocols into OpenAI/Gemini/Claude-compatible APIs, with round-robin accounts and a management surface. Fleet already owns provider connections and usage/permission semantics; importing this would create a second model gateway and a subscription-relay product. A user-run proxy can remain an explicit external endpoint through the existing connection adapter, with no Fleet account-token scraping or automatic OAuth reuse. |
+| `software/dashi-taskboard` | Apache-2.0 · TypeScript/Rust | `README.md`; `web/`; `src-tauri/`; `skills/manage-taskboard`; `inject/`; `test/` | **Evidence only, not a Fleet board.** It has a real local SQLite issue store, CLI, Skill, optimistic versions, branch/worktree binding and Codex CDP injection. Those are useful tests for agent-visible task transitions and optimistic conflict handling, but its SQLite task authority and injection into another app violate Fleet's one Task authority and no general external-app control. Any retained idea must be implemented as a projection over Fleet Session/Task/Job and Fleet's own panel host. |
 | `software/craft-agents-oss` | Apache-2.0 · TypeScript | v0.11.2 → v0.12.0, 97 files / +1751 −545 (bun.lock +560 of it) | **Five bounded REUSE candidates, two unreviewed releases.** `session-tools-core/handlers/archive-session.ts` + `server-core/sessions/archive-guards.ts` make archive an agent-callable tool with guards rather than a UI-only action (R1 archive/labels). `shared/src/mcp/proxy-tool-name.ts` de-collides tool names across MCP servers — a prerequisite for any kit that projects a tool subset. `app-shell/inherited-filter-params.ts` gives sidebar filter inheritance, which is R1's "filters are states of one list". `server-core/bootstrap/lock-identity.ts` settles single-instance identity at bootstrap. Plus a startup migration in `shared/src/config/storage.ts`. No new authority in any of them |
 
 ## Owner-provided UI captures, 2026-09-10 (QoderWork CN · TRAE SOLO CN) — `EVIDENCE_ONLY`
@@ -343,3 +428,22 @@ Checkout: `源码参考/software/Cowart` @ `47206ab` (2026-09-09). Cowart **MIT*
 | What it is | Verdict |
 |---|---|
 | Codex-native infinite-canvas **plugin**: tldraw widget + MCP + three skills. Persist under the *user project* `canvas/pages/<id>/`. AI 图片框 (prompt + refs → replace holder), annotation screenshot → clean image beside original, AI HTML 16:9 embed, AI Slides (pages + fullscreen). MCP: `get/save_cowart_canvas_state`, `get_cowart_selection`, `insert_cowart_image`, `insert_cowart_html_draft`, widget render. | **Highest-value product reference for Fleet's own canvas** (one board for image / HTML-site / deck). Closer to [`PRODUCT.md`](../PRODUCT.md) than Canvasight (task DAG) or Craft Pages (mini-apps). **Do not install, do not weld to Codex, do not import tldraw, do not take GA4.** When R7 is built: port the *holder → generate → replace*, *annotate → revise beside*, *HTML/Slides as canvas objects*, and *project-local canvas/ storage* into Fleet's pane — person and agent edit the same board. Not this slice. |
+
+
+## Owner-requested ZCode clone (2026-09-21)
+
+Checkout: `源码参考/software/ZCode` @ `872ad96` ("feat: open source" — the repository's only commit),
+126 MB, **Apache-2.0**, same licence as Craft, so its code is import-compatible with this fork.
+
+**Read so far: README, top-level structure, and three `packages/shared` remote files.** This is a
+structural read, not the source review defined in *Source-review minimum* above — treat the verdict
+below as a placement decision, not as admitted mechanism.
+
+| What it is | Verdict |
+|---|---|
+| Z.ai's AI coding workspace, shipped as **Electron desktop + browser + terminal from one monorepo** (`packages/{client,desktop,server,rpc,ui,web,provider,provider-node,services,shared}`, `apps/zcode-cli`, `harness/remote`). Its own RPC package carries a channel protocol, a persistent protocol, a proxy channel and a remote channel. | **Closest structural analogue to Fleet in the whole reference set** — one tree producing a desktop shell, a web client and a CLI over a shared RPC layer, which is the shape P7/P9-rev keep running into. Apache-2.0 removes the licence question that blocks several other references. |
+| **Remote model is `ssh` / `wsl` / `docker` targets** (`shared/src/remoteTarget.ts`), i.e. remote *development environments*, VS Code Remote-style. | **Not our model and must not be copied wholesale.** P7 is a device grant between two installed Fleet apps, not an SSH session into a build box. Its transport is a reference for channel plumbing only. |
+| `shared/src/remoteEnvironmentKey.ts` — `buildRemoteEnvironmentKey(target)` gives **Environment-level state a stable identity, with an explicit rule that it must not be mixed with workspace or session identity**. Provider provisioning is the example named in its own doc comment. | **Directly answers the owner's open question** — "另一台电脑的 API key、登录账号可能跟我们不一样". The answer is that provider/credential state is keyed by *environment*, not by workspace or session. Fleet has `getHostId()` in `packages/shared/src/remote/store.ts`; whether our provider and credential state is actually keyed by it is **unverified and worth checking before R2 work**. |
+
+**Not yet done for this checkout:** licence NOTICE/THIRD-PARTY review, telemetry/phone-home audit,
+and the source-review minimum. Do not cite it as admitted mechanism until those exist.
