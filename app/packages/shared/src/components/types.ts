@@ -18,9 +18,24 @@ export type ComponentSlot = 'left-rail' | 'right-workbench'
 export interface ComponentContribution {
   id: string
   slot: ComponentSlot
+  /**
+   * i18n key the host resolves, or a literal for a Component that ships its own strings.
+   * Hosts must not assume a literal — built-ins always use a key.
+   */
   label: string
   /** Stable renderer entry; loaded only when the panel opens. */
   entry: string
+  /**
+   * Rail ordering, lower first. Built-ins use decades so a Component can slot between two of
+   * them without the host renumbering. Absent sorts last.
+   */
+  order?: number
+  /**
+   * Icon *name*, resolved by the host to whatever it draws with. This package is data-only and
+   * browser-safe, so it must never carry a component reference — that is what forced the renderer
+   * to keep a parallel definition before the two registries were converged on 2026-09-21.
+   */
+  icon?: string
 }
 
 export interface ComponentDependency {
