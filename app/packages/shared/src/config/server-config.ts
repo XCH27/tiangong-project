@@ -17,11 +17,6 @@ export interface ServerConfig {
   tlsKeyPath?: string
   /** Stable auth token for remote clients (auto-generated on first enable) */
   token?: string
-  /**
-   * Reachable hostname for other networks (VPS, FRP, Cloudflare Tunnel, Tailscale).
-   * Encoded first in the access link. Empty = LAN only.
-   */
-  advertisedUrl?: string
 }
 
 export interface ServerStatus {
@@ -33,12 +28,8 @@ export interface ServerStatus {
   port: number
   /** Whether TLS is active */
   tls: boolean
-  /** Preferred URL for clients (advertised if set, else LAN) */
+  /** Full connection URL (ws:// or wss://) */
   url: string
-  /** LAN URL, if known */
-  lanUrl?: string
-  /** All candidate URLs packed into the access link, tried in order */
-  endpoints?: string[]
   /** Current auth token */
   token: string
   /** Whether saved config differs from running config (restart needed) */
