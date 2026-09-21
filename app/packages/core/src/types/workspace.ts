@@ -9,28 +9,13 @@
 export type McpAuthType = 'workspace_oauth' | 'workspace_bearer' | 'public';
 
 /**
- * Configuration for a user-owned remote Fleet instance.
+ * Configuration for a remote Craft Agent Server.
  * When set on a workspace, handler calls are proxied over WebSocket.
  */
 export interface RemoteServerConfig {
-  url: string;              // last endpoint that worked; tried first next time
-  token: string;            // this device's grant on that host (legacy: a shared token)
+  url: string;              // ws://host:port or wss://host:port
+  token: string;            // Auth token for the remote server
   remoteWorkspaceId: string; // ID of the workspace on the remote server
-  /**
-   * Stable id of the machine this Workspace lives on. Every Workspace paired to the
-   * same computer carries the same value, which is what lets the UI show one device
-   * instead of one device per Workspace. Absent on records paired before devices
-   * existed — those fall back to grouping by the endpoint host.
-   */
-  deviceId?: string;
-  /** What the user calls that machine. */
-  deviceName?: string;
-  /**
-   * Every address the host advertised, in try order (P9-rev). `url` is whichever one
-   * last worked; keeping the whole list is what makes a move between networks
-   * recoverable without re-pairing.
-   */
-  endpoints?: string[];
 }
 
 /**

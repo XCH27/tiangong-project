@@ -9,14 +9,11 @@
  */
 
 import { describe, it, expect, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Subprocess } from 'bun'
 import WebSocket from 'ws'
 
 const SERVER_ENTRY = join(import.meta.dir, '..', 'index.ts')
-const spawnedConfigDirs: string[] = []
 const STARTUP_TIMEOUT = 15_000
 const TEST_TIMEOUT = 30_000
 
@@ -32,19 +29,10 @@ async function spawnTestServer(extraEnv?: Record<string, string>): Promise<Spawn
   const token = crypto.randomUUID() + crypto.randomUUID() // 72 chars, well above 16 minimum
   const { CLAUDECODE: _, ...parentEnv } = process.env
 
-  // Its own config directory, which is the documented way to run a parallel instance
-  // (`server/headless.md`). Without it the server refuses to start whenever the
-  // developer happens to have the desktop app open — `.server.lock` is held for the
-  // real `~/.craft-agent` — and the failure reads as "server exited before printing
-  // CRAFT_SERVER_URL", which has misdiagnosed this suite three times.
-  const configDir = mkdtempSync(join(tmpdir(), 'craft-smoke-'))
-  spawnedConfigDirs.push(configDir)
-
   const proc = Bun.spawn(['bun', 'run', SERVER_ENTRY], {
     env: {
       ...parentEnv,
       ...extraEnv,
-      CRAFT_CONFIG_DIR: configDir,
       CRAFT_SERVER_TOKEN: token,
       CRAFT_RPC_PORT: '0',
       CRAFT_RPC_HOST: '127.0.0.1',
@@ -143,11 +131,6 @@ describe('headless server smoke test', () => {
     if (server) {
       await server.stop().catch(() => {})
       server = null
-    }
-    // Each spawn gets a fresh config dir; remove them so a long run does not leave a
-    // pile of them behind in tmp.
-    while (spawnedConfigDirs.length > 0) {
-      rmSync(spawnedConfigDirs.pop()!, { recursive: true, force: true })
     }
   })
 

@@ -22,7 +22,6 @@ export type {
 
 // Field constants
 export { SESSION_PERSISTENT_FIELDS } from './types.ts';
-export { sessionToMarkdown, markdownExportFilename } from './export-markdown.ts';
 
 // Storage functions
 export {

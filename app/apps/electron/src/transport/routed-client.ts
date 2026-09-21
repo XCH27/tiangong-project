@@ -13,7 +13,7 @@
 import type { WsRpcClient, TransportConnectionState } from './client'
 import type { RpcClient } from '@craft-agent/server-core/transport'
 import type { RemoteServerConfig } from '@craft-agent/core/types'
-import { isLocalOnly, remoteRefusalFor, RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import { isLocalOnly, RPC_CHANNELS } from '@craft-agent/shared/protocol'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,14 +88,6 @@ export class RoutedClient implements RpcClient {
     this.workspaceIdMapping = null
   }
 
-  /**
-   * True when the active Workspace lives on another machine. The mapping is set
-   * exactly for that case, which is also exactly when a call leaves this machine.
-   */
-  private isRemoteWorkspace(): boolean {
-    return this.workspaceIdMapping !== null
-  }
-
   // -------------------------------------------------------------------------
   // RpcClient interface
   // -------------------------------------------------------------------------
@@ -103,17 +95,6 @@ export class RoutedClient implements RpcClient {
   async invoke(channel: string, ...args: any[]): Promise<any> {
     const isLocal = isLocalOnly(channel)
     const target = isLocal ? this.localClient : this.workspaceClient
-
-    // Caller-side half of the default-deny check: when the Workspace lives on another
-    // machine, refuse an unadmitted channel here instead of putting it on the wire.
-    // The host's check is still the authoritative one — this one just fails fast and
-    // names the reason. A local Workspace routes everything to the local server.
-    if (!isLocal && this.isRemoteWorkspace()) {
-      const refusal = remoteRefusalFor(channel)
-      if (refusal === 'NOT_ADMITTED') {
-        throw new Error(`Channel is not admitted for remote callers: ${channel}`)
-      }
-    }
 
     // Translate local workspace IDs → remote workspace IDs for remote-routed calls.
     // RPC handlers receive workspaceId as a method argument (not from connection context).

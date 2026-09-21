@@ -24,8 +24,7 @@
       "@/*": ["src/renderer/*"],
       "@config/*": ["../../packages/shared/src/config/*"],
       "@craft-agent/shared": ["../../packages/shared/src/index.ts"],
-      "@craft-agent/shared/*": ["../../packages/shared/src/*"],
-      "@craft-agent/remote-ssh": ["../../packages/remote-ssh/src/index.ts"]
+      "@craft-agent/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src/**/*", "../../packages/shared/src/**/*.d.ts"],

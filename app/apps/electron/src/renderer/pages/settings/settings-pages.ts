@@ -15,7 +15,6 @@ import type { ComponentType } from 'react'
 import type { SettingsSubpage } from '../../../shared/settings-registry'
 
 import AppSettingsPage from './AppSettingsPage'
-import ArchivedSessionsSettingsPage from './ArchivedSessionsSettingsPage'
 import AiSettingsPage from './AiSettingsPage'
 import AppearanceSettingsPage from './AppearanceSettingsPage'
 import InputSettingsPage from './InputSettingsPage'
@@ -32,7 +31,6 @@ import PreferencesPage from './PreferencesPage'
  * TypeScript will error if a page from SETTINGS_PAGES is missing here.
  */
 export const SETTINGS_PAGE_COMPONENTS: Record<SettingsSubpage, ComponentType> = {
-  archived: ArchivedSessionsSettingsPage,
   app: AppSettingsPage,
   ai: AiSettingsPage,
   appearance: AppearanceSettingsPage,

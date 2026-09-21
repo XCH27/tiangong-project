@@ -3,7 +3,6 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronDown, Trash2 } from 'lucide-react'
 import { PROJECT_COLOR_PALETTE, type ProjectColorTreatment } from '@/utils/project-colors'
-import { cn } from '@/lib/utils'
 import { type SessionStatus, getStatusIconStyle } from '@/config/session-status-config'
 import type { KanbanColumnColor } from '@/hooks/useKanbanColumnColors'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -111,14 +110,11 @@ export function KanbanColumn({
 
       <div
         ref={setNodeRef}
-        className={cn(
-          'flex flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-2',
-          isOver && color && 'ring-2 ring-inset',
-        )}
+        className="flex flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-2 transition-shadow"
         style={{
           backgroundColor: color?.tint,
-          ...(isOver && color ? { '--tw-ring-color': color.solid } : {}),
-        } as React.CSSProperties}
+          boxShadow: isOver && color ? `inset 0 0 0 2px ${color.solid}` : undefined,
+        }}
       >
         {onCreateTask && <NewTaskComposer onCreate={onCreateTask} />}
 
@@ -264,7 +260,8 @@ function ColumnHeader({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="dark w-64 space-y-3 rounded-lg border-border/50 bg-background/80 p-3 shadow-modal-small backdrop-blur-xl backdrop-saturate-150"
+        className="dark w-64 space-y-3 border-border/50 bg-background/80 p-3 backdrop-blur-xl backdrop-saturate-150"
+        style={{ borderRadius: '8px', boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25)' }}
         data-no-dnd="true"
       >
         {onRename && (

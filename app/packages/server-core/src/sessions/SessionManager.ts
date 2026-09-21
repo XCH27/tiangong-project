@@ -1,5 +1,4 @@
 import type { EventSink, RpcServer } from '@craft-agent/server-core/transport'
-import { narrowPermissionMode } from '@craft-agent/shared/agent/mode-types'
 import { CLIENT_BROWSER_INVOKE } from '@craft-agent/server-core/transport'
 import type { ISessionManager, IBrowserPaneManager, ExecutePromptAutomationInput } from '@craft-agent/server-core/handlers'
 import { RemoteBrowserPaneManager } from './RemoteBrowserPaneManager'
@@ -39,7 +38,7 @@ import {
   type Workspace,
   type WorkspaceInfo,
 } from '@craft-agent/shared/config'
-import type { ActiveSessionInfo, SessionProcessingStatus } from '@craft-agent/core/types'
+import type { ActiveSessionInfo, ContextUsageSnapshot, SessionProcessingStatus } from '@craft-agent/core/types'
 import { loadWorkspaceConfig } from '@craft-agent/shared/workspaces'
 import {
   // Session persistence functions
@@ -73,8 +72,6 @@ import {
   type SessionStatus,
   type SessionHeader,
   pickSessionFields,
-  sessionToMarkdown,
-  markdownExportFilename,
 } from '@craft-agent/shared/sessions'
 import { loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, TokenRefreshManager } from '@craft-agent/shared/sources'
 import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@craft-agent/shared/tasks'
@@ -93,7 +90,6 @@ import { type Session, type SessionEvent, type FileAttachment, type SendMessageO
 import { messageToStored, storedToMessage, type Message, type StoredAttachment, type ToolDisplayMeta, type TokenUsage } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
-import { getAssistant, proposeWear, resolveAssistantPermission, type WearAsk, type WearDecision } from '@craft-agent/shared/assistants'
 import { invalidateContextFileCache } from '@craft-agent/shared/prompts/system'
 import { getToolIconsDir, getMiniModel } from '@craft-agent/shared/config'
 import { getDefaultSummarizationModel } from '@craft-agent/shared/config/models'
@@ -748,6 +744,8 @@ interface ManagedSession {
   poolServer?: McpPoolServer
   // SDK session ID for conversation continuity
   sdkSessionId?: string
+  /** Accept & Compact state; persisted with the session header. */
+  pendingPlanExecution?: StoredSession['pendingPlanExecution']
   // Token usage for display
   tokenUsage?: {
     inputTokens: number
@@ -759,6 +757,8 @@ interface ManagedSession {
     cacheCreationTokens?: number
     /** Model's context window size in tokens (from SDK modelUsage) */
     contextWindow?: number
+    /** Current occupancy, separate from cumulative/billable counters. */
+    contextUsage?: ContextUsageSnapshot
   }
   // Session status (user-controlled) - determines open vs closed
   // Dynamic status ID referencing workspace status config
@@ -777,7 +777,6 @@ interface ManagedSession {
   labels?: string[]
   // Workspace-scoped project binding (undefined = unbound)
   projectId?: string
-  assistantId?: string
   // Parent session id — when set, this session is a subtask of the parent (undefined = top-level task)
   parentSessionId?: string
   // Kanban board column id ('todo' | 'in-progress' | 'done'); independent of sessionStatus
@@ -841,6 +840,9 @@ interface ManagedSession {
     messageId?: string  // Pre-generated ID for matching with UI
     optimisticMessageId?: string  // Frontend's ID for reliable event matching
   }>
+  // Original host payloads for backends that can return undelivered text steers.
+  // Runtime-only; Pi's native steering does not opt into an acknowledgement protocol.
+  acceptedSteers?: Map<string, ManagedSession['messageQueue'][number]>
   // Map of shellId -> command for killing background shells
   backgroundShellCommands: Map<string, string>
   // Map of taskId -> output info for background task results
@@ -1119,6 +1121,22 @@ export function resolveMidStreamDeliveryOutcome(
     shouldQueue: !steered,
     wasInterrupted: behavior === 'steer' && !steered,
   }
+}
+
+/** Text redirects cannot carry attachments or options that affect model input. */
+export function canSteerTextPayload(
+  attachments?: FileAttachment[],
+  storedAttachments?: StoredAttachment[],
+  options?: SendMessageOptions,
+): boolean {
+  if (attachments?.length || storedAttachments?.length) return false
+  return !Object.entries(options ?? {}).some(([key, value]) => {
+    if (value === undefined || key === 'optimisticMessageId') return false
+    if ((key === 'skillSlugs' || key === 'badges') && Array.isArray(value) && !value.length) return false
+    if (key === 'hidden' && value === false) return false
+    // Unknown future options conservatively use the full-payload path.
+    return true
+  })
 }
 
 export class SessionManager implements ISessionManager {
@@ -2012,6 +2030,7 @@ export class SessionManager implements ISessionManager {
     if (stored) {
       managed.messages = (stored.messages || []).map(storedToMessage)
       managed.tokenUsage = stored.tokenUsage
+      managed.pendingPlanExecution = stored.pendingPlanExecution
       // Deferred-load fields (intentionally undefined after startup, see
       // loadSessionsFromDisk). Populate from disk only if not already set in
       // memory — a caller may have mutated them via setSessionSources etc.
@@ -2484,6 +2503,7 @@ export class SessionManager implements ISessionManager {
     if (storedSession) {
       managed.messages = (storedSession.messages || []).map(storedToMessage)
       managed.tokenUsage = storedSession.tokenUsage
+      managed.pendingPlanExecution = storedSession.pendingPlanExecution
       managed.lastReadMessageId = storedSession.lastReadMessageId
       managed.hasUnread = storedSession.hasUnread  // Explicit unread flag for NEW badge state machine
       managed.enabledSourceSlugs = storedSession.enabledSourceSlugs
@@ -2560,15 +2580,9 @@ export class SessionManager implements ISessionManager {
     const globalDefaults = loadConfigDefaults()
 
     // Read permission mode from workspace config, fallback to global defaults
-    let defaultPermissionMode = options?.permissionMode
+    const defaultPermissionMode = options?.permissionMode
       ?? wsConfig?.defaults?.permissionMode
       ?? globalDefaults.workspaceDefaults.permissionMode
-
-    if (options?.assistantId) {
-      const assistant = getAssistant(workspaceRootPath, options.assistantId)
-      if (!assistant) throw new Error('Assistant not found in this workspace')
-      defaultPermissionMode = resolveAssistantPermission(assistant, defaultPermissionMode)
-    }
 
     const userDefaultWorkingDir = wsConfig?.defaults?.workingDirectory || undefined
     // Resolve thinking level with caller-first precedence, matching permissionMode above:
@@ -2856,7 +2870,6 @@ export class SessionManager implements ISessionManager {
       isFlagged: options?.isFlagged,
       projectId: resolvedProjectId,
       parentSessionId: options?.parentSessionId,
-      assistantId: options?.assistantId,
       taskSlug: options?.taskSlug,
       taskRunId: options?.taskRunId,
       taskNodeId: options?.taskNodeId,
@@ -3072,6 +3085,7 @@ export class SessionManager implements ISessionManager {
 
   private async disposeManagedAgentRuntime(managed: ManagedSession, reason: string): Promise<void> {
     const sessionId = managed.id
+    this.recoverPendingSteers(managed)
 
     if (managed.agent) {
       try {
@@ -4092,6 +4106,7 @@ export class SessionManager implements ISessionManager {
           if (managed.isProcessing && managed.agent) {
             sessionLog.info(`Interrupting for plan submission in session ${managed.id}`)
             managed.agent.interruptForHandoff(AbortReason.PlanSubmitted)
+            this.recoverPendingSteers(managed)
             this.setProcessing(managed, false)
 
             // Release browser overlay + session binding because the agent is no longer running.
@@ -4151,6 +4166,7 @@ export class SessionManager implements ISessionManager {
         if (managed.isProcessing && managed.agent) {
           sessionLog.info(`Interrupting for auth request in session ${managed.id}`)
           managed.agent.interruptForHandoff(AbortReason.AuthRequest)
+          this.recoverPendingSteers(managed)
           this.setProcessing(managed, false)
 
           // Release browser overlay + session binding because the agent is paused awaiting user auth.
@@ -4187,10 +4203,7 @@ export class SessionManager implements ISessionManager {
           llmConnection: request.llmConnection ?? managed.llmConnection,
           model: request.model ?? managed.model,
           enabledSourceSlugs: request.enabledSourceSlugs ?? managed.enabledSourceSlugs,
-          // A spawn request asks for a permission mode; it never grants one. The
-          // child is the narrower of what the parent has and what was asked for,
-          // so an agent cannot escalate by spawning.
-          permissionMode: narrowPermissionMode(managed.permissionMode, request.permissionMode),
+          permissionMode: request.permissionMode ?? managed.permissionMode,
           thinkingLevel: request.thinkingLevel ?? managed.thinkingLevel,
           labels: request.labels ?? managed.labels,
           workingDirectory: request.workingDirectory,
@@ -4762,6 +4775,12 @@ export class SessionManager implements ISessionManager {
   async setPendingPlanExecution(sessionId: string, planPath: string, draftInputSnapshot?: string): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      managed.pendingPlanExecution = {
+        planPath,
+        draftInputSnapshot,
+        awaitingCompaction: true,
+        executionDispatched: false,
+      }
       await setStoredPendingPlanExecution(managed.workspace.rootPath, sessionId, planPath, draftInputSnapshot)
       sessionLog.info(`Session ${sessionId}: set pending plan execution for ${planPath}`)
     }
@@ -4775,6 +4794,7 @@ export class SessionManager implements ISessionManager {
   async markCompactionComplete(sessionId: string): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      if (managed.pendingPlanExecution) managed.pendingPlanExecution.awaitingCompaction = false
       await markStoredCompactionComplete(managed.workspace.rootPath, sessionId)
       sessionLog.info(`Session ${sessionId}: compaction marked complete for pending plan`)
     }
@@ -4785,12 +4805,16 @@ export class SessionManager implements ISessionManager {
    * This prevents reload recovery from double-submitting the same plan if
    * sending succeeded but cleanup failed due a reconnect/disconnect.
    */
-  async markPendingPlanExecutionDispatched(sessionId: string): Promise<void> {
+  async markPendingPlanExecutionDispatched(sessionId: string): Promise<boolean> {
     const managed = this.sessions.get(sessionId)
-    if (managed) {
-      await markStoredPendingPlanExecutionDispatched(managed.workspace.rootPath, sessionId)
-      sessionLog.info(`Session ${sessionId}: marked pending plan execution as dispatched`)
+    if (!managed || managed.isProcessing) {
+      sessionLog.info(`Session ${sessionId}: pending plan dispatch claim rejected (missing or busy)`)
+      return false
     }
+    const claimed = await markStoredPendingPlanExecutionDispatched(managed.workspace.rootPath, sessionId)
+    if (claimed && managed.pendingPlanExecution) managed.pendingPlanExecution.executionDispatched = true
+    sessionLog.info(`Session ${sessionId}: pending plan execution dispatch claim ${claimed ? 'accepted' : 'rejected'}`)
+    return claimed
   }
 
   /**
@@ -4801,6 +4825,7 @@ export class SessionManager implements ISessionManager {
   async clearPendingPlanExecution(sessionId: string): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      delete managed.pendingPlanExecution
       await clearStoredPendingPlanExecution(managed.workspace.rootPath, sessionId)
       sessionLog.info(`Session ${sessionId}: cleared pending plan execution`)
     }
@@ -4813,6 +4838,12 @@ export class SessionManager implements ISessionManager {
   getPendingPlanExecution(sessionId: string): { planPath: string; draftInputSnapshot?: string; awaitingCompaction: boolean; executionDispatched: boolean } | null {
     const managed = this.sessions.get(sessionId)
     if (!managed) return null
+    if (managed.pendingPlanExecution) {
+      return {
+        ...managed.pendingPlanExecution,
+        executionDispatched: managed.pendingPlanExecution.executionDispatched === true,
+      }
+    }
     return getStoredPendingPlanExecution(managed.workspace.rootPath, sessionId)
   }
 
@@ -4838,27 +4869,170 @@ export class SessionManager implements ISessionManager {
   }
 
   // ============================================
-  // Conversation export
+  // Session Sharing
   // ============================================
 
   /**
-   * Render the full conversation as Markdown. The client saves the file locally
-   * (native save dialog); nothing is uploaded.
+   * Share session to the web viewer
+   * Uploads session data and returns shareable URL
    */
-  async exportMarkdown(sessionId: string): Promise<import('@craft-agent/shared/protocol').ExportMarkdownResult> {
+  async shareToViewer(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
     const managed = this.sessions.get(sessionId)
     if (!managed) {
       return { success: false, error: 'Session not found' }
     }
-    const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
-    if (!storedSession) {
-      return { success: false, error: 'Session file not found' }
+
+    // Signal async operation start for shimmer effect
+    managed.isAsyncOperationOngoing = true
+    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
+
+    try {
+      // Load session directly from disk (already in correct format)
+      const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
+      if (!storedSession) {
+        return { success: false, error: 'Session file not found' }
+      }
+
+      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
+      const response = await fetch(`${VIEWER_URL}/s/api`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storedSession)
+      })
+
+      if (!response.ok) {
+        sessionLog.error(`Share failed with status ${response.status}`)
+        if (response.status === 413) {
+          return { success: false, error: 'Session file is too large to share' }
+        }
+        return { success: false, error: 'Failed to upload session' }
+      }
+
+      const data = await response.json() as { id: string; url: string }
+
+      // Store shared info in session
+      managed.sharedUrl = data.url
+      managed.sharedId = data.id
+      const workspaceRootPath = managed.workspace.rootPath
+      await updateSessionMetadata(workspaceRootPath, sessionId, {
+        sharedUrl: data.url,
+        sharedId: data.id,
+      })
+
+      sessionLog.info(`Session ${sessionId} shared at ${data.url}`)
+      // Notify all windows for this workspace
+      this.sendEvent({ type: 'session_shared', sessionId, sharedUrl: data.url }, managed.workspace.id)
+      return { success: true, url: data.url }
+    } catch (error) {
+      sessionLog.error('Share error:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    } finally {
+      // Signal async operation end
+      managed.isAsyncOperationOngoing = false
+      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
     }
-    const title = storedSession.name?.trim() || sessionId
-    return {
-      success: true,
-      markdown: sessionToMarkdown(storedSession),
-      suggestedName: markdownExportFilename(title, sessionId),
+  }
+
+  /**
+   * Update an existing shared session
+   * Re-uploads session data to the same URL
+   */
+  async updateShare(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) {
+      return { success: false, error: 'Session not found' }
+    }
+    if (!managed.sharedId) {
+      return { success: false, error: 'Session not shared' }
+    }
+
+    // Signal async operation start for shimmer effect
+    managed.isAsyncOperationOngoing = true
+    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
+
+    try {
+      // Load session directly from disk (already in correct format)
+      const storedSession = loadStoredSession(managed.workspace.rootPath, sessionId)
+      if (!storedSession) {
+        return { success: false, error: 'Session file not found' }
+      }
+
+      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
+      const response = await fetch(`${VIEWER_URL}/s/api/${managed.sharedId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storedSession)
+      })
+
+      if (!response.ok) {
+        sessionLog.error(`Update share failed with status ${response.status}`)
+        if (response.status === 413) {
+          return { success: false, error: 'Session file is too large to share' }
+        }
+        return { success: false, error: 'Failed to update shared session' }
+      }
+
+      sessionLog.info(`Session ${sessionId} share updated at ${managed.sharedUrl}`)
+      return { success: true, url: managed.sharedUrl }
+    } catch (error) {
+      sessionLog.error('Update share error:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    } finally {
+      // Signal async operation end
+      managed.isAsyncOperationOngoing = false
+      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
+    }
+  }
+
+  /**
+   * Revoke a shared session
+   * Deletes from viewer and clears local shared state
+   */
+  async revokeShare(sessionId: string): Promise<import('@craft-agent/shared/protocol').ShareResult> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) {
+      return { success: false, error: 'Session not found' }
+    }
+    if (!managed.sharedId) {
+      return { success: false, error: 'Session not shared' }
+    }
+
+    // Signal async operation start for shimmer effect
+    managed.isAsyncOperationOngoing = true
+    this.sendEvent({ type: 'async_operation', sessionId, isOngoing: true }, managed.workspace.id)
+
+    try {
+      const { VIEWER_URL } = await import('@craft-agent/shared/branding')
+      const response = await fetch(
+        `${VIEWER_URL}/s/api/${managed.sharedId}`,
+        { method: 'DELETE' }
+      )
+
+      if (!response.ok) {
+        sessionLog.error(`Revoke failed with status ${response.status}`)
+        return { success: false, error: 'Failed to revoke share' }
+      }
+
+      // Clear shared info
+      delete managed.sharedUrl
+      delete managed.sharedId
+      const workspaceRootPath = managed.workspace.rootPath
+      await updateSessionMetadata(workspaceRootPath, sessionId, {
+        sharedUrl: undefined,
+        sharedId: undefined,
+      })
+
+      sessionLog.info(`Session ${sessionId} share revoked`)
+      // Notify all windows for this workspace
+      this.sendEvent({ type: 'session_unshared', sessionId }, managed.workspace.id)
+      return { success: true }
+    } catch (error) {
+      sessionLog.error('Revoke error:', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    } finally {
+      // Signal async operation end
+      managed.isAsyncOperationOngoing = false
+      this.sendEvent({ type: 'async_operation', sessionId, isOngoing: false }, managed.workspace.id)
     }
   }
 
@@ -5525,6 +5699,24 @@ export class SessionManager implements ISessionManager {
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
+    // Revoke share if session was shared (prevent orphaned viewer copies)
+    if (managed.sharedId) {
+      try {
+        const { VIEWER_URL } = await import('@craft-agent/shared/branding')
+        const response = await fetch(
+          `${VIEWER_URL}/s/api/${managed.sharedId}`,
+          { method: 'DELETE', signal: AbortSignal.timeout(5000) }
+        )
+        if (!response.ok) {
+          sessionLog.warn(`Failed to revoke share for ${sessionId}: HTTP ${response.status}`)
+        } else {
+          sessionLog.info(`Revoked share for deleted session ${sessionId}`)
+        }
+      } catch (error) {
+        sessionLog.warn(`Failed to revoke share for ${sessionId}:`, error)
+      }
+    }
+
     // Clean up delta flush timers to prevent orphaned timers
     const timer = this.deltaFlushTimers.get(sessionId)
     if (timer) {
@@ -5629,9 +5821,14 @@ export class SessionManager implements ISessionManager {
     }
 
     // Clear any pending plan execution state when a new user message is sent.
-    // This acts as a safety valve - if the user moves on, we don't want to
-    // auto-execute an old plan later.
-    await clearStoredPendingPlanExecution(managed.workspace.rootPath, sessionId)
+    // The explicit /compact turn immediately after "Accept & Compact" is the
+    // one exception: that command is what transitions the pending record from
+    // awaiting → ready. Any other message remains a safety valve that cancels it.
+    const isCompactCommand = /^\/compact(\s|$)/i.test(message.trim())
+    if (!isCompactCommand) {
+      delete managed.pendingPlanExecution
+      await clearStoredPendingPlanExecution(managed.workspace.rootPath, sessionId)
+    }
 
     // Ensure messages are loaded before we try to add new ones
     await this.ensureMessagesLoaded(managed)
@@ -5653,22 +5850,6 @@ export class SessionManager implements ISessionManager {
       // today's exact behavior (call redirect, take whatever it returns).
       const behavior = connection ? resolveMidStreamBehavior(connection) : 'steer'
 
-      const agent = managed.agent
-      let steered = false
-      if (behavior === 'steer') {
-        steered = agent?.redirect(message) ?? false
-      }
-      // For 'queue': skip redirect entirely. The current turn is undisturbed.
-
-      sessionLog.info('mid-stream send', {
-        sessionId,
-        behavior,
-        steered,
-        queueLengthBefore: managed.messageQueue.length,
-        backend: agent ? agent.constructor.name : 'none',
-        connectionSlug: connection?.slug,
-      })
-
       // Create user message for UI
       const userMessage: Message = {
         id: generateMessageId(),
@@ -5683,7 +5864,22 @@ export class SessionManager implements ISessionManager {
       }
       managed.messages.push(userMessage)
 
-      const delivery = resolveMidStreamDeliveryOutcome(behavior, steered)
+      const agent = managed.agent
+      // Redirect is text-only. Any semantic options/attachments use the normal
+      // host queue, without aborting the current turn or dropping the payload.
+      const textOnly = canSteerTextPayload(attachments, storedAttachments, options)
+      const attemptedSteer = behavior === 'steer' && textOnly && !!agent
+      const steered = attemptedSteer
+        ? agent.redirect(message, { messageId: userMessage.id })
+        : false
+      const payload = { message, attachments, storedAttachments, options, messageId: userMessage.id, optimisticMessageId: options?.optimisticMessageId }
+      if (steered && agent?.takePendingSteers) {
+        (managed.acceptedSteers ??= new Map()).set(userMessage.id, payload)
+      }
+      sessionLog.info('mid-stream send', { sessionId, behavior, steered, textOnly, queueLengthBefore: managed.messageQueue.length })
+
+      const delivery = resolveMidStreamDeliveryOutcome(attemptedSteer ? 'steer' : 'queue', steered)
+      userMessage.isQueued = delivery.shouldQueue
 
       // Emit to UI — 'accepted' iff a steer succeeded; 'queued' otherwise
       // (covers both queue-direct and queue-after-abort paths).
@@ -5700,7 +5896,7 @@ export class SessionManager implements ISessionManager {
         // for both queue-direct (current turn still running) and
         // queue-after-abort (backend already aborted) — the replay path in
         // processNextQueuedMessage is identical.
-        managed.messageQueue.push({ message, attachments, storedAttachments, options, messageId: userMessage.id, optimisticMessageId: options?.optimisticMessageId })
+        managed.messageQueue.push(payload)
         // Only claim interruption when a steer attempt actually aborted the
         // in-flight turn. In 'queue' mode the current turn runs to natural
         // completion, so the replayed turn must NOT inject the "previous response
@@ -6025,6 +6221,14 @@ export class SessionManager implements ISessionManager {
       sessionLog.info('Got chat iterator, starting iteration...')
 
       for await (const event of chatIterator) {
+        // Handoff may start a new turn before the old SDK iterator settles.
+        // Pending steers were transferred synchronously at the handoff boundary;
+        // trailing old events must not complete or mutate the replacement turn.
+        if (managed.processingGeneration !== myGeneration) {
+          sendSpan.mark('chat.superseded')
+          sendSpan.end()
+          return
+        }
         // Log events (skip noisy text_delta)
         if (event.type !== 'text_delta') {
           if (event.type === 'tool_start') {
@@ -6143,6 +6347,11 @@ export class SessionManager implements ISessionManager {
         // This ensures we don't lose in-flight messages.
       }
 
+      if (managed.processingGeneration !== myGeneration) {
+        sendSpan.mark('chat.superseded')
+        sendSpan.end()
+        return
+      }
       // Loop exited - either via complete event (normal) or generator ended after soft interrupt
       if (!managed.isProcessing) {
         sessionLog.info('Chat loop exited after explicit handoff/stop')
@@ -6155,6 +6364,11 @@ export class SessionManager implements ISessionManager {
         sessionLog.info('Chat loop exited unexpectedly')
       }
     } catch (error) {
+      if (managed.processingGeneration !== myGeneration) {
+        sendSpan.mark('chat.superseded')
+        sendSpan.end()
+        return
+      }
       // Check if this is an abort error (expected when interrupted)
       const isAbortError = error instanceof Error && (
         error.name === 'AbortError' ||
@@ -6216,6 +6430,10 @@ export class SessionManager implements ISessionManager {
     }
 
     sessionLog.info('Cancelling processing for session:', sessionId, silent ? '(silent)' : '')
+
+    // A hard Stop visibly cancels undelivered accepted steers just like queued
+    // sends. Transfer first so the existing input-restoration path includes them.
+    this.recoverPendingSteers(managed)
 
     // Collect queued message text for input restoration before clearing
     const queuedTexts = managed.messageQueue.map(q => q.message)
@@ -6320,6 +6538,7 @@ export class SessionManager implements ISessionManager {
 
         // 2. Destroy the agent — the new agent's postInit() will refresh auth
         sessionLog.info(`[auth-retry] Destroying agent for session ${sessionId}`)
+        this.recoverPendingSteers(managed)
         managed.agent = null
 
         // 3. Retry the message
@@ -6407,6 +6626,38 @@ export class SessionManager implements ISessionManager {
     }
   }
 
+  /** Reconcile an accepted steer with its original bubble and full host payload. */
+  private recoverUndeliveredSteer(managed: ManagedSession, steer: { message: string; messageId?: string }): void {
+    const payload = steer.messageId ? managed.acceptedSteers?.get(steer.messageId) : { message: steer.message }
+    // Identity-bearing events are idempotent, including trailing events after Stop.
+    if (!payload) return
+    if (steer.messageId) managed.acceptedSteers?.delete(steer.messageId)
+    const existing = payload.messageId ? managed.messages.find(m => m.id === payload.messageId) : undefined
+    if (existing) {
+      existing.isQueued = true
+      this.sendEvent({ type: 'user_message', sessionId: managed.id, message: existing,
+        status: 'queued', optimisticMessageId: payload.optimisticMessageId }, managed.workspace.id)
+    }
+    // Recover into original arrival order, including attachment sends that were
+    // already queued while this text steer was pending inside the backend.
+    const index = existing ? managed.messages.indexOf(existing) : -1
+    const before = index < 0 ? -1 : managed.messageQueue.findIndex(item => {
+      const queuedIndex = managed.messages.findIndex(m => m.id === item.messageId)
+      return queuedIndex > index
+    })
+    if (before < 0) managed.messageQueue.push(payload)
+    else managed.messageQueue.splice(before, 0, payload)
+    this.persistSession(managed)
+  }
+
+  /** Synchronous ownership transfer before a backend is paused or disposed. */
+  private recoverPendingSteers(managed: ManagedSession): void {
+    for (const steer of managed.agent?.takePendingSteers?.() ?? []) {
+      this.recoverUndeliveredSteer(managed, steer)
+    }
+    managed.acceptedSteers?.clear()
+  }
+
   /**
    * Central handler for when processing stops (any reason).
    * Single source of truth for cleanup and queue processing.
@@ -6422,6 +6673,9 @@ export class SessionManager implements ISessionManager {
     if (!managed) return
 
     sessionLog.info(`Processing stopped for session ${sessionId}: ${reason}`)
+
+    // Backend recovery events precede complete; discard payloads already delivered.
+    managed.acceptedSteers?.clear()
 
     // 1. Cleanup state
     this.setProcessing(managed, false)
@@ -7081,37 +7335,6 @@ export class SessionManager implements ISessionManager {
       const watcher = this.configWatchers.get(managed.workspace.rootPath)
       watcher?.notifyFileChange(`sessions/${sessionId}/session.jsonl`)
     }
-  }
-
-  /** Identity binding uses the same in-memory Session and journal writer as every other mutation. */
-  async wearAssistant(workspaceId: string, sessionId: string, assistantId: string, asked: WearAsk): Promise<{ decision: WearDecision; delegateSessionId?: string }> {
-    const managed = this.sessions.get(sessionId)
-    if (!managed || managed.workspace.id !== workspaceId) throw new Error('Session not found in this workspace')
-    if (managed.isProcessing) throw new Error('Session is processing; apply an assistant after the turn finishes')
-    const assistant = getAssistant(managed.workspace.rootPath, assistantId)
-    if (!assistant) throw new Error('Assistant not found in this workspace')
-    if (asked === 'cli') throw new Error('Assistant CLI wrapping is not implemented')
-    const decision = proposeWear({ currentAssistantId: managed.assistantId ?? null, requestedAssistantId: assistantId, asked })
-    if (!decision.applied) {
-      await this.flushSession(sessionId)
-      return { decision }
-    }
-    const permissionMode = resolveAssistantPermission(assistant, managed.permissionMode ?? 'safe')
-    if (decision.wearer === 'delegate') {
-      const child = await this.createSession(workspaceId, {
-        name: assistant.name, parentSessionId: sessionId, assistantId,
-        permissionMode, workingDirectory: managed.workingDirectory,
-        model: managed.model, llmConnection: managed.llmConnection,
-      })
-      return { decision, delegateSessionId: child.id }
-    }
-    managed.assistantId = assistantId
-    if (permissionMode !== managed.permissionMode) this.setSessionPermissionMode(sessionId, permissionMode)
-    this.setMetadataWriteGuard(managed)
-    this.persistSession(managed)
-    await this.flushSession(sessionId)
-    this.sendEvent({ type: 'session_metadata_changed', sessionId, changes: { assistantId } }, workspaceId)
-    return { decision }
   }
 
   /**
@@ -7814,10 +8037,12 @@ export class SessionManager implements ISessionManager {
 
       case 'info': {
         const isCompactionComplete = event.message.startsWith('Compacted')
+        const isManualCompactionComplete = isCompactionComplete && event.compactionTrigger === 'manual'
         const infoTimestamp = this.monotonic()
 
-        // Persist compaction messages so they survive reload
-        // Other info messages are transient (just sent to renderer)
+        // Persist compaction messages so they survive reload. Only a manual
+        // command-correlated success marks Accept & Compact ready; automatic
+        // compaction and SDK false-success command results must not execute a plan.
         if (isCompactionComplete) {
           const compactionMessage: Message = {
             id: generateMessageId(),
@@ -7828,24 +8053,10 @@ export class SessionManager implements ISessionManager {
           }
           managed.messages.push(compactionMessage)
 
-          // Mark compaction complete in the session state.
-          // This is done here (backend) rather than in the renderer so it's
-          // not affected by CMD+R during compaction. The frontend reload
-          // recovery will see awaitingCompaction=false and trigger execution.
-          void markStoredCompactionComplete(managed.workspace.rootPath, sessionId)
-          sessionLog.info(`Session ${sessionId}: compaction complete, marked pending plan ready`)
-
-          // Emit usage_update so the context count badge refreshes immediately
-          // after compaction, without waiting for the next message
-          if (managed.tokenUsage) {
-            this.sendEvent({
-              type: 'usage_update',
-              sessionId,
-              tokenUsage: {
-                inputTokens: managed.tokenUsage.inputTokens,
-                contextWindow: managed.tokenUsage.contextWindow,
-              },
-            }, workspaceId)
+          if (isManualCompactionComplete) {
+            if (managed.pendingPlanExecution) managed.pendingPlanExecution.awaitingCompaction = false
+            await markStoredCompactionComplete(managed.workspace.rootPath, sessionId)
+            sessionLog.info(`Session ${sessionId}: manual compaction complete, marked pending plan ready`)
           }
         }
 
@@ -8201,6 +8412,36 @@ export class SessionManager implements ISessionManager {
         break
       }
 
+      case 'context_usage': {
+        if (!managed.tokenUsage) {
+          managed.tokenUsage = {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            contextTokens: 0,
+            costUsd: 0,
+          }
+        }
+        managed.tokenUsage.contextUsage = event.contextUsage
+        this.sendEvent({
+          type: 'usage_update',
+          sessionId: managed.id,
+          tokenUsage: {
+            inputTokens: managed.tokenUsage.inputTokens,
+            contextWindow: managed.tokenUsage.contextWindow,
+            contextUsage: event.contextUsage,
+          },
+        }, workspaceId)
+        this.persistSession(managed)
+        break
+      }
+
+      case 'compaction_failed':
+        delete managed.pendingPlanExecution
+        await clearStoredPendingPlanExecution(managed.workspace.rootPath, sessionId)
+        sessionLog.info(`Session ${sessionId}: compaction failed, cleared pending plan execution`)
+        break
+
       case 'complete':
         // Complete event from CraftAgent - accumulate usage from this turn
         // Actual 'complete' sent to renderer comes from the finally block in sendMessage
@@ -8258,17 +8499,14 @@ export class SessionManager implements ISessionManager {
             tokenUsage: {
               inputTokens: event.usage.inputTokens,
               contextWindow: event.usage.contextWindow,
+              contextUsage: managed.tokenUsage.contextUsage,
             },
           }, workspaceId)
         }
         break
 
       case 'steer_undelivered':
-        // Steer message was not delivered (no PreToolUse fired before turn ended).
-        // Re-queue it so it's sent as a normal message on the next turn.
-        sessionLog.info(`Steer message undelivered, re-queuing for session ${sessionId}`)
-        managed.messageQueue.push({ message: event.message })
-        managed.wasInterrupted = true
+        this.recoverUndeliveredSteer(managed, event)
         break
 
       // Note: working_directory_changed is user-initiated only (via updateWorkingDirectory),

@@ -27,7 +27,6 @@ import { StoplightProvider } from '@/context/StoplightContext'
 import {
   useNavigationState,
   isSessionsNavigation,
-  isBoardNavigation,
   isSourcesNavigation,
   isSettingsNavigation,
   isSkillsNavigation,
@@ -394,16 +393,17 @@ export function MainContentPanel({
     )
   }
 
-  if (isBoardNavigation(navState)) {
-    return wrapWithStoplight(
-      <Panel variant="grow" className={className}>
-        <KanbanBoardContainer />
-      </Panel>
-    )
-  }
-
   // Chats navigator - show chat, multi-select panel, or empty state
   if (isSessionsNavigation(navState)) {
+    // Board view: full-width Kanban over all sessions (placement independent of status)
+    if (navState.viewMode === 'board') {
+      return wrapWithStoplight(
+        <Panel variant="grow" className={className}>
+          <KanbanBoardContainer />
+        </Panel>
+      )
+    }
+
     // Multi-select mode: show batch actions panel
     if (isMultiSelectActive) {
       return wrapWithStoplight(

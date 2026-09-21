@@ -71,7 +71,6 @@ describe('normalizePanelRouteForReconcile', () => {
 
     expect(normalizePanelRouteForReconcile('settings', resolver)).toBe('settings')
     expect(normalizePanelRouteForReconcile('sources', resolver)).toBe('sources')
-    expect(normalizePanelRouteForReconcile('board', resolver)).toBe('board')
   })
 
   it('keeps explicit detail route even if resolver tries to rewrite it', () => {

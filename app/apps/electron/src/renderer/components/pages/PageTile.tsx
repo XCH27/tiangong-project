@@ -38,6 +38,7 @@ export function PageTile({ page, project, onOpen, onDelete }: PageTileProps) {
   const { t } = useTranslation()
   const { config } = page
   const KindIcon = PAGE_KIND_ICONS[config.kind]
+  const monogram = (config.name.trim()[0] ?? '?').toUpperCase()
   const accent = project?.color
 
   const posterDigest =
@@ -84,7 +85,7 @@ export function PageTile({ page, project, onOpen, onDelete }: PageTileProps) {
           onClick={onOpen}
           aria-label={config.name}
           className={cn(
-            'group relative flex flex-col overflow-hidden rounded-lg border border-foreground/10 bg-card text-left shadow-minimal',
+            'group relative flex flex-col overflow-hidden rounded-xl border border-foreground/[0.08] bg-card text-left shadow-minimal',
             'cursor-pointer transition-colors duration-150 hover:border-foreground/20 hover:bg-foreground/[0.02]',
             'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
           )}
@@ -114,7 +115,18 @@ export function PageTile({ page, project, onOpen, onDelete }: PageTileProps) {
                   className="absolute inset-0 h-full w-full object-cover object-top"
                 />
               ) : (
-                <KindIcon className="h-6 w-6 text-foreground/30" aria-hidden />
+                <>
+                  <span className="select-none text-4xl font-semibold text-foreground/[0.08]">{monogram}</span>
+                  <KindIcon className="absolute h-6 w-6 text-foreground/25" strokeWidth={1.75} aria-hidden />
+                  <span
+                    className="absolute -right-4 -top-4 h-16 w-16 rounded-full border border-foreground/[0.05]"
+                    aria-hidden
+                  />
+                  <span
+                    className="absolute -bottom-6 -left-2 h-14 w-24 rounded-full border border-foreground/[0.04]"
+                    aria-hidden
+                  />
+                </>
               )}
             </div>
           </div>
@@ -137,7 +149,7 @@ export function PageTile({ page, project, onOpen, onDelete }: PageTileProps) {
               <span className="ml-auto inline-flex items-center gap-2">
                 {config.share && (
                   <span
-                    className="inline-flex items-center text-foreground/50"
+                    className="inline-flex items-center text-foreground/45"
                     role="img"
                     aria-label={t('pages.shared')}
                     title={t('pages.shared')}

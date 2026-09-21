@@ -26,9 +26,7 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { useMenuComponents } from '@/components/ui/menu-context'
-import { type DocFeature } from '@craft-agent/shared/docs/doc-links'
-import { openLocalDoc } from '@/lib/open-local-doc'
-import { useOptionalAppShellContext } from '@/context/AppShellContext'
+import { getDocUrl, type DocFeature } from '@craft-agent/shared/docs/doc-links'
 
 export type SidebarMenuType = 'allSessions' | 'flagged' | 'status' | 'sources' | 'skills' | 'automations' | 'projects' | 'labels' | 'views' | 'newSession'
 
@@ -90,7 +88,6 @@ export function SidebarMenu({
   onDeleteView,
 }: SidebarMenuProps) {
   const { t } = useTranslation()
-  const appShell = useOptionalAppShellContext()
 
   // Get menu components from context (works with both DropdownMenu and ContextMenu)
   const { MenuItem, Separator } = useMenuComponents()
@@ -205,7 +202,7 @@ export function SidebarMenu({
           </MenuItem>
         )}
         <Separator />
-        <MenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc(docFeature, appShell.onOpenFile)}>
+        <MenuItem onClick={() => window.electronAPI.openUrl(getDocUrl(docFeature))}>
           <ExternalLink className="h-3.5 w-3.5" />
           <span className="flex-1">{learnMoreLabel}</span>
         </MenuItem>
@@ -248,7 +245,7 @@ export function SidebarMenu({
           </MenuItem>
         )}
         <Separator />
-        <MenuItem onClick={() => appShell?.onOpenFile && void openLocalDoc('automations', appShell.onOpenFile)}>
+        <MenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('automations'))}>
           <ExternalLink className="h-3.5 w-3.5" />
           <span className="flex-1">{t("sidebarMenu.learnMoreAutomations")}</span>
         </MenuItem>

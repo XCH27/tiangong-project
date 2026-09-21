@@ -6,23 +6,6 @@
  * - REMOTE_ELIGIBLE: Runs on whichever server owns the workspace.
  *
  * An exhaustiveness test ensures new channels fail CI until classified.
- *
- * **The admission rule is default-deny.** `REMOTE_ELIGIBLE` is the allow-list: a
- * channel is reachable from another machine only by appearing in it, and
- * `isRemoteAllowed` answers from that set rather than from "not local-only". An
- * unclassified channel is therefore un-remotable by construction, even before the
- * exhaustiveness test catches it. Three criteria admit one (Cindy's, which this
- * follows): the handler does not depend on the calling window, it has no local
- * UI/shell/dialog side effect, and its semantics are only correct when executed on
- * the machine that holds the data.
- *
- * Never admitted, listed so a review can check the shape: window and UI control,
- * native dialogs, shell side effects, account/credential reads and writes, the
- * updater, writes to the host's own global settings, and raw store writes that
- * bypass a business handler.
- *
- * The check runs twice — on the caller before sending (fast failure) and on the
- * host before dispatch (the authoritative one, `WsRpcServer`).
  */
 
 import { RPC_CHANNELS } from './channels'
@@ -34,12 +17,6 @@ import { RPC_CHANNELS } from './channels'
 export const LOCAL_ONLY_CHANNELS = new Set<string>([
   // remote — local connectivity management (reaches out to remote server from local app)
   RPC_CHANNELS.remote.TEST_CONNECTION,
-  // Device grants are this machine's own access control. A remote client must never
-  // be able to mint an invite or revoke a device over the link it connected on.
-  RPC_CHANNELS.remote.CREATE_INVITE,
-  RPC_CHANNELS.remote.LIST_DEVICES,
-  RPC_CHANNELS.remote.REVOKE_DEVICE,
-  RPC_CHANNELS.remote.CLEAR_REVOKED_DEVICES,
 
   // workspaces — local workspace CRUD (workspace list is local config)
   RPC_CHANNELS.workspaces.GET,
@@ -238,11 +215,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
 // ---------------------------------------------------------------------------
 
 export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
-  // remote — a device that just redeemed its invite exchanges it for the grant the
-  // host minted. Deliberately remote-eligible: the caller is the remote device, and
-  // it already proved it holds the single-use invite by connecting at all.
-  RPC_CHANNELS.remote.CLAIM_DEVICE_TOKEN,
-
   // server — server-level operations (no workspace context needed)
   RPC_CHANNELS.server.GET_WORKSPACES,
   RPC_CHANNELS.server.CREATE_WORKSPACE,
@@ -420,12 +392,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.labels.DELETE,
   RPC_CHANNELS.labels.CHANGED,
 
-  RPC_CHANNELS.assistants.LIST,
-  RPC_CHANNELS.assistants.CREATE,
-  RPC_CHANNELS.assistants.WEAR,
-  RPC_CHANNELS.assistants.WORN,
-  RPC_CHANNELS.assistants.CHANGED,
-
   // views — workspace UI views
   RPC_CHANNELS.views.LIST,
   RPC_CHANNELS.views.SAVE,
@@ -548,23 +514,4 @@ export function isLocalOnly(channel: string): boolean {
 
 export function isRemoteEligible(channel: string): boolean {
   return REMOTE_ELIGIBLE_CHANNELS.has(channel)
-}
-
-/**
- * The authoritative admission check for a request arriving over a remote listener.
- *
- * Deliberately **not** `!isLocalOnly(channel)`: that phrasing makes every new channel
- * remote-reachable by default and turns a forgotten classification into an exposure.
- * Asking the allow-list instead makes the default refusal.
- */
-export function isRemoteAllowed(channel: string): boolean {
-  return REMOTE_ELIGIBLE_CHANNELS.has(channel)
-}
-
-/** Why a channel was refused over a remote listener, so the surface can say so. */
-export type RemoteRefusal = 'LOCAL_ONLY' | 'NOT_ADMITTED'
-
-export function remoteRefusalFor(channel: string): RemoteRefusal | null {
-  if (REMOTE_ELIGIBLE_CHANNELS.has(channel)) return null
-  return LOCAL_ONLY_CHANNELS.has(channel) ? 'LOCAL_ONLY' : 'NOT_ADMITTED'
 }

@@ -361,8 +361,9 @@ export function registerPagesHandlers(server: RpcServer, deps: HandlerDeps): voi
   })
 
   // ------------------------------------------------------------------
-  // Legacy publication cleanup. Publish/password calls fail explicitly in the
-  // shared publisher; unpublish remains available for historical records.
+  // Sharing (Cloudflare publication) — server-evaluated feature flag.
+  // Publish/password are gated; unpublish never is, so disabling the flag
+  // cannot strand a published page.
   // ------------------------------------------------------------------
 
   async function buildPublisher() {

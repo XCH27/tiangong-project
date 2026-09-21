@@ -36,7 +36,5 @@ export function isDetailNavState(navState: NavigationState | null): boolean {
       return navState.details !== null
     case 'pages':
       return true
-    case 'board':
-      return true
   }
 }

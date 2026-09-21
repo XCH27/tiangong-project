@@ -146,7 +146,7 @@ export function PagesHome() {
           disabled={!activeWorkspaceId}
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-foreground/[0.03] disabled:opacity-50"
         >
-          <Plus className="h-3.5 w-3.5" /> {t('pages.newPage')}
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('pages.newPage')}
         </button>
       </div>
 

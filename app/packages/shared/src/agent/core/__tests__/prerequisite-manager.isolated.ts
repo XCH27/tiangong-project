@@ -20,15 +20,6 @@ mock.module('node:fs', () => ({
   readFileSync: originalExistsSync,
 }));
 
-// `prerequisite-manager` imports exactly one thing from storage, and the real
-// one reads ~/.craft-agent/config-defaults.json through `existsSync` — which
-// this suite has already replaced with a fixture set. The real function then
-// sees its config file "missing" and throws, failing every rule-matching test
-// for a reason that has nothing to do with rule matching.
-mock.module('../../../config/storage.ts', () => ({
-  getBrowserToolEnabled: () => true,
-}));
-
 const WORKSPACE_ROOT = '/test/workspace';
 
 function guidePath(slug: string): string {

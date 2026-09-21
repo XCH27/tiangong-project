@@ -5,7 +5,7 @@ export function clearBlockAnnotationMarkers(root: HTMLElement): void {
   const blocks = root.querySelectorAll<HTMLElement>('[data-ca-block-annotated="true"]')
   blocks.forEach((block) => {
     block.removeAttribute('data-ca-block-annotated')
-    block.classList.remove('ring-1', 'ring-inset', 'ring-info/20')
+    block.style.boxShadow = ''
     block.style.backgroundColor = ''
   })
 }
@@ -26,6 +26,6 @@ export function applyBlockAnnotationMarker(root: HTMLElement, annotation: Annota
   if (!target) return
 
   target.setAttribute('data-ca-block-annotated', 'true')
-  target.classList.add('ring-1', 'ring-inset', 'ring-info/20')
   target.style.backgroundColor = annotationColorToCss(annotation.style?.color)
+  target.style.boxShadow = 'inset 0 0 0 1px color-mix(in srgb, var(--info) 22%, transparent)'
 }

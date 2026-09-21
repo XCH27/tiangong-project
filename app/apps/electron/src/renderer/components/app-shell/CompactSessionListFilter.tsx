@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next'
 import {
   Calendar,
   Check,
-  Pin,
+  Flag,
   Inbox,
   Layers,
   ListFilter,
@@ -463,7 +463,7 @@ function PinnedSummary({
     <div className="px-2 pt-1 pb-2">
       <div className="flex flex-wrap gap-1.5 px-1">
         {pinnedFilters.pinnedFlagged && (
-          <PinnedChip icon={<Pin className="h-3.5 w-3.5" />} label={t('sidebar.flagged')} />
+          <PinnedChip icon={<Flag className="h-3.5 w-3.5" />} label={t('sidebar.flagged')} />
         )}
         {pinnedStatus && (
           <PinnedChip

@@ -27,7 +27,7 @@ import {
   SettingsCard,
 } from '@/components/settings'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
-import { openLocalDoc } from '@/lib/open-local-doc'
+import { getDocUrl } from '@craft-agent/shared/docs/doc-links'
 import { routes } from '@/lib/navigate'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
@@ -132,7 +132,7 @@ function buildCustomPermissionsData(config: PermissionsConfigFile, fallbackLabel
 
 export default function PermissionsSettingsPage() {
   const { t } = useTranslation()
-  const { activeWorkspaceId, onOpenFile } = useAppShellContext()
+  const { activeWorkspaceId } = useAppShellContext()
   const activeWorkspace = useActiveWorkspace()
 
   // Loading and data state
@@ -228,7 +228,7 @@ export default function PermissionsSettingsPage() {
                         <p>
                           <button
                             type="button"
-                            onClick={() => void openLocalDoc('permissions', onOpenFile)}
+                            onClick={() => window.electronAPI?.openUrl(getDocUrl('permissions'))}
                             className="text-foreground/70 hover:text-foreground underline underline-offset-2"
                           >
                             {t("common.learnMore")}

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { FolderPlus, FolderOpen, Monitor } from "lucide-react"
+import { FolderPlus, FolderOpen, Cloud } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AddWorkspaceContainer, AddWorkspaceStepHeader } from "./primitives"
 
@@ -50,7 +50,9 @@ function ChoiceCard({ icon, title, description, onClick, variant = 'secondary' }
 /**
  * AddWorkspaceStep_Choice - Initial step to choose creation method
  *
- * Three options: new folder, open folder, or a workspace on a remote connection.
+ * Two options:
+ * 1. Create new workspace - Creates a fresh workspace folder
+ * 2. Open folder as workspace - Use an existing folder
  */
 export function AddWorkspaceStep_Choice({
   onCreateNew,
@@ -83,9 +85,9 @@ export function AddWorkspaceStep_Choice({
         />
 
         <ChoiceCard
-          icon={<Monitor className="h-5 w-5" />}
+          icon={<Cloud className="h-5 w-5" />}
           title={t("workspace.connectRemote")}
-          description={t("workspace.remoteCreateFolderDesc")}
+          description={t("workspace.connectRemoteDesc")}
           onClick={onConnectRemote}
         />
       </div>

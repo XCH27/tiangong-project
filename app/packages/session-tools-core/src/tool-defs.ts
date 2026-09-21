@@ -20,7 +20,6 @@ import type { ToolResult } from './types.ts';
 import { handleSubmitPlan } from './handlers/submit-plan.ts';
 import { handleConfigValidate } from './handlers/config-validate.ts';
 import { handleSkillValidate } from './handlers/skill-validate.ts';
-import { handleManageSkill } from './handlers/manage-skill.ts';
 import { handleMermaidValidate } from './handlers/mermaid-validate.ts';
 import { handleSourceTest } from './handlers/source-test.ts';
 import {
@@ -69,25 +68,6 @@ export const ConfigValidateSchema = z.object({
 
 export const SkillValidateSchema = z.object({
   skillSlug: z.string().describe('The slug of the skill to validate'),
-});
-
-export const ManageSkillSchema = z.object({
-  action: z.enum(['write', 'move']).describe("'write' creates a skill, 'move' changes where it applies"),
-  slug: z.string().describe('Directory name of the skill'),
-  scope: z
-    .enum(['global', 'workspace', 'project'])
-    .optional()
-    .describe(
-      "Where the skill applies. 'global' is ~/.agents/skills and is SHARED with other agent tools on this machine; 'workspace' is this workspace only; 'project' travels with the repository. Target scope for write, destination for move.",
-    ),
-  fromScope: z
-    .enum(['global', 'workspace', 'project'])
-    .optional()
-    .describe('Source scope. Required for move.'),
-  content: z
-    .string()
-    .optional()
-    .describe('Complete SKILL.md including YAML frontmatter with name and description. Required for write.'),
 });
 
 export const MermaidValidateSchema = z.object({
@@ -357,17 +337,6 @@ Returns structured validation results with errors, warnings, and suggestions.
 - \`automations\`: Validates automations.json configuration
 - \`tool-icons\`: Validates tool-icons.json
 - \`all\`: Validates all configuration files`,
-
-  manage_skill: `Write a skill, or move one between scopes.
-
-A skill is a directory containing SKILL.md. Choose the scope deliberately:
-- global — ~/.agents/skills. Reaches every workspace AND IS SHARED WITH OTHER AGENT
-  TOOLS ON THIS MACHINE. Writing here changes something outside this product.
-- workspace — this workspace only.
-- project — travels with the repository, so collaborators get it too.
-
-Never overwrites: a slug already taken at the target belongs to whoever wrote it.
-The result always names which scope was touched.`,
 
   skill_validate: `Validate a skill's SKILL.md file.
 
@@ -700,7 +669,6 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'SubmitPlan', description: TOOL_DESCRIPTIONS.SubmitPlan, inputSchema: SubmitPlanSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSubmitPlan },
   { name: 'config_validate', description: TOOL_DESCRIPTIONS.config_validate, inputSchema: ConfigValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleConfigValidate },
   { name: 'skill_validate', description: TOOL_DESCRIPTIONS.skill_validate, inputSchema: SkillValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleSkillValidate },
-  { name: 'manage_skill', description: TOOL_DESCRIPTIONS.manage_skill, inputSchema: ManageSkillSchema, executionMode: 'registry', safeMode: 'block', handler: handleManageSkill },
   { name: 'mermaid_validate', description: TOOL_DESCRIPTIONS.mermaid_validate, inputSchema: MermaidValidateSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleMermaidValidate },
   { name: 'source_test', description: TOOL_DESCRIPTIONS.source_test, inputSchema: SourceTestSchema, executionMode: 'registry', safeMode: 'allow', handler: handleSourceTest },
   { name: 'source_oauth_trigger', description: TOOL_DESCRIPTIONS.source_oauth_trigger, inputSchema: SourceOAuthTriggerSchema, executionMode: 'registry', safeMode: 'block', handler: handleSourceOAuthTrigger },

@@ -30,7 +30,6 @@ import {
 } from "../../../shared/menu-schema"
 import type { MenuItem, MenuSection } from "../../../shared/menu-schema"
 import type { AppMenuProps } from "./types"
-import { useOptionalAppShellContext } from '@/context/AppShellContext'
 
 type MenuActionHandlers = {
   toggleFocusMode?: () => void
@@ -148,7 +147,6 @@ export function DesktopAppMenu({
   onToggleFocusMode,
 }: AppMenuProps) {
   const { t } = useTranslation()
-  const appShell = useOptionalAppShellContext()
   const [isDebugMode, setIsDebugMode] = useState(false)
 
   const newChatHotkey = useActionLabel('app.newChat').hotkey
@@ -233,15 +231,7 @@ export function DesktopAppMenu({
               return (
                 <StyledDropdownMenuItem
                   key={link.id}
-                  onClick={() => {
-                    if (link.url.startsWith('fleet-local://')) {
-                      void window.electronAPI.getHomeDir().then((home) => {
-                        appShell?.onOpenFile(`${home}/.craft-agent/docs/INDEX.md`)
-                      })
-                      return
-                    }
-                    window.electronAPI.openUrl(link.url)
-                  }}
+                  onClick={() => window.electronAPI.openUrl(link.url)}
                 >
                   {Icon && <Icon className="h-3.5 w-3.5" />}
                   {t(link.labelKey)}

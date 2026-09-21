@@ -6,14 +6,14 @@
  * works in both DropdownMenu and ContextMenu scenarios.
  *
  * Mirrors the actions from MultiSelectPanel (Status, Labels, Archive) with additions
- * for Pin and Delete that make sense in a context menu.
+ * for Flag and Delete that make sense in a context menu.
  */
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useMemo } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { Archive, Pin, PinOff, Trash2, Tag, Send } from 'lucide-react'
+import { Archive, Flag, FlagOff, Trash2, Tag, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { useMenuComponents } from '@/components/ui/menu-context'
 import { useSelectedIds } from '@/hooks/useSession'
@@ -218,15 +218,15 @@ export function BatchSessionMenu({ onSendToWorkspace }: BatchSessionMenuProps = 
         </Sub>
       )}
 
-      {/* Pin/Unpin */}
+      {/* Flag/Unflag */}
       {allFlagged ? (
         <MenuItem onClick={handleBatchUnflag}>
-          <PinOff className="h-3.5 w-3.5" />
+          <FlagOff className="h-3.5 w-3.5" />
           <span className="flex-1">{t("sessionMenu.unflagAll")}</span>
         </MenuItem>
       ) : (
         <MenuItem onClick={handleBatchFlag}>
-          <Pin className="h-3.5 w-3.5 text-info" />
+          <Flag className="h-3.5 w-3.5 text-info" />
           <span className="flex-1">{t("sessionMenu.flagAll")}</span>
         </MenuItem>
       )}

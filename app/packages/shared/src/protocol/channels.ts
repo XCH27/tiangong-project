@@ -6,20 +6,6 @@
 export const RPC_CHANNELS = {
   remote: {
     TEST_CONNECTION: 'remote:testConnection',
-    /** Mint a one-time invite and return the access link the user copies. */
-    CREATE_INVITE: 'remote:createInvite',
-    /** Devices that may reach this machine, including revoked rows. */
-    LIST_DEVICES: 'remote:listDevices',
-    /** Cut one device off immediately; its grant stops authenticating. */
-    REVOKE_DEVICE: 'remote:revokeDevice',
-    /** Drop the revoked rows — the only thing that forgets a device. */
-    CLEAR_REVOKED_DEVICES: 'remote:clearRevokedDevices',
-    /**
-     * A device that just redeemed an invite exchanges it for the grant the host
-     * minted. Without this the invite would be the only credential the device has,
-     * and it is single-use — so the second connection would always fail.
-     */
-    CLAIM_DEVICE_TOKEN: 'remote:claimDeviceToken',
   },
   server: {
     GET_WORKSPACES: 'server:getWorkspaces',
@@ -303,13 +289,6 @@ export const RPC_CHANNELS = {
     CREATE: 'labels:create',
     DELETE: 'labels:delete',
     CHANGED: 'labels:changed',
-  },
-  assistants: {
-    LIST: 'assistants:list',
-    CREATE: 'assistants:create',
-    WEAR: 'assistants:wear',
-    WORN: 'assistants:worn',
-    CHANGED: 'assistants:changed',
   },
   views: {
     LIST: 'views:list',

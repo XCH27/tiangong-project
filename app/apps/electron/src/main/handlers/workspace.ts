@@ -21,13 +21,12 @@ export const GUI_HANDLED_CHANNELS = [
  * Returns the connected client or null + error message.
  */
 export async function connectToRemote(url: string, token: string, workspaceId?: string, opts?: { requestTimeout?: number }) {
-  const { assertAllowedRemoteWsUrl } = await import('@craft-agent/shared/utils/remote-url')
-  assertAllowedRemoteWsUrl(url)
   const { WsRpcClient } = await import('../../transport/client')
   const client = new WsRpcClient(url, {
     token,
     workspaceId,
     autoReconnect: false,
+    tlsRejectUnauthorized: false,
     requestTimeout: opts?.requestTimeout,
   })
 
@@ -59,7 +58,7 @@ export async function connectToRemote(url: string, token: string, workspaceId?: 
 export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDeps): void {
   const windowManager = deps.windowManager
 
-  // Test connection to a user-owned remote Fleet instance.
+  // Test connection to a remote Craft Agent Server.
   // Pure discovery — returns list of existing workspaces or needsWorkspace flag.
   // Workspace creation is handled separately via invokeOnServer → server:createWorkspace.
   server.handle(RPC_CHANNELS.remote.TEST_CONNECTION, async (_ctx, url: string, token: string) => {
@@ -70,66 +69,18 @@ export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDep
     const serverVersion = client.getServerVersion() ?? undefined
 
     try {
-      // If we got in with a one-time invite, that invite is spent the moment the
-      // handshake succeeded. Claim the grant the host minted on **this** connection —
-      // a second connection with the spent invite would be refused, so there is no
-      // later opportunity. Returned to the caller, which stores it as the device's token.
-      const { parseInviteCredential } = await import('@craft-agent/shared/remote')
-      const invite = parseInviteCredential(token)
-      let deviceToken: string | undefined
-      if (invite) {
-        try {
-          const { hostname, platform } = await import('node:os')
-          const claimed = await client.invoke(
-            RPC_CHANNELS.remote.CLAIM_DEVICE_TOKEN,
-            invite.enrollmentId,
-            // This machine names itself, so the host's device list is honest without
-            // anyone typing a label for a computer they are not at.
-            {
-              deviceName: hostname(),
-              platform: platform() === 'darwin' ? 'macos'
-                : platform() === 'win32' ? 'windows'
-                  : platform() === 'linux' ? 'linux' : 'unknown',
-            },
-          ) as { deviceId: string; deviceToken: string }
-          deviceToken = claimed?.deviceToken
-        } catch (claimError) {
-          client.destroy()
-          return {
-            ok: false,
-            error: claimError instanceof Error ? claimError.message : 'REMOTE_GRANT_NOT_ISSUED',
-          }
-        }
-        if (!deviceToken) {
-          client.destroy()
-          return { ok: false, error: 'REMOTE_GRANT_NOT_ISSUED' }
-        }
-      }
-
-      // The host's stable id. Every Workspace paired to the same computer carries it,
-      // which is what makes one machine read as one device rather than several.
-      let hostId: string | undefined
-      try {
-        const status = await client.invoke(RPC_CHANNELS.server.GET_STATUS) as { serverId?: string }
-        hostId = typeof status?.serverId === 'string' ? status.serverId : undefined
-      } catch {
-        // An older host without a stable id still pairs; it groups by endpoint host.
-      }
-
       console.log(`[TEST_CONNECTION] invoking ${RPC_CHANNELS.server.GET_WORKSPACES} on remote server...`)
       const workspaces = await client.invoke(RPC_CHANNELS.server.GET_WORKSPACES) as Array<{ id: string; name: string }>
       console.log(`[TEST_CONNECTION] remote returned ${workspaces?.length ?? 'null'} workspaces:`, JSON.stringify(workspaces?.map(w => ({ id: w.id, name: w.name }))))
 
       if (workspaces.length === 0) {
         console.log('[TEST_CONNECTION] → returning needsWorkspace=true')
-        return { ok: true, needsWorkspace: true, serverVersion, deviceToken, hostId }
+        return { ok: true, needsWorkspace: true, serverVersion }
       }
 
       const result = {
         ok: true,
         serverVersion,
-        deviceToken,
-        hostId,
         remoteWorkspaces: workspaces,
         // Convenience: auto-select if exactly one
         remoteWorkspaceId: workspaces.length === 1 ? workspaces[0].id : undefined,

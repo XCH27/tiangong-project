@@ -24,7 +24,6 @@ import { useTransportConnectionState } from "@/hooks/useTransportConnectionState
 import type { Workspace } from "../../../shared/types"
 
 interface WorkspaceSwitcherProps {
-  trigger?: React.ReactElement
   variant?: 'sidebar' | 'topbar'
   isCollapsed?: boolean
   workspaces: Workspace[]
@@ -34,7 +33,6 @@ interface WorkspaceSwitcherProps {
   onWorkspaceRemoved?: () => void
   /** workspaceId -> has unread */
   workspaceUnreadMap?: Record<string, boolean>
-  onOpenRemoteSettings?: () => void
 }
 
 /**
@@ -45,7 +43,6 @@ interface WorkspaceSwitcherProps {
  * - topbar: center top-bar selector trigger
  */
 export function WorkspaceSwitcher({
-  trigger,
   variant = 'sidebar',
   isCollapsed = false,
   workspaces,
@@ -54,7 +51,6 @@ export function WorkspaceSwitcher({
   onWorkspaceCreated,
   onWorkspaceRemoved,
   workspaceUnreadMap,
-  onOpenRemoteSettings,
 }: WorkspaceSwitcherProps) {
   const { t } = useTranslation()
   const [showCreationScreen, setShowCreationScreen] = useState(false)
@@ -184,14 +180,13 @@ export function WorkspaceSwitcher({
             onClose={handleCloseCreationScreen}
             reconnectWorkspace={reconnectTarget ?? undefined}
             onReconnectWorkspace={handleReconnectWorkspace}
-            onOpenRemoteSettings={onOpenRemoteSettings}
           />
         )}
       </AnimatePresence>
 
       <DropdownMenu onOpenChange={(open) => { if (open) checkRemoteHealth() }}>
         <DropdownMenuTrigger asChild>
-          {trigger ?? (variant === 'topbar' ? (
+          {variant === 'topbar' ? (
             <button
               type="button"
               data-workspace-switcher="topbar"
@@ -245,7 +240,7 @@ export function WorkspaceSwitcher({
                 </>
               )}
             </button>
-          ))}
+          )}
         </DropdownMenuTrigger>
 
         <StyledDropdownMenuContent

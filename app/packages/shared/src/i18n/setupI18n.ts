@@ -47,13 +47,4 @@ export function setupI18n(
   return i18n;
 }
 
-const hot = (import.meta as { hot?: { accept: (dep: string, cb: (mod: unknown) => void) => void } }).hot;
-hot?.accept("./registry.ts", (mod) => {
-  const next = (mod as { LOCALE_REGISTRY?: typeof LOCALE_REGISTRY } | undefined)?.LOCALE_REGISTRY;
-  if (!next) return;
-  for (const [code, entry] of Object.entries(next)) {
-    i18n.addResourceBundle(code, "translation", entry.messages, true, true);
-  }
-});
-
 export { i18n };

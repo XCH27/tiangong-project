@@ -26,7 +26,7 @@ import { PageFreshness, PageKindBadge } from './page-visuals'
 import { DeletePageDialog } from './DeletePageDialog'
 import { PageGrantsDialog } from './PageGrantsDialog'
 import { PageSourceAuthBanner } from './PageSourceAuthBanner'
-import { SharePageDialog } from './SharePageDialog'
+import { SharePageDialog, usePageShareCapabilities } from './SharePageDialog'
 
 interface PageViewProps {
   pageSlug: string
@@ -139,6 +139,7 @@ export function PageView({ pageSlug }: PageViewProps) {
   const [confirmingDelete, setConfirmingDelete] = React.useState(false)
   const [shareOpen, setShareOpen] = React.useState(false)
   const [grantsOpen, setGrantsOpen] = React.useState(false)
+  const { sharingEnabled } = usePageShareCapabilities()
   const { projects } = useProjects(activeWorkspaceId)
 
   // Inline rename: null = display mode, string = the draft being edited.
@@ -277,15 +278,15 @@ export function PageView({ pageSlug }: PageViewProps) {
         <PageKindBadge kind={config.kind} />
         <PageFreshness config={config} className="hidden @[28rem]/panel:inline-flex" />
         <div className="ml-auto flex items-center gap-1">
-          {config.share && (
+          {(sharingEnabled || config.share) && (
             <button
               type="button"
               onClick={() => setShareOpen(true)}
-              aria-label={t('pages.share.unpublish')}
-              title={t('pages.share.unpublish')}
+              aria-label={t('pages.share.title')}
+              title={config.share ? t('pages.shared') : t('pages.share.title')}
               className="flex h-7 items-center gap-1.5 rounded-md px-2 text-foreground/60 transition-colors hover:bg-foreground/5 hover:text-foreground"
             >
-              <Globe2 className="h-4 w-4" />
+              <Globe2 className={config.share ? 'h-4 w-4 text-sky-600 dark:text-sky-400' : 'h-4 w-4'} />
               {config.share && (
                 <span className="hidden text-xs @[28rem]/panel:inline">{t('pages.shared')}</span>
               )}
@@ -392,7 +393,7 @@ export function PageView({ pageSlug }: PageViewProps) {
               <button
                 type="button"
                 onClick={handleDesignWithAgent}
-                className="inline-flex h-7 items-center gap-1.5 rounded-[8px] bg-accent px-3 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90"
+                className="inline-flex h-7 items-center gap-1.5 rounded-[8px] bg-primary px-3 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 {t('pages.designWithAgent')}
@@ -449,6 +450,8 @@ export function PageView({ pageSlug }: PageViewProps) {
         <SharePageDialog
           workspaceId={activeWorkspaceId}
           page={page}
+          hasSnapshot={snapshotState.data !== null}
+          sharingEnabled={sharingEnabled}
           open={shareOpen}
           onOpenChange={setShareOpen}
         />

@@ -12,6 +12,7 @@ import type {
   ContentBadge,
   ToolDisplayMeta,
   AnnotationV1,
+  ContextUsageSnapshot,
   PermissionRequest as BasePermissionRequest,
 } from '@craft-agent/core/types'
 import type { PermissionMode } from '../agent/mode-types'
@@ -44,8 +45,6 @@ export type BuiltInStatusId = 'todo' | 'in-progress' | 'needs-review' | 'done' |
  * Extends core Session with messages array and processing state.
  */
 export interface Session {
-  /** Identity binding, persisted by SessionManager rather than a sidecar. */
-  assistantId?: string
   id: string
   workspaceId: string
   workspaceName: string
@@ -97,6 +96,7 @@ export interface Session {
     cacheCreationTokens?: number
     /** Model's context window size in tokens (from SDK modelUsage) */
     contextWindow?: number
+    contextUsage?: ContextUsageSnapshot
   }
   /** When true, session is hidden from session list (e.g., mini edit sessions) */
   hidden?: boolean
@@ -157,8 +157,6 @@ export interface CreateSessionOptions {
   projectId?: string
   /** Mark the new session as a subtask of this parent session (undefined = top-level task). */
   parentSessionId?: string
-  /** Assistant identity the new session wears. */
-  assistantId?: string
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */
   taskSlug?: string
   /** Tasks Conductor: id of the run that spawned this child session (child nodes only). */
@@ -415,7 +413,7 @@ export type SessionEvent =
   | { type: 'name_changed'; sessionId: string; name?: string }
   | { type: 'session_model_changed'; sessionId: string; model: string | null }
   | { type: 'session_status_changed'; sessionId: string; sessionStatus: SessionStatus }
-  | { type: 'session_metadata_changed'; sessionId: string; changes: Partial<Pick<Session, 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId' | 'assistantId'>> }
+  | { type: 'session_metadata_changed'; sessionId: string; changes: Partial<Pick<Session, 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId'>> }
   | { type: 'session_deleted'; sessionId: string }
   | { type: 'session_created'; sessionId: string }
   | { type: 'session_shared'; sessionId: string; sharedUrl: string }
@@ -423,7 +421,7 @@ export type SessionEvent =
   | { type: 'auth_request'; sessionId: string; message: Message; request: SharedAuthRequest }
   | { type: 'auth_completed'; sessionId: string; requestId: string; success: boolean; cancelled?: boolean; error?: string }
   | { type: 'source_activated'; sessionId: string; sourceSlug: string; originalMessage: string }
-  | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
+  | { type: 'usage_update'; sessionId: string; tokenUsage: Pick<NonNullable<Session['tokenUsage']>, 'inputTokens' | 'contextWindow' | 'contextUsage'> }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
 
@@ -463,7 +461,9 @@ export type SessionCommand =
   | { type: 'setKanbanColumn'; column: string | null }
   | { type: 'showInFinder' }
   | { type: 'copyPath' }
-  | { type: 'exportMarkdown' }
+  | { type: 'shareToViewer' }
+  | { type: 'updateShare' }
+  | { type: 'revokeShare' }
   | { type: 'refreshTitle' }
   | { type: 'setConnection'; connectionSlug: string }
   | { type: 'setPendingPlanExecution'; planPath: string; draftInputSnapshot?: string }
@@ -681,15 +681,11 @@ export interface UnreadSummary {
   hasUnreadByWorkspace: Record<string, boolean>
 }
 
-export interface ExportMarkdownResult {
+export interface ShareResult {
   success: boolean
-  markdown?: string
-  suggestedName?: string
+  url?: string
   error?: string
 }
-
-/** @deprecated Online sharing was replaced by Markdown export. */
-export type ShareResult = ExportMarkdownResult
 
 export interface RefreshTitleResult {
   success: boolean

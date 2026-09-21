@@ -31,13 +31,13 @@ export function PageKindBadge({ kind, className }: { kind: PageKind; className?:
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 rounded-md border border-border/60 bg-foreground/[0.02] px-1.5 py-0.5 text-[11px] font-medium text-foreground/60',
-        kind === 'live' && 'text-foreground/60',
-        kind === 'interactive' && 'text-foreground/60',
+        'inline-flex shrink-0 items-center gap-1 rounded-md border border-border/60 bg-foreground/[0.02] px-1.5 py-0.5 text-[10.5px] font-medium text-foreground/60',
+        kind === 'live' && 'text-emerald-600 dark:text-emerald-400',
+        kind === 'interactive' && 'text-sky-600 dark:text-sky-400',
         className,
       )}
     >
-      <Icon className="h-3 w-3" aria-hidden />
+      <Icon className="h-3 w-3" strokeWidth={2} aria-hidden />
       {t(`pages.kind.${kind}`)}
     </span>
   )
@@ -56,10 +56,10 @@ export function PageFreshness({ config, className }: { config: PageConfig; class
   let dotClass = 'bg-foreground/30'
   let text: string
   if (last && !last.ok) {
-    dotClass = 'bg-destructive'
+    dotClass = 'bg-red-500'
     text = t('pages.refreshFailed')
   } else if (last) {
-    dotClass = 'bg-success'
+    dotClass = 'bg-emerald-500'
     text = relativeTime(last.at)
   } else {
     text = relativeTime(config.updatedAt)

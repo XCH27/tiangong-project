@@ -38,7 +38,7 @@ export function PageGrantRequestDialog({ pageName, requests, busy, onApprove, on
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-info" />
+            <KeyRound className="h-4 w-4 text-amber-600 dark:text-amber-500" />
             {t('pages.grants.title')}
           </DialogTitle>
           <DialogDescription>{t('pages.grants.description', { name: pageName })}</DialogDescription>
@@ -53,21 +53,21 @@ export function PageGrantRequestDialog({ pageName, requests, busy, onApprove, on
                 key={entry.key}
                 className={
                   isScript
-                    ? 'flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2.5'
+                    ? 'flex items-start gap-2.5 rounded-lg border border-red-500/40 bg-red-500/[0.06] px-3 py-2.5'
                     : 'flex items-start gap-2.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-3 py-2.5'
                 }
               >
                 <Icon
                   className={
                     isScript
-                      ? 'mt-0.5 h-4 w-4 shrink-0 text-destructive'
+                      ? 'mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-500'
                       : 'mt-0.5 h-4 w-4 shrink-0 text-foreground/50'
                   }
                 />
                 <div className="min-w-0 text-sm">
                   <div className="break-words font-medium">{describeGrantAction(entry.action, t)}</div>
                   {isScript && (
-                    <div className="mt-0.5 break-words text-xs font-medium text-destructive">
+                    <div className="mt-0.5 break-words text-xs font-medium text-red-600 dark:text-red-500">
                       {t('pages.grants.scriptWarning')}
                     </div>
                   )}

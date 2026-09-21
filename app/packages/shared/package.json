@@ -1,6 +1,6 @@
 {
   "name": "@craft-agent/shared",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "license": "Apache-2.0",
   "description": "Shared business logic for Craft Agents - agent, auth, config, credentials, MCP integration",
   "type": "module",
@@ -31,8 +31,6 @@
     "./projects": "./src/projects/index.ts",
     "./projects/types": "./src/projects/types.ts",
     "./pages": "./src/pages/index.ts",
-    "./remote": "./src/remote/index.ts",
-    "./remote/node": "./src/remote/node.ts",
     "./pages/types": "./src/pages/types.ts",
     "./pages/data-store": "./src/pages/data-store.ts",
     "./sources": "./src/sources/index.ts",
@@ -71,10 +69,7 @@
     "./protocol": "./src/protocol/index.ts",
     "./tasks": "./src/tasks/index.ts",
     "./i18n": "./src/i18n/index.ts",
-    "./resources": "./src/resources/index.ts",
-    "./layout": "./src/layout/index.ts",
-    "./assistants": "./src/assistants/index.ts",
-    "./components": "./src/components/index.ts"
+    "./resources": "./src/resources/index.ts"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",

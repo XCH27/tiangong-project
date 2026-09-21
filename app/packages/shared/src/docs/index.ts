@@ -8,9 +8,9 @@
  * Source content lives in apps/electron/resources/docs/*.md for easier editing.
  */
 
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { homedir } from 'os';
-import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readdirSync, readFileSync } from 'fs';
 import { getBundledAssetsDir } from '../utils/paths.ts';
 import { debug } from '../utils/debug.ts';
 
@@ -34,35 +34,30 @@ function getAssetsDir(): string {
  * Called once at module initialization.
  * Returns empty strings if files don't exist (graceful degradation).
  */
-function walkMarkdown(dir: string, prefix = ''): Record<string, string> {
+function loadBundledDocs(): Record<string, string> {
+  const assetsDir = getAssetsDir();
   const docs: Record<string, string> = {};
-  let entries: string[];
+
+  // Auto-discover all files in the bundled docs directory.
+  // No hardcoded list — any file dropped into resources/docs/ is synced automatically.
+  let files: string[];
   try {
-    entries = existsSync(dir) ? readdirSync(dir) : [];
+    files = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
   } catch {
-    console.warn(`[docs] Could not read assets dir: ${dir}`);
+    console.warn(`[docs] Could not read assets dir: ${assetsDir}`);
     return docs;
   }
-  for (const name of entries) {
-    const filePath = join(dir, name);
-    const rel = prefix ? `${prefix}/${name}` : name;
+
+  for (const filename of files) {
+    const filePath = join(assetsDir, filename);
     try {
-      const st = statSync(filePath);
-      if (st.isDirectory()) {
-        Object.assign(docs, walkMarkdown(filePath, rel));
-      } else {
-        docs[rel] = readFileSync(filePath, 'utf-8');
-      }
+      docs[filename] = readFileSync(filePath, 'utf-8');
     } catch (error) {
-      console.error(`[docs] Failed to load ${rel}:`, error);
+      console.error(`[docs] Failed to load ${filename}:`, error);
     }
   }
-  return docs;
-}
 
-function loadBundledDocs(): Record<string, string> {
-  // Auto-discover every file under resources/docs, including guide/.
-  return walkMarkdown(getAssetsDir());
+  return docs;
 }
 
 // Lazy-loaded bundled docs cache.
@@ -117,9 +112,6 @@ export const DOC_REFS = {
   automations: `${APP_ROOT}/docs/automations.md`,
   hooks: `${APP_ROOT}/docs/automations.md`,
   tasks: `${APP_ROOT}/docs/automations.md`,
-  index: `${APP_ROOT}/docs/INDEX.md`,
-  guide: `${APP_ROOT}/docs/guide/`,
-  contributing: `${APP_ROOT}/docs/guide/contributing.md`,
   pages: `${APP_ROOT}/docs/pages.md`,
   mermaid: `${APP_ROOT}/docs/mermaid.md`,
   dataTables: `${APP_ROOT}/docs/data-tables.md`,
@@ -171,7 +163,6 @@ export function initializeDocs(): void {
   // docs are always up-to-date with the running version.
   for (const [filename, content] of Object.entries(bundledDocs)) {
     const docPath = join(DOCS_DIR, filename);
-    mkdirSync(dirname(docPath), { recursive: true });
     writeFileSync(docPath, content, 'utf-8');
   }
 
@@ -195,8 +186,7 @@ export {
 
 // Re-export doc links (for UI help popovers)
 export {
-  getLocalDocPath,
-  getUpstreamDocUrl,
+  getDocUrl,
   getDocInfo,
   DOCS,
   type DocFeature,

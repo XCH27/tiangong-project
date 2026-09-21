@@ -1,14 +1,37 @@
 /**
- * Cleanup of historical Page publications. Fleet never uploads Pages.
- * Publish/password methods remain explicit refusals for older RPC callers.
- * Only an owner-requested unpublish/delete may contact the legacy service.
+ * Page Publisher
+ *
+ * Client for the Cloudflare pages-share Worker (workers/pages). Owns the
+ * local half of the publish/update/unpublish flow:
+ *
+ *   publish    → POST bundle → store admin token in the credential vault →
+ *                write the local share pointer (page.json, atomic)
+ *   republish  → PUT new revision with the vault token
+ *   password   → PUT metadata-only change (set/clear) with the vault token
+ *   unpublish  → DELETE with the vault token → clear pointer + vault entry
+ *
+ * Trust boundaries:
+ *   - The admin token is a 256-bit capability minted by the Worker and
+ *     returned exactly once; it lives only in the credential vault under
+ *     `page_publish_token::{workspaceId}::{pageId}` and in the Authorization
+ *     header of update/delete requests. It is never written to page.json,
+ *     logs, or errors.
+ *   - The password is forwarded once over HTTPS on set and never persisted,
+ *     logged, or echoed back.
+ *   - If the vault write fails right after a create, the remote publication
+ *     is deleted immediately so no unmanageable public copy is left behind.
+ *
+ * Feature gating: publish/republish/password check `isPagesSharingEnabled()`;
+ * unpublish deliberately does not, so disabling the flag never strands a
+ * published page (design §12).
  */
 
 import type { PageConfig, PageShareInfo } from '@craft-agent/core';
+import { isPagesSharingEnabled } from '../feature-flags.ts';
 import { deletePage, loadPageConfig, setPageShareState } from './storage.ts';
-import { PageShareError } from './share-bundle.ts';
+import { buildPageShareBundle, PageShareError } from './share-bundle.ts';
 
-/** Legacy cleanup endpoint, never used for uploading content. */
+/** Default publication API base (the agents-router forwards /p/* to the Worker) */
 export const DEFAULT_PAGES_SHARE_API_BASE_URL = 'https://thecraftagents.com/p/api';
 
 /**
@@ -80,6 +103,16 @@ export interface UnpublishResult {
   warning?: 'remote-copy-may-remain';
 }
 
+interface WorkerPublicationResponse {
+  id: string;
+  url: string;
+  revision: string;
+  adminToken?: string;
+  passwordProtected: boolean;
+  status: 'published' | 'unpublished';
+  updatedAt: number;
+}
+
 const ERROR_BODY_MAX_CHARS = 300;
 
 export class PagePublisher {
@@ -95,22 +128,117 @@ export class PagePublisher {
     this.log = options.log ?? (() => {});
   }
 
+  /**
+   * Publish a page: create a new publication, or upload a new revision when
+   * one already exists. Returns the updated PageConfig (share pointer set).
+   */
   async publish(
-    _workspaceRootPath: string,
-    _workspaceId: string,
-    _pageSlug: string,
-    _options: PublishPageOptions,
+    workspaceRootPath: string,
+    workspaceId: string,
+    pageSlug: string,
+    options: PublishPageOptions,
   ): Promise<PageConfig> {
-    throw new PageShareError('PAGE_SHARING_DISABLED', 'Fleet does not support hosted Page publication. Local Pages are unchanged.');
+    this.assertSharingEnabled();
+
+    const config = this.requirePage(workspaceRootPath, pageSlug);
+    const bundle = buildPageShareBundle(workspaceRootPath, pageSlug, {
+      includeData: options.includeData,
+      viewOnlyAcknowledged: options.viewOnlyAcknowledged,
+    });
+
+    const existingShare = config.share;
+    if (existingShare) {
+      const token = await this.tokenStore.get(workspaceId, config.id);
+      if (!token) {
+        throw new PageShareError(
+          'PAGE_SHARE_TOKEN_MISSING',
+          'The key for managing this page\'s public copy is missing from secure storage. Unpublish the page, then publish it again.',
+        );
+      }
+      return this.uploadRevision(workspaceRootPath, pageSlug, config, existingShare, token, bundle);
+    }
+
+    // Create a fresh publication
+    const form = new FormData();
+    form.set('manifest', JSON.stringify(bundle.manifest));
+    form.set('content', new Blob([bundle.content], { type: 'text/html' }), 'index.html');
+    if (bundle.snapshotJson !== undefined) {
+      form.set('snapshot', new Blob([bundle.snapshotJson], { type: 'application/json' }), 'snapshot.json');
+    }
+    if (options.password) form.set('password', options.password);
+
+    const response = await this.request('POST', '/publications', { body: form });
+    const dto = await this.parsePublication(response, 201);
+    if (!dto.adminToken) {
+      throw new PageShareError('PAGE_SHARE_REMOTE_ERROR', 'Create response did not include an admin token');
+    }
+
+    // Vault write MUST succeed before we acknowledge the publication locally;
+    // otherwise delete the remote copy so it never becomes unmanageable.
+    try {
+      await this.tokenStore.set(workspaceId, config.id, dto.adminToken);
+    } catch (err) {
+      this.log(`Vault write failed after publication create; rolling back remote ${dto.id}`);
+      try {
+        await this.request('DELETE', `/publications/${encodeURIComponent(dto.id)}`, {
+          adminToken: dto.adminToken,
+        });
+      } catch {
+        // Best effort — the create is reported failed either way.
+      }
+      throw new PageShareError(
+        'PAGE_SHARE_VAULT_ERROR',
+        `Could not save the key for managing the public copy to secure storage: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const now = Date.now();
+    const share: PageShareInfo = {
+      publicationId: dto.id,
+      url: dto.url,
+      publishedRevision: dto.revision,
+      publishedContentDigest: bundle.contentDigest,
+      includesData: bundle.manifest.includesData,
+      publishedAt: now,
+      updatedAt: now,
+      passwordProtected: dto.passwordProtected,
+    };
+    const updated = setPageShareState(workspaceRootPath, pageSlug, share);
+    this.log(`Published page ${pageSlug} as ${dto.id}`);
+    return updated;
   }
 
+  /** Change or remove the viewer password (metadata-only; content untouched). */
   async setPassword(
-    _workspaceRootPath: string,
-    _workspaceId: string,
-    _pageSlug: string,
-    _password: string | null,
+    workspaceRootPath: string,
+    workspaceId: string,
+    pageSlug: string,
+    password: string | null,
   ): Promise<PageConfig> {
-    throw new PageShareError('PAGE_SHARING_DISABLED', 'Fleet does not update hosted Pages. You can still unpublish an existing copy.');
+    this.assertSharingEnabled();
+
+    const config = this.requirePage(workspaceRootPath, pageSlug);
+    const share = this.requireShare(config);
+    const token = await this.requireToken(workspaceId, config.id);
+
+    const form = new FormData();
+    form.set('passwordAction', password === null ? 'clear' : 'set');
+    if (password !== null) form.set('password', password);
+
+    const response = await this.request('PUT', `/publications/${encodeURIComponent(share.publicationId)}`, {
+      body: form,
+      adminToken: token,
+    });
+    const dto = await this.parsePublication(response, 200);
+
+    const updated = setPageShareState(workspaceRootPath, pageSlug, {
+      ...share,
+      passwordProtected: dto.passwordProtected,
+      updatedAt: Date.now(),
+      lastPublishError: undefined,
+    });
+    this.log(`Updated publication password for ${pageSlug} (${password === null ? 'cleared' : 'set'})`);
+    return updated;
   }
 
   /**
@@ -156,6 +284,58 @@ export class PagePublisher {
   // Internals
   // --------------------------------------------------------------------
 
+  private async uploadRevision(
+    workspaceRootPath: string,
+    pageSlug: string,
+    config: PageConfig,
+    share: PageShareInfo,
+    token: string,
+    bundle: ReturnType<typeof buildPageShareBundle>,
+  ): Promise<PageConfig> {
+    const form = new FormData();
+    form.set('manifest', JSON.stringify(bundle.manifest));
+    form.set('content', new Blob([bundle.content], { type: 'text/html' }), 'index.html');
+    if (bundle.snapshotJson !== undefined) {
+      form.set('snapshot', new Blob([bundle.snapshotJson], { type: 'application/json' }), 'snapshot.json');
+    }
+
+    let dto: WorkerPublicationResponse;
+    try {
+      const response = await this.request(
+        'PUT',
+        `/publications/${encodeURIComponent(share.publicationId)}`,
+        { body: form, adminToken: token },
+      );
+      dto = await this.parsePublication(response, 200);
+    } catch (err) {
+      // Record the failure on the share pointer so the UI can surface it.
+      const message = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+      setPageShareState(workspaceRootPath, pageSlug, { ...share, lastPublishError: message });
+      throw err;
+    }
+
+    const updated = setPageShareState(workspaceRootPath, pageSlug, {
+      ...share,
+      publishedRevision: dto.revision,
+      publishedContentDigest: bundle.contentDigest,
+      includesData: bundle.manifest.includesData,
+      updatedAt: Date.now(),
+      passwordProtected: dto.passwordProtected,
+      lastPublishError: undefined,
+    });
+    this.log(`Republished page ${pageSlug} (${share.publicationId} → ${dto.revision})`);
+    return updated;
+  }
+
+  private assertSharingEnabled(): void {
+    if (!isPagesSharingEnabled()) {
+      throw new PageShareError(
+        'PAGE_SHARING_DISABLED',
+        'Pages sharing is disabled (set CRAFT_FEATURE_PAGES_SHARING=1 to enable)',
+      );
+    }
+  }
+
   private requirePage(workspaceRootPath: string, pageSlug: string): PageConfig {
     const config = loadPageConfig(workspaceRootPath, pageSlug);
     if (!config) throw new PageShareError('PAGE_NOT_FOUND', `Page not found: ${pageSlug}`);
@@ -169,8 +349,19 @@ export class PagePublisher {
     return config.share;
   }
 
+  private async requireToken(workspaceId: string, pageId: string): Promise<string> {
+    const token = await this.tokenStore.get(workspaceId, pageId);
+    if (!token) {
+      throw new PageShareError(
+        'PAGE_SHARE_TOKEN_MISSING',
+        'The key for managing this page\'s public copy is missing from secure storage. Unpublish the page, then publish it again.',
+      );
+    }
+    return token;
+  }
+
   private async request(
-    method: 'DELETE',
+    method: 'POST' | 'PUT' | 'DELETE',
     path: string,
     options: { body?: FormData; adminToken?: string } = {},
   ): Promise<Response> {
@@ -190,7 +381,30 @@ export class PagePublisher {
     }
   }
 
-
+  private async parsePublication(response: Response, expectedStatus: number): Promise<WorkerPublicationResponse> {
+    if (response.status !== expectedStatus) {
+      throw new PageShareError(
+        'PAGE_SHARE_REMOTE_ERROR',
+        `Publication service returned ${response.status}: ${await safeBodyExcerpt(response)}`,
+      );
+    }
+    let parsed: unknown;
+    try {
+      parsed = await response.json();
+    } catch {
+      throw new PageShareError('PAGE_SHARE_REMOTE_ERROR', 'Publication service returned invalid JSON');
+    }
+    const dto = parsed as Partial<WorkerPublicationResponse>;
+    if (
+      typeof dto.id !== 'string' ||
+      typeof dto.url !== 'string' ||
+      typeof dto.revision !== 'string' ||
+      typeof dto.passwordProtected !== 'boolean'
+    ) {
+      throw new PageShareError('PAGE_SHARE_REMOTE_ERROR', 'Publication service response is missing fields');
+    }
+    return dto as WorkerPublicationResponse;
+  }
 }
 
 async function safeBodyExcerpt(response: Response): Promise<string> {

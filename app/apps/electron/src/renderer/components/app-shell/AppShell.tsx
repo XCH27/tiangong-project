@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation, Trans } from "react-i18next"
 import { useRef, useState, useEffect, useCallback, useMemo } from "react"
-import { useAtomValue, useSetAtom, useStore } from "jotai"
+import { useAtomValue, useStore } from "jotai"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Archive,
@@ -10,7 +10,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   RotateCw,
-  Pin,
+  Flag,
   ListFilter,
   Tag,
   Check,
@@ -62,7 +62,7 @@ import {
   ContextMenuTrigger,
   StyledContextMenuContent,
 } from "@/components/ui/styled-context-menu"
-import { ContextMenuProvider, DropdownMenuProvider } from "@/components/ui/menu-context"
+import { ContextMenuProvider } from "@/components/ui/menu-context"
 import { SidebarMenu } from "./SidebarMenu"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FadingText } from "@/components/ui/fading-text"
@@ -74,12 +74,11 @@ import {
 } from "@/components/ui/collapsible"
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
+import { BoardListToggle } from "./kanban/BoardListToggle"
 import { PanelStackContainer } from "./PanelStackContainer"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
 import { LeftSidebar } from "./LeftSidebar"
-import { navigatorPlacement } from "./navigator-placement"
-import { RightSidebar } from '../right-sidebar/RightSidebar'
 import { useSession } from "@/hooks/useSession"
 import { ensureSessionMessagesLoadedAtom } from "@/atoms/sessions"
 import { AppShellProvider, type AppShellContextType } from "@/context/AppShellContext"
@@ -90,6 +89,7 @@ import { useAction, useActionLabel } from "@/actions"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useFocusContext } from "@/context/FocusContext"
 import { getSessionTitle } from "@/utils/session"
+import { useSetAtom } from "jotai"
 import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSource, LoadedSkill, PermissionMode, SourceFilter, AutomationFilter } from "../../../shared/types"
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
@@ -113,7 +113,6 @@ import {
   useNavigation,
   useNavigationState,
   isSessionsNavigation,
-  isBoardNavigation,
   isSourcesNavigation,
   isSettingsNavigation,
   isSkillsNavigation,
@@ -135,7 +134,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { PanelHeader } from "./PanelHeader"
 import { FabNewChat } from "./FabNewChat"
 import { SendToWorkspaceDialog } from "./SendToWorkspaceDialog"
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
+import { CreateProjectDialog } from "../projects/CreateProjectDialog"
 import { MessagingDialogHost } from "@/components/messaging/MessagingDialogHost"
 import { EditPopover, getEditConfig, type EditContextKey } from "@/components/ui/EditPopover"
 import SettingsNavigator from "@/pages/settings/SettingsNavigator"
@@ -581,17 +580,14 @@ function AppShellContent({
     })
   }, [])
 
-  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | 'right-sidebar' | null>(null)
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(() => {
-    return storage.get(storage.KEYS.rightSidebarWidth, 320)
-  })
+  const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | null>(null)
   const [sidebarHandleY, setSidebarHandleY] = React.useState<number | null>(null)
   const [sessionListHandleY, setSessionListHandleY] = React.useState<number | null>(null)
   const resizeHandleRef = React.useRef<HTMLDivElement>(null)
   const sessionListHandleRef = React.useRef<HTMLDivElement>(null)
   const [session, setSession] = useSession()
   const { resolvedMode, isDark, setMode } = useTheme()
-  const { canGoBack, canGoForward, goBack, goForward, navigateToSource, navigateToSession, updateRightSidebar } = useNavigation()
+  const { canGoBack, canGoForward, goBack, goForward, navigateToSource, navigateToSession } = useNavigation()
 
   // Double-Esc interrupt feature: first Esc shows warning, second Esc interrupts
   const { handleEscapePress } = useEscapeInterrupt()
@@ -634,10 +630,13 @@ function AppShellContent({
 
   const sessionFilter = sessionsContext?.filter ?? null
 
-  // Board is its own navigator; collapse the session-list column while it is open.
-  const isBoardView = isBoardNavigation(navState)
+  // Board view replaces the session-list navigator with the full-width Kanban panel,
+  // so the navigator (and its resize handle) collapse to zero width while it's active.
+  const isBoardView = isSessionsNavigation(navState) && navState.viewMode === 'board'
+
+  // Pages behaves the same way: both the library grid and an open page render
+  // full-width in the content area — there is no pages navigator list.
   const isPagesView = isPagesNavigation(navState)
-  const listPlacement = navigatorPlacement(navState.navigator, isAutoCompact, isSidebarVisible)
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -1341,9 +1340,7 @@ function AppShellContent({
     if (!isResizing) return
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (isResizing === 'right-sidebar') {
-        setRightSidebarWidth(Math.max(240, Math.min(480, (shellRef.current?.getBoundingClientRect().right ?? window.innerWidth) - e.clientX)))
-      } else if (isResizing === 'sidebar') {
+      if (isResizing === 'sidebar') {
         const newWidth = Math.min(Math.max(e.clientX, 180), 320)
         setSidebarWidth(newWidth)
         if (resizeHandleRef.current) {
@@ -1368,8 +1365,6 @@ function AppShellContent({
       } else if (isResizing === 'session-list') {
         storage.set(storage.KEYS.sessionListWidth, sessionListWidth)
         setSessionListHandleY(null)
-      } else if (isResizing === 'right-sidebar') {
-        storage.set(storage.KEYS.rightSidebarWidth, rightSidebarWidth)
       }
       setIsResizing(null)
     }
@@ -1385,7 +1380,6 @@ function AppShellContent({
     isResizing,
     sidebarWidth,
     sessionListWidth,
-    rightSidebarWidth,
     isSidebarVisible,
   ])
 
@@ -1784,7 +1778,7 @@ function AppShellContent({
   }, [])
 
   const handleArchivedClick = useCallback(() => {
-    navigate(routes.view.settings('archived'))
+    navigate(routes.view.archived())
   }, [])
 
   // Handler for individual todo state views
@@ -1842,7 +1836,10 @@ function AppShellContent({
     navigate(routes.view.projects())
   }, [])
 
-  const handlePagesClick = useCallback(() => { navigate(routes.view.pages()) }, [])
+  // Handler for pages view
+  const handlePagesClick = useCallback(() => {
+    navigate(routes.view.pages())
+  }, [])
 
   const handleAutomationsScheduledClick = useCallback(() => {
     navigate(routes.view.automationsScheduled())
@@ -1856,6 +1853,8 @@ function AppShellContent({
     navigate(routes.view.automationsAgentic())
   }, [])
 
+  // Handler for settings view. With no arg → bare `settings` route (navigator-only
+  // in compact mode, App fallback on desktop). With an arg → `settings/<subpage>`.
   const handleSettingsClick = useCallback((subpage?: SettingsSubpage) => {
     navigate(routes.view.settings(subpage))
   }, [])
@@ -1999,23 +1998,26 @@ function AppShellContent({
     setTimeout(() => setEditPopoverOpen('automation-config'), 50)
   }, [captureContextMenuPosition])
 
-  // Folder-first creation uses the Workspace authority, not nested Projects.
-  const [creatingProject, setCreatingProject] = useState(false)
-  const openAddProject = useCallback(async () => {
-    if (creatingProject) return
-    setCreatingProject(true)
+  // Handler for "Add Project" context menu action — creates a project directly
+  // Open the "Create Project" dialog so the user can provide a name up front.
+  // The previous flow auto-created with the default name and produced ugly
+  // permanent slugs (new-project, new-project-1, …).
+  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false)
+  const openAddProject = useCallback(() => {
+    if (!activeWorkspace?.id) return
+    setCreateProjectDialogOpen(true)
+  }, [activeWorkspace?.id])
+  const handleCreateProjectSubmit = useCallback(async (name: string) => {
+    if (!activeWorkspace?.id) return
+    setCreateProjectDialogOpen(false)
     try {
-      const path = await window.electronAPI.openFolderDialog()
-      if (!path) return
-      const existing = workspaces.find(workspace => workspace.rootPath === path)
-      const project = existing ?? await window.electronAPI.createWorkspace(path, path.split(/[\\\\/]/).filter(Boolean).pop() ?? path)
-      if (!existing) await window.electronAPI.updateWorkspaceSetting(project.id, 'workingDirectory', path)
-      await onRefreshWorkspaces?.()
-      await onSelectWorkspace(project.id)
-    } catch (error) {
-      toast.error(t('projectsList.createFailed'), { description: String(error) })
-    } finally { setCreatingProject(false) }
-  }, [creatingProject, workspaces, onRefreshWorkspaces, onSelectWorkspace, t])
+      const project = await window.electronAPI.createProject(activeWorkspace.id, { name })
+      navigate(routes.view.projects(project.slug))
+    } catch (err) {
+      console.error('[AppShell] Failed to create project:', err)
+      toast.error(t('projectsList.createFailed'))
+    }
+  }, [activeWorkspace?.id, navigate, t])
 
   /**
    * Resolve the "inherit sole active filter" rule for new sessions. Only
@@ -2047,21 +2049,6 @@ function AppShellContent({
     // Focus the chat input after navigation completes
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
   }, [activeWorkspace, focusZone, navigate, resolveInheritedNewSessionParams])
-
-  // Project rows are Workspace-backed. Starting a task from a non-active row
-  // must switch the existing Workspace authority first, then reuse the same
-  // session/action route as the global New Task trigger.
-  const handleNewTaskInWorkspace = useCallback(async (workspaceId: string) => {
-    if (workspaceId !== activeWorkspaceId) {
-      await onSelectWorkspace(workspaceId)
-      // Let the provider publish the new active workspace before the action
-      // route resolves its workspace-scoped SessionManager. A macrotask is
-      // intentional here: React flushes the workspace state update before the
-      // next task, while a microtask can still observe the old provider value.
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
-    }
-    handleNewChat()
-  }, [activeWorkspaceId, handleNewChat, onSelectWorkspace])
 
   // Create a brand new dedicated browser window and focus it.
   // Intentionally unbound: this action should always create a NEW window.
@@ -2122,19 +2109,36 @@ function AppShellContent({
 
     // 1. Sessions section: All Sessions (expandable) with status items, Flagged, Archived as children
     result.push({ id: 'nav:allSessions', type: 'nav', action: handleAllSessionsClick })
+    for (const state of effectiveSessionStatuses) {
+      result.push({ id: `nav:state:${state.id}`, type: 'nav', action: () => handleSessionStatusClick(state.id) })
+    }
+    result.push({ id: 'nav:flagged', type: 'nav', action: handleFlaggedClick })
+    result.push({ id: 'nav:archived', type: 'nav', action: handleArchivedClick })
 
-    // 2. Sources, Skills, Projects, Pages, Automations, Settings (visual order)
+    // 2. Labels section header + regular label tree for keyboard nav
+    result.push({ id: 'nav:labels', type: 'nav', action: () => handleLabelClick('__all__') })
+    // Flatten regular label tree for keyboard navigation (depth-first)
+    const flattenTree = (nodes: LabelTreeNode[]) => {
+      for (const node of nodes) {
+        if (node.label) {
+          result.push({ id: `nav:label:${node.fullId}`, type: 'nav', action: () => handleLabelClick(node.fullId) })
+        }
+        if (node.children.length > 0) flattenTree(node.children)
+      }
+    }
+    flattenTree(labelTree)
+
+    // 3. Sources, Skills, Projects, Pages, Automations, Settings (visual order)
     result.push({ id: 'nav:sources', type: 'nav', action: handleSourcesClick })
     result.push({ id: 'nav:skills', type: 'nav', action: handleSkillsClick })
-    result.push({ id: 'nav:projects', type: 'nav', action: () => toggleExpanded('nav:projects') })
-    if (isExpanded('nav:projects')) for (const workspace of workspaces) result.push({ id: `nav:workspace:${workspace.id}`, type: 'nav', action: () => { void onSelectWorkspace(workspace.id) } })
+    result.push({ id: 'nav:projects', type: 'nav', action: handleProjectsClick })
     result.push({ id: 'nav:pages', type: 'nav', action: handlePagesClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
     result.push({ id: 'nav:settings', type: 'nav', action: () => handleSettingsClick() })
     result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
 
     return result
-  }, [handleAllSessionsClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, workspaces, onSelectWorkspace, isExpanded, toggleExpanded, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2164,7 +2168,6 @@ function AppShellContent({
 
   // Unified sidebar keyboard navigation
   const handleSidebarKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-    if ((e.target as HTMLElement).closest('[data-sidebar-content]')) return
     if (!sidebarFocused || unifiedSidebarItems.length === 0) return
 
     const currentIndex = unifiedSidebarItems.findIndex(item => item.id === focusedSidebarItemId)
@@ -2278,8 +2281,6 @@ function AppShellContent({
     // Settings navigator
     if (isSettingsNavigation(navState)) return t("sidebar.settings")
 
-    if (isBoardNavigation(navState)) return t("sidebar.board")
-
     // Sessions navigator - use sessionFilter
     if (!sessionFilter) return t("sidebar.allSessions")
 
@@ -2355,14 +2356,410 @@ function AppShellContent({
     })
   }, [sessionFilter, labelCounts, activeWorkspace?.id, handleLabelClick, isExpanded, toggleExpanded, openConfigureLabels, handleAddLabel, handleDeleteLabel])
 
-  const handleMarkAllRead = async () => {
-    if (!activeWorkspaceId) return
-    try { await window.electronAPI.markAllSessionsRead(activeWorkspaceId) }
-    catch (error) { toast.error(String(error)) }
-  }
+  return (
+    <AppShellProvider value={appShellContextValue}>
+        {/* === TOP BAR === */}
+        <TopBar
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelectWorkspace={onSelectWorkspace}
+          workspaceUnreadMap={workspaceUnreadMap}
+          onWorkspaceCreated={() => onRefreshWorkspaces?.()}
+          onWorkspaceRemoved={() => onRefreshWorkspaces?.()}
+          activeSessionId={effectiveSessionId}
+          onNewChat={() => handleNewChat()}
+          onNewWindow={() => window.electronAPI.menuNewWindow()}
+          onOpenSettings={onOpenSettings}
+          onOpenSettingsSubpage={handleSettingsClick}
+          onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
+          onOpenStoredUserPreferences={onOpenStoredUserPreferences}
+          onBack={goBack}
+          onForward={goForward}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          onToggleSidebar={handleToggleSidebar}
+          onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
+          onAddSessionPanel={() => handleNewChat(true)}
+          onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
+          isCompact={isAutoCompact}
+        />
 
-  const navigatorActions = (
-<>
+      {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
+      <div
+        ref={shellRef}
+        className="flex items-stretch relative"
+        style={{
+          height: '100%',
+          paddingRight: isAutoCompact ? 0 : PANEL_EDGE_INSET,
+          paddingBottom: isAutoCompact ? 0 : PANEL_EDGE_INSET,
+          paddingLeft: 0,
+          gap: PANEL_GAP,
+        }}
+      >
+        <PanelStackContainer
+          sidebarSlot={
+            <div
+              ref={sidebarRef}
+              style={{ width: sidebarWidth }}
+              className="h-full font-sans relative"
+              data-focus-zone="sidebar"
+              tabIndex={sidebarFocused ? 0 : -1}
+              onKeyDown={handleSidebarKeyDown}
+            >
+            <div className="flex h-full flex-col select-none">
+              {/* Sidebar Top Section */}
+              <div className="flex-1 flex flex-col min-h-0">
+                {/* New Session Button - Gmail-style, with context menu for "Open in New Window" */}
+                <div className="px-2 pb-2 shrink-0">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div>
+                        <ContextMenu modal={true}>
+                          <ContextMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              onClick={(e) => handleNewChat(e.metaKey || e.ctrlKey)}
+                              className="w-full justify-start gap-2 py-[7px] px-2 text-[13px] font-normal rounded-[6px] shadow-minimal bg-background"
+                              data-tutorial="new-chat-button"
+                            >
+                              <SquarePenRounded className="h-3.5 w-3.5 shrink-0" />
+                              {t("session.newSession")}
+                            </Button>
+                          </ContextMenuTrigger>
+                          <StyledContextMenuContent>
+                            <ContextMenuProvider>
+                              <SidebarMenu type="newSession" />
+                            </ContextMenuProvider>
+                          </StyledContextMenuContent>
+                        </ContextMenu>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{newChatHotkey}</TooltipContent>
+                  </Tooltip>
+                </div>
+                {/* Primary Nav: All Sessions (▸ Statuses, Flagged, Archived), Labels | Sources, Skills | Settings */}
+                {/* pb-4 provides clearance so the last item scrolls above the mask-fade-bottom gradient */}
+                <div className="flex-1 overflow-y-auto min-h-0 mask-fade-bottom pb-4">
+                <LeftSidebar
+                  isCollapsed={false}
+                  getItemProps={getSidebarItemProps}
+                  focusedItemId={focusedSidebarItemId}
+                  links={[
+                    // --- Sessions Section ---
+                    // All Sessions: expandable with status children (sortable) + Flagged & Archived as trailing items
+                    {
+                      id: "nav:allSessions",
+                      title: t("sidebar.allSessions"),
+                      label: String(workspaceSessionMetas.length),
+                      icon: Inbox,
+                      variant: sessionFilter?.kind === 'allSessions' ? "default" : "ghost",
+                      onClick: handleAllSessionsClick,
+                      expandable: true,
+                      expanded: isExpanded('nav:allSessions'),
+                      onToggle: () => toggleExpanded('nav:allSessions'),
+                      contextMenu: {
+                        type: 'allSessions',
+                        onConfigureStatuses: openConfigureStatuses,
+                        onMarkAllRead: () => {
+                          if (!activeWorkspaceId) return
+                          // Optimistic: clear hasUnread on all workspace session metas
+                          setSessionMetaMap(prev => {
+                            const next = new Map(prev)
+                            for (const [id, meta] of next) {
+                              if (meta.workspaceId === activeWorkspaceId && meta.hasUnread) {
+                                next.set(id, { ...meta, hasUnread: false })
+                              }
+                            }
+                            return next
+                          })
+                          window.electronAPI.markAllSessionsRead(activeWorkspaceId)
+                        },
+                      },
+                      // Enable flat DnD reorder for status items
+                      sortable: { onReorder: handleStatusReorder },
+                      items: [
+                        // Status items (sortable via SortableStatusList)
+                        ...effectiveSessionStatuses.map(state => ({
+                          id: `nav:state:${state.id}`,
+                          title: t(`status.${state.id}`, state.label),
+                          label: String(sessionStatusCounts[state.id] || 0),
+                          icon: state.icon,
+                          iconColor: state.resolvedColor,
+                          iconColorable: state.iconColorable,
+                          variant: (sessionFilter?.kind === 'state' && sessionFilter.stateId === state.id ? "default" : "ghost") as "default" | "ghost",
+                          onClick: () => handleSessionStatusClick(state.id),
+                          contextMenu: {
+                            type: 'status' as const,
+                            statusId: state.id,
+                            onConfigureStatuses: openConfigureStatuses,
+                          },
+                        })),
+                        // Separator: SortableStatusList splits here — items after become non-sortable trailingItems
+                        { id: 'separator:states-flagged', type: 'separator' as const },
+                        // Flagged (trailing, non-sortable)
+                        {
+                          id: "nav:flagged",
+                          title: t("sidebar.flagged"),
+                          label: String(flaggedCount),
+                          icon: <Flag className="h-3.5 w-3.5" />,
+                          variant: (sessionFilter?.kind === 'flagged' ? "default" : "ghost") as "default" | "ghost",
+                          onClick: handleFlaggedClick,
+                        },
+                        // Archived (trailing, non-sortable)
+                        {
+                          id: "nav:archived",
+                          title: t("sidebar.archived"),
+                          label: archivedCount > 0 ? String(archivedCount) : undefined,
+                          icon: Archive,
+                          variant: (sessionFilter?.kind === 'archived' ? "default" : "ghost") as "default" | "ghost",
+                          onClick: handleArchivedClick,
+                        },
+                      ],
+                    },
+                    // Labels: navigable header (shows all labeled sessions) + hierarchical tree (drag-and-drop reorder + re-parent)
+                    {
+                      id: "nav:labels",
+                      title: t("sidebar.labels"),
+                      icon: Tag,
+                      // Only highlighted when "Labels" itself is selected (not sub-labels)
+                      variant: (sessionFilter?.kind === 'label' && sessionFilter.labelId === '__all__') ? "default" as const : "ghost" as const,
+                      // Clicking navigates to "all labeled sessions" view
+                      onClick: () => handleLabelClick('__all__'),
+                      expandable: true,
+                      expanded: isExpanded('nav:labels'),
+                      onToggle: () => toggleExpanded('nav:labels'),
+                      contextMenu: {
+                        type: 'labels' as const,
+                        onConfigureLabels: openConfigureLabels,
+                        onAddLabel: handleAddLabel,
+                      },
+                      items: buildLabelSidebarItems(labelTree),
+                    },
+                    // --- Separator ---
+                    { id: "separator:chats-sources", type: "separator" },
+                    // --- Sources & Skills Section ---
+                    {
+                      id: "nav:sources",
+                      title: t("sidebar.sources"),
+                      label: String(sources.length),
+                      icon: DatabaseZap,
+                      variant: (isSourcesNavigation(navState) && !sourceFilter) ? "default" : "ghost",
+                      onClick: handleSourcesClick,
+                      dataTutorial: "sources-nav",
+                      expandable: true,
+                      expanded: isExpanded('nav:sources'),
+                      onToggle: () => toggleExpanded('nav:sources'),
+                      contextMenu: {
+                        type: 'sources',
+                        onAddSource: () => openAddSource(),
+                      },
+                      items: [
+                        {
+                          id: "nav:sources:api",
+                          title: t("sidebar.apis"),
+                          label: String(sourceTypeCounts.api),
+                          icon: Globe,
+                          variant: (sourceFilter?.kind === 'type' && sourceFilter.sourceType === 'api') ? "default" : "ghost",
+                          onClick: handleSourcesApiClick,
+                          contextMenu: {
+                            type: 'sources' as const,
+                            onAddSource: () => openAddSource('api'),
+                            sourceType: 'api',
+                          },
+                        },
+                        {
+                          id: "nav:sources:mcp",
+                          title: t("sidebar.mcps"),
+                          label: String(sourceTypeCounts.mcp),
+                          icon: <McpIcon className="h-3.5 w-3.5" />,
+                          variant: (sourceFilter?.kind === 'type' && sourceFilter.sourceType === 'mcp') ? "default" : "ghost",
+                          onClick: handleSourcesMcpClick,
+                          contextMenu: {
+                            type: 'sources' as const,
+                            onAddSource: () => openAddSource('mcp'),
+                            sourceType: 'mcp',
+                          },
+                        },
+                        {
+                          id: "nav:sources:local",
+                          title: t("sidebar.localFolders"),
+                          label: String(sourceTypeCounts.local),
+                          icon: FolderOpen,
+                          variant: (sourceFilter?.kind === 'type' && sourceFilter.sourceType === 'local') ? "default" : "ghost",
+                          onClick: handleSourcesLocalClick,
+                          contextMenu: {
+                            type: 'sources' as const,
+                            onAddSource: () => openAddSource('local'),
+                            sourceType: 'local',
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      id: "nav:skills",
+                      title: t("sidebar.skills"),
+                      label: String(skills.length),
+                      icon: Zap,
+                      variant: isSkillsNavigation(navState) ? "default" : "ghost",
+                      onClick: handleSkillsClick,
+                      contextMenu: {
+                        type: 'skills',
+                        onAddSkill: openAddSkill,
+                      },
+                    },
+                    {
+                      id: "nav:projects",
+                      title: t("sidebar.projects"),
+                      label: String(projects.length),
+                      icon: FolderKanban,
+                      // Highlight only when on Projects view itself, not when a child is "active" (jumped-to filter)
+                      variant: isProjectsNavigation(navState) ? "default" : "ghost",
+                      onClick: handleProjectsClick,
+                      expandable: projects.length > 0,
+                      expanded: isExpanded('nav:projects'),
+                      onToggle: () => toggleExpanded('nav:projects'),
+                      contextMenu: {
+                        type: 'projects' as const,
+                        onAddProject: openAddProject,
+                      },
+                      items: projects.map(p => ({
+                        id: `nav:projects:${p.config.id}`,
+                        title: p.config.name,
+                        icon: FolderKanban,
+                        // Highlight when on allSessions view AND filter includes this project (the jump-to state)
+                        variant: (sessionFilter?.kind === 'allSessions' && projectFilter.get(p.config.id) === 'include') ? "default" as const : "ghost" as const,
+                        onClick: () => handleJumpToProjectSessions(p.config.id),
+                      })),
+                    },
+                    {
+                      id: "nav:pages",
+                      title: t("sidebar.pages"),
+                      label: String(pages.length),
+                      icon: PanelsTopLeft,
+                      // Highlight on the library grid only, not when a page is open (mirrors Projects)
+                      variant: (isPagesNavigation(navState) && !navState.details) ? "default" : "ghost",
+                      onClick: handlePagesClick,
+                      expandable: pages.length > 0,
+                      expanded: isExpanded('nav:pages'),
+                      onToggle: () => toggleExpanded('nav:pages'),
+                      items: pages.map(p => ({
+                        id: `nav:pages:${p.config.id}`,
+                        title: p.config.name,
+                        icon: PanelsTopLeft,
+                        variant: (isPagesNavigation(navState) && navState.details?.pageSlug === p.config.slug) ? "default" as const : "ghost" as const,
+                        onClick: () => navigate(routes.view.pages(p.config.slug)),
+                      })),
+                    },
+                    {
+                      id: "nav:automations",
+                      title: t("sidebar.automations"),
+                      label: String(automations.length),
+                      icon: ListTodo,
+                      variant: (isAutomationsNavigation(navState) && !automationFilter) ? "default" : "ghost",
+                      onClick: handleAutomationsClick,
+                      expandable: true,
+                      expanded: isExpanded('nav:automations'),
+                      onToggle: () => toggleExpanded('nav:automations'),
+                      contextMenu: {
+                        type: 'automations' as const,
+                        onAddAutomation: openAddAutomation,
+                      },
+                      items: [
+                        {
+                          id: "nav:automations:scheduled",
+                          title: t("sidebar.scheduled"),
+                          label: String(automationTypeCounts.scheduled),
+                          icon: Clock,
+                          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'scheduled') ? "default" : "ghost",
+                          onClick: handleAutomationsScheduledClick,
+                          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+                        },
+                        {
+                          id: "nav:automations:event",
+                          title: t("sidebar.eventBased"),
+                          label: String(automationTypeCounts.event),
+                          icon: Radio,
+                          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'event') ? "default" : "ghost",
+                          onClick: handleAutomationsEventClick,
+                          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+                        },
+                        {
+                          id: "nav:automations:agentic",
+                          title: t("sidebar.agentic"),
+                          label: String(automationTypeCounts.agentic),
+                          icon: Bot,
+                          variant: (automationFilter?.kind === 'type' && automationFilter.automationType === 'agentic') ? "default" : "ghost",
+                          onClick: handleAutomationsAgenticClick,
+                          contextMenu: { type: 'automations' as const, onAddAutomation: openAddAutomation },
+                        },
+                      ],
+                    },
+                    // --- Separator ---
+                    { id: "separator:skills-settings", type: "separator" },
+                    // --- Settings ---
+                    {
+                      id: "nav:settings",
+                      title: t("sidebar.settings"),
+                      icon: Settings,
+                      variant: isSettingsNavigation(navState) ? "default" : "ghost",
+                      onClick: () => handleSettingsClick(),
+                    },
+                    // --- What's New ---
+                    {
+                      id: "nav:whats-new",
+                      title: t("sidebar.whatsNew"),
+                      icon: hasUnseenReleaseNotes ? (
+                        <span className="relative">
+                          <Cake className="h-3.5 w-3.5" />
+                          <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
+                        </span>
+                      ) : Cake,
+                      variant: "ghost" as const,
+                      onClick: handleWhatsNewClick,
+                    },
+                  ]}
+                />
+                {/* Agent Tree: Hierarchical list of agents */}
+                {/* Agents section removed */}
+                </div>
+              </div>
+
+            </div>
+          </div>
+          }
+          sidebarWidth={effectiveSidebarAndNavigatorHidden ? 0 : (isSidebarVisible ? sidebarWidth : 0)}
+          navigatorSlot={
+            <div
+              style={{ width: isAutoCompact ? '100%' : sessionListWidth }}
+              className="h-full flex flex-col min-w-0 relative z-panel"
+            >
+            <PanelHeader
+              title={isSidebarVisible ? listTitle : undefined}
+              compensateForStoplight={!isSidebarVisible}
+              badge={automationFilter?.automationType === 'scheduled' ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-muted-foreground/50 cursor-default flex items-center titlebar-no-drag">
+                      <Info className="h-3 w-3" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[220px]">
+                    Scheduling requires your machine to be running. It can be locked, but must be powered on.
+                  </TooltipContent>
+                </Tooltip>
+              ) : undefined}
+              actions={
+                <>
+                  {/* List ⇄ Board view switch (sessions mode, desktop widths only).
+                      In board view the navigator is collapsed, so the board hosts its own copy. */}
+                  {!isAutoCompact && isSessionsNavigation(navState) && (
+                    <BoardListToggle
+                      value="list"
+                      onChange={view => {
+                        if (view === 'board') navigate(routes.view.board())
+                      }}
+                    />
+                  )}
                   {/* Filter dropdown - available in ALL chat views.
                       Shows user-added filters (removable) and pinned filters (non-removable, derived from route).
                       Pinned filters: state views pin a status, label views pin a label, flagged pins the flag. */}
@@ -2514,7 +2911,7 @@ function AppShellContent({
                                 {pinnedFilters.pinnedFlagged && (
                                   <StyledDropdownMenuItem disabled>
                                     <FilterMenuRow
-                                      icon={<Pin className="h-3.5 w-3.5" />}
+                                      icon={<Flag className="h-3.5 w-3.5" />}
                                       label={t("sidebar.flagged")}
                                       accessory={<Check className="h-3 w-3 text-muted-foreground" />}
                                     />
@@ -3100,8 +3497,8 @@ function AppShellContent({
                     />
                   )}
                 </>
-  )
-  const navigatorBody = <>
+              }
+            />
             {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}
             {isSourcesNavigation(navState) && (
               /* Sources List - filtered by type if sourceFilter is active */
@@ -3223,275 +3620,16 @@ function AppShellContent({
             {isAutoCompact && isSessionsNavigation(navState) && !navState.details && (
               <FabNewChat onClick={() => handleNewChat()} />
             )}
-  </>
-  const navigatorContent = (
-<div
-              style={{ width: '100%' }}
-              className="h-full flex flex-col min-w-0 relative z-panel"
-            >
-            <PanelHeader
-              title={isSidebarVisible ? listTitle : undefined}
-              compensateForStoplight={!isSidebarVisible}
-              badge={automationFilter?.automationType === 'scheduled' ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-muted-foreground/50 cursor-default flex items-center titlebar-no-drag">
-                      <Info className="h-3 w-3" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-[220px]">
-                    Scheduling requires your machine to be running. It can be locked, but must be powered on.
-                  </TooltipContent>
-                </Tooltip>
-              ) : undefined}
-              actions={navigatorActions}
-            />
-            {navigatorBody}
-
             </div>
-  )
-
-  return (
-    <AppShellProvider value={appShellContextValue}>
-        {/* === TOP BAR === */}
-        <TopBar
-          workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId}
-          onSelectWorkspace={onSelectWorkspace}
-          workspaceUnreadMap={workspaceUnreadMap}
-          onWorkspaceCreated={() => onRefreshWorkspaces?.()}
-          onWorkspaceRemoved={() => onRefreshWorkspaces?.()}
-          activeSessionId={effectiveSessionId}
-          onNewChat={() => handleNewChat()}
-          onNewWindow={() => window.electronAPI.menuNewWindow()}
-          onOpenSettings={onOpenSettings}
-          onOpenSettingsSubpage={handleSettingsClick}
-          onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
-          onOpenStoredUserPreferences={onOpenStoredUserPreferences}
-          onBack={goBack}
-          onForward={goForward}
-          canGoBack={canGoBack}
-          canGoForward={canGoForward}
-          onToggleSidebar={handleToggleSidebar}
-          onToggleTools={() => updateRightSidebar(navState.rightSidebar && navState.rightSidebar.type !== 'none' ? undefined : {type:'files'})}
-          onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-          onAddSessionPanel={() => handleNewChat(true)}
-          onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
-          isCompact={isAutoCompact}
-        />
-
-      {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
-      <div
-        ref={shellRef}
-        className="flex items-stretch relative"
-        style={{
-          height: '100%',
-          paddingRight: isAutoCompact ? 0 : PANEL_EDGE_INSET,
-          paddingBottom: isAutoCompact ? 0 : PANEL_EDGE_INSET,
-          paddingLeft: 0,
-          gap: PANEL_GAP,
-        }}
-      >
-        <PanelStackContainer
-          sidebarSlot={
-            <div
-              ref={sidebarRef}
-              style={{ width: sidebarWidth }}
-              className="h-full font-sans relative"
-              data-focus-zone="sidebar"
-              tabIndex={sidebarFocused ? 0 : -1}
-              onKeyDown={handleSidebarKeyDown}
-            >
-            <div className="flex h-full flex-col select-none">
-              {/* Sidebar Top Section */}
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* New Session Button - Gmail-style, with context menu for "Open in New Window" */}
-                <div className="px-2 pb-2 shrink-0">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div>
-                        <ContextMenu modal={true}>
-                          <ContextMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              onClick={(e) => handleNewChat(e.metaKey || e.ctrlKey)}
-                              className="w-full justify-start gap-2 py-[7px] px-2 text-[13px] font-normal rounded-[6px] shadow-minimal bg-background"
-                              data-tutorial="new-chat-button"
-                            >
-                              <SquarePenRounded className="h-3.5 w-3.5 shrink-0" />
-                              {t("kanban.newTask")}
-                            </Button>
-                          </ContextMenuTrigger>
-                          <StyledContextMenuContent>
-                            <ContextMenuProvider>
-                              <SidebarMenu type="newSession" />
-                            </ContextMenuProvider>
-                          </StyledContextMenuContent>
-                        </ContextMenu>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">{newChatHotkey}</TooltipContent>
-                  </Tooltip>
-                </div>
-                {/* Primary Nav: All Sessions (▸ Statuses, Flagged, Archived), Labels | Sources, Skills | Settings */}
-                {/* pb-4 provides clearance so the last item scrolls above the mask-fade-bottom gradient */}
-                <div className="flex flex-1 flex-col min-h-0 overflow-y-auto mask-fade-bottom pb-4">
-                <LeftSidebar
-                  className="flex-1 min-h-0"
-                  isCollapsed={false}
-                  getItemProps={getSidebarItemProps}
-                  focusedItemId={focusedSidebarItemId}
-                  links={[
-                    // --- Sessions Section ---
-                    {
-                      id: "nav:allSessions",
-                      title: isSessionsNavigation(navState) ? listTitle : t("sidebar.allSessions"),
-                      icon: Inbox,
-                      variant: isSessionsNavigation(navState) ? "default" : "ghost",
-                      onClick: handleAllSessionsClick,
-                      contextMenu: { type: 'allSessions', onConfigureStatuses: openConfigureStatuses, onMarkAllRead: handleMarkAllRead },
-                    },
-                    // --- Separator ---
-                    { id: "separator:chats-sources", type: "separator" },
-                    // --- Sources & Skills Section ---
-                    {
-                      id: "nav:sources",
-                      title: t("sidebar.sources"),
-                      icon: DatabaseZap,
-                      variant: (isSourcesNavigation(navState) && !sourceFilter) ? "default" : "ghost",
-                      onClick: handleSourcesClick,
-                      dataTutorial: "sources-nav",
-                      contextMenu: {
-                        type: 'sources',
-                        onAddSource: () => openAddSource(),
-                      },
-                    },
-                    {
-                      id: "nav:skills",
-                      title: t("sidebar.skills"),
-                      icon: Zap,
-                      variant: isSkillsNavigation(navState) ? "default" : "ghost",
-                      onClick: handleSkillsClick,
-                      contextMenu: {
-                        type: 'skills',
-                        onAddSkill: openAddSkill,
-                      },
-                    },
-                    {
-                      id: "nav:projects",
-                      title: t("sidebar.projects"),
-                      icon: FolderKanban,
-                      variant: "ghost",
-                      onClick: () => toggleExpanded('nav:projects'),
-                      expandable: true,
-                      expanded: isExpanded('nav:projects'),
-                      onToggle: () => toggleExpanded('nav:projects'),
-                      actions: [
-                        <HeaderIconButton icon={<Plus className="h-4 w-4" />} tooltip={t('sidebarMenu.addProject')} aria-label={t('sidebarMenu.addProject')} disabled={creatingProject} onClick={() => { void openAddProject() }} />,
-                        <WorkspaceSwitcher workspaces={workspaces} activeWorkspaceId={activeWorkspaceId} onSelect={onSelectWorkspace}
-                          onWorkspaceCreated={() => onRefreshWorkspaces?.()} onWorkspaceRemoved={() => onRefreshWorkspaces?.()}
-                          onOpenRemoteSettings={() => handleSettingsClick('server')}
-                          trigger={<HeaderIconButton icon={<MoreHorizontal className="h-4 w-4" />} aria-label={t('workspace.selectWorkspace')} />} />,
-                      ],
-                      items: workspaces.map(workspace => ({
-                        id: `nav:workspace:${workspace.id}`,
-                        title: workspace.name,
-                        icon: FolderOpen,
-                        variant: workspace.id === activeWorkspaceId ? 'default' as const : 'ghost' as const,
-                        onClick: () => { void Promise.resolve(onSelectWorkspace(workspace.id)).catch(error => toast.error(String(error))) },
-                        actions: [
-                          <HeaderIconButton
-                            icon={<Plus className="h-4 w-4" />}
-                            tooltip={t('kanban.newTask')}
-                            aria-label={t('kanban.newTask')}
-                            onClick={() => { void handleNewTaskInWorkspace(workspace.id) }}
-                          />,
-                        ],
-                      })),
-                      contextMenu: { type: 'projects', onAddProject: () => { void openAddProject() } },
-                    },
-                    {
-                      id: "nav:pages",
-                      title: t("sidebar.pages"),
-                      label: String(pages.length),
-                      icon: PanelsTopLeft,
-                      // Highlight on the library grid only, not when a page is open (mirrors Projects)
-                      variant: (isPagesNavigation(navState) && !navState.details) ? "default" : "ghost",
-                      onClick: handlePagesClick,
-                      expandable: pages.length > 0,
-                      expanded: isExpanded('nav:pages'),
-                      onToggle: () => toggleExpanded('nav:pages'),
-                      items: pages.map(p => ({
-                        id: `nav:pages:${p.config.id}`,
-                        title: p.config.name,
-                        icon: PanelsTopLeft,
-                        variant: (isPagesNavigation(navState) && navState.details?.pageSlug === p.config.slug) ? "default" as const : "ghost" as const,
-                        onClick: () => navigate(routes.view.pages(p.config.slug)),
-                      })),
-                    },
-                    {
-                      id: "nav:automations",
-                      title: t("sidebar.automations"),
-                      icon: ListTodo,
-                      variant: (isAutomationsNavigation(navState) && !automationFilter) ? "default" : "ghost",
-                      onClick: handleAutomationsClick,
-                      contextMenu: {
-                        type: 'automations' as const,
-                        onAddAutomation: openAddAutomation,
-                      },
-                    },
-                    // --- Separator ---
-                    { id: "separator:skills-settings", type: "separator" },
-                    // --- Settings ---
-                    {
-                      id: "nav:settings",
-                      title: t("sidebar.settings"),
-                      icon: Settings,
-                      variant: isSettingsNavigation(navState) ? "default" : "ghost",
-                      onClick: () => handleSettingsClick(),
-                    },
-                    // --- What's New ---
-                    {
-                      id: "nav:whats-new",
-                      title: t("sidebar.whatsNew"),
-                      icon: hasUnseenReleaseNotes ? (
-                        <span className="relative">
-                          <Cake className="h-3.5 w-3.5" />
-                          <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
-                        </span>
-                      ) : Cake,
-                      variant: "ghost" as const,
-                      onClick: handleWhatsNewClick,
-                    },
-                  ]}
-                />
-                {/* Agent Tree: Hierarchical list of agents */}
-                {/* Agents section removed */}
-                </div>
-              </div>
-
-            </div>
-          </div>
           }
-          sidebarWidth={effectiveSidebarAndNavigatorHidden ? 0 : (isSidebarVisible ? sidebarWidth : 0)}
-          navigatorSlot={listPlacement === 'navigator' ? navigatorContent : null}
-          navigatorWidth={isAutoCompact ? sessionListWidth : (!effectiveSidebarAndNavigatorHidden && listPlacement === 'navigator' ? sessionListWidth : 0)}
+          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isBoardView || isPagesView ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={!isAutoCompact && !!navState.rightSidebar && navState.rightSidebar.type !== 'none'}
+          isRightSidebarVisible={false}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
 
         {/* Sidebar Resize Handle (absolute, hidden in focused mode) */}
-        {!isAutoCompact && <RightSidebar sessionId={effectiveSessionId ?? undefined} width={rightSidebarWidth} />}
-        {!isAutoCompact && navState.rightSidebar && navState.rightSidebar.type !== 'none' && <div
-          role="separator" aria-orientation="vertical" aria-label={t('chat.sessionInfo')}
-          tabIndex={0}
-          onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setRightSidebarWidth(w => Math.max(240, Math.min(480, w + (e.key === 'ArrowLeft' ? 16 : -16)))) } }}
-          onMouseDown={e => { e.preventDefault(); setIsResizing('right-sidebar') }}
-          className="absolute inset-y-0 z-panel cursor-col-resize"
-          style={{ right: rightSidebarWidth + PANEL_EDGE_INSET, width: PANEL_SASH_HIT_WIDTH }}
-        />}
         {!effectiveSidebarAndNavigatorHidden && (
         <div
           ref={resizeHandleRef}
@@ -3525,7 +3663,7 @@ function AppShellContent({
         )}
 
         {/* Session List Resize Handle (absolute, hidden in focused mode, board view, and pages) */}
-        {!effectiveSidebarAndNavigatorHidden && listPlacement === 'navigator' && (
+        {!effectiveSidebarAndNavigatorHidden && !isBoardView && !isPagesView && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}
@@ -3779,7 +3917,11 @@ function AppShellContent({
       />
 
       {/* Create Project dialog — prompts for a name so slugs stay meaningful */}
-
+      <CreateProjectDialog
+        open={createProjectDialogOpen}
+        onCancel={() => setCreateProjectDialogOpen(false)}
+        onSubmit={handleCreateProjectSubmit}
+      />
 
       {/* Messaging dialogs (pairing-code + WA connect) — driven by messagingDialogAtom.
           Mounted here so they survive context-menu / dropdown close. */}

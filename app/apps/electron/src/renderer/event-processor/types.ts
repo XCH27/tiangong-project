@@ -176,7 +176,7 @@ export interface SessionStatusChangedEvent {
 export interface SessionMetadataChangedEvent {
   type: 'session_metadata_changed'
   sessionId: string
-  changes: Partial<Pick<Session, 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId' | 'assistantId'>>
+  changes: Partial<Pick<Session, 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId'>>
 }
 
 /**
@@ -509,10 +509,7 @@ export interface SourceActivatedEvent {
 export interface UsageUpdateEvent {
   type: 'usage_update'
   sessionId: string
-  tokenUsage: {
-    inputTokens: number
-    contextWindow?: number
-  }
+  tokenUsage: Pick<NonNullable<Session['tokenUsage']>, 'inputTokens' | 'contextWindow' | 'contextUsage'>
 }
 
 /**

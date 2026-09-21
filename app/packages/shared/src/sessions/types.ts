@@ -11,7 +11,7 @@
 
 import type { PermissionMode } from '../agent/mode-manager.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
-import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage } from '@craft-agent/core/types';
+import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage, ContextUsageSnapshot } from '@craft-agent/core/types';
 
 /**
  * Session fields that persist to disk.
@@ -57,7 +57,6 @@ export const SESSION_PERSISTENT_FIELDS = [
   'projectId',
   // Kanban: task/subtask hierarchy + board column
   'parentSessionId',
-  'assistantId',
   'kanbanColumn',
   // Tasks Conductor: link a session back to the task spec / run / DAG node that owns it
   'taskSlug',
@@ -97,6 +96,8 @@ export interface SessionTokenUsage {
   cacheCreationTokens?: number;
   /** Model's context window size in tokens (from SDK modelUsage) */
   contextWindow?: number;
+  /** Current occupancy, independent from billable/cumulative token counters. */
+  contextUsage?: ContextUsageSnapshot;
 }
 
 /**
@@ -213,8 +214,6 @@ export interface SessionConfig {
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */
   parentSessionId?: string;
-  /** Assistant identity this session wears. Delegates wear their own. */
-  assistantId?: string;
   /** Kanban board column id ('todo' | 'in-progress' | 'done'). Drag-to-move target; independent of sessionStatus. */
   kanbanColumn?: string;
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */
@@ -322,8 +321,6 @@ export interface SessionHeader {
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */
   parentSessionId?: string;
-  /** Assistant identity this session wears. Delegates wear their own. */
-  assistantId?: string;
   /** Kanban board column id ('todo' | 'in-progress' | 'done'). Drag-to-move target; independent of sessionStatus. */
   kanbanColumn?: string;
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */
@@ -420,8 +417,6 @@ export interface SessionMetadata {
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */
   parentSessionId?: string;
-  /** Assistant identity this session wears. Delegates wear their own. */
-  assistantId?: string;
   /** Kanban board column id ('todo' | 'in-progress' | 'done'). Drag-to-move target; independent of sessionStatus. */
   kanbanColumn?: string;
   /** Tasks Conductor: slug of the task spec this session belongs to (orchestrator + child nodes). */

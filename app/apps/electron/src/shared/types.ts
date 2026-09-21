@@ -173,7 +173,7 @@ export interface TransportConnectionState {
 // =============================================================================
 
 // Re-import types for ElectronAPI
-import type { WorkspaceInfo, Workspace, RemoteServerConfig, SessionMetadata, StoredAttachment as StoredAttachmentType } from '@craft-agent/core/types';
+import type { WorkspaceInfo, Workspace, SessionMetadata, StoredAttachment as StoredAttachmentType } from '@craft-agent/core/types';
 
 // Import protocol types used by ElectronAPI (they come through the `export *` above,
 // but we need them in scope for the interface definition)
@@ -197,7 +197,7 @@ import type {
   PermissionResponseOptions,
   CredentialResponse,
   SessionCommand,
-  ExportMarkdownResult,
+  ShareResult,
   RefreshTitleResult,
   FileSearchResult,
   SessionSearchResult,
@@ -222,46 +222,6 @@ import type {
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
 } from '@craft-agent/shared/protocol'
-
-export interface RemoteSshHostSnapshot {
-  config: {
-    id: string
-    displayName?: string
-    hostname: string
-    port: number
-    user: string
-    authMethod: 'agent' | 'key'
-    identityFileConfigured: boolean
-    identityFileName?: string
-    source: 'ssh-config' | 'manual'
-    managedByCindy: boolean
-  }
-  status: 'disconnected' | 'connecting' | 'authenticating' | 'ready' | 'reconnecting' | 'failed'
-  lastError?: string
-  lastAuthLabel?: string
-  statusChangedAt: number
-  autoConnect: boolean
-}
-
-export interface RemoteSshHostInput {
-  id: string
-  displayName?: string
-  hostname: string
-  port?: number
-  user: string
-  authMethod?: 'agent' | 'key'
-  identityFile?: string
-}
-
-export interface RemoteSshLocalKey {
-  privateKeyPath: string
-  pubkeyPath: string
-  type: string
-  comment: string
-  fingerprintSha256: string | null
-  inAgent: boolean
-  mtimeIso: string | null
-}
 
 export interface ElectronAPI {
   // Session management
@@ -294,37 +254,8 @@ export interface ElectronAPI {
   respondToCredential(sessionId: string, requestId: string, response: CredentialResponse): Promise<boolean>
 
   // Consolidated session command handler
-  sessionCommand(sessionId: string, command: SessionCommand): Promise<void | ExportMarkdownResult | RefreshTitleResult | { count: number }>
-
-  /** Native save dialog + write. Path is chosen by the user; never an arbitrary renderer path. */
-  saveTextFile(spec: { content: string; defaultFileName: string }): Promise<{ canceled: boolean; filePath?: string; error?: string }>
-
-  /** Cindy SSH remote hosts (Phase A). Local main-process only. */
-  remoteSsh: {
-    list(): Promise<{
-      hosts: RemoteSshHostSnapshot[]
-      warningCount?: number
-      diagnostic?: { kind: 'io' | 'syntax' | 'limit' } | null
-    }>
-    reloadConfig(): Promise<{
-      hosts: RemoteSshHostSnapshot[]
-      warningCount?: number
-      diagnostic?: { kind: 'io' | 'syntax' | 'limit' } | null
-    }>
-    add(host: RemoteSshHostInput): Promise<{ host: RemoteSshHostSnapshot }>
-    update(host: RemoteSshHostInput & { identityFileUnchanged?: boolean }): Promise<{ host: RemoteSshHostSnapshot }>
-    remove(id: string): Promise<{ ok: true }>
-    connect(id: string): Promise<{ host: RemoteSshHostSnapshot | null }>
-    disconnect(id: string): Promise<{ host: RemoteSshHostSnapshot | null }>
-    setAutoConnect(id: string, autoConnect: boolean): Promise<{ host: RemoteSshHostSnapshot | null }>
-    listLocalKeys(): Promise<{ keys: RemoteSshLocalKey[] }>
-    generateKey(opts?: { comment?: string }): Promise<{ privateKeyPath: string; pubkeyPath: string; pubkeyContent: string; fingerprintSha256: string | null }>
-    readPubkey(pubkeyPath: string): Promise<{ content: string }>
-    buildInstallCmd(id: string, pubkeyPath: string): Promise<{ command: string }>
-    buildInstallCmdInline(host: { user: string; hostname: string; port?: number; pubkeyPath: string }): Promise<{ command: string }>
-    addKeyToAgent(privateKeyPath: string): Promise<{ ok: true }>
-    onStatusChanged(callback: (snapshot: RemoteSshHostSnapshot) => void): () => void
-  }
+  sessionCommand(sessionId: string, command: Extract<SessionCommand, { type: 'markPendingPlanExecutionDispatched' }>): Promise<boolean>
+  sessionCommand(sessionId: string, command: Exclude<SessionCommand, { type: 'markPendingPlanExecutionDispatched' }>): Promise<void | ShareResult | RefreshTitleResult | { count: number }>
 
   // Server info (REMOTE_ELIGIBLE — returns data from whichever server owns the workspace)
   getServerHomeDir(): Promise<string>
@@ -356,7 +287,7 @@ export interface ElectronAPI {
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
-  createWorkspace(folderPath: string, name: string, remoteServer?: RemoteServerConfig): Promise<Workspace>
+  createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
   updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }): Promise<{ success: boolean }>
 
@@ -372,39 +303,7 @@ export interface ElectronAPI {
     remoteWorkspaceId?: string   // auto-set when exactly one workspace
     remoteWorkspaceName?: string // auto-set when exactly one workspace
     serverVersion?: string       // server app version from handshake
-    /**
-     * Set when `token` was a one-time invite: the per-device grant the host minted,
-     * claimed on this same connection. Store this, not the invite — the invite is
-     * spent. Absent for a pre-v3 shared-token link.
-     */
-    deviceToken?: string
-    /**
-     * The host machine's stable id. Stored on the Workspace so every project paired
-     * to the same computer groups under one device. Absent for an older host.
-     */
-    hostId?: string
   }>
-
-  // 远程连接 device grants. The access link carries a one-time invite, so creating
-  // one is how a device is added, and revoking is per device rather than global.
-  createRemoteInvite(input: { deviceName: string; workspaceIds?: string[] }): Promise<{
-    accessLink: string
-    expiresAt: string
-    deviceName: string
-    /** What this link reaches, so the surface can say so before the other device tries. */
-    reach: 'none' | 'lan-only' | 'lan-or-overlay' | 'anywhere'
-  }>
-  listRemoteDevices(): Promise<Array<{
-    id: string
-    name: string
-    platform: 'macos' | 'windows' | 'linux' | 'ios' | 'android' | 'unknown'
-    createdAt: string
-    lastSeenAt?: string
-    revokedAt?: string
-    online: boolean
-  }>>
-  revokeRemoteDevice(deviceId: string): Promise<{ ok: true }>
-  clearRevokedRemoteDevices(): Promise<{ remaining: number }>
 
   // Window management
   getWindowWorkspace(): Promise<string | null>
@@ -619,23 +518,6 @@ export interface ElectronAPI {
   createLabel(workspaceId: string, input: import('@craft-agent/shared/labels').CreateLabelInput): Promise<import('@craft-agent/shared/labels').LabelConfig>
   deleteLabel(workspaceId: string, labelId: string): Promise<{ stripped: number }>
   onLabelsChanged(callback: (workspaceId: string) => void): () => void
-
-  listAssistants(workspaceId: string): Promise<import('@craft-agent/shared/assistants').Assistant[]>
-  createAssistant(
-    workspaceId: string,
-    input: import('@craft-agent/shared/assistants').CreateAssistantInput,
-  ): Promise<import('@craft-agent/shared/assistants').Assistant>
-  wearAssistant(
-    workspaceId: string,
-    sessionId: string,
-    assistantId: string,
-    asked: import('@craft-agent/shared/assistants').WearAsk,
-  ): Promise<{
-    decision: import('@craft-agent/shared/assistants').WearDecision
-    delegateSessionId?: string
-  }>
-  assistantWornBy(workspaceId: string, sessionId: string): Promise<string | null>
-  onAssistantsChanged(callback: (workspaceId: string) => void): () => void
 
   // LLM connections change listener
   onLlmConnectionsChanged(callback: () => void): () => void
@@ -947,8 +829,6 @@ export type WhatsAppUiEvent =
  */
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
-  | { type: 'browser' }
-  | { type: 'notes' }
   | { type: 'history' }
   | { type: 'none' }
 
@@ -977,14 +857,12 @@ export interface SessionsNavigationState {
   filter: SessionFilter
   details: { type: 'session'; sessionId: string } | null
   rightSidebar?: RightSidebarPanel
-}
-
-/**
- * Board is a task surface, not a presentation mode of the conversation list.
- */
-export interface BoardNavigationState {
-  navigator: 'board'
-  rightSidebar?: RightSidebarPanel
+  /**
+   * Presentation mode for the sessions navigator. `'board'` renders the Kanban
+   * board (all sessions, grouped into To Do / In Progress / Done columns) in the
+   * content area instead of the list + chat. Absent/`'list'` is the default.
+   */
+  viewMode?: 'list' | 'board'
 }
 
 /**
@@ -1072,7 +950,6 @@ export interface PagesNavigationState {
  */
 export type NavigationState =
   | SessionsNavigationState
-  | BoardNavigationState
   | SourcesNavigationState
   | SettingsNavigationState
   | SkillsNavigationState
@@ -1083,10 +960,6 @@ export type NavigationState =
 export const isSessionsNavigation = (
   state: NavigationState
 ): state is SessionsNavigationState => state.navigator === 'sessions'
-
-export const isBoardNavigation = (
-  state: NavigationState
-): state is BoardNavigationState => state.navigator === 'board'
 
 export const isSourcesNavigation = (
   state: NavigationState
@@ -1153,7 +1026,6 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     if (state.subpage === null) return 'settings'
     return `settings:${state.subpage}`
   }
-  if (state.navigator === 'board') return 'board'
   // Chats
   const f = state.filter
   let base: string

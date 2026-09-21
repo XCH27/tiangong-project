@@ -189,7 +189,6 @@ export async function createSession(
     isFlagged?: boolean;
     projectId?: string;
     parentSessionId?: string;
-    assistantId?: string;
     taskSlug?: string;
     taskRunId?: string;
     taskNodeId?: string;
@@ -227,7 +226,6 @@ export async function createSession(
     isFlagged: options?.isFlagged,
     projectId: options?.projectId,
     parentSessionId: options?.parentSessionId,
-    assistantId: options?.assistantId,
     taskSlug: options?.taskSlug,
     taskRunId: options?.taskRunId,
     taskNodeId: options?.taskNodeId,
@@ -556,7 +554,6 @@ export async function updateSessionMetadata(
     | 'isArchived'
     | 'archivedAt'
     | 'projectId'
-    | 'assistantId'
   >>
 ): Promise<void> {
   const session = loadSession(workspaceRootPath, sessionId);
@@ -579,7 +576,6 @@ export async function updateSessionMetadata(
   if (updates.isArchived !== undefined) session.isArchived = updates.isArchived;
   if ('archivedAt' in updates) session.archivedAt = updates.archivedAt;
   if ('projectId' in updates) session.projectId = updates.projectId;
-  if ('assistantId' in updates) session.assistantId = updates.assistantId;
 
   await saveSession(session);
 }
@@ -727,12 +723,16 @@ export async function markCompactionComplete(
 export async function markPendingPlanExecutionDispatched(
   workspaceRootPath: string,
   sessionId: string
-): Promise<void> {
+): Promise<boolean> {
   const session = loadSession(workspaceRootPath, sessionId);
-  if (!session?.pendingPlanExecution) return;
+  const pending = session?.pendingPlanExecution;
+  if (!session || !pending || pending.awaitingCompaction || pending.executionDispatched) {
+    return false;
+  }
 
-  session.pendingPlanExecution.executionDispatched = true;
+  pending.executionDispatched = true;
   await saveSession(session);
+  return true;
 }
 
 /**

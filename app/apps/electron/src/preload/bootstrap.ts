@@ -16,6 +16,7 @@
  * connection is established.
  */
 
+import '@sentry/electron/preload'
 import { contextBridge, ipcRenderer, shell, webUtils } from 'electron'
 import { WsRpcClient, type TransportConnectionState } from '../transport/client'
 import { RoutedClient } from '../transport/routed-client'
@@ -36,7 +37,6 @@ import type { ConfirmDialogSpec, FileDialogSpec, BrowserCapabilityRequest } from
 import type { RpcClient } from '@craft-agent/server-core/transport'
 import type { RemoteServerConfig } from '@craft-agent/core/types'
 import type { ElectronAPI } from '../shared/types'
-import { assertAllowedRemoteWsUrl } from '@craft-agent/shared/utils/remote-url'
 
 // ---------------------------------------------------------------------------
 // Client interface — common surface for both RoutedClient and WsRpcClient
@@ -115,7 +115,6 @@ if (isClientOnly) {
   let initialWorkspaceClient: WsRpcClient
   if (remoteConfig && typeof remoteConfig.url === 'string') {
     // Workspace is remote — create a direct connection to the remote server
-    assertAllowedRemoteWsUrl(remoteConfig.url)
     initialWorkspaceClient = new WsRpcClient(remoteConfig.url, {
       token: remoteConfig.token,
       workspaceId: remoteConfig.remoteWorkspaceId,
@@ -123,6 +122,7 @@ if (isClientOnly) {
       autoReconnect: true,
       mode: 'remote',
       clientCapabilities: [...LOCAL_CLIENT_CAPABILITIES],
+      tlsRejectUnauthorized: false,
     })
     initialWorkspaceClient.connect()
   } else {
@@ -139,7 +139,6 @@ if (isClientOnly) {
 
   // Factory for creating remote workspace clients on switch
   routedClient.setClientFactory((remoteServer: RemoteServerConfig) => {
-    assertAllowedRemoteWsUrl(remoteServer.url)
     return new WsRpcClient(remoteServer.url, {
       token: remoteServer.token,
       workspaceId: remoteServer.remoteWorkspaceId,
@@ -147,6 +146,7 @@ if (isClientOnly) {
       autoReconnect: true,
       mode: 'remote',
       clientCapabilities: [...LOCAL_CLIENT_CAPABILITIES],
+      tlsRejectUnauthorized: false,
     })
   })
 
@@ -192,11 +192,6 @@ client.handleCapability(CLIENT_BROWSER_INVOKE, async (req: BrowserCapabilityRequ
 const api = buildClientApi(client, CHANNEL_MAP, (ch) => client.isChannelAvailable(ch))
 
 ;(api as any).getRuntimeEnvironment = (): 'electron' | 'web' => 'electron'
-;(api as any).saveTextFile = (spec: { content: string; defaultFileName: string }) =>
-  ipcRenderer.invoke('__dialog:saveTextFile', spec)
-// `api.remoteSsh` is intentionally absent: the main process does not register the
-// __remote-ssh:* channels (see main/index.ts). Restore both together when SSH
-// returns as the remote-install path.
 
 // ---------------------------------------------------------------------------
 // Transport connection state logging (for remote connections)

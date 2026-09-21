@@ -13,14 +13,3 @@ Commercial Terms of Service: https://www.anthropic.com/legal/commercial-terms
 
 Third-party dependencies are listed in package.json files and are subject
 to their respective licenses.
-
----
-
-This product includes software developed by XD Inc. (Cindy, Apache-2.0):
-https://github.com/makecindy/cindy — `packages/remote-ssh/` is derived from
-Cindy's `packages/maker-remote-ssh` (SSH connection pool, ~/.ssh config IO,
-credential resolution, host-key TOFU). The managed include marker and config
-filename were changed from `cindy.conf` to `fleet.conf`; the bootstrap installers
-were not admitted.
-Cindy:
-Copyright 2026 XD Inc.

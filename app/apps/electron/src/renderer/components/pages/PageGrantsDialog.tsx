@@ -57,7 +57,7 @@ export function PageGrantsDialog({ workspaceId, page, open, onOpenChange }: Page
                   <Icon
                     className={
                       isScript
-                        ? 'mt-0.5 h-4 w-4 shrink-0 text-destructive'
+                        ? 'mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-500'
                         : 'mt-0.5 h-4 w-4 shrink-0 text-foreground/50'
                     }
                   />
@@ -70,7 +70,7 @@ export function PageGrantsDialog({ workspaceId, page, open, onOpenChange }: Page
                       className={
                         status.usable
                           ? 'mt-0.5 text-xs text-foreground/50'
-                          : 'mt-0.5 text-xs text-info'
+                          : 'mt-0.5 text-xs text-amber-600 dark:text-amber-500'
                       }
                     >
                       {status.label}

@@ -318,7 +318,9 @@ A workspace that auto-tags Linear issues, deadlines, contacts, and budgets:
 Labels appear in the left sidebar as a multi-level expandable section:
 
 ```
-All Sessions (expandable → status sub-items + Pinned)
+All Sessions (flat, total count)
+Flagged      (flat, flagged count)
+States       (expandable → status sub-items)
 Labels       (expandable)
   ├─ Views       (expandable → view sub-items)
   ├─ Engineering (label)
@@ -327,7 +329,7 @@ Labels       (expandable)
 Sources      (expandable → API/MCP/Local)
 Skills       (flat)
 ────────────
-Settings     (category navigator → Archived and other settings pages)
+Settings     (flat)
 ```
 
 Clicking a label filters the session list. Clicking a parent label includes sessions tagged with any descendant.

@@ -66,7 +66,6 @@ import type {
 } from '../../shared/types'
 import {
   isSessionsNavigation,
-  isBoardNavigation,
   isSourcesNavigation,
   isSettingsNavigation,
   isSkillsNavigation,
@@ -95,7 +94,7 @@ export type { Route }
 
 // Re-export navigation state types for consumers
 export type { NavigationState, SessionFilter }
-export { isSessionsNavigation, isBoardNavigation, isPagesNavigation, isSourcesNavigation, isSettingsNavigation, isSkillsNavigation, isAutomationsNavigation, isProjectsNavigation }
+export { isSessionsNavigation, isSourcesNavigation, isSettingsNavigation, isSkillsNavigation, isAutomationsNavigation, isProjectsNavigation, isPagesNavigation }
 
 // =============================================================================
 // Context
@@ -636,10 +635,12 @@ export function NavigationProvider({
         }
       }
 
-      // Sessions: auto-select last/first session. Board is a different navigator
-      // and must not resolve into a chat route.
+      // Sessions: auto-select last/first session.
+      // Board view has no per-session detail, so skip auto-selection — otherwise
+      // navigating to the board would immediately resolve into a chat route.
       if (
         isSessionsNavigation(nextState) &&
+        nextState.viewMode !== 'board' &&
         !nextState.details &&
         !options?.skipAutoSelect
       ) {
@@ -1175,12 +1176,9 @@ export function NavigationProvider({
 
   const toggleRightSidebar = useCallback((panel?: RightSidebarPanel) => {
     const currentSidebar = rightSidebarRef.current
-    // An explicit panel selects that tool. Without one, toggle the current
-    // tool closed/opening the default Files tool. `none` is a route-level
-    // compatibility value; the live state uses `undefined` for closed.
     const newPanel = panel || (currentSidebar && currentSidebar.type !== 'none'
-      ? undefined
-      : { type: 'files' as const })
+      ? { type: 'none' as const }
+      : { type: 'none' as const })
     updateRightSidebar(newPanel)
   }, [updateRightSidebar])
 

@@ -4,9 +4,49 @@ import { loadShellEnv } from './shell-env'
 loadShellEnv()
 
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, shell } from 'electron'
-import { writeFile } from 'fs/promises'
-import { randomUUID } from 'crypto'
-import { homedir, hostname } from 'os'
+import { createHash, randomUUID } from 'crypto'
+import { hostname, homedir } from 'os'
+import * as Sentry from '@sentry/electron/main'
+import { redactSensitiveHeadersInPlace, redactSensitiveKeysInPlace } from '@craft-agent/shared/utils'
+
+// Initialize Sentry error tracking as early as possible after app import.
+// Only enabled in production (packaged) builds to avoid noise during development.
+// DSN is baked in at build time via esbuild --define (same pattern as OAuth secrets).
+//
+// NOTE: Source map upload is intentionally disabled. Stack traces in Sentry will show
+// bundled/minified code. To enable source map upload in the future:
+//   1. Add SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT to CI secrets
+//   2. Re-enable the @sentry/vite-plugin in vite.config.ts (handles renderer maps)
+//   3. Add @sentry/esbuild-plugin to scripts/electron-build-main.ts (handles main process maps)
+Sentry.init({
+  dsn: process.env.SENTRY_ELECTRON_INGEST_URL,
+  environment: app.isPackaged ? 'production' : 'development',
+  release: app.getVersion(),
+  // Enabled whenever the ingest URL is available — works in both production (baked via CI)
+  // and development (injected via .env / 1Password). Filter by environment in Sentry dashboard.
+  enabled: !!process.env.SENTRY_ELECTRON_INGEST_URL,
+
+  // Scrub sensitive data before sending to Sentry.
+  // Shared logic in @craft-agent/shared/utils redaction.ts (also used by the
+  // renderer hook and the Pages action audit log) — keep semantics there.
+  beforeSend(event) {
+    // Scrub request headers (authorization, cookies)
+    if (event.request?.headers) {
+      redactSensitiveHeadersInPlace(event.request.headers)
+    }
+
+    // Scrub breadcrumb data that may contain sensitive values
+    if (event.breadcrumbs) {
+      for (const breadcrumb of event.breadcrumbs) {
+        if (breadcrumb.data) {
+          redactSensitiveKeysInPlace(breadcrumb.data)
+        }
+      }
+    }
+
+    return event
+  },
+})
 
 // Initialize i18n for main process (menus, dialogs, etc.)
 //
@@ -26,6 +66,11 @@ if (persistedUiLanguage) {
 }
 // Note: deferred startup log lives below where mainLog is available (after log.initialize()).
 
+// Set anonymous machine ID for Sentry user tracking (no PII — just a hash).
+// Uses hostname + homedir to produce a stable per-machine identifier.
+const machineId = createHash('sha256').update(hostname() + homedir()).digest('hex').slice(0, 16)
+Sentry.setUser({ id: machineId })
+
 import { join, delimiter } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
@@ -35,10 +80,6 @@ import { registerAllRpcHandlers } from './handlers/index'
 import { registerCoreRpcHandlers, cleanupSessionFileWatchForClient } from '@craft-agent/server-core/handlers/rpc'
 import type { PlatformServices } from '../runtime/platform'
 import { createElectronPlatform } from './platform'
-import { applyServerModeConfig, createStoppedServerModeState } from './server-mode'
-import {
-  getHostId,
-} from '@craft-agent/shared/remote/node'
 import type { HandlerDeps } from './handlers/handler-deps'
 import { bootstrapServer, releaseServerLock } from '@craft-agent/server-core/bootstrap'
 import { createMessagingBootstrap, type MessagingBootstrapHandle } from '@craft-agent/messaging-gateway'
@@ -437,7 +478,7 @@ app.whenReady().then(async () => {
       logger: log,
       isDebugMode,
       getLogFilePath,
-      captureError: (err) => mainLog.error('[platform] Captured error:', err),
+      captureError: (err) => Sentry.captureException(err),
     })
 
     // Bootstrap IPC handlers — preload uses sendSync for window-local details
@@ -499,34 +540,6 @@ app.whenReady().then(async () => {
       const result = await dialog.showOpenDialog(win, spec)
       return { canceled: result.canceled, filePaths: result.filePaths }
     })
-    // The SSH library (packages/remote-ssh) has no product home yet: its renderer
-    // dialogs have no caller, and P9-rev says SSH host management is not the
-    // 远程连接 surface. Registering 14 IPC channels for it would be attack surface
-    // with no feature behind it, so the registration waits until SSH returns in its
-    // one defensible role — installing a Fleet instance onto a bare remote machine
-    // (Cindy's maker-remote-ssh `bootstrap/`, which was not admitted with the rest).
-    // registerRemoteSshIpc()
-    ipcMain.handle('__dialog:saveTextFile', async (event, spec: { content: string; defaultFileName?: string }) => {
-      const win = BrowserWindow.fromWebContents(event.sender)
-        || BrowserWindow.getFocusedWindow()
-        || BrowserWindow.getAllWindows()[0]
-      const rawName = String(spec?.defaultFileName || 'conversation.md')
-      const defaultFileName = rawName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').slice(0, 120) || 'conversation.md'
-      const result = await dialog.showSaveDialog(win, {
-        defaultPath: defaultFileName,
-        filters: [
-          { name: 'Markdown', extensions: ['md'] },
-          { name: 'All Files', extensions: ['*'] },
-        ],
-      })
-      if (result.canceled || !result.filePath) return { canceled: true }
-      try {
-        await writeFile(result.filePath, String(spec?.content ?? ''), 'utf8')
-        return { canceled: false, filePath: result.filePath }
-      } catch (error) {
-        return { canceled: false, error: error instanceof Error ? error.message : String(error) }
-      }
-    })
 
     if (!isClientOnly) {
       // Restore persisted Git Bash path on Windows (must happen before any SDK subprocess spawn)
@@ -574,13 +587,14 @@ app.whenReady().then(async () => {
       const serverModeEnabled = embeddedServerConfig.enabled && !isClientOnly
 
       // Derive host/port/token from server config (or env overrides)
-      const serverToken = embeddedServerConfig.token || randomUUID()
-      // Local renderer always stays on loopback. LAN listen is a second socket
-      // so 远程连接 can toggle without restarting.
-      const rpcHost = process.env.CRAFT_RPC_HOST ?? '127.0.0.1'
+      const serverToken = serverModeEnabled && embeddedServerConfig.token
+        ? embeddedServerConfig.token
+        : randomUUID()
+      const rpcHost = process.env.CRAFT_RPC_HOST
+        ?? (serverModeEnabled ? '0.0.0.0' : '127.0.0.1')
       const rpcPort = process.env.CRAFT_RPC_PORT
         ? parseInt(process.env.CRAFT_RPC_PORT, 10)
-        : 0
+        : (serverModeEnabled ? embeddedServerConfig.port : 0)
 
       // Load TLS certificates if configured
       let tls: import('@craft-agent/server-core/transport').WsRpcTlsOptions | undefined
@@ -597,7 +611,7 @@ app.whenReady().then(async () => {
       }
 
       if (serverModeEnabled) {
-        mainLog.info(`[server-mode] Will advertise LAN on 0.0.0.0:${embeddedServerConfig.port}${tls ? ' (TLS)' : ''}`)
+        mainLog.info(`[server-mode] Enabled — binding ${rpcHost}:${rpcPort}${tls ? ' (TLS)' : ''}`)
       }
 
       // Bootstrap the WS RPC server via shared bootstrap function.
@@ -607,9 +621,7 @@ app.whenReady().then(async () => {
         rpcPort,
         tls,
         bundledAssetsRoot: __dirname,
-        // Stable per-machine id: a client groups every Workspace paired to this
-        // computer under one device, instead of one device per Workspace.
-        serverId: getHostId(),
+        serverId: 'local',
         serverVersion: app.getVersion(),
         platformFactory: () => platform,
         applyPlatformToSubsystems: (p) => {
@@ -619,6 +631,14 @@ app.whenReady().then(async () => {
             updateBadgeCount,
             onSessionStarted,
             onSessionStopped,
+            captureException: (error, context) => {
+              Sentry.captureException(error instanceof Error ? error : new Error(String(error)), {
+                tags: {
+                  ...(context?.errorSource ? { errorSource: context.errorSource } : {}),
+                  ...(context?.sessionId ? { sessionId: context.sessionId } : {}),
+                },
+              })
+            },
           })
           setSearchPlatform(p)
           setImageProcessor(p.imageProcessor)
@@ -931,35 +951,13 @@ app.whenReady().then(async () => {
         e.returnValue = ws?.remoteServer ?? null
       })
 
-      // The public (LAN) listener is a second socket with its own token. It is
-      // never bound directly: applyServerModeConfig is the single writer, so the
-      // bind always carries validateToken + TLS and a failed bind never persists
-      // the candidate config. The local renderer keeps `serverToken` on loopback.
-      const { setServerConfig: persistServerConfig } = await import('@craft-agent/shared/config')
-      let publicServerState = createStoppedServerModeState(embeddedServerConfig.token?.trim() || '')
-      if (serverModeEnabled) {
-        try {
-          publicServerState = await applyServerModeConfig({
-            transport: instance.wsServer,
-            current: publicServerState,
-            config: embeddedServerConfig,
-            persist: persistServerConfig,
-          })
-          mainLog.info(
-            `[server-mode] Listening on ${publicServerState.host}:${publicServerState.port} (${publicServerState.protocol})`,
-          )
-        } catch (err) {
-          mainLog.error('[server-mode] Public listener failed to start; staying local-only:', err)
-          publicServerState = createStoppedServerModeState(publicServerState.auth.token)
-        }
-      }
-
       // Server config RPC handlers (LOCAL_ONLY — Electron-specific)
       const runningServerState = {
         host: rpcHost,
         port: instance.port,
         tls: !!tls,
         token: serverToken,
+        enabled: serverModeEnabled,
       }
 
       instance.wsServer.handle(RPC_CHANNELS.settings.GET_SERVER_CONFIG, async () => {
@@ -970,104 +968,68 @@ app.whenReady().then(async () => {
       instance.wsServer.handle(RPC_CHANNELS.settings.SET_SERVER_CONFIG, async (_ctx: unknown, config: unknown) => {
         const { setServerConfig: setConfig } = await import('@craft-agent/shared/config')
         const cfg = config as import('@craft-agent/shared/config/server-config').ServerConfig
+        // Validate port range
         if (cfg.port < 1024 || cfg.port > 65535) {
           throw new Error(`Port must be between 1024 and 65535, got ${cfg.port}`)
         }
+        // Validate cert/key files exist if provided
         if (cfg.tlsCertPath && !existsSync(cfg.tlsCertPath)) {
           throw new Error(`Certificate file not found: ${cfg.tlsCertPath}`)
         }
         if (cfg.tlsKeyPath && !existsSync(cfg.tlsKeyPath)) {
           throw new Error(`Private key file not found: ${cfg.tlsKeyPath}`)
         }
-        // Pairing gets its own token — never the local renderer's bearer token.
-        publicServerState = await applyServerModeConfig({
-          transport: instance.wsServer,
-          current: publicServerState,
-          config: cfg,
-          persist: setConfig,
-        })
-        mainLog.info(
-          publicServerState.enabled
-            ? `[server-mode] Listening on ${publicServerState.host}:${publicServerState.port} (${publicServerState.protocol})`
-            : '[server-mode] Public listener closed',
-        )
+        setConfig(cfg)
       })
-
-      /**
-       * The addresses this machine can actually be reached on, in the order a client
-       * should try them (P9-rev). Only the running listener knows these, so the invite
-       * handlers take them from here rather than recomputing.
-       *
-       * Note what is NOT here: a public address. Behind NAT no local interface carries
-       * one, so a link built from this list reaches a client on the same LAN or the same
-       * overlay, and nothing else. See the remote row in docs/08-CRAFT-CAPABILITY-MAP.md.
-       */
-      const listPublicEndpoints = async (): Promise<string[]> => {
-        const { getServerConfig: getConfig } = await import('@craft-agent/shared/config')
-        const { formatWsUrl, rankListenAddresses } = await import('@craft-agent/shared/utils/listen-addresses')
-        const saved = getConfig()
-        const os = await import('os')
-        const hosts: string[] = []
-        for (const addrs of Object.values(os.networkInterfaces())) {
-          for (const net of addrs ?? []) {
-            if (net.internal) continue
-            hosts.push(net.address)
-          }
-        }
-        const enabled = publicServerState.enabled && saved.enabled === true
-        const port = enabled ? publicServerState.port : runningServerState.port
-        const protocol = enabled
-          ? publicServerState.protocol
-          : (runningServerState.tls ? 'wss' : 'ws')
-        return rankListenAddresses(hosts).map((address) => formatWsUrl(protocol, address, port))
-      }
 
       instance.wsServer.handle(RPC_CHANNELS.settings.GET_SERVER_STATUS, async () => {
         const { getServerConfig: getConfig } = await import('@craft-agent/shared/config')
         const saved = getConfig()
-        const pairingEnabled = publicServerState.enabled && saved.enabled === true
-        const pairingPort = pairingEnabled ? publicServerState.port : runningServerState.port
-        const pairingProtocol = pairingEnabled
-          ? publicServerState.protocol
-          : (runningServerState.tls ? 'wss' : 'ws')
-        const endpoints = await listPublicEndpoints()
-        const lanUrl = endpoints[0] || `${pairingProtocol}://127.0.0.1:${pairingPort}`
+        const protocol = runningServerState.tls ? 'wss' : 'ws'
+
+        // Determine display host (LAN IP if bound to 0.0.0.0)
+        let displayHost = runningServerState.host
+        if (displayHost === '0.0.0.0' || displayHost === '::') {
+          const os = await import('os')
+          const nets = os.networkInterfaces()
+          for (const name of Object.keys(nets)) {
+            for (const net of nets[name] ?? []) {
+              if (net.family === 'IPv4' && !net.internal) {
+                displayHost = net.address
+                break
+              }
+            }
+            if (displayHost !== '0.0.0.0' && displayHost !== '::') break
+          }
+        }
+
+        // Only compare port/tls/token when at least one side has server mode enabled.
+        // When both are disabled, the running port is random — comparing it to the
+        // saved default (9100) would always produce a false "restart required" banner.
+        const needsRestart = saved.enabled !== runningServerState.enabled
+          || ((saved.enabled || runningServerState.enabled) && (
+            saved.port !== runningServerState.port
+            || (!!saved.tlsCertPath) !== runningServerState.tls
+            || (saved.token ?? '') !== runningServerState.token
+          ))
 
         return {
-          running: pairingEnabled,
-          host: pairingEnabled ? publicServerState.host : runningServerState.host,
-          port: pairingPort,
-          tls: pairingEnabled ? publicServerState.protocol === 'wss' : runningServerState.tls,
-          url: lanUrl,
-          lanUrl,
-          endpoints,
-          // The access link no longer carries a credential, so the status no longer
-          // hands one out. Pairing goes through remote:createInvite.
-          token: '',
-          needsRestart: false,
-          insecureWarning: pairingEnabled && publicServerState.protocol !== 'wss',
+          running: true,
+          host: runningServerState.host,
+          port: runningServerState.port,
+          tls: runningServerState.tls,
+          url: `${protocol}://${displayHost}:${runningServerState.port}`,
+          token: runningServerState.token,
+          needsRestart,
+          insecureWarning: isInsecureBind,
         }
       })
-
-      // Device grants: mint a one-time invite, list devices, revoke one, clear revoked.
-      // Endpoints are resolved per call, so a link minted right after the listener is
-      // enabled carries the addresses it actually bound.
-      {
-        const { registerRemoteDeviceHandlers } = await import('./handlers/remote-devices')
-        const { deviceMintLedger } = await import('./server-mode')
-        registerRemoteDeviceHandlers(instance.wsServer, {
-          listEndpoints: listPublicEndpoints,
-          claimMintedToken: (enrollmentId) => deviceMintLedger.claim(enrollmentId),
-          // The machine's own hostname, so a pasted link already knows what to call it.
-          hostName: () => hostname(),
-        })
-      }
 
       // TLS enforcement — warn when server mode binds to a network address without TLS
       // Mirrors the hard guard in packages/server/src/index.ts but warns instead of blocking,
       // since the user explicitly enabled server mode via UI (may be on a trusted LAN).
-      const isInsecureBind = publicServerState.enabled && publicServerState.protocol !== 'wss'
-        && !['127.0.0.1', 'localhost', '::1'].includes(publicServerState.host)
+      const isInsecureBind = serverModeEnabled && !tls
+        && !['127.0.0.1', 'localhost', '::1'].includes(rpcHost)
       if (isInsecureBind) {
         mainLog.warn(
           '[server-mode] WARNING: Listening on a network address without TLS. ' +
@@ -1123,23 +1085,21 @@ app.whenReady().then(async () => {
       mainLog.warn('[power] Power manager init failed (non-critical):', err instanceof Error ? err.message : err)
     }
 
-    // Local startup classification (no PII, never leaves the machine). Fleet ships
-    // no telemetry; this line exists so a local log still explains which connection
-    // an error happened under.
+    // Set Sentry context tags for error grouping (no PII — just config classification).
+    // Runs after init so config and auth state are available.
+    // Derives values from the default LLM connection instead of legacy config fields.
     try {
       const { getLlmConnection, getDefaultLlmConnection } = await import('@craft-agent/shared/config')
       const workspaces = getWorkspaces()
       const defaultConnSlug = getDefaultLlmConnection()
       const defaultConn = defaultConnSlug ? getLlmConnection(defaultConnSlug) : null
-      mainLog.info('[startup] config classification:', {
-        authType: defaultConn?.authType ?? 'unknown',
-        providerType: defaultConn?.providerType ?? 'unknown',
-        hasCustomEndpoint: !!defaultConn?.baseUrl,
-        model: defaultConn?.defaultModel ?? 'default',
-        workspaceCount: workspaces.length,
-      })
+      Sentry.setTag('authType', defaultConn?.authType ?? 'unknown')
+      Sentry.setTag('providerType', defaultConn?.providerType ?? 'unknown')
+      Sentry.setTag('hasCustomEndpoint', String(!!defaultConn?.baseUrl))
+      Sentry.setTag('model', defaultConn?.defaultModel ?? 'default')
+      Sentry.setTag('workspaceCount', String(workspaces.length))
     } catch (err) {
-      mainLog.warn('Failed to log startup classification:', err)
+      mainLog.warn('Failed to set Sentry context tags:', err)
     }
 
     // Initialize auto-update (check immediately on launch)
@@ -1352,12 +1312,14 @@ app.on('before-quit', async (event) => {
   }
 })
 
-// Handle uncaught exceptions — log locally and keep the process alive long enough
-// to finish cleanup. Fleet reports nothing off-machine.
+// Handle uncaught exceptions — forward to Sentry explicitly since registering
+// a custom handler can interfere with @sentry/electron's automatic capture.
 process.on('uncaughtException', (error) => {
   mainLog.error('Uncaught exception:', error)
+  Sentry.captureException(error)
 })
 
 process.on('unhandledRejection', (reason, promise) => {
   mainLog.error('Unhandled rejection at:', promise, 'reason:', reason)
+  Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)))
 })

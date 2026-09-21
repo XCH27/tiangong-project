@@ -1,6 +1,4 @@
 import { Menu, app, shell, BrowserWindow } from 'electron'
-import { homedir } from 'os'
-import { join } from 'path'
 import { i18n } from '@craft-agent/shared/i18n'
 import { RPC_CHANNELS, type BroadcastEventMap } from '../shared/types'
 import { EDIT_MENU, VIEW_MENU, WINDOW_MENU } from '../shared/menu-schema'
@@ -236,9 +234,7 @@ export async function rebuildMenu(): Promise<void> {
       submenu: [
         {
           label: i18n.t("menu.helpAndDocs"),
-          click: () => {
-            void shell.openPath(join(homedir(), '.craft-agent', 'docs', 'INDEX.md'))
-          },
+          click: () => shell.openExternal('https://thecraftagents.com/docs')
         },
         {
           label: i18n.t("menu.keyboardShortcuts"),

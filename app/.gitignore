@@ -16,7 +16,7 @@ coverage
 
 # logs
 logs
-*.log
+_.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # dotenv environment variable files
@@ -29,9 +29,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # caches
 .eslintcache
 .cache
-# Local debugging captures live outside the source tree.
-apps/electron/.tmp/
-**/__tmp_*/
 *.tsbuildinfo
 .wrangler
 .mintlify

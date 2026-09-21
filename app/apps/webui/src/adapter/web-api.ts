@@ -105,33 +105,6 @@ export function createWebApi(options: WebApiOptions): {
     // File dialogs
     openFileDialog: webFilePicker,
     openFolderDialog: () => Promise.resolve(null), // not possible in browser
-    saveTextFile: async ({ content, defaultFileName }) => {
-      const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = defaultFileName
-      anchor.click()
-      URL.revokeObjectURL(url)
-      return { canceled: false, filePath: defaultFileName }
-    },
-    remoteSsh: {
-      list: async () => ({ hosts: [] }),
-      reloadConfig: async () => ({ hosts: [] }),
-      add: async () => { throw new Error('SSH remote is desktop-only') },
-      update: async () => { throw new Error('SSH remote is desktop-only') },
-      remove: async () => { throw new Error('SSH remote is desktop-only') },
-      connect: async () => { throw new Error('SSH remote is desktop-only') },
-      disconnect: async () => { throw new Error('SSH remote is desktop-only') },
-      setAutoConnect: async () => { throw new Error('SSH remote is desktop-only') },
-      listLocalKeys: async () => ({ keys: [] }),
-      generateKey: async () => { throw new Error('SSH remote is desktop-only') },
-      readPubkey: async () => { throw new Error('SSH remote is desktop-only') },
-      buildInstallCmd: async () => { throw new Error('SSH remote is desktop-only') },
-      buildInstallCmdInline: async () => { throw new Error('SSH remote is desktop-only') },
-      addKeyToAgent: async () => { throw new Error('SSH remote is desktop-only') },
-      onStatusChanged: () => () => {},
-    },
 
     // System info
     getVersions: () => ({ node: 'n/a', chrome: navigator.userAgent, electron: 'web' }),

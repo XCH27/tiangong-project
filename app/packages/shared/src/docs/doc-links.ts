@@ -3,19 +3,7 @@
  * Summaries provide quick context; "Learn more" opens the full docs.
  */
 
-/**
- * These pages ship with the app. `getLocalDocPath` resolves a feature to the copy
- * under `~/.craft-agent/docs/guide/`, which `packages/shared/src/docs` syncs from
- * `apps/electron/resources/docs` at startup — so "Learn more" opens a file on this
- * machine rather than a Craft-operated site (P8), and the same text is what the
- * agent reads when it has to explain a surface.
- *
- * The hosted base is kept only as provenance for the mirror; nothing navigates to it.
- */
-const DOC_UPSTREAM_BASE_URL = 'https://thecraftagents.com/docs'
-
-/** Where the synced mirror lives, relative to the config directory. */
-export const LOCAL_DOCS_SUBDIR = 'docs/guide'
+const DOC_BASE_URL = 'https://thecraftagents.com/docs'
 
 export type DocFeature =
   | 'sources'
@@ -98,7 +86,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
       'Separate configurations for different contexts like personal projects or work. Each workspace has its own sources, skills, statuses, and session history.',
   },
   themes: {
-    path: '/customisation/themes',
+    path: '/go-further/themes',
     title: 'Themes',
     summary:
       'Customize the visual appearance with a 6-color system. Override specific colors in theme.json or install preset themes for complete visual styles.',
@@ -130,19 +118,10 @@ export const DOCS: Record<DocFeature, DocInfo> = {
 }
 
 /**
- * Path of a feature's page inside the local mirror, relative to the config
- * directory — e.g. `docs/guide/sources/overview.md`.
+ * Get the full documentation URL for a feature
  */
-export function getLocalDocPath(feature: DocFeature): string {
-  return `${LOCAL_DOCS_SUBDIR}${DOCS[feature].path}.md`
-}
-
-/**
- * The upstream page this mirror came from. Provenance only — surfaces open the
- * local copy; nothing in the product navigates to a Craft-operated site.
- */
-export function getUpstreamDocUrl(feature: DocFeature): string {
-  return `${DOC_UPSTREAM_BASE_URL}${DOCS[feature].path}`
+export function getDocUrl(feature: DocFeature): string {
+  return `${DOC_BASE_URL}${DOCS[feature].path}`
 }
 
 /**

@@ -404,11 +404,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         session: ses,
         contextIsolation: true,
         nodeIntegration: false,
-        // The toolbar preload imports `contextBridge` and `ipcRenderer` and
-        // nothing else, both of which a sandboxed preload has. Leaving the
-        // sandbox off bought no capability the preload uses and gave the
-        // toolbar renderer a full Node process to be compromised into.
-        sandbox: true,
+        sandbox: false,
       },
     })
 
@@ -746,22 +742,6 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       } else {
         normalizedUrl = `https://duckduckgo.com/?q=${encodeURIComponent(normalizedUrl)}`
       }
-    }
-
-    // Normalizing is not validating. Everything above only *adds* a scheme when
-    // one is missing; a caller that supplies its own reaches `loadURL`
-    // untouched, and `loadURL` will happily follow `file://`, `javascript:` and
-    // `data:`. Since a navigation target can come from a page, a tool call or an
-    // agent, the reachable set has to be stated rather than assumed: a browser
-    // pane browses the web, and `about:` covers the blank page it starts on.
-    let scheme: string
-    try {
-      scheme = new URL(normalizedUrl).protocol
-    } catch {
-      throw new CodedError('INVALID_URL', `Cannot navigate to malformed URL: "${normalizedUrl}"`)
-    }
-    if (scheme !== 'https:' && scheme !== 'http:' && scheme !== 'about:') {
-      throw new CodedError('URL_SCHEME_NOT_ALLOWED', `Navigation scheme "${scheme}" is not allowed`)
     }
 
     const timeoutMs = 30_000
@@ -2123,26 +2103,10 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     }
 
     this.destroyingIds.delete(instance.id)
-
-    // `destroyInstance` guards its own cleanup steps and then calls this from a
-    // `finally`, so anything that throws here escapes the guard and reaches the
-    // caller — with the instance still in the map, which is the one state a
-    // destroy must never end in. Each step is independent: a failure in one is
-    // worth a log line, not an abandoned teardown.
-    const step = (label: string, action: () => void): void => {
-      try {
-        action()
-      } catch (error) {
-        mainLog.warn(
-          `[browser-pane] finalize step failed id=${instance.id} step=${label} error=${error instanceof Error ? error.message : String(error)}`,
-        )
-      }
-    }
-    step('closePopupsForParent', () => this.closePopupsForParent(instance.id, 'parent_destroy'))
-    step('applyAgentControlLock', () => this.applyAgentControlLock(instance, false))
-    step('updateNativeOverlayState', () => this.updateNativeOverlayState(instance))
-    step('cdp.detach', () => instance.cdp.detach())
-
+    this.closePopupsForParent(instance.id, 'parent_destroy')
+    this.applyAgentControlLock(instance, false)
+    this.updateNativeOverlayState(instance)
+    instance.cdp.detach()
     this.instances.delete(instance.id)
     this.removedCallback?.(instance.id)
     mainLog.info(`[browser-pane] Destroyed instance: ${instance.id} (${source})`)

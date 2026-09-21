@@ -32,12 +32,7 @@ function createMockWebContents() {
       }
     }),
     loadFile: mock(async (_path: string, _opts?: unknown) => {
-      // Only toolbar loads consume the failure budget — createInstance also
-      // loadFile()s the overlay/empty-state pages on other webContents, and
-      // those must not eat the toolbar's injected failures (loadURL above
-      // already filters the same way).
-      const isToolbarFile = typeof _path === 'string' && _path.includes('browser-toolbar.html')
-      if (isToolbarFile && toolbarLoadFailuresRemaining > 0) {
+      if (toolbarLoadFailuresRemaining > 0) {
         toolbarLoadFailuresRemaining--
         throw new Error('mock toolbar load failure')
       }
@@ -309,11 +304,7 @@ describe('BrowserPaneManager', () => {
     const instance = (manager as any).instances.get('popup-parent')
 
     const popupWindow = createMockWindow({ width: 520, height: 720 })
-    // Electron's did-create-window passes (window, details) with no leading
-    // event object — bypass _emit's event prepend and call listeners directly.
-    for (const cb of instance.pageView.webContents._listeners['did-create-window'] || []) {
-      cb(popupWindow, { url: 'https://accounts.google.com/signin' })
-    }
+    instance.pageView.webContents._emit('did-create-window', popupWindow, { url: 'https://accounts.google.com/signin' })
 
     expect((manager as any).popupWindowsByParentInstanceId.get('popup-parent')?.size).toBe(1)
 
@@ -582,29 +573,27 @@ describe('BrowserPaneManager', () => {
     }
   })
 
-  it('focus brings the instance window to front', async () => {
+  it('focus brings the instance window to front', () => {
     manager.createInstance('f1')
     manager.focus('f1')
 
-    // Deferred focus is released by toolbar readiness (markToolbarReady runs
-    // once the toolbar load settles), not by a window ready-to-show event.
-    await Bun.sleep(0)
-
     const instance = (manager as any).instances.get('f1')
+    instance.window._emit('ready-to-show')
+
     expect(instance.window.show).toHaveBeenCalled()
     expect(instance.window.focus).toHaveBeenCalled()
   })
 
-  it('dedupes repeated focus calls before toolbar is ready', async () => {
+  it('dedupes repeated focus calls before ready-to-show', () => {
     manager.createInstance('f2')
 
     manager.focus('f2')
     manager.focus('f2')
     manager.focus('f2')
 
-    await Bun.sleep(0)
-
     const instance = (manager as any).instances.get('f2')
+    instance.window._emit('ready-to-show')
+
     expect(instance.window.show.mock.calls.length).toBe(1)
     expect(instance.window.focus.mock.calls.length).toBe(1)
   })
@@ -680,36 +669,32 @@ describe('BrowserPaneManager', () => {
     toolbarLoadFailuresRemaining = 2
     manager.createInstance('retry-toolbar')
 
-    // Toolbar documents load into the toolbar BrowserView, not the window.
-    const toolbarWc = (manager as any).instances.get('retry-toolbar').toolbarView.webContents
-    const attempts = () => toolbarWc.loadFile.mock.calls.length + toolbarWc.loadURL.mock.calls
+    await Bun.sleep(1400)
+
+    const toolbarWindow = createdWindows[0]
+    const fileAttempts = toolbarWindow.webContents.loadFile.mock.calls.length
+    const toolbarUrlAttempts = toolbarWindow.webContents.loadURL.mock.calls
       .filter((args: [string]) => args[0]?.includes('browser-toolbar.html')).length
+    const totalAttempts = fileAttempts + toolbarUrlAttempts
 
-    // Poll instead of a fixed sleep — the 500ms retry cadence can drift under load.
-    const deadline = Date.now() + 4000
-    while (attempts() < 3 && Date.now() < deadline) await Bun.sleep(50)
-    await Bun.sleep(150)
-
-    expect(attempts()).toBe(3)
-    expect(toolbarWc.loadURL).not.toHaveBeenCalledWith(expect.stringContaining('data:text/html'))
+    expect(totalAttempts).toBe(3)
+    expect(toolbarWindow.webContents.loadURL).not.toHaveBeenCalledWith(expect.stringContaining('data:text/html'))
   })
 
   it('loads toolbar fallback page after retry exhaustion', async () => {
     toolbarLoadFailuresRemaining = 20
     manager.createInstance('fallback-toolbar')
 
-    const toolbarWc = (manager as any).instances.get('fallback-toolbar').toolbarView.webContents
-    const attempts = () => toolbarWc.loadFile.mock.calls.length + toolbarWc.loadURL.mock.calls
+    await Bun.sleep(3200)
+
+    const toolbarWindow = createdWindows[0]
+    const fileAttempts = toolbarWindow.webContents.loadFile.mock.calls.length
+    const toolbarUrlAttempts = toolbarWindow.webContents.loadURL.mock.calls
       .filter((args: [string]) => args[0]?.includes('browser-toolbar.html')).length
-    const fallbackLoaded = () => toolbarWc.loadURL.mock.calls
-      .some((args: [string]) => args[0]?.startsWith('data:text/html'))
+    const totalAttempts = fileAttempts + toolbarUrlAttempts
 
-    const deadline = Date.now() + 6000
-    while ((attempts() < 5 || !fallbackLoaded()) && Date.now() < deadline) await Bun.sleep(50)
-    await Bun.sleep(150)
-
-    expect(attempts()).toBe(5)
-    expect(toolbarWc.loadURL).toHaveBeenCalledWith(expect.stringContaining('data:text/html'))
+    expect(totalAttempts).toBe(5)
+    expect(toolbarWindow.webContents.loadURL).toHaveBeenCalledWith(expect.stringContaining('data:text/html'))
   })
 
   it('captures and filters console entries', () => {
@@ -785,12 +770,10 @@ describe('BrowserPaneManager', () => {
     instance.canGoForward = false
     instance.themeColor = '#123456'
 
-    // Toolbar state is pushed to the toolbar BrowserView's webContents.
-    const toolbarWc = instance.toolbarView.webContents
-    const sendsBeforeShow = toolbarWc.send.mock.calls.length
+    const sendsBeforeShow = instance.window.webContents.send.mock.calls.length
     instance.window._emit('show')
 
-    const sendCallsAfterShow = toolbarWc.send.mock.calls.slice(sendsBeforeShow)
+    const sendCallsAfterShow = instance.window.webContents.send.mock.calls.slice(sendsBeforeShow)
     expect(sendCallsAfterShow).toContainEqual([
       'browser-toolbar:state-update',
       {
@@ -818,11 +801,10 @@ describe('BrowserPaneManager', () => {
 
     instance.toolbarView.webContents.getURL = mock(() => 'http://localhost:5173/browser-toolbar.html?instanceId=toolbar-finish-load-replay')
 
-    const toolbarWc = instance.toolbarView.webContents
-    const sendsBeforeFinishLoad = toolbarWc.send.mock.calls.length
-    toolbarWc._emit('did-finish-load')
+    const sendsBeforeFinishLoad = instance.window.webContents.send.mock.calls.length
+    instance.toolbarView.webContents._emit('did-finish-load')
 
-    const sendCallsAfterFinishLoad = toolbarWc.send.mock.calls.slice(sendsBeforeFinishLoad)
+    const sendCallsAfterFinishLoad = instance.window.webContents.send.mock.calls.slice(sendsBeforeFinishLoad)
     expect(sendCallsAfterFinishLoad).toContainEqual([
       'browser-toolbar:state-update',
       {

@@ -119,7 +119,7 @@ export function PageSourceAuthBanner({ workspaceId, page, sources, className }: 
   if (needing.length === 0) return null
 
   return (
-    <div className={cn('flex flex-col gap-2 rounded-md border border-info/30 bg-info/5 p-3', className)}>
+    <div className={cn('flex flex-col gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3', className)}>
       {needing.map(source => {
         const flavor = reconnectFlavor(source.config)
         return (
@@ -201,7 +201,7 @@ function ReconnectCredentialDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <KeyRound className="h-4 w-4 text-info" />
+            <KeyRound className="h-4 w-4 text-amber-600 dark:text-amber-500" />
             {t('pages.auth.credentialTitle', { name: source?.config.name ?? '' })}
           </DialogTitle>
           <DialogDescription>{t('pages.auth.credentialDescription')}</DialogDescription>

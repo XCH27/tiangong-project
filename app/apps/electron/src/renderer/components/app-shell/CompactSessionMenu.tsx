@@ -4,7 +4,7 @@
  * Bottom-sheet replacement for the desktop ChatPage title dropdown
  * (`SessionMenu` wrapped by `PanelHeader`'s Radix DropdownMenu) when
  * `AppShellContext.isCompactMode === true`. Mirrors the same actions but
- * routes Status / Labels / Connect Messaging submenus through
+ * routes Status / Labels / Share / Connect Messaging submenus through
  * an internal view stack instead of nested Radix popovers — Radix submenus
  * get clipped by the panel container query on narrow viewports, and the
  * Status submenu in particular falls off the right edge.
@@ -13,7 +13,7 @@
  * `CompactWorkspaceSwitcher`, `CompactPermissionModeSelector`) and also
  * follows the iOS-style drill-in behaviour established by `MobileAppMenu`.
  *
- * Side-effect handlers (export Markdown / refresh title / copy path /
+ * Side-effect handlers (share / refresh title / copy path / share submenu /
  * label toggle with optimistic state) come from `useSessionMenuActions`,
  * shared with the desktop `SessionMenu` so a new session action only has to
  * be wired through one place.
@@ -34,12 +34,14 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CloudUpload,
   Columns2,
   Copy,
-  Download,
-  Pin,
-  PinOff,
+  Flag,
+  FlagOff,
   FolderOpen,
+  Globe,
+  Link2Off,
   MailOpen,
   MessageSquare,
   Pencil,
@@ -76,7 +78,7 @@ import { getFileManagerName } from '@/lib/platform'
 import { useMessagingConnect, type MessagingPlatform } from '@/components/messaging/MessagingSessionMenuItem'
 import { useSessionMenuActions } from '@/hooks/useSessionMenuActions'
 
-type View = 'root' | 'status' | 'labels' | 'messaging'
+type View = 'root' | 'status' | 'labels' | 'share' | 'messaging'
 
 export interface CompactSessionMenuProps {
   /** Title text shown in the trigger button + drawer header. */
@@ -173,6 +175,7 @@ export function CompactSessionMenu({
 
   const isFlagged = item.isFlagged ?? false
   const isArchived = item.isArchived ?? false
+  const sharedUrl = item.sharedUrl
   const currentSessionStatus = getSessionStatus(item)
   const sessionLabels = item.labels ?? []
   const _hasMessages = hasMessagesMeta(item)
@@ -213,6 +216,7 @@ export function CompactSessionMenu({
     switch (view) {
       case 'status':    return t('sessionMenu.status')
       case 'labels':    return t('sessionMenu.labels')
+      case 'share':     return t('sessionMenu.shared')
       case 'messaging': return t('sessionMenu.connectMessaging')
       default:          return title ?? ''
     }
@@ -285,6 +289,7 @@ export function CompactSessionMenu({
         <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-6">
           {view === 'root' && (
             <RootPane
+              sharedUrl={sharedUrl}
               sessionStatuses={sessionStatuses}
               currentSessionStatus={currentSessionStatus}
               labelsCount={sessionLabels.length}
@@ -294,7 +299,8 @@ export function CompactSessionMenu({
               hasMessages={_hasMessages}
               hasUnread={_hasUnread}
               hasTransferTargets={hasTransferTargets}
-              onExportMarkdown={closeAfter(actions.exportMarkdown)}
+              onShare={closeAfter(actions.share)}
+              onOpenShareSub={() => setView('share')}
               onSendToWorkspace={closeAfter(onSendToWorkspace)}
               onOpenMessagingSub={() => setView('messaging')}
               onOpenStatusSub={() => setView('status')}
@@ -333,6 +339,15 @@ export function CompactSessionMenu({
             />
           )}
 
+          {view === 'share' && sharedUrl && (
+            <SharePane
+              onOpenInBrowser={closeAfter(actions.openSharedInBrowser)!}
+              onCopyLink={closeAfter(actions.copySharedLink)!}
+              onUpdateShare={closeAfter(actions.updateShare)!}
+              onRevokeShare={closeAfter(actions.revokeShare)!}
+            />
+          )}
+
           {view === 'messaging' && (
             <MessagingPane onConnect={handleConnectMessaging} />
           )}
@@ -347,6 +362,7 @@ export function CompactSessionMenu({
 // ---------------------------------------------------------------------------
 
 interface RootPaneProps {
+  sharedUrl?: string
   sessionStatuses: SessionStatus[]
   currentSessionStatus: SessionStatusId
   labelsCount: number
@@ -356,7 +372,8 @@ interface RootPaneProps {
   hasMessages: boolean
   hasUnread: boolean
   hasTransferTargets?: boolean
-  onExportMarkdown?: () => void
+  onShare?: () => void
+  onOpenShareSub: () => void
   onSendToWorkspace?: () => void
   onOpenMessagingSub: () => void
   onOpenStatusSub: () => void
@@ -376,6 +393,7 @@ interface RootPaneProps {
 }
 
 function RootPane({
+  sharedUrl,
   sessionStatuses,
   currentSessionStatus,
   labelsCount,
@@ -385,7 +403,8 @@ function RootPane({
   hasMessages,
   hasUnread,
   hasTransferTargets,
-  onExportMarkdown,
+  onShare,
+  onOpenShareSub,
   onSendToWorkspace,
   onOpenMessagingSub,
   onOpenStatusSub,
@@ -415,7 +434,17 @@ function RootPane({
 
   return (
     <div className="flex flex-col">
-      <Row icon={<Download className="h-4 w-4" />} label={t('sessionMenu.exportConversation')} onTap={onExportMarkdown} />
+      {/* Share / Shared */}
+      {!sharedUrl ? (
+        <Row icon={<CloudUpload className="h-4 w-4" />} label={t('sessionMenu.share')} onTap={onShare} />
+      ) : (
+        <Row
+          icon={<CloudUpload className="h-4 w-4" />}
+          label={t('sessionMenu.shared')}
+          chevron
+          onTap={onOpenShareSub}
+        />
+      )}
 
       {hasTransferTargets && onSendToWorkspace && (
         <Row icon={<Send className="h-4 w-4" />} label={t('sessionMenu.sendToWorkspace')} onTap={onSendToWorkspace} />
@@ -448,9 +477,9 @@ function RootPane({
       )}
 
       {!isFlagged ? (
-        <Row icon={<Pin className="h-4 w-4 text-info" />} label={t('sessionMenu.flag')} onTap={onFlag} />
+        <Row icon={<Flag className="h-4 w-4 text-info" />} label={t('sessionMenu.flag')} onTap={onFlag} />
       ) : (
-        <Row icon={<PinOff className="h-4 w-4" />} label={t('sessionMenu.unflag')} onTap={onUnflag} />
+        <Row icon={<FlagOff className="h-4 w-4" />} label={t('sessionMenu.unflag')} onTap={onUnflag} />
       )}
 
       {!isArchived ? (
@@ -552,6 +581,29 @@ function LabelsPane({
           />
         )
       })}
+    </div>
+  )
+}
+
+function SharePane({
+  onOpenInBrowser,
+  onCopyLink,
+  onUpdateShare,
+  onRevokeShare,
+}: {
+  onOpenInBrowser: () => void
+  onCopyLink: () => void
+  onUpdateShare: () => void
+  onRevokeShare: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex flex-col">
+      <Row icon={<Globe className="h-4 w-4" />} label={t('sessionMenu.openInBrowser')} onTap={onOpenInBrowser} />
+      <Row icon={<Copy className="h-4 w-4" />} label={t('sessionMenu.copyLink')} onTap={onCopyLink} />
+      <Row icon={<RefreshCw className="h-4 w-4" />} label={t('sessionMenu.updateShare')} onTap={onUpdateShare} />
+      <Separator />
+      <Row icon={<Link2Off className="h-4 w-4" />} label={t('sessionMenu.stopSharing')} destructive onTap={onRevokeShare} />
     </div>
   )
 }

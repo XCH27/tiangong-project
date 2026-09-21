@@ -65,12 +65,6 @@ export const CHANNEL_MAP = {
   updateWorkspaceRemoteServer: invoke(RPC_CHANNELS.workspaces.UPDATE_REMOTE),
   testRemoteConnection: invoke(RPC_CHANNELS.remote.TEST_CONNECTION),
 
-  // 远程连接 device grants (LOCAL_ONLY — this machine decides who may reach it)
-  createRemoteInvite: invoke(RPC_CHANNELS.remote.CREATE_INVITE),
-  listRemoteDevices: invoke(RPC_CHANNELS.remote.LIST_DEVICES),
-  revokeRemoteDevice: invoke(RPC_CHANNELS.remote.REVOKE_DEVICE),
-  clearRevokedRemoteDevices: invoke(RPC_CHANNELS.remote.CLEAR_REVOKED_DEVICES),
-
   // Server-level workspace operations (REMOTE_ELIGIBLE)
   getServerWorkspaces: invoke(RPC_CHANNELS.server.GET_WORKSPACES),
   createServerWorkspace: invoke(RPC_CHANNELS.server.CREATE_WORKSPACE),
@@ -262,12 +256,6 @@ export const CHANNEL_MAP = {
   createLabel: invoke(RPC_CHANNELS.labels.CREATE),
   deleteLabel: invoke(RPC_CHANNELS.labels.DELETE),
   onLabelsChanged: listener(RPC_CHANNELS.labels.CHANGED),
-
-  listAssistants: invoke(RPC_CHANNELS.assistants.LIST),
-  createAssistant: invoke(RPC_CHANNELS.assistants.CREATE),
-  wearAssistant: invoke(RPC_CHANNELS.assistants.WEAR),
-  assistantWornBy: invoke(RPC_CHANNELS.assistants.WORN),
-  onAssistantsChanged: listener(RPC_CHANNELS.assistants.CHANGED),
 
   // LLM connections change listener
   onLlmConnectionsChanged: listener(RPC_CHANNELS.llmConnections.CHANGED),

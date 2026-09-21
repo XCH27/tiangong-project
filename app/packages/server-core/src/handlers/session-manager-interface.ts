@@ -21,7 +21,7 @@ import type {
   CredentialResponse,
   PermissionModeState,
   UnreadSummary,
-  ExportMarkdownResult,
+  ShareResult,
 } from '@craft-agent/shared/protocol'
 import type { SessionBundle, DispatchMode } from '@craft-agent/shared/sessions'
 import type { EventSink } from '../transport'
@@ -88,7 +88,6 @@ export interface ISessionManager {
     opts?: { parentSessionId?: string },
   ): Promise<{ labelId: string } | undefined>
   setSessionProjectId(sessionId: string, projectId: string | null): Promise<void>
-  wearAssistant(workspaceId: string, sessionId: string, assistantId: string, asked: import('@craft-agent/shared/assistants').WearAsk): Promise<{ decision: import('@craft-agent/shared/assistants').WearDecision; delegateSessionId?: string }>
   setKanbanColumn(sessionId: string, column: string | null): Promise<void>
   setTaskNodeCount(sessionId: string, count: number): Promise<void>
   adoptGeneratedTaskOrchestrator(
@@ -162,7 +161,7 @@ export interface ISessionManager {
   // ---------------------------------------------------------------------------
 
   setPendingPlanExecution(sessionId: string, planPath: string, draftInputSnapshot?: string): Promise<void>
-  markPendingPlanExecutionDispatched(sessionId: string): Promise<void>
+  markPendingPlanExecutionDispatched(sessionId: string): Promise<boolean>
   clearPendingPlanExecution(sessionId: string): Promise<void>
   getPendingPlanExecution(sessionId: string): { planPath: string; draftInputSnapshot?: string; awaitingCompaction: boolean; executionDispatched: boolean } | null
   markCompactionComplete(sessionId: string): Promise<void>
@@ -179,11 +178,12 @@ export interface ISessionManager {
   acceptPlan(sessionId: string, planPath?: string): Promise<void>
 
   // ---------------------------------------------------------------------------
-  // Conversation export
+  // Sharing
   // ---------------------------------------------------------------------------
 
-  /** Render the full conversation as Markdown. The client saves the file. */
-  exportMarkdown(sessionId: string): Promise<ExportMarkdownResult>
+  shareToViewer(sessionId: string): Promise<ShareResult>
+  updateShare(sessionId: string): Promise<ShareResult>
+  revokeShare(sessionId: string): Promise<ShareResult>
 
   // ---------------------------------------------------------------------------
   // Export / Import

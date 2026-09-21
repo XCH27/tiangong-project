@@ -15,7 +15,6 @@ export type { ConfigValidateArgs } from './config-validate.ts';
 
 // Skill Validate
 export { handleSkillValidate } from './skill-validate.ts';
-export { handleManageSkill } from './manage-skill.ts';
 export type { SkillValidateArgs } from './skill-validate.ts';
 
 // Mermaid Validate

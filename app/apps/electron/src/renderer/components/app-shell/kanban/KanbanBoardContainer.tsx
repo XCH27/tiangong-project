@@ -11,7 +11,7 @@ import { useNavigation } from '@/contexts/NavigationContext'
 import { useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
 import { useLabels } from '@/hooks/useLabels'
 import { getSessionTitle } from '@/utils/session'
-
+import { routes } from '@/lib/navigate'
 import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
 import { DEFAULT_MODEL, getModelShortName } from '@config/models'
 import { getDefaultModelsForConnection, type LlmConnectionWithStatus } from '@config/llm-connections'
@@ -19,7 +19,7 @@ import type { SessionStatus } from '@/config/session-status-config'
 import type { KanbanColumnDef } from '@craft-agent/shared/projects/types'
 import { KanbanBoard } from './KanbanBoard'
 import { KANBAN_COLUMNS, statusToColumn } from './status-column'
-
+import { BoardListToggle } from './BoardListToggle'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
 import { mergeSubtaskRows, type SpecNodeSummary, type SubtaskChildRow } from './subtask-merge'
@@ -103,7 +103,7 @@ export function KanbanBoardContainer() {
   const [columnStatus, setColumnStatus] = useAtom(kanbanColumnStatusAtom)
   const treatment = useProjectColorTreatment()
   const updateSessionMeta = useSetAtom(updateSessionMetaAtom)
-  const { navigateToSession } = useNavigation()
+  const { navigate, navigateToSession } = useNavigation()
   // Label tree for resolving the reserved Task label (scoped tile-click navigation).
   const { labels: labelConfigs } = useLabels(activeWorkspaceId ?? null)
 
@@ -579,6 +579,12 @@ export function KanbanBoardContainer() {
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.newTask')}
           </button>
+          <BoardListToggle
+            value="board"
+            onChange={view => {
+              if (view === 'list') navigate(routes.view.allSessions())
+            }}
+          />
         </div>
       </div>
       <div className="min-h-0 flex-1">
