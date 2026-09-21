@@ -208,3 +208,46 @@ used for analysis without any live-trading grant.
     Session/Action/Job/Artifact authorities. Selecting an earlier operation targets its exact input
     or output version, creates a new branch, preserves old results and marks only dependent results
     stale until explicit recompute; the Component does not create a private trace store.
+
+---
+
+## Module boundary — Workbench and panel host module
+
+> Merged here from `docs/modules/workbench/README.md` on 2026-09-21. That directory held a
+> 34-line compatibility record referenced by exactly one document
+> (`14-MODULE-ARCHITECTURE.md`) and by neither `PACKET-INDEX.md` nor this suite, so working on this
+> loop meant reading two files that never linked to each other. One loop, one document.
+
+Design state: `PACKET_DRAFT`. Development order: the owner-directed early R15/R18 foundation in
+[`../../specs/R18-right-workbench.md`](../../specs/R18-right-workbench.md), before domain components;
+R18 later closes native multi-window/advanced layout. A complete registered host is
+`not implemented`. Existing fixed-column resizing and Files/Browser/Notes tools are
+`wired but not visually checked`; fixed History content is `display-only`. The former embedded
+browser/review/command-runner and restored-tab claims are not evidence for this checkout.
+
+#### Reality and activation sequence
+
+The current Craft `AppShell` + `PanelStackContainer` owns a fixed horizontal stack. The mounted
+`renderer/components/right-sidebar/RightSidebar.tsx` has a hardcoded tool list, not a contribution
+registry. `shared/src/components/` and `shared/src/layout/tree.ts` have no production consumers;
+the latter explicitly disallows nonempty floats in v1. There is no current `RightWorkbench` host
+that an agent can treat as landed merely because an earlier document named it.
+
+Reuse existing Files and Notes handlers as the first real registry consumers. Preserve one
+Workspace/Session binding and one layout representation; do not add another Session or settings
+store. Global/workspace Component activation does not wait for a marketplace, delegation or memory.
+The executable spec owns the ordered steps, denial/unload/recovery behavior and rollback boundary.
+
+#### Layout scope
+
+Left tools/right workbench are defaults, not immovable regions. Required foundation behavior is
+user-controlled resize, move, reorder, in-window float/re-dock and Workspace/window-scoped restore,
+including conversation views. Layout stores ids/geometry only; drafts and domain state remain in
+their native owners. Keyboard controls and viewport-clamped restore are required. Moving panels
+must not recreate live jobs or eagerly load unused component implementations.
+
+Acceptances WB-001..003 / CORE-11-A are exercised by two existing real surfaces, not fabricated
+placeholder panels. FND-01..08 in the foundation spec make the current scope testable. Native
+multi-window detach/re-dock needs additional Electron protocol, security and lifecycle evidence;
+it is not proven by a browser-library demo. New production dependencies remain an owner checkpoint.
+

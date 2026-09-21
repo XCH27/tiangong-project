@@ -65,6 +65,16 @@ Craft authority baseline
   → layered agent memory                      (notes → logged consolidation → curated layers)
 ```
 
+There is one owner-directed early branch beside that chain:
+
+```text
+existing Files/Notes → scoped Component/panel host → in-window layout recovery
+```
+
+This branch proves the host with real consumers before domain Components and does not wait for R4–R9,
+a marketplace or a memory store. It may not claim the later action, artifact, canvas, delegation or
+memory contracts; those still enter through the main chain when their first real callers exist.
+
 Two consequences:
 
 - **Ahead-of-dependency work is allowed when the owner requests it**, but it records the exact
@@ -123,6 +133,88 @@ products; a short capability-map row cannot safely carry them.
   read. Browser remains the first narrow adapter; do not freeze a universal Environment interface
   until a second real device/remote adapter proves shared semantics.
 
+### Human, Agent and Replay provenance
+
+When a person and an Agent operate the same surface, the surface emits one semantic operation
+envelope regardless of caller. The envelope records:
+
+```text
+actionId, callerKind(human|agent|automation|replay|system), callerId,
+sessionId, workspaceId, componentId, sourceEvent/toolCall,
+inputSchemaVersion, baseVersion, resultVersion, evidenceRefs,
+permissionDecision, timestamp, outcome, recovery
+```
+
+The UI may show a compact attribution marker and operation history, but attribution is not inferred
+from who happened to click last. Human and Agent actions use the same executor; the caller policy,
+approval and evidence path differ. If a human edits while an Agent works from an older version, the
+executor rejects the stale base and returns a structured conflict/replan result. Silent last-write-
+wins is forbidden.
+
+Record & Replay is a learning boundary, not a second executor. A recording is opt-in and local by
+default; the user selects the workflow interval and confirms which values become inputs. The
+extractor prefers semantic Action events, Component commands and existing Skills over raw mouse
+coordinates or screenshots. The generated Skill is a versioned procedure with preconditions,
+variables, verification, failure recovery and provenance links; it is not published or made global
+without user review. Secrets, credentials, cookies, personal identifiers and financial data are
+redacted or excluded. Replay re-enters the ordinary permission/evidence path and can stop when the
+observed UI/artifact version differs from the recorded precondition.
+
+Learning from a demonstration means **procedure extraction and measured refinement**, not silent
+model retraining or automatic mutation of the product runtime. A successful replay may update a
+Skill's quality evidence; it does not rewrite the Skill or widen its permissions by itself.
+
+### Work trajectory and targeted revision
+
+The visible work trajectory is a projection of the existing append-only Session/SessionEvent log,
+governed Action results, native Job records and ArtifactRef lineage. It is not a fourth timeline and
+Components do not write private histories. DeepSeek Harness is the source-level precedent: its
+durable events have turn/step boundaries, tool-call parent/child edges, opaque producer sources and
+queryable event/session lineage; its surface fold distinguishes `current`, `shadowed` and `log-only`
+events, while the UI derives a tool-call tree and other nodes from those facts instead of making the
+tree the authority. A Component may register a `ConversationNodeDefinition`-style projection with a
+stable key and anchor event, but it may not rewrite the raw event window.
+
+The minimum correlation envelope for a consequential operation is:
+
+```text
+traceId, sessionId, workspaceId, componentId?
+turnId?, stepId?, operationId, attemptId, parentOperationId?
+callerKind, actionType, inputSchemaVersion
+inputArtifactRefs[{id, version}], outputArtifactRefs[{id, version}]
+jobId?, canvasProjectionIds?, status, evidenceRefs, recovery
+sourceEventSeqs[], derivedEventSeqs[]
+```
+
+This is a target seam; R4/R5 freeze only the fields proven by real dual callers and a real
+producer/consumer. The invariants already bind: every input is an exact immutable version, every
+output is a new version or an explicit failure, retries identify the attempt, and heavy bytes remain
+with the native owner. Persist semantic operation start/result/end and recovery boundaries; high-
+frequency token/progress updates use the live event bus and trajectory projection, with raw chunks
+retained only under an explicit session/retention policy. An operation manifest may include the
+Component/tool revision, model/provider, parameter or prompt hash, seed and environment fingerprint
+needed to explain or replay the call. The canvas, workbench and chat may show different projections
+of the same operation, but they resolve to the same `operationId`/ArtifactRef rather than copying
+data.
+
+Target selection is explicit. A user can select an operation, artifact version or canvas node and
+then ask for a change; the UI sends that stable target token with the request. A phrase such as
+“这张图” resolves only through the current selection/context when it is unique. If more than one exact
+version matches, Fleet asks the user or shows selectable candidates; it never guesses from a name,
+path or thumbnail alone.
+
+Revising a prior step is branching, not mutation. The new action records `branchOf`/`retryOf` and its
+base version, creates new Job/ArtifactRef results, leaves the old branch readable, and marks later
+descendants `stale` or `awaiting-recompute` until the user or an explicit policy chooses to rerun
+them. A visual “replace” is therefore a new lineage head, never an overwrite of the historical
+poster, mask, vector text or background.
+
+Replay has two explicit modes: **exact replay** reuses a previously committed ArtifactRef and its
+evidence without invoking a model or external side effect; **re-execute** reconstructs the recorded
+operation manifest and calls the current approved Component/runtime again. Non-deterministic or
+chargeable re-execution requires confirmation, an expected-base-version check and a new attempt id.
+An interruption may add a settlement/recovery event, but it never fabricates a successful output.
+
 ### Files and artifacts
 
 - Exact artifact versions are immutable; an edit creates a new version/lineage. Resolving a
@@ -136,6 +228,25 @@ products; a short capability-map row cannot safely carry them.
   detect the prior commit and must not duplicate bytes, billing, or provenance.
 - A lease coordinates writers but never grants permission. Approval precedes the lease; execution
   rechecks the resource version after acquiring it; recovery refuses to overwrite newer state.
+
+#### Import/export adapter contract
+
+External formats are adapters, not additional artifact authorities. An import preserves the original
+bytes and creates a derived native representation with an `ImportReceipt` containing source hash,
+adapter/component revision, format version, extracted assets/fonts, unsupported features, transform
+notes and fidelity class (`lossless`, `structured-limited`, `visual-reference`, `unsupported`).
+Export produces a new ArtifactRef and a fidelity report; it never overwrites the source implicitly.
+
+Figma `.fig`, Photoshop PSD/PSB, Illustrator AI and other proprietary formats therefore require a
+tested adapter or an approved export/API/plugin path. SVG/PDF/PNG or a flattened preview is a valid
+fallback only when reported as `visual-reference`, never as editable native support. Native document,
+design, media and canvas Components own their derived model; Fleet Core owns the original reference,
+provenance, permission and recovery envelope.
+
+Reproducible restore is an immutable version/lineage operation: snapshot or inverse Action → validate
+base version → apply through the native owner → commit evidence. A failure quarantines partial output
+and leaves the prior head intact. Retry/restart reconciliation must detect an already committed output
+before producing another file, charge or provenance event.
 
 ### Capabilities and workflows
 
@@ -239,6 +350,28 @@ version, attempt, dispatch generation, evidence and outcome. Verification return
 exactly one verdict: `PASS` / `IMPLEMENTATION_FAILURE` / `ENVIRONMENT_FAILURE` /
 `EVIDENCE_UNAVAILABLE` / `CONTRACT_AMBIGUOUS`. Only `PASS` against the current contract version
 completes the task.
+
+### Decision-to-implementation gate
+
+The same anti-drift rule applies before a product idea becomes a contract. A proposed Component,
+surface, adapter or shared field may be documented for breadth, but it cannot enter the active
+roadmap or be presented as a capability until the decision record identifies:
+
+| Gate | Required proof |
+|---|---|
+| Intent and invariant | the owner outcome and the failure the rule prevents |
+| Authority | the existing store/service/action path, or an explicit smallest new seam |
+| Real loop | a production writer and consumer, with scope and stable identity |
+| State truth | what is persisted, how it is versioned, and how resume/reload reconstructs it |
+| Boundaries | denied, failed, offline, missing-dependency, uninstall and recovery behavior |
+| Evidence | acceptance IDs and the cheapest sufficient verification path |
+| Constraints | license, platform, resource and owner checkpoints |
+
+Missing proof leaves the item `not implemented` (or packet `BREADTH_ONLY`/`PACKET_DRAFT`); it may
+guide research but may not add a release dependency, a default-visible entry, or a second
+authority. A type, isolated unit test, screenshot, source README or mock without a production caller
+does not satisfy the real-loop gate. If the owner later changes the intent, the contract version
+must change and stale writers/reports must be rejected rather than silently reinterpreted.
 
 ## 5. System-wide completion contract
 

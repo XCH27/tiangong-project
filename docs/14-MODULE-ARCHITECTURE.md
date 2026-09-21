@@ -53,7 +53,7 @@ The review answers, with code paths and interfaces rather than slogans:
     structured route is used first, how are live grant and observation freshness enforced, and what
     second real adapter would justify any proposed generic environment interface?
 
-The minimum output is a compatibility record in `docs/modules/<module>/README.md` and a reference
+The minimum output is a **Module boundary** section inside that loop's suite packet at `docs/modules/suites/SYS-NN-*.md` — one loop, one document — and a reference
 record in `docs/references/<domain>/` before an implementation spec is written for the module.
 The labels in [`modules/PACKET-INDEX.md`](modules/PACKET-INDEX.md) (`BREADTH_ONLY` /
 `PACKET_DRAFT` / `READY_FOR_SPEC`) describe **documentation depth only** — they are never work
@@ -119,21 +119,21 @@ implementation, classify each row using `modules/MODULE-TAXONOMY.md`
 as core system, product module, surface, adapter/connector or capability.
 
 The following modules remain in product coverage even when their implementation is gated. Their
-table status is implementation status; packet readiness is recorded in each module README.
+table status is implementation status; packet readiness is recorded in each suite packet under `docs/modules/suites/`.
 
 | Module | Design home | Current implementation status | Development order / compatibility gate |
 |---|---|---|---|
 | Canvas/spatial orchestration | `modules/canvas/` | not implemented | R7; renderer benchmark; projection must not own domain truth |
 | Video/media editing | `modules/video/` | not implemented | R12; timeline model, media jobs, renderer/export and ArtifactRef seam |
-| Browser automation/evidence | `modules/browser/` | not implemented | R3/R5 evidence; R16 computer fallback; permission and download boundaries |
-| Token/context economy | `modules/suites/SYS-03-context-economy.md` + `modules/suites/SYS-03-context-economy.md` | not implemented | TE1/R3 measurement; R15 loadout; R17 policy closure; no projection store before two consumers |
+| Browser automation/evidence | `modules/browser/` | Craft BrowserPane baseline `usable`; Fleet capture/evidence `not implemented` | R3/R5 evidence; R16 computer fallback; permission and download boundaries |
+| Token/context economy | `modules/suites/SYS-03-context-economy.md` | not implemented | TE1/R3 measurement; R15 loadout; R17 policy closure; no projection store before two consumers |
 | Reviewed memory | `modules/memory/` | not implemented | R9 proposal/review/retrieval/deletion; raw Session history remains evidence authority |
 | AIGC jobs/rendering | `modules/jobs/` | not implemented | R11–R13; cancellation, resource limits and provider adapters |
 | Design surface | `modules/design/` | not implemented | R10; transactional native design model and license gate |
 | Deck/motion | `modules/deck-motion/` | not implemented | R13; native document authority and honest export fidelity |
 | Workflow composition | `modules/workflows/` | not implemented | R8; governed actions, immutable DAG and run projection |
-| Workbench/panels | `modules/workbench/` | `usable` baseline (Craft); Fleet extension `not implemented` | R18 closure; one host, no competing settings or session authority |
-| Skill/plugin/MCP marketplaces | `modules/suites/SYS-08-marketplaces.md` | not implemented | R15; extends Craft Skills/Sources/MCP/credentials with staged transactions and receipts |
+| Workbench/panels | `modules/workbench/` | fixed sizing `wired but not visually checked`; registered/movable host `not implemented` | early R15/R18 foundation with existing Files/Notes; R18 advanced/native-window closure follows |
+| Component host/composition and distribution | `modules/suites/SYS-09-workspace-compositions.md` + `SYS-08-marketplaces.md` | not implemented | early local/scoped host before domain Components; R15 distribution follows trust/permission proof; no blanket R6/R9 prerequisite |
 
 ## 6. Relationship to the roadmap
 

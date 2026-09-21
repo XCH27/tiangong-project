@@ -40,7 +40,7 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 | CORE-08 | Help, docs and support | EXTEND | breadth | wired but not visually checked | local/user-configured links |
 | CORE-09 | Updates, packaging and distribution | EXTEND | breadth | wired but not visually checked | Fleet channel |
 | CORE-10 | Internationalization and identity | EXTEND | breadth | wired but not visually checked | i18n + stable IDs |
-| CORE-11 | Panels, docking and layout | EXTEND | breadth | wired but not visually checked | one Workbench host |
+| CORE-11 | Panels, docking and layout | EXTEND | breadth | fixed-column sizing wired but not visually checked; registered/movable host not implemented | early R15/R18 foundation uses existing Files/Notes; R18 native-window closure follows |
 
 ## Files, evidence and information
 
@@ -109,14 +109,14 @@ the sequence; R16–R18 close conditional rows by implementing the proven extens
 |---|---|---|---|---|---|
 | ORCH-01 | Workflow definition editor | NEW | breadth | not implemented | finite typed DAG |
 | ORCH-02 | Workflow execution and run history | NEW | breadth | not implemented | TaskRunner projection |
-| ORCH-03 | Capability/skill/plugin manager | EXTEND | breadth | not implemented | manifest + loadout + runtime |
+| ORCH-03 | Component manager and workspace compositions | EXTEND | breadth | not implemented | early R15/R18 host + scoped settings proof before domain components; no R6/R9 prerequisite; pure resolver exists without a production consumer |
 | ORCH-04 | Agent tool registry and MCP | EXTEND | breadth | not implemented | one action/tool policy path |
 | ORCH-05 | Jobs, queues and resource scheduling | NEW | breadth | not implemented | one cancellable Job authority |
 | ORCH-06 | Event stream and activity history | EXTEND | breadth | usable | SessionEvents/timeline |
 | ORCH-07 | Notifications, approvals and inbox | EXTEND | breadth | not implemented | permission/session evidence |
 | ORCH-08 | Diagnostics, health and recovery | NEW | breadth | not implemented | failure classification |
 | ORCH-10 | Skill marketplace and loadout distribution | NEW/EXTEND | breadth | not implemented | signed skill manifest, compatibility and one loadout authority |
-| ORCH-11 | Plugin marketplace and lifecycle | NEW/EXTEND | breadth | not implemented | trust, permissions, install/update/rollback and runtime isolation |
+| ORCH-11 | Component marketplace and lifecycle | NEW/EXTEND | breadth | not implemented | trust, permissions, install/update/rollback, runtime isolation, and workspace enable/override records |
 | ORCH-12 | MCP server marketplace and connector registry | NEW/EXTEND | breadth | not implemented | server manifest, tool capabilities, credential scope and health |
 
 ## Registry rules

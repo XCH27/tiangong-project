@@ -25,32 +25,29 @@ shell with exactly the R1 boundary reshape applied — nothing else moved.
 │          browser tabstrip · "+" panel menu · Help (?)
 ├ Sidebar
 │   New Task ······················ THE create trigger (⌘N/⌘T, FAB, menus all alias it)
-│   Flagged · Archived ············ filter states of the one Session list (promoted from
-│                                   v0.10.5 All-Sessions children when that row was removed)
-│   Sources (APIs · MCPs · Local)
-│   Skills
-│   Automations (Scheduled · Event · Agentic)
-│   项目 Projects  [+ hover-reveal, G7]
-│     ├ Project row = Workspace ··· THE Project switcher (one row per Workspace-as-Project)
-│     │    └ session leaves ······· folder-bound Sessions, each appearing once under its Project
-│   对话 Conversations  [+ hover-reveal, G7]
-│     └ session leaves ············ folder-less Sessions
-│   Settings ······················ 11 registry pages, single home
-├ Navigator panel ················· THE Session list (single mount), filter dropdown, search
-└ Main content ···················· ChatPage · Source/Skill/Automation info pages · settings pages
+│   Conversations ················ one Session list; project/label/status filters live on the row
+│   Board ························· task projection (kept as an explicit route)
+│   Sources · Skills · Automations · Pages
+│   项目 Projects [+ hover-reveal, G7]
+│     └ Project row = Workspace ··· THE Project switcher (one row per Workspace-as-Project)
+│   Settings ······················ one settings surface with category panels
+│   What's New
+├ Navigator panel ················· Session/entity list when the sidebar is hidden; settings navigator
+├ Main content ···················· conversation + panel-first detail/configuration surfaces
+└ Right tools (optional) ·········· Files · Browser · Notes · legacy History; one mounted tool rail
 ```
 
 The invariants that make this a framework rather than a layout:
 
 | # | Invariant | Evidence | Grounding |
 |---|---|---|---|
-| K1 | **One Session list.** Projects and Conversations are two *scopes* over a single list; flagged/archived/status/label/view/search are predicates, never second homes. | Sole mount `components/app-shell/AppShell.tsx:3487`; predicates `AppShell.tsx:1257–1313`; scopes `AppShell.tsx:1270–1290` | R1 clauses 1, 5, 6; R1-C2 |
+| K1 | **One Conversation surface and one Session list.** There is one canonical list; Project, pinned/archived/status/label/view/search remain predicates or grouping headers, never second homes. The persisted compatibility field remains `isFlagged`. On normal desktop the list is projected inline under the Conversation entry; when the sidebar is hidden it uses the navigator pane. | Sole `SessionList` mount in `AppShell.tsx` `navigatorBody`; placement is controlled by `navigator-placement.ts` | R1 clauses 1, 5, 6; R1-C2 |
 | K2 | **One create flow.** Every trigger (10+ global, per-Project `+`, 对话 `+`, empty-state CTA, FAB, deep link, browser prompts) resolves to `routes.action.newSession` → one handler. Context (folder-bound vs folder-less) is supplied by the trigger, with explicit `workdir:'none'` for folder-less. | Handler `context/NavigationContext.tsx:732–832`; `AppShell.tsx:1713` (`handleNewChat`), `:1912` (`handleNewTaskInProject`) | R1 clause 2; R1-C3 |
-| K3 | **One Project switcher.** Sidebar Project rows in normal mode (lifted from the removed TopBar `WorkspaceSwitcher`, owner 2026-07-25); `CompactWorkspaceSwitcher` is the compact-mode *renderer* of the same capability, kept only because compact hides the sidebar. | Rows `AppShell.tsx:1974`; removal rationale comment `components/app-shell/TopBar.tsx:204–207` | R1 clause 3 |
+| K3 | **One Project switcher.** Sidebar Project rows in normal mode (lifted from the removed TopBar `WorkspaceSwitcher`, owner 2026-07-25); `CompactWorkspaceSwitcher` is the compact-mode *renderer* of the same capability, kept only because compact hides the sidebar. | Workspace rows in `AppShell.tsx`; compact renderer in `CompactWorkspaceSwitcher.tsx`; non-compact `TopBar.tsx` has no switcher | R1 clause 3 |
 | K4 | **One Project-create language.** Local → OS directory picker directly; cloud/remote → `WorkspaceCreationScreen` at the remote step. | `AppShell.tsx:2510–2544`, `:1819–1848`, `:1855` | R1 clause 3 ✅; R14 hardens remote in place |
 | K5 | **One menu schema, one hotkey authority.** Native macOS menu, desktop logo dropdown and mobile sheet all render `shared/menu-schema.ts`; shortcuts live only in the action registry (native `registerAccelerator:false`). | `shared/menu-schema.ts:78–222`; `renderer/actions/definitions.ts:3` (byte-identical to v0.10.5); `main/menu.ts:134` | v0.10.5 upstream design |
 | K6 | **One settings home.** 11 pages from one registry drive navigator, logo-menu submenu, sidebar row and ⌘,. Label *definitions* live only here (clause 5); Workspace settings page is the Project settings authority (clause 4). | `shared/settings-registry.ts:37–46`; `pages/settings/settings-pages.ts:33–45` | v0.10.5 (registry byte-identical); R1 clauses 4–5 |
-| K7 | **Dormant stays dormant.** Board/Kanban/TaskEditor have zero shell entries (typed `board` route only); nested v0.11 projects are compatibility deep links (list mode = redirect hint; `ProjectInfoPage` has no Sessions tab); no permanent All Sessions entry (legacy kind redirects). | `MainContentPanel.tsx:383–388`; `AppShell.tsx:3444–3459`, `:3521–3524`; `pages/ProjectInfoPage.tsx:33` | R1 clauses 1, 4, 9; `lib/r1-product-gates.ts` |
+| K7 | **Dormant stays dormant.** Board/Kanban remains an explicit route and full-width task projection; it does not create a second Session authority. Nested v0.11 projects remain compatibility deep links; the visible Project rows are Workspace-backed and the legacy detail panel is not the canonical Project home. | `MainContentPanel.tsx`, `AppShell.tsx` workspace rows, `pages/ProjectInfoPage.tsx` | R1 clauses 1, 4, 9; `lib/r1-product-gates.ts` |
 | K8 | **G7:** sidebar trailing row meta and `+` actions stay hover-reveal at rest. No proposal in this document touches that decision. | `AppShell.tsx:2510`, `:1985`, `:2563` | Owner decision 2026-07-26 |
 
 ## 2. Overlap clusters — decisions requested

@@ -12,9 +12,9 @@ second Fleet authority.
 | Source | Local checkout | Commit | License |
 |---|---|---|---|
 | [Craft Agents](https://github.com/craft-ai-agents/craft-agents-oss) | official current `HEAD` checked in a temporary clone | `a60ebc1a5a7cb0a6af7a77d5eed0512c5fc07658` (`0.11.2`) | Apache-2.0 |
-| [earendil-works/pi](https://github.com/earendil-works/pi) | `源码参考/software/pi-mono-latest` | `bff5ab71743b442efa234dbed369e0a96da791f3` | MIT |
-| [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) | `源码参考/software/hermes-agent-latest` | `43874d1a96134729ff65d8a0da84a38ef0fc723b` | MIT |
-| [openclaw/openclaw](https://github.com/openclaw/openclaw) | `源码参考/software/openclaw-latest` | `c6dfee1b78b465ff858fdb6396537d7c2227b36f` | MIT |
+| [earendil-works/pi](https://github.com/earendil-works/pi) | `源码参考/software/pi-mono` | `a470b121bf683b4c2b9fc0b3a7c807de7e0cfe9c` | MIT |
+| [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) | `源码参考/software/hermes-agent` | `7e67f64fcee9340f40a1c6f912fc650aa4984510` | MIT |
+| [openclaw/openclaw](https://github.com/openclaw/openclaw) | `源码参考/software/openclaw` | `3cb7f6330c76c385070a4b6f6c2981163c28384b` | MIT |
 
 The Pi checkout currently declares package version `0.82.1`. Fleet pins
 `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` at `0.80.6`; the published

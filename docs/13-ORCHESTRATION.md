@@ -109,6 +109,100 @@ Module registration contract (E1/E2): a native module (video, design, deck, web,
 document schema; it never owns sessions, permissions, tasks, or a second timeline. Loadouts scope
 which capabilities an agent sees per task — attention is a budget too.
 
+### 3.1 Work trajectory: one trace, many projections **[decided as design; fields freeze R4/R5]**
+
+The trajectory of a piece of work is the join of the existing Session/SessionEvent log, governed
+Action results, native Job records and ArtifactRef lineage. It is not a new `trace.json`, and a
+Component, MCP server or renderer may not keep a private history that the host cannot query. The
+trajectory records semantic boundaries rather than making raw model tokens or screenshots the only
+explanation of what happened.
+
+Each consequential operation contributes a correlation record with this target shape:
+
+```text
+traceId · sessionId · workspaceId · componentId?
+turnId? · stepId? · operationId · attemptId · parentOperationId?
+callerKind · actionType · exact input ArtifactRef versions
+Job id? · exact output ArtifactRef versions · status
+evidence/recovery refs · canvas projection ids?
+sourceEventSeqs[] · derivedEventSeqs[]
+```
+
+DeepSeek Harness provides the source-level pattern Fleet admits: append-only events with explicit
+turn/step boundaries, tool-call parent/child edges, opaque producer sources, and query functions that
+trace one event's replacement/derived descendants or a Session's parent/child lineage. Fleet keeps
+those facts in the existing authorities and derives a `WorkTrace` projection for chat, canvas,
+workbench and inspection; the projection is disposable and never becomes a second authority.
+
+The projection uses stable node keys plus an anchor event/sequence, so it can append a live tail,
+prepend older pages or replace a stale window without changing the source log. It exposes the folded
+state (`current`, `shadowed`, `log-only`, `partial` or `interrupted`) and a read-only inspector for
+inputs, outputs, raw operation data, source/derived links, schema/options, usage, timing and diffs.
+Progress updates update the projection node; they do not create a second progress authority. A
+Component-specific node definition may add a useful view, but unknown future event kinds remain
+opaque and visible rather than being dropped.
+
+Recovery is explicit. If a cold load finds an open turn, the persistence owner may append legal
+interruption closers for an unstarted or unknown tool outcome and then close the step/turn; a live
+open turn is not silently repaired. The original call and any replaced result remain addressable
+through `sourceEventSeqs`, so the trace can distinguish a current output, a shadowed historical
+output and an interrupted/unknown output.
+
+The operation graph uses only a small set of immutable relationships:
+
+| Relationship | Meaning | Mutable? |
+|---|---|---|
+| `input` | this operation consumed this exact ArtifactRef version | immutable fact |
+| `derived-from` | an output was produced from exact input versions | immutable fact |
+| `projects-to` | a native artifact/job/operation is shown by a canvas/workbench node | projection only |
+| `retry-of` | same semantic operation and base, another attempt | immutable fact |
+| `branch-of` | a revision starts from an earlier operation or version with changed intent/inputs | immutable fact |
+| `recovery-of` | a recovery or reconciliation action addresses a failed/unknown attempt | immutable fact |
+
+Canvas position, visual connectors and thumbnail similarity are never provenance. A Component emits
+these records through the governed Action/Job/Artifact seams; it does not mint a second timeline.
+
+#### Targeting and revision semantics
+
+“Modify that step” is translated into an explicit target token: `operationId`, exact
+`ArtifactRef(id, version)`, or a selected `canvasNodeId` resolved to one of those. A phrase such as
+“this image” is accepted only when the current selection/context resolves to one exact version;
+otherwise Fleet presents candidates or asks. Names, paths and thumbnails alone are not stable
+identity.
+
+The Agent-facing inspection path follows the same rule: a future `operation_trace`/`operation_read`
+tool accepts an explicit target Session plus `operationId` or exact ArtifactRef and an expected
+version/hash, authorizes Workspace scope first, and returns the bounded source/derived lineage. It
+does not treat the current UI selection as authority, and it cannot inspect a different Workspace or
+silently select “the latest” result.
+
+Revision never edits an old result in place. The kernel creates a new branch/version from the chosen
+base, records `branch-of` (or `retry-of` for an unchanged operation), preserves the old outputs, and
+marks dependent descendants `stale`/`awaiting-recompute`. Recompute is an explicit action with its
+own new Job and evidence, so the user can compare branches, keep the old result, or continue from
+the new lineage head.
+
+Replay also distinguishes **exact** (reuse a committed ArtifactRef without rerunning side effects)
+from **re-execute** (rebuild the recorded operation manifest under current permission/runtime). The
+latter needs a fresh attempt id, expected-base-version validation and confirmation when the model is
+non-deterministic or chargeable.
+
+#### Example: poster → vector text → clean background → composite
+
+| Step | Actual record | Result the user can target later |
+|---|---|---|
+| 1. Generate poster | `operationId=o1`, Component `image`, Job `j1`, prompt/style inputs | `ArtifactRef poster@v1`, projected to canvas node `n1` |
+| 2. Extract/layout text | `operationId=o2`, input `poster@v1`, OCR/style evidence, Component `design` | `ArtifactRef vector-text@v1`, node `n2`, `derived-from o1` |
+| 3. Remove raster text | `operationId=o3`, input `poster@v1`, mask/negative prompt, Job `j2` | `ArtifactRef clean-background@v1`, node `n3`, `derived-from o1` |
+| 4. Compose final | `operationId=o4`, inputs `clean-background@v1 + vector-text@v1` | `ArtifactRef poster-final@v1`, node `n4`, `derived-from o2,o3` |
+
+If the user selects `o2` and asks for a different font, Fleet starts `o2b` from the same
+`poster@v1`, leaves `vector-text@v1` and `poster-final@v1` intact, and marks only the dependent
+composite stale. If the user selects `n1` and changes the image prompt, the new poster branch does
+not silently replace the original; the system offers explicit recomputation of o2–o4 against the new
+base. The chat, canvas and component panels all show the same ids and versions, so an Agent can
+distinguish “change the text layout” from “regenerate the source image”.
+
 ## 4. Canvas orchestration **[design decided; lands R7, pages may mock earlier via G6]**
 
 The canvas is Fleet's **spatial command surface**: the place where you *see* the whole work chain —

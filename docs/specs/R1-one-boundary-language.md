@@ -16,16 +16,16 @@
 
 ## Outcome
 
-Fleet restores Craft v0.10.5 as its product and interaction baseline while keeping the current
-`app/` tree as the only implementation tree. The default shell exposes one Project boundary, one
-Session-list implementation, one New Task flow and one home for each supporting capability.
-Folder-bound Sessions appear under Project rows; folder-less Sessions appear in a sibling
-Conversations section. Useful v0.11.1 fixes or backend mechanisms survive only when a code
+Fleet keeps the current Craft v0.13.3 implementation tree as its visual and runtime baseline. The
+default shell exposes one Project boundary, one Conversation surface backed by one Session-list
+implementation, one New Task flow and one home for each supporting capability. Project context and
+Conversation filtering are states of that surface, not sibling conversation homes. Useful v0.11.1 fixes or backend mechanisms survive only when a code
 comparison proves they do not restore the later Projects/Kanban product model.
 
-The user can create folder-less work globally or folder-bound work within a Project, find each
-Session once, assign labels, archive and recover it, and open Project documents/assets/settings
-without seeing duplicate Session lists. The same surfaces are complete in zh-Hans and English.
+The user can create folder-less work globally or folder-bound work from Project context, find each
+Session once in one Conversation surface, assign labels, archive and recover it, and open Project
+documents/assets/settings without seeing duplicate Session lists. Project, label, status and archive
+choices filter that one list. The same surfaces are complete in zh-Hans and English.
 
 ## Source and authority policy
 
@@ -55,22 +55,23 @@ Every v0.11-derived delta receives one verdict before implementation:
 > selection. Removing filtered states does not satisfy "one work list" — it removes function while
 > leaving the actual duplication untouched.
 
-1. **One Session list, two honest scopes.** A folder-bound Session appears once under its Project;
-   a folder-less Session appears once under the sibling Conversations section. Project pages,
-   labels, search and archive never create additional default conversation lists.
-   - ✅ Projects and Conversations render the **same** Session-list component with different scope
-     predicates; status, Flagged, Archived and label selection add another predicate to it.
-   - ✅ There is no permanent All Sessions entry. Projects is the folder-bound overview and
-     Conversations is the folder-less overview, so a third aggregate entry would only repeat rows.
-   - ✅ Project home shows documents/assets/settings and links into the sidebar tree for its work.
-   - ❌ Deleting status, Flagged, Archived or label filtering. They are states of the one list
+1. **One Conversation surface and one Session list.** Every Session appears once in the canonical
+   Conversation list. Project, label, status, pinned, archived and search choices add predicates or
+   chips to that same list; they do not create sibling conversation homes.
+   - ✅ Project context selects a folder predicate and shows the Project's documents/assets/settings
+     in the workbench without rendering another Session list.
+   - ✅ There is no permanent All Sessions, By Label or By Project conversation entry. A Project
+     grouping header inside the one list is presentation, not a second scope authority.
+   - ✅ Folder-less Sessions remain legal and are shown by the same list when no Project predicate is
+     active.
+   - ❌ Deleting status, Pinned, Archived or label filtering. They are states of the one list
      implementation, and removing them is scope loss, not deduplication.
    - ❌ A Project page rendering its own scrollable Session list beside the sidebar tree.
 2. **One create flow.** Global New Task and the Project-row plus button open the same composer with
    context supplied by the trigger. R1 creates work through SessionManager; it does not require a
    parallel Task record merely to start a conversation.
-   - ✅ The global trigger creates a folder-less Session under Conversations unless a folder is
-     explicitly selected; the Project-row trigger prefills that Project folder.
+   - ✅ The global trigger creates a folder-less Session; a Project-context trigger prefills that
+     Project folder. Both open the same Conversation surface after creation.
    - ✅ Both triggers call one handler that creates a Session and opens the existing composer.
    - ❌ Either trigger navigating to the Board, opening the Kanban `TaskEditor`, or creating a Task
      record. That is clause 9's forbidden case reached through the create flow.
@@ -134,9 +135,10 @@ Every v0.11-derived delta receives one verdict before implementation:
    the affected code in the implementation handoff, not in a new report document.
 2. **Restore preserved behavior:** recover missing Session actions and the v0.10.5 navigation/
    composer behavior before introducing Fleet wording changes.
-3. **Converge navigation:** implement Projects + Conversations as sibling scopes over one list
-   component; remove the permanent All Sessions entry and duplicate Project-page list while
-   preserving status/Flagged/Archived/label filters.
+3. **Converge navigation:** implement one Conversation surface with Project/label/status/archive
+   predicates over one list component; remove permanent All Sessions/By Label/By Project entries and
+   duplicate Project-page lists while
+     preserving status/Pinned/Archived/label filters.
 4. **Converge creation:** global and Project-row triggers call one Session creation path; Project
    add opens the directory picker directly.
 5. **Apply remaining Fleet deltas:** Project=folder vocabulary, Project home, localization and
@@ -170,13 +172,18 @@ for a failing earlier group.
 |---|---|---|
 | R0 gate | `SettingsIcons.tsx`; documentation matrix/validator only when its current output identifies a real gap | Electron typecheck passes; documentation validator passes. Do not install a new Git hook or require zero informational notes as part of R1 |
 | Source restore | v0.10.5/current comparisons for `AppShell.tsx`, `LeftSidebar.tsx`, `SessionList.tsx`, shared Session menus and composer | every changed path gets KEEP/RESHAPE/REMOVE/LATER; archive, labels, rename, destructive actions and advanced composer controls remain reachable |
-| Navigation convergence | `AppShell.tsx`, `LeftSidebar.tsx`, `SessionList.tsx`, `sidebar-nav-model.ts`, `session-filter-menu.tsx`, navigation context/routes, search and collapse helpers | Projects and Conversations are sibling scopes; no permanent All Sessions; status/Flagged/Archived/labels filter the same list implementation; Project home has no Session copy |
+| Navigation convergence | `AppShell.tsx`, `LeftSidebar.tsx`, `SessionList.tsx`, `sidebar-nav-model.ts`, `session-filter-menu.tsx`, navigation context/routes, search and collapse helpers | One Conversation surface; Project/label/status/Pinned/Archived are predicates; no permanent All Sessions/By Label/By Project homes; Project context has no Session copy |
 | Creation convergence | `AppShell.tsx`, `WorkspaceCreationScreen.tsx`, route DTOs and the existing Session create RPC | global New Task explicitly requests no working directory; Project-row New Task supplies that Workspace folder; local Project add opens the directory picker directly; no Board/Task record and no nested `projectId` write are introduced |
 | Project/supporting homes | Project settings, label settings and shared Session action menu | the selected Workspace-as-Project settings stay reachable; nested v0.11 documents/assets remain dormant; label definitions stay in Settings; assignment, Archive and Restore stay on the Session path |
 | Language and verification | seven locale catalogs, affected component/data-path tests and launch smoke | parity/sorted/coverage/string checks pass; owner receives zh-Hans and English walkthrough only after non-visual checks pass |
 
 Implementation notes that prevent current-code traps:
 
+- Project names in tests or user conversations are not product requirements. The owner identified
+  stock-trading examples as chat/feature-test data (OV-010). P6 and component-host work use synthetic
+  isolated fixtures; they do not require choosing a new name for the owner's live Workspace. The
+  migration planner can report a conflict for the affected record without blocking unrelated
+  framework work. Do not run a merge, rename or deletion on live data to satisfy a test.
 - `SessionManager.createSession()` treats an omitted working directory as the Workspace default.
   Folder-less creation must therefore pass the existing explicit `none` value; omission is wrong.
 - A local Project is implemented by the existing Workspace root. Do not create another Project
@@ -190,8 +197,8 @@ Implementation notes that prevent current-code traps:
 
 ## Scope
 
-- **In:** shell/sidebar navigation; Projects + Conversations scopes; Session list and shared Session
-  menu; composer entry; direct local-folder picker; Project
+- **In:** shell/sidebar navigation; one Conversation surface with Project context/predicates;
+  Session list and shared Session menu; composer entry; direct local-folder picker; Project
   switcher/home; existing cloud/remote connection entry; label settings and assignment; archive/recovery; search/filter projections;
   zh-Hans/English catalogs; removal or hiding of v0.11 Board/Project duplication.
 - **Out:** new persistence authorities; automatic creation of a Task for every Session; a new
@@ -219,8 +226,8 @@ and may remain dormant for later backend reuse, but its presence is not a usable
 
 | Capability | Canonical home | Other appearances |
 |---|---|---|
-| Folder-bound Sessions | Project rows in the sidebar | search/status/label/archive are filtered states |
-| Folder-less Sessions | Conversations section in the sidebar | search/status/label/archive are filtered states |
+| Project-bound Sessions | One Conversation list with Project metadata/predicate | search/status/label/archive are filtered states |
+| Folder-less Sessions | One Conversation list when no Project predicate is active | search/status/label/archive are filtered states |
 | Create work | one New Task composer | global trigger creates folder-less work; Project-row trigger binds its folder |
 | Project selection | one switcher | pick/create-folder actions feed it; no parallel Workspace picker |
 | Project documents/assets/settings | Project home | never repeat the work list |
@@ -234,7 +241,7 @@ and may remain dormant for later backend reuse, but its presence is not a usable
 | ID | Criterion | Verified by |
 |---|---|---|
 | R1-C1 | A source comparison assigns KEEP/RESHAPE/REMOVE/LATER to every changed shell/list/menu/composer/Project/Board path | diff inventory against both pinned snapshots |
-| R1-C2 | Each Session has one default row in exactly one scope: its Project or Conversations; Project home and filtered states do not create permanent duplicate lists | component route/state tests |
+| R1-C2 | Each Session has one default row in the canonical Conversation list; Project context and filtered states do not create permanent duplicate lists | component route/state tests |
 | R1-C3 | Global and Project-row New Task triggers call the same composer and Session creation path; global is folder-less by default and Project-row binds its folder | component test + Session RPC fixture |
 | R1-C4 | R1 does not require or create a parallel Task record for an ordinary new Session | data-path test + Task-store call audit |
 | R1-C5 | Project=folder uses one switcher and direct local-folder picker while Workspace persistence/routing remains unchanged | component test + persistence diff audit |
@@ -244,7 +251,7 @@ and may remain dormant for later backend reuse, but its presence is not a usable
 | R1-C9 | Rename, label, archive/recovery and destructive actions share one command definition across compact/full renderers | caller audit + targeted tests |
 | R1-C10 | Composer preserves existing advanced controls on demand and introduces no second editor authority | component test |
 | R1-C11 | i18n parity/sorted/coverage/string checks and scoped typechecks pass | repository commands |
-| R1-C12 | Owner accepts zh-Hans/English shell, Projects/Conversations scopes, Project home, composer, labels and archive flows | owner walkthrough |
+| R1-C12 | Owner accepts zh-Hans/English shell, one Conversation surface with Project context, Project home panel, composer, labels and archive flows | owner walkthrough |
 | R1-C13 | Top-bar search and `Cmd/Ctrl+K` find and open existing Sessions, Project files/folders, Settings and shell destinations without adding persistence | targeted model tests + real Electron smoke |
 | R1-C14 | The existing composer mode entry supports Auto or a manual Explore/Plan/Execute phase; the default privileged-action approval policy is configured in the existing Permissions settings for new Sessions; both project through the single permission gate, persist on the Session, and plan approval never grants bypass implicitly | shared work-mode tests + Session persistence test + Electron typecheck |
 

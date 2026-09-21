@@ -4,7 +4,7 @@
 > [Decisions](../02-DECISIONS.md) are authoritative. Page status belongs to
 > [Page Architecture](../12-PAGE-ARCHITECTURE.md), sequencing to the
 > [Roadmap](../05-ROADMAP.md), and implementation acceptance to the applicable spec. Re-check current
-> Craft v0.11 source before implementation.
+> Craft v0.13.3 source before implementation (the current rolling Craft pin).
 
 ## 1. Owner direction and fixed decisions
 
@@ -192,7 +192,7 @@ the pinned/latest Craft source and first-party product documentation.
 
 Primary evidence:
 
-- Craft v0.11.2 source: [`WorkspaceCreationScreen.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/WorkspaceCreationScreen.tsx), [`AddWorkspaceStep_ConnectRemote.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/AddWorkspaceStep_ConnectRemote.tsx), [`workspace.ts`](../../源码参考/software/craft-agents-oss/packages/core/src/types/workspace.ts), [`routed-client.ts`](../../源码参考/software/craft-agents-oss/apps/electron/src/transport/routed-client.ts), and [remote-server README](../../源码参考/software/craft-agents-oss/README.md#remote-server-headless).
+- Craft v0.13.3 source: [`WorkspaceCreationScreen.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/WorkspaceCreationScreen.tsx), [`AddWorkspaceStep_ConnectRemote.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/AddWorkspaceStep_ConnectRemote.tsx), [`workspace.ts`](../../源码参考/software/craft-agents-oss/packages/core/src/types/workspace.ts), [`routed-client.ts`](../../源码参考/software/craft-agents-oss/apps/electron/src/transport/routed-client.ts), and [remote-server README](../../源码参考/software/craft-agents-oss/README.md#remote-server-headless).
 - OpenAI: [local environments](https://learn.chatgpt.com/docs/environments/local-environment), [cloud environments](https://learn.chatgpt.com/docs/environments/cloud-environment), [Git worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees), [WSL](https://learn.chatgpt.com/docs/windows/wsl), and [Codex app announcement](https://openai.com/index/introducing-the-codex-app/).
 - Cursor: [3.11 project/repository picker](https://cursor.com/en-US/changelog#3-11) and [3.0 worktree command/Agents Window](https://cursor.com/changelog/3-0).
 - Visual Studio Code: [Remote-SSH](https://code.visualstudio.com/docs/remote/ssh), [WSL](https://code.visualstudio.com/docs/remote/wsl), [Dev Containers](https://code.visualstudio.com/docs/devcontainers/create-dev-container), and [remote extension architecture](https://code.visualstudio.com/api/advanced-topics/remote-extensions).

@@ -34,6 +34,9 @@
 | **Slice** | The smallest coherent implementation block delivering one observable outcome across all affected layers (UI + logic + state + recovery + docs). |
 | **Release (R0…R18)** | A bounded, spec'd, acceptance-tested unit of the complete development order in [`05-ROADMAP.md`](05-ROADMAP.md). Exactly one is ACTIVE (a WIP limit, not a time phase); others are READY, DEP (dependency-blocked), or GATED (named non-time gate). R16–R18 require implementation or evidence-backed `NO_GAP` closure. |
 | **Product Matrix** | The breadth authority: every product domain's capabilities, status, gaps, reference projects, backend authority, and acceptance anchor — never trimmed by sequencing ([`11-PRODUCT-MATRIX.md`](11-PRODUCT-MATRIX.md), Decision G5). |
+| **Component** | An installable bounded capability bundle: UI/panels, domain commands, Skills, MCP declarations, defaults, and optional knowledge resources. It consumes Fleet authorities and owns only its native domain. |
+| **Workspace Composition** | The workspace-scoped enabled-component set plus explicit configuration overrides, extra MCPs/knowledge sources, personal habits, and layout preferences. It is not a second capability or permission store. |
+| **Component default** | A vendor-provided value shipped by a Component. It is immutable package input; user and workspace changes are stored as overrides. |
 | **Frontend track** | The standing rule set letting pages be spec'd, mocked behind typed adapters, and built preview-gated ahead of backend behavior, reported `display-only` until wired ([`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) §5, Decision G6). |
 | **Preview gate** | The developer/preview toggle behind which unwired pages live; the default user surface never shows controls without real behavior. |
 | **Admission grade** | The verdict a reference earns in the single admission ledger [`references/REFERENCE-REGISTRY.md`](references/REFERENCE-REGISTRY.md): `FORMAL_REFERENCE` · `MODULE_REFERENCE` · `LOCAL_IMPROVEMENT` · `EVIDENCE_ONLY` · `REJECT` (`candidate` until audited). Checkout mechanics stay in `源码参考/meta/`. |
@@ -55,6 +58,9 @@
 | **Projection** | A derived, non-authoritative view of authoritative state (a Board column, a canvas card, a ProjectDigest). Editing a projection must route through the owning authority. |
 | **Artifact / ArtifactRef** | A produced output with identity; ArtifactRef is the smallest versioned reference + provenance envelope over native bytes (Decision D6; roadmap R5). |
 | **Provenance** | The recorded chain of what produced/consumed an artifact version, for which purpose. Never inferred from visual arrangement (Decision E5). |
+| **WorkTrace** | A disposable projection joining SessionEvents, governed Actions, Jobs and ArtifactRef lineage. It can show `current`, `shadowed`, `log-only`, `partial` and `interrupted` records; it is never a second timeline authority. |
+| **Operation / attempt** | An attributed semantic mutation or invocation (`operationId`) and one execution try (`attemptId`). An operation may have multiple attempts; each attempt has exact input versions, output versions or an explicit failure. |
+| **Lineage branch** | A new immutable output path created from an earlier operation or ArtifactRef version. Revising a step creates a branch and may mark dependent descendants stale; it never overwrites the old branch. |
 | **TaskContract** | The locked, versioned projection of a task for one execution attempt: criteria IDs, allowed/reserved paths, non-goals, budgets (Decision C7). |
 | **ContractChangeRequest** | The explicit act of revising a locked contract — ends/pauses the attempt, creates a new version (Decision C7). |
 | **TaskBrief / RunReport** | The bounded delegation envelope in and result envelope out for supporting agents (Decision C3; templates in `../AGENTS.md`). |

@@ -4,10 +4,21 @@
 install lifecycle. **Depends on:** SYS-01 ActorRef/PermissionDecision/ActionEnvelope and SYS-03
 loadout/context measurement. **Authority:** package identity, catalog metadata, staged transactions
 and receipts; it does not own runtime permissions or Session/Task state.
-**Development order:** R15.
+**Development order:** early local host/activation in
+[`../../specs/R18-right-workbench.md`](../../specs/R18-right-workbench.md), then R15 external
+distribution. Existing permission/settings paths support the first built-in consumers; R6/R9 are
+not blanket prerequisites. A particular component waits only for the capabilities it consumes.
 **Craft base:** existing Skills, Sources, MCP client/server, credentials, settings and tool
 registries. The marketplace adds inspected package/catalog transactions over them; it never replaces
 their runtime or permission paths.
+
+The installable product bundle is a **Component**, as defined in
+[`SYS-09-workspace-compositions.md`](SYS-09-workspace-compositions.md). The historical "plugin"
+view remains a catalog category for compatibility, but a user-facing Component may additionally
+contribute a left tool-rail entry or right-workbench panel and native domain commands. Global versus
+Workspace enablement and user overrides extend the existing user/Workspace settings; the effective
+Composition is derived from them, not copied into the catalog or Assistant record. Left/right are
+default contribution placements; the host owns user movement and restore.
 
 ## Closed loop
 
@@ -19,8 +30,9 @@ uninstall.
 
 - **Skill market:** reusable instructions, prompts, examples, triggers, model/context requirements
   and quality fixtures; no executable side effect by itself.
-- **Plugin market:** a transparent bundle of skills, subagents, MCP servers, hooks and rules; every
-  primitive remains independently inspectable and removable.
+- **Component market:** a transparent bundle of panels, native commands, skills, subagents, MCP
+  servers, knowledge defaults, hooks and rules; every primitive remains independently inspectable
+  and removable. Components use Fleet's design system and additive left/right host slots.
 - **MCP market:** server transport, tool/resource/prompt schemas, auth method, data domains, read/write
   effects, health and per-tool grants; removing a server revokes its tools immediately.
 

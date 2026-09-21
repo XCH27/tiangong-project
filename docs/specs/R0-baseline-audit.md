@@ -38,6 +38,13 @@ accounted for rather than hidden behind an old commit or release claim.
 
 ## Scope
 
+The owner's foundation-first request has an explicit, bounded early R15/R18 host contract in
+[`R18-right-workbench.md`](R18-right-workbench.md). It starts with the affected baseline/P6 checks
+and existing Files/Notes; it neither marks this complete dirty-tree audit finished nor waits for
+R6/R9. The prohibition below on a replacement shell refers to discarded/parallel hosts, not a
+compared extension of the current host seam. Wholesale rollback still needs an exact owner-approved
+target and recovery plan; no test Project name determines that choice.
+
 ### In
 
 - Explain every modified or untracked path in the current working tree and identify half-finished,

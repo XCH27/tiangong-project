@@ -94,3 +94,4 @@ the exact Given/When/Then and evidence path.
 | DECK | CREATE-08-A |
 | WF | ORCH-01-A |
 | WB | CORE-11-A |
+| FND (foundation spec FND-01..08) | CORE-11-A + ORCH-03-A; detailed current acceptance lives in `specs/R18-right-workbench.md` |

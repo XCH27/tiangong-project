@@ -20,6 +20,11 @@
 
 Status values: `in-progress` · `merged` · `dropped` · `competing`.
 
+Registry status describes whether a feature area currently owns worktree territory; it does not
+override the release sequencing in [`docs/05-ROADMAP.md`](05-ROADMAP.md). A row may therefore be
+`in-progress` while its release remains `DEP` or `GATED`; the roadmap still controls when that work
+may be activated as a product release.
+
 ## Registry
 
 Spine-era AppShell / expert-kits-as-labels / playground canvas were **dropped** with the v0.12
@@ -27,11 +32,11 @@ rebase. Do not resume them. Do not rearrange Craft chrome as a stand-in for Cind
 
 | Primary feature | Suite | Branch / worktree | Occupies (scope) | Integration owner | Depends on (unmerged) | Status | Notes |
 |---|---|---|---|---|---|---|---|
-| R15 Cindy capabilities | SYS-08 | `work/craft-0.12-rebase` (name is historical; tree is Craft v0.13.3) | skills/plugins/MCP/remote; `packages/shared/src/assistants`; not `labels/` | main integration agent | none | in-progress | Marketplace, loadout, remote connection as *implementation*. Assistants: wearable identity, default delegate. Not a settings overlay and not a layout wrap. |
+| R0 stabilization and owner-directed Component foundation | SYS-01 / SYS-09 | `work/craft-0.12-rebase` (historical name; Craft v0.13.3 tree) | existing dirty tree; Session/Workspace context, fixed tool host, shared components/layout and verification paths | main integration agent | inherited uncommitted Craft intake; scoped baseline/P6 checks | in-progress | Complete R0 verification remains required. Early R15/R18 host work follows `specs/R18-right-workbench.md` before domain Components; external distribution stays DEP. Runtime registry/movement remains not implemented; no new identity store, memory prerequisite or replacement shell. |
 | Craft Pages (v0.13.3) | SYS-01 | same | `pages` navigator; `packages/shared/src/pages` | Craft-admitted | none | in-progress | Mini-apps. Not Fleet's infinite canvas. |
 | Board vs conversation | SYS-01 | same | `navigator: 'board'` vs `sessions` | main integration agent | none | merged | `/board` is its own navigator. |
-| R18 layout shell | SYS-01 | same | `packages/shared/src/layout` only | — | — | dropped | Unmounted. Do not remount as typesetting. |
-| R7 infinite canvas | SYS-05 | — | — | — | — | dropped | Not this slice. Reference when built: Canvasight. |
+| Discarded layout-shell implementation | SYS-01 | same | `packages/shared/src/layout` only | — | — | dropped | The old renderer remains discarded and the pure model is unmounted; the foundation evaluates this code without blindly restoring it. Only advanced/native-window R18 closure remains gated. |
+| Discarded canvas preview implementation | SYS-05 | — | — | — | — | dropped | The old preview attempt is dropped, not the R7 production canvas. R7 remains DEP; reference when built: Canvasight. |
 | Spine-era renderer / kits-as-labels | SYS-01 | `work/fresh-base-spine` | discarded | — | — | dropped | `16a353120`. |
 
 ## Durable integration rules

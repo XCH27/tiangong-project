@@ -14,6 +14,24 @@ R0 does **not** restore the v0.10.5 shell, recreate `fleet-baseline-r0`, resume 
 walkthrough, replace `AppShell`, build a production canvas, add a relay/RemoteTarget, or implement a
 marketplace. Those were different contracts or later releases.
 
+### Current owner-directed slice: Component and panel foundation
+
+Follow [`specs/R18-right-workbench.md`](specs/R18-right-workbench.md) for the early host part of
+R15/R18. R0 remains the single ACTIVE release, not a reason to postpone this explicit owner slice
+until a memory system or public marketplace exists.
+
+1. Audit the touched current baseline and prove Workspace/Session context isolation with synthetic
+   fixtures. Preserve all unrelated changes; do not choose a rollback or a live Project name.
+2. Connect existing Files/Notes bodies and tool entries through one real registry.
+3. Prove user-controlled resize, movement, reordering, in-window float/re-dock and scoped restore
+   without losing conversation or editor state.
+4. Wire global/Workspace local Component activation to existing settings and permissions, with
+   lazy loading, named failures and recoverable unload. Then build domain components.
+
+Native multi-window docking and external distribution follow with their own evidence. The R6/R9
+prerequisites of a particular future component do not block this foundation. No new production
+dependency, data migration or bulk rollback is implied by this work order.
+
 ## One-slice execution
 
 1. Read root `AGENTS.md`, `PRODUCT.md`, the R0 spec and the exact capability row touched.
@@ -36,7 +54,7 @@ dependency edge. The roadmap wins if the two disagree.
 
 | Release | Outcome | State / unlock |
 |---|---|---|
-| R1 | One Session authority and create flow; Project=folder; zh-Hans | **CLOSED** — old shell-restore program replaced; current checks live in R0 |
+| R1 | One Session authority and create flow; Project=folder; zh-Hans | Incomplete boundary work; only the old shell-restore program was closed. Context isolation feeds the foundation; live naming conflicts remain record-local. |
 | R2 | Remove or honestly disable inherited Craft-operated services | **DEP:** R0 |
 | R3 | First real intent→evidence→Markdown→review→delivery chain | **DEP:** R0 + R2 |
 | R4 | Caller-aware governed action seam from two real callers | **DEP:** R3 |
@@ -50,10 +68,10 @@ dependency edge. The roadmap wins if the two disagree.
 | R12 | Video/audio sequence editing and delivery | **DEP:** R11 |
 | R13 | Deck and motion modes on the R7 canvas | **DEP:** R7 |
 | R14 | User-owned remote Workspace, messaging and Git/GitHub delivery | **DEP:** R6 |
-| R15 | Skill/plugin/MCP marketplace and Assistant loadouts | **DEP:** R2 + R6 + R9; requires an activation spec |
+| R15 | External Component distribution/update closure over the early local host | **DEP:** foundation + relevant R2 independence + supply-chain/permission evidence; no blanket R6/R9 host gate |
 | R16 | General external-computer control | **CLOSED `NO_GAP`:** outside Fleet; no implementation queue |
 | R17 | Evidence-based adaptive policy or `NO_GAP` | **DEP:** R6 + R9 + R12 |
-| R18 | Generalized docking/layout beyond the first pane seam | **GATED:** two real production panes demonstrate the need |
+| R18 | Advanced/native multi-window docking beyond the in-window foundation | **GATED:** packaged-window security and recovery evidence; minimum registry/movement does not wait for this closure |
 
 Remote Workspace transport is R14, not marketplace authority. The current R0 may repair an already
 modified listener or pairing path, but it does not design a new remote product. GitHub is durable

@@ -8,25 +8,62 @@
 
 ## 1. Shell regions
 
-The window is a layout tree (`app/packages/shared/src/layout`). A surface is a pane. Craft supplies
-look (tokens, type, motion), not this structure.
+The current window uses Craft `AppShell` + `PanelStackContainer`.
+`app/packages/shared/src/layout` is an unmounted target model, not the current renderer.
 
-`AppShell.tsx` + `MainContentPanel.tsx` are Craft's page host: a navigation state that shows a list,
-then a second-level page. That host is being replaced (roadmap R18). **Do not add a capability by
-adding an `isXNavigation` branch, a sidebar row, or another settings page.**
+`AppShell.tsx` + `MainContentPanel.tsx` are Craft's current host, but Fleet's target navigation is
+panel-first: a list stays visible while details, configuration, previews and component tools open in
+the existing workbench/dialog layer. A route may remain as a deep-link and accessibility anchor,
+but it must not create a second persistent list or force a page drill-in when a panel is sufficient.
+Settings is one settings surface with a category navigator and content panels; its categories are
+not separate product homes. Archive management remains a settings projection over the Session
+authority, not a second conversation home.
+
+**Do not add an unrelated capability by adding an `isXNavigation` branch or a new sidebar row.**
 
 | Region | Code | Notes |
 | --- | --- | --- |
 | Layout engine | `packages/shared/src/layout` (model landed; renderer `not implemented`) | Cindy's tree: pane names only `panelKind`; unregistered kinds hide and reflow |
 | Nav sidebar | pane `nav-sidebar` | chrome, not a destination |
-| Navigator | pane `navigator` | Session/Project list — a pane, not the app |
+| Navigator | pane `navigator` | The single Conversation/entity list when the sidebar is unavailable; filters and scopes are predicates, not sibling list homes |
 | Main | pane `main` | conversation is one pane |
 | Workbench | pane `workbench` | plugin and tool surfaces |
 | Production surfaces | pane kinds (`surface:canvas`, documents, browser, timeline) | Fleet's own; open as panes, never as sidebar rows |
 | Dialog layer | shared dialog/drawer components | pickers, confirmations |
+| Right tools | `components/right-sidebar/RightSidebar.tsx` | Fixed Files/Browser/Notes/History entries and JSX bodies; History is placeholder content. A generic Component registry is not mounted. |
 
 What still runs today is Craft **v0.13.3** `AppShell` + `PanelStackContainer`. That is the current
 host. Cindy work is capabilities (plugins, skills, remote, assistants), not a new overlay chrome.
+
+### User-owned panel layout — foundation contract
+
+The owner requested resize, drag/reposition, reordering, floating and restore for conversation and
+tool panels. Left tool entries/right panels are defaults, not permanent locks. Those in-window
+behaviors execute with the early host foundation in
+[`specs/R18-right-workbench.md`](specs/R18-right-workbench.md), using existing Files/Notes as real
+consumers before new domain Components. R15 distribution, R9 memory and advanced/native-window R18
+closure are not prerequisites. The current horizontal stack only wires sizing; the pure layout
+tree and Component resolver do not yet have production consumers.
+
+The host keeps stable panel ids, Workspace/Session binding, drafts and native resource ownership
+while moving views. Keyboard move/resize, local-window geometry, missing-component recovery and
+reset-to-default are required. Do not equate installed `@dnd-kit` or a layout type with working
+docking, and do not replace Craft's visual tokens to obtain these behaviors.
+
+### No-duplicate navigation rule
+
+The default shell has one Conversation list. “All conversations”, label results, project results,
+status results, pinned results and archived results are filter states of that list, rendered by the
+same list implementation. They must not appear as parallel permanent sections that repeat the same
+Session rows. Project selection changes the list predicate and opens Project context in the workbench;
+Project context shows files, assets, deliverables and settings, never another conversation list.
+
+List/detail patterns follow Cindy's SkillHub and OpenChamber's ContextPanel evidence: inspect,
+preview, configure and manage actions open an in-list panel, drawer or right workbench surface.
+Retired detail URLs redirect to the canonical list/panel destination. The visual result still uses
+Craft's typography, spacing, colour tokens, elevation, motion and shared primitives. The only
+permanent left-rail entries are canonical capability homes (Conversation, Project/context, Settings,
+and installed Component entries), not every predicate over Session data.
 
 > **Settled, not open.** The owner rejected building the infinite canvas now ("你不应该现在做无限
 > 画布，而且你现在做的无限画布根本都是错误的"), and `FleetLayout` was reverted to
@@ -38,8 +75,9 @@ host. Cindy work is capabilities (plugins, skills, remote, assistants), not a ne
 >
 > So the current host is Craft `AppShell` + `PanelStackContainer`, and `board`/`pages` navigate by
 > replacing the content panel. The pane sentences above describe the **R7/R18 target shape**, not
-> today's structure. When a production surface finally needs a second pane it brings the minimum host
-> seam with it (roadmap R7), and R18 decides generalized docking only after two real panes exist.
+> today's structure. The owner-directed foundation now brings the minimum registered host and
+> in-window movement before domain Components; R7 reuses it. R18's later gate covers additional
+> native-window/advanced behavior, not the minimum host itself.
 
 ## 1b. Regression against a decided shell model (recorded 2026-09-13)
 
@@ -53,8 +91,8 @@ Measured against the current tree:
 
 | Decided (§21 §1/K3, P6) | Current tree | Evidence |
 |---|---|---|
-| TopBar switcher removed; sidebar rows are the switcher | TopBar renders `WorkspaceSwitcher variant="topbar"` in non-compact mode; the removal-rationale comment §21 cites at `TopBar.tsx:204–207` is gone | `components/app-shell/TopBar.tsx` |
-| `Project row = Workspace` | Sidebar 项目 rows come from `useProjects(activeWorkspaceId)` — **nested** v0.11 projects, and clicking one only *filters* the session list | `AppShell.tsx` `useProjects`, `handleJumpToProjectSessions` |
+| TopBar switcher removed; sidebar rows are the switcher | Non-compact `TopBar` has no workspace switcher; compact mode keeps `CompactWorkspaceSwitcher` because the sidebar is hidden | `components/app-shell/TopBar.tsx`, `CompactWorkspaceSwitcher.tsx` |
+| `Project row = Workspace` | Sidebar 项目 rows are built from the Workspace list and selecting one switches the existing Workspace authority; the nested v0.11 project list remains compatibility-only | `AppShell.tsx` workspace rows; `useProjects` only in the legacy compatibility panel |
 | Folder-less Sessions in a sibling **对话 / Conversations** scope | No Conversations section exists | `AppShell.tsx`, no `sidebar.conversations` |
 
 Consequence, and the reason this block exists: today the control **named** 项目 is not the Project
@@ -142,7 +180,7 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 | P-07 | First-run and model connection setup                                                                                                   | First run / Settings → Model               | CORE-07                                     | first-run setup and Settings-owned inline add/edit/validate/reauth path usable; the complete §3B OpenCode-admission interaction contract is not implemented                                                                                    |
 | P-08 | Help, local docs and support links                                                                                                     | external doc-links + Settings/Shortcuts    | CORE-08                                     | wired but not visually checked                                                                                                                                                                                                                |
 | P-09 | Update channel, release notes and recovery                                                                                             | Settings / dialog                          | CORE-09                                     | wired but not visually checked                                                                                                                                                                                                                |
-| P-10 | Docking, split, resize and layout restore                                                                                              | Workbench host                             | CORE-11                                     | modular right workbench tabs and resize wired but not visually checked; persistent tab/layout restore not implemented                                                                                                                         |
+| P-10 | User-controlled resize, move, reorder, in-window float/re-dock and layout restore | Existing shell extended by registered panel host | CORE-11 | fixed-column sizing wired but not visually checked; generic registration, user movement and layout restore not implemented; early R15/R18 foundation before domain Components |
 | P-11 | Workspace file browser and file actions                                                                                                | Project home / drawer                      | INFO-01                                     | usable                                                                                                                                                                                                                                        |
 | P-12 | Library, versions and asset inspector                                                                                                  | Library route                              | INFO-02                                     | not implemented                                                                                                                                                                                                                               |
 | P-13 | Source ingestion and conversion progress                                                                                               | Sources / Jobs                             | INFO-04                                     | usable                                                                                                                                                                                                                                        |

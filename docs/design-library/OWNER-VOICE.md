@@ -117,6 +117,22 @@ worktrees); R1 slice order (dedup/merge slices first) in
 [`../specs/R1-one-boundary-language.md`](../specs/R1-one-boundary-language.md); roadmap change log
 2026-07-20.
 
+## OV-010 — Test conversations are not product requirements (2026-09-15)
+
+> 「项目中的股票交易是我跟agent进行聊天和功能测试产生的，你们都理解错误了」
+
+**English gloss:** The stock-trading material in the project came from conversations and feature
+tests. It is not a requirement to build a trading product or name the application's default Project.
+
+**Now carried by:** `../PRODUCT.md` (test-data interpretation), root `AGENTS.md`, and the data-safe
+P6 preparation in `../specs/R1-one-boundary-language.md`. Preserve the user's records; resolve real
+record conflicts only when a migration is requested, not as a global foundation gate.
+
+Amendment (2026-09-15): the owner clarified that a trading system was an earlier product idea and
+may become an optional Trading/Market Analysis Component. Existing stock-trading messages remain
+test content; the proposed Component is future, Workspace-scoped and not a Core authority. Live
+orders require a separate safety/approval contract.
+
 ## Rules for this file
 
 Add a signal here only when the owner actually said it (with date) and it is not already carried

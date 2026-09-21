@@ -126,6 +126,28 @@ For prompt/tool projection changes, verification must also prove:
 - the previous profile remains selectable for rollback;
 - no second prompt, loadout, ledger or capability authority was introduced.
 
+### Human/Agent provenance and learned workflows
+
+Any surface that supports both human and Agent mutation must test the same operation through both
+callers. The evidence must distinguish `human`, `agent`, `automation`, `replay` and `system`, identify the
+Session/Workspace/Component, and record base/result versions. A stale Agent write must be rejected
+or reconciled explicitly; a successful test that only checks the final pixels is insufficient.
+
+For Record & Replay or a similar Fleet learning flow, the acceptance fixture must prove: opt-in
+capture; user-selected interval; secret/sensitive-data exclusion; semantic Action extraction;
+input parameterization; precondition and postcondition checks; replay through the existing
+permission/evidence path; failure stop/recovery; user review before publish; and rollback of the
+learned Skill. Raw coordinate replay is not a passing implementation when a semantic Component
+command exists.
+
+For a multi-step Component workflow, the acceptance fixture must also prove a single inspectable
+trajectory over the existing Session/Action/Job/Artifact authorities: every step has a stable
+operation/attempt identity, exact input and output versions, caller/component attribution and
+failure or recovery state; the canvas and panel projections resolve to the same records; selecting
+an earlier operation creates a new branch, preserves the old outputs and marks only dependent
+descendants stale until explicit recompute. A final image that looks correct while the Agent cannot
+target the producing step is not a passing implementation.
+
 ## Admitting a package whose tests are written for Vitest
 
 The runner is `bun test` (`scripts/test-all.sh`). Cindy, OpenChamber and most other

@@ -4,9 +4,13 @@ This is the cross-document join between the breadth registry, page surfaces and 
 Every one of the 69 registry rows appears once. A blank packet/spec is an explicit gap, not
 permission for an implementer to invent a module boundary.
 
-Repository-grounded paths, absence checks and runnable evidence commands are recorded in
-`PACKET-INDEX.md`. If this index and that register disagree, use
-the lower (less complete) status until code and packet are reconciled.
+Repository-grounded paths, absence checks and runnable evidence commands belong in the suite packet
+named in each row's **Packet** column. If a row and its packet disagree, use the lower (less
+complete) status until code and packet are reconciled.
+
+**Packets were consolidated on 2026-09-21.** Nine `modules/<name>/README.md` compatibility records
+were merged into the suite that owns their loop, so every row now points at the one document for
+that closed loop rather than at a second file this index never linked to.
 
 ## Status rules
 
@@ -39,10 +43,10 @@ packets; it does not promote implementation status or create suite-owned state.
 | CORE-08 | Work Core / surface | — | P-08 | R2 / CORE-08-A | BREADTH_ONLY |
 | CORE-09 | Integrations / adapter | — | P-09 | R2 / CORE-09-A | BREADTH_ONLY |
 | CORE-10 | Work Core / capability | — | P-01,P-05 | R1 / CORE-10-A | BREADTH_ONLY |
-| CORE-11 | Composition / surface | workbench/README.md | P-10 | R18 / CORE-11-A,WB-001..003 | PACKET_DRAFT |
+| CORE-11 | Composition / surface | suites/SYS-09-workspace-compositions.md | P-10 | Early R15/R18 foundation (`specs/R18-right-workbench.md`), then R18 native-window closure / CORE-11-A,WB-001..003 | PACKET_DRAFT |
 | INFO-01 | Information / core | — | P-11 | R0,R3 / INFO-01-A | BREADTH_ONLY |
 | INFO-02 | Information / product | — | P-12 | R5 / INFO-02-A | BREADTH_ONLY |
-| INFO-03 | Information / product | browser/README.md | P-15,P-16 | R3,R5 / BRW-001..004 | PACKET_DRAFT |
+| INFO-03 | Information / product | suites/SYS-04-browser-evidence.md | P-15,P-16 | R3,R5 / BRW-001..004 | PACKET_DRAFT |
 | INFO-04 | Information / capability | — | P-13 | R3 / INFO-04-A | BREADTH_ONLY |
 | INFO-05 | Creative Media / product | — | P-14 | R3 / INFO-05-A | BREADTH_ONLY |
 | INFO-06 | Information / surface | — | P-06 | R0,R3 / INFO-06-A | BREADTH_ONLY |
@@ -65,27 +69,27 @@ packets; it does not promote implementation status or create suite-owned state.
 | INTEL-02 | Intelligence / capability | suites/SYS-03-context-economy.md | P-29 | TE1,R3 / INTEL-02-A | PACKET_DRAFT |
 | INTEL-03 | Intelligence / adapter | suites/SYS-03-context-economy.md | P-30 | R17 / INTEL-03-A | PACKET_DRAFT |
 | INTEL-04 | Intelligence / core | suites/SYS-03-context-economy.md | P-30 | TE1,R3,R17 / INTEL-04-A | PACKET_DRAFT |
-| INTEL-05 | Intelligence / product | memory/README.md | P-31 | R9 / MEM-001..005,INTEL-05-A | PACKET_DRAFT |
+| INTEL-05 | Intelligence / product | suites/SYS-03-context-economy.md | P-31 | R9 / MEM-001..005,INTEL-05-A | PACKET_DRAFT |
 | INTEL-06 | Intelligence / capability | suites/SYS-03-context-economy.md | P-32 | R15 / INTEL-06-A | PACKET_DRAFT |
 | INTEL-07 | Intelligence / capability | suites/SYS-03-context-economy.md | P-33 | R3,R17 / INTEL-07-A | PACKET_DRAFT |
-| CREATE-01 | Composition / surface | canvas/README.md | P-34 | R7 / CAN-001..004 | PACKET_DRAFT |
-| CREATE-02 | Creative Media / product | video/README.md | P-35 | R12 / VID-001..004 | PACKET_DRAFT |
+| CREATE-01 | Composition / surface | suites/SYS-05-design-spatial.md | P-34 | R7 / CAN-001..004 | PACKET_DRAFT |
+| CREATE-02 | Creative Media / product | suites/SYS-06-media-production.md | P-35 | R12 / VID-001..004 | PACKET_DRAFT |
 | CREATE-03 | Creative Media / product | — | P-36 | R11 / CREATE-03-A | BREADTH_ONLY |
 | CREATE-04 | Creative Media / product | — | P-37 | R12 / CREATE-04-A | BREADTH_ONLY |
 | CREATE-05 | Creative Media / capability | — | P-38 | R12 / CREATE-05-A | BREADTH_ONLY |
-| CREATE-06 | Creative Media / product | design/README.md | P-39 | R10 / DSN-001..004 | PACKET_DRAFT |
+| CREATE-06 | Creative Media / product | suites/SYS-05-design-spatial.md | P-39 | R10 / DSN-001..004 | PACKET_DRAFT |
 | CREATE-07 | Creative Media / product | — | P-40 | R10 / CREATE-07-A | BREADTH_ONLY |
-| CREATE-08 | Creative Media / product | deck-motion/README.md | P-41 | R13 / DECK-001..004 | PACKET_DRAFT |
-| CREATE-09 | Creative Media / capability | deck-motion/README.md | P-42 | R13 / CREATE-09-A | PACKET_DRAFT |
+| CREATE-08 | Creative Media / product | suites/SYS-06-media-production.md | P-41 | R13 / DECK-001..004 | PACKET_DRAFT |
+| CREATE-09 | Creative Media / capability | suites/SYS-06-media-production.md | P-42 | R13 / CREATE-09-A | PACKET_DRAFT |
 | CREATE-10 | Creative Media / product | — | P-43 | R12 / CREATE-10-A | BREADTH_ONLY |
 | CREATE-11 | Creative Media / capability | — | P-44 | R10,R13 / CREATE-11-A | BREADTH_ONLY |
-| CREATE-12 | Integrations / capability | jobs/README.md | P-45 | R5,R8,R10-R14 / CREATE-12-A | PACKET_DRAFT |
+| CREATE-12 | Integrations / capability | suites/SYS-06-media-production.md | P-45 | R5,R8,R10-R14 / CREATE-12-A | PACKET_DRAFT |
 | CREATE-16 | Creative Media / product | — | P-14 | R10 / CREATE-16-A | BREADTH_ONLY |
-| ORCH-01 | Composition / product | workflows/README.md | P-46 | R8 / WF-001..004 | PACKET_DRAFT |
-| ORCH-02 | Governed Execution / surface | workflows/README.md | P-47 | R8 / ORCH-02-A | PACKET_DRAFT |
-| ORCH-03 | Intelligence / product | suites/SYS-08-marketplaces.md | P-48,P-56 | R15 / ORCH-03-A | PACKET_DRAFT |
+| ORCH-01 | Composition / product | suites/SYS-07-workflow-delivery.md | P-46 | R8 / WF-001..004 | PACKET_DRAFT |
+| ORCH-02 | Governed Execution / surface | suites/SYS-07-workflow-delivery.md | P-47 | R8 / ORCH-02-A | PACKET_DRAFT |
+| ORCH-03 | Intelligence / product | suites/SYS-09-workspace-compositions.md | P-48,P-56 | Early R15/R18 foundation (`specs/R18-right-workbench.md`), before domain components / ORCH-03-A | PACKET_DRAFT |
 | ORCH-04 | Governed Execution / adapter | suites/SYS-08-marketplaces.md | P-48,P-56 | R4,R6 / ORCH-04-A | PACKET_DRAFT |
-| ORCH-05 | Integrations / core | jobs/README.md | P-49 | R11-R13 / JOB-001..004 | PACKET_DRAFT |
+| ORCH-05 | Integrations / core | suites/SYS-06-media-production.md | P-49 | R11-R13 / JOB-001..004 | PACKET_DRAFT |
 | ORCH-06 | Work Core / core | — | P-50 | R3,R4 / ORCH-06-A | BREADTH_ONLY |
 | ORCH-07 | Composition / surface | — | P-51 | R4,R6 / ORCH-07-A | BREADTH_ONLY |
 | ORCH-08 | Integrations / capability | — | P-52 | R0,R2,R18 / ORCH-08-A | BREADTH_ONLY |

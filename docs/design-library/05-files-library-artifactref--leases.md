@@ -33,6 +33,12 @@ an explicit import/copy action creates one and records it.
 
 ## 3. Scope
 
+Format handling is adapter-first. Fleet does not recreate every Office/design/media parser: a
+Component may wrap a source-backed open-source engine behind the native Action/ArtifactRef boundary
+when its license and process dependencies allow it. The original bytes remain the filesystem
+authority; an import creates an ImportReceipt, derived native representation, fidelity class and
+adapter revision. Unsupported fields are named and recoverable rather than silently flattened.
+
 ### In Scope
 
 - permissioned create/update/rename/move/delete and atomic writes;

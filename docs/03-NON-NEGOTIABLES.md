@@ -81,12 +81,40 @@ Violating this is how the product fragments into disconnected utilities.
 - No independent `jobs.json` / `memory.json` / `clips.json` authority without a demonstrated gap and
   a deliberate migration.
 - No silent last-write-wins for concurrent document mutation.
+- No format claim based only on a preview. Every import/export path declares a tested fidelity class,
+  preserves the original source ArtifactRef, records an adapter revision and reports unsupported
+  features. “Opens” is not the same as “editable” or “round-trips”.
+- No destructive in-place migration. Import, conversion, restore and export create a recoverable
+  version/lineage and leave the previous artifact head intact until validation and evidence commit.
 - No external plugin distribution path before built-in capability loading and permissions are real.
+- Components are additive only: a manifest contributes tool entries and workbench panels. Left/right
+  are default placements; user-owned resize, movement, reordering and floating preserve panel identity
+  through the one host. Components may not take over the conversation implementation, patch
+  `AppShell`, or create a second navigator, settings home, Session/Task store or permission path.
+- Component dependencies are explicit, versioned and inspectable. Heavy dependencies are lazy and
+  scope-owned; installing or enabling a component does not load unused renderers, workers, MCP
+  processes or external runtimes at startup. Missing optional dependencies degrade visibly; missing
+  required dependencies refuse only the affected feature with a named reason.
 - No wholesale copy from the preserved upstream checkout over the working app.
 - No visual canvas connector treated as an executable workflow edge, and no connector/card
   position/renderer edge overwriting recorded provenance (Decision E5).
 - No Agent, plugin, or workflow mutating renderer state directly — everything goes through the
   shared caller-aware action path; the canvas receives projection updates.
+- Every consequential mutation records its caller provenance: `human`, `agent`, `automation`,
+  `replay`, or `system`, plus Session/Component/Action correlation and before/after version evidence. A replay
+  or learned Skill may use a human demonstration only after the user explicitly selects the range
+  and approves the generated reusable procedure.
+- No Component, MCP server or renderer may create a private trajectory/history authority. Calls and
+  outputs enter the existing Session/Action/Job/ArtifactRef path; the visible trace is a projection.
+  Actor identity is recorded separately from operation form (`human`/`agent`/`replay` is not inferred
+  from which UI route happened to emit the event).
+- Never resolve a revision target from a name, path, thumbnail or adjacency alone. A prior operation,
+  exact ArtifactRef version or selected canvas node must resolve to one target; otherwise ask or show
+  candidates. Revising creates a new lineage branch and preserves the old output.
+- Human demonstrations are not raw authority. Do not turn screenshots, coordinates, passwords,
+  selected text, cookies, tokens or arbitrary window events into a Skill. Prefer the semantic Action
+  and Component command that the human operation invoked; coordinate/computer fallback stays an
+  explicit last resort with environment identity and fresh observation checks.
 - No spatial renderer promoted from screenshots, marketing claims, or a synthetic empty-node demo
   (Decision E5a).
 - No timeline ordering used as a document conflict-resolution algorithm.
@@ -144,7 +172,7 @@ a neighbor.
 | project/workspace bytes and permissions | Craft Workspace filesystem paths and `permissions.json` | preserve; no second permission tree |
 | settings, credentials, sources, skills | existing Craft stores and managers | reuse |
 | R5/R8/R11 artifacts, workflows and jobs | no Fleet authority exists yet | define the smallest authority at its ordered row when an implemented real loop needs it |
-| Assistant identity and requested loadout | `packages/shared/src/assistants/`; independent catalog and per-Session wearing map | never store an Assistant in `labels/config.json`; loadout permission is a request evaluated by the existing permission path |
+| Assistant identity and requested loadout | `packages/shared/src/assistants/` catalog; SessionManager owns the Session `assistantId` binding | never store an Assistant in `labels/config.json`; no new `wearing.json` writes; unresolved loadouts refuse activation; permission requests only narrow the existing Session permission |
 | R6 delegation | Craft child Sessions/Tasks are the only current authority; Fleet TaskBrief/RunReport policy and projection are not implemented | extend Session/TaskRunner when R4/R5 provide real callers; no captain/manager store |
 | R9 memory | no Fleet store, index or consolidation pass exists; H16–H18/H27 retain design principles only | extract the smallest store from repeated real chains; one consolidation writer, no delegate-written shadow memory |
 
@@ -165,6 +193,15 @@ a neighbor.
   only when it has no continuing authority or function.
 - Do not edit dependencies/configuration to make validation pass.
 - Do not use tests/typechecks as a substitute for real observable behavior.
+- Do not promote a vision, field, Component or adapter from a type, mock, screenshot or isolated
+  test alone. A binding contract must name its owner intent, invariant, authority, production
+  writer/consumer, persisted scope, failure/recovery/removal path, acceptance evidence and
+  license/platform checkpoints; otherwise keep it a proposal or breadth packet and mark the
+  capability `not implemented`.
+- Do not let two documents carry different live meanings for the same decision. When an owner
+  decision changes, edit the canonical entry, bump the contract/spec version where applicable,
+  update its capability row and reject stale writes/reports; historical rationale is evidence, not
+  a second contract.
 - Do not dump full repository/transcript context into a supporting agent when a bounded brief
   suffices (Decision C3).
 - Do not use a PR graph or a second review shell as the product's task/session authority.

@@ -27,6 +27,60 @@ consulted on the others.
 patterns may be read; their product concepts may not be imported. Taking Qoder's plugin model and
 grafting it onto Craft's label store is exactly the mistake this line exists to prevent.
 
+### Components, assistants and workspace compositions
+
+Fleet's installable unit is a **Component**: a bounded capability bundle that may contain a native
+panel or surface, domain commands and storage, Skills, MCP server/tool declarations, default
+knowledge sources, and suggested Assistant settings. Components add tool entries and workbench
+panels; left tools and right workbench are the default placement, not permanent position locks.
+The user may resize, move, reorder and float supported panels through the one host, including the
+conversation view. A component cannot take over the shell or create a new navigation authority.
+Every component uses Fleet's Craft-derived tokens,
+typography, spacing, motion and shared primitives. A Component is not an Assistant and never owns
+Workspace, Session, Task, Permission, Timeline, Settings, or file ownership.
+
+A Component may be intentionally thin. Its panel can declare optional capability packages, such as
+a renderer, transcription provider, media codec, Skill pack, MCP server, or knowledge connector;
+those dependencies are installed and activated only when a user invokes the corresponding feature.
+Fleet's local core therefore stays small and provides the host, permission path, session/task
+lifecycle, file boundary and component loader, while heavy domain implementations remain lazy,
+replaceable component dependencies. A component must expose a useful basic state when an optional
+dependency is absent and explain the missing capability with an actionable install/configure path.
+
+An **Assistant** is the identity that performs work (persona, model, prompt, requested loadout and
+permission request). A **Workspace Composition** is the workspace-scoped selection and override
+record: enabled Components, component settings, extra MCPs, extra knowledge sources, personal
+habits, and panel preferences. A component may also be enabled globally, which supplies the default
+for every Workspace; a workspace can disable or override that default. There is no artificial limit
+on the number of enabled components. Defaults come from the installed Component; user and workspace
+values are explicit overrides, not mutations of the vendor package. Removing a Component leaves
+core data and artifacts intact and records an unavailable capability until restored.
+
+The composition resolver is deterministic: official defaults < user profile defaults < workspace
+overrides < session one-off choices. A session one-off is snapshotted at a turn boundary: a running
+turn cannot change its tool/panel composition, and an accepted change is recorded so resume rebuilds
+the same later-turn composition. Components may request capabilities; the existing permission path
+decides whether they are granted. Components contribute through declared additive tool-entry
+and workbench-panel slots. They may declare their own panel state and native domain data,
+but cannot replace the main shell or create a second navigator. The host preserves a fallback entry
+when a component is unavailable. This is the approved direction for per-workspace interfaces; it does not
+authorize components to patch `AppShell` or create a second settings/permission authority. Fleet's
+integration code may extend the existing host seam after the required Craft source comparison.
+
+**Build the host before distributing components.** The owner-directed foundation slice connects
+existing Files/Notes surfaces to a real registry, scoped activation and user-controlled layout
+before new domain components. It does not depend on R6 delegation, R9 memory or a public catalog.
+R15 closes distribution and update safety; R18 closes advanced/multi-window layout beyond the
+foundation. The executable contract is [`specs/R18-right-workbench.md`](specs/R18-right-workbench.md).
+
+**Test content is not product intent, but an explicit Component proposal is.** Stock-trading content
+already present in Sessions came from chat and feature testing; it is not a required default Project
+name and must not be renamed or deleted as framework cleanup. Separately, the owner has proposed a
+future **Trading/Market Analysis Component**: an optional Workspace capability that may provide
+market data, research, simulation/backtesting, strategy notes and (only after a separate safety
+contract) broker actions. It is not part of Fleet Core and is `not implemented`. P6 must work for
+arbitrary folders and names; this clarification is not permission to change live/test records.
+
 ## The rule that decides scope
 
 > **Build it in when the person and the agent need to touch the same artifact in the same place.
