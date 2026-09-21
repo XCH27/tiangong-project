@@ -186,12 +186,32 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   `bundleFormat` provenance **survives install**. Fleet *publishes* the neutral
   `agent-plugins.org` 1.0.0 format and keeps its own behavior in `extensions["ai.fleet"]`, because
   that schema sets `additionalProperties: false` and a non-conforming manifest is not portable.
-  **A marketplace is a Git repository** — `marketplace.json` listing
+  **A catalog is data, not a service** — `marketplace.json` listing
   `path`/`github`/`git`/`git-subdir`/`url` sources — so distribution needs no Fleet-operated service
-  and P8/P9-rev hold without an exception; there is no store to log into, offline install from a
-  folder or checkout is a first-class origin, and trust is computed locally at install time.
-  Build order is fixed: **Component host → adapter + local install → catalog.** Catalog browsing
-  before local install only adds ways to fail. Evidence and the measured gaps, including that
+  and P8/P9-rev hold without an exception. **Corrected 2026-09-21:** the first draft of this entry
+  said "there is no store to log into", which wrongly collapsed two different rules. What P4/P8
+  forbid is a **required account** and a **hard dependency** on a Fleet-operated service. Shipping a
+  **default catalog** is allowed and expected — an empty store on first run is a product failure,
+  not a principle. The shape to copy is ZCode's: a **local seed merged with a remote shard**, so the
+  store is populated offline and merely richer online.
+  Three behaviors are the real contract, and they outrank build order: **catalog unavailability
+  never blocks locally installed plugins** (degrade to a non-blocking notice, keep the local list);
+  **one failing source never affects another source or the default catalog**; and **trust is
+  computed locally at install time** — a remote catalog supplies candidates, never verdicts.
+  **Ownership is keyed by source fingerprint, not by name.** A catalog's name is self-declared and
+  reusable, so removing source A and adding a same-named source B yields identical synthesized
+  plugin IDs and lets an unrelated or hostile repository "update" A's installed plugins. The install
+  ledger records the source fingerprint and ownership checks must match both. The fingerprint must
+  serialize unambiguously (JSON array, never separator-joined) or two different sources collide and
+  the check is defeated.
+  **Cross-machine sync is explicit and user-selected, never automatic.** With P7 remote Projects, a
+  remote machine's skills and plugins are its own; pushing them is a deliberate act with a
+  pre-flight remote existence check, a stated reason when an item will be skipped, per-item results
+  (`synced`/`skipped`/`failed`), and size ceilings enforced on selected content, on the archive and
+  again on extracted content.
+  Recommended build order is **Component host → adapter + local install → catalog**, because a
+  catalog only adds ways to fail before install works. This is sequencing guidance, not a
+  prohibition; the degradation and isolation behaviors above are the part that is not negotiable. Evidence and the measured gaps, including that
   `skills/storage.ts` whitelists six frontmatter keys and silently drops `triggers` — the activation
   field 220 of 398 real skills use — are in
   [`design-library/12-capability---skill---plugin-system.md`](design-library/12-capability---skill---plugin-system.md)

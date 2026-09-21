@@ -298,8 +298,13 @@ a marketplace is a Git repository that the user or their team already controls.
 
 Consequences that follow, and that the UI must not contradict:
 
-- **There is no "official Fleet store" to log into**, and no listing can require one. Fleet may ship
-  a default catalog *as a repository reference*, removable like any other.
+- **No account may be required, and no catalog may be a hard dependency — but Fleet should ship a
+  default catalog.** *(Corrected 2026-09-21; the first draft said "there is no official Fleet store",
+  which collapsed two different rules and would have shipped an empty store on first run.)* P4
+  forbids a Fleet account; P8 forbids depending on a Craft-operated service. Neither forbids
+  shipping catalog data. ZCode's pattern is the one to copy: a **local seed shard merged with a
+  remote shard**, so the store is populated offline and merely richer online. The default catalog
+  must be removable like any other source.
 - **Local-first is the default path, not a fallback.** Install from a folder or a Git checkout is a
   first-class origin, because offline install is the only way P8 stays true.
 - **Importing the user's existing catalogs is a feature, not a migration.** Reading
@@ -322,9 +327,16 @@ layout ahead of external distribution. That order is right and this section does
    fixture bundles; no network, no catalog, no UI store.
 3. **Catalog last** — `marketplace.json` reading, Git/GitHub sources, known-marketplace import.
 
-**Prohibited orderings:** building catalog browsing before local install works; adding a second
-installer or second permission path per ecosystem; treating a vendor bundle as an authority that may
-write directly into the shell; shipping a store page whose listings cannot be installed offline.
+**That order is a recommendation, not a prohibition** *(corrected 2026-09-21)*. Cindy ships store
+browsing and local install together and it works, because the real requirement is behavioral, not
+sequential: catalog unavailability must never block locally installed plugins, and one failing
+source must never affect another. A rule that banned building them together would have banned a
+correct architecture.
+
+**These remain prohibited, because each creates a second authority or a silent failure:** adding a
+second installer or second permission path per ecosystem; treating a vendor bundle as an authority
+that may write directly into the shell; shipping a listing that cannot be installed offline from a
+folder or checkout; and letting a catalog outage empty or block the user's installed list.
 
 ### 16.5 What is verified and what is not
 
@@ -374,3 +386,101 @@ Three requirements follow:
 **Still not verified, and required before implementation starts:** how `activation` should map
 across the four bundle formats, and whether any signing story exists that does not require a
 Fleet-operated key service (P8 forbids one).
+
+### 16.7 Cindy — what a real store looks like, and the attack it documents
+
+Read 2026-09-21 at `源码参考/software/cindy` @ `00a5ad1a5`:
+`apps/desktop/src/shared/{pluginMarket,skillhubCatalog,skillhubIdentityPolicy}.ts`.
+
+Cindy runs a **server-backed hub**: `skillhubIdentityPolicy.ts` requires sign-in
+(`readOnlyReason: 'signed-out'`), distinguishes `personal` from `org` membership, and gates
+visibility to `PUBLIC` / `DEPARTMENT_SCOPED` / `PRIVATE`, with a comment stating that authorization
+and org policy "remain server-owned". Catalog scopes are `market` and `team`.
+
+**Fleet cannot copy that layer — P4 forbids the account — and must not pretend otherwise.** What is
+transferable is everything built *around* it:
+
+| Mechanism | Why it transfers |
+|---|---|
+| `PluginMarketItemSource = 'server' \| 'git-market' \| 'local-market'` and `PluginMarketScope = 'public' \| 'organization' \| 'personal'` | Multiple catalogs coexist in **one** list. Fleet's set is simply `default` / `git` / `local`; the shape is identical and the UI does not fork per source |
+| `PluginMarketSnapshot { items, unavailableReason, customSourceNames, unavailableCustomSourceNames }` | Degradation is **in the data model**, not an error path. When discovery fails the renderer keeps local plugins and shows a non-blocking notice, and a failing source is named without taking down the others |
+| `installState: 'not-installed' \| 'installed' \| 'update-available' \| 'conflict'` | `conflict` is a first-class state, not an exception |
+| `expectedReleaseId`, `expectedManifest`, `expectedInstalledApproval` | Optimistic-concurrency guards: the main process **re-verifies before downloading and before packing**, and rejects if install state changed between the user's read and the write |
+| `allowSourceReplacement`, true only on an explicit "replace" click | **Updates and bulk updates may never switch a plugin's source.** This is the supply-chain guard that makes automatic updates safe |
+| `customIconKey`, carrying "no local path or bytes" | The renderer never receives filesystem paths for third-party assets |
+
+**The attack Cindy documents, which the OpenClaw design does not surface and which Fleet would
+otherwise have shipped:**
+
+> A catalog's name comes from its own `marketplace.json` and is **self-declared and reusable**.
+> Remove source A, add a different source B that calls itself the same name, and the synthesized
+> plugin IDs are identical — so an unrelated or hostile repository can "update" the plugins A
+> installed. The install ledger must therefore record a **source fingerprint** as well, and
+> ownership checks must match both.
+
+With a second requirement that is easy to get wrong:
+
+> The fingerprint must serialize **unambiguously**. Separator joining produces constructable
+> collisions — `sparsePaths: ['a,b','c']` and `['a','b,c']` collide under `join(',')`; `ref:'x'`
+> with `['p']` and `ref:'x:p'` with `[]` collide under `#ref:sparse`. Two different sources are then
+> judged identical and the ownership check is defeated. JSON array serialization delimits every
+> element and has no such ambiguity.
+
+Fleet's fingerprint is therefore `JSON.stringify(['local', path])` or
+`JSON.stringify(['git', url, ref ?? null, sparsePaths])`, and the same dimensions
+(type + location + ref + sparse paths) must be used everywhere a source is compared.
+
+### 16.8 ZCode — the cross-machine half that P11 was missing
+
+Read 2026-09-21 at `源码参考/software/ZCode` @ `872ad96`:
+`packages/shared/src/{plugin-marketplaces,plugin-sync,skill-sync,skill-scan-policy}.ts`.
+
+ZCode is the only reference that answers the question P7 forces on us: **when the agent runs on
+another machine, whose skills and plugins apply?** Its answer is that they are the remote machine's,
+and moving them is an explicit user act with a real protocol:
+
+1. **List local candidates** — `PluginSyncCandidate` carries `sizeBytes`, `enabled`, and
+   `componentTypes: 'skills' | 'commands' | 'hooks' | 'mcp'`, the same four-primitive decomposition
+   the bundle adapter produces, alongside `maxArchiveBytes`.
+2. **Query remote status first** — `PluginSyncRemoteStatus { exists, path?, reason?: 'samePluginId' | 'targetExists' }`.
+   The user is told *why* an item will be skipped **before** anything is sent.
+3. **Export an archive**, then **import with per-item outcomes** — `'synced' | 'skipped' | 'failed'`
+   plus a per-item `error`. Never all-or-nothing.
+4. **Marketplace *sources* sync too**, not just artifacts, so the remote machine gets the catalog
+   rather than a pile of orphaned installs.
+
+Size limits are enforced at **three phases** — `selected-content`, `archive`, `extracted-content` —
+under one error code. Checking only the compressed archive would let a decompression bomb through.
+
+Its default catalog is `cdn-zcode.z.ai/.../marketplace.json`, but the design note that matters is
+the merge: **"local seed shards and CDN shards are merged inside Agent storage."** That is how a
+store is populated on first run without becoming a hard network dependency — the correction applied
+to §16.3 and P11.
+
+`skill-scan-policy.ts` is small and every line of it is a scar worth inheriting:
+
+- Skipping only dot-directories is **not enough**. Recursing into `node_modules` and friends blew a
+  single `skills.list` out to a measured **69–256 seconds on Windows**. The excluded set is
+  `node_modules, dist, build, out, target, vendor, coverage, .cache, .next, .turbo, .venv, __pycache__`.
+- `MAX_SKILL_SCAN_DEPTH = 8`, as a brake on symlink/junction-formed deep chains. Real layouts are
+  `root/<name>/SKILL.md` or `root/<group>/<name>/SKILL.md`.
+- Dot-directories are skipped by default **so vendored `.agents` / `.cursor` copies and symlink
+  mirrors are not listed twice** — the exact hazard Fleet has, since `源码参考/` is a symlink.
+- The policy is **pure, I/O-free, and shared** between the desktop's recursive scan and the agent
+  CLI's single-level scan, "so the two ends never disagree about which directories to enter".
+  Fleet has the same split — Electron main and the remote/CLI harness — and needs the same shared
+  policy or the two will report different skill sets for one machine.
+
+### 16.9 The synthesis
+
+Three references, three different layers, and they do not conflict:
+
+| Layer | Take it from | Fleet's form |
+|---|---|---|
+| **Format and interop** | OpenClaw | One adapter over four bundle layouts into `ComponentManifest`; derived `capabilities[]`; `bundleFormat` provenance survives install |
+| **Store behavior and safety** | Cindy | Multi-source list with per-source failure isolation; degradation in the data model; `conflict` as a state; optimistic-concurrency guards; source-fingerprint ownership; updates never switch source |
+| **Cross-machine** | ZCode | Explicit user-selected sync with pre-flight remote status and per-item results; three-phase size limits; one shared, pure scan policy across desktop and agent ends; local seed merged with a remote shard |
+
+What **none** of them justifies, and what Fleet must not build: a fourth capability authority beside
+Skill / Source / Component, a per-ecosystem installer or permission path, an account, or a catalog
+whose outage is visible as an empty plugin list.
