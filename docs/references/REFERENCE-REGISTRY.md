@@ -31,16 +31,25 @@ Read-only inspection on 2026-09-14, updated after the owner's requested clones: 
 in `software/`, 22 in `plugins/`**. These are 67 checkouts, not 67 distinct upstream products: the
 two Craft pins have different comparison roles.
 
-> **Checkouts refreshed 2026-09-21 (owner-directed "update everything to latest").** 53 of them
-> fast-forwarded; some were very far behind (`hermes-agent` 14757 commits, `browser-use` 5805,
+> **Checkouts refreshed 2026-09-21 (owner-directed "update everything to latest").** Final state:
+> **64 at their upstream tip, 0 behind, 2 deliberately pinned.** 54 fast-forwarded; some were very
+> far behind (`openclaw` 15974 commits, `hermes-agent` 14757, `browser-use` 5805,
 > `deepseek-harness` 4912, `CLIProxyAPI` 3988, `orca` 2385, `codex` 1377). **The `last-reviewed-head`
 > column in `源码参考/meta/REVIEWED-HEADS.tsv` was deliberately NOT bumped**: moving a checkout is
 > not reviewing it, so every source claim in this file now describes a commit *older* than what is
 > on disk. Re-read the source before citing it as current. Not moved: the three pins declared in
 > `meta/RETENTION.md` (`craft-agents-oss`, `craft-agents-oss-v0.10.5`, `pi-mono`) — a checkout run
 > inside a pin silently moves the baseline. `software/cindy` was detached and 391 behind with no
-> local commits, so it was returned to `main`; `plugins/hyperframes` had 35 Git-LFS pointer files
-> materialized as content (not real work) and they were stashed before the update.
+> local commits, so it was returned to `main`.
+>
+> **`plugins/hyperframes` reports 35 modified files permanently — do not try to fix it again.**
+> They are all LFS-tracked test fixtures (`packages/producer/tests/**/output/compiled.html`, one
+> `.mp4`). git-lfs 3.7.1 is installed and the smudge filter is configured, but the working tree
+> holds real content where the index expects pointers, so `git status` never clears. `git lfs pull`,
+> `git checkout -- .` and stashing were all tried on 2026-09-21 and none of them clear it; the
+> earlier `stash@{1}` shows someone hit the same thing before. The checkout is at its upstream tip
+> and the content is readable, which is all a reference cache owes us. Stash before a future
+> fast-forward, or pass `--ff-only` after a stash, and otherwise ignore the 35.
 Names below are the actual directory names, grouped only for navigation, not admission or pruning.
 The reference root is `/Volumes/AIGC/天工参考/源码参考/` (workspace symlink `源码参考/`).
 
