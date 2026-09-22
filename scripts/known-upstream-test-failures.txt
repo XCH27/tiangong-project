@@ -1,0 +1,68 @@
+# Tests that fail on unmodified upstream Craft Agents v0.13.4, and why.
+#
+# Read by scripts/run-bun-tests.py. The full gate fails on any failure NOT listed here, and on any
+# listed failure in a file that ran and no longer fails — so this file cannot hide a new regression
+# or outlive a fix. Totals: 33 deterministic failures in 6 files, 1 timing-flaky test.
+# app/ is kept identical to upstream, so these are recorded rather than patched; fixing them is an
+# L0 correction awaiting approval (TODO.md). Verified 2026-09-22 by running each file on its own
+# under an empty CRAFT_CONFIG_DIR.
+#
+# One entry per line: "<file relative to app/> :: <test name as bun prints it after (fail) >".
+# An error bun reports between tests is recorded as "<file> :: <unhandled error>".
+
+# ipc-channels.test.ts — v0.13.4 added pages:getShareDataScan and did not update the pinned list.
+apps/electron/src/shared/__tests__/ipc-channels.test.ts :: RPC_CHANNELS wire-format stability > contains exactly 354 channel strings
+apps/electron/src/shared/__tests__/ipc-channels.test.ts :: RPC_CHANNELS wire-format stability > preserves exact wire-format strings (sorted equality)
+
+# prompt-builder-context-split.test.ts — the date prompt gained a millisecond ISO timestamp, so two
+# builder calls a few milliseconds apart are no longer byte-identical.
+packages/shared/src/agent/__tests__/prompt-builder-context-split.test.ts :: PromptBuilder volatile/stable context split (issue #862) > buildContextParts equals [...volatile, ...stable] (Claude path stays byte-identical)
+
+# browser-pane-manager.test.ts — browser-pane-manager.ts now calls popupWindow.webContents.getURL;
+# the test's mock windows have no webContents and throw a TypeError.
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > dedupes repeated focus calls before ready-to-show
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > destroys child popups when parent instance is destroyed
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > focus brings the instance window to front
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > loads toolbar fallback page after retry exhaustion
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > replays full toolbar state when toolbar renderer finishes loading
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > replays toolbar state with theme color when window is shown
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > retries toolbar load and recovers
+apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > still destroys instance when cleanup throws
+
+# refresh-connection-runtime.test.ts — not hermetic: passes only against a real user profile that
+# already has a connection, fails every time under an empty CRAFT_CONFIG_DIR. Running the suite
+# without isolation therefore reads the owner's real configuration.
+packages/server-core/src/sessions/refresh-connection-runtime.test.ts :: refreshConnectionRuntime > records customModels with the per-model supportsImages flag in the IPC payload
+
+# session-branch-rollback.isolated.ts — the test replaces @craft-agent/shared/config with a fixed mock
+# that lacks defaultMidStreamBehavior, which v0.13.4 code now imports; the module fails to link.
+apps/electron/src/main/__tests__/session-branch-rollback.isolated.ts :: <unhandled error>
+
+# prerequisite-manager.isolated.ts — the test replaces node:fs with a mock; v0.13.4 added
+# getBrowserToolEnabled() to toolMatcher, which reads config-defaults.json through fs, so every
+# check that reaches the matcher throws "config-defaults.json not found" — in any profile, real or empty.
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > guide nonexistence > allows API tool when guide.md does not exist
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > guide nonexistence > allows tool when guide.md does not exist
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > max rejection > allows different tools from same source after one rejection
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > max rejection > blocks on first attempt, allows on second for same path
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > max rejection > does not bypass strict browser prerequisite after repeated rejections
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > max rejection > resets rejection counts on resetReadState
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > max rejection > tracks rejection counts per source independently
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > read tracking > allows tool after guide.md has been read
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > read tracking > tracks multiple reads independently
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > read tracking > tracks reads using path parameter
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > reset > clears all read state
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > does not match Bash tool
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > does not match Write tool
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > does not match built-in tools
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > exempts session MCP tools
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > handles malformed MCP tool names (fewer than 3 parts)
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > matches native browser tools and blocks until browser docs are read
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > rule matching > matches session browser tools and blocks until browser docs are read
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > trackBashSkillRead > clears multiple skill prerequisites from a single command
+packages/shared/src/agent/core/__tests__/prerequisite-manager.isolated.ts :: PrerequisiteManager > trackBashSkillRead > clears skill prerequisite when Bash command contains the skill path
+
+# Timing-flaky upstream tests: recorded as "flaky: …", allowed to pass or fail. Each passes when run
+# alone and fails only under full-suite CPU load.
+# transfer.test.ts — sets CRAFT_TRANSFER_TTL_MS=40 and uses real timers; 12/12 passes alone.
+flaky: packages/server-core/src/handlers/rpc/transfer.test.ts :: chunked transfer handlers > refreshes TTL as chunks arrive so slow healthy uploads survive

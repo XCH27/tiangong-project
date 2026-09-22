@@ -55,6 +55,11 @@ These come from the R0 walkthrough groups and R2. Each needs owner approval as i
   built and launched on their own platform. A Mac run certifies only the Mac.
 - **Restore the UI-contract guard** removed with the original-source reset. Its implementation and
   test are recoverable from `snapshot/pre-rebuild-2026-09-21` (`app/scripts/check-ui-contract.ts`).
+- **Upstream test defects (L0), 12 tests in 4 files** — recorded with causes in
+  `scripts/known-upstream-test-failures.txt`: a stale RPC channel list (v0.13.4 added
+  `pages:getShareDataScan`), a millisecond timestamp that makes a prompt test nondeterministic, browser
+  test mocks without `webContents`, and a connection test that only passes against a real user
+  profile.
 - **CLI launcher (upstream defect, L0):** `app/apps/electron/resources/bin/craft-agent` runs Bun on a
   missing entry file and exits 0. `scripts/tests/test_cli_wrapper.py` holds the expected behaviour as
   an expected failure until the fix is approved.

@@ -32,12 +32,14 @@ printf 'Test profile: %s (disposable; removed on exit)\n' "$CRAFT_CONFIG_DIR"
 
 # Bun's per-file isolation prevents module mocks in one suite leaking into another.
 # Explicit source roots avoid running generated bundles or dependency tests.
-bun test --isolate --path-ignore-patterns='**/node_modules/**' --path-ignore-patterns='**/dist/**' apps packages scripts
+# Upstream v0.13.4 ships 12 failing tests; they are recorded, with causes, in
+# scripts/known-upstream-test-failures.txt. Only a new failure, or a recorded one that now passes, fails the gate.
+python3 "$ROOT_DIR/scripts/run-bun-tests.py" --isolate --path-ignore-patterns='**/node_modules/**' --path-ignore-patterns='**/dist/**' apps packages scripts
 
 find apps packages scripts -type f \( -name '*.isolated.ts' -o -name '*.isolated.tsx' \) \
   -not -path '*/node_modules/*' -not -path '*/dist/*' -print0 > "$isolated_test_list"
 while IFS= read -r -d '' isolated_test; do
-  bun test "./$isolated_test"
+  python3 "$ROOT_DIR/scripts/run-bun-tests.py" "./$isolated_test"
 done < "$isolated_test_list"
 
 bun run test:doc-tools

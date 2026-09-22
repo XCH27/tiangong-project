@@ -31,6 +31,12 @@ Full gate before handing work over: `bash scripts/fleet-verify.sh` — the above
 tests, the whole Bun suite under a disposable `CRAFT_CONFIG_DIR`, isolated tests, document tools and
 a backend smoke. Upstream `validate:dev` runs a subset and is not full-suite evidence.
 
+**Upstream ships failing tests.** Unmodified v0.13.4 fails 12 of about 5,300 Bun tests; each is
+recorded with its cause in `scripts/known-upstream-test-failures.txt`, and
+`scripts/run-bun-tests.py` fails the gate only on a new failure or on a recorded one that now
+passes. **Never run the suite without a disposable `CRAFT_CONFIG_DIR`**: at least one upstream test
+reads the real user profile and behaves differently against it.
+
 These gates live at the repository root on purpose: `app/` stays identical to upstream, and
 upstream's OSS `package.json` names staged-check scripts it does not ship.
 

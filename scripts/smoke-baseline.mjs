@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,12 @@ const evidence = mkdtempSync(join(tmpdir(), 'fleet-offline-smoke-'));
 const profile = join(evidence, 'profile');
 mkdirSync(profile);
 const traffic = join(evidence, 'traffic.jsonl');
+// Assertions for Fleet corrections that the 2026-09-22 original-source reset removed, so they
+// cannot pass against unmodified Craft: the 'workspace_root' search token, non-recursive search and
+// surfaced read failures (R0); local Markdown export, denied hosted publication and local help
+// without thecraftagents.com (R2). Set true when those corrections land — they then become part of
+// the slice's acceptance instead of being rewritten.
+const FLEET_CORRECTIONS = false;
 const guard = join(evidence, 'deny-network.ts');
 const entry = join(evidence, 'entry.ts');
 writeFileSync(traffic, '');
@@ -122,32 +128,48 @@ try {
   });
   assert.equal((await rpc('server:getHealth')).status, 'ok');
   checks.push('authenticated startup and health');
-  const workspace = await rpc('server:createWorkspace', 'Offline baseline fixture');
+  // Create the workspace at an explicit folder inside the disposable profile. server:createWorkspace
+  // would put it under ~/.craft-agent/workspaces: upstream workspaces/storage.ts hardcodes
+  // join(homedir(), '.craft-agent') and ignores CRAFT_CONFIG_DIR, so that call wrote a fixture
+  // workspace into the owner's real profile on every run until 2026-09-22.
+  mkdirSync(join(profile, 'workspaces', 'offline-baseline-fixture'), { recursive: true });
+  // realpath: on macOS the temporary directory is /var/..., which the server reports as /private/var/...
+  const workspaceRoot = realpathSync(join(profile, 'workspaces', 'offline-baseline-fixture'));
+  const workspace = await rpc('workspaces:create', workspaceRoot, 'Offline baseline fixture');
   await rpc('window:switchWorkspace', workspace.id);
-  const workspaceRoot = JSON.parse(readFileSync(join(profile, 'config.json'), 'utf8')).workspaces.find(item => item.id === workspace.id).rootPath;
   mkdirSync(join(workspaceRoot, 'folder-fixture'));
   writeFileSync(join(workspaceRoot, 'folder-fixture', 'nested-fixture.md'), 'Nested file');
   const fixtureFile = join(workspaceRoot, 'resource-fixture.md');
   writeFileSync(fixtureFile, 'Project resource fixture');
-  const projectFiles = await rpc('fs:search', 'workspace_root', 'resource-fixture');
-  assert.ok(projectFiles.some(file => file.path === fixtureFile));
-  const directFiles = await rpc('fs:search', 'workspace_root', '', { recursive: false });
-  assert.ok(directFiles.some(file => file.name === 'folder-fixture' && file.type === 'directory'));
-  assert.ok(!directFiles.some(file => file.name === 'nested-fixture.md'));
-  const nestedFiles = await rpc('fs:search', join(workspaceRoot, 'folder-fixture'), '', { recursive: false });
-  assert.ok(nestedFiles.some(file => file.name === 'nested-fixture.md'));
-  await assert.rejects(rpc('fs:search', fixtureFile, ''), /ENOTDIR|directory/i);
+  // Upstream contract: fs:search(basePath, query) walks an absolute directory.
+  const projectFiles = await rpc('fs:search', workspaceRoot, 'resource-fixture');
+  assert.ok(projectFiles.some(file => file.path === fixtureFile), 'fs:search finds a file under the workspace root');
+  const nestedByName = await rpc('fs:search', workspaceRoot, 'nested-fixture');
+  assert.ok(nestedByName.some(file => file.name === 'nested-fixture.md'), 'fs:search recurses into subfolders');
+  if (FLEET_CORRECTIONS) {
+    const tokenFiles = await rpc('fs:search', 'workspace_root', 'resource-fixture');
+    assert.ok(tokenFiles.some(file => file.path === fixtureFile));
+    const directFiles = await rpc('fs:search', 'workspace_root', '', { recursive: false });
+    assert.ok(directFiles.some(file => file.name === 'folder-fixture' && file.type === 'directory'));
+    assert.ok(!directFiles.some(file => file.name === 'nested-fixture.md'));
+    await assert.rejects(rpc('fs:search', fixtureFile, ''), /ENOTDIR|directory/i);
+  }
   const oldProject = await rpc('projects:create', workspace.id, { name: 'Previous resource record' });
   await rpc('projects:uploadAsset', workspace.id, oldProject.slug, { filename: 'retained.txt', base64: Buffer.from('preserved asset').toString('base64') });
   const assets = await rpc('projects:listAssets', workspace.id, oldProject.slug);
   assert.equal(assets.length, 1);
   assert.equal(await rpc('file:read', assets[0].absolutePath), 'preserved asset');
   assert.equal((await rpc('projects:getOne', workspace.id, oldProject.slug)).config.id, oldProject.id);
-  checks.push('Project-root file lookup, surfaced read failure and preserved nested-record assets');
+  checks.push(FLEET_CORRECTIONS ? 'Project-root file lookup, surfaced read failure and preserved nested-record assets' : 'Project-root file lookup and preserved nested-record assets');
   const session = await rpc('sessions:create', workspace.id, { name: 'Offline conversation', workingDirectory: 'none', permissionMode: 'safe' });
-  assert.equal(session.workingDirectory, '');
-  const projectSession = await rpc('sessions:create', workspace.id, { workingDirectory: 'workspace_root', permissionMode: 'safe' });
+  assert.ok(!session.workingDirectory, "a folderless session has no working directory (upstream: undefined)");
+  const projectSession = await rpc('sessions:create', workspace.id, { workingDirectory: workspaceRoot, permissionMode: 'safe' });
   assert.equal(projectSession.workingDirectory, workspaceRoot);
+  if (FLEET_CORRECTIONS) {
+    // Upstream does not know the 'workspace_root' token and stores it as a literal path.
+    const tokenSession = await rpc('sessions:create', workspace.id, { workingDirectory: 'workspace_root', permissionMode: 'safe' });
+    assert.equal(tokenSession.workingDirectory, workspaceRoot);
+  }
   const command = body => rpc('sessions:command', session.id, body);
   await command({ type: 'rename', name: 'Local exported conversation' });
   await command({ type: 'flag' });
@@ -160,23 +182,27 @@ try {
   assert.equal(current.isFlagged, true);
   assert.ok(current.labels.includes(label.id));
   checks.push('Workspace, Session, labels, pin, archive and restore');
-  const exported = await command({ type: 'exportMarkdown' });
-  assert.equal(exported.success, true);
-  assert.ok(exported.markdown.includes('# Local exported conversation'));
-  const publication = await command({ type: 'shareToViewer' });
-  assert.equal(publication.success, false);
-  assert.match(publication.error, /unavailable|disabled|retired|local/i);
-  checks.push('local Markdown export and denied hosted publication');
+  if (FLEET_CORRECTIONS) {
+    const exported = await command({ type: 'exportMarkdown' });
+    assert.equal(exported.success, true);
+    assert.ok(exported.markdown.includes('# Local exported conversation'));
+    const publication = await command({ type: 'shareToViewer' });
+    assert.equal(publication.success, false);
+    assert.match(publication.error, /unavailable|disabled|retired|local/i);
+    checks.push('local Markdown export and denied hosted publication');
+  }
   assert.ok((await rpc('statuses:list', workspace.id)).length > 0);
   assert.ok(await rpc('permissions:getDefaults'));
   assert.ok(await rpc('workspaceSettings:get', workspace.id));
   assert.deepEqual(await rpc('tasks:list', workspace.id), []);
   await rpc('automations:get', workspace.id);
   checks.push('status, permission, settings, task and automation reads');
-  const guide = readFileSync(join(profile, 'docs', 'index.md'), 'utf8');
-  assert.ok(guide.includes('Fleet local documentation'));
-  assert.ok(!guide.includes('thecraftagents.com'));
-  checks.push('bundled help seeded in the selected profile');
+  if (FLEET_CORRECTIONS) {
+    const guide = readFileSync(join(profile, 'docs', 'index.md'), 'utf8');
+    assert.ok(guide.includes('Fleet local documentation'));
+    assert.ok(!guide.includes('thecraftagents.com'));
+    checks.push('bundled help seeded in the selected profile');
+  }
   const records = readFileSync(traffic, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
   assert.equal(records.filter(row => row.selfTest).length, 3);
   assert.deepEqual(records.filter(row => !row.selfTest), []);

@@ -164,7 +164,12 @@ export const App = () => null
 
     def test_full_verifier_uses_disposable_profile_and_cleans_it_on_test_failure(self):
         bin_dir = self.root / "bin"
-        python = self.write("bin/python3", "#!/bin/sh\nexit 0\n")
+        # Stub python3 so the documentation gates are skipped, but let the Bun test runner through:
+        # fleet-verify runs the suite via scripts/run-bun-tests.py, and this test is about that step.
+        python = self.write("bin/python3", f"""#!/bin/sh
+case "$1" in *run-bun-tests.py) exec {sys.executable} "$@";; esac
+exit 0
+""")
         bun = self.write("bin/bun", '''#!/bin/sh
 if [ "$1" = test ]; then
   printf '%s' "$CRAFT_CONFIG_DIR" > "$PROFILE_CAPTURE"
