@@ -53,16 +53,23 @@ upstream's OSS `package.json` names staged-check scripts it does not ship.
 
 ## Reviewing the original app without touching user data
 
-For walkthroughs, point the app at a disposable profile so the owner's real credentials, Sessions
-and files are not modified:
-
 ```bash
-export CRAFT_CONFIG_DIR="$(mktemp -d)"
-cd app && bun run electron:dev
+bash scripts/review-app.sh        # KEEP=1 keeps the sandbox, SKIP_BUILD=1 reuses the last build
 ```
 
-This isolates Craft's profile directory only. Code paths that read the home directory directly are
-not covered and must be audited before claiming isolation.
+It builds once and launches the compiled app with three separate isolation levers, each verified on
+2026-09-22 by fingerprinting 14,143 files of the owner's real data before and after a launch (zero
+changed):
+
+| What must move | Lever | Why the others do not cover it |
+|---|---|---|
+| Craft profile | `CRAFT_CONFIG_DIR` | — |
+| Workspace folders | `HOME` | upstream `workspaces/storage.ts` hardcodes `join(homedir(), '.craft-agent')` and ignores `CRAFT_CONFIG_DIR`; the backend smoke left a fixture workspace in the real home this way |
+| Electron user data — Local/Session Storage, cookies, caches | `--user-data-dir` | on macOS Electron resolves it through the system, not `HOME`; without the switch a review instance writes UI preferences into the real `~/Library/Application Support/@craft-agent` |
+
+`electron:dev` cannot be isolated this way — `scripts/electron-dev.ts` hardcodes Electron's
+arguments — so reviews use the compiled app, which also never runs the auto-updater. A review
+instance is a first run; a model connected there is stored in the sandbox.
 
 ## Commits and branches
 
