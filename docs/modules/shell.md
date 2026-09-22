@@ -27,7 +27,7 @@ changed unrelated areas.
 
 | # | Deliverable | Reference to port | Acceptance |
 |---|---|---|---|
-| 1 | One left sidebar: Project-grouped and folderless conversations; remove the separate navigator column and its resize rail; keep search, archive, pin, rename, labels, multi-select | Cindy `CCAgentSidebarUpper.tsx`; Craft `SessionList`, `AppShell` | R1-A1 |
+| 1 | One left sidebar, **ported from ZCode's `WorkspaceSidebar` as is** except one label: the header segment `分组 \| 项目` becomes `对话 \| 项目` (OV-018). 对话 = every conversation, folderless included, with Craft's session filters (flagged, status, label, view) in the filter popover; 项目 = Project-grouped conversations with ZCode's 项目/时间线 view, created/updated sort, collapse-all and archived toggle. Remove the separate navigator column and its resize rail; keep search, archive, pin, rename, labels, multi-select | ZCode `WorkspaceSidebar.tsx`, `WorkspaceGroupedTasksSection.tsx`, `WorkspaceSidebarItem.tsx`, `lib/sidebarTaskPreferences.ts` (`872ad96`); Craft `SessionList`, `AppShell` | R1-A1 |
 | 2 | Board as its own entry; remove both list/Board switches; keep old Board routes | Craft Kanban, `route-parser.ts` | R1-A2 |
 | 3 | Workspace boundary: two Workspaces may reference one folder without cross-loading | Craft `projects/storage.ts`, `workspaces/types.ts` | R1-A3 |
 | 4 | Project picker in the new-conversation header binds folder through the Session authority; folderless is real | ZCode `SessionPane` context header; Cindy `NewMakerDraftRoute.tsx` | R1-A4 |
@@ -37,9 +37,10 @@ changed unrelated areas.
 | 8 | Model popup: search, category rail, grouped rows, configure footer | Cindy `UnifiedModelPanel`, `UnifiedModelRail`, `UnifiedModelRow` | R1-A6 |
 | 9 | Derived conversation activity: running · error/paused · none; Board keeps its manual columns | Cindy sidebar aggregate | R1-A8 |
 | 10 | Sidebar footer: connected GitHub account, connection settings, app settings; hover row actions | ZCode/Craft sidebar footer; OpenChamber GitHub auth | R1-A9 |
+| 11 | App menu takes over the two stray entries (OV-018): 最新动态 leaves the sidebar for the 调试 submenu, and the top-bar ? button is removed after its items merge into the 帮助 submenu | Craft `shared/menu-schema.ts` (`ROOT_MENU`, `HELP_LINKS`, `DEBUG_MENU`), `DesktopAppMenu.tsx`, `mobile-menu-pages.ts`, `TopBar.tsx` help dropdown, `AppShell.tsx` What's New | R1-A10 |
 
 Order: 1 → 2 → 3 (navigation and data boundary) → 6 → 4 → 7 → 8 (composer) → 5 (right panel) →
-9 → 10. Each step: diff Craft and the reference, declare the delta in [`UPSTREAM-DELTA.tsv`](../UPSTREAM-DELTA.tsv),
+9 → 10 → 11. Each step: diff Craft and the reference, declare the delta in [`UPSTREAM-DELTA.tsv`](../UPSTREAM-DELTA.tsv),
 typecheck, run the app, show the owner.
 
 **What the one sidebar must keep reachable.** Craft's navigator column is not decoration: every
@@ -49,6 +50,24 @@ entry is a route. `route-parser.ts` defines seven navigators — `sessions`, `so
 presentation. Item 1 removes the column, not the destinations: each navigator and filter needs a
 home in the merged sidebar (top entries, the filter popover, or Settings), and every existing route
 string keeps resolving. Checked against v0.13.4 on 2026-09-22.
+
+**Item 11 — what moves and what must survive.** Checked against v0.13.4 on 2026-09-22.
+
+- *调试 is dev-only today.* `DEBUG_MENU` renders only when `isDebugMode()` is true, so putting 最新动态
+  there as is would hide it in every packaged build — a deletion by another name. The submenu is
+  therefore shown always; 最新动态 is always present in it; 检查更新 stays visible (it becomes the Fleet
+  channel check after R2); 安装更新 and 切换开发者工具 keep their dev-only gate.
+- *The unseen-release signal moves with it.* `AppShell.tsx` compares `whatsNewLastSeenVersion` with the
+  latest release to badge the sidebar entry. The badge moves to the 调试 row and the app-menu trigger;
+  opening 最新动态 still records the seen version. The `nav:whats-new` keyboard-navigation entry is
+  replaced by the menu item, not dropped silently.
+- *Help becomes one list.* The top-bar ? dropdown opens per-topic documentation (Sources, Skills,
+  statuses, permissions, automations, messaging) plus 全部文档; the app menu's 帮助 holds `HELP_LINKS`
+  (帮助与文档) and 键盘快捷键. After the merge, 帮助 holds all of them in one list and the top-bar button
+  is removed; the `+` add-panel button beside it is untouched. Both link sets point at
+  `thecraftagents.com` today; replacing that host is R2's hosted-help item, not this step.
+- Desktop menu, mobile menu pages and the native macOS menu read the same `menu-schema.ts`, so the
+  change is made there once and all three follow.
 
 **Dependency gap for item 10.** Craft's only GitHub integration is the device flow in
 `packages/shared/src/auth/github-copilot.ts`, which obtains a Copilot model token and no account
@@ -243,6 +262,10 @@ Do not classify this as UI-only or claim inherited callbacks already enforce the
   Board classification. Collapsed Project activity matches its children; stale prior-turn errors clear.
 - **R1-A9:** Project/conversation hover actions and menus work with keyboard and pointer; status
   classification is absent from conversation menus and composer. GitHub identity never exposes tokens.
+- **R1-A10:** 最新动态 opens from 调试 in a packaged build as well as in dev; an unseen release still
+  shows its badge and clears after viewing. Every item formerly in the top-bar ? menu opens from 帮助;
+  the top-bar ? button is gone and nothing else in the top bar moved. Desktop, mobile and native menus
+  agree.
 
 ## Recovery and non-goals
 

@@ -16,8 +16,8 @@ change here and in [`docs/decisions.md`](docs/decisions.md).
 Contract: [`docs/modules/shell.md`](docs/modules/shell.md).
 Status of every item: `not implemented` (the 2026-09-22 attempt was reverted).
 
-Ten deliverables in a fixed order (sidebar and Board → Workspace boundary → composer → right panel
-→ activity → footer), each with the reference component to port and its acceptance ID:
+Eleven deliverables in a fixed order (sidebar and Board → Workspace boundary → composer → right panel
+→ activity → footer → app menu), each with the reference component to port and its acceptance ID:
 [delivery order](docs/modules/shell.md#delivery-order). Each step is diffed against Craft and the
 reference, declared in `docs/UPSTREAM-DELTA.tsv`, typechecked, run, and shown to the owner before the
 next one starts.

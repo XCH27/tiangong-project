@@ -1508,6 +1508,18 @@ sub-agents casually.
 
 **Now carried by:** `AGENTS.md` rule 11 and *Learned owner preferences*.
 
+### OV-018 — Sidebar from ZCode; What's New and Help into the app menu (2026-09-22)
+
+> 「还有对于左侧栏的很多设计可以直接按照ZCode的进行整改只要把分组按钮改成对话就行」
+>
+> 「最新动态可以放进调试里，右上角的帮助按钮跟左侧的帮助做整合」
+
+**English gloss:** Port much of ZCode's left sidebar directly; the only change is that its 分组
+(grouped) segment becomes 对话 (conversations). Move What's New into the Debug submenu, and merge the
+top-right Help button into the app menu's Help.
+
+**Now carried by:** [`modules/shell.md`](modules/shell.md#delivery-order) items 1 and 11, R1-A10.
+
 ### Rules for this file
 
 Add a signal here only when the owner actually said it (with date) and it is not already carried
