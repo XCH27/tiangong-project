@@ -14,7 +14,8 @@ change here and in [`docs/decisions.md`](docs/decisions.md).
 ## Active slice — R1 shell and context rectification
 
 Contract: [`docs/modules/shell.md`](docs/modules/shell.md).
-Status of every item: `not implemented` (the 2026-09-22 attempt was reverted).
+Status: item 2 (All Sessions/Board split) `wired but not visually checked`, awaiting the owner's
+look; all other items `not implemented`. Next: item 1, the ZCode sidebar.
 
 Eleven deliverables in a fixed order (sidebar and Board → Workspace boundary → composer → right panel
 → activity → footer → app menu), each with the reference component to port and its acceptance ID:

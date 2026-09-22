@@ -22,3 +22,6 @@
 # ordinary edit, because that is the shape that loses features silently.
 #
 path	layer	reason
+apps/electron/src/renderer/components/app-shell/AppShell.tsx	L2	R1 item 2 (EXTEND): Board is its own sidebar entry (nav:board, keyboard order after Archived); All Sessions no longer highlights on the board route; the list/Board switch is removed from the sessions header. removes: apps/electron/src/renderer/components/app-shell/kanban/BoardListToggle.tsx; replacement: sidebar entries nav:allSessions and nav:board. Route 'board' unchanged.
+apps/electron/src/renderer/components/app-shell/kanban/KanbanBoardContainer.tsx	L2	R1 item 2 (EXTEND): the board header no longer hosts the list/Board switch; returning to the list is the All Sessions sidebar entry. Unused routes/navigate bindings dropped with it.
+MISSING:apps/electron/src/renderer/components/app-shell/kanban/BoardListToggle.tsx	L2	R1 item 2 (EXTEND): the list/Board switch has no caller after Board became its own entry. removes: apps/electron/src/renderer/components/app-shell/kanban/BoardListToggle.tsx; replacement: sidebar entries nav:allSessions and nav:board.

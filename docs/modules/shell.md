@@ -39,8 +39,12 @@ changed unrelated areas.
 | 10 | Sidebar footer: connected GitHub account, connection settings, app settings; hover row actions | ZCode/Craft sidebar footer; OpenChamber GitHub auth | R1-A9 |
 | 11 | App menu takes over the two stray entries (OV-018): 最新动态 leaves the sidebar for the 调试 submenu, and the top-bar ? button is removed after its items merge into the 帮助 submenu | Craft `shared/menu-schema.ts` (`ROOT_MENU`, `HELP_LINKS`, `DEBUG_MENU`), `DesktopAppMenu.tsx`, `mobile-menu-pages.ts`, `TopBar.tsx` help dropdown, `AppShell.tsx` What's New | R1-A10 |
 
-Order: 1 → 2 → 3 (navigation and data boundary) → 6 → 4 → 7 → 8 (composer) → 5 (right panel) →
-9 → 10 → 11. Each step: diff Craft and the reference, declare the delta in [`UPSTREAM-DELTA.tsv`](../UPSTREAM-DELTA.tsv),
+Order: 2 → 1 → 3 (navigation and data boundary) → 6 → 4 → 7 → 8 (composer) → 5 (right panel) →
+9 → 10 → 11. The owner put the All Sessions/Board split first (2026-09-22).
+
+Progress: item 2 `wired but not visually checked` — Board is its own sidebar entry, both switches
+are gone, the `board` route and the task-edit jump to it are unchanged (run in the review app
+2026-09-22). Item 1 is next. Each step: diff Craft and the reference, declare the delta in [`UPSTREAM-DELTA.tsv`](../UPSTREAM-DELTA.tsv),
 typecheck, run the app, show the owner.
 
 ### Sidebar merge map (item 1)
