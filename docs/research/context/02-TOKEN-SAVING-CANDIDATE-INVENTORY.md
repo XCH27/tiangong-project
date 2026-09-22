@@ -2,8 +2,8 @@
 
 This retains the owner-curated discovery set without star counts or unverified saving percentages.
 Current local revisions, exact mechanisms and license scopes live in the
-[reference registry](../../REFERENCES.md). Earlier July license/architecture claims do not
-describe a refreshed checkout. [SYS-03](../../features/SYS-03-context-economy.md) owns L0–L6,
+[reference registry](../../references.md). Earlier July license/architecture claims do not
+describe a refreshed checkout. [SYS-03](../../modules/context.md) owns L0–L6,
 measurement and integration gates. No row below is a production dependency selection.
 
 | Candidate | Question to test | Boundary |

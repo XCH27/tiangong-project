@@ -1,7 +1,7 @@
 # 03 — Agent Harness Efficiency Diagnosis
 
 > **Status:** research evidence, not architectural or execution authority. Canonical ownership remains
-> with [Decision E13](../../DECISIONS.md), the [roadmap](../../../TODO.md#release-ladder),
+> with [Decision E13](../../decisions.md), the [roadmap](../../../TODO.md#release-ladder),
 > token economy, and the applicable release spec. This record consolidates
 > evidence from Databricks, Pi, Craft Agents, OpenHands, Hermes, and OpenClaw. Any change to a release
 > contract or authority requires an owner checkpoint and an edit to its canonical document.

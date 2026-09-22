@@ -1,7 +1,7 @@
 # References — open-source projects and what each is for
 
 Reference projects are evidence, not dependencies. Craft is checked first for every capability; a
-project enters a feature loop only after source comparison, a fixed-commit review, a licence review
+project enters a module only after source comparison, a fixed-commit review, a licence review
 and a local surpass test. A product-only reference informs behaviour and never authorizes copying
 code. Each record carries: repository and commit, licence, exact files and symbols, mechanism
 absorbed, Fleet seam, why it cannot be trivially surpassed, rejected alternatives, and a status —
@@ -15,13 +15,13 @@ Raw research notes live in [`research/`](research/) and have these consumers:
 | [Mode and permission comparison](research/context/06-MODE-SELECTION-COMPARISON.md) | R1 Plan and action permission; ZCode controls and Cindy model popup |
 | [xAI authentication](research/context/07-XAI-GROK-AUTHENTICATION.md) | Existing connection authority; client registration must be verified before an OAuth integration |
 | [Pi, Hermes and OpenClaw provider architecture](research/context/09-PI-HERMES-OPENCLAW-PROVIDER-ARCHITECTURE.md) | Existing runtime adapter; SDK versions are source locks, not upgrade instructions |
-| [Context federation benchmark](research/context/00-UNABYSS-BENCHMARK.md), [multi-agent context research](research/context/01-MULTI-AGENT-CONTEXT-RESEARCH.md), [token-saving inventory](research/context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md), [harness efficiency diagnosis](research/context/03-HARNESS-EFFICIENCY-DIAGNOSIS.md), [gateway comparison](research/context/04-GATEWAY-AGENT-COMPARISON.md) | [SYS-03](features/SYS-03-context-economy.md); evidence only |
-| [Canvas product reverse analysis](research/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md) | [SYS-05](features/SYS-05-design-spatial.md) |
-| [Video candidates](research/video/00-CANDIDATE-INVENTORY.md) | [SYS-06](features/SYS-06-media-production.md) |
-| [MiniMax hub plugin stack](research/plugins/00-MINIMAX-HUB-PLUGIN-STACK.md) | [REGISTRY](REGISTRY.md) |
+| [Context federation benchmark](research/context/00-UNABYSS-BENCHMARK.md), [multi-agent context research](research/context/01-MULTI-AGENT-CONTEXT-RESEARCH.md), [token-saving inventory](research/context/02-TOKEN-SAVING-CANDIDATE-INVENTORY.md), [harness efficiency diagnosis](research/context/03-HARNESS-EFFICIENCY-DIAGNOSIS.md), [gateway comparison](research/context/04-GATEWAY-AGENT-COMPARISON.md) | [SYS-03](modules/context.md); evidence only |
+| [Canvas product reverse analysis](research/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md) | [SYS-05](modules/canvas.md) |
+| [Video candidates](research/video/00-CANDIDATE-INVENTORY.md) | [SYS-06](modules/media.md) |
+| [MiniMax hub plugin stack](research/plugins/00-MINIMAX-HUB-PLUGIN-STACK.md) | [marketplace](modules/marketplace.md#plugin-skill-and-marketplace-design) |
 
 Per-project `FLEET-ADAPTATION.md` guides inside each reference checkout are generated from the
-tables below and the feature loops' `Execution` sections. After changing either, run
+tables below and the modules' `Execution` sections. After changing either, run
 `python3 scripts/reference-guides.py --write`; `--check` validates without fetching. Refreshing a
 checkout is not code admission or a baseline update.
 
@@ -382,7 +382,7 @@ runtime or editor dependency has passed a frontend/backend integration compariso
 Checked 2026-09-21 against the current app, both Craft pins and the immutable sources below.
 Local references were not changed. Online-only sources were read at fixed commits in temporary
 storage, not added to the retained checkout set or installed. These are bounded source reviews,
-not end-to-end product trials or dependency admissions. [SYS-04](features/SYS-04-browser-evidence.md)
+not end-to-end product trials or dependency admissions. [SYS-04](modules/browser.md)
 owns the recommended behavior and acceptance; the seven-field promotion gate still applies.
 
 | Candidate / source lock / license | Inspected mechanism and counter-evidence | Recommendation against Fleet's current path |
@@ -424,7 +424,7 @@ that arbitrary networks work through infrastructure-free direct connection. Mobi
 push and transport admission remain unresolved under SYS-02; no external checkout was changed.
 
 These answer the owner's specified-local-app development/office task. The proposed Component and
-scope gate live in [SYS-02](features/SYS-02-remote-office.md#local-app-computer-use-contract).
+scope gate live in [SYS-02](modules/remote.md#local-app-computer-use-contract).
 No helper was installed/launched and no user's app was controlled for this review.
 
 | Candidate / lock / license | Source evidence | Selection limit |
@@ -436,7 +436,7 @@ No helper was installed/launched and no user's app was controlled for this revie
 
 ### Subscription allowance comparison
 
-[SYS-03](features/SYS-03-context-economy.md#subscription-allowance-acquisition-and-display)
+[SYS-03](modules/context.md#subscription-allowance-acquisition-and-display)
 owns the data/display recommendation. No accounts were queried and no private tokens/caches were
 read; this is interface/source evidence, not a successful authenticated Fleet integration.
 
@@ -490,7 +490,7 @@ Current Craft `app/packages/shared/src/agent/core/usage-tracker.ts` measures Ses
 not account allowance. Recommended correction is therefore a typed read adapter plus identity-bound
 snapshot/scheduler projection over the existing connection owner. No second ledger, proxy, account
 store or billing-script runtime is justified. The behavior and additional failure cases are in
-[SYS-03](features/SYS-03-context-economy.md#subscription-allowance-acquisition-and-display).
+[SYS-03](modules/context.md#subscription-allowance-acquisition-and-display).
 These remain candidates: authenticated integration, renderer verification, Rust scheduler execution
 and distribution admission were not established by this source review.
 
@@ -522,7 +522,7 @@ use it correctly or that it is the best in-workbench editor.
 | Read/change an existing Figma design | [Official remote `use_figma`](https://developers.figma.com/docs/figma-mcp-server/write-to-canvas/) edits native objects; it requires appropriate seat/file permission and [client admission](https://developers.figma.com/docs/figma-mcp-server/). The [official interface at `5d718a2`](https://github.com/figma/mcp-server-guide/blob/5d718a28ea21da0b0f75216cdc71be08b6f9b736/skills/figma-use/references/plugin-api-standalone.index.md#L83) excludes undo, version-history saves and clientStorage from `use_figma`. | Do not create a generic writer just because an older MCP was read-only. First compare the official surface against the exact requested operation. A normal Plugin API's capabilities are not automatically available through MCP. This hosted optional route does not satisfy Fleet's local native-editor contract. |
 | Embed a whiteboard editor | Excalidraw `97c68dd3` exposes a React editor with scene read/update and [capture into undo history](https://github.com/excalidraw/excalidraw/blob/97c68dd371e13c017a8dcca49f8b3995ba7890a8/packages/excalidraw/components/App.tsx#L5323), plus [native JSON saving](https://github.com/excalidraw/excalidraw/blob/97c68dd371e13c017a8dcca49f8b3995ba7890a8/packages/excalidraw/data/json.ts#L52). | A bounded alternative for a whiteboard task, not proof of arbitrary SVG editing, native Figma fidelity or Fleet's rich media/workflow canvas. No same-task Electron comparison established superiority; no selection or new wrapper follows from this review. |
 | Edit an SVG directly | SVG-Edit `c44f061d` has an [embeddable SvgCanvas](https://github.com/SVG-Edit/svgedit/blob/c44f061d2f9a626d2771cc931298af5a45522d87/packages/svgcanvas/demos/canvas.html#L28), `getSvgString` and [source replacement with undo](https://github.com/SVG-Edit/svgedit/blob/c44f061d2f9a626d2771cc931298af5a45522d87/packages/svgcanvas/core/svg-exec.js#L403). | Compare for a real SVG task before inventing vector editing. Its sanitizer removes unsupported content and multi-instance isolation remains unverified. This is not a general design-document replacement; superiority and faithful round trips have not been demonstrated. |
-| Drive a named deep-domain tool | Blender already exposes blend-file data and many UI operators through [`bpy.data` / `bpy.ops`](https://github.com/blender/blender/blob/main/doc/python_api/rst/info_api_reference.rst). | For the existing outside-tool scope in `PROJECT-SPEC.md`, use the tool's own API before adding an agent framework. Operator context, save and undo still need task-specific checks; availability does not prove a complete unattended workflow. |
+| Drive a named deep-domain tool | Blender already exposes blend-file data and many UI operators through [`bpy.data` / `bpy.ops`](https://github.com/blender/blender/blob/main/doc/python_api/rst/info_api_reference.rst). | For the existing outside-tool scope in `product.md`, use the tool's own API before adding an agent framework. Operator context, save and undo still need task-specific checks; availability does not prove a complete unattended workflow. |
 
 ### Format-editor candidates checked against the compatibility question
 
@@ -824,7 +824,7 @@ and read Git for the actual revision before comparison. `pending` describes the 
 > `abdc281a` (v0.12.0) — the same commit as the rolling pin — so the two reference roots were
 > byte-identical and the v0.10.5 product/interaction baseline did not exist on disk. It had been in
 > that state since 2026-08-17, meaning every "compare against v0.10.5" instruction in `AGENTS.md`
-> rule 1, `../DESIGN.md` and `specs/R1-one-boundary-language.md` R1-C1 silently compared
+> rule 1, `../DESIGN.md` and `modules/shell.md` R1-C1 silently compared
 > against v0.12.0. Restored to `c9d9a26f`. The row below is the assertion to check: a fixed HEAD in
 > this table is only true if the checkout is actually on it.
 
@@ -897,7 +897,7 @@ Older observations outside that remit remain comparison data only.
 | `software/OpenChatCut` | `README.md`; `skills/openchatcut/`; `.mcp.json`; `server/`; `src/`; `remotion/`; `shared/` | **Interaction/source evidence for a future Video Editing Component; no engine is selected.** Its implemented shape combines a local editable multitrack project, timeline/editor UI, proposal-based agent edits, undo/redo, MCP, 26 on-demand skills, preview and export. Fleet may independently specify the observed workflow against its own authorities; copying source or source-derived contracts requires AGPL-3.0 obligations, project-format compatibility, and an owner license checkpoint. Its project/media files must remain component-owned artifacts, while permissions, sessions and jobs remain Fleet authorities. |
 | `software/genoffice` | `packages/{docx-engine,pptx-engine,pdf2docx,html2docx,file-parse}`; `apps/{docs,sheets,slides,pdf,shell}`; `apps/docs/src/main/{atomic-write,external-change,docs-main}.ts`; `apps/slides/src/main/ops/{registry,executor}.ts`; `apps/slides/src/preload/index.ts` history/snapshot APIs | **Source-level document-component reference.** The engine parses native OOXML/PDF/HTML formats, applies narrow patches and repacks untouched archive entries; the Docs host tracks dirty state, external changes, autosave recovery and Restore/Discard; Slides exposes operation registries, undo/history batches and AI snapshots through the same IPC surface. The UI/Agent share the document's native operation path rather than editing a flattened preview. Root is Apache-2.0, but `ee/` is development/test-only enterprise licensed and third-party engines retain their own notices; no direct `ee/` reuse. |
 | `software/spec-kit` | `src/specify_cli`, `.spec-kit/templates`, `presets`, `bundles`, `prompts`, `docs` | Spec-Driven Development (SDD) contract evidence, executable specification generation, constitution/principles, task decomposition templates, and role presets/bundles |
-| `software/OpenSandbox` | `specs/`, `server/`, `components/{ingress,egress}`, `sdks/`, `kubernetes/`, `cli/` | General-purpose sandbox platform, unified sandbox lifecycle/execution protocol, Docker/K8s/gVisor runtime adapters, network ingress/egress policy, and credential vault |
+| `software/OpenSandbox` | `modules/`, `server/`, `components/{ingress,egress}`, `sdks/`, `kubernetes/`, `cli/` | General-purpose sandbox platform, unified sandbox lifecycle/execution protocol, Docker/K8s/gVisor runtime adapters, network ingress/egress policy, and credential vault |
 | `software/openchamber` | Historical multi-surface checkout observation; current inspected paths appear above | Goals, Fusion and private relay pairing were observed in that product but are outside its Fleet remit. They are not an implementation queue. Retained Git/GitHub and browser-control evidence is recorded in the bounded rows below. |
 | `software/herdr` | `src/{app,client,server,ui,config}`, `tests/` | Rust native terminal multiplexer & background supervisor server, working/blocked/idle pane state detection, socket API / CLI orchestration, and persistent detach/reattach |
 | `software/cindy` | `apps/{desktop,mobile}`, `packages/{maker-core,maker-cc-manager,maker-pi-manager,model-providers,device-link,browser-control-runtime,lizi-im}` | Multi-harness agent client, mid-task harness switching, device-link remote control, IM bridges (WeChat, Slack, Lizi), and local background automation |
@@ -1038,73 +1038,73 @@ the linked owner; a requested independent product fork needs its own explicit sc
 
 | Checkout | Fleet execution contracts |
 |---|---|
-| `software/craft-agents-oss` | [CORE-01](features/SYS-01-agent-os.md#execution-core-01), [CORE-02](features/SYS-01-agent-os.md#execution-core-02), [CORE-03](features/SYS-01-agent-os.md#execution-core-03), [EXEC-01](features/SYS-01-agent-os.md#execution-exec-01), [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03) |
-| `software/craft-agents-oss-v0.10.5` | [CORE-01](features/SYS-01-agent-os.md#execution-core-01), [CORE-10](features/SYS-01-agent-os.md#execution-core-10), [CORE-11](features/SYS-09-workspace-compositions.md#execution-core-11) |
-| `software/cindy` | [CORE-11](features/SYS-09-workspace-compositions.md#execution-core-11), [ORCH-03](features/SYS-09-workspace-compositions.md#execution-orch-03), [ORCH-11](features/SYS-08-marketplaces.md#execution-orch-11), [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03), [EXEC-14](features/SYS-03-context-economy.md#execution-exec-14) |
-| `software/openchamber` | [EXEC-13](features/SYS-02-remote-office.md#execution-exec-13), [EXEC-07](features/SYS-02-remote-office.md#execution-exec-07), [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03), [INTEL-04](features/SYS-03-context-economy.md#execution-intel-04) |
-| `software/deepseek-harness` | [ORCH-03](features/SYS-09-workspace-compositions.md#execution-orch-03), [ORCH-11](features/SYS-08-marketplaces.md#execution-orch-11), [CORE-11](features/SYS-09-workspace-compositions.md#execution-core-11) |
-| `software/AionCore` | [CORE-03](features/SYS-01-agent-os.md#execution-core-03), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [ORCH-06](features/SYS-01-agent-os.md#execution-orch-06) |
-| `software/AionUi` | [EXEC-14](features/SYS-03-context-economy.md#execution-exec-14), [INTEL-03](features/SYS-03-context-economy.md#execution-intel-03), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05) |
-| `software/CLIProxyAPI` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [INTEL-03](features/SYS-03-context-economy.md#execution-intel-03) |
-| `software/codex` | [EXEC-01](features/SYS-01-agent-os.md#execution-exec-01), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [INTEL-04](features/SYS-03-context-economy.md#execution-intel-04) |
-| `software/grok-build` | [EXEC-14](features/SYS-03-context-economy.md#execution-exec-14), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [INTEL-03](features/SYS-03-context-economy.md#execution-intel-03) |
-| `software/herdr` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [ORCH-06](features/SYS-01-agent-os.md#execution-orch-06) |
-| `software/hermes-agent` | [INTEL-05](features/SYS-03-context-economy.md#execution-intel-05), [EXEC-11](features/SYS-02-remote-office.md#execution-exec-11), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05) |
-| `software/kimi-code` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [INTEL-01](features/SYS-03-context-economy.md#execution-intel-01) |
-| `software/Kun` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [ORCH-06](features/SYS-01-agent-os.md#execution-orch-06) |
-| `software/multica` | [CORE-04](features/SYS-01-agent-os.md#execution-core-04), [EXEC-04](features/SYS-01-agent-os.md#execution-exec-04), [ORCH-06](features/SYS-01-agent-os.md#execution-orch-06) |
-| `software/omnigent` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [EXEC-14](features/SYS-03-context-economy.md#execution-exec-14) |
-| `software/openclaw` | [INTEL-05](features/SYS-03-context-economy.md#execution-intel-05), [EXEC-11](features/SYS-02-remote-office.md#execution-exec-11), [INTEL-01](features/SYS-03-context-economy.md#execution-intel-01) |
-| `software/opencode` | [EXEC-04](features/SYS-01-agent-os.md#execution-exec-04), [EXEC-01](features/SYS-01-agent-os.md#execution-exec-01), [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `software/OpenHands` | [CREATE-01](features/SYS-05-design-spatial.md#execution-create-01), [ORCH-01](features/SYS-07-workflow-delivery.md#execution-orch-01) |
-| `software/orca` | [EXEC-15](features/SYS-02-remote-office.md#execution-exec-15), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [INTEL-04](features/SYS-03-context-economy.md#execution-intel-04) |
-| `software/pi-mono` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [INTEL-01](features/SYS-03-context-economy.md#execution-intel-01), [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `software/waku` | [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05), [EXEC-03](features/SYS-01-agent-os.md#execution-exec-03) |
-| `software/ZCode` | [CORE-05](features/SYS-01-agent-os.md#execution-core-05), [ORCH-11](features/SYS-08-marketplaces.md#execution-orch-11), [EXEC-05](features/SYS-01-agent-os.md#execution-exec-05) |
-| `software/cc-switch` | [INTEL-04](features/SYS-03-context-economy.md#execution-intel-04), [INTEL-03](features/SYS-03-context-economy.md#execution-intel-03) |
-| `software/cockpit-tools` | [INTEL-04](features/SYS-03-context-economy.md#execution-intel-04), [CORE-05](features/SYS-01-agent-os.md#execution-core-05) |
-| `software/dashi-taskboard` | [CORE-04](features/SYS-01-agent-os.md#execution-core-04), [EXEC-02](features/SYS-01-agent-os.md#execution-exec-02) |
-| `software/OpenSandbox` | [EXEC-08](features/SYS-01-agent-os.md#execution-exec-08) |
-| `software/spec-kit` | [INTEL-07](features/SYS-03-context-economy.md#execution-intel-07) |
-| `software/Cowart` | [CREATE-01](features/SYS-05-design-spatial.md#execution-create-01), [CREATE-03](features/SYS-06-media-production.md#execution-create-03), [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03) |
-| `software/genoffice` | [INFO-05](features/SYS-05-design-spatial.md#execution-info-05), [CREATE-08](features/SYS-06-media-production.md#execution-create-08) |
-| `software/html-anything` | [INFO-04](features/SYS-04-browser-evidence.md#execution-info-04), [CREATE-07](features/SYS-05-design-spatial.md#execution-create-07) |
-| `software/open-design` | [CREATE-06](features/SYS-05-design-spatial.md#execution-create-06), [CREATE-07](features/SYS-05-design-spatial.md#execution-create-07), [INFO-02](features/SYS-04-browser-evidence.md#execution-info-02) |
-| `software/openpencil` | [CREATE-06](features/SYS-05-design-spatial.md#execution-create-06), [INFO-05](features/SYS-05-design-spatial.md#execution-info-05) |
-| `software/penpot` | [CREATE-06](features/SYS-05-design-spatial.md#execution-create-06) |
-| `software/tldraw` | [CREATE-01](features/SYS-05-design-spatial.md#execution-create-01), [CREATE-06](features/SYS-05-design-spatial.md#execution-create-06) |
-| `software/OpenChatCut` | [CREATE-02](features/SYS-06-media-production.md#execution-create-02), [ORCH-05](features/SYS-06-media-production.md#execution-orch-05), [CREATE-12](features/SYS-06-media-production.md#execution-create-12) |
-| `software/OpenMontage` | [CREATE-10](features/SYS-06-media-production.md#execution-create-10), [CREATE-12](features/SYS-06-media-production.md#execution-create-12) |
-| `software/opencut` | [CREATE-02](features/SYS-06-media-production.md#execution-create-02) |
-| `software/opencut-classic` | [CREATE-02](features/SYS-06-media-production.md#execution-create-02) |
-| `software/openreel-video` | [CREATE-02](features/SYS-06-media-production.md#execution-create-02), [CREATE-04](features/SYS-06-media-production.md#execution-create-04), [ORCH-05](features/SYS-06-media-production.md#execution-orch-05) |
-| `software/palmier-pro` | [CREATE-02](features/SYS-06-media-production.md#execution-create-02) |
-| `plugins/dockview` | [CORE-11](features/SYS-09-workspace-compositions.md#execution-core-11) |
-| `plugins/react-resizable-panels` | [CORE-11](features/SYS-09-workspace-compositions.md#execution-core-11) |
-| `plugins/react-rnd` | [CORE-11](features/SYS-09-workspace-compositions.md#execution-core-11) |
-| `plugins/xyflow` | [CREATE-01](features/SYS-05-design-spatial.md#execution-create-01) |
-| `plugins/hyperframes` | [CREATE-09](features/SYS-06-media-production.md#execution-create-09), [CREATE-12](features/SYS-06-media-production.md#execution-create-12), [ORCH-05](features/SYS-06-media-production.md#execution-orch-05) |
-| `plugins/markitdown` | [INFO-04](features/SYS-04-browser-evidence.md#execution-info-04), [INFO-08](features/SYS-04-browser-evidence.md#execution-info-08) |
-| `software/browser-harness` | [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03) |
-| `software/browser-use` | [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03), [EXEC-01](features/SYS-01-agent-os.md#execution-exec-01) |
-| `software/flowgram.ai` | [ORCH-01](features/SYS-07-workflow-delivery.md#execution-orch-01), [CREATE-01](features/SYS-05-design-spatial.md#execution-create-01) |
-| `software/mcp-registry` | [ORCH-12](features/SYS-08-marketplaces.md#execution-orch-12), [ORCH-04](features/SYS-08-marketplaces.md#execution-orch-04) |
-| `plugins/GPTCache` | [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `plugins/LLMLingua` | [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `plugins/SuperClaude_Framework` | [INTEL-07](features/SYS-03-context-economy.md#execution-intel-07) |
-| `plugins/agentmemory` | [INTEL-05](features/SYS-03-context-economy.md#execution-intel-05) |
-| `plugins/agentskills` | [INTEL-06](features/SYS-03-context-economy.md#execution-intel-06), [ORCH-10](features/SYS-08-marketplaces.md#execution-orch-10) |
-| `plugins/caveman` | [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `plugins/claude-mem` | [INTEL-05](features/SYS-03-context-economy.md#execution-intel-05) |
-| `plugins/claude-task-master` | [CORE-04](features/SYS-01-agent-os.md#execution-core-04), [EXEC-04](features/SYS-01-agent-os.md#execution-exec-04) |
-| `plugins/claude-token-efficient` | [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `plugins/claw-compactor` | [INTEL-01](features/SYS-03-context-economy.md#execution-intel-01), [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02) |
-| `plugins/context7` | [INFO-06](features/SYS-04-browser-evidence.md#execution-info-06), [ORCH-12](features/SYS-08-marketplaces.md#execution-orch-12) |
-| `plugins/letta` | [INTEL-05](features/SYS-03-context-economy.md#execution-intel-05) |
-| `plugins/mem0` | [INTEL-05](features/SYS-03-context-economy.md#execution-intel-05), [INTEL-07](features/SYS-03-context-economy.md#execution-intel-07) |
-| `plugins/planning-with-files` | [EXEC-14](features/SYS-03-context-economy.md#execution-exec-14) |
-| `plugins/playwright-mcp` | [INFO-03](features/SYS-04-browser-evidence.md#execution-info-03), [ORCH-04](features/SYS-08-marketplaces.md#execution-orch-04) |
-| `plugins/repomix` | [INFO-06](features/SYS-04-browser-evidence.md#execution-info-06), [INTEL-02](features/SYS-03-context-economy.md#execution-intel-02), [ORCH-10](features/SYS-08-marketplaces.md#execution-orch-10) |
+| `software/craft-agents-oss` | [CORE-01](modules/agent-core.md#execution-core-01), [CORE-02](modules/agent-core.md#execution-core-02), [CORE-03](modules/agent-core.md#execution-core-03), [EXEC-01](modules/agent-core.md#execution-exec-01), [INFO-03](modules/browser.md#execution-info-03) |
+| `software/craft-agents-oss-v0.10.5` | [CORE-01](modules/agent-core.md#execution-core-01), [CORE-10](modules/agent-core.md#execution-core-10), [CORE-11](modules/components.md#execution-core-11) |
+| `software/cindy` | [CORE-11](modules/components.md#execution-core-11), [ORCH-03](modules/components.md#execution-orch-03), [ORCH-11](modules/marketplace.md#execution-orch-11), [INFO-03](modules/browser.md#execution-info-03), [EXEC-14](modules/context.md#execution-exec-14) |
+| `software/openchamber` | [EXEC-13](modules/remote.md#execution-exec-13), [EXEC-07](modules/remote.md#execution-exec-07), [INFO-03](modules/browser.md#execution-info-03), [INTEL-04](modules/context.md#execution-intel-04) |
+| `software/deepseek-harness` | [ORCH-03](modules/components.md#execution-orch-03), [ORCH-11](modules/marketplace.md#execution-orch-11), [CORE-11](modules/components.md#execution-core-11) |
+| `software/AionCore` | [CORE-03](modules/agent-core.md#execution-core-03), [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/agent-core.md#execution-orch-06) |
+| `software/AionUi` | [EXEC-14](modules/context.md#execution-exec-14), [INTEL-03](modules/context.md#execution-intel-03), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/CLIProxyAPI` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-03](modules/context.md#execution-intel-03) |
+| `software/codex` | [EXEC-01](modules/agent-core.md#execution-exec-01), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-04](modules/context.md#execution-intel-04) |
+| `software/grok-build` | [EXEC-14](modules/context.md#execution-exec-14), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-03](modules/context.md#execution-intel-03) |
+| `software/herdr` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/agent-core.md#execution-orch-06) |
+| `software/hermes-agent` | [INTEL-05](modules/context.md#execution-intel-05), [EXEC-11](modules/remote.md#execution-exec-11), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/kimi-code` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-01](modules/context.md#execution-intel-01) |
+| `software/Kun` | [EXEC-05](modules/agent-core.md#execution-exec-05), [ORCH-06](modules/agent-core.md#execution-orch-06) |
+| `software/multica` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-04](modules/agent-core.md#execution-exec-04), [ORCH-06](modules/agent-core.md#execution-orch-06) |
+| `software/omnigent` | [EXEC-05](modules/agent-core.md#execution-exec-05), [EXEC-14](modules/context.md#execution-exec-14) |
+| `software/openclaw` | [INTEL-05](modules/context.md#execution-intel-05), [EXEC-11](modules/remote.md#execution-exec-11), [INTEL-01](modules/context.md#execution-intel-01) |
+| `software/opencode` | [EXEC-04](modules/agent-core.md#execution-exec-04), [EXEC-01](modules/agent-core.md#execution-exec-01), [INTEL-02](modules/context.md#execution-intel-02) |
+| `software/OpenHands` | [CREATE-01](modules/canvas.md#execution-create-01), [ORCH-01](modules/workflow.md#execution-orch-01) |
+| `software/orca` | [EXEC-15](modules/remote.md#execution-exec-15), [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-04](modules/context.md#execution-intel-04) |
+| `software/pi-mono` | [EXEC-05](modules/agent-core.md#execution-exec-05), [INTEL-01](modules/context.md#execution-intel-01), [INTEL-02](modules/context.md#execution-intel-02) |
+| `software/waku` | [EXEC-05](modules/agent-core.md#execution-exec-05), [EXEC-03](modules/agent-core.md#execution-exec-03) |
+| `software/ZCode` | [CORE-05](modules/agent-core.md#execution-core-05), [ORCH-11](modules/marketplace.md#execution-orch-11), [EXEC-05](modules/agent-core.md#execution-exec-05) |
+| `software/cc-switch` | [INTEL-04](modules/context.md#execution-intel-04), [INTEL-03](modules/context.md#execution-intel-03) |
+| `software/cockpit-tools` | [INTEL-04](modules/context.md#execution-intel-04), [CORE-05](modules/agent-core.md#execution-core-05) |
+| `software/dashi-taskboard` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-02](modules/agent-core.md#execution-exec-02) |
+| `software/OpenSandbox` | [EXEC-08](modules/agent-core.md#execution-exec-08) |
+| `software/spec-kit` | [INTEL-07](modules/context.md#execution-intel-07) |
+| `software/Cowart` | [CREATE-01](modules/canvas.md#execution-create-01), [CREATE-03](modules/media.md#execution-create-03), [INFO-03](modules/browser.md#execution-info-03) |
+| `software/genoffice` | [INFO-05](modules/canvas.md#execution-info-05), [CREATE-08](modules/media.md#execution-create-08) |
+| `software/html-anything` | [INFO-04](modules/browser.md#execution-info-04), [CREATE-07](modules/canvas.md#execution-create-07) |
+| `software/open-design` | [CREATE-06](modules/canvas.md#execution-create-06), [CREATE-07](modules/canvas.md#execution-create-07), [INFO-02](modules/browser.md#execution-info-02) |
+| `software/openpencil` | [CREATE-06](modules/canvas.md#execution-create-06), [INFO-05](modules/canvas.md#execution-info-05) |
+| `software/penpot` | [CREATE-06](modules/canvas.md#execution-create-06) |
+| `software/tldraw` | [CREATE-01](modules/canvas.md#execution-create-01), [CREATE-06](modules/canvas.md#execution-create-06) |
+| `software/OpenChatCut` | [CREATE-02](modules/media.md#execution-create-02), [ORCH-05](modules/media.md#execution-orch-05), [CREATE-12](modules/media.md#execution-create-12) |
+| `software/OpenMontage` | [CREATE-10](modules/media.md#execution-create-10), [CREATE-12](modules/media.md#execution-create-12) |
+| `software/opencut` | [CREATE-02](modules/media.md#execution-create-02) |
+| `software/opencut-classic` | [CREATE-02](modules/media.md#execution-create-02) |
+| `software/openreel-video` | [CREATE-02](modules/media.md#execution-create-02), [CREATE-04](modules/media.md#execution-create-04), [ORCH-05](modules/media.md#execution-orch-05) |
+| `software/palmier-pro` | [CREATE-02](modules/media.md#execution-create-02) |
+| `plugins/dockview` | [CORE-11](modules/components.md#execution-core-11) |
+| `plugins/react-resizable-panels` | [CORE-11](modules/components.md#execution-core-11) |
+| `plugins/react-rnd` | [CORE-11](modules/components.md#execution-core-11) |
+| `plugins/xyflow` | [CREATE-01](modules/canvas.md#execution-create-01) |
+| `plugins/hyperframes` | [CREATE-09](modules/media.md#execution-create-09), [CREATE-12](modules/media.md#execution-create-12), [ORCH-05](modules/media.md#execution-orch-05) |
+| `plugins/markitdown` | [INFO-04](modules/browser.md#execution-info-04), [INFO-08](modules/browser.md#execution-info-08) |
+| `software/browser-harness` | [INFO-03](modules/browser.md#execution-info-03) |
+| `software/browser-use` | [INFO-03](modules/browser.md#execution-info-03), [EXEC-01](modules/agent-core.md#execution-exec-01) |
+| `software/flowgram.ai` | [ORCH-01](modules/workflow.md#execution-orch-01), [CREATE-01](modules/canvas.md#execution-create-01) |
+| `software/mcp-registry` | [ORCH-12](modules/marketplace.md#execution-orch-12), [ORCH-04](modules/marketplace.md#execution-orch-04) |
+| `plugins/GPTCache` | [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/LLMLingua` | [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/SuperClaude_Framework` | [INTEL-07](modules/context.md#execution-intel-07) |
+| `plugins/agentmemory` | [INTEL-05](modules/context.md#execution-intel-05) |
+| `plugins/agentskills` | [INTEL-06](modules/context.md#execution-intel-06), [ORCH-10](modules/marketplace.md#execution-orch-10) |
+| `plugins/caveman` | [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/claude-mem` | [INTEL-05](modules/context.md#execution-intel-05) |
+| `plugins/claude-task-master` | [CORE-04](modules/agent-core.md#execution-core-04), [EXEC-04](modules/agent-core.md#execution-exec-04) |
+| `plugins/claude-token-efficient` | [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/claw-compactor` | [INTEL-01](modules/context.md#execution-intel-01), [INTEL-02](modules/context.md#execution-intel-02) |
+| `plugins/context7` | [INFO-06](modules/browser.md#execution-info-06), [ORCH-12](modules/marketplace.md#execution-orch-12) |
+| `plugins/letta` | [INTEL-05](modules/context.md#execution-intel-05) |
+| `plugins/mem0` | [INTEL-05](modules/context.md#execution-intel-05), [INTEL-07](modules/context.md#execution-intel-07) |
+| `plugins/planning-with-files` | [EXEC-14](modules/context.md#execution-exec-14) |
+| `plugins/playwright-mcp` | [INFO-03](modules/browser.md#execution-info-03), [ORCH-04](modules/marketplace.md#execution-orch-04) |
+| `plugins/repomix` | [INFO-06](modules/browser.md#execution-info-06), [INTEL-02](modules/context.md#execution-intel-02), [ORCH-10](modules/marketplace.md#execution-orch-10) |
 
 ## Required promotion record
 
@@ -1125,7 +1125,7 @@ admission record with all of the following:
    model or CLI is not required to perform the review.
 
 Until all seven are present, use `candidate`, `INSUFFICIENT_COMPARISON` or `EVIDENCE_ONLY` as
-appropriate. A row in `CAPABILITY-REFERENCE-MAP.md` or `PROJECT-SPEC.md` is a pointer, not
+appropriate. A row in `CAPABILITY-REFERENCE-MAP.md` or `capabilities.md` is a pointer, not
 evidence.
 
 ## Owner-provided product reverse-analysis reports (EVIDENCE_ONLY)
@@ -1135,13 +1135,13 @@ copying. They ground product/mechanism decisions only.
 
 | Report | Subject | Status | Grounds consumed by |
 |---|---|---|---|
-| [`canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md`](research/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md) | Mayi Canvas v3.4.4 — custom DOM+translate3d+SVG infinite canvas; node/port/connection system; performance mode, workers, object pools; local HTTP agent bridge with self-describing capabilities, allowlisted/batch actions, and token; provider proxy layer; project ZIP format | `EVIDENCE_ONLY` | Decision E5a (DOM-family + in-family fallback), `ARCHITECTURE.md` §§4.5/7, matrix canvas/AIGC rows |
-| [`plugins/00-MINIMAX-HUB-PLUGIN-STACK.md`](research/plugins/00-MINIMAX-HUB-PLUGIN-STACK.md) | MiniMax Hub 1.1.1 six official plugins — iframe sandbox, postMessage protocol-v2, `window.hub` SDK, BlobRef upload, placeholder→dag→insert with permanent IDs, three implementation patterns, host requirements | `EVIDENCE_ONLY` | `ARCHITECTURE.md` §§3/7 module registration, matrix plugins/extensions rows, R15 SYS-08 packet |
+| [`canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md`](research/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md) | Mayi Canvas v3.4.4 — custom DOM+translate3d+SVG infinite canvas; node/port/connection system; performance mode, workers, object pools; local HTTP agent bridge with self-describing capabilities, allowlisted/batch actions, and token; provider proxy layer; project ZIP format | `EVIDENCE_ONLY` | Decision E5a (DOM-family + in-family fallback), `architecture.md` §§4.5/7, matrix canvas/AIGC rows |
+| [`plugins/00-MINIMAX-HUB-PLUGIN-STACK.md`](research/plugins/00-MINIMAX-HUB-PLUGIN-STACK.md) | MiniMax Hub 1.1.1 six official plugins — iframe sandbox, postMessage protocol-v2, `window.hub` SDK, BlobRef upload, placeholder→dag→insert with permanent IDs, three implementation patterns, host requirements | `EVIDENCE_ONLY` | `architecture.md` §§3/7 module registration, matrix plugins/extensions rows, R15 SYS-08 packet |
 
 ## Owner-requested six-repo scan (README + licence; two already source-reviewed)
 
 Owner asked whether these six GitHub projects have reference or combination value. Verdicts
-follow [`PROJECT-SPEC.md`](PROJECT-SPEC.md): no second kernel, no second task store, no universal
+follow [`product.md`](product.md): no second kernel, no second task store, no universal
 Core computer controller, no second OS sandbox, no telemetry as a product feature. The optional
 R16 specified-app Component follows SYS-02/EXEC-15 and does not adopt these products wholesale. The verdicts concern
 these products and their integration boundaries, not a language prohibition under F3.
@@ -1151,7 +1151,7 @@ these products and their integration boundaries, not a language prohibition unde
 | [Niall-Young/Canvasight](https://github.com/Niall-Young/Canvasight) | MIT · TypeScript · Codex plugin | Task/asset DAG canvas (`Page → Group → Task/Asset`) that a person and Codex edit, then Run into the *current Codex task*. Concurrent merge + conflict-copy pages. Not a production image/video/web/PPT board. | **`EVIDENCE_ONLY` for Fleet's own canvas collab** (same-board edit, graph write, conflict copies, assets as first-class nodes). Do not install it, do not inject Codex, do not make the Fleet canvas a task DAG for an external agent. Production canvas stays Fleet's. |
 | [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | MIT · **Go** | Local proxy that turns CLI OAuth subscriptions (Claude Code, Codex, Gemini, Grok Build, …) into OpenAI/Claude/Gemini-shaped HTTP APIs, with multi-account round-robin. | **Do not combine as a built-in gateway.** Fleet already has provider OAuth. Building this in would be a second model gateway and a ToS-sensitive “subscription as API” product. A person may point Fleet at a proxy they already run; that is an optional remote connection, not a Fleet capability. |
 | [chuspeeism/dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard) | Apache-2.0 · TS + Rust/Tauri | Local-first issue board with SQLite, `taskctl` CLI, a Skill so Codex can move issues, and **CDP injection into ChatGPT.app**. Optional Cloudflare share. | **Reject as a surface.** Second task/issue store (P10 / one Task authority). CDP inject is general external-app control. LAN mode has no auth. Keep only the *shape* of “agent moves an issue through a Skill on the existing store” — implement on Fleet Session/Task, never this board. |
-| [opensandbox-group/OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) | Apache-2.0 · Go+Python | Docker/K8s sandbox control plane + in-sandbox daemon. Already source-reviewed at `f8ed8734ce1f`. | **Second-sandbox integration remains excluded.** `PROJECT-SPEC.md` forbids a second OS sandbox. A second sandbox stays excluded; EXEC-08 verifies inherited isolation under R0/R2. If isolation is ever reopened, the reference is omnigent's daemonless per-spawn seam, not this. |
+| [opensandbox-group/OpenSandbox](https://github.com/opensandbox-group/OpenSandbox) | Apache-2.0 · Go+Python | Docker/K8s sandbox control plane + in-sandbox daemon. Already source-reviewed at `f8ed8734ce1f`. | **Second-sandbox integration remains excluded.** `product.md` forbids a second OS sandbox. A second sandbox stays excluded; EXEC-08 verifies inherited isolation under R0/R2. If isolation is ever reopened, the reference is omnigent's daemonless per-spawn seam, not this. |
 | [trailhq/Graft](https://github.com/trailhq/Graft) | MIT · TypeScript | Local markdown+tree-sitter codebase graph (`graft/`) so coding agents stop re-exploring. Wires Claude Code/Cursor/Codex via hooks/MCP. Opt-out telemetry. | **`EVIDENCE_ONLY` for SYS-03** (durable repo map, blast radius, “onboard once”). Do not take the other-agent hook wiring or telemetry. Do not stand up a second context authority. A later context-economy slice may port the *idea* (files on disk the agent greps) into Fleet's own routing, not install Graft. |
 | [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | MIT · TypeScript | “Everything is a plugin” Cordis microkernel. Already source-reviewed; Decision **E14**. | **Unchanged: do not rebuild Fleet on it.** Admitted only: service definition/provider/consumer vocabulary, per-session composition invariants, “enforce in the operation that decides”. Rejected: Cordis as root, 167-package split, live self-modification. Combining it as the runtime would be a second kernel. |
 
@@ -1161,4 +1161,4 @@ Historical observation: `源码参考/software/Cowart` @ `47206ab` (2026-09-09).
 
 | What it is | Verdict |
 |---|---|
-| Codex-native infinite-canvas **plugin**: tldraw widget + MCP + three skills. Persist under the *user project* `canvas/pages/<id>/`. AI 图片框 (prompt + refs → replace holder), annotation screenshot → clean image beside original, AI HTML 16:9 embed, AI Slides (pages + fullscreen). MCP: `get/save_cowart_canvas_state`, `get_cowart_selection`, `insert_cowart_image`, `insert_cowart_html_draft`, widget render. | **Bounded production-board interaction reference** (one board for image / HTML-site / deck). Closer to [`PROJECT-SPEC.md`](PROJECT-SPEC.md) than Canvasight (task DAG) or Craft Pages (mini-apps). **Do not install, do not weld to Codex, do not import tldraw, do not take GA4.** When R7 is built: compare the *holder → generate → replace*, *annotate → revise beside*, *HTML/Slides as canvas objects*, and *project-local canvas/ storage* into Fleet's pane — person and agent edit the same board. Not this slice. |
+| Codex-native infinite-canvas **plugin**: tldraw widget + MCP + three skills. Persist under the *user project* `canvas/pages/<id>/`. AI 图片框 (prompt + refs → replace holder), annotation screenshot → clean image beside original, AI HTML 16:9 embed, AI Slides (pages + fullscreen). MCP: `get/save_cowart_canvas_state`, `get_cowart_selection`, `insert_cowart_image`, `insert_cowart_html_draft`, widget render. | **Bounded production-board interaction reference** (one board for image / HTML-site / deck). Closer to [`product.md`](product.md) than Canvasight (task DAG) or Craft Pages (mini-apps). **Do not install, do not weld to Codex, do not import tldraw, do not take GA4.** When R7 is built: compare the *holder → generate → replace*, *annotate → revise beside*, *HTML/Slides as canvas objects*, and *project-local canvas/ storage* into Fleet's pane — person and agent edit the same board. Not this slice. |

@@ -53,7 +53,7 @@ def validate_execution_contracts(root: Path, registry_ids: list[str], packet_tex
     errors = []
     owners = {}
     bodies = {}
-    for path in (root / 'docs/features').glob('SYS-*.md'):
+    for path in (root / 'docs/modules').glob('*.md'):
         for match in re.finditer(rf'^### Execution ({ID})\n(.*?)(?=^### Execution |\Z)', path.read_text(), re.M | re.S):
             identity, body = match.groups()
             if identity in owners:

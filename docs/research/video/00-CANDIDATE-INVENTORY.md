@@ -2,7 +2,7 @@
 
 This is the retained discovery pool, not an editor selection or clone queue. Current checkout
 revisions, symbols, local changes and licenses live in the
-[reference registry](../../REFERENCES.md), which supersedes earlier absence claims.
+[reference registry](../../references.md), which supersedes earlier absence claims.
 
 | Inspected local candidate | Relevant evidence / limit |
 |---|---|

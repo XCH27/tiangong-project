@@ -12,7 +12,7 @@ to. Do not preload the whole `docs/` tree.
   approved rectification slices → implementation and acceptance → added capabilities.**
 - The one slice currently authorized is **R1 shell and context rectification** (sidebar, Board,
   right panel, new-conversation layout, composer model/reasoning/permission). Its contract is
-  [`docs/specs/R1-one-boundary-language.md`](docs/specs/R1-one-boundary-language.md); the checklist
+  [`docs/modules/shell.md`](docs/modules/shell.md); the checklist
   is in [`TODO.md`](TODO.md). Everything outside it needs its own approval.
 - A 2026-09-22 attempt at this slice was rejected and reverted. The owner's words:
   「你的很多修改是完全错误的，我只让你修改所有对话和项目等模块，你却随意修改了其他部份，而且你的UI
@@ -21,7 +21,7 @@ to. Do not preload the whole `docs/` tree.
 
 ## Read this first
 
-[`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md) is the single authority on what Fleet is and is not.
+[`docs/product.md`](docs/product.md) is the single authority on what Fleet is and is not.
 Where another document disagrees, it wins. In one line: **Craft Agents decides the look and the
 runtime base; Cindy decides how features are built and how surfaces talk to the backend; ZCode is
 the layout and interaction reference for the conversation shell and composer; OpenChamber decides
@@ -60,24 +60,40 @@ Git and GitHub; the canvas, documents and video are Fleet's own.**
 11. **Do not dispatch sub-agents to decide design, layout or architecture**, and do not dispatch
     them casually at all (owner: 「不要乱派子智能体」). They arrive without this context and invent.
 
-## Routing
+## Routing — read before you touch
 
-| Your task involves… | Read |
+Every document has one job. Modules are self-contained: each opens with a generated card (its
+register rows, status, release, surfaces), then owns its contract, code entry points, references
+and execution rows. Read the module first, and the shared documents only for what it points to.
+
+| Before you touch… | Read |
 |---|---|
-| What Fleet is, scope, capability status, terms | [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md) |
-| What to do now / what comes next | [`TODO.md`](TODO.md), then the linked spec in [`docs/specs/`](docs/specs/) |
-| "Is this already decided?", hard constraints, the owner's exact words | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
-| Architecture, code entry points, Craft capability classification | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| **Any rendered value, layout or motion** | [`DESIGN.md`](DESIGN.md) — mandatory before UI code |
-| Building or changing a component; upstream-delta layers | [`docs/COMPONENT-GUIDELINES.md`](docs/COMPONENT-GUIDELINES.md) |
-| Pages, panels, surface IDs | [`docs/PAGE-STRUCTURE.md`](docs/PAGE-STRUCTURE.md) |
-| Workflow, gates, tests, commits | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
-| Plugins, Skills, component distribution | [`docs/REGISTRY.md`](docs/REGISTRY.md) |
-| Building and packaging for Windows, macOS, Linux; updates | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
-| Which open-source project to reference for what, and where | [`docs/REFERENCES.md`](docs/REFERENCES.md) |
-| One closed feature loop in depth | [`docs/features/`](docs/features/) |
-| Raw research evidence | [`docs/research/`](docs/research/) |
-| Release history and resets | [`CHANGELOG.md`](CHANGELOG.md) |
+| **Anything rendered** — a value, layout, motion | [`DESIGN.md`](DESIGN.md), then the module — mandatory before UI code |
+| Sidebar, navigation, Workspace/Project, new conversation, composer, right panel (R1) | [`docs/modules/shell.md`](docs/modules/shell.md) |
+| Updater, hosted Pages, telemetry, help, OAuth relays, branding (R2) | [`docs/modules/services.md`](docs/modules/services.md), then [packaging](docs/engineering.md#building-and-packaging) |
+| The walkthrough, baseline exit, or any original-Craft behaviour (R0) | [`docs/modules/baseline.md`](docs/modules/baseline.md) |
+| Sessions, permissions, actions, tasks, orchestration | [`docs/modules/agent-core.md`](docs/modules/agent-core.md) |
+| Prompt, tools, tokens, memory, Skills loadout | [`docs/modules/context.md`](docs/modules/context.md) |
+| Browser pane, capture, evidence | [`docs/modules/browser.md`](docs/modules/browser.md) |
+| Canvas, design, documents | [`docs/modules/canvas.md`](docs/modules/canvas.md) |
+| Image, audio, video, decks | [`docs/modules/media.md`](docs/modules/media.md) |
+| Workflows, schedules, delivery | [`docs/modules/workflow.md`](docs/modules/workflow.md) |
+| Remote targets, worktrees, messaging, computer use | [`docs/modules/remote.md`](docs/modules/remote.md) |
+| Plugins, Skills, MCP catalogs, component distribution | [`docs/modules/marketplace.md`](docs/modules/marketplace.md) |
+| Panel host, components, workspace compositions | [`docs/modules/components.md`](docs/modules/components.md) |
+| Scope — "should Fleet do this at all?" | [`docs/product.md`](docs/product.md) |
+| A capability's status, acceptance ID, page or surface ID | [`docs/capabilities.md`](docs/capabilities.md) — the register; edit rows there |
+| "Is this already decided?", the owner's exact words | [`docs/decisions.md`](docs/decisions.md) |
+| A cross-module invariant, authority or code entry point | [`docs/architecture.md`](docs/architecture.md) |
+| A component, a gate, a test, a commit, a build | [`docs/engineering.md`](docs/engineering.md) |
+| Which open-source project to reference, and where | [`docs/references.md`](docs/references.md) |
+| What to do now | [`TODO.md`](TODO.md) |
+
+Where to write: a fact belongs to exactly one of these. Module-specific detail goes in its module,
+never in a shared document; a status goes in the register row, never in prose; history goes in
+[`CHANGELOG.md`](CHANGELOG.md). Documents other than the ledgers (`capabilities`, `decisions`,
+`references`, `CHANGELOG`) stay under 700 lines — the gate enforces it; split by module, not by
+raising the limit.
 
 ## Preflight
 
@@ -106,8 +122,8 @@ U=源码参考/software/craft-agents-oss
 diff app/apps/electron/src/renderer/<path> $U/apps/electron/src/renderer/<path>
 ```
 
-For the R1 surfaces, also open the named Cindy and ZCode components listed in the R1 spec and in
-[`docs/REFERENCES.md`](docs/REFERENCES.md). Read what they do, then justify each delta. Real cases
+For the R1 surfaces, also open the named Cindy and ZCode components listed in [delivery order](docs/modules/shell.md#delivery-order) and in
+[`docs/references.md`](docs/references.md). Read what they do, then justify each delta. Real cases
 this step would have caught: a button given `h-7` because `size="sm"` "looked too big" while
 upstream uses `size="sm"` everywhere; a dropdown hand-rolled from `<button>` rows beside a sibling
 using `Popover` + `cmdk`; a picker rebuilt next to two steps that already use
@@ -144,7 +160,7 @@ original-source reset; restoring it is part of an approved slice, not a preparat
   statuses.
 - **Duty to dissent:** if an instruction conflicts with a recorded decision or will lose data or a
   function, say so once with evidence, then follow the owner's call and record it in
-  [`docs/DECISIONS.md`](docs/DECISIONS.md).
+  [`docs/decisions.md`](docs/decisions.md).
 - **Test content is not product intent.** Session content, Project names and fixtures (for example
   the stock-trading test chats) are data, never requirements or defaults.
 - **Reference projects are retained unless the owner decides otherwise.** Present target, evidence

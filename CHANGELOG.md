@@ -21,9 +21,15 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
   on every commit, so about a day of work sat uncommitted. Staged checks now live in
   `scripts/staged-checks.sh` at the repository root. Upstream's OSS `package.json` names 14 scripts
   it does not ship (`typecheck-staged.sh`, `release.ts`, `check-version.ts`, …).
-- **Documentation restructured** into the conventional tree in `README.md`: 61 files across eight
-  directory levels became root files plus `docs/`, `docs/features/`, `docs/specs/`, `docs/research/`.
-  Three 63-row capability tables were merged into one.
+- **Documentation restructured, then made module-first.** 61 files across eight directory levels
+  became root files plus `docs/`. A first pass followed a conventional template and produced four
+  1,000–1,500-line merged files with each module's detail still scattered across them. The second
+  pass splits by job: six shared documents (`product`, `capabilities`, `decisions`, `architecture`,
+  `engineering`, `references`) and one self-contained document per module in `docs/modules/`
+  (R0/R1/R2 slices plus nine feature modules, which absorbed the orchestration design and the plugin
+  registry). Each module opens with a card generated from the capability register; the gate fails
+  on a stale card and on any non-ledger document over 700 lines. `AGENTS.md` routes by "before you
+  touch X, read Y". Three 63-row capability tables were merged into one register.
 - Preserved: `snapshot/codex-01a0c495-2026-09-22` (the uncommitted work before the checkpoint).
 
 ### 2026-09-21 — rebuild from upstream v0.13.4

@@ -7,7 +7,7 @@
 
 ## 1. Current admission
 
-The **current implementation contract is [R1](../../specs/R1-one-boundary-language.md)**,
+The **current implementation contract is [R1](../../modules/shell.md)**,
 revised by the owner on 2026-09-22 after ZCode/Cindy source comparison. ZCode's Plan checkbox is
 independent of three permission radios: Confirm changes, Auto edit and Full access. Model and
 reasoning are separate composer controls; the model popup follows Cindy. Craft owns visual tokens
@@ -175,7 +175,7 @@ There is **no** regex router that forces Plan on “broad change.” Agent may *
 **humans approve** enter (via plan_enter question) and exit (via plan_exit question).
 
 The admitted behavior is recorded once in
-[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md#craft-capability-map); the former `app/packages/shared/src/agent/work-mode.ts` was removed by the rebuild.
+[`capabilities.md`](../../capabilities.md#craft-capability-map); the former `app/packages/shared/src/agent/work-mode.ts` was removed by the rebuild.
 The target extends the current Session/permission authority and is `not implemented`.
 
 ## 5. Admitted mechanism and implementation limits

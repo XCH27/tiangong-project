@@ -3,7 +3,7 @@
 Craft Agents decides every visual value: colour, opacity, type, spacing, radius, elevation, icons and
 motion. For the surfaces the owner named, ZCode and Cindy supply **layout and interaction**, never
 values — the R1 contract lists the exact components. This file owns the values;
-[`docs/COMPONENT-GUIDELINES.md`](docs/COMPONENT-GUIDELINES.md) owns how components are built.
+[`docs/engineering.md`](docs/engineering.md#component-development) owns how components are built.
 
 > **Scope:** the decidable numbers an agent needs to render a surface without inventing a visual
 > language. This file records the v0.10.5 look-pin values. Start from the current production
@@ -213,7 +213,7 @@ from §4 and stays keyboard reachable when hover-revealed.
 **At-rest visibility of trailing elements (policy).** All trailing elements on a sidebar level
 (counts, after-title meta, row actions) share one at-rest visibility language. The baseline is
 **hover-reveal**, as measured above and **owner-confirmed 2026-07-26**
-([`DECISIONS.md`](docs/DECISIONS.md) G7). Switching any element to always-visible reopens G7 as a
+([`decisions.md`](docs/decisions.md) G7). Switching any element to always-visible reopens G7 as a
 single owner decision applied to the whole level, never a per-control fork.
 
 ### Menu / popover / tooltip / dialog / entity row / panel header
@@ -280,7 +280,7 @@ ordinary connection editing.
 - **No hero.** No surface in either pinned snapshot uses a centered oversized title, a decorative
   icon badge, or a marketing-style introduction. Creation and configuration surfaces are dense forms
   that start at the top-left. This is also binding as
-  [`specs/R1-one-boundary-language.md`](docs/specs/R1-one-boundary-language.md) §8.
+  [`modules/shell.md`](docs/modules/shell.md) §8.
 - **Progressive disclosure over new surfaces.** Prefer changing fields, grouping, wording, and
   disclosure inside the existing surface over adding a page, toolbar, sidebar, or settings category.
 - **Density is the default.** This is a workbench, not a landing page. Whitespace communicates
@@ -297,7 +297,7 @@ ordinary connection editing.
 ## 10. Required states
 
 Every surface ships the applicable states from
-[`PAGE-STRUCTURE.md`](docs/PAGE-STRUCTURE.md) §4 using the shared components:
+[`capabilities.md`](docs/capabilities.md#page-structure) §4 using the shared components:
 
 | State | Component | Rule |
 |---|---|---|
@@ -331,7 +331,7 @@ Unless the owner's Goal explicitly authorizes it, a UI change may not:
 6. add a page, toolbar, sidebar section, or settings category when an existing surface can host it
    (owner UI rules; Decision P5);
 7. change navigation structure, the default surface set, or which capability is primary — those are
-   owner decisions recorded in [`DECISIONS.md`](docs/DECISIONS.md), not implementation choices;
+   owner decisions recorded in [`decisions.md`](docs/decisions.md), not implementation choices;
 8. ship a control whose behavior is not connected, outside the preview-gated frontend track
    (Decision G6).
 

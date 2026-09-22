@@ -16,7 +16,7 @@
 #     command — tasks are never lost.
 #
 # Examples:
-#   ./scripts/cli-subagents.sh --lane easy -- "fix typo in docs/ARCHITECTURE.md ..." "update stale date in ..."
+#   ./scripts/cli-subagents.sh --lane easy -- "fix typo in docs/architecture.md ..." "update stale date in ..."
 #   ./scripts/cli-subagents.sh --tasks-file /tmp/batch.txt --verify 'python3 scripts/validate-doc-contracts.py'
 #   ./scripts/cli-subagents.sh --only codex -- "hard: refactor the doc-links module ..."
 #   ./scripts/cli-subagents.sh --probe          # roster, binaries, quota cooldowns

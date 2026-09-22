@@ -34,7 +34,7 @@ bun run electron:dev            # run the desktop app in development mode
 
 Development mode never auto-updates. **Do not hand out a packaged build yet**: packaged Craft
 downloads and installs upstream Craft updates on its own — see
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+[`docs/engineering.md`](docs/engineering.md#building-and-packaging).
 
 Full verification: `bash scripts/fleet-verify.sh`.
 
@@ -57,22 +57,22 @@ DESIGN.md                     visual style, layout and interaction specification
 CHANGELOG.md                  releases and major changes
 TODO.md                       development plan and current progress
 docs/
-  PROJECT-SPEC.md             positioning, goals, scope, capability register, glossary
-  DECISIONS.md                decisions, hard constraints, the owner's exact words
-  ARCHITECTURE.md             architecture, code map, Craft capability classification
-  COMPONENT-GUIDELINES.md     component development, styling, dependencies, upstream-delta layers
-  PAGE-STRUCTURE.md           pages, panels and surface IDs
-  DEVELOPMENT.md              workflow, quality gates, tests, commits
-  REGISTRY.md                 components, plugins and Skills: build, validation, distribution
-  DEPLOYMENT.md               building and packaging for three platforms; updates
-  REFERENCES.md               which open-source project to reference for what, and where
+  product.md                  what Fleet is and is not: scope, rules, vision, glossary
+  capabilities.md             the register: capabilities, acceptance, matrix, pages, Craft map
+  decisions.md                decisions, hard constraints, the owner's exact words
+  architecture.md             cross-module invariants, authorities, code map
+  engineering.md              workflow, gates, tests, components, packaging and updates
+  references.md               which open-source project to reference for what, and where
   UPSTREAM-DELTA.tsv          every declared difference from upstream Craft
-  features/                   one document per closed feature loop (SYS-01 … SYS-09)
-  specs/                      contracts for the active slices (R0, R1, R2)
+  modules/                    one self-contained document per module
+    baseline.md shell.md services.md          active release slices R0, R1, R2
+    agent-core.md context.md browser.md       feature modules, each with its
+    canvas.md media.md workflow.md            execution rows and references
+    remote.md marketplace.md components.md
   research/                   raw research evidence
 ```
 
 ## License
 
 Craft Agents is Apache-2.0; see `app/LICENSE` and `app/NOTICE`. Reference projects keep their own
-licenses, recorded in [`docs/REFERENCES.md`](docs/REFERENCES.md).
+licenses, recorded in [`docs/references.md`](docs/references.md).

@@ -35,14 +35,14 @@ intent → invariant → authority → writer/consumer → persisted scope
 This rule keeps the whitepaper as vision, this file as the decision ledger, and active specs as the
 only place where a bounded implementation may begin.
 >
-> **2026-09-10:** [`PROJECT-SPEC.md`](PROJECT-SPEC.md) outranks this file. Entries that assume (a) Craft's
+> **2026-09-10:** [`product.md`](product.md) outranks this file. Entries that assume (a) Craft's
 > `AppShell` is the product window, (b) the canvas is a session-graph projection, (c) general
 > external-application control, or (d) 3D scene / panorama / shot-grid authoring, are superseded.
 > **2026-09-11 implementation reset:** the Craft v0.13.3 rebase discarded the old
 > ExpertKit-as-label, delegation, memory, artifact-history, CLI-adapter and workbench modules. H1–H27
 > remain rationale only where they state a durable invariant. Their old `Contract:` paths and
 > `landed` wording are historical, not current implementation status. H15 as revised and
-> [`PROJECT-SPEC.md`](PROJECT-SPEC.md) require an independent identity/loadout authority; no later entry may
+> [`product.md`](product.md) require an independent identity/loadout authority; no later entry may
 > recreate `LabelConfig.expertKit`. The later v0.13.4 rebuild also removed the former Assistant
 > store, Component helpers, remote grants and layout model; these paths are snapshot evidence only.
 
@@ -119,7 +119,7 @@ only place where a bounded implementation may begin.
   permissions or tool activation. Choosing a Project never switches Workspace implicitly. Preserve
   Craft's existing Workspace/Project/Session records; no collapse migration and no parallel global
   Project store. A folderless Conversation stays in the selected Workspace. See
-  [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md).
+  [`modules/shell.md`](modules/shell.md).
 - **P7 — Remote Projects connect directly to another Fleet instance; no Fleet account or central
   coordinator.** The current connection interaction is P9-rev below: host access link, client name
   + link. The earlier exposed URL/token form is not the target UI. A remote access grant is
@@ -140,14 +140,14 @@ only place where a bounded implementation may begin.
   Fleet-native. **Upstream intake stays open:** track
   official tags/release notes/source to port fixes selectively; but Fleet's binary updater must use
   a Fleet-controlled/user-configured channel (installing an official Craft binary over Fleet would
-  erase the fork) or disable cleanly. Spec: [`specs/R2-independence.md`](specs/R2-independence.md).
+  erase the fork) or disable cleanly. Spec: [`modules/services.md`](modules/services.md).
   (owner direction, amended 2026-07-12)
 
 ### P8-rev (2026-07-26): Online sharing removed
 
 **Decision**: Remove online sharing/viewer functionality entirely (ChatPage share button, session-menu share item, new shareToViewer/updateShare publication, session_shared events, apps/viewer. Retain bounded revoke/unpublish cleanup for existing remote copies until resolved).
 
-**Rationale**: Default-visible controls with no actual behavior violate DECISIONS.md §2. Owner decision 2026-07-26.
+**Rationale**: Default-visible controls with no actual behavior violate decisions.md §2. Owner decision 2026-07-26.
 
 **Current implementation**: original hosted publication was restored. Fleet removal is `not implemented`; review the concrete R2 slice before changing UI or backend.
 
@@ -220,8 +220,8 @@ and grant flow is `not implemented` in the current tree.
   R15 activates; do not freeze a manifest because a reference uses it.
 
   The source review, candidate mechanisms and detailed package-safety findings belong in
-  [`REGISTRY.md`](REGISTRY.md)
-  §16 and [`references/marketplaces/00-MARKPLACE-BENCHMARK.md`](REGISTRY.md#marketplace-benchmark).
+  [`marketplace.md`](modules/marketplace.md#plugin-skill-and-marketplace-design)
+  §16 and [`marketplace.md`](modules/marketplace.md#marketplace-benchmark).
   Those records are evidence, not proof that their suggested adapter exists in the current tree.
 
 ## B. The spine (agent-native execution)
@@ -332,7 +332,7 @@ and grant flow is `not implemented` in the current tree.
 - **D2 — Persistence retains the current Craft-derived filesystem authorities** unless a measured requirement
   changes the implementation. No product-wide SQLite control plane; no independent `jobs.json` /
   `memory.json` / `clips.json`. SQLite requires a written decision with a concrete trigger — see
-  [`DECISIONS.md`](#hard-constraints) §4. (2026-07-09)
+  [`decisions.md`](#hard-constraints) §4. (2026-07-09)
 - **D3 — No second long-lived background authority without a demonstrated lifecycle requirement.**
   The Electron main process owns the terminal/PTY lifecycle and the local spine. (2026-07-09)
 - **D4 — Files and Library are separate layers.** Raw workspace files become Library assets only
@@ -377,7 +377,7 @@ and grant flow is `not implemented` in the current tree.
   executable `workflow` are distinct relationship classes with different owners. A visual connector
   is never automatically an executable edge or a provenance fact. v1 workflows are finite DAGs of
   typed steps, stored as immutable versioned project documents when run. Full vision:
-  [`design-library/07-canvas-spatial-orchestration-VISION.md`](features/SYS-05-design-spatial.md#canvas-vision).
+  [`canvas.md`](modules/canvas.md#canvas-vision).
   (amended 2026-07-11)
 - **E5a — The canvas commits to the DOM-family rendering approach; React Flow v12 is the default
   first implementation and custom DOM+SVG is the named in-family fallback; the domain model stays
@@ -399,7 +399,7 @@ and grant flow is `not implemented` in the current tree.
   admission record at the spike. **Anti-oscillation clause:** this entry supersedes both prior
   wordings ("committed default" and "leading candidate"); do not re-litigate the renderer without
   new spike evidence or an owner request. (replaced 2026-07-15; family committed + in-family spike
-  defined 2026-07-17 — see `ARCHITECTURE.md` §4.5)
+  defined 2026-07-17 — see `architecture.md` §4.5)
 - **E6 — The BrowserPane is a governed evidence input, not a stealth browser or editable-doc
   surface.** Explicit control model (enablement, open-target, data clearing, screenshot policy,
   approval policy, site overrides, separate high-risk full-CDP developer toggle). Remote pages are
@@ -409,10 +409,10 @@ and grant flow is `not implemented` in the current tree.
 - **E8 — Local resource limits are product behavior, not exceptional failure.** Under saturation the
   product visibly queues, suspends, degrades, or hands off — it does not freeze or silently drop
   work. Exact thresholds are benchmark outputs. (owner concern; see
-  [`DECISIONS.md`](#the-owners-words) OV-002; 2026-07-11)
+  [`decisions.md`](#the-owners-words) OV-002; 2026-07-11)
 - **E9 — Reasoning and runtime modes adapt per model; unsupported distinctions stay hidden.** The
   owner requires automatic per-model adaptation and honest handling of models that expose no
-  gradable reasoning control (exact quote: `DECISIONS.md` OV-006). Discovery records the exact
+  gradable reasoning control (exact quote: `decisions.md` OV-006). Discovery records the exact
   provider- or CLI-advertised values for each model. Fleet may translate their labels for display
   and normalize an exact equivalent into its persisted vocabulary, but it must not invent a tier,
   silently saturate `max` to a lower value, or treat every provider `variant` as reasoning effort.
@@ -436,7 +436,7 @@ and grant flow is `not implemented` in the current tree.
   complete in Settings with progressive disclosure rather than navigating through the first-run
   onboarding experience. The 2026-09-22 owner clarification selects **ZCode for composer placement
   and separate model/reasoning controls, Cindy for the model popup** (search, category rail,
-  grouped rows and configure footer). [R1](specs/R1-one-boundary-language.md) owns that contract.
+  grouped rows and configure footer). [R1](modules/shell.md) owns that contract.
   OpenCode remains comparison evidence for provider configuration, discovery, context usage and
   review; it does not override the two named composer references.
   Existing Fleet composition is not grandfathered; redundant menus, nested pickers, and weak
@@ -467,7 +467,7 @@ and grant flow is `not implemented` in the current tree.
 
 - **E12 — Token economy is a first-class capability: intelligence per token, never saving for
   saving's sake.** Owner-set product bet: vendors won't reduce user token spend; Fleet does.
-  Design authority: `features/SYS-03-context-economy.md` — a layered pipeline (structural
+  Design authority: `modules/context.md` — a layered pipeline (structural
   L0 → cache alignment L1 → deterministic input compression L2 → agent-directed compaction L3 →
   gated model-assisted compression L4 → opt-in output economy L5 → reviewed cross-session
   injection L6). Integration is three-tier: core-fused mechanisms at Fleet seams; optional
@@ -512,7 +512,7 @@ and grant flow is `not implemented` in the current tree.
   2. **Different product, different unit of value.** `dsh` is a harness: the runtime *is* the
      product and third-party plugins are its surface (`dsh-plugin` GitHub topic, published npm
      scope). Fleet is a local-first workbench whose value is the *environment* — one Project
-     boundary, one evidence timeline, artifact lineage, permissioned recovery (`PROJECT-SPEC.md`).
+     boundary, one evidence timeline, artifact lineage, permissioned recovery (`product.md`).
      Fleet's users are the owner and their agents, not plugin authors composing an agent. Adopting
      the architecture would import the other product's identity along with it.
   3. **The tax is paid in the currency Fleet is currently short of.** Once every surface is a
@@ -541,7 +541,7 @@ and grant flow is `not implemented` in the current tree.
     terminal capability helper, artifact history and workbench examples were discarded. Naming the roles is free; splitting packages
     preemptively is not
     — their own rule is that a capability with one conceivable provider and one Consumer stays one
-    package until a second appears. Recorded in `COMPONENT-GUIDELINES.md` §2.
+    package until a second appears. Recorded in `engineering.md` §2.
   - **Four per-session-composition invariants** that Fleet's Assistant/loadout design does not
     yet state and needs: the composition a session was **created** with is a durable session fact
     and a resume rebuilds *that* composition, never today's default; a running turn cannot change
@@ -561,7 +561,7 @@ and grant flow is `not implemented` in the current tree.
   167-package split; `ctx.<name>` property-proxy injection; and — most firmly — the
   self-modification toolset that lets the agent mount and unmount plugins in its own live runtime.
   That last one is a genuinely impressive capability and a direct contradiction of this product:
-  C7 forbids an executing agent rewriting its own harness, and `PROJECT-SPEC.md`'s entire claim is that
+  C7 forbids an executing agent rewriting its own harness, and `product.md`'s entire claim is that
   every consequential action is inspectable, permissioned and recoverable. An agent that can
   re-compose the runtime enforcing those properties has no such guarantee left to offer.
 
@@ -627,7 +627,7 @@ and grant flow is `not implemented` in the current tree.
   harnesses as `models[agent]` / `routing[agent]`, and `resolveRoute` is a pure function that reads
   no storage. Fleet already separates these by accident; E15 makes it a rule. Consequence for R6
   and the delegation kernel: an adapter declares and executes, a router chooses, and neither owns
-  the other. Evidence and exact symbols: `references/REFERENCES.md`. (2026-08-15)
+  the other. Evidence and exact symbols: `references/references.md`. (2026-08-15)
 
 ## F. Compliance (hard product requirements)
 
@@ -641,7 +641,7 @@ and grant flow is `not implemented` in the current tree.
   Approval or availability is not proof of superiority: frontend and backend mechanisms must each
   improve the same task over the current path, a small local fix and the owning software's native
   facilities, after integration cost. Keep existing behavior when evidence is insufficient; take only
-  the part that wins. See `PROJECT-SPEC.md` and the reference registry's promotion record.
+  the part that wins. See `product.md` and the reference registry's promotion record.
   (2026-07-08; owner clarification 2026-09-21)
 
 ## G. Process
@@ -660,27 +660,27 @@ and grant flow is `not implemented` in the current tree.
   implemented callers**, never built speculatively first. Dependency edges describe required
   integration, not a permission system — the owner may request any capability early, and its status
   then reports the unresolved edges honestly. (2026-07-16; time-flavored labels removed 2026-07-17)
-- **G3 — Agents own verification below final look-and-feel acceptance.** Follow `DEVELOPMENT.md`:
+- **G3 — Agents own verification below final look-and-feel acceptance.** Follow `engineering.md`:
   static checks, relevant tests, real data paths and bounded non-destructive rendered checks when
   needed. Owner acceptance decides the final visual experience. Local verification does not grant
   permission for paid, public, destructive or unrelated interactive operations.
 - **G4 — Documentation architecture v2.** The authoritative set is the numbered documents indexed
-  by `PROJECT-SPEC.md`, OWNER-GUIDE, UI baseline, feature registry, `specs/`, `modules/` and
+  by `product.md`, OWNER-GUIDE, UI baseline, feature registry, `modules/`, `modules/` and
   `references/`. Each rule lives in exactly one canonical document. Superseded planning corpora are
   deleted after unique active facts migrate; they are not archived in-tree. Durable design assets
   remain in `design-library/` or module packets because they guide their ordered product rows,
   not because they commemorate prior process. (2026-07-16; clarified 2026-07-17)
 - **G5 — Coverage and sequencing are separate.** Every product domain (canvas, video, browser,
   memory, tokens, sandbox, messaging, workflows, design, deck, jobs, remote…) stays registered and
-  described at breadth level in [`PROJECT-SPEC.md`](PROJECT-SPEC.md#product-matrix) and
-  [`PAGE-STRUCTURE.md`](PAGE-STRUCTURE.md) at all times, with its reference projects
+  described at breadth level in [`capabilities.md`](capabilities.md#product-matrix) and
+  [`capabilities.md`](capabilities.md#page-structure) at all times, with its reference projects
   and gates named. Integration order never deletes a domain from design; matrix/page rows update in
   the same slice that changes their facts; depth (full specs) is written when a domain activates or
   the owner requests it. (2026-07-17)
 - **G6 — Frontend track: pages may run ahead of behavior, honestly.** Complete page specs are
   encouraged ahead of backend work. The current baseline-first order applies to previews too:
   no new page build starts before the R0 baseline exit. After that exit, early page builds are allowed when: the page spec exists
-  ([`PAGE-STRUCTURE.md`](PAGE-STRUCTURE.md) §5); data flows through a typed adapter
+  ([`capabilities.md`](capabilities.md#page-structure) §5); data flows through a typed adapter
   with mocks behind the adapter (never in components); unwired pages are reachable only behind the
   developer/preview toggle; status is reported `display-only` until actual behavior is connected.
   The default user surface
@@ -994,7 +994,7 @@ and grant flow is `not implemented` in the current tree.
   OpenChatCut supplies the official video bundle reference. OpenChatCut is AGPL-3.0 and is therefore
   source/product evidence unless an explicit license checkpoint approves direct reuse. The early
   host starts after the R0 baseline exit, using mounted Files and a real consumer of the surviving
-  Notes RPC. It does not wait for that video choice, R6 delegation, R9 memory or a marketplace; `features/SYS-09-workspace-compositions.md` owns its foundation-first acceptance. (owner,
+  Notes RPC. It does not wait for that video choice, R6 delegation, R9 memory or a marketplace; `modules/components.md` owns its foundation-first acceptance. (owner,
   binding, 2026-09-14; placement and execution-order clarification 2026-09-15)
 - **H41 — Fleet adopts DeepSeek Harness composition principles without adopting its kernel.**
   Owner direction 2026-09-14 confirms that the Fleet Component system should follow the reference's
@@ -1190,7 +1190,7 @@ Near-term persistence retains the current Craft-derived filesystem stores under 
 D2). Introduce SQLite or a control-plane database only when a **concrete, observable engineering
 signal** appears — e.g. the first real bug where file-based lease-restart reconciliation or job
 idempotency cannot be made atomic on the filesystem. Record the trigger, migration path, and owning
-authority in `DECISIONS.md`, then migrate. "It would be cleaner" is not a trigger.
+authority in `decisions.md`, then migrate. "It would be cleaner" is not a trigger.
 
 #### Artifact history (Decisions H1–H4)
 
@@ -1270,7 +1270,7 @@ a neighbor.
   the *design dossiers* under `modules/` ("module/suite packets") are content, not process — they
   carry breadth/depth design and compatibility records. They are permitted only while (a) their
   depth labels remain documentation states, never work permissions or schedule gates
-  (`COMPONENT-GUIDELINES.md` §2), (b) they own no capability status, progress %, assignment, or
+  (`engineering.md` §2), (b) they own no capability status, progress %, assignment, or
   approval, and (c) no document requires reading them before ordinary bounded work. The moment one
   becomes a work-permission gate or a second status system, it is the banned machinery again.
 - Do not let documentation claim more than implementation. When plan and code diverge, correct the
@@ -1280,7 +1280,7 @@ a neighbor.
 
 These owner statements remain active product intent. Quote them verbatim when exact wording matters;
 do not turn this file into an archive or infer implementation status from it. Current scope and
-interface rules are owned by [PRODUCT](PROJECT-SPEC.md#how-the-interface-behaves).
+interface rules are owned by [PRODUCT](product.md#how-the-interface-behaves).
 
 ### OV-001 — Software must keep growing without becoming a mess (2026-07-08)
 
@@ -1302,8 +1302,8 @@ and tool panels; the architecture must absorb that growth without losing control
 the local machine must remain responsive, including the infinite canvas.
 
 **Now carried by:** Decision E8 (resource limits are product behavior), the canvas
-[media policy](features/SYS-05-design-spatial.md#8-media-and-4k-policy) and
-[representative Electron benchmark](features/SYS-05-design-spatial.md#10-representative-electron-decision-gate).
+[media policy](modules/canvas.md#8-media-and-4k-policy) and
+[representative Electron benchmark](modules/canvas.md#10-representative-electron-decision-gate).
 
 ### OV-003 — Owner speaks in concepts; agents choose the technical route (2026-07-08)
 
@@ -1323,9 +1323,9 @@ reconstruct the intent, verify it against evidence, and choose the best technica
 **English gloss:** The system should be modular: text can lead to images, and the same artifact can continue
 into web, video, dynamic presentations, or editing workflows.
 
-**Now carried by:** `../ARCHITECTURE.md` §1 (native surfaces on one spine) and
-`../ARCHITECTURE.md` §3, Decisions E4/E5, D4 (one artifact version consumed by several later
-surfaces), and [SYS-05](features/SYS-05-design-spatial.md)'s shared production board.
+**Now carried by:** `architecture.md` §1 (native surfaces on one spine) and
+`architecture.md` §3, Decisions E4/E5, D4 (one artifact version consumed by several later
+surfaces), and [SYS-05](modules/canvas.md)'s shared production board.
 People and Agents edit the same artifacts on that board; native document/sequence owners retain
 their models. A relationship graph alone does not satisfy this intent.
 
@@ -1336,7 +1336,7 @@ their models. A relationship graph alone does not satisfy this intent.
 **English gloss:** Agents can invoke module capabilities and compose workflows when the task requires them.
 
 **Now carried by:** Decision S1 (one caller-aware invocation model) and E5's finite versioned DAG
-workflow rule; dependent on the action spine (see `../ARCHITECTURE.md` and `../features/SYS-01-agent-os.md`).
+workflow rule; dependent on the action spine (see `architecture.md` and `modules/agent-core.md`).
 
 ### OV-006 — Thinking intensity adapts per model; some models cannot be graded (2026-07-11)
 
@@ -1358,7 +1358,7 @@ mapping is not the current adapter or the product contract.
 replacing a proven Craft capability rather than designing an unrelated product.
 
 **Now carried by:** Decision P2, root `AGENTS.md` rule 1, the mandatory
-[`../ARCHITECTURE.md`](ARCHITECTURE.md#craft-capability-map) REUSE/EXTEND/NEW classification,
+[`capabilities.md`](capabilities.md#craft-capability-map) REUSE/EXTEND/NEW classification,
 and the module compatibility gate. Pi, OpenHands, Hermes, OpenClaw and every other repository are
 evidence or replaceable adapters only; none becomes Fleet's shell, kernel or authority.
 
@@ -1394,7 +1394,7 @@ delete decisions — must land before differentiating features.
 
 **Now carried by:** Decision C4 presentation rule + landing ladder; Decision P9 (agent-managed
 worktrees); R1 slice order (dedup/merge slices first) in
-[`../specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md); and the
+[`modules/shell.md`](modules/shell.md); and the
 [baseline-first development order](../TODO.md#release-ladder).
 
 ### OV-010 — Test conversations are not product requirements (2026-09-15)
@@ -1404,8 +1404,8 @@ worktrees); R1 slice order (dedup/merge slices first) in
 **English gloss:** The stock-trading material in the project came from conversations and feature
 tests. It is not a requirement to build a trading product or name the application's default Project.
 
-**Now carried by:** `../PROJECT-SPEC.md` (test-data interpretation), root `AGENTS.md`, and the data-safe
-P6 preparation in `../specs/R1-one-boundary-language.md`. Preserve the user's records; resolve real
+**Now carried by:** `product.md` (test-data interpretation), root `AGENTS.md`, and the data-safe
+P6 preparation in `modules/shell.md`. Preserve the user's records; resolve real
 record conflicts only when a migration is requested, not as a global foundation gate.
 
 Amendment (2026-09-15): the owner clarified that a trading system was an earlier product idea and
@@ -1421,7 +1421,7 @@ orders require a separate safety/approval contract.
 use Cindy's design for the model popup. The attached model/account/price/usage values are examples,
 not product defaults or evidence that those integrations already work.
 
-**Now carried by:** Decision E9a and [R1](specs/R1-one-boundary-language.md), including exact
+**Now carried by:** Decision E9a and [R1](modules/shell.md), including exact
 source paths, same-composer layout, independent Plan/permission, model option validation and
 acceptance. Craft remains the visual and backend-authority baseline.
 
@@ -1434,7 +1434,7 @@ acceptance. Craft remains the visual and backend-authority baseline.
 documentation and preparation, open the app and rectify Craft together, removing wrong and redundant
 frontend and backend designs; the agent proposes how.
 
-**Now carried by:** `PROJECT-SPEC.md` *Platform scope*, `DEPLOYMENT.md`, roadmap R14.
+**Now carried by:** `product.md` *Platform scope*, `engineering.md`, roadmap R14.
 
 ### OV-013 — Keep Workspaces; one sidebar; Board separate; right function panel (2026-09-22)
 
@@ -1495,7 +1495,7 @@ did not use the two references' interaction and layout — it invented its own. 
 new-conversation page likewise ignored the references. Check every frontend and backend design for
 drift.
 
-**Now carried by:** `AGENTS.md` rules 1–2 and *Current boundary*; `COMPONENT-GUIDELINES.md`.
+**Now carried by:** `AGENTS.md` rules 1–2 and *Current boundary*; `engineering.md`.
 
 ### OV-017 — Rectify the project, not the documents; no casual sub-agents (2026-09-22)
 

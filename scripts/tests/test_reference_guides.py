@@ -18,7 +18,7 @@ class ReferenceGuides(unittest.TestCase):
         self.refs = Path(self.tmp.name) / 'references'
         self.checkout = self.refs / 'software/example'
         (self.checkout / '.git').mkdir(parents=True)
-        registry = self.root / 'docs/REFERENCES.md'
+        registry = self.root / 'docs/references.md'
         registry.parent.mkdir(parents=True)
         (self.checkout / 'CONTRIBUTING.md').write_text('Development entry point')
         registry.write_text(f'''| [software/example](https://github.com/example/repo) · `123456abcdef` · MIT | `src/main.ts#run` | **C** — bounded mechanism only |
@@ -29,9 +29,9 @@ class ReferenceGuides(unittest.TestCase):
 
 | Checkout | Fleet execution contracts |
 |---|---|
-| `software/example` | [CORE-01](features/SYS-01-test.md#execution-core-01) |
+| `software/example` | [CORE-01](modules/test.md#execution-core-01) |
 ''')
-        suite = self.root / 'docs/features/SYS-01-test.md'
+        suite = self.root / 'docs/modules/test.md'
         suite.parent.mkdir(parents=True)
         suite.write_text('### Execution CORE-01\n\n- **Next:** `IMPLEMENT` — R0.\n')
         self.git = patch.object(MODULE, 'git', side_effect=lambda _p, *args: CURRENT if args[0] == 'rev-parse' else 'https://github.com/example/repo.git')
@@ -50,7 +50,7 @@ class ReferenceGuides(unittest.TestCase):
         self.assertIn('[CONTRIBUTING.md](CONTRIBUTING.md)', text)
 
     def test_fleet_links_do_not_depend_on_reference_symlink_location(self):
-        registry = self.root / 'docs/REFERENCES.md'
+        registry = self.root / 'docs/references.md'
         dest = MODULE.link(registry, self.checkout, '#per-project-adaptation-routes')
         self.assertTrue(dest.startswith('/'))
         self.assertNotIn('../', dest)
@@ -87,7 +87,7 @@ class ReferenceGuides(unittest.TestCase):
             MODULE.planned_guides(self.root, self.refs)
 
     def test_every_source_requires_exactly_one_current_observation(self):
-        registry = self.root / 'docs/REFERENCES.md'
+        registry = self.root / 'docs/references.md'
         text = registry.read_text()
         line = next(line for line in text.splitlines() if CURRENT in line)
         registry.write_text(text.replace(line, ''))
@@ -98,7 +98,7 @@ class ReferenceGuides(unittest.TestCase):
             MODULE.read_catalog(self.root)
 
     def test_unknown_capability_does_not_generate_a_guide(self):
-        registry = self.root / 'docs/REFERENCES.md'
+        registry = self.root / 'docs/references.md'
         registry.write_text(registry.read_text().replace('[CORE-01]', '[CORE-99]'))
         with self.assertRaisesRegex(ValueError, 'missing execution contract'):
             MODULE.planned_guides(self.root, self.refs)
