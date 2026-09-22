@@ -39,7 +39,7 @@ binary updater can no longer install a Craft binary over Fleet.
 
 ## Scope
 
-One slice per service row from [`../06-CODE-MAP.md`](../06-CODE-MAP.md) "Craft-operated service
+One slice per service row from [`../ARCHITECTURE.md`](../ARCHITECTURE.md#code-map) "Craft-operated service
 boundaries" — updater, sharing/viewer, help/docs links + docs MCP, WebUI OAuth relay, Slack OAuth
 relay, sources/connectors audit, branding/support text (deliberate rename pass with
 license/trademark review), telemetry and Pages publication. Trace UI → handler → persistence → recovery per slice; never several

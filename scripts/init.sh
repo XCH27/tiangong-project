@@ -58,13 +58,13 @@ if [ -d 源码参考/software/craft-agents-oss ]; then
   app_ver="$(grep -m1 '"version"' app/package.json | grep -o '[0-9][0-9.]*')"
   up="$(git -C 源码参考/software/craft-agents-oss describe --tags 2>/dev/null | tr -d v)"
   [ "$app_ver" = "$up" ] && ok "app/ $app_ver matches the rolling pin" \
-                         || warn "app/ is $app_ver, rolling pin is $up — see P2 in docs/02-DECISIONS.md"
+                         || warn "app/ is $app_ver, rolling pin is $up — see P2 in docs/DECISIONS.md"
 
   # Upstream drift. v0.13.4 shipped on 2026-09-20 and nobody noticed for days because
   # nothing ever compared the pin against the remote. This is that comparison.
   newest="$(git -C 源码参考/software/craft-agents-oss tag --list 'v*' --sort=-v:refname | head -1)"
   if [ -n "$newest" ] && [ "$newest" != "v$up" ]; then
-    warn "upstream has $newest, the pin is at v$up — read the P2 note in docs/02-DECISIONS.md
+    warn "upstream has $newest, the pin is at v$up — read the P2 note in docs/DECISIONS.md
         before taking it; preserve a recovery point and declare each admitted delta.
         Refresh the tag list with: git -C 源码参考/software/craft-agents-oss fetch --tags"
   else

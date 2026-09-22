@@ -13,22 +13,22 @@ class ExecutionContracts(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        self.packet = self.root / 'docs/modules/suites/SYS-01-test.md'
+        self.packet = self.root / 'docs/features/SYS-01-test.md'
         self.packet.parent.mkdir(parents=True)
         (self.root / 'app').mkdir()
         (self.root / 'app/owner.ts').write_text('export const owner = true')
         self.body = '''### Execution CORE-01
 
 - **Next:** `IMPLEMENT` — R0.
-- **Sources:** [owner](../../../app/owner.ts).
+- **Sources:** [owner](../../app/owner.ts).
 - **Deliver:** One real mutation.
 - **Data:** Existing owner.
 - **Failure:** Preserve bytes on failure.
 - **Proof:** CORE-01-A round trip. Planned regression/probe target: `owner.test.ts`.
-- **Reference:** [reference registry](../../references/REFERENCE-REGISTRY.md).
+- **Reference:** [reference registry](../REFERENCES.md).
 '''
         self.packet.write_text(self.body)
-        self.row = '| CORE-01 | Work Core | suites/SYS-01-test.md | P-01 | R0 / CORE-01-A | READY_FOR_SPEC |'
+        self.row = '| CORE-01 | Test capability | Work Core | REUSE | not implemented | features/SYS-01-test.md | P-01 | R0 / CORE-01-A | READY_FOR_SPEC | Craft owner |'
 
     def check(self):
         return MODULE.validate_execution_contracts(self.root, ['CORE-01'], self.row)
@@ -58,7 +58,7 @@ class ExecutionContracts(unittest.TestCase):
         self.row = self.row.replace('SYS-01-test.md', 'SYS-02-missing.md')
         self.assertTrue(any('execution owner' in e for e in self.check()))
         self.row = self.row.replace('READY_FOR_SPEC', 'READY_BY_ACCIDENT')
-        self.assertTrue(any('malformed packet' in e for e in self.check()))
+        self.assertTrue(any('malformed capability row' in e for e in self.check()))
 
     def test_missing_recovery_and_false_proof_promotion_fail(self):
         self.packet.write_text(self.body.replace('- **Failure:** Preserve bytes on failure.\n', '').replace('`IMPLEMENT`', '`PROVE`'))
@@ -68,7 +68,7 @@ class ExecutionContracts(unittest.TestCase):
 
     def test_local_links_fail_for_missing_target_and_heading(self):
         readme = self.root / 'README.md'
-        readme.write_text('[missing](docs/missing.md)\n[wrong](docs/modules/suites/SYS-01-test.md#unknown)')
+        readme.write_text('[missing](docs/missing.md)\n[wrong](docs/features/SYS-01-test.md#unknown)')
         errors, _, _ = MODULE.validate_local_links(self.root)
         self.assertTrue(any('missing local link' in e for e in errors))
         self.assertTrue(any('missing heading' in e for e in errors))

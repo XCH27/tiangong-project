@@ -27,7 +27,7 @@ EXECUTION = re.compile(r'^### Execution ([A-Z]+-\d{2})\n(.*?)(?=^### Execution |
 
 
 def read_catalog(root: Path) -> tuple[dict, dict, dict]:
-    registry = root / 'docs/references/REFERENCE-REGISTRY.md'
+    registry = root / 'docs/REFERENCES.md'
     text = registry.read_text()
     sources = {}
     for name, origin, sha, license_text, inspected, boundary in SOURCE_ROW.findall(text):
@@ -57,7 +57,7 @@ def read_catalog(root: Path) -> tuple[dict, dict, dict]:
     if sources.keys() != routes.keys():
         raise ValueError(f'reference route mismatch: {sorted(sources.keys() ^ routes.keys())}')
     contracts = {}
-    for path in (root / 'docs/modules/suites').glob('SYS-*.md'):
+    for path in (root / 'docs/features').glob('SYS-*.md'):
         for identity, body in EXECUTION.findall(path.read_text()):
             if identity in contracts:
                 raise ValueError(f'duplicate execution owner: {identity}')
@@ -80,7 +80,7 @@ def link(path: Path, source: Path, anchor: str = '') -> str:
 
 
 def render(root: Path, checkout: Path, name: str, entry: dict, ids: list[str], contracts: dict, head: str) -> str:
-    registry = root / 'docs/references/REFERENCE-REGISTRY.md'
+    registry = root / 'docs/REFERENCES.md'
     canonical = link(registry, checkout)
     # Preserve registry-local detail links by routing them to their canonical source.
     boundary = re.sub(r'\]\((#[^)]+)\)', lambda m: '](' + canonical + m[1] + ')', entry['boundary'])

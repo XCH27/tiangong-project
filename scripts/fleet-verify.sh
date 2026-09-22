@@ -16,7 +16,8 @@ python3 "$ROOT_DIR/scripts/check-orphaned-components.py"
 
 cd "$ROOT_DIR/app"
 bun run typecheck:all
-bun run lint:ui-contract
+# lint:ui-contract was Fleet's, not upstream's, and went with the original-source reset. Restoring
+# it belongs to an approved slice (TODO.md); until then UI values are checked against DESIGN.md by review.
 bun run lint:i18n:parity
 bun run lint:i18n:sorted
 bun run lint:i18n:coverage

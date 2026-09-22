@@ -1,326 +1,160 @@
-# AGENTS.md — start card
+# AGENTS.md — collaboration and code-development rules
 
-Mandatory entry for every executing agent. Do not preload the whole `docs/` corpus; follow the
-routing table below and read only what the task touches.
+Mandatory entry for every executing agent. Read this file, then only the documents your task routes
+to. Do not preload the whole `docs/` tree.
 
-## Current owner boundary
+## Current boundary
 
-The owner restored `app/` to unmodified official Craft v0.13.4 and requires documentation and
-preparation first, then a joint walkthrough of the original application, then approval of concrete
-frontend/backend rectification slices. R0 being ACTIVE and a packet saying IMPLEMENT do not
-authorize software changes before that review. Prior Fleet patch/test/desktop claims are withdrawn
-where the reset removed their code. Follow `docs/WORK-ORDER.md` for this preparation slice.
-Windows, macOS and Linux are desktop targets; a later Orca-like phone connector is in product scope
-under `docs/PRODUCT.md`. A check on the current Mac is not three-platform acceptance.
-
-**Later owner authorization (2026-09-22):** implement R1's single sidebar, independent Board,
-Cindy-informed contextual right panel and ZCode-informed new-conversation layout after source comparison.
-The composer includes independent Plan and action permission, separate model/reasoning controls,
-and Cindy's searchable model popup; these require coherent frontend/backend changes, not relabeling. Workspace
-remains visible and distinct from Project; memberships may reference the same directory across
-Workspaces without sharing conversation/configuration state. This bounded authorization supersedes
-preparation-only wording above; it does not approve unrelated baseline patches or new engines.
+- `app/` is **unmodified official Craft Agents v0.13.4**. `scripts/check-upstream-delta.py` enforces
+  zero undeclared difference from the pin; every change you make must earn a line in
+  [`docs/UPSTREAM-DELTA.tsv`](docs/UPSTREAM-DELTA.tsv).
+- The owner's order is **documentation and preparation → joint walkthrough of original Craft →
+  approved rectification slices → implementation and acceptance → added capabilities.**
+- The one slice currently authorized is **R1 shell and context rectification** (sidebar, Board,
+  right panel, new-conversation layout, composer model/reasoning/permission). Its contract is
+  [`docs/specs/R1-one-boundary-language.md`](docs/specs/R1-one-boundary-language.md); the checklist
+  is in [`TODO.md`](TODO.md). Everything outside it needs its own approval.
+- A 2026-09-22 attempt at this slice was rejected and reverted. The owner's words:
+  「你的很多修改是完全错误的，我只让你修改所有对话和项目等模块，你却随意修改了其他部份，而且你的UI
+  设计没有遵循原版的配色间距设计风格，交互逻辑和排版方案也没使用两个参考项目的，完全自己随意创建了
+  一套」. Rules 1–3 below exist so that does not happen again.
 
 ## Read this first
 
-[`docs/PRODUCT.md`](docs/PRODUCT.md) is the single authority on what Fleet is and is not — the four
-sources and what each decides, the rule that settles built-in versus driven-from-outside, and the
-list of things Fleet does not do. Where any other document disagrees with it, it wins.
+[`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md) is the single authority on what Fleet is and is not.
+Where another document disagrees, it wins. In one line: **Craft Agents decides the look and the
+runtime base; Cindy decides how features are built and how surfaces talk to the backend; ZCode is
+the layout and interaction reference for the conversation shell and composer; OpenChamber decides
+Git and GitHub; the canvas, documents and video are Fleet's own.**
 
-The short version: **Craft Agents decides the look, Cindy decides how features are implemented and
-how the surfaces talk to the backend, OpenChamber decides Git and GitHub, and the production
-surfaces — canvas, documents, video — are Fleet's own.** QoderWork and TRAE are interface reference
-only; their product concepts are not importable.
+## Rules
 
-## The 10 rules that matter most
-
-1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first — then admit the best.**
-   The current `app/` tree is implementation reality and tracks Craft OSS **v0.13.4**. The 2026-09-21
-   rebuild replaced the earlier Fleet implementation; `snapshot/pre-rebuild-2026-09-21` preserves
-   it for selective review, not wholesale restoration. Check current callers before reusing any
-   earlier conversation's completion claim. Pinned Craft
-   trees (v0.10.5 look pin, rolling `software/craft-agents-oss` on the latest tag) plus hosted Craft
-   docs are **candidate sources**: compare them and **admit the better
-   interaction, fix, or backend mechanism** that still lands on one Fleet authority
-   (择优录取 / best-of admission). Do not invent a standing “we do not sync X” policy; do not
-   wholesale-merge a checkout over the working tree; do not create a second Project, Session or task
-   authority. The current Board may remain a separate navigator only as a projection of the existing
-   Session/Task stores; it is not a duplicate Conversations list or a new authority.
-   Before writing code, find the capability row in
-   [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) and classify:
-   **REUSE / EXTEND / NEW**. For anything rendered, "check Craft first" has a literal procedure —
-   see *Before you write UI* → **Step 0**, and do not skip it.
-2. **Never create a second authority.** One session store, one permission path, one timeline, one
-   task store, one settings home. Extend the existing one or get owner sign-off first
-   ([`docs/03-NON-NEGOTIABLES.md`](docs/03-NON-NEGOTIABLES.md)).
-3. **Work from one execution contract and one development order.** An explicit owner Goal/task is the contract for its
-   bounded scope; otherwise use the ACTIVE release and linked spec in
-   [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md). Create or amend a spec only when the work changes a
-   release contract, persisted/shared interface, authority, or externally observable behavior — an
-   ordinary fix or refactor does not earn a new document. For whole-system work, route through
-   `docs/modules/REGISTRY.md`; breadth and surfaces remain indexed in
-   `docs/modules/REGISTRY.md`, `docs/11-PRODUCT-MATRIX.md`, and `docs/12-PAGE-ARCHITECTURE.md`.
-   The current owner order requires the R0 baseline exit before any added capability or preview
-   implementation; the former scoped Component-host bypass is withdrawn.
-   Never use near/mid/far-term buckets: every registered capability has a release-order anchor or a
-   named conditional-closure row, so an Agent cannot silently defer it forever.
-4. **Keep the task fixed while executing it.** Do not silently change the request, acceptance
-   criteria, tests, or harness. A necessary change is an explicit contract revision. Queue
-   incidental findings; do not let them replace the objective.
-5. **Halt after two non-progressing attempts.** Two state-changing attempts that do not move an
-   acceptance criterion forward = stop, preserve evidence, report the smallest next decision.
-   Switching tools or hypotheses does not reset the counter.
-6. **Check reality before diagnosing product code.** Existence, installation, running process,
-   permission, input path, connectivity — cheapest checks first. A missing screenshot/preview/tool
-   is a classified limitation, never permission to rebuild infrastructure.
-7. **Report status with the fixed vocabulary only:** `usable` · `wired but not visually checked` ·
+1. **Port, do not invent.** Almost every surface already exists in Craft, and the surfaces being
+   rectified exist in Cindy or ZCode. Before writing a line, open the upstream component and the
+   reference component and diff them (see *Before you write UI*). Take their structure, layout and
+   interaction; apply only Craft's colour, spacing, radius, type and motion tokens. If you cannot
+   name why your version differs from the reference, the difference is an invention.
+2. **Change only what the slice names.** Do not touch neighbouring surfaces, shared styles or
+   unrelated behaviour. A change outside the slice needs its own approval.
+3. **Never create a second authority.** One Session store, one permission path, one timeline, one
+   task store, one settings home. Extend the existing owner.
+4. **Simplifying is not deleting.** A control, page or function that disappears must have a named
+   new home, declared as `L2` in `docs/UPSTREAM-DELTA.tsv`. `scripts/check-orphaned-components.py`
+   flags components upstream mounts and we do not.
+5. **Decide with evidence; ask only what is genuinely the owner's.** Research how Codex, Claude
+   Code, Cursor and the reference projects solve the problem, then propose the landing path. Do not
+   ask the owner how they want something designed. Report designs and landing plans for
+   confirmation before large implementation.
+6. **Keep the task fixed.** Do not silently change the request, acceptance, tests or harness.
+7. **Halt after two non-progressing attempts.** Preserve evidence and report the smallest next
+   decision.
+8. **Check reality first.** Existence, installation, running process, permission, input path —
+   cheapest checks first. A missing tool or preview is a classified limitation, not permission to
+   rebuild infrastructure.
+9. **Report status with the fixed vocabulary only:** `usable` · `wired but not visually checked` ·
    `display-only` · `not implemented`. "Tests pass" is never a capability status.
-8. **Stop at owner checkpoints.** Money, irreversible/public effects, production dependencies, new
-   or replaced authorities, product forks → present options in plain language and wait
-   ([`docs/OWNER-GUIDE.md`](docs/OWNER-GUIDE.md)).
-9. **Verify at the cheapest sufficient level.** Static check → targeted test → real non-visual data
-   path → non-interactive smoke ([`docs/09-QUALITY.md`](docs/09-QUALITY.md)). Owner owns final
-   look-and-feel acceptance; agents own everything below it.
-10. **Documentation serves implementation.** Update only the canonical spec, capability row, or
-    user-facing doc whose contract/status actually changed. Absorb unique active facts, update links,
-    then delete superseded project documents/files; do not keep a second archive copy. Age, a historical
-    label, or possible future usefulness is not a retention reason. Temporary recovery material needs
-    a named unresolved risk and an exit condition; apply the [R0 retirement contract](docs/specs/R0-baseline-audit.md#retirement-of-obsolete-material).
-    Never create dated progress reports,
-    duplicate plans, or Goal journals; execution evidence belongs in tests, diffs, commits, and the
-    Goal/thread state. Project documentation is English-first. Preserve Chinese only for exact
-    owner quotations, `zh-Hans` UI literals/fixtures, and proper names that lose identity in
-    translation; give an English gloss where meaning matters. Use the canonical terms in
-    `docs/10-GLOSSARY.md` instead of bilingual synonyms.
+10. **Documentation serves implementation.** Update the canonical document whose contract changed;
+    absorb, relink, then delete superseded material. No dated progress reports, duplicate plans or
+    in-tree archives. Git history is the archive. Documentation is English-first; keep Chinese for
+    exact owner quotations and `zh-Hans` UI literals.
+11. **Do not dispatch sub-agents to decide design, layout or architecture**, and do not dispatch
+    them casually at all (owner: 「不要乱派子智能体」). They arrive without this context and invent.
 
-## Persistent Goal contract
+## Routing
 
-- The explicit Goal owns **objective** and **done when**. Roadmap state supplies default sequencing;
-  it does not override a direct owner Goal. Safety boundaries and owner checkpoints still apply.
-- Before editing, reduce the Goal to one current slice: `objective · context paths · constraints ·
-  acceptance evidence · next safe action`. Keep this in Goal/thread state, not a new Markdown file.
-- On continuation or context compaction, re-read the Goal, `git status`/relevant diff, and only the
-  routed spec/acceptance rows. Do not reload the whole document corpus or repeat completed research.
-- Resolve each capability in `docs/modules/PACKET-INDEX.md` to its unique `Execution <ID>` section.
-  Follow its existing source paths, first deliverable, data owner, failure/rollback and proof under
-  the common execution contract in `docs/14-MODULE-ARCHITECTURE.md`. `IMPLEMENT`/`PROVE` are next
-  actions after the named gate, never implementation status or permission to bypass R0.
-  Reference checkout `FLEET-ADAPTATION.md` files are generated projections of the canonical
-  reference registry; update that registry/contract and regenerate, never maintain a second plan.
-- Continue through reversible in-scope work. At a checkpoint, finish safe preparation and request
-  the smallest owner decision; never widen the Goal or mark partial work complete.
+| Your task involves… | Read |
+|---|---|
+| What Fleet is, scope, capability status, terms | [`docs/PROJECT-SPEC.md`](docs/PROJECT-SPEC.md) |
+| What to do now / what comes next | [`TODO.md`](TODO.md), then the linked spec in [`docs/specs/`](docs/specs/) |
+| "Is this already decided?", hard constraints, the owner's exact words | [`docs/DECISIONS.md`](docs/DECISIONS.md) |
+| Architecture, code entry points, Craft capability classification | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| **Any rendered value, layout or motion** | [`DESIGN.md`](DESIGN.md) — mandatory before UI code |
+| Building or changing a component; upstream-delta layers | [`docs/COMPONENT-GUIDELINES.md`](docs/COMPONENT-GUIDELINES.md) |
+| Pages, panels, surface IDs | [`docs/PAGE-STRUCTURE.md`](docs/PAGE-STRUCTURE.md) |
+| Workflow, gates, tests, commits | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) |
+| Plugins, Skills, component distribution | [`docs/REGISTRY.md`](docs/REGISTRY.md) |
+| Building and packaging for Windows, macOS, Linux; updates | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| Which open-source project to reference for what, and where | [`docs/REFERENCES.md`](docs/REFERENCES.md) |
+| One closed feature loop in depth | [`docs/features/`](docs/features/) |
+| Raw research evidence | [`docs/research/`](docs/research/) |
+| Release history and resets | [`CHANGELOG.md`](CHANGELOG.md) |
 
-## The agent platform, in one page
-
-Read this before designing anything that touches assistants, delegation, memory, Git or cost.
-[`PRODUCT.md`](docs/PRODUCT.md) and the current tree outrank the 2026-07-30 H-decision implementation
-paths: the rebase discarded the old ExpertKit-as-label, delegation, memory, artifact-history and CLI
-adapter modules. Preserve their still-valid principles, but do not report those modules as landed or
-recreate their old stores.
-
-**One sentence:** an Assistant declares a wearable identity and requested loadout; routing eventually
-selects only what enters the window, any conversation may delegate through the one Session/Task
-authority, and a future single-writer consolidation pass turns evidence into curated memory.
-
-| Concept | Current authority / status | Rule that survives |
-|---|---|---|
-| **Assistant** (H15 revised) | Independent identity/loadout remains the target; the former `packages/shared/src/assistants/` store and RPC were removed by the rebuild. `not implemented` | Never store identity/loadout in `labels/config.json`; permission in a loadout is a request, never a grant |
-| **Catalog vs active** (H19–H21 principle) | Marketplace/routing runtime `not implemented` | A catalog is unbounded; only the selected active context spends attention; do not trim capability to pass a budget |
-| **Delegation** (H10/H11/H28 principle) | Craft child Sessions/Tasks are the starting authority; Fleet TaskBrief/RunReport gates and inline projection are `not implemented` | Any conversation may delegate; no captain/manager role or second task store |
-| **Memory** (H16–H18/H27 principle) | Store/index/consolidation `not implemented` | Delegates return evidence; only one consolidation writer promotes curated memory; foreign history stays searchable evidence, never imported truth |
-| **Artifact history** (H1–H4 principle) | Unified history router `not implemented` | Text, media and operation logs may use different native storage; attribution is orthogonal and required |
-| **Git snapshots** (03 §4) | Snapshot helper `not implemented` | An agent never moves HEAD, index, a ref, branch, tag or stash under the user |
-| **Cost** (H12) | Craft usage tracking exists; Fleet pricing/session-cost/usage-rollup and TE1 cache-economy helpers are absent. Complete Fleet projection is `not implemented` | Price cache reads/writes and context tiers separately; unknown is never reported as zero |
-| **CLI agents** (H6–H8 principle) | General ACP catalog/connection adapter `not implemented` | Detection is separate from configuration and records resolved binary paths; never scrape private caches |
-| **Session activity** (H5) | Craft live processing state exists; the former Fleet derived-activity helper is absent | Activity is live and derived; `sessionStatus` remains the manual label |
-
-Three things a newcomer gets wrong, stated plainly:
-
-1. **Do not add a capability limit to save tokens.** Capability is the product;
-   cost is for the architecture to absorb (H21).
-2. **Do not create a role for something every session can already do.** No
-   captain mode, no manager agent, no "delegation session" type (H28).
-3. **Do not report a boundary by failing silently.** Every refusal in this layer
-   names its reason so a surface can explain itself — that pattern is deliberate
-   and repeated (workbench toggle, connect form, revert, install, promotion).
-
-## Test content is not product intent
-
-Owner-created Session content, Project names and test fixtures are data, not product requirements.
-The owner clarified on 2026-09-15 that stock-trading examples came from chat and feature testing;
-they do not define a default Project. Separately, a future Trading/Market Analysis Component is an
-explicit product proposal, not a Core capability; live orders require a separate safety contract.
-Never make a particular demo name a framework prerequisite. A real migration conflict belongs to
-that record and must preserve its data; do not rename, merge or delete it without the relevant user
-decision. The current work is inherited Craft baseline rectification under `docs/WORK-ORDER.md`
-and the single exit in `docs/specs/R0-baseline-audit.md`. Only after that exit does the queued
-`docs/specs/R18-right-workbench.md` host/movement slice begin; it still needs no memory or marketplace prerequisite.
-
-## Reference retention: inventory first, owner decides removal
-
-Before selecting replacement references, inventory the existing `源码参考/software/`,
-`源码参考/plugins/` and `UI参考/` roots. Check actual repository boundaries, origins, revisions and
-local changes; a stale registry entry or equal HEAD does not prove two directories are disposable.
-Owner direction (2026-09-14): discuss reference exclusions before acting. Do not delete, relocate,
-archive, re-pin, or remove an existing project from the reference set under a general cleanup
-request. Present the exact target, evidence, remaining reference value and recovery plan, then wait
-for approval. A code-import rejection is not a reference-retention decision. Keep historical audit
-commits intact; record a current checkout observation separately instead of changing the commit
-under an earlier finding. Record inventory and retention rules in `docs/references/REFERENCE-REGISTRY.md`,
-not in a new progress report.
-
-## Preflight: run it, do not eyeball it
+## Preflight
 
 ```bash
 bash scripts/init.sh
 ```
 
-One command. It wires the commit gates (`core.hooksPath` is **not** carried by a clone, so a fresh
-checkout runs no typecheck/i18n/doc-contract gate until you run this), checks the toolchain, checks
-that both Craft pins are still *on* their pins, and warns when upstream has moved past the rolling
-pin. Every check below is one of its lines; run the script instead of remembering them.
-
-### The reference roots may not be mounted
-
-`源码参考/` and `UI参考/` are symlinks into `/Volumes/AIGC/天工参考/`, and neither is tracked by this
-repository (both are gitignored; the last tracked mirror content is reachable at
-`backup/pre-r0-audit-2026-09-09`). When that volume is not mounted, every "compare Craft first"
-instruction in rule 1, `AGENTS.md` step 2 and `docs/UI-SPEC.md` is **unexecutable**.
-Check before any intake, UI or reference work:
+It wires the commit gates (`core.hooksPath` is not carried by a clone), checks the toolchain, and
+checks that both Craft pins are on their pins. `源码参考/` and `UI参考/` are symlinks into
+`/Volumes/AIGC/天工参考/` and are not tracked. When the volume is not mounted, every "compare the
+reference first" step is unexecutable — report it and stop rather than work from memory.
 
 ```bash
-ls 源码参考/software/craft-agents-oss-v0.10.5 >/dev/null 2>&1 && echo "mirror OK" || echo "mirror MISSING"
-# The baseline pin must be ON its pin. These checkouts carry their own .git, so a checkout run
-# inside one silently moves the baseline; on 2026-08-17 this one sat at v0.12.0 for three weeks.
-git -C 源码参考/software/craft-agents-oss-v0.10.5 describe --tags   # expect exactly v0.10.5 (look pin)
-git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin; must match app/ (currently v0.13.4)
+git -C 源码参考/software/craft-agents-oss-v0.10.5 describe --tags   # look pin: exactly v0.10.5
+git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin: must equal app/ (v0.13.4)
 ```
 
-`mirror MISSING` is a **classified limitation** (rule 6), not permission to proceed from memory or
-from a screenshot. Report it, and either mount the volume or stop the packet — do not substitute a
-guess for the v0.10.5 baseline.
-
-> **Corrected 2026-09-09.** Until `c487815ec` these roots were also a permanent source of 73
-> phantom deletions, and this file, `05-ROADMAP.md`, `specs/R0-baseline-audit.md` and `README.md`
-> all blamed an unmounted volume. That was wrong and cost a month: `源码参考/` became a symlink on
-> 2026-08-08 while 73 regular-file entries stayed in the git index, and **git does not traverse a
-> symlink**, so the entries reported as deleted whether or not the volume was mounted. Mounting
-> could never have fixed it. The index entries are gone; the disk is untouched. If you ever see
-> a whole tracked directory reported as deleted while its files plainly exist, check whether the
-> path became a symlink before you check the mount.
-
-## Routing table
-
-| Your task involves… | Read |
-|---|---|
-| **What Fleet is / is not, what to build in vs drive from outside** | [`docs/PRODUCT.md`](docs/PRODUCT.md) — the authority |
-| Anything (always) | This file, then the capability row in `docs/08-CRAFT-CAPABILITY-MAP.md`, confirmed with `rg` |
-| What integrates next / release scope | `docs/05-ROADMAP.md` and the linked spec in `docs/specs/` |
-| Any domain's breadth, gaps, reference projects | `docs/modules/REGISTRY.md`, `docs/11-PRODUCT-MATRIX.md`, `docs/references/` |
-| Module compatibility or a large future capability | `docs/14-MODULE-ARCHITECTURE.md` and `docs/modules/<module>/README.md` |
-| Reference project source/license audit | `docs/references/` and the relevant module packet |
-| Frontend pages, states, mock/adapter rules | `docs/12-PAGE-ARCHITECTURE.md` |
-| Finding the code entry point | `docs/06-CODE-MAP.md` |
-| Starting implementation from the approved suite queue | `docs/WORK-ORDER.md` |
-| Orchestration, delegation, canvas, workflows | `docs/13-ORCHESTRATION.md` |
-| Context size, prompt assembly, caching, token cost | `docs/modules/suites/SYS-03-context-economy.md` |
-| A design question ("is this already decided?") | `docs/02-DECISIONS.md` |
-| Architecture, invariants, failure modes | `docs/04-ARCHITECTURE.md` |
-| **The owner asked to simplify, merge, move or remove something** | [`docs/design-library/OWNER-VOICE.md`](docs/design-library/OWNER-VOICE.md) — their verbatim words and which decision now carries each one. OV-008 already settles workspace/folder/project and task-first creation |
-| **Changing a surface that already exists in Craft** | Diff the upstream component first (see *Before you write UI* → Step 0), then `docs/UI-SPEC.md` |
-| **Why a surface is shaped the way it is** (shell, settings, panels, new-task, remote, canvas…) | [`docs/design-library/`](docs/design-library/README.md) — owner-intent notes per area. For Project/Workspace/Session/remote and the **new-task interaction contract**, that is [`20-workspace-project-session-remote-connections.md`](docs/design-library/20-workspace-project-session-remote-connections.md) §11–§14 |
-| Two surfaces seem to overlap / duplicate each other | [`docs/specs/R1-one-boundary-language.md`](docs/specs/R1-one-boundary-language.md) and the current page inventory in `docs/12-PAGE-ARCHITECTURE.md` |
-| Tests, verification, acceptance split | `docs/09-QUALITY.md` |
-| UI structure, which component to start from, review method | `docs/UI-SPEC.md` |
-| **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
-| **Anything that moves** — whether to animate at all, easing, duration, press feedback | `docs/design-library/22-motion.md` |
-| Unfamiliar project vocabulary | `docs/10-GLOSSARY.md` |
-| Starting a big feature | `docs/FEATURE-REGISTRY.md` (register your boundary) |
-| **Fresh clone / new machine / gates not firing** | `bash scripts/init.sh`, then `bash scripts/fleet-verify.sh` |
-| Upstream Craft behavior/docs | External reference root `/Volumes/AIGC/天工参考/源码参考/` (workspace symlink `源码参考/`), including `craft-docs/`, Craft pins `software/craft-agents-oss-v0.10.5/` and `software/craft-agents-oss/` (best-of candidates, not “do-not-sync” lists) |
-
-## Working method (one paragraph)
-
-Define one coherent user-visible or system behavior block from the explicit Goal or active spec; classify it
-REUSE/EXTEND/NEW against Craft; **compare candidate Craft pins and take the better mechanism** that fits
-one authority; implement every affected layer (UI, logic, state, error, recovery); verify with the cheapest
-sufficient ladder; update only canonical facts that changed; report with the fixed status vocabulary and
-hand rendered look-and-feel to the owner. Do not micro-test every edit, do not parallelize linear work,
-and do not grow documentation faster than implementation.
+These checkouts carry their own `.git`. A `checkout` run inside one silently moves the baseline.
 
 ## Before you write UI
 
-### Step 0 — open the upstream component and diff against it
-
-**This is the step every agent has skipped, and skipping it is how both of this repo's UI
-regressions happened.** Fleet is a fork. Almost every surface you are asked to change already
-exists in `源码参考/software/craft-agents-oss/` at the same path. Before you write a line:
+### Step 0 — open the upstream and reference components and diff them
 
 ```bash
 U=源码参考/software/craft-agents-oss
 diff app/apps/electron/src/renderer/<path> $U/apps/electron/src/renderer/<path>
 ```
 
-Read what upstream does, then justify **each** delta you intend to add. If you cannot name why a
-difference exists, it is not a difference — it is an invention, and it will read as a second UI
-language beside the first.
+For the R1 surfaces, also open the named Cindy and ZCode components listed in the R1 spec and in
+[`docs/REFERENCES.md`](docs/REFERENCES.md). Read what they do, then justify each delta. Real cases
+this step would have caught: a button given `h-7` because `size="sm"` "looked too big" while
+upstream uses `size="sm"` everywhere; a dropdown hand-rolled from `<button>` rows beside a sibling
+using `Popover` + `cmdk`; a picker rebuilt next to two steps that already use
+`AddWorkspace_RadioOption`.
 
-What this catches, from real cases in this repo:
+**Never produce a concept mockup or redesign image as implementation input.** The reference is
+source code, not a picture you drew.
 
-- A button given `className="h-7"` because `size="sm"` "looked too big" — while upstream uses
-  `size="sm"` everywhere and `h-6 text-[11px] px-2` for inline row actions. Both the override and
-  the later "correction" back to the default were wrong; only the diff says which.
-- A dropdown hand-rolled from `<button>` rows, sitting beside a sibling control that uses
-  `Popover` + `cmdk` with shared `MENU_*` constants.
-- A picker rebuilt from scratch next to two steps of the same flow that already use
-  `AddWorkspace_RadioOption`.
+### Then the values
 
-**Never produce a concept mockup, a redesign image, or a "structure draft" as input to an
-implementation.** The owner has rejected this explicitly. The reference is the upstream component
-plus the cloned products in `源码参考/software/`, read as source — not a picture you drew.
+[`DESIGN.md`](DESIGN.md) — colours, opacity ladder, type, radius, elevation, icon slots, shared
+primitives, required states, and motion. The in-app `lint:ui-contract` guard was removed with the
+original-source reset; restoring it is part of an approved slice, not a preparation patch.
 
-**Never dispatch a subagent to decide design, layout or architecture.** They arrive without this
-file, without the design library, and without the owner's history, and they reliably invent. Read
-the sources yourself.
+## Owner protocol
 
-### Then the two value files
+- **Checkpoints — stop and get explicit approval before:** spending money or any irreversible or
+  public effect (paid APIs, deletion, deployment, publication, external messages, merge to remote
+  `main`); adding a production dependency or external service; creating or replacing an authority
+  or security boundary (Session storage, permissions, credentials, migrations); choosing between
+  materially different product outcomes or changing established behaviour; removing or re-pinning a
+  reference project. Present **what · why · cost and risk · two or three options ·
+  recommendation**, in words a non-programmer understands.
+- **Proceed without approval:** reversible in-scope work, code organization and technical patterns,
+  read-only inspection, tests, builds, fixing your own regression, documenting changed facts.
+- **Acceptance:** every delivery states the outcome in plain language, the status, a short
+  **CHECK THIS** list, and what was deliberately left unchanged. The owner judges look and feel —
+  light and dark, `zh-Hans` and English, narrow windows — and accepts, which promotes the capability
+  to `usable`, or names the mismatch for the next bounded fix. Agents own logic, data integrity and
+  code quality. Show the running change; do not describe it.
+- **Status meanings:** `usable` = real path verified and visible behaviour owner-accepted;
+  `wired but not visually checked` = real path verified, visual acceptance pending; `display-only` =
+  UI without real behaviour; `not implemented` = absent. "Mostly done" and "should work" are not
+  statuses.
+- **Duty to dissent:** if an instruction conflicts with a recorded decision or will lose data or a
+  function, say so once with evidence, then follow the owner's call and record it in
+  [`docs/DECISIONS.md`](docs/DECISIONS.md).
+- **Test content is not product intent.** Session content, Project names and fixtures (for example
+  the stock-trading test chats) are data, never requirements or defaults.
+- **Reference projects are retained unless the owner decides otherwise.** Present target, evidence
+  and recovery plan before removing or re-pinning one.
 
-1. [`docs/UI-SPEC.md`](docs/UI-SPEC.md) — the values. Six colours and no seventh; the opacity ladder;
-   type, radius, elevation and icon slots; the shared primitives you must not re-create; the states
-   every surface ships.
-2. [`docs/design-library/22-motion.md`](docs/design-library/22-motion.md) — whether to animate at all
-   (an action taken a hundred times a day gets nothing), then easing, duration and press feedback.
+## Learned owner preferences
 
-Then run the guard on your diff:
-
-```bash
-cd app && bun run lint:ui-contract
-```
-
-**Current limitation:** the owner-requested original-source restoration removed
-`app/scripts/check-ui-contract.ts` and `lint:ui-contract`. Do not patch the app to restore it during
-preparation. Record the missing check and include its restoration in a concrete approved slice.
-
-It checks tokens, radius, type, elevation, stroke width and — since 2026-07-31 — raw Tailwind palette
-colours and `bg-primary`. It does **not** check motion, shared-primitive reuse, or whether you shipped
-the required states; those are yours to verify.
-
-Three external skills encode craft this repo does not: `npx skills add emilkowalski/skills`,
-`npx skills add Jakubantalik/transitions.dev`, `npx impeccable install`. They are advisory. Where any
-of them disagrees with `UI-SPEC.md`, UI-SPEC wins — they are written for product apps in general, and
-this is a workbench.
-
-## Learned User Preferences
-
-- When settling how a capability should work, research how Codex, Claude Code, Cursor, and relevant
-  open-source projects implement the same problem, then propose the best landing path. Do not ask the
-  owner how they want it designed.
-- Project reviews and audits must be deep and evidence-backed (concrete paths, diffs, or file:line).
-  Shallow survey-style reviews are rejected.
-- Bound improvement work with measurable goals and stop conditions; do not run open-ended
-  “keep optimizing the project” loops.
-
-## Learned Workspace Facts
-
-- Fleet’s product vision is not “another pure coding-agent IDE”; coding-agent forks (Craft, pi,
-  OpenHands, etc.) are harness and interaction references, not the full product shape.
+- Reviews must be deep and evidence-backed: paths, diffs, file:line. Survey-style reviews are
+  rejected.
+- Bound improvement work with measurable goals and stop conditions; no open-ended optimizing loops.
+- Rectify the project, do not pile up documents (「我是要你整改项目而不是堆砌文档」).
+- Fleet is not another pure coding-agent IDE; coding-agent forks are harness and interaction
+  references, not the product shape.

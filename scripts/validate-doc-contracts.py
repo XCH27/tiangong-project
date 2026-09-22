@@ -24,38 +24,40 @@ def table_ids(text: str) -> list[str]:
     return re.findall(r"^\| ((?:CORE|INFO|EXEC|INTEL|CREATE|ORCH)-\d{2}) \|", text, re.M)
 
 
+def section(text: str, heading: str) -> str:
+    """Body of one '## heading' section, up to the next '## '."""
+    match = re.search(rf"^## {re.escape(heading)}\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if not match:
+        raise SystemExit(f"missing section '## {heading}' in docs/PROJECT-SPEC.md")
+    return match.group(1)
+
+
 errors: list[str] = []
-registry_ids = table_ids(read(DOCS / "modules/REGISTRY.md"))
-packet_text = read(DOCS / "modules/PACKET-INDEX.md")
-packet_ids = table_ids(packet_text)
-
+spec_text = read(DOCS / "PROJECT-SPEC.md")
+# One capability register replaced three 63-row tables (registry, packet index, acceptance index)
+# in the 2026-09-22 restructure. Columns: ID | Capability | Context | Class | Status | Loop |
+# Surfaces | Release / acceptance | State | Compatibility anchor.
+packet_text = section(spec_text, "Capability register")
+registry_ids = table_ids(packet_text)
 if len(registry_ids) != len(set(registry_ids)):
-    errors.append("REGISTRY.md contains duplicate capability IDs")
-if len(packet_ids) != len(set(packet_ids)):
-    errors.append("PACKET-INDEX.md contains duplicate capability IDs")
-if set(registry_ids) != set(packet_ids):
-    errors.append(
-        "registry/packet ID mismatch: "
-        f"missing={sorted(set(registry_ids) - set(packet_ids))}, "
-        f"extra={sorted(set(packet_ids) - set(registry_ids))}"
-    )
+    errors.append("capability register contains duplicate IDs")
 
-page_text = read(DOCS / "12-PAGE-ARCHITECTURE.md")
+page_text = read(DOCS / "PAGE-STRUCTURE.md")
 # Only §3A's registry rows *define* a surface ID. Harvesting every "P-NN" mention in the file would
 # let a typo define itself: writing P-99 in a reference would silently add P-99 to the known set.
 known_pages = set(re.findall(r"^\| (P-\d{2}) \|", page_text, re.M))
-acceptance_text = read(DOCS / "modules/ACCEPTANCE-INDEX.md")
+acceptance_text = section(spec_text, "Acceptance gates")
 known_acceptance = set(re.findall(r"\b(?:[A-Z]+-\d{2}-A|[A-Z]+-\d{3})\b", acceptance_text))
 valid_states = {"BREADTH_ONLY", "PACKET_DRAFT", "READY_FOR_SPEC"}
 
 for line in packet_text.splitlines():
-    match = re.match(
-        r"^\| ((?:CORE|INFO|EXEC|INTEL|CREATE|ORCH)-\d{2}) \|.*?\| (.*?) \| (.*?) \| (.*?) \| (BREADTH_ONLY|PACKET_DRAFT|READY_FOR_SPEC) \|$",
-        line,
-    )
-    if not match:
+    if not re.match(r"^\| (?:CORE|INFO|EXEC|INTEL|CREATE|ORCH)-\d{2} \|", line):
         continue
-    capability, packet, pages, anchor_and_acceptance, state = match.groups()
+    cells = [cell.strip() for cell in line.split("|")]
+    if len(cells) != 12:
+        errors.append(f"{cells[1]}: capability row must have 10 columns, found {len(cells) - 2}")
+        continue
+    capability, loop, pages, anchor_and_acceptance, state = cells[1], cells[6], cells[7], cells[8], cells[9]
     if state not in valid_states:
         errors.append(f"{capability}: invalid packet state {state}")
     for page in re.findall(r"\bP-\d{2}\b", pages):
@@ -65,8 +67,8 @@ for line in packet_text.splitlines():
     for acceptance in re.findall(r"\b(?:[A-Z]+-\d{2}-A|[A-Z]+-\d{3})\b", acceptance_part):
         if acceptance not in known_acceptance:
             errors.append(f"{capability}: unknown acceptance ID {acceptance}")
-    if packet != "—" and not (DOCS / "modules" / packet).is_file():
-        errors.append(f"{capability}: missing packet docs/modules/{packet}")
+    if loop != "—" and not (DOCS / loop).is_file():
+        errors.append(f"{capability}: missing feature loop docs/{loop}")
     if not re.search(r"\b(?:TE1|R(?:[0-9]|1[0-8]))\b", anchor_and_acceptance):
         errors.append(f"{capability}: missing TE1/R0-R18 development-order anchor")
 
@@ -88,18 +90,18 @@ for line in page_text.splitlines():
         elif surface not in known_pages:
             errors.append(f"target page {target}: unknown surface ID {surface}")
 
-# 11-PRODUCT-MATRIX.md is keyed by domain name, not capability ID. Without a declared join it sits
+# The product matrix (PROJECT-SPEC.md) is keyed by domain name, not capability ID. Without a declared join it sits
 # outside every check above, which is how a domain such as "External computer/environment control"
 # reached an R16 acceptance anchor with no registry row behind it. Sections A-F must therefore
 # declare their registry IDs in column 2; section G (technology routes) is a different table shape
 # and is exempt.
-matrix_text = read(DOCS / "11-PRODUCT-MATRIX.md")
+matrix_text = section(spec_text, "Product matrix")
 matrix_ids: set[str] = set()
 matrix_section: str | None = None
 id_pattern = re.compile(r"^(?:CORE|INFO|EXEC|INTEL|CREATE|ORCH)-\d{2}$")
 
 for line in matrix_text.splitlines():
-    section_match = re.match(r"^## ([A-G])\.", line)
+    section_match = re.match(r"^### ([A-G])\.", line)
     if section_match:
         matrix_section = section_match.group(1)
         continue

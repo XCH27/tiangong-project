@@ -11,7 +11,8 @@ FIELDS = {'Next', 'Sources', 'Deliver', 'Data', 'Failure', 'Proof', 'Reference'}
 def validate_local_links(root: Path) -> tuple[list[str], int, int]:
     """Check internal links; external reference mounts are a separately reported local check."""
     errors, checked, external = [], 0, 0
-    files = [root / 'README.md', root / 'AGENTS.md', *sorted((root / 'docs').rglob('*.md'))]
+    files = [*(root / name for name in ('README.md', 'AGENTS.md', 'DESIGN.md', 'TODO.md', 'CHANGELOG.md')),
+             *sorted((root / 'docs').rglob('*.md'))]
     for path in files:
         if not path.is_file():
             continue
@@ -52,7 +53,7 @@ def validate_execution_contracts(root: Path, registry_ids: list[str], packet_tex
     errors = []
     owners = {}
     bodies = {}
-    for path in (root / 'docs/modules/suites').glob('SYS-*.md'):
+    for path in (root / 'docs/features').glob('SYS-*.md'):
         for match in re.finditer(rf'^### Execution ({ID})\n(.*?)(?=^### Execution |\Z)', path.read_text(), re.M | re.S):
             identity, body = match.groups()
             if identity in owners:
@@ -92,12 +93,12 @@ def validate_execution_contracts(root: Path, registry_ids: list[str], packet_tex
             continue
         cells = [c.strip() for c in line.split('|')]
         identity = cells[1]
-        if len(cells) != 8 or cells[6] not in {'BREADTH_ONLY', 'PACKET_DRAFT', 'READY_FOR_SPEC'}:
-            errors.append(f'{identity}: malformed packet row/state')
+        if len(cells) != 12 or cells[9] not in {'BREADTH_ONLY', 'PACKET_DRAFT', 'READY_FOR_SPEC'}:
+            errors.append(f'{identity}: malformed capability row/state')
             continue
-        expected = (root / 'docs/modules' / cells[3]).resolve()
+        expected = (root / 'docs' / cells[6]).resolve()
         if identity not in owners or expected != owners[identity].resolve():
-            errors.append(f'{identity}: packet does not route to its execution owner')
-        if cells[6] == 'READY_FOR_SPEC' and '**Next:** `PROVE`' in bodies.get(identity, ''):
+            errors.append(f'{identity}: capability row does not route to its execution owner')
+        if cells[9] == 'READY_FOR_SPEC' and '**Next:** `PROVE`' in bodies.get(identity, ''):
             errors.append(f'{identity}: unselected PROVE route cannot be READY_FOR_SPEC')
     return errors

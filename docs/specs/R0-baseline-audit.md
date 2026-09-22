@@ -34,7 +34,7 @@ features and owner visual acceptance remain explicit criteria.
   bootstrap. An unavailable check is reported as unavailable, never passed.
 - **Next safe action:** reconcile documents against restored official source and prepare the review
   below. Prior Fleet patches/tests were removed by the owner-requested restoration; no old wired
-  claim permits implementation. The latest scope is owned by `../WORK-ORDER.md`.
+  claim permits implementation. The latest scope is owned by `../TODO.md`.
 
 ## Preparation and joint review
 
@@ -76,7 +76,7 @@ in R1/R2 or the owning contract; ordinary implementation choices follow only wit
 
 The owner's current instruction supersedes the earlier early-host exception: finish baseline
 rectification before Component registration, new Notes UI, movable layout or domain features.
-The later host contract remains [`R18-right-workbench.md`](R18-right-workbench.md); it does not
+The later host contract remains [`R18-right-workbench.md`](../features/SYS-09-workspace-compositions.md#release-contract--r18-component-and-panel-foundation); it does not
 wait for R6/R9 once this baseline exit is satisfied. Wholesale rollback still needs an exact
 owner-approved target and recovery plan; no test Project name determines that choice.
 
@@ -195,11 +195,10 @@ to delete unrelated files or reference checkouts.
 | Current changed-path group | Disposition | Retained purpose / replacement |
 |---|---|---|
 | `app/**` | Restored original source; no Fleet delta | Owner-requested v0.13.4 restoration removed Fleet changes, tests, dependencies and builds. Five tracked Fleet-only files are deleted; no upstream file is missing. Reconfirm with the matching-pin gate. |
-| `AGENTS.md`, root/app `README.md`, `docs/*.md`, `docs/core/**`, `docs/specs/**` | KEEP corrected canonical contracts | Current v0.13.4 reality, one R0 exit, explicit future status, runnable entry/gates and R1/R2 acceptance. No old completion claim or second queue survives as authority. |
-| `docs/modules/**` | KEEP corrected execution contracts | One capability owner, first deliverable, data/failure/proof and exact reference route per execution section; draft proof remains a bounded action, never implementation status. |
-| Surviving `docs/design-library/**` | KEEP unique owner intent | OWNER-VOICE, current production canvas, Skill metadata, Project boundary and motion remain indexed. |
-| Deleted `docs/design-library/**` | DROP absorbed obsolete notes | Current product/suite/spec contracts absorb still-valid intent; old TeamRun/AgentSeat/layout contracts and duplicate surface notes are not executable. Git preserves tracked provenance. |
-| Surviving `docs/references/**` | KEEP unique source evidence with explicit consumers and revision limits | Current registry owns admission, refresh and adaptation routes; a historical label alone never justifies keeping a duplicate. |
+| `AGENTS.md`, `README.md`, `DESIGN.md`, `TODO.md`, `CHANGELOG.md`, `docs/*.md`, `docs/specs/**` | KEEP corrected canonical contracts | Current v0.13.4 reality, one R0 exit, explicit future status, runnable entry/gates and R1/R2 acceptance. Restructured 2026-09-22 into the conventional tree in `README.md`; no old completion claim or second queue survives as authority. |
+| `docs/features/**` | KEEP corrected execution contracts | One capability owner, first deliverable, data/failure/proof and exact reference route per execution section; draft proof remains a bounded action, never implementation status. Absorbed the R3/R4/R18/TE1 specs, the canvas vision and the orchestration design. |
+| Former `docs/design-library/**`, `docs/modules/**`, `docs/core/**`, numbered `docs/NN-*.md` | DROPPED after absorption (2026-09-22) | Owner intent now in `DECISIONS.md` (*The owner's words*), motion in `DESIGN.md`, plugin design in `REGISTRY.md`, Project/remote background in the R1 spec. Git preserves provenance. |
+| `docs/research/**` | KEEP unique source evidence with explicit consumers and revision limits | `REFERENCES.md` owns admission, refresh and adaptation routes and lists each note's consumer; a historical label alone never justifies keeping a duplicate. |
 | Deleted audit/intake/gap reference documents and unused `app/config/file-size-baseline.txt` | DROP absorbed or caller-free residue | Reference registry and consuming suites own comparison/proof; the old ratchet has no caller and its stale local delta declaration is removed. |
 | Deleted quota context note | DROP absorbed duplicate | SYS-03 quota contract and reference registry own supported acquisition, semantics, source comparison and failures. |
 | `scripts/**`, `.github/workflows/agent-verify.yml` | KEEP executable verification | Matching-pin delta gate, doc ownership/link checks, reference-guide projection, isolated tests, complete source inventory, UI/localization guards and offline backend smoke. No bypass of a failing check. |
@@ -249,7 +248,7 @@ After retirement, remove resolved inventory rows instead of growing a permanent 
 | R0-C3 | Every retained feature claim has a production caller and real data path. Unmounted, deleted or test-only implementation is documented as `not implemented`; obsolete residue is removed or explicitly disconnected. | `rg` caller/existence audit + targeted tests |
 | R0-C4 | All applicable targeted tests, package typechecks, lint checks and the repository `bash scripts/fleet-verify.sh` pass on the integrated working tree without weakening the harness. | fresh command output |
 | R0-C5 | Electron or the cheapest equivalent production bootstrap completes a non-interactive smoke with no new fatal error; required services shut down cleanly. | smoke log + process/port cleanup check |
-| R0-C6 | `PRODUCT.md`, roadmap, capability map, matrix, page architecture, module registry and code map agree with observed code and use the fixed capability-status vocabulary. Absorbed obsolete material is deleted; any temporary recovery item has the explicit unresolved risk and retirement condition above. | doc diff + `scripts/validate-doc-contracts.py` + semantic searches + retirement disposition |
+| R0-C6 | `PROJECT-SPEC.md`, roadmap, capability map, matrix, page architecture, module registry and code map agree with observed code and use the fixed capability-status vocabulary. Absorbed obsolete material is deleted; any temporary recovery item has the explicit unresolved risk and retirement condition above. | doc diff + `scripts/validate-doc-contracts.py` + semantic searches + retirement disposition |
 | R0-C7 | Owner has accepted changed visible baseline surfaces before feature additions. Unchanged, uninspected surfaces remain `wired but not visually checked`; no agent upgrades them to `usable`. | owner acceptance |
 
 ## Verification plan
@@ -273,12 +272,12 @@ Failures are reported as evidence. A passing subset is never described as a pass
 
 ## References consumed
 
-- [`../PRODUCT.md`](../PRODUCT.md) is the product authority.
+- [`../PROJECT-SPEC.md`](../PROJECT-SPEC.md) is the product authority.
 - Craft v0.10.5 is the look pin; the rolling Craft mirror and current `app/` are v0.13.4 comparison
   and implementation reality. Admit bounded fixes/mechanisms only.
-- [`../08-CRAFT-CAPABILITY-MAP.md`](../08-CRAFT-CAPABILITY-MAP.md) supplies per-capability
+- [`../ARCHITECTURE.md`](../ARCHITECTURE.md#craft-capability-map) supplies per-capability
   `REUSE`/`EXTEND`/`NEW` classification.
-- [`../09-QUALITY.md`](../09-QUALITY.md) supplies the verification ladder.
+- [`../DEVELOPMENT.md`](../DEVELOPMENT.md#quality-verification-and-acceptance) supplies the verification ladder.
 
 ## Risks and recovery
 

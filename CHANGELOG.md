@@ -1,0 +1,68 @@
+# Changelog
+
+Releases and major project changes. Normative documents state what is true now; the history of how
+it became true lives here and in Git, not in "corrected on…" notes scattered through the docs.
+
+## Unreleased
+
+### 2026-09-22 — original-source reset, documentation restructure
+
+- **`app/` restored to unmodified official Craft Agents v0.13.4** at the owner's direction
+  (「二开文件直接删除，改成最正确的最新版Craft Agents」). Fleet's in-app gate scripts, `.husky` and the
+  file-size baseline were removed with it; upstream delta is zero.
+- **Workspace revision (Decision P6):** Workspaces stay visible and own their Conversations, Project
+  memberships, Sources/MCPs, Skills and component overrides; the same folder may be opened in several
+  Workspaces. This supersedes the 2026-07-20 Project = Workspace collapse.
+- **Platform scope:** Windows, macOS and Linux desktop; a later Orca-like phone connector.
+- **R1 shell/context slice authorized.** A first implementation was rejected — it changed areas
+  outside the slice and did not follow Craft's colour/spacing or the Cindy/ZCode layout — and was
+  reverted. The slice is re-planned in `TODO.md`.
+- **Commit gate repaired.** Deleting `app/.husky/pre-commit` left `.githooks/pre-commit` exiting 127
+  on every commit, so about a day of work sat uncommitted. Staged checks now live in
+  `scripts/staged-checks.sh` at the repository root. Upstream's OSS `package.json` names 14 scripts
+  it does not ship (`typecheck-staged.sh`, `release.ts`, `check-version.ts`, …).
+- **Documentation restructured** into the conventional tree in `README.md`: 61 files across eight
+  directory levels became root files plus `docs/`, `docs/features/`, `docs/specs/`, `docs/research/`.
+  Three 63-row capability tables were merged into one.
+- Preserved: `snapshot/codex-01a0c495-2026-09-22` (the uncommitted work before the checkpoint).
+
+### 2026-09-21 — rebuild from upstream v0.13.4
+
+- `app/` replaced with upstream Craft Agents **v0.13.4** (`5a510cf1d`; ten stale files corrected in
+  `bc7eb0eb7`). v0.13.4 brings agent steering and mid-stream queueing, context-window usage and the
+  composer viewport rewrite as upstream code.
+- The previous Fleet tree (147 files modified from upstream, 85 added) is preserved at
+  `snapshot/pre-rebuild-2026-09-21` (`7a8f6d5fa`) as a reference list, not a branch to merge.
+- **Anti-recurrence gates added:** `scripts/check-upstream-delta.py` (every difference from the pin
+  must be declared) and `scripts/check-orphaned-components.py` (a component upstream mounts and we
+  do not has lost its home).
+- Plugin/Skill architecture decided (P11): one adapter for Claude/Codex/Cursor/Agent-Plugins bundles;
+  a catalog is data, not a service. Identity is borrowed, never issued (P4: GitHub device flow).
+- All 66 reference checkouts refreshed; ZCode added.
+
+## History before the rebuild
+
+The project restarted three times before 2026-09-21. Each collapse had the same shape: a large,
+undeclared, rewrite-shaped delta against Craft; documentation drifting from code; functions lost with
+the pages that carried them. That pattern is why the delta and orphan gates exist.
+
+| Date | Event |
+|---|---|
+| 2026-06-16 | Fleet baseline from craft-agents-oss `a512da7` (`2e930d55b`) |
+| 2026-06-20 | Reset #1: clean Craft base and documents (`c8df222db`) |
+| 2026-07-11 | Planning documents reset to a code-grounded set (`b9fea6150`); Craft v0.11.1 baseline verified (`c7fd6dea0`) |
+| 2026-07-20 | Owner direction: every plan is a Craft second-development plan; collapse redundant surfaces (OV-007, OV-008) |
+| 2026-08 | No commits. `源码参考/` became a symlink on 08-08 while 73 files stayed in the Git index; Git does not traverse symlinks, so they read as deleted. The rolling pin sat at v0.12.0 for three weeks from 08-17. Fixed 09-09 (`c487815ec`) |
+| 2026-09-09 | Pre-R0 audit snapshot (`backup/pre-r0-audit-2026-09-09`, `92fbc2e97`) |
+| 2026-09-11 | Rebase to Craft v0.13.3. The ExpertKit-as-label, delegation, memory, artifact-history, CLI-adapter and workbench modules were discarded |
+| 2026-09-20 | Upstream v0.13.4 identified; commit gates made to survive a fresh clone (`scripts/init.sh`) |
+
+## Recoverable references
+
+| Ref | Contains |
+|---|---|
+| `snapshot/pre-rebuild-2026-09-21` | The complete Fleet tree before the v0.13.4 rebuild |
+| `snapshot/codex-01a0c495-2026-09-22` | Uncommitted documentation work of 2026-09-21/22 |
+| `archive/stash-2026-07-31-unlanded` | 43 files of work stashed on 2026-07-31 and never landed; predates the v0.13.3 rebase — review hunk by hunk, never merge |
+| `archive/musing-dubinsky-2026-09-20` | A removed worktree's final state |
+| `backup/pre-r0-audit-2026-09-09`, `backup/pre-r0-audit` | Dirty-tree snapshots before the R0 audit |
