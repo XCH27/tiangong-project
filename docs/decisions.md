@@ -1520,6 +1520,16 @@ top-right Help button into the app menu's Help.
 
 **Now carried by:** [`modules/shell.md`](modules/shell.md#delivery-order) items 1 and 11, R1-A10.
 
+### OV-019 — Port ZCode's sidebar, but merge Craft's own design into it (2026-09-22)
+
+> 「左侧栏的很多设计都可以参照ZCode做整改，但是也要注意我们原有的一些设计怎么跟他做优化整改」
+
+**English gloss:** Much of the left sidebar can follow ZCode, but Craft's existing design — the
+filter popover (status, labels, grouping, search) and the conversation menu — must be merged into
+it deliberately, not dropped.
+
+**Now carried by:** [`modules/shell.md`](modules/shell.md#sidebar-merge-map-item-1).
+
 ### Rules for this file
 
 Add a signal here only when the owner actually said it (with date) and it is not already carried

@@ -43,13 +43,74 @@ Order: 1 → 2 → 3 (navigation and data boundary) → 6 → 4 → 7 → 8 (com
 9 → 10 → 11. Each step: diff Craft and the reference, declare the delta in [`UPSTREAM-DELTA.tsv`](../UPSTREAM-DELTA.tsv),
 typecheck, run the app, show the owner.
 
-**What the one sidebar must keep reachable.** Craft's navigator column is not decoration: every
-entry is a route. `route-parser.ts` defines seven navigators — `sessions`, `sources`, `skills`,
-`automations`, `projects`, `pages`, `settings` — and the sessions navigator carries the filters
-`allSessions`, `flagged`, `archived`, `state/<id>`, `label/<id>` and `view/<id>`, plus the `board`
-presentation. Item 1 removes the column, not the destinations: each navigator and filter needs a
-home in the merged sidebar (top entries, the filter popover, or Settings), and every existing route
-string keeps resolving. Checked against v0.13.4 on 2026-09-22.
+### Sidebar merge map (item 1)
+
+ZCode supplies the layout and interaction (`WorkspaceSidebar`, `TaskListItem`,
+`TaskActionMenuContent`, `WorkspaceSidebarItem`, `WorkspaceSidebarFooter`, `872ad96`); Craft supplies
+the data, routes and every function that must survive (OV-018, OV-019). Every Craft entry below has a
+named home; nothing is dropped. Checked against v0.13.4 on 2026-09-22.
+
+**Top entries** — ZCode's top rows (新建任务, 搜索, 定时任务, 插件) carry Craft's navigators:
+新建对话 · 搜索 · 看板 (item 2) · 自动化 · 数据源 · 技能 · 页面. Craft's `projects` navigator becomes the
+项目 mode plus the Project row menu; `settings` moves to the footer; 最新动态 moves to 调试 (item 11).
+Pages keep their current routes and are not redesigned by this slice.
+
+**Header** — ZCode's segmented `对话 | 项目` (its 分组 renamed), then 收起全部 (项目 mode only), the
+筛选和排序 popover, and the 归档 toggle (Craft's `archived` filter).
+
+| Mode | Sections, in order | Rows |
+|---|---|---|
+| 对话 | 已置顶, then every conversation grouped by the chosen 分组方式 | folderless and Project conversations alike |
+| 项目 | 已置顶, 项目 (one collapsible group per Project, empty Projects included), 对话 (folderless) | ZCode's section order and reorder handle |
+
+**筛选和排序 popover** — ZCode's structure, Craft's filters inside it:
+
+| Group | 对话 mode | 项目 mode | Source |
+|---|---|---|---|
+| Search box | 搜索看板状态和标签… | same | Craft popover input |
+| 视图 / 分组方式 | 日期 · 看板状态 · 未读 | 项目 · 时间线 | Craft `ChatGroupingMode` date/status/unread; ZCode `organizeByProject`/`organizeChronologicalList`; Craft's `project` grouping is the 项目 mode itself |
+| 排序方式 | 更新时间 · 创建时间 | same | ZCode |
+| 看板状态 ›, 标签 › | include / exclude, Alt to exclude | same | Craft `FilterModeSubMenuItems` unchanged |
+| 项目 › | multi-select filter | — (redundant) | Craft `ProjectMultiSelectFilter` |
+| 视图 › | saved views (`view/<id>`) | same | Craft views |
+
+Status icons leave the rows (OV-015), but filtering and grouping by Board status stay — they are
+labelled 看板状态 so they are not mistaken for live activity. Route strings `allSessions`, `flagged`,
+`archived`, `state/<id>`, `label/<id>`, `view/<id>` keep resolving: each opens 对话 mode with that
+filter applied (`flagged` = the 已置顶 section, `archived` = the 归档 toggle).
+
+**Conversation row** — ZCode `TaskListItem`, one line: leading slot, title, relative time.
+
+- Leading slot: live activity from item 9 (running · error/paused); otherwise Craft's unread dot;
+  otherwise empty. Hover or focus shows the 置顶 toggle there.
+- Title in Craft's weight rules; label colours as Craft's small label dots after the title.
+- Right: relative time; on hover the archive button replaces it, with ZCode's two-step confirm.
+- Craft's Cmd/Shift multi-select stays; the main area keeps Craft's `MultiSelectPanel` (change Board
+  status, set labels, send to Workspace, archive).
+
+**置顶 is Craft's flag.** Craft has no conversation pin; its 标记 (`isFlagged`, the `flagged` route) is
+the same idea. It is presented as ZCode's 置顶 — pin icon, 已置顶 section — and stored in the existing
+flag field. No second pin store.
+
+**Row menu** (right-click and hover ⋯) — ZCode's grouping, Craft's actions:
+
+1. 置顶 / 取消置顶 · 重命名 · 重新生成标题 · 归档 · 标记为未读
+2. 标签 › · 移到项目 › · 发送到工作区 › (when targets exist)
+3. 在新面板中打开 · 在新窗口中打开
+4. 共享 · 连接消息平台 ›
+5. 在 Finder 中显示 · 复制路径 · 复制会话 ID (ZCode)
+6. 删除 (destructive, last)
+
+The 状态 submenu leaves the row menu and the batch menu (OV-015, R1-A9); Board status is changed on
+the Board card and in `MultiSelectPanel`. The batch right-click menu keeps 全部置顶/取消置顶, 发送到工作区
+and 归档. ZCode's 调用轨迹 and 反馈 have no Craft backend and are not added.
+
+**Project row** — ZCode `WorkspaceSidebarItem`: folder icon, name, collapse, aggregate activity
+(item 9); hover shows + (new conversation in this Project) and ⋯: 查看文件 · 在 Finder 中显示 · 项目设置
+(Craft's Project page) · 移除 (membership only; never deletes the folder).
+
+**Footer** — ZCode `WorkspaceSidebarFooter`: account (item 10), then 设置, with ZCode's quick language
+and theme choices wired to Craft's existing preferences.
 
 **Item 11 — what moves and what must survive.** Checked against v0.13.4 on 2026-09-22.
 
@@ -83,7 +144,8 @@ the connection and app settings entries and shows no account rather than a guess
    to two Workspaces. Files are shared; transcripts, assets/context, activation and grants are not.
    Removing a membership must never delete the referenced folder. Existing folderless records survive.
 3. One left sidebar contains the work list, grouped by Project, and folderless Conversations. Keep
-   search, archive/restore, labels, rename, pin, delete and multi-selection through native paths.
+   search, archive/restore, labels, rename, pin (Craft's flag field), delete and multi-selection
+   through native paths. The [merge map](#sidebar-merge-map-item-1) names the home of every Craft entry.
    Empty Projects remain reachable. Remove the old separate left navigator column and its resize rail.
 4. Board has its own entry. Remove both list/Board switches; retain native Task/Session persistence,
    card editing and old Board deep links. Board never becomes another conversation store.
