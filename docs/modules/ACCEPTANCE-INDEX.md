@@ -21,7 +21,7 @@ with a concrete code path, evidence command and status. They are intentionally n
 | INFO-02-A | A produced artifact has an exact version and a single provenance owner | artifact data-path trace |
 | INFO-03-A | A permitted browser capture links session, URL/time and artifact provenance | browser capture trace |
 | INFO-04-A | Ingestion produces a readable source plus conversion provenance or an explicit failure | ingestion fixture |
-| INFO-05-A | Editing and preview read/write one document authority with no second editor store | editor data-path trace |
+| INFO-05-A | A production editor opens, edits, saves and reopens each claimed real format through its native owner; preserve originals, report unsupported constructs, and prove human/Agent edits plus dirty/conflict/save recovery. Preview acceptance alone does not satisfy editing | per-format fixtures + save/reopen and failure traces; R3 proves only preview |
 | INFO-06-A | Search results can be refreshed/rebuilt without becoming a source-of-truth copy | index rebuild test |
 | INFO-07-A | Citation points to immutable evidence and shows unavailable/deleted source truth | provenance fixture |
 | INFO-08-A | Import/export preserves source separately and declares unsupported fidelity | migration fixture |
@@ -31,18 +31,18 @@ with a concrete code path, evidence command and status. They are intentionally n
 | EXEC-04-A | Delegation creates a child in the existing Session/Task tree and returns a validated report | delegation trace |
 | EXEC-05-A | A runtime adapter reports supported/unsupported capabilities without guessing | adapter contract test |
 | EXEC-07-A | Worktree occupancy and cleanup are idempotent and never confused with a location path | lifecycle test |
-| EXEC-08-A | Sandbox create/exec/cancel/reclaim reports limits and denial through core policy | executor test |
+| EXEC-08-A | Retained execution enforces its declared filesystem/network/process limits through core policy; denied/unsupported cases fail visibly and cancel/restart cleans owned resources. No new container lifecycle is implied | inherited-path boundary and cleanup fixtures under R0/R2 |
 | EXEC-09-A | Remote disconnect and grant revocation prevent further execution with honest status | transport test |
 | EXEC-10-A | An automation invokes governed actions and records schedule/run outcome in existing history | scheduler smoke |
 | EXEC-11-A | Channel failure/reconnect is isolated from local core and scoped to a workspace | adapter test |
 | EXEC-13-A | Git/branch/PR actions are attributed, permissioned, reviewable and cannot replace the Task/Session authority | Git fixture + permission trace |
 | EXEC-14-A | One Craft-owned effective prompt/tool projection is versioned, scoped and attributable; profile changes cannot silently weaken policy or create a second harness | prompt/profile fixture + policy regression |
-| EXEC-15-A | An approved external-environment action proves the narrowest reliable route was tried first, binds environment/display identity and a live expiring grant, and refuses on a stale observation; a route that is not needed closes `NO_GAP` with evidence | route-exhaustion trace + stale-frame refusal fixture |
+| EXEC-15-A | Optional local-app Component observes/acts/verifies only the selected app/window through host permission and fresh target identity; Stop/revoke prevents queued input, unknown delivered effects reconcile; no general Core controller or second sandbox | SYS-02 helper comparison and disposable-app/office-app observe-act-verify-stop fixtures, including denial, stale targets and crash |
 | INTEL-01-A | Context projection lists included/excluded evidence and can be compared before sending | projection fixture |
 | INTEL-02-A | Token/cache optimization lowers cost per accepted outcome on a sealed model×harness×task comparison, preserves quality and a switch-off path | usage + acceptance benchmark |
 | INTEL-03-A | Model capability negotiation rejects unsupported parameters before execution | adapter test |
 | INTEL-04-A | Cost ledger distinguishes real, estimated and unknown usage and never treats unknown as zero | ledger fixture |
-| INTEL-05-A | Memory proposal displays source evidence and deletion removes retained memory without rewriting raw history | review fixture |
+| INTEL-05-A | Authorized autonomous memory consolidation records sources and scope, respects pins and excludes secrets; user curation/deletion removes retained content and derived indexes without rewriting raw history | MEM-001..005 under the single consolidation writer |
 | INTEL-06-A | Install, loadout and runtime states are distinct and permissioned | loadout test |
 | INTEL-07-A | Evaluation result names the tested input, verifier and artifact evidence independently of executor | regression fixture |
 | CREATE-01-A | Canvas projects native records, invokes one governed action and persists no domain duplicate | Electron canvas smoke |
@@ -60,14 +60,14 @@ with a concrete code path, evidence command and status. They are intentionally n
 | CREATE-16-A | Long-form generation applies governed document actions, preserves human edits and records prompt/model/source provenance | document generation fixture |
 | ORCH-01-A | Workflow definition validates a typed finite DAG and rejects cycles/stale versions | schema test |
 | ORCH-02-A | Workflow run projects TaskRunner status and never creates a second run authority | run trace |
-| ORCH-03-A | Plugin/skill manifest, loadout and runtime permissions are independently visible | manifest fixture |
+| ORCH-03-A | Component registration and scoped activation reuse existing Settings/Skill/Source owners; show requested versus granted capability, support disable/unload and preserve native data | FND-01..08 host and resolver/lifecycle fixtures |
 | ORCH-04-A | Tool/MCP registration uses the shared action/policy path and records capability scope | registry test |
 | ORCH-05-A | Job queue supports progress, cancel, retry and resource limits through one authority | queue test |
 | ORCH-06-A | Activity history correlates events to the owning Session/Task/Artifact without duplication | event trace |
 | ORCH-07-A | Inbox approval/notification resolves to a real permission or session event | inbox smoke |
 | ORCH-08-A | Diagnostics classifies failure and offers only a recovery action that actually exists | failure fixture |
-| ORCH-10-A | Skill marketplace discovers signed manifests, shows compatibility/permissions, installs into a scoped loadout, and supports disable/update/rollback | marketplace fixture |
-| ORCH-11-A | Plugin marketplace verifies provenance and license, previews requested capabilities, requires permission approval, isolates runtime, and recovers from failed update/uninstall | plugin lifecycle test |
+| ORCH-10-A | Skill marketplace discovers origin/integrity-verified manifests, requiring signatures where the distribution contract specifies them, shows compatibility/permissions, installs into a scoped loadout, and supports disable/update/rollback | marketplace fixture |
+| ORCH-11-A | Component marketplace verifies provenance and license, previews requested capabilities, requires permission approval, isolates runtime, and recovers from failed update/uninstall | plugin lifecycle test |
 | ORCH-12-A | MCP marketplace registers server capabilities and health, scopes credentials per grant, exposes tool risk before install, and removes/revokes a server without stale tools | MCP registry test |
 
 ## Promotion rule

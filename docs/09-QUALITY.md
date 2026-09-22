@@ -34,25 +34,27 @@ external side effects, and broad interactive journey audits still require explic
    exercise keyboard focus and the affected view variants, and fix every unintended delta.
 5. **Non-interactive smoke:** when the slice could plausibly break boot or a core surface, verify
    the app starts and logs no new fatal errors (dev launch, capture output, quit). No clicking.
-6. **Full gates:** `validate:dev` at the integration point when shared packages/contracts changed;
-   `validate:ci` belongs to CI unless a local CI-equivalent check is explicitly needed. Use
-   `validate:quick` (typecheck + `bun test --changed`) while iterating — it is a convenience, not a
-   substitute for the integration-point gate.
+6. **Full gates:** from the repository root, `bash scripts/fleet-verify.sh` at the integration
+   point. It runs the actual test inventory as well as types, documentation and reference checks.
+   Upstream `validate:dev`/`validate:ci` run a selected shared-test subset, so neither replaces the
+   repository gate. `validate:quick` is absent after the rebuild; use scoped commands while iterating.
 
 > **A gate only counts what it runs.** Until 2026-07-30 `validate:dev` ran 3 of 703 test files and
 > `typecheck:all` could not pass at all, so "gates green" was reported for months against a check
 > that measured almost nothing. When you add a test area, wire it into a gate in the same slice; a
 > suite that no gate invokes is documentation, not verification.
+> The v0.13.4 reset reintroduced that same subset-only gate. The repository wrapper now owns
+> complete coverage; always inspect what a package command actually runs after an upstream intake.
 
 Do not run the full suite for a bounded change. Do not micro-test every edit — validate after a
 coherent slice.
 
 ## Stop rules (bind at every level)
 
-- The same build/validation route fails twice → stop, preserve the exact blocker and evidence,
-  report the smallest next decision.
-- Two state-changing attempts move no acceptance criterion → halt (Decision C10). Switching
-  tools/hypotheses does not reset the counter.
+- Two state-changing attempts move no acceptance criterion → halt (AGENTS rule 5 / Decision C10),
+  preserve the exact blocker and evidence, and report the smallest next decision. Switching
+  tools/hypotheses does not reset the counter; a failing run with demonstrated acceptance progress
+  is not a non-progressing attempt.
 - Never edit dependencies, configuration, tests, fixtures, or harnesses to manufacture a pass
   (03 §6; reserved paths, Decision C7).
 
@@ -79,16 +81,27 @@ preview-gated page's *design* (layout, states, wording) while its status remains
 
 | Area | Where tests live | Run with |
 |---|---|---|
-| Shared domain logic | `packages/shared/src/**/__tests__/` | `bun run test:shared:all` (scoped: `bun test <path>` from the package) |
+| Shared domain logic | `packages/shared/src/**/__tests__/`, `packages/shared/tests/` | `bun test <path>`; `test:shared:all` is only six selected files |
 | Session tools | `packages/session-tools-core/src/**/__tests__/` | `bun test` in package |
 | Renderer components | `app/apps/electron/src/renderer/**/__tests__/` | `bun test <path>` |
 | i18n parity/coverage | lint scripts | `bun run lint:i18n:*` |
-| Incremental UI contract | renderer additions + shared primitive import seam | `bun run lint:ui-contract` |
-| Repo/packaging scripts | `app/scripts/*.test.ts` (e.g. `distribution-safety.test.ts`) | `bun run test:repo-scripts`; typed by `typecheck:scripts` |
-| Cross-package gates | — | `validate:dev` / `validate:ci` |
+| Incremental UI contract | `app/scripts/check-ui-contract.ts`; `scripts/tests/test_ui_contract.py` | `usable`: staged/unstaged/untracked rejection fixtures; run by `fleet-verify.sh` |
+| Repository verification scripts | `scripts/tests/` | Python unittest through `scripts/fleet-verify.sh` |
+| Offline production backend | `scripts/smoke-baseline.mjs` | `bun scripts/smoke-baseline.mjs` from the root; also run by `fleet-verify.sh`. Temporary profile, authenticated RPC, real Session/config storage, self-tested outbound API guards, redacted traffic/startup evidence and process/listener cleanup. No provider subprocess or Electron-renderer claim. |
+| Documentation handoff and reference routes | `scripts/validate-doc-contracts.py`, `doc_execution_contracts.py`, `reference-guides.py` | `python3 scripts/validate-doc-contracts.py` from root checks 1:1 execution owners, required fields, real app source paths and reference routes; `python3 scripts/reference-guides.py --check` additionally requires mounted, unchanged source locks |
+| Cross-package gates | repository wrapper + CI workflow | `bash scripts/fleet-verify.sh`; CI also runs the existing i18n checks |
 
 Keep this table honest: if a new test area appears (e.g. smoke scripts under `app/scripts/`), add
 its row in the same slice.
+
+The reference guide check is local/reference work, not a CI requirement to mount the owner's
+external disk. CI validates the canonical route data through the normal document gate. On a
+mounted reference update, run both checks. Structural checks cannot certify source quality,
+runtime behavior, complete module design or a benchmark that has never run.
+
+Config-mutating integration fixtures require a disposable `CRAFT_CONFIG_DIR` supplied before Bun
+starts, because the interceptor is preloaded. The repository verifier creates and removes this
+directory; targeted runs must do the same. Never point these fixtures at a saved user profile.
 
 ### Shared-process test hazards (binding)
 
@@ -103,7 +116,7 @@ its row in the same slice.
    cached instance, so its assertions may silently run against another file's mock (or the real
    module). A regular `*.test.ts` may therefore use `mock.module` only for modules no earlier suite
    file can have imported. Anything heavier goes in a `*.isolated.ts` file — excluded from the bare
-   suite and run per-process by the root `test` script (invoke as `bun test ./path/to/file.isolated.ts`).
+   suite and run per-process by the repository verifier (invoke as `bun test ./path/to/file.isolated.ts`).
 
 A test that fails only in the full suite (or passes only there) is assumed to be one of these two
 classes until proven otherwise — bisect with file pairs before touching product code.
@@ -150,7 +163,8 @@ target the producing step is not a passing implementation.
 
 ## Admitting a package whose tests are written for Vitest
 
-The runner is `bun test` (`scripts/test-all.sh`). Cindy, OpenChamber and most other
+The repository verifier runs `bun test --isolate` plus separately named isolated files.
+The former `app/scripts/test-all.sh` is absent after the rebuild. Cindy, OpenChamber and most other
 candidate sources use Vitest. Bun's `vitest` shim covers `vi.fn` / `vi.mock` / `vi.spyOn`
 and nothing else, and it fails in ways that read like product bugs — so check these
 five before you diagnose the admitted code:
@@ -162,15 +176,13 @@ five before you diagnose the admitted code:
 | `vi.hoisted(() => x)` | `undefined` → `TypeError` | a plain `const` — bun's `vi.mock` is not hoisted above it |
 | `vi.mock(id, (importOriginal) => …)` | `importOriginal` is `undefined`; a dynamic self-import inside the factory **deadlocks** | an explicit stub module listing only the bindings the subject imports |
 | `it('…', async ({ skip }) => …)` | bun reads the single parameter as `done` → **5 s timeout, not a skip** | `async () => {}` with an early `return` |
-| `vi.mock` module registry | **global for the whole run**, so one file's mock leaks into the next | rename to `*.isolated.ts` — `test-all.sh` runs those one per process |
+| `vi.mock` module registry | **global for the whole run**, so one file's mock leaks into the next | rename to `*.isolated.ts` — the repository verifier runs those one per process |
 
 Also import `vi` from `bun:test` (it is exported there), not from `'vitest'`: the latter
 resolves at runtime but has no types, so the package fails `typecheck:all`.
 
 A file that still cannot be ported is renamed out of both globs with a header naming
 the invariants that therefore have **no** coverage — never left red and never deleted.
-`packages/remote-ssh/src/__tests__/remoteHostConnectRace.vitest-port-pending.ts` is the
-worked example.
 
 ## Definition of done (per slice)
 
@@ -178,34 +190,18 @@ worked example.
 2. Ladder run at the sufficient level; stop rules respected.
 3. Behavior-adjacent test added/extended.
 4. Structural/styling UI changes have a declared visual anchor/delta and rendered comparison.
-5. Canonical docs whose contract/status changed are updated.
+5. Canonical docs whose contract/status changed are updated. Absorbed reports, obsolete plans,
+   replaced files and duplicate recovery copies are retired under the
+   [R0 cleanup contract](specs/R0-baseline-audit.md#retirement-of-obsolete-material); no archive copy is added.
 6. Honest status reported; user-visible surfaces are handed to the owner with the intentional delta
    and a short CHECK THIS list.
 
-## Known measurement blind spots (2026-07-28 code-health pass, still open)
+## Cross-boundary contract checks
 
-A whole-project pass on 2026-07-28 found that `typecheck` and `lint` had been green throughout a
-period the owner was reporting broken features — *because the codebase disabled the checks that
-would have caught them*. Ten fields the server sent were dropped by the renderer, including the
-entire work-mode/plan-mode system, `goal` and `thinkingLevel`, and `tsc` stayed silent because a
-hand-written duplicate type plus an `as SessionMeta` cast told it to. That single mechanism explains
-a large share of the "根本没实现 / 我根本没在前端看到" reports.
-
-Three fixes landed then (`SessionMeta` is now derived from the wire `Session` with no return cast;
-`DismissibleLayerRegistration` and `RecoveryAction` collapsed to single authorities), and three more
-have landed since (`ListSessionsArgs` aliased to `ListSessionsOptions`; `AgentError extends
-TypedError`; `PANEL_TOP_EDGE_INSET === PANEL_EDGE_INSET`). **Still open, verified 2026-08-15:**
-
-| Blind spot | Why it is a verification problem, not a feature request |
-|---|---|
-| `TokenUsage.contextWindow` drift between `packages/core` and the shared session token shape | the Token ring reads this field; a drifting duplicate makes the ring silently wrong rather than absent |
-| `PreviewOverlayProps` / `FullscreenOverlayBaseProps` 75% overlap | two overlay contracts that a typecheck cannot relate |
-| four near-identical menu implementations (`mention-menu`, `slash-command-menu`, `label-menu`, `skill-mention-menu`) | every new menu is written by copying the last, so each arrives with a subtly different interaction language and no gate notices |
-| message rewind / session checkpoint | no rewind or checkpoint symbol exists in the session layer; a UI verb here would imply an undo that does not exist (Decision S5) |
-
-The rule these produce: **a hand-maintained duplicate of a type that crosses a process boundary is a
-verification failure, not a style issue.** Derive it, or re-export it — never re-declare it. When you
-find one, collapse it in the same slice.
+Derive or re-export types that cross a process boundary; a hand-maintained duplicate plus a cast
+can hide dropped fields while typechecks pass. Trace relevant fields from producer through transport
+to their real consumer. Reuse shared overlay/menu contracts and prove that visible actions reach
+an implemented operation. Historical defect lists do not establish defects in the current tree.
 
 ## What quality is not
 

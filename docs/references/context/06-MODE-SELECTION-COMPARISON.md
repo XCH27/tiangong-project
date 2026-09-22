@@ -1,39 +1,21 @@
 # Interaction Modes, Planning, and Permission Selection
 
 > **Status:** primary-source product and mechanism evidence, not implementation authority. Reviewed
-> 2026-07-27. Craft v0.10.5 remains Fleet's interaction baseline. This note classifies the proposed
+> 2026-07-27. Craft v0.10.5 is the look pin; current implementation is Craft v0.13.4. This note classifies the proposed
 > integration as `EXTEND`: it must reuse Fleet's one Session, permission path, timeline, task store,
 > and settings home.
 
-## 1. Executive answer
+## 1. Current admission
 
-Fleet can combine its current Explore / Ask / Execute control with planning in **one visible mode
-picker**, but it must not collapse task phase and action authorization into one underlying state.
-Current products converge on this pattern:
+The **current implementation contract is [R1](../../specs/R1-one-boundary-language.md)**,
+revised by the owner on 2026-09-22 after ZCode/Cindy source comparison. ZCode's Plan checkbox is
+independent of three permission radios: Confirm changes, Auto edit and Full access. Model and
+reasoning are separate composer controls; the model popup follows Cindy. Craft owns visual tokens
+and the existing Session, permission and provider paths.
 
-- a small set of user-selectable work modes controls whether the agent is answering, planning, or
-  implementing;
-- plan completion creates a transient review state, not another mode the user selects;
-- approving a plan transitions the same conversation into execution and may let the user choose the
-  execution approval posture;
-- automatic mode selection may propose or enter a safer task phase, but it must not silently grant
-  broader tool permissions.
-
-The evidence therefore supports this Fleet model:
-
-```text
-visible work mode: Explore | Plan | Execute
-                           |
-                           +-- Plan ready -> transient plan review
-                                                |
-                                                +-- approve -> Execute
-
-independent action policy: ask | scoped auto-approve | deny
-```
-
-`planning`, `awaiting_plan_approval`, and `executing` are lifecycle states. Only the stable work
-intent is selectable. `awaiting_plan_approval` belongs in the plan review UI and Session timeline,
-not in the mode picker.
+The source findings in §§2–4 retain their original review date and revisions. They are comparison
+evidence, not instructions to restore Explore / Plan / Execute or automatic work-phase routing.
+The superseded Fleet recommendations have been replaced by the bounded admission below.
 
 ## 2. Cursor
 
@@ -193,119 +175,29 @@ There is **no** regex router that forces Plan on “broad change.” Agent may *
 **humans approve** enter (via plan_enter question) and exit (via plan_exit question).
 
 The admitted behavior is recorded once in
-[`../../08-CRAFT-CAPABILITY-MAP.md`](../../08-CRAFT-CAPABILITY-MAP.md); implementation lives in
-`app/packages/shared/src/agent/work-mode.ts` and the Session authority.
+[`../../08-CRAFT-CAPABILITY-MAP.md`](../../08-CRAFT-CAPABILITY-MAP.md); the former `app/packages/shared/src/agent/work-mode.ts` was removed by the rebuild.
+The target extends the current Session/permission authority and is `not implemented`.
 
-## 5. Recommended Fleet contract
+## 5. Admitted mechanism and implementation limits
 
-This is an `EXTEND` of the capability-map row **Permission modes and Agent gate**, not a new mode
-engine.
+This is an `EXTEND` of the **Work modes, permission modes and Agent gate** capability row.
+Do not build another mode engine or Settings-only permission system.
 
-### 5.1 User-facing modes
+- ZCode `packages/ui/src/v4/composer/V4ComposerModeControls.tsx` renders an independent Plan
+  checkbox above three permission radios. `packages/shared/src/execution-state.ts` separates
+  `mode` and `planEnabled`. This is not four mutually exclusive modes.
+- `apps/zcode-cli/packages/core/src/permission/service.ts` checks Plan even when `mode === "yolo"`;
+  `edit` has a separate evaluator. A permission label alone cannot reproduce this behavior.
+- `packages/ui/src/v4/composer/composerSubmissionConfig.ts` validates and snapshots the model,
+  options and execution intent at Send. `agentConversationTransport.ts` rejects independent Plan
+  when the host lacks protocol support. These mechanisms inform Fleet's existing submission path.
+- Craft's `safe/ask/allow-all` and `SubmitPlan` are the starting authority. Add independent Plan and
+  Auto edit coherently across persistence, protocol and both adapters. Preserve legacy read-only
+  restrictions. Approving a plan must never silently change the selected permission to Full access.
+- Keep one plan-review state and one Session evidence path. Resume reconstructs pending decisions;
+  neither a model response nor a UI label establishes approval. Running actions retain the policy
+  under which they were dispatched.
 
-| Mode | Stable intent | Mutation behavior |
-|---|---|---|
-| Explore | Investigate, explain, compare, answer | Read-only; no implementation plan is required |
-| Plan | Investigate toward an implementation contract | Read-only except the governed plan artifact; submit for review |
-| Execute | Implement the current request or approved plan | Mutations pass through the existing permission path |
-
-The existing Chinese label `询问` currently describes an approval posture, not a distinct task phase.
-It should move under Execute as **执行时询问**, rather than remain a peer beside Explore, Plan, and
-Execute. The current `allow-all` behavior should be shown as an explicit autonomous execution grant,
-not implied by merely entering Execute.
-
-### 5.2 One picker, two internal dimensions
-
-- The composer has one mode picker. Its effective work mode is always Explore, Plan, or Execute.
-- The default selection policy is **Auto**. Auto is not a fourth work mode: the control renders the
-  effective result as `Auto · Explore`, `Auto · Plan`, or `Auto · Execute`.
-- The menu also lets the user lock Explore, Plan, or Execute manually. A manual choice overrides
-  automatic routing for the current task; a separate explicit setting may make it the Workspace
-  default.
-- Session state records the selected work mode and the transient execution phase.
-- The existing permission authority continues to resolve each legal action as allow / ask / deny.
-- Mode transition never edits global or workspace permission rules.
-- Automatic selection may soft-route Explore for pure Q&A. It must **not** auto-enter Plan (OpenCode
-  / Grok / Cursor daily usage: Plan is opt-in). Execute remains the productive default under the
-  already-selected execution approval posture.
-
-The internal contract needs three orthogonal values, stored through the existing Session authority:
-
-```text
-selection policy: auto | locked
-effective work mode: explore | plan | execute
-execution approval: ask | auto-review | bypass
-```
-
-`bypass` must never be selected automatically. It is an explicit, warned, session-scoped grant.
-Execute means “implementation is allowed to begin”; it must not mean “all permission checks are
-disabled.”
-
-### 5.3 Automatic routing and transition rules (revised after OpenCode + Grok source + owner use)
-
-Align Auto with **OpenCode `build` + Grok `PromptMode::Agent` + Cursor Agent**, not with a
-plan-first process:
-
-1. explicit user lock wins (`manual` Explore / Plan / Execute);
-2. **default Auto phase is Execute** (search + edit under existing execution approval);
-3. only **clearly read-only / audit** turns may soft-route to Explore (Ask-like); weak or ambiguous
-   text stays sticky or falls back to Execute — never thrash;
-4. **Auto must not heuristically enter Plan** for “broad”, “architecture”, or “plan-worded”
-   requests. Plan is **opt-in only**:
-   - user: UI picker, Shift+Tab, `/plan …`;
-   - agent: typed `EnterPlan` / OpenCode-style `plan_enter` **proposal** (prefer ask or highly
-     visible phase badge; never silent privilege change that blocks edits without the user noticing);
-5. irreversible / monetary / production / authority-changing work still hits owner checkpoints via
-   the existing permission path — that is **not** the same as forcing Plan mode;
-6. leaving Plan for Execute requires human plan approval (`SubmitPlan` / OpenCode `plan_exit` /
-   Grok `exit_plan_mode`).
-
-The model may propose Plan via a typed tool (Grok `enter_plan_mode`, OpenCode `plan_enter`, Fleet
-`EnterPlan`). Prompt regex is not the authority. OpenCode’s stricter pattern — **ask before
-switching agents** — is the better product default for entry; Grok’s **session-owned plan gate +
-mid-turn-safe state machine** is the better enforcement default once Plan is active.
-
-Transitions follow monotonic privilege:
-
-| Transition | Automatic behavior |
-|---|---|
-| Execute -> Explore or Plan | Allowed at the next tool/turn boundary |
-| Explore -> Plan | Allowed and recorded; both remain non-mutating |
-| Explore -> Execute | Allowed only when current execution approval already authorizes it; otherwise ask |
-| Plan -> plan review | Automatic when a concrete plan version is submitted |
-| Plan review -> Execute | Requires plan approval; approval selects or retains execution approval posture |
-| Any mode -> bypass | Never automatic |
-| Resume after interruption | Restore the persisted phase and pending decision; never infer approval |
-
-Mode changes during an active tool call are queued to the next safe boundary. They must not replace
-the policy beneath an already-dispatched action.
-
-### 5.4 Plan handoff
-
-When a plan is submitted:
-
-1. keep Plan selected;
-2. render one inline review state with approve, revise, and cancel;
-3. on approval, record the exact approved plan version and decision in the existing Session/Task
-   evidence path;
-4. switch the same conversation to Execute;
-5. use the user's existing execution approval posture, or ask once which posture to use;
-6. never expose `awaiting_plan_approval` as a mode choice.
-
-This adopts the strongest shared product pattern from Cursor, Claude Code, Gemini CLI, Cline, Roo
-Code, OpenCode, and the audited Grok Build source while preserving Fleet's non-negotiable single
-permission and Session authorities.
-
-### 5.5 Migration from Fleet's current modes
-
-The present storage keys can be migrated without creating a second permission engine:
-
-| Current value | New work mode | New execution approval |
-|---|---|---|
-| `safe` / Explore | Explore | unchanged deny/read-only baseline |
-| `ask` / Ask | Execute | Ask during execution |
-| `allow-all` / Execute | Execute | Bypass, preserved only as an explicit legacy grant |
-
-The UI-facing `询问` label therefore moves from the primary three-way picker into Execute's approval
-setting. Existing allow/ask/deny evaluation remains the sole action authority. Plan enforcement is
-an additional phase gate intersected with that authority, never a replacement for it.
+The ZCode observation is at `872ad960de7ec172591f7e1952f7849229f94521`; it does not change earlier
+source audit revisions. Exact layout, transitions, migrations, failure recovery and acceptance
+are owned by R1. This reference note does not duplicate that execution contract.

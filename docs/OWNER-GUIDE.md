@@ -64,7 +64,7 @@ under [`09-QUALITY.md`](09-QUALITY.md).
 
 | Status | Meaning |
 |---|---|
-| `usable` | The real path works and the owner has accepted appearance and interaction. |
+| `usable` | The real path is verified; visible behavior has owner acceptance. For a wholly non-visual capability, the agent may establish usability with a real closed loop under `09-QUALITY.md`. |
 | `wired but not visually checked` | The real path and logic are verified; owner visual acceptance remains. |
 | `display-only` | A UI shell exists without real behavior; it is not complete. |
 | `not implemented` | The capability does not exist. |
@@ -82,11 +82,17 @@ always ask: “Is this the best technical route?”
 
 - “Where is the project now?” → answer from `05-ROADMAP.md`, current code and the capability map.
 - “Can this capability really be used?” → answer with the fixed status and evidence.
-- “What should happen next?” → execute the single ACTIVE roadmap release.
+- “What should happen next?” → follow the current explicit owner task; otherwise execute the single ACTIVE roadmap contract.
 
 The roadmap is the complete R0–R18 development order, not near/mid/far-term buckets. Every
-capability has an order owner in `modules/PACKET-INDEX.md`. R16–R18 conditional capabilities must
+capability has an order owner in `modules/PACKET-INDEX.md`. R16 owns the specified-local-app Component after the baseline and host. Remaining R17/R18 conditional capabilities must
 end in implementation or evidence-backed `NO_GAP`; an agent cannot leave them as “later”.
 
-The owner may explicitly reorder work by saying “Do X first.” The agent then updates the canonical
-roadmap and affected contract before executing the revised order.
+The owner may explicitly reorder work by saying “Do X first.” The agent updates the canonical
+roadmap and affected contract. The current order is baseline rectification and acceptance first,
+then Component/panel foundation, then added capabilities; see the single exit in
+[`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md).
+
+Old project documents and files are deleted after their useful content is absorbed and links are
+updated. Keeping a second archive copy is not completion; tracked Git history supplies recovery.
+Live user data and external reference checkouts retain their separate safeguards.

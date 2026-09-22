@@ -11,33 +11,26 @@ providers, honest savings estimates, and prefix-stability instrumentation that c
 silent cache killers (stable-zone mutation, non-append history rewriting). Zero behavior change to
 model calls themselves in this spec.
 
-## Already done in this working tree (lands as R0 group `G-app-cache-economy`)
+## Current implementation boundary
 
-- `app/packages/shared/src/agent/core/cache-economy.ts` — provider cache profiles
-  (anthropic/deepseek/openai/gemini, data-with-confidence), `normalizeProviderUsage` (4 real raw
-  shapes), `estimateTurnEconomics` (counterfactual; USD only with a real price), `fingerprintZone`
-  + `diagnoseCacheBreak` (three-zone rule), `summarizeCacheEconomy`, `alignedPrefixTokens`.
-- `app/packages/shared/src/agent/core/__tests__/cache-economy.test.ts` — 15 tests, 47 assertions.
-- Verified: `bun test src/agent/core/__tests__/cache-economy.test.ts` → 15 pass;
-  `bun run tsc --noEmit` in `packages/shared` → clean.
-- TE1-C2: Pi usage is normalized exactly once at the provider adapter seam; UsageTracker consumes
-  the complete context count without adding cache tokens again. The real-shaped adapter→tracker
-  regression fixture lives in `src/agent/__tests__/pi-event-adapter.test.ts`.
-
-Capability status: the accounting utility is `usable` at its tested interface. TE1 S1 is landed:
-both event adapters attach `NormalizedCacheUsage` per turn via `normalizeProviderUsage`;
-UsageTracker folds those turns; SessionManager can project a per-session `CacheEconomySummary`
-from the existing `tokenUsage` ledger (no second store). Session-level measurement is
-`wired but not visually checked`. Visible product columns remain `not implemented` until S4.
+TE1 is `not implemented` after the v0.13.4 rebuild. `cache-economy.ts`, its tests,
+`NormalizedCacheUsage`, and `SessionManager.getCacheEconomySummary` are absent. Their previous
+utility and adapter test results belong to `snapshot/pre-rebuild-2026-09-21`, not this tree.
+Craft's UsageTracker, provider events and context-window accounting remain the starting path.
+During R0, inspect existing evidence only. All new TE1 instrumentation, adapters and UI wait for
+the R0 baseline exit; the standing track does not bypass the owner's development order.
+Recheck their current semantics before selectively readmitting any accounting helper; retain one
+usage ledger and prove single-counting with the actual adapter consumers.
 
 ## Remaining slices (each = one bounded task, in order)
 
 | # | Slice | Where (verified entry points) | Acceptance |
 |---|---|---|---|
-| S1 | ~~Feed summaries~~ **landed**: both event adapters attach normalized cache usage per turn; SessionManager exposes a per-session `CacheEconomySummary` from the existing usage ledger | `packages/shared/src/agent/backend/claude/event-adapter.ts`, `backend/pi/event-adapter.ts`, `core/usage-tracker.ts`, `SessionManager.getCacheEconomySummary` | TE1-C1 |
+| S1 | Normalize usage first: reconstruct a minimal helper against current event shapes, preserve unknowns and prove Pi single-counting | current Claude/Pi events and UsageTracker; no new store | TE1-C2 |
+| S2 | Feed summaries: extend both current event adapters and the existing usage ledger, then expose a per-session summary | `packages/shared/src/agent/backend/claude/event-adapter.ts`, `backend/pi/event-adapter.ts`, `core/usage-tracker.ts`, SessionManager summary projection (to implement) | TE1-C1 |
 | S3 | Prefix snapshots: at prompt assembly, capture `{stableZone: [systemPrompt, toolDefsSerialized], logZone: messageIds}` per request; count breaks via `diagnoseCacheBreak`; emit on the existing usage/debug event path (no new store) | `claude-agent.ts` (system prompt + `preset` assembly), `pi-agent.ts` equivalent | TE1-C3 |
 | S4 | Surface it: session info/cost display gains cache columns (hit rate, saved fraction, saved USD when price known, prefix breaks) — smallest honest UI per P5, no new page | existing session usage/info surface (find with `rg usage_update` in renderer) | TE1-C4 + owner CHECK |
-| S5 | Baseline harness: during R0 replay one recorded label/status trace to prove the measurement path; after R0 record the current Claude-full and Pi-current profiles on a sealed task. R3 later becomes the cross-domain trace. Store machine output or concise numbers, not a new report | script under `app/scripts/`, read-only vs. providers or mocked usage fixtures | TE1-C5 |
+| S5 | Baseline harness: after R0 and the normalization/adapter slice, replay one recorded label/status trace to prove the measurement path; then record the current Claude-full and Pi-current profiles on a sealed task. R3 later becomes the cross-domain trace. Store machine output or concise numbers, not a new report | script under `app/scripts/`, read-only vs. providers or mocked usage fixtures | TE1-C5 |
 
 ## Acceptance criteria
 
@@ -66,7 +59,7 @@ model-call behavior and require a separate owner-accepted slice after this basel
 
 ## Risks
 
-- Reading SDK usage wrong → S1 fixtures use captured real shapes, not invented ones.
+- Reading SDK usage wrong → S1/S2 fixtures use captured real shapes, not invented ones.
 - Silent behavior change → TE1-C6 diff review; S1–S3 are observation-only.
 - Numbers drift (provider pricing) → profiles carry `verifiedAt` + `costConfidence`; update data,
   not call sites.

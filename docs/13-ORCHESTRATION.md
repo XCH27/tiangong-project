@@ -1,24 +1,40 @@
 # 13 — Orchestration (the core)
 
 > How Fleet directs work: how agents are organized, how capabilities compose, and how the infinite
-> canvas becomes a command surface for both. This is the design authority for orchestration.
+> canvas becomes a command surface for both. This design is subordinate to `PRODUCT.md`.
 > Decisions it operationalizes: C1–C11 (delegation/integrity), E1–E5a (capabilities/canvas),
-> S1–S5 (actions), G2/G5/G6 (order/coverage/frontend). Sections marked **[decided]** bind now;
+> S1–S5 (actions), G2/G5/G6 (order/coverage/frontend). Sections marked **[decided]** bind as target
+> requirements, not as claims that the runtime exists;
 > **[at activation]** binds when the owning release activates; **[evidence-gated]** waits for a
 > named gate.
 
+## Current implementation boundary
+
+The v0.13.4 baseline has a Craft Session tree linked by `parentSessionId`, plus a separate
+structured TaskSpec DAG and append-only task run log (`app/packages/shared/src/tasks/schema.ts` and
+`app/packages/shared/src/tasks/storage.ts`). `app/packages/server-core/src/tasks/TaskRunner.ts` schedules that DAG through child
+Sessions. These existing stores have different responsibilities; a Session tree is not the Task
+specification or its run log, and neither is the planned Fleet orchestration contract.
+
+Fleet TaskContract, TaskBrief/RunReport validation, the dispatch-generation identity below and
+ProjectDigest are `not implemented`. R4 governed actions, R5 ArtifactRef and the Fleet Job/WorkTrace
+integration are also targets. Current evidence is the Craft Session/SessionEvent path and Task run
+records. Preserve those owners when the ordered slices add contracts; do not infer implementation
+from **[decided]**, a diagram, or a target field list. New feature work also remains subject to the
+baseline exit in `WORK-ORDER.md`.
+
 ## 0. The one-sentence model
 
-**Deterministic kernel, reasoning members, projected surfaces.** Code owns scheduling, budgets,
-permissions, validation, and state truth; agents own judgment inside bounded contracts; every
-surface (chat, Board, canvas) is a projection of the same authorities and commands them only
-through governed actions.
+**Code owns execution state; any Session may delegate; surfaces operate on the same authorities.**
+Code owns scheduling, budgets, permissions and validation; agents exercise judgment inside bounded
+contracts. Chat and Board project execution state. The production canvas also hosts direct editing
+of images, video, websites and decks through their native owners; projection does not mean read-only.
 
 ## 1. Three planes of orchestration
 
-| Plane | Question it answers | Owning authorities |
+| Plane | Question it answers | Current owners and target extensions |
 |---|---|---|
-| **Execution** | Which agent/runtime does which task, under what budget and permission | Session tree, TaskRunner, TaskContract/TaskBrief/RunReport, runtime adapters |
+| **Execution** | Which agent/runtime does which task, under what budget and permission | Current Session tree + TaskSpec/run log + TaskRunner; target R6 TaskContract/TaskBrief/RunReport and runtime-adapter contract |
 | **Composition** | How capabilities and artifacts chain into larger work | Governed actions (R4), ArtifactRef (R5), finite workflow DAG (R8), capability registry (E1/E2) |
 | **Command** | How the human sees and directs everything | Chat (primary today), Board, **canvas (primary spatial surface, R7)** |
 
@@ -30,7 +46,9 @@ regardless of which surface issued them (S1).
 
 ### 2.1 Objects
 
-- **Task tree** — Craft Task/Session tree (`parentSessionId`); every run is a node. No second store.
+- **Session tree and structured Task** — child Sessions use `parentSessionId`; TaskSpec owns the
+  structured DAG and its run log records execution through TaskRunner. Extend these existing
+  owners; do not collapse them into a new universal task tree or add a second store.
 - **TaskContract** — locked per attempt: criteria IDs, allowed/reserved paths, non-goals, budgets,
   contract version (C7). Read-only during the attempt; revision = new version.
 - **Run attempt identity** — `taskId + contractVersion + attemptId + dispatchGeneration + sessionId`
@@ -40,8 +58,8 @@ regardless of which surface issued them (S1).
   bounded projections of the contract; reports return criterion outcomes + artifact/evidence refs,
   never transcripts.
 - **Budgets that halt** — token/tool/edit/retry/delegation ceilings; crossing one pauses execution
-  for a deliberate decision (C3). Team budget aggregates over the tree (opencode gap we fix: no
-  per-member-only accounting).
+  for a deliberate decision (C3). A delegation budget aggregates over the actual Session/Task
+  relationship, not a canvas region or a privileged team role.
 - **Runtime adapter** — normalizes start/attach/send/cancel/approve/health/stop + usage/failure
   semantics per provider (Claude SDK, Pi SDK, external CLIs). Declared capabilities only — nothing
   invented from a name.
@@ -73,8 +91,9 @@ always override.
 ### 2.4 Communication rules **[decided]**
 
 Members talk to deliver artifacts, request missing authority/information, declare
-dependencies/blockers — never open-ended mutual review (C11). Normal progress is event-derived
-(`ProjectDigest` projection), pulled on demand, drill-down to source events.
+dependencies/blockers — never open-ended mutual review (C11). Normal progress must be event-derived,
+pulled on demand and traceable to source events. `ProjectDigest` names the target projection; it is
+not present in the current runtime.
 
 ### 2.5 Model-facing projection **[decided; implementation gated by E13]**
 
@@ -111,8 +130,9 @@ which capabilities an agent sees per task — attention is a budget too.
 
 ### 3.1 Work trajectory: one trace, many projections **[decided as design; fields freeze R4/R5]**
 
-The trajectory of a piece of work is the join of the existing Session/SessionEvent log, governed
-Action results, native Job records and ArtifactRef lineage. It is not a new `trace.json`, and a
+The target trajectory joins the existing Session/SessionEvent log with future governed
+Action results, native Job records and ArtifactRef lineage. This unified projection is not
+implemented. It must not become a new `trace.json`, and a
 Component, MCP server or renderer may not keep a private history that the host cannot query. The
 trajectory records semantic boundaries rather than making raw model tokens or screenshots the only
 explanation of what happened.
@@ -203,11 +223,13 @@ not silently replace the original; the system offers explicit recomputation of o
 base. The chat, canvas and component panels all show the same ids and versions, so an Agent can
 distinguish “change the text layout” from “regenerate the source image”.
 
-## 4. Canvas orchestration **[design decided; lands R7, pages may mock earlier via G6]**
+## 4. Canvas orchestration **[design decided; lands R7, preview work follows the baseline exit]**
 
-The canvas is Fleet's **spatial command surface**: the place where you *see* the whole work chain —
-which agent leads what, what was produced, which exact output fed which later work — and *command*
-it through explicit affordances. It is a projection + invocation surface, never a state owner (E5).
+The canvas is Fleet's **production board**: people and Agents generate, edit and arrange images,
+video, websites and decks in the same place. Native document/sequence owners keep domain data and
+undo/save/export; the board hosts their editing affordances and shows exact inputs, outputs and
+operation history. Session/Task relationships are supporting projections, not the first product to
+build in place of that board. This section owns orchestration boundaries; SYS-05 owns its delivery.
 
 ### 4.1 Node taxonomy (projections, each owned elsewhere)
 
@@ -215,11 +237,11 @@ it through explicit affordances. It is a projection + invocation surface, never 
 |---|---|---|---|
 | **Agent/session card** | a Session | status, last exchange summary, cost, budget bar, permission prompts | open chat · send instruction · pause/cancel · delegate · adjust budget |
 | **Task card** | a Task/contract | criteria met/unmet, owner, state | open · reassign · split (new brief) |
-| **Artifact card** | an ArtifactRef exact version | preview/thumbnail, version, provenance count | open native surface · stage as input · promote version · export |
+| **Artifact card** | an ArtifactRef exact version and its native editing owner | preview or focused editor, version, provenance count | edit on the board through the native owner · stage as input · promote version · export |
 | **Evidence card** | a capture/quote/result | source, timestamp, session link | open source · attach to brief |
 | **Job/placeholder card** | a running generation/export | progress, cost estimate | cancel · (on completion, becomes artifact card) |
 | **Workflow node** | a step in a versioned DAG | step state, last run | run · open definition |
-| **Group/region** | a spatial team scope | leader, member count, shared budget | brief the leader · pause region |
+| **Group/region** | board arrangement and selection | title, selected objects; any linked runs remain explicit | arrange · select · stage references; run controls target named existing Sessions/Tasks |
 
 ### 4.2 Edge taxonomy (E5's classes, made visual and behavioral)
 
@@ -229,7 +251,7 @@ it through explicit affordances. It is a projection + invocation surface, never 
 | reference | "I intend this as input/context" | user connects artifact→agent/task | user-editable | dashed |
 | **input** | "this run actually consumed it" | kernel, at execution | immutable fact | solid |
 | **derived-from** | provenance: output ← inputs | kernel, at production | immutable fact | solid, arrowed |
-| leadership | parent→child delegation | kernel, from Session tree | follows tree | subtle tinted |
+| delegation | parent→child relationship for a particular run | Session/Task owner | follows recorded relationship | distinct from artifact and workflow edges |
 | workflow | executable step order | explicit promotion (§4.5) | versioned | bold, typed ports |
 
 The non-negotiables hold: drawing/moving never executes anything; a visual connector is never
@@ -243,16 +265,17 @@ the canvas re-renders from authority events (03 §3).
    pending reference. Nothing runs until the human (or a governed action) sends it. Staging is
    visible and removable.
 2. **Delegate from context.** "Delegate" on an Agent/task card opens a TaskBrief prefilled from
-   spatial context: selected cards → KNOWN FACTS / staged references; region → default scope. The
-   brief is still explicit; the canvas just eliminates re-typing context.
+   explicit selected references. A region may suggest candidates, but cannot set permission,
+   execution scope, identity or budget. The brief remains visible and editable before sending.
 3. **Run affordances, not run-by-arrangement.** Cards carry explicit run/pause/cancel/approve
    controls that route through governed actions with normal permission prompts rendered in place.
 4. **Placeholder → job → result.** Launching generation/export drops a placeholder card immediately
    (with cost estimate when known); the kernel resolves it to an artifact card on completion, or a
    visible failed state — never a vanishing job (E8: saturation queues visibly).
-5. **Leadership is visible.** The Session tree renders as leadership edges from leader to members;
-   each member card shows its budget bar; a region's shared budget aggregates. Budget halts render
-   on the card, where you can continue/narrow/absorb (C3).
+5. **Delegation is traceable.** Parent/child edges show who requested each run and where its result
+   returns. Any Session may delegate; no group has a captain or manager identity. Usage/budget
+   totals follow the existing run relationship, never spatial membership. Budget halts expose the
+   affected run and its permitted recovery actions (C3).
 6. **Promote a chain to a workflow.** Select a connected chain of reference/input edges →
    “Promote to workflow” → Fleet derives a typed DAG draft (steps = the governed actions that actually ran,
    ports = artifact types), the user reviews, and it becomes a versioned workflow definition. This
@@ -263,19 +286,21 @@ the canvas re-renders from authority events (03 §3).
 
 ### 4.4 What the canvas must never become **[decided]**
 
-Not the database of anything; not a universal editor (native modules open their own surfaces); not
-a workflow runner (the kernel runs workflows; canvas projects them); not a second permission UI
-(prompts are the same components chat uses).
+The board owns arrangement, not a second copy of native document, sequence, Session or Task data.
+It hosts domain editors, including the video timeline, without inventing a universal internal
+document schema. Workflows run through the existing execution owners; permission prompts reuse
+the same components and decisions as chat. Neither an agent organization chart nor a preview-only
+graph satisfies the production-board requirement.
 
 ### 4.5 Canvas technology **[DOM family committed; in-family choice at the E5a spike]**
 
 Per Decision E5a: the **DOM-family rendering approach is committed** — Fleet cards are live React
-components (session summaries, media previews, controls), and every shipping product with a
-Fleet-shaped workload is DOM-family: TapNow, MiniMax Hub/Hilo, TRAEWork on **React Flow v12**
+components (native editing affordances, media previews, controls). The retained comparison samples
+include TapNow, MiniMax Hub/Hilo and TRAEWork on **React Flow v12**
 (owner-provided analyses), and Mayi Canvas on **fully custom DOM + `translate3d` + SVG bezier**
 ([`references/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md`](references/canvas/01-MAYI-CANVAS-PRODUCT-REVERSE.md):
-rich media/agent/3D nodes, >50-node perf mode, thumbnail/visibility workers, object pools — proof
-that the family carries Fleet's workload even without a library). **React Flow is the default first
+rich media/agent/3D nodes, >50-node perf mode, thumbnail/visibility workers, object pools — evidence
+for a bounded comparison, not proof of Fleet's editing workload). **React Flow is the default first
 implementation; custom DOM+SVG is the named in-family fallback** if the spike shows the library
 fighting Fleet's card/edge model; GPU (Pixi/CanvasKit) may only ever be a *media layer* under the
 DOM viewport. The E5a spike (runnable any time from R5; required before deep R7 investment) decides
@@ -299,7 +324,7 @@ exclusive, so the canvas has two explicit edit modes (industrial precedent: Coze
   `workflow` edge with port-type checking and cycle detection (Kahn) at draw time in the frontend
   **and again at definition submit in the kernel** — dual validation, never frontend-only.
   Promotion (§4.3 gesture 6) drops the user into this mode with the derived draft.
-- Kernel-owned edges (`input`, `derived-from`, `leadership`) are never drawable in either mode —
+- Authority-owned edges (`input`, `derived-from`, `delegation`) are never drawable in either mode —
   they render as facts.
 - The mode toggle changes **edge interaction semantics only**; it never hides or rewrites existing
   edges, and switching modes is not an action on the graph.
@@ -325,7 +350,7 @@ alone).
 | Deterministic kernel / reasoning members split; envelopes; budgets-that-halt; communication rules | **decided** (C3/C5–C11) |
 | One model-facing effective projection; Pi-light is a profile; projection remains separate from Action seam | **decided** (E13); implementation waits for R0 + TE1 baseline and a bounded slice |
 | Run lifecycle state machine | **decided** as design; mechanized in R6 |
-| Node/edge taxonomy; gesture set; never-execute-by-arrangement | **decided** as design; lands R7 (pages may mock earlier, G6) |
+| Node/edge taxonomy; gesture set; never-execute-by-arrangement | **decided** as design; lands R7 (G6 preview work remains subject to the baseline exit) |
 | Canvas rendering | **DOM family decided** (E5a); React Flow default vs custom DOM+SVG fallback chosen at the spike (runnable from R5); GPU only as media layer |
 | Space/Workflow dual edit modes; dual Kahn validation | **decided** (§4.6); lands with R7/R8 |
 | Organization router thresholds | **evidence-gated**: needs R6 direct-vs-delegated measurements |

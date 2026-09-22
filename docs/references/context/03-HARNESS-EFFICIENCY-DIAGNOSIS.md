@@ -6,6 +6,12 @@
 > evidence from Databricks, Pi, Craft Agents, OpenHands, Hermes, and OpenClaw. Any change to a release
 > contract or authority requires an owner checkpoint and an edit to its canonical document.
 
+Current qualification: provider versions, prompt byte/tool counts and source mechanisms below
+are measurements at the recorded review boundary. Current app pins Pi 0.85.1 on Craft v0.13.4;
+remeasure before implementation. Current OpenHands is a different Agent Canvas tree, so old
+Python-executor evidence cannot describe its current HEAD. A general Core controller and a second sandbox remain
+excluded; R16 now has the bounded local-app Component contract in SYS-02; these observations authorize no new runtime or environment capability.
+
 ## 1. Verdict
 
 Fleet should not become a larger Pi, a desktop OpenHands, Hermes, or OpenClaw, and it should not create
@@ -13,8 +19,8 @@ a third agent runtime. The correct fork direction is:
 
 1. Keep Craft Agents as the product spine and sole authority chain for Session, permission, timeline,
    task, settings, source, and provider lanes.
-2. Treat Pi as both an embedded lightweight runtime lineage and an efficiency baseline. Fleet already
-   uses `@earendil-works/pi-*` 0.80.6; its own wrapper makes the effective harness heavier than upstream
+2. Treat Pi as both an embedded lightweight runtime lineage and an efficiency baseline. The reviewed Fleet snapshot
+   used `@earendil-works/pi-*` 0.80.6; its own wrapper makes the effective harness heavier than upstream
    Pi's minimal profile.
 3. Build Fleet's differentiation as governed, cross-domain production chains. Domains retain their
    native operation models; only identity, authorization, result, evidence, ArtifactRef, and cost cross
@@ -159,7 +165,7 @@ This record does not create a parallel roadmap. The only implementation order is
 sequence:
 
 1. **R0:** establish the trusted source, dependency, validation, and dirty-tree baseline.
-2. **TE1 standing track:** wire observation-only usage, cache, and input-component accounting without
+2. **TE1 after baseline exit:** wire observation-only usage, cache, and input-component accounting without
    changing prompt or tool behavior.
 3. **Owner-approved post-baseline slice:** inventory and reduce the fixed prompt, centralize tool
    projection, and compare current-full with Pi-light one variable at a time. Tool Search remains gated.
@@ -167,8 +173,8 @@ sequence:
 5. **R4:** extract the governed action seam from dual callers.
 6. **R5:** use ArtifactRef instead of copying large payloads through context.
 7. **R6:** add bounded delegation only when the trace proves a coordination benefit.
-8. **R14/R16/R18:** close complex environment, adapter, and sandbox requirements only in their roadmap
-   order and with measured demand.
+8. **R14/R18:** verify only their named remote/layout requirements. R16 general control is
+   CLOSED, and no second sandbox is authorized.
 
 ## 6. Adjudication of previous proposals
 

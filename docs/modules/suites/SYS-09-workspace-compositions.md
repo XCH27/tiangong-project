@@ -1,56 +1,26 @@
 # SYS-09 — Components and workspace compositions
 
-Status: `PACKET_DRAFT`; complete Component host/runtime `not implemented`. Development anchor:
+First-slice readiness is recorded per capability in PACKET-INDEX; complete Component host/runtime `not implemented`. Development anchor:
 owner-directed **early R15/R18 foundation** in
 [`../../specs/R18-right-workbench.md`](../../specs/R18-right-workbench.md), then R15 distribution
-and R18 advanced/native-window closure. R6 delegation and R9 memory are not foundation prerequisites.
+and R18 advanced/native-window closure. This host starts only after the baseline exit in
+`../../specs/R0-baseline-audit.md`; R6/R9 remain unnecessary as blanket host prerequisites.
 This packet defines the relationship between bundles, Assistant identity and Workspace configuration;
 it is not a second roadmap or an assertion that the data types are already connected to the UI.
 
 ## Current code boundary
 
-`app/packages/shared/src/components/` contains data-only types, exports, a resolver, a bundle
-adapter and tests. Since 2026-09-21 it has **one** production consumer — the right-workbench host
-below. There is still no loader, no persisted composition writer and no validated permission
-lifecycle.
+The v0.13.4 rebuild removed `shared/src/components/`, `shared/src/layout/` and the Fleet
+`right-sidebar/` host. The resolver, bundle adapter, contribution registry and their tests survive
+only at `snapshot/pre-rebuild-2026-09-21`. Their earlier convergence and test results do not prove
+current activation. Component host/runtime and user-controlled move/reorder/float are
+`not implemented`.
 
-> **Converged 2026-09-21 (WORK-ORDER step 2). There is now one model.**
-> `apps/electron/src/renderer/components/right-sidebar/registry.ts` stores and returns
-> `ComponentContribution` values. Its parallel `RightSidebarToolDefinition` is gone, and so is the
-> dead `bodyKind` field, which `RightSidebar.tsx` never read — bodies were always routed by id, so
-> that field was dead the day it was written. `shared/src/components` therefore has its **first
-> production consumer**.
->
-> Built-ins are now ordinary contributions —
-> `{id, slot: 'right-workbench', label, entry, order, icon}` — so a built-in and an installed
-> Component are the same shape and neither is a special case. The host refuses a contribution
-> addressed to another slot, refuses to shadow an existing id, sorts an order-less contribution
-> last instead of dropping it, and returns a disposer so activation stays reversible. Nine tests
-> pin those properties, up from two.
->
-> **`icon` is a name, not a component reference, and that is deliberate.** This package is
-> data-only and browser-safe and must never import React — that constraint is exactly why the
-> renderer had to keep a parallel type before. The host resolves the name and renders nothing for
-> one it does not recognize, so an unknown icon from a Component degrades to a label-only rail
-> entry rather than a crash.
->
-> **Still open in this loop, so do not read the convergence as a working Component system:**
-> `entry` is carried but not executed — bodies remain host components selected by id, making
-> `entry: 'builtin:files'` a stable identifier rather than a lazy load. Persisted composition, the
-> loader and the permission lifecycle are `not implemented`, and `left-rail` has no host at all.
-> `shared/src/components/bundle-adapter.ts` still sits ahead of this loop: it was written on
-> 2026-09-21 against the then-unused model, before the host existed, contrary to §16.4 of
-> [`../../design-library/12-capability---skill---plugin-system.md`](../../design-library/12-capability---skill---plugin-system.md).
-Both resolver defects recorded here were fixed on 2026-09-21. `version` is now enforced — same
-major and installed >= required, with an unparseable version treated as incompatible — and an
-installed **optional** dependency is no longer activated by its dependent, because installed is not
-enabled (§6). Seven tests pin both. Its `active` array is still not proof of runtime activation: do
-not present these helpers as an installed or working Component system.
-
-`RightSidebar.tsx` still has fixed Files/Browser/Notes/History entries and bodies. No generic
-left-tool contribution registry is mounted. `shared/src/layout/tree.ts` is unmounted and its v1
-forbids floating panels; it needs a real gesture/state bridge or a deliberately selected host
-adapter, not just an import. The foundation specification owns implementation and evidence.
+Craft `AppShell` and `PanelStackContainer` remain the production host. Files is mounted through
+`SessionInfoPopover`/`SessionFilesSection`; session Notes RPC remains, but has no renderer caller.
+The foundation must trace these surviving owners and supply a real Notes consumer before claiming
+a two-panel loop. It may selectively reuse reviewed snapshot mechanisms after comparing current
+Craft; it must not restore the discarded shell.
 
 ## Scope
 
@@ -119,9 +89,9 @@ machines. Resolve and migrate the final schema with the real writer/consumer in 
 - Uninstall is recoverable: core records and component artifacts remain; composition entries become
   unavailable until the component is restored or explicitly removed.
 
-## DeepSeek Harness mechanisms we actually admit
+## DeepSeek Harness mechanisms to adapt after proof
 
-The local DeepSeek source review is the implementation reference for this packet. Its useful unit
+The local DeepSeek source review is a bounded implementation reference for this packet. Its useful unit
 is not a package: it is a scoped composition with an owned lifecycle.
 
 1. **Scope owner:** a composition is mounted beneath an owner Fiber/agent scope. `ctx.provide`,
@@ -155,12 +125,12 @@ read manifest → validate dependencies/scope/license → build activation plan
 → publish registry entries → persist observed revision → dispose as one lifecycle
 ```
 
-No production caller exists for this pipeline yet. The current data-only resolver is not this
+No production caller exists for this pipeline yet. The archived data-only resolver is not this
 pipeline and must not be reported as one.
 
 ## Component manifest minimum
 
-These are target manifest responsibilities, not fields already validated by the current TypeScript
+These are target manifest responsibilities, not fields already validated by a current TypeScript
 interface. Every installable bundle must publish a machine-readable manifest before activation:
 
 ```text
@@ -190,7 +160,7 @@ original ArtifactRef or silently migrates an existing native document.
 |---|---|---|---|
 | DeepSeek Harness | MIT | plugin-scoped services, UI slots, lifecycle disposal, per-agent composition and scoped presets | mechanism reference only; its runtime is not Fleet's agent/session authority |
 | Cindy | Apache-2.0 | capability ownership, install/loadout separation, permission requests, approved snapshots and reconciliation | port contracts and invariants, not its Electron host or ghost-plugin store |
-| Craft Agents v0.13.3 | Apache-2.0 | visual language, host shell, Session/Workspace/Settings/runtime seams | current implementation and visual authority |
+| Craft Agents v0.13.4 | Apache-2.0 | visual language, host shell, Session/Workspace/Settings/runtime seams | current implementation and visual authority |
 | OpenChatCut | AGPL-3.0 | complete video capability shape: editable timeline domain, UI, Skills, MCP, proposals, undo and export | source/product evidence; direct code reuse requires AGPL compliance and an explicit owner/license checkpoint |
 | AionUi | Apache-2.0 | Assistant as independent identity and wearable configuration | identity model only; no second loadout authority |
 | QoderWork / TRAE | reference captures | discoverability and component-market browsing patterns | interface evidence only; their product concepts and stores are not imported |
@@ -236,8 +206,8 @@ used for analysis without any live-trading grant.
 9. User resize, move, reorder, in-window float/re-dock and restart restore preserve panel identity,
    conversation drafts and native data. Keyboard operation and narrower-window recovery work too;
    native multi-window docking remains a separately verified R18 integration.
-10. A multi-step Component flow records one inspectable operation lineage over the existing
-    Session/Action/Job/Artifact authorities. Selecting an earlier operation targets its exact input
+10. **Later multi-step integration, not the FND-01..08 host entry gate:** a Component flow records one inspectable operation lineage over Session evidence and the Action/Job/Artifact authorities when their owning releases implement
+    those contracts. Selecting an earlier operation targets its exact input
     or output version, creates a new branch, preserves old results and marks only dependent results
     stale until explicit recompute; the Component does not create a private trace store.
 
@@ -245,27 +215,19 @@ used for analysis without any live-trading grant.
 
 ## Module boundary — Workbench and panel host module
 
-> Merged here from `docs/modules/workbench/README.md` on 2026-09-21. That directory held a
-> 34-line compatibility record referenced by exactly one document
-> (`14-MODULE-ARCHITECTURE.md`) and by neither `PACKET-INDEX.md` nor this suite, so working on this
-> loop meant reading two files that never linked to each other. One loop, one document.
-
-Design state: `PACKET_DRAFT`. Development order: the owner-directed early R15/R18 foundation in
-[`../../specs/R18-right-workbench.md`](../../specs/R18-right-workbench.md), before domain components;
+First-slice readiness: see PACKET-INDEX and the execution contracts below. Development order: the owner-directed early R15/R18 foundation in
+[`../../specs/R18-right-workbench.md`](../../specs/R18-right-workbench.md), after the R0 baseline exit and before domain components;
 R18 later closes native multi-window/advanced layout. A complete registered host is
-`not implemented`. Existing fixed-column resizing and Files/Browser/Notes tools are
-`wired but not visually checked`; fixed History content is `display-only`. The former embedded
-browser/review/command-runner and restored-tab claims are not evidence for this checkout.
+`not implemented`. Craft fixed-column resizing is `wired but not visually checked`; the former
+Fleet Files/Browser/Notes/History rail and History placeholder are absent.
 
 #### Reality and activation sequence
 
-The current Craft `AppShell` + `PanelStackContainer` owns a fixed horizontal stack. The mounted
-`renderer/components/right-sidebar/RightSidebar.tsx` has a hardcoded tool list, not a contribution
-registry. `shared/src/components/` and `shared/src/layout/tree.ts` have no production consumers;
-the latter explicitly disallows nonempty floats in v1. There is no current `RightWorkbench` host
-that an agent can treat as landed merely because an earlier document named it.
+The current Craft `AppShell` + `PanelStackContainer` owns the horizontal stack. Current code
+boundaries are listed above; neither the archived registry nor layout model is mounted or present
+in `app/`. R18 owns the production consumer and lifecycle proof.
 
-Reuse existing Files and Notes handlers as the first real registry consumers. Preserve one
+After baseline exit, reuse mounted Files and wire a real Notes consumer to the surviving RPC. Preserve one
 Workspace/Session binding and one layout representation; do not add another Session or settings
 store. Global/workspace Component activation does not wait for a marketplace, delegation or memory.
 The executable spec owns the ordered steps, denial/unload/recovery behavior and rollback boundary.
@@ -278,8 +240,83 @@ including conversation views. Layout stores ids/geometry only; drafts and domain
 their native owners. Keyboard controls and viewport-clamped restore are required. Moving panels
 must not recreate live jobs or eagerly load unused component implementations.
 
-Acceptances WB-001..003 / CORE-11-A are exercised by two existing real surfaces, not fabricated
-placeholder panels. FND-01..08 in the foundation spec make the current scope testable. Native
+Acceptances WB-001..003 / CORE-11-A require two real production consumers: reuse Files and
+wire Notes to its existing RPC before claiming the two-panel proof. Placeholder panels do not count. FND-01..08 in the foundation spec make the current scope testable. Native
 multi-window detach/re-dock needs additional Electron protocol, security and lifecycle evidence;
 it is not proven by a browser-library demo. New production dependencies remain an owner checkpoint.
 
+## View identity and restoration details
+
+Contribution ID identifies the provider; instance ID identifies one opened view. Validate route
+state and migration through the provider, reject duplicate registrations, and isolate view faults.
+Layout persists references/geometry only. Failed migration opens a safe default while preserving a
+recoverable rejected snapshot; reset never deletes domain work. Closing an editor preserves or
+resolves its dirty draft. Hiding a view may suspend rendering, but live work remains owned outside
+React. Agent reveal is an ephemeral, permission-checked request and cannot persistently steal focus
+or rearrange layout. These requirements share FND/WB acceptance; no second host spec is retained.
+
+## Host selection proof
+
+Use the same two existing production consumers (Files and surviving Notes RPC) for both the
+extended Craft stack and bounded Dockview comparison. Keep their native data owners and include
+a conversation draft. Exercise twenty move/resize/float/re-dock cycles, keyboard equivalents,
+ten close/reopen cycles, a failed Notes save, a narrower viewport and restart. Count mounted
+consumers/listeners and owned resources before and after: no duplicate subscription, Session,
+draft or native view is allowed. An unopened consumer must have no loaded implementation.
+Round-trip the layout with an unknown provider/version while preserving the rejected snapshot.
+
+Selection requires FND-01..08 plus demonstrably simpler complete lifecycle/integration than the
+local extension. Resizing support alone is not sufficient. If neither meets identity/draft/
+recovery, keep the current host and fix the smallest failed mechanism; do not start a replacement
+shell. Native Electron popout/reparent is outside this first comparison and keeps its later R18
+protocol/security/packaging proof. No library dependency is admitted merely by this specification.
+
+## Development-reference constraints
+
+Use the [current checkout/document intake](../../references/REFERENCE-REGISTRY.md#current-checkouts-and-development-document-intake)
+separately from old source locks. Cindy's `LayoutStore.setLayout` distinguishes an applied layout
+from successful persistence; preserve that distinction in CORE-11. Its read fallback overwrites a
+corrupt archive, so Fleet must retain original bytes and expose a recovery reason before writing a
+replacement. Unknown component IDs retain their saved positions. Do not copy Cindy's global-only
+layout or fixed conversation geometry over Fleet's Workspace/device contract.
+
+ORCH-03 uses one scoped contribution registry and host-owned disposers. Hermes' Desktop SDK offers
+a useful public UI-kit/contribution contract, but its documented full-authority renderer plugins are
+not isolated and their runtime implementation is absent from this checkout. Omnigent's manifest
+version/collision rules and OpenCode's awaited registrations are comparison inputs, not libraries
+selected for Fleet. OpenHands' extension example has a mock backend; a passing demo cannot satisfy
+install/disable/restart proof. Codex documents saved plugin-selection preferences that do not yet
+filter capabilities: Fleet's proof must separately check the effective tool set after disable and
+on the next turn/resume, including late activation results and cleanup of prior subscriptions.
+
+## Execution contracts
+
+These sections own the next step for the listed capability IDs. Read the
+[common execution contract](../../14-MODULE-ARCHITECTURE.md#executable-next-step-contract)
+and the release/spec anchor in [PACKET-INDEX](../PACKET-INDEX.md). Gates do not open merely
+because this packet has instructions. Planned regression targets below do not exist yet unless
+implementation has added them; extend a matching existing behavioral test instead of duplicating it.
+
+### Execution CORE-11
+
+**Panels, docking and layout**
+
+- **Next:** `PROVE` — foundation immediately after R0 exit; FND-01..08.
+- **Sources:** [`apps/electron/src/renderer/components/app-shell/PanelStackContainer.tsx`](../../../app/apps/electron/src/renderer/components/app-shell/PanelStackContainer.tsx); [`apps/electron/src/renderer/contexts/NavigationContext.tsx`](../../../app/apps/electron/src/renderer/contexts/NavigationContext.tsx); [`apps/electron/src/renderer/components/right-sidebar/SessionFilesSection.tsx`](../../../app/apps/electron/src/renderer/components/right-sidebar/SessionFilesSection.tsx); [`packages/server-core/src/handlers/rpc/sessions.ts`](../../../app/packages/server-core/src/handlers/rpc/sessions.ts).
+- **Deliver:** Compare extending current panel stack with bounded Dockview integration using Files and real Notes RPC consumers; choose one layout owner before adding user move/reorder/float/restore.
+- **Data:** Stable contribution ID and view instance ID bind Workspace/Session and native consumer. One layout persists IDs/geometry only; notes, drafts and file/job data remain with their owners.
+- **Failure:** Rejected layout migration is preserved with safe fallback; missing provider renders unavailable. Moving/hiding cannot restart work or lose drafts; native popout is later R18 closure.
+- **Proof:** CORE-11-A — FND-01..08 using real Files/Notes, drag and keyboard move/resize/float/re-dock, narrow-window restore, provider removal, failed save and restart. Compare same workload and state preservation. Planned regression/probe target relative to `app/`: `scripts/probes/core-11.ts`. After adding the target, run from `app/`: `bun run scripts/probes/core-11.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** Craft PanelStackContainer first; Cindy right-sidebar registry; Dockview serialization/disposal and react-resizable-panels size constraints. No library selected before proof/checkpoint. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).
+
+### Execution ORCH-03
+
+**Component manager and workspace compositions**
+
+- **Next:** `IMPLEMENT` — foundation after R0; follows CORE-11 chosen owner.
+- **Sources:** [`apps/electron/src/shared/settings-registry.ts`](../../../app/apps/electron/src/shared/settings-registry.ts); [`packages/shared/src/config/storage.ts`](../../../app/packages/shared/src/config/storage.ts); [`packages/shared/src/workspaces/storage.ts`](../../../app/packages/shared/src/workspaces/storage.ts); [`packages/shared/src/skills/storage.ts`](../../../app/packages/shared/src/skills/storage.ts); [`packages/shared/src/sources/storage.ts`](../../../app/packages/shared/src/sources/storage.ts).
+- **Deliver:** Register Files/Notes contributions and resolve global/workspace/session Component overrides through existing owners; connect real activation/disposal before adding domain bundles.
+- **Data:** Immutable manifest defines contribution/dependency IDs and requested capability. Effective composition resolves vendor < user < Workspace < turn snapshot; it is derived, not another settings database.
+- **Failure:** Cycles/version conflicts fail before activation; optional missing dependency degrades only its feature. Disable preserves native data/drafts and revokes availability after owned resources settle.
+- **Proof:** ORCH-03-A — Two Workspaces, reset-to-inherit, active-turn change, lazy-load assertion, denied tool, failed activation and remove/reinstall; FND-05..08 and stable view identity. Planned regression/probe target relative to `app/`: `apps/electron/src/shared/__tests__/fleet-orch-03.test.ts`. After adding the target, run from `app/`: `bun test apps/electron/src/shared/__tests__/fleet-orch-03.test.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** Cindy install/loadout/approved snapshot, DeepSeek slot lifecycle and Craft settings. Components may not shadow the shell or become Assistant identity. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).

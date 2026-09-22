@@ -65,7 +65,7 @@ if [ -d 源码参考/software/craft-agents-oss ]; then
   newest="$(git -C 源码参考/software/craft-agents-oss tag --list 'v*' --sort=-v:refname | head -1)"
   if [ -n "$newest" ] && [ "$newest" != "v$up" ]; then
     warn "upstream has $newest, the pin is at v$up — read the P2 note in docs/02-DECISIONS.md
-        before taking it, and do not take it before the fleet-baseline-r0 tag exists.
+        before taking it; preserve a recovery point and declare each admitted delta.
         Refresh the tag list with: git -C 源码参考/software/craft-agents-oss fetch --tags"
   else
     ok "pin is the newest upstream tag this mirror knows ($newest)"

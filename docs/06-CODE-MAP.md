@@ -1,53 +1,39 @@
 # 06 — Code Map
 
 > Where the real code is. Use this to find the entry point, then **confirm with `rg` before
-> editing** — the tree changes and these paths are orientation, not a contract. All paths are under
-> `app/`.
+> editing** — the tree changes and these paths are orientation, not a contract. Implementation paths are relative to `app/` unless already prefixed with `app/`;
+> `docs/`, `scripts/` and reference paths are relative to the repository root.
 >
-> **Last path verification: 2026-09-20.** Every `.ts`/`.tsx` path in this file was checked with
-> `ls` against the working tree. Result: **33 absent, 9 present** — the four sections after *Common
-> change routes* describe modules the 2026-09-11 v0.13.3 rebase discarded, and are now marked per
-> row with ✗ rather than presented as "real code". The line this replaces claimed 2026-08-15, three
-> weeks *before* the rebase that invalidated it; that gap is how a reader could `rg expert-kit.ts`,
-> get nothing, and conclude this project's documentation cannot be trusted. Re-run after any large
-> landing:
->
-> ```bash
-> grep -oE '`[A-Za-z0-9_./@-]+\.tsx?`' docs/06-CODE-MAP.md | tr -d '`' | sort -u |
->   while read -r f; do find app -path '*/node_modules' -prune -o -path "*$f" -print -quit |
->     grep -q . || echo "ABSENT $f"; done
-> ```
+> **Current implementation checked 2026-09-21 after the v0.13.4 reset.** Current entry points
+> below are separated from removed Fleet modules. Historical implementation remains at
+> `snapshot/pre-rebuild-2026-09-21`; a path in that snapshot is not a current capability.
 
 ## Baseline facts
 
-- **App root:** `app/` — a Bun monorepo. `app/package.json` = `0.13.3`, matching the rolling Craft
-  pin. (Until 2026-09-11 this section said `0.11.1`, `v0.11.1-derived` and `v0.11.2` alongside
-  `v0.13.3`; three of those were stale.)
-- **Implementation reality:** current `app/` is Craft **v0.13.3**-derived; intentional/convergence
-  deltas are listed in [`UI-SPEC.md`](UI-SPEC.md).
+- **App root:** `app/` — a Bun monorepo; `app/package.json` is `0.13.4`.
+- **Implementation reality:** the committed reset restored Craft **v0.13.4**. Compare current
+  bytes with the rolling reference and declare every later delta; prior Fleet extensions are not
+  implicitly restored.
 - **Look pin:** `源码参考/software/craft-agents-oss-v0.10.5/` at tag `v0.10.5` — tokens and
-  interaction *style*, not a product shell to restore.
-- **Selective-update reference:** `源码参考/software/craft-agents-oss/` (stored in
-  `/Volumes/AIGC/天工参考/源码参考/`, symlinked locally) at official tag **`v0.13.3`**; compare
-  independent fixes/backend mechanisms, never merge wholesale.
+  interaction style, not a product shell to restore.
+- **Rolling reference:** `源码参考/software/craft-agents-oss/` at tag `v0.13.4`, under
+  `/Volumes/AIGC/天工参考/源码参考/`. Later intake remains bounded source comparison.
 
-## Remote connection (远程连接)
+## Remote connection
 
-| Concern | Where |
+| Concern | Current entry / fact |
 |---|---|
-| Device grants, invites, scope, revocation | `packages/shared/src/remote/devices.ts` |
-| Persistence (`~/.craft-agent/remote-access.json`, 0600) + this machine's stable id | `packages/shared/src/remote/store.ts` |
-| What the listener accepts: a device token, or a one-time invite | `packages/shared/src/remote/authenticate.ts` |
-| One-shot hand-back of a freshly minted grant | `packages/shared/src/remote/mint-ledger.ts` |
-| Access link v3 (invite, not credential) + legacy v1/v2 parsing | `packages/shared/src/remote/invite-link.ts` |
-| What the published addresses actually reach | `packages/shared/src/remote/reachability.ts` |
-| Concurrent candidate racing, last-good preference | `packages/shared/src/remote/endpoint-race.ts` |
-| Workspaces projected into the computers you can run on | `packages/shared/src/remote/run-targets.ts` |
-| Public listener — the single writer of the LAN socket | `apps/electron/src/main/server-mode.ts` |
-| Invite / device-list / revoke handlers (LOCAL_ONLY) | `apps/electron/src/main/handlers/remote-devices.ts` |
-| Settings → 远程连接, two blocks | `apps/electron/src/renderer/pages/settings/ServerSettingsPage.tsx` |
-| "Which computer does this run on" chip | `.../app-shell/input/{ComposerLeadingChips,NewSessionRunTarget,use-run-targets}` |
-| SSH library, parked (no IPC registered) | `packages/remote-ssh/` |
+| Embedded listener configuration | `apps/electron/src/main/index.ts` reads server config and invokes the shared bootstrap |
+| Server bootstrap and token authentication | `packages/server-core/src/bootstrap/headless-start.ts`; `transport/server.ts` — inherited shared-token validation |
+| Workspace discovery/status | `packages/server-core/src/handlers/rpc/server.ts` |
+| Remote Workspace configuration | `packages/shared/src/config/storage.ts`; `apps/electron/src/main/handlers/workspace.ts` |
+| Client routing | `apps/electron/src/transport/routed-client.ts`; `packages/shared/src/protocol/routing.ts` |
+| Server settings | `apps/electron/src/renderer/pages/settings/ServerSettingsPage.tsx` — inherited token/port/TLS setup |
+
+Fleet device grants, one-time invites, grant revocation, endpoint racing/reachability, host grouping
+and the composer run-target selector are `not implemented`. The prior `shared/src/remote/`,
+`main/server-mode.ts`, `main/handlers/remote-devices.ts` and `packages/remote-ssh/` are absent.
+P7 security requirements still apply; inherited token auth is not proof of per-device scoping.
 
 ## Reference roots (do not mix their authority)
 
@@ -57,9 +43,9 @@
 |---|---|---|
 | Fleet product authority | `docs/` numbered set + `specs/` | Decisions, boundaries, route, code entries |
 | Look pin | `源码参考/software/craft-agents-oss-v0.10.5/` | Tokens, type, motion — not a shell to restore |
-| Rolling Craft base | `源码参考/software/craft-agents-oss/` @ `v0.13.3` | Current `app/` donor |
-| Selective-update implementation | `源码参考/software/craft-agents-oss/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss/`) | Exact Craft v0.13.3 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
-| Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.13.3 |
+| Rolling Craft base | `源码参考/software/craft-agents-oss/` @ `v0.13.4` | Current `app/` donor |
+| Selective-update implementation | `源码参考/software/craft-agents-oss/` (`/Volumes/AIGC/天工参考/源码参考/software/craft-agents-oss/`) | Exact Craft v0.13.4 behavior; admit only bounded fixes/backend mechanisms, never its product model wholesale |
+| Current official hosted docs mirror | `源码参考/craft-docs/online-current/` | Later/current upstream behavior clues; may not match v0.13.4 |
 | Mirror index and provenance | `源码参考/craft-docs/README.md`, `SYNC-MANIFEST.txt` | Locate source docs, verify downloaded bytes, known Craft-operated service list |
 | Owner design notes | `docs/design-library/` | Owner intent; open the relevant note after checking code |
 | UI component kits & reverse engineering | local `UI参考/` (`/Volumes/AIGC/天工参考/UI参考/`) | UI kits (Doubao, Trae Work, UI designs, screenshots) for human & design study |
@@ -82,45 +68,27 @@ refresh is upstream intake, not permission to change application behavior.
 
 ## File size: a navigability constraint, not a style preference
 
-Re-measured 2026-08-15 on the current working tree (2026-07-24 values in brackets):
+Measured on the current v0.13.4 tree (2026-09-21):
 
-| File | Lines | Consequence |
-|---|---|---|
-| `packages/server-core/src/sessions/SessionManager.ts` | **9,394** [8,920] | the session authority is one file |
-| `apps/electron/src/renderer/components/app-shell/AppShell.tsx` | **4,166** [3,926] | **every** shell change lands here |
-| `apps/electron/src/main/browser-pane-manager.ts` | 3,613 | |
-| `packages/ui/src/components/chat/TurnCard.tsx` | 3,279 | |
-| `packages/shared/src/agent/claude-agent.ts` | 3,168 | |
-| `apps/electron/src/renderer/.../input/FreeFormInput.tsx` | 2,512 | composer changes land here |
-| `apps/electron/src/renderer/.../ChatDisplay.tsx` | **2,626** [2,383] | |
-| `apps/electron/src/renderer/App.tsx` | 2,269 | |
+| File | Lines |
+|---|---|
+| `packages/server-core/src/sessions/SessionManager.ts` | 9,146 |
+| `apps/electron/src/renderer/components/app-shell/AppShell.tsx` | 3,932 |
+| `apps/electron/src/main/browser-pane-manager.ts` | 3,613 |
+| `packages/ui/src/components/chat/TurnCard.tsx` | 3,284 |
+| `packages/shared/src/agent/claude-agent.ts` | 3,175 |
+| `apps/electron/src/renderer/components/app-shell/input/FreeFormInput.tsx` | 2,466 |
+| `apps/electron/src/renderer/components/app-shell/ChatDisplay.tsx` | 2,384 |
+| `apps/electron/src/renderer/App.tsx` | 2,269 |
 
-This is inherited from upstream, not caused by Fleet, and it is not a cleanup backlog — most of these
-files are stable and untouched. It is recorded here because of one specific failure it causes:
-
-> **A file an agent cannot read is a file an agent will drift in.** `AppShell.tsx` is the declared
-> visual anchor for shell work, and it is 3,926 lines. Agents that cannot hold it in context invent
-> structure and values instead of matching it. This is the mechanism behind the reverted 2026-07-24
-> frontend drift.
+These are inherited baseline measurements, not a new cleanup backlog. Read the affected concern
+and its upstream counterpart before editing; older complexity and line-growth figures describe
+previous trees and do not establish a current violation.
 
 **Binding rule, renderer only:** a change that adds net lines to a renderer file already above 1,500
 must either (a) extract the affected concern into a new module in the same slice, or (b) name in the
 Goal why extraction is unsafe. Applies to `apps/electron/src/renderer/`. Backend files above are a
 recorded condition, not an open work item; touch them only when a slice already requires it.
-
-> **The rule is currently in violation, recorded 2026-08-15.** `AppShell.tsx` gained +240 net lines
-> and `ChatDisplay.tsx` +243 since the 2026-07-24 measurement, with no extraction and no named
-> exemption. A whole-project code-health pass on 2026-07-28 measured `AppShellContent` at
-> **cyclomatic complexity 498, nest depth 12, 31 `useState` · 31 `useEffect` · 72 `useCallback` ·
-> 25 `useMemo` · 16 `useRef`**, alongside `FreeFormInput` (300 / d12) and `NavigationProvider`
-> (234), plus **756 cross-file duplicated 8-line blocks** and ~1,450 type escape hatches
-> (`as T` 1,250 · `as any` 153 · `as unknown as` 51). The same pass disproved the standing
-> hypothesis that the growth was defensive padding: guard density exceeds 12% of lines in exactly
-> **one** file out of 1,537, and the test-to-source ratio is 0.27. The growth is god components and
-> copy-paste. **A function at complexity 498 cannot be edited safely at any level of review
-> quality** — that is the mechanism behind the 2026-07-24 frontend drift and the
-> `d25b763f6`→`fa5ee7460` / `7762c8bc4`→`2136b1ea9` revert churn. Repay this by extraction, not by
-> amending the rule.
 
 ## Spine primitives that already exist
 
@@ -130,18 +98,18 @@ recorded condition, not an open work item; touch them only when a slice already 
 | Tool handlers | `packages/session-tools-core/src/handlers/` | One handler per tool |
 | Shared tool context | `packages/session-tools-core/src/context.ts` (`SessionToolContext`) | Handlers run for **both** Claude and Codex/Pi backends |
 | Tool result type | `packages/session-tools-core/src/types.ts` (`ToolResult`) | `{ content, structuredContent?, isError? }` |
-| Agent permission policy | `packages/shared/src/agent/mode-manager.ts`, `core/pre-tool-use.ts`, `core/permission-manager.ts`, `SessionManager` | Policy and enforcement are distributed across these seams; `PermissionManager` alone is not the global gate |
+| Agent permission policy | `packages/shared/src/agent/mode-manager.ts`, `packages/shared/src/agent/core/pre-tool-use.ts`, `packages/shared/src/agent/core/permission-manager.ts`, `SessionManager` | Policy and enforcement are distributed across these seams; `PermissionManager` alone is not the global gate |
 | Permission modes | `packages/shared/src/agent/mode-manager.ts`, `mode-types.ts` | Canonical explore/ask/execute map to **stored** enum `safe` / `ask` / `allow-all` (`PERMISSION_MODE_TO_CANONICAL`). `rg` the stored values when tracing `shouldAllowToolInMode` |
 | **Permission enforcement** | `packages/shared/src/agent/core/pre-tool-use.ts`, `SessionManager` | The real gate + approval prompt. The SDK runs `bypassPermissions`; the PreToolUse hook decides allow/deny and emits `permission_request`. `PermissionManager.evaluateToolCall` **defaults to allow** for unrecognized tools — not a gate on its own |
 | Built-in tools (not the registry) | `pre-tool-use.ts` (`BUILT_IN_TOOLS`, `FILE_PATH_TOOLS`); `claude-agent.ts` (`preset: 'claude_code'`) | The agent's `Bash`/`Read`/`Write`/`Edit` are SDK built-ins, separate from `SESSION_TOOL_DEFS`. File mutations currently go through these |
-| System prompt assembly | `packages/shared/src/prompts/system.ts`, `agent/core/prompt-builder.ts`, `agent/{claude-agent,pi-agent}.ts` | Current full/mini prompt paths; E13 profile work must extend this route, not create a second builder |
+| System prompt assembly | `packages/shared/src/prompts/system.ts`, `packages/shared/src/agent/core/prompt-builder.ts`, `agent/{claude-agent,pi-agent}.ts` | Current full/mini prompt paths; E13 profile work must extend this route, not create a second builder |
 | Session tool projection | `packages/session-tools-core/src/tool-defs.ts` (`getSessionToolDefs`), `packages/shared/src/agent/session-scoped-tools.ts` | Current filtering is narrow; the post-TE1/R0 bounded profile slice centralizes any effective projection here and shares it across provider lanes |
-| Usage/cache accounting | `packages/shared/src/agent/core/{usage-tracker,cache-economy}.ts`, provider event adapters | One ledger; TE1 observes current calls before any prompt/tool behavior change |
+| Usage/cache accounting | `packages/shared/src/agent/core/usage-tracker.ts`, provider event adapters | Inherited usage ledger; Fleet `cache-economy.ts` and TE1 projection are absent |
 | **Timeline events** | `packages/shared/src/protocol/dto.ts` (`SessionEvent` union) | Has `tool_start`, `tool_result`, `permission_request`, `permission_mode_changed` |
 | Event broadcast channels | `packages/shared/src/protocol/events.ts`, `channels.ts` (`RPC_CHANNELS.sessions.EVENT`) | Server→client push |
 | Session authority | `packages/server-core/src/sessions/`, `packages/shared/src/sessions/` | The one session store |
 | Agent label action | `packages/session-tools-core/src/handlers/set-session-labels.ts`; `packages/shared/src/agent/session-self-management-bindings.ts` | Agent adapter → PreToolUse → SessionManager callbacks |
-| Human label action | renderer `AppShell.tsx` → `sessionCommand(setLabels)` → `handlers/rpc/sessions.ts` | UI path → `SessionManager.setSessionLabels`; no generic governed cross-caller seam yet |
+| Human label action | renderer `AppShell.tsx` → `sessionCommand(setLabels)` → `packages/server-core/src/handlers/rpc/sessions.ts` | UI path → `SessionManager.setSessionLabels`; no generic governed cross-caller seam yet |
 
 ## Desktop shell and navigation
 
@@ -152,7 +120,8 @@ recorded condition, not an open work item; touch them only when a slice already 
 | Session list | `app/apps/electron/src/renderer/components/app-shell/SessionList.tsx` |
 | Main content routing | `app/apps/electron/src/renderer/components/app-shell/MainContentPanel.tsx` |
 | Conversation surface | `app/apps/electron/src/renderer/components/app-shell/ChatDisplay.tsx` |
-| Navigation state | `app/apps/electron/src/renderer/context/NavigationContext.tsx` |
+| Navigation state | `app/apps/electron/src/renderer/contexts/NavigationContext.tsx` |
+| Inherited Board route | `app/apps/electron/src/shared/route-parser.ts`; `MainContentPanel.tsx` — Sessions navigator with `viewMode: board`, not the former Fleet navigator |
 
 ## Common change routes
 
@@ -168,95 +137,40 @@ recorded condition, not an open work item; touch them only when a slice already 
   `modules/suites/SYS-03-context-economy.md`; extend one effective projection before provider
   schema adaptation. Do not couple it to R4 or treat a provider lane as a loadout authority.
 
-## Artifact history and attribution (Decisions H1–H5) — MOSTLY DISCARDED (see ✗ per row)
+## Removed Fleet modules and surviving contracts
 
-> **Status, verified 2026-09-20 by `ls` on every path below.** The 2026-09-11 Craft v0.13.3 rebase
-> discarded most of this layer (`02-DECISIONS.md` implementation-reset note). Rows are marked **✗**
-> where the file is **absent today** and left unmarked where it still exists — this section is
-> mixed, not uniformly gone. Absent rows are kept, not deleted, because the rule in the right-hand
-> column is still a decision this project stands by; they are **rationale, not a map**. Do not `rg`
-> for a ✗ path expecting a hit, do not report it as landed, and do not recreate its old store.
+The v0.13.4 reset does not carry previous implementation status forward. These paths are absent;
+consult decisions/specs for the approved behavior and the snapshot only for historical evidence.
+Do not recreate old stores merely because a historical implementation exists.
 
-New domain layer. Pure modules — no git commands, no I/O — so the rules are testable without a
-repository and the executor's only job is to refuse anything the plan did not authorize.
-
-| Concern | Path before the rebase (**absent today**) | Rule that survives |
+| Area | Absent implementation | Contract that remains |
 |---|---|---|
-| ✗ Which mechanism owns an artifact's history | `packages/shared/src/artifacts/history-backend.ts` | `text → git-tree`, `media → content-store`, `document-graph → operation-log`. Routing by extension denylist, not size |
-| Change attribution | same file (`ChangeAttribution`, `groupByAuthor`) | `agentId` absent = the human acted directly |
-| Concurrent write admission | same file (`admitWrite`, `WriteLease`) | One writer per path; `document-graph` exempt because record ops commute |
-| Parallel-agent isolation | same file (`AgentIsolation`, `agentPortOffset`) | Worktree **plus** ports/scratch/env; ports by index so they reproduce |
-| ✗ Git snapshot safety boundary | `packages/shared/src/git/snapshot-plan.ts` | Explicit allow-list; scratch `GIT_INDEX_FILE`; capability degrades rather than fails |
-| ✗ Message revert (file-level) | `packages/shared/src/sessions/revert-model.ts` | Distinct from `branchFromMessageId`, which forks the *conversation* and leaves files alone |
-| Derived session activity | `packages/shared/src/sessions/session-activity.ts` | Live; `sessionStatus` stays the manual label |
-| ✗ CLI agent connection (ACP + catalog + binary resolution) | `packages/shared/src/cli-agents/cli-agent-connection.ts` | Replaces three hand-written probes; `legacy-probe` marks what has not migrated |
-| Terminal capability and command admission | `packages/shared/src/terminal/terminal-capability.ts` | Classifies before running so `vim` is refused instead of hanging for 30s |
-| Model pricing (cache tiers, context tiers, subscription) | `packages/shared/src/config/model-pricing.ts` | models.dev shape; unknown pricing sorts last so it cannot become the silent default |
-| Cost of a session, with provenance | `packages/shared/src/config/session-cost.ts` | `reported` / `derived` / `subscription` / **`unknown`** — unknown is not a number, so `$0.00` can never stand in for "nobody told us" |
-| Usage rolled up by model, project, day | `packages/shared/src/config/usage-rollup.ts` | Coverage is measured in **tokens, not sessions**; quiet days stay as gaps |
-| ✗ Expert kits and the attention budget | `packages/shared/src/labels/expert-kit.ts` | Budget governs the **active** set, not the catalog; union takes the *narrowest* permission request |
-| ✗ Skill routing inside a kit | `packages/shared/src/labels/skill-routing.ts` | Triggers + decisive exclusions + offered successors; `auditCatalog` catches what makes routing feel broken |
-| ✗ Expert-kit gallery (browse, cards, install admission) | `packages/shared/src/labels/kit-gallery.ts` | Catalog size never warns; missing connectors refuse, missing routing warns |
-| ✗ Legacy `kind: 'identity'` normalization | `packages/shared/src/labels/kind-normalize.ts` | **Expert kits are the old identity labels.** Never compare `kind` directly |
-| ✗ Kit-declared data sources | `packages/shared/src/labels/kit-sources.ts` | Local archives are forced `sensitive` and `search-only`; missing required sources refuse |
-| ✗ Memory-curator kit (worked example) | `packages/shared/src/labels/memory-curator-kit.ts` | Idle-triggered, prune-always/consolidate-opt-in, never deletes, cheap-model requirement |
-| ✗ Example kits (data, not advice) | `packages/shared/src/labels/example-kits.ts` | One small kit, one 18-step kit that only works routed |
-| ✗ Memory scope, promotion and tool facts | `packages/shared/src/memory/memory-scope.ts` | Delegates return findings and write nothing; curated layers are consolidation-only |
-| ✗ Delegation routing and cost escalation | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only |
-| ✗ Review diff normalization | `apps/electron/src/renderer/components/app-shell/workbench/review/review-diff-model.ts` | Unifies working-tree and session-snapshot sources; directory rollup; lazy patch predicate |
+| Assistant | `packages/shared/src/assistants/` and Assistant RPC/selector | Independent identity and requested loadout, never labels; existing permission path grants access |
+| Component host | `packages/shared/src/components/` | Scoped activation through one host/settings authority; early R15/R18 foundation |
+| Layout tree | `packages/shared/src/layout/` and Fleet `right-sidebar/RightSidebar.tsx` | User-controlled panel placement; inherited panel stack remains the current starting mechanism |
+| Artifact history | `packages/shared/src/artifacts/history-backend.ts` | Native text/media/document owners; attribution required; history router `not implemented` |
+| Git snapshots/revert | `packages/shared/src/git/snapshot-plan.ts`; `sessions/revert-model.ts` | Never move the user's HEAD/index/refs; conversation branching is not file revert |
+| Activity, terminal and cost helpers | `sessions/session-activity.ts`; `terminal/terminal-capability.ts`; `config/{model-pricing,session-cost,usage-rollup}.ts` | Activity is derived; detect interactive commands honestly; unknown cost is never zero |
+| CLI catalog/ACP | `packages/shared/src/cli-agents/cli-agent-connection.ts` | Detect separately from configuration; record resolved binaries; never scrape private caches |
+| Expert-kit label modules | `packages/shared/src/labels/{expert-kit,skill-routing,kit-gallery,kind-normalize,kit-sources,memory-curator-kit,example-kits}.ts` | Do not restore identity/loadout in labels; catalog size is not an attention limit |
+| Curated memory | `packages/shared/src/memory/` | Delegates return evidence; one consolidation writer promotes curated memory |
+| Bounded delegation | `agent/{delegation-contract,delegation-policy,delegation-projection,delegation-routing,path-lease,permission-intersection,run-report-validate}.ts`; renderer `DelegationStrip.tsx` | R6 TaskBrief/RunReport gates, permissions, leases and independent verification remain `not implemented`; Craft TaskRunner and child Sessions survive |
+| R3 acceptance fixture | `workspaces/deliverable-acceptance.ts`; `handlers/accept-deliverable.ts` | R3-C1..C8 require a real accepted chain; a fixture never substitutes for it |
+| Fleet shell/composer helpers | `shell-layout.ts`, `sidebar-visibility.ts`, `SidebarPanelSlot.tsx`, plan-compact coordinator, session-option sync, optimistic command, browser-action and automation-batch helpers | Extend current Craft callers; historical extraction is not current wiring |
+| Runtime modes and cache economy | `config/runtime-modes.ts`; `agent/core/cache-economy.ts` | Keep reasoning, speed and runtime modes distinct; measure actual usage before optimization |
+| Former utility survivors | `packages/ui/src/components/markdown/sanitize-schema.ts`; `packages/messaging-gateway/src/atomic-write.ts` | Both are now absent too; neither remains a current code locator |
 
-## Bounded delegation (Decisions C3/C5/C7/C9/C11) — DISCARDED BY THE REBASE
+Existing Files UI lives in `SessionInfoPopover.tsx` → `right-sidebar/SessionFilesSection.tsx`.
+Notes `GET_NOTES`/`SET_NOTES` survive in `packages/server-core/src/handlers/rpc/sessions.ts` and
+Electron's `transport/channel-map.ts`, but no Notes renderer consumer is mounted. The host
+foundation remains `not implemented`; see [`specs/R18-right-workbench.md`](specs/R18-right-workbench.md).
 
-Landed ahead of R4/R5 by owner direction (roadmap change log, 2026-08-15). **These types are
-`candidate`, not frozen** (`modules/REGISTRY.md` rule 2): R4 and R5 may change their shape without a
-deprecation cycle. Do not build a suite against them as if they were promoted contracts.
+## Localization
 
-| Concern | Path before the rebase (**absent today**) | Rule that survives |
-|---|---|---|
-| ✗ Delegation envelopes | `packages/shared/src/agent/delegation-contract.ts` | `TaskContract` locked per attempt; `TaskBrief` in, `RunReport` out; transcripts never cross the boundary. Zod-validated |
-| ✗ Organization policy | `packages/shared/src/agent/delegation-policy.ts` | `direct` / `single-verifier` / `bounded-parallel` / `serial-isolated`, with a human-readable reason every time. Learned routing is R17 and deliberately absent |
-| ✗ Inline delegation projection | `packages/shared/src/agent/delegation-projection.ts` | Pure projection of child Session state for `DelegationStrip` (H11); a surface never owns orchestration state |
-| ✗ Requirement/cost routing | `packages/shared/src/agent/delegation-routing.ts` | Cheapest candidate that satisfies the requirement; escalate on mechanical failure only (H10) |
-| ✗ Path write leases | `packages/shared/src/agent/path-lease.ts` | One writer per path; reserved paths need the integrator role; leases expire so a crashed agent cannot hold a file |
-| ✗ Permission intersection | `packages/shared/src/agent/permission-intersection.ts` | `effective = parent ∩ requested ∩ workspacePolicy ∩ runtimeCapability`. Privilege never expands past the parent; unattended work that resolves to `ask` waits, it does not escalate |
-| ✗ RunReport validation | `packages/shared/src/agent/run-report-validate.ts` | Deterministic schema/criterion/evidence/path/budget checks against the locked contract (C9). The executor cannot self-certify |
-| Kernel integration | `packages/server-core/src/tasks/TaskRunner.ts`, `packages/shared/src/agent/base-agent.ts`, `agent/index.ts` | Where the envelopes are actually consumed |
-| ✗ Inline surface | `apps/electron/src/renderer/components/app-shell/DelegationStrip.tsx` (mounted in `ChatDisplay.tsx`) | The strip is real; the tree/brief/report inspector is `not implemented` (P-20) |
-
-Not yet built behind this layer: PreToolUse `TaskContract` gates, the independent read-only
-verifier, and worktree apply/discard. Those are R6's own acceptance and remain `not implemented`.
-
-## R3 acceptance convention (fixture, not R3) — DISCARDED BY THE REBASE
-
-| Concern | Path before the rebase (**absent today**) | Rule that survives |
-|---|---|---|
-| ✗ Deliverable acceptance helper | `packages/shared/src/workspaces/deliverable-acceptance.ts` | Copies the accepted file into `deliverables/` with a parseable provenance header (session, source, SHA-256, evidence, recovery). Refuses path escape, missing source, and overwrite of a different file. **Not ArtifactRef** — bytes stay in the Project folder |
-| ✗ Agent-facing tool | `packages/session-tools-core/src/handlers/accept-deliverable.ts`, registered in `tool-defs.ts` as `accept_deliverable` | May set `needs-review`; never sets `done` or `cancelled` — closing a Session is the owner's decision |
-
-`specs/R3-first-production-chain.md` R3-C1..C8 still require a real owner-run chain. This fixture is
-not a stand-in for them.
-
-## Shell layout, composer and session-option modules — DISCARDED BY THE REBASE
-
-> Every path in this section is absent as of 2026-09-20. The 2026-08 "landed" claim predates the
-> v0.13.3 rebase. `sanitize-schema.ts` and `atomic-write.ts` are the only two survivors and are
-> listed under *Spine primitives that already exist* instead.
-
-| Concern | Path before the rebase (**absent today**) |
-|---|---|
-| ✗ Shell layout + sidebar visibility model | `renderer/components/app-shell/{shell-layout,sidebar-visibility}.ts`, `SidebarPanelSlot.tsx` |
-| ✗ Plan approval with compaction | `renderer/components/app-shell/input/{approve-plan-with-compact-coordinator,use-approve-plan-with-compact}.ts` |
-| ✗ Session option sync / optimistic commands | `renderer/hooks/session-options-sync.ts`, `renderer/lib/optimistic-session-command.ts`, `lib/session-connection-normalize.ts` |
-| ✗ Background task cancellation | `renderer/hooks/background-task-kill.ts` |
-| ✗ Product-surface classification | `renderer/lib/product-surface.ts` |
-| ✗ Browser action model / automation batch ops | `renderer/components/browser/browser-action.ts`, `renderer/components/automations/batch-operation.ts` |
-| Markdown sanitize schema | `packages/ui/src/components/markdown/sanitize-schema.ts` |
-| ✗ Classified provider runtime modes | `packages/shared/src/config/runtime-modes.ts` (Page Architecture §3B; reasoning effort and Fast stay separate axes) |
-| Messaging gateway atomic write | `packages/messaging-gateway/src/atomic-write.ts` |
-
-Not yet built, in order: the git executor behind `snapshot-plan`, the per-turn capture hook in
-`SessionManager`, the content store, the operation log, and the two surfaces (review file tree,
-revert dock). `SessionStatusIcon` and the session row still read the manual label.
+`packages/shared/src/i18n/registry.ts` registers seven inherited locales, including `zh-Hans`.
+`renderer/main.tsx` restores browser language and synchronizes Electron; `main/index.ts` persists
+`uiLanguage`; `AppearanceSettingsPage.tsx` exposes selection. These are v0.13.4 mechanisms, not
+restored Fleet work. Fleet branding and service-label changes remain separate acceptance work.
 
 ## Craft-operated service boundaries (R2 scope)
 
@@ -264,45 +178,41 @@ Inherited entry points, each handled as its own coherent slice per Decision P8 a
 [`specs/R2-independence.md`](specs/R2-independence.md). Do not remove a URL without tracing
 UI → handler → persistence → recovery.
 
-| Concern | Current code entry | Fleet direction |
+Paths in this table are relative to `app/`. Observed behavior is **not** the required Fleet result.
+The original paths below are restored source observations, not completed R2 corrections.
+
+| Concern | Current entry and observed behavior | Required Fleet result |
 |---|---|---|
-| Session export | `app/packages/server-core/src/sessions/SessionManager.ts`; `app/apps/electron/src/renderer/pages/ChatPage.tsx` | **REUSE:** local export only; the online sharing/viewer path was removed by owner decision |
-| Upstream version awareness | `packages/shared/src/version/manifest.ts`; official tags/release notes | **REUSE:** detect and review upstream releases for selective porting |
-| Fleet binary updater | `app/apps/electron/src/main/auto-update.ts`; `app/apps/electron/electron-builder.yml` | **EXTEND/REPLACE:** Fleet-controlled or user-configured signed channel; disable install honestly until it exists |
-| Help and Docs MCP | `packages/shared/src/docs/`; `packages/session-mcp-server/src/index.ts`; Electron menu/help links | **EXTEND:** bundled/local mirror first; online Craft links only when visibly external |
-| WebUI OAuth relay | `packages/shared/src/auth/oauth-relay.ts`; `packages/server-core/src/webui/` | **EXTEND:** configurable self-hosted relay; preserve the desktop local callback |
-| Slack OAuth relay | `packages/shared/src/auth/slack-oauth.ts` | **EXTEND:** user-configured app/callback or explicitly unavailable |
-| Craft sources/connectors | `packages/shared/src/sources/`; `packages/shared/src/mcp/`; builtin source definitions | **REUSE as optional connector:** never required for startup or core local data |
-| Branding/support/co-author text | `packages/shared/src/branding.ts`; package metadata; `packages/shared/src/prompts/system.ts`; Electron menus | **REPLACE deliberately:** rename with compatibility and license/trademark review, not global search-and-replace |
+| Conversation export | Original Session sharing commands and ChatPage/menu consumers; Fleet exportMarkdown helper absent | Proposed local Markdown export over Session data; retain existing-share cleanup; not implemented |
+| Upstream version awareness | packages/shared/src/version/manifest.ts retains the Craft-hosted release manifest | Keep developer source intake distinct from the future Fleet install channel |
+| Binary updater | apps/electron/src/main/auto-update.ts enables automatic download and quit installation; packaged startup checks the Craft feed; builder publishes to Craft | Approved R2 correction must prevent Craft replacing Fleet; not implemented |
+| Pages publication | feature-flags.ts defaults sharing on; publisher.ts defaults to the Craft API | Preserve local Pages; remove new hosted publication and retain needed unpublish cleanup; not implemented |
+| Product telemetry | main/index.ts configures Sentry from the build-time ingest URL and machine identity | Remove product uploads while preserving local diagnostics; not implemented |
+| Help, Agent docs routing and Docs MCP | Bundled docs/index.ts and hosted doc-links/system prompt coexist; Fleet local help patches absent | Proposed matching bundled human/Agent guidance and explicit external links; not implemented |
+| WebUI OAuth relay | Original auth/oauth-relay.ts defaults to the Craft callback; Fleet override absent | Proposed user-configured or honestly unavailable relay, preserving local auth |
+| Slack OAuth relay | Original auth/slack-oauth.ts defaults to the Craft relay; Fleet override absent | Explicit optional connector and user-owned relay if needed; no required Fleet service |
+| Craft sources/connectors | `packages/shared/src/sources/`; `packages/shared/src/mcp/`; builtin source definitions | Optional connectors only; never required for startup or core local data |
+| Branding/support/co-author text | `packages/shared/src/branding.ts`; package metadata; `packages/shared/src/prompts/system.ts`; Electron menus and updater recovery text | Deliberate rename with compatibility and license/trademark review; no global replacement |
 
 ## Verification commands
 
-| What | Command (from `app/`) |
+| What | Command / scope |
 |---|---|
-| Typecheck shared | `bun run typecheck:shared` |
-| Typecheck electron | `bun run typecheck:electron` |
-| Typecheck everything | `bun run typecheck:all` |
-| Targeted shared tests | `bun run test:shared:all` (3 files — a smoke check, **not** a gate) |
-| Whole suite (703 files, isolated) | `bun run test` |
-| Only tests affected by your changes | `bun run test:changed` |
-| Iteration gate (typecheck:all + changed tests) | `bun run validate:quick` |
-| Dev gate (ui-contract + typecheck:all + **whole suite** + doc-tools) | `bun run validate:dev` |
-| CI gate (dev + i18n parity/sorted/coverage) | `bun run validate:ci` |
+| Initialize repository gates | From repository root: `bash scripts/init.sh` |
+| Fleet gate | From repository root: `bash scripts/fleet-verify.sh` — repository policy and full-suite entry point; inspect the script for its current stages |
+| Typecheck shared / Electron / all declared packages | From `app/`: `bun run typecheck:shared`, `bun run typecheck:electron`, `bun run typecheck:all` |
+| Targeted tests | From `app/`: `bun test <test-path>` |
+| Upstream shared smoke | From `app/`: `bun run test:shared:all` — six files, not the full suite |
+| Upstream whole-suite script | From `app/`: `bun run test` — ordinary Bun discovery, then separate processes for `*.isolated.ts`; this script does not pass `--isolate` |
+| Upstream dev gate | From `app/`: `bun run validate:dev` — typecheck:all, six shared smoke files and document-tool tests |
+| Upstream CI gate | From `app/`: `bun run validate:ci` — dev gate plus i18n parity/sorted/coverage |
+| Launch real app (dev) | From `app/`: `bun run electron:dev` |
+| Build + start | From `app/`: `bun run electron:start` |
 
-> **Corrected 2026-07-30.** `validate:dev` previously ran `test:shared:all` — 3 of the repository's
-> 703 test files (0.4%). The whole suite existed (`scripts/test-all.sh`, already correctly using
-> `--isolate` plus a per-process pass for `*.isolated.ts`) but was bound only to `bun run test` and
-> was in no gate. Separately, `typecheck:all` could not pass at all: `packages/ui/tsconfig.json`
-> declared `rootDir: ./src` while its `paths` resolved `@craft-agent/core` into `../core/src`,
-> making every such import a TS6059 error — in a package that is never built by tsc (its
-> `main`/`types`/`exports` all point at raw `src/`). Both are fixed; all 13 workspaces typecheck
-> clean. Bun is pinned to `1.3.14` via `packageManager`/`engines` and in CI, because `--isolate`
-> and `--changed` require 1.3.13+.
-| Launch real app (dev) | `bun run electron:dev` |
-| Build + start | `bun run electron:start` |
-
-Verification policy (what to run when): [`09-QUALITY.md`](09-QUALITY.md). A passing typecheck is
-evidence, never a capability status.
+`test:changed`, `validate:quick` and `lint:ui-contract` are absent from the inherited manifest.
+It does not pin Bun with `packageManager`/`engines`; `scripts/init.sh` checks the installed toolchain.
+Do not describe `validate:dev` as a full-suite or UI-contract gate. Verification policy:
+[`09-QUALITY.md`](09-QUALITY.md). Passing checks are evidence, never a capability status.
 
 ## Keeping this file honest
 

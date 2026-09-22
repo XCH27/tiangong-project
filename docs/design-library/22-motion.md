@@ -46,8 +46,8 @@ from feeling like a toy, and it is why UI-SPEC bans entrance animations without 
 result, not for a transition to the result. This is stricter than "no entrance animations" and it is
 the reason Raycast has no open/close animation at all.
 
-Everything on a session list row falls in the top two bands. That is why `SessionActivityDot` renders
-no transition and pulses only while a session is actually running.
+Session-list interactions fall in the top two bands. Activity indication must derive from real
+running state; this policy does not claim the former Fleet `SessionActivityDot` remains mounted.
 
 ## 2. Easing
 
@@ -87,15 +87,16 @@ Exit is faster than enter. The user has already decided; the system is only gett
 
 - **Never `transition-all`.** Name the properties. `transition-all` animates whatever gets added to
   the class list next year, which is how an unrelated change becomes a visual bug.
-- **Only `transform` and `opacity`.** They skip layout and paint. Animating `height`, `width`,
+- **Prefer `transform` and `opacity` for movement.** Colour/opacity feedback in §2 is allowed;
+  these rules do not prohibit a non-animated size change. Transform/opacity can avoid layout work. Animating `height`, `width`,
   `padding` or `margin` triggers all three, and on a list of eighty review rows that is visible.
 - **Never enter from `scale(0)`.** Start at `0.96`–`0.98` with `opacity: 0`. Scale values, matched to
   surface size: dialog `0.96`, dropdown `0.97`, tooltip `0.98`.
 - **Popovers are origin-aware.** `transform-origin: var(--radix-popover-content-transform-origin)`,
   so the surface grows out of its trigger. **Dialogs are exempt** — they are not anchored to
   anything, so they stay centred.
-- **Pressable things respond to press.** `active:scale-[0.97]` with `duration-150`. Without it a
-  control gives no evidence it heard the click until its result arrives.
+- **Press feedback follows the shared upstream primitive.** Do not add scale to every button:
+  frequent and keyboard actions follow §1; existing colour/pressed/focus feedback may suffice.
 - **Transitions, not keyframes, for anything retriggerable.** A transition retargets from its current
   position; a keyframe restarts from zero, so a rapidly-toggled element visibly jumps.
 - **Gate hover motion behind `@media (hover: hover) and (pointer: fine)`.** Touch devices fire hover
@@ -123,7 +124,7 @@ A person who asked for no motion is not asking for less of it, so do not merely 
 | Springs feel natural; use for drag and "alive" elements | **No spring physics** (UI-SPEC §9) | A workbench is read, not played with. Reconsider only for canvas direct manipulation, as an owner decision. |
 | Stagger list entries by 30–80 ms | **No stagger** | Fleet's lists are sessions and diffs — seen constantly, band 1 of §1. Stagger is for surfaces seen once. |
 | Bounce/overshoot for playful moments | **No bounce** | Impeccable lists it as a dated tell, and nothing in Fleet is playful enough to earn it. |
-| Blur to mask an imperfect crossfade | Allowed, ≤ 2 px | Legitimate, but it costs GPU on Safari and is usually a sign the durations are wrong. Fix those first. |
+| Blur to mask an imperfect crossfade | Not a default; compare the shared upstream primitive first | Legitimate, but it costs GPU on Safari and is usually a sign the durations are wrong. Fix those first. |
 
 ## 7. The references themselves
 
@@ -137,7 +138,7 @@ npx impeccable install                      # 60 deterministic anti-pattern dete
 
 `impeccable detect` is the closest thing to `check-ui-contract.ts` from outside the project; it
 catches the generic AI tells (Inter everywhere, purple gradients, cards inside cards, bounce easing),
-whereas Fleet's own guard catches violations of *this* design system. Run both — they do not overlap.
+whereas Fleet's own guard catches violations of *this* design system. External tool installation is advisory, not an additional mandatory gate.
 
 ## 8. Self-check
 
@@ -145,6 +146,6 @@ whereas Fleet's own guard catches violations of *this* design system. Run both �
 cd app && bun run lint:ui-contract   # tokens, radius, type, elevation, palette
 ```
 
-The guard gained palette and `primary` rules on 2026-07-31, after four raw Tailwind colours shipped
-through it green. It still does **not** check motion; the items in §4 are review-time rules until
-someone encodes them.
+The original-source restoration removed this script and command. It is a classified verification
+gap until restored within an approved implementation slice; it has not passed on the restored tree.
+Motion and shared-primitive reuse still need source review even when the guard is available.

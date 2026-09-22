@@ -1,21 +1,19 @@
 # SPEC — R2 Independence (no silent Craft-operated dependencies)
 
-> Spec status: `draft` — slices C2–C5 landed 2026-07-26 ahead of activation via the WORK-ORDER
-> frontier (the R2 roadmap row remains READY; R0 is the ACTIVE release). See "Landed slices"
-> below. Nothing is `usable` before owner acceptance (R2-C7).
+> Spec status: `draft` — R2 remains DEP and R0 is ACTIVE. The v0.13.4 rebuild restored inherited
+> hosted defaults; previous fixes are candidates, not evidence for the current tree.
+> Required R2 corrections execute inside R0 before its feature gate opens.
+> The owner-requested restoration removed the Fleet updater/export/help/relay/telemetry patches.
+> These corrections are `not implemented` in the current original source. Preparation and a joint
+> owner review precede any new software changes; previous smoke/desktop results do not transfer.
 > Owner acceptance date: —
 
-## Landed slices and per-criterion state (2026-07-26)
+## Selective-intake evidence
 
-| ID | State | Evidence |
-|---|---|---|
-| R2-C1 | **open** — docs MCP now defaults off and connects only through `FLEET_DOCS_MCP_URL`; C1 acceptance still requires the network-blocked smoke + traffic log. | code + targeted test; audit 2026-07-26 |
-| R2-C2 | landed — `wired but not visually checked` | `445e11b92` (+ isolated-harness test fix `09c59e7f7`) |
-| R2-C3 | landed — `wired but not visually checked` | `18bf53415` |
-| R2-C4 | landed — `wired but not visually checked` | `3ddbe59fe` (+ ChatPage docs-link routing `58a033d51`) |
-| R2-C5 | landed — `wired but not visually checked` | `61045ebb9` (OAuth relay) + `8678c7501` (Slack relay) |
-| R2-C6 | open — endpoint inventory vs the refreshed `源码参考/craft-docs/` mirror not run | — |
-| R2-C7 | open — owner acceptance pending; until it happens no R2 surface is `usable` | — |
+Earlier fixes remain inspectable in Git: updater `445e11b92` (harness fix `09c59e7f7`), sharing
+`18bf53415`, docs `3ddbe59fe` / `58a033d51`, OAuth `61045ebb9` / `8678c7501`. Compare each with the
+current caller before reuse. The reset restored inherited services; none of these commits closes
+current acceptance. The earlier unguarded headless bootstrap does not prove R2-C1. The old guarded smoke targeted withdrawn Fleet handlers and is not current baseline evidence.
 
 ## Outcome
 
@@ -31,17 +29,20 @@ binary updater can no longer install a Craft binary over Fleet.
    features show honest "not configured / unavailable" states.
 2. The user opens each affected surface and can tell which class every external connection is:
    local · self-hosted · third-party connector · unavailable (identity honesty: a connection says what it actually is).
-3. Update check: either a Fleet-controlled/user-configured channel, or the updater UI states
-   updates are disabled — it never offers a Craft binary.
-4. Session sharing: **removed 2026-07-26 by owner decision.** Local export works; there is no
-   online share control and no bundled viewer, so no Craft-operated share dependency can exist.
+3. Packaged startup, manual update check and normal quit: either a verified
+   Fleet-controlled/user-configured channel, or updates are unavailable before any download or
+   install. Dismissing a notification is not disabling the updater. Pending downloaded packages
+   must not bypass this boundary on quit.
+4. Session sharing: implement the approved local Markdown replacement with conversation content
+   and attachment references. Verify the desktop download as well as the RPC. Existing
+   published copies retain explicit cleanup; new hosted conversation/Pages publication is refused.
 
 ## Scope
 
 One slice per service row from [`../06-CODE-MAP.md`](../06-CODE-MAP.md) "Craft-operated service
-boundaries" — updater, sharing/viewer (closed by removal), help/docs links + docs MCP, WebUI OAuth relay, Slack OAuth
+boundaries" — updater, sharing/viewer, help/docs links + docs MCP, WebUI OAuth relay, Slack OAuth
 relay, sources/connectors audit, branding/support text (deliberate rename pass with
-license/trademark review). Trace UI → handler → persistence → recovery per slice; never several
+license/trademark review), telemetry and Pages publication. Trace UI → handler → persistence → recovery per slice; never several
 services in one patch.
 
 - **Out (non-goals):** building replacement cloud services; upstream version bump; remote
@@ -58,6 +59,15 @@ renderer → RPC/handler → persistence → recovery, add the row's targeted te
 `bun run typecheck:electron` and the relevant shared test from `app/`. The network-blocked smoke
 must record the target URL/process log; a code search alone does not prove C1 or C6.
 
+The original updater has automatic download and quit installation enabled, with the Craft feed.
+This is inherited Craft behavior, not a completed Fleet service boundary. Trace launch, manual
+check, ignored versions and already-downloaded packages before implementing the approved correction.
+Use disposable lifecycle fixtures; do not download/install an upstream binary during verification.
+For Pages, check the absent-override default as well as direct publish RPC and preserved unpublish.
+For telemetry, cover main, renderer/preload and build-time ingest injection; retaining a crash
+fallback must not retain the uploader. For docs, inspect the final assembled Agent prompt and its
+profile-local paths, not just the presence of bundled files.
+
 ## Pages touched
 
 | Surface ID | Create/extend/wire | Adapter/data contract | Permission | States exercised | Owner visual checkpoint |
@@ -72,11 +82,11 @@ must record the target URL/process log; a code search alone does not prove C1 or
 | ID | Criterion | Verified by |
 |---|---|---|
 | R2-C1 | Offline fresh start: core local behavior works; no silent Craft calls at startup or in core flows | network-blocked smoke + traffic log |
-| R2-C2 | Updater never installs a non-Fleet binary; channel is Fleet-controlled/user-configured or install honestly disabled | code audit + updater state check |
-| R2-C3 | Online sharing and the bundled viewer are removed; local export is the only session-export path | absence test (no share channel/handler) |
-| R2-C4 | Help/docs default to bundled/local; external links visibly external | owner check |
+| R2-C2 | Updater never installs a non-Fleet binary; channel is verified Fleet-controlled/user-configured, otherwise automatic/manual download and install are disabled, including pending-update application on quit | isolated packaged-lifecycle, dismissal, manual-action and pending-update tests + updater state check |
+| R2-C3 | No new hosted conversation or Pages publication; local Markdown is the conversation-export path. Remove publish/upload controls and handlers; preserve an explicit cleanup/unpublish route for existing remote copies until resolved. | publish/upload absence + local export + cleanup-path tests |
+| R2-C4 | Help/docs and assembled Agent guidance default to matching bundled/profile-local content; external links visibly external | prompt/path tests + offline guidance check + owner check |
 | R2-C5 | OAuth relays configurable/self-hosted or explicitly unavailable; desktop local callback preserved | targeted tests |
-| R2-C6 | Each remaining inherited endpoint is an explicit optional connector with a visible class | endpoint inventory vs `源码参考/craft-docs/` service list |
+| R2-C6 | Telemetry is removed; every remaining inherited endpoint is an explicit optional connector with a visible class | endpoint inventory vs `源码参考/craft-docs/` service list |
 | R2-C7 | Owner accepts the changed surfaces (settings, update UI, help menu) | owner acceptance |
 
 ## References consumed
@@ -91,6 +101,8 @@ endpoint inventory (R2-C6). No external code reference is adopted.
 Consumes the R0 baseline (and R1 wording where surfaces overlap). A Fleet release channel may not
 exist yet — then C2 is satisfied by *honestly disabled install*, and creating the channel is a
 recorded edge (owner checkpoint: production runtime commitment).
+Required independence corrections run under this contract during R0; the release labels do not
+defer the baseline exit. R0 references R2 evidence rather than rebuilding a second checklist.
 
 ## Risks and rollback
 
@@ -102,8 +114,11 @@ recorded edge (owner checkpoint: production runtime commitment).
 
 ## Verification plan
 
-Ladder 1–3 per slice + one network-blocked smoke at the end. Owner CHECK THIS:
-update UI, help menu, any settings surface that names an external service.
+After each approved implementation, run the relevant source and behavior checks. The retained
+root smoke script contains expectations for removed Fleet handlers and needs review before reuse;
+its existence is not current proof. Verify network-blocked local behavior, real desktop/packaged
+lifecycle and the owner's visible acceptance separately. Do not call a JavaScript HTTP guard an
+OS firewall or imply that it covers provider subprocesses.
 
 ## Doc updates on completion
 

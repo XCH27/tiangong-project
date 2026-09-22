@@ -1,4 +1,4 @@
-# SPEC — R0 Craft v0.13.3 baseline stabilization
+# SPEC — R0 Craft v0.13.4 baseline stabilization
 
 > Spec status: **active**
 > Owner acceptance date: —
@@ -8,42 +8,112 @@
 > `fleet-baseline-r0` tag, restore the v0.10.5 `AppShell`, or treat its landed/typechecked claims as
 > evidence for the current tree.
 >
-> **Current reality:** `app/package.json` is Craft **v0.13.3** and the branch name
-> `work/craft-0.12-rebase` is historical. The working tree is large, uncommitted and contains both
-> useful integration work and half-finished surfaces. Nothing in this spec says that tree is clean,
-> green, visually accepted, or ready to release until the corresponding criterion has fresh evidence.
+> **Current reality (2026-09-21):** `app/package.json` and the rolling Craft pin are
+> **v0.13.4**. Commits `5a510cf1d` and `bc7eb0eb7` replaced the earlier Fleet tree; the complete
+> pre-rebuild source survives at `snapshot/pre-rebuild-2026-09-21`. The branch name
+> `work/craft-0.12-rebase` is historical. This reconciliation updates the implementation context,
+> not the product requirements or acceptance bar. Old passing tests are not current evidence.
 
 ## Outcome
 
-Produce one trustworthy Craft v0.13.3 working baseline: preserve the current Craft runtime and look,
-repair security and recovery defects in the modifications already present, remove or disconnect
-unreachable/discarded implementation, and make every capability claim match a real caller and data
-path. The result is runnable and fully verified; any remaining uncommitted entry is explicitly
-accounted for rather than hidden behind an old commit or release claim.
+Produce one trustworthy Craft v0.13.4 working baseline. Account for every intentional upstream
+delta and every inherited product-boundary gap; keep feature status tied to a current caller and
+real data path. Selectively readmit fixes only after source comparison. The rebuilt tree is not a
+Fleet release merely because it matches upstream: hosted-service independence, removed Fleet
+features and owner visual acceptance remain explicit criteria.
 
 ## Current slice
 
-- **Objective:** stabilize the current v0.13.3 implementation and documentation as one coherent
-  baseline.
-- **Context paths:** the current `app/` diff and new files; root instructions; canonical product,
-  roadmap, capability, page and code maps.
-- **Constraints:** preserve Craft v0.13.3; no wholesale donor merge; no new authority; no new remote
-  target, relay or file-sync product; no general computer-control layer; no replacement UI shell;
-  no tag or commit required by this contract.
-- **Acceptance evidence:** fresh Git inventory, existence/caller checks, targeted tests, relevant
-  typechecks and linters, `validate:dev`, a non-interactive launch smoke, and owner visual acceptance
-  for visible changes.
-- **Next safe action:** classify the current dirty paths by behavior, then fix or drop one coherent
-  group at a time without overwriting unrelated work.
+- **Objective:** complete documentation/source preparation and a proposed Craft disposition before
+  the owner-requested joint walkthrough. Implement only concrete corrections approved afterward.
+- **Context paths:** `app/`, `scripts/`, commit gates, canonical entry/spec/capability/page/code maps.
+- **Constraints:** preserve v0.13.4 and existing user data; no wholesale snapshot restore, new
+  authority, remote product, production dependency or replacement shell; no Git ref movement.
+- **Acceptance evidence:** current source/caller inventory, declared upstream delta, regression
+  tests for verification gates, full repository verification and an isolated non-interactive
+  bootstrap. An unavailable check is reported as unavailable, never passed.
+- **Next safe action:** reconcile documents against restored official source and prepare the review
+  below. Prior Fleet patches/tests were removed by the owner-requested restoration; no old wired
+  claim permits implementation. The latest scope is owned by `../WORK-ORDER.md`.
+
+## Preparation and joint review
+
+This is the current R0 substep, before application correction. Desktop targets are Windows, macOS
+and Linux; the later phone connector extends R14/EXEC-09. Preparation is complete only when:
+
+1. product, decision, roadmap, surface and execution documents agree; proposals and owner choices
+   are distinct, and every current implementation claim matches restored original source;
+2. each proposed correction names the actual UI/backend path, defect or duplicated behavior,
+   proposed outcome, retained data/actions, reference advantage and relevant failure proof;
+3. reference revisions, source/license limits and unrun mechanism comparisons are explicit;
+   generated guides or refreshed HEADs never establish selection;
+4. obsolete project material is absorbed/deleted and any remaining recovery/retention decision has
+   an exact target and reason; no duplicate progress or archive files are introduced;
+5. the original-app build/launch path and review isolation are checked without changing app source,
+   with unavailable checks stated honestly. A Mac run cannot certify Windows/Linux support.
+
+After these conditions, open original Craft for the joint walkthrough requested by the owner.
+Review and approve bounded before/after proposals before implementation, then use R0-C1..C7 for
+the later corrected-baseline acceptance. These two exits must not be conflated.
+
+### Proposed walkthrough and correction groups
+
+| Flow | Current evidence / question | Proposed frontend and backend treatment |
+|---|---|---|
+| Project, create and navigation | `TopBar`, `WorkspaceSwitcher`, `AppShell`, `ProjectInfoPage`, Workspace/Session stores | Unify Project vocabulary and creation/context, preserve filters and record IDs; decide Board and selector placement from the real flow before removing entries. No automatic migration of nested records. |
+| Composer, models and permission | `FreeFormInput`, connection RPC, mode-manager and PreToolUse | Preserve working stream/queue/stop; separate model capability, work phase and approval posture. Remove redundant controls only with a verified shared owner. Auto phase redesign is a proposal. |
+| Credential/configuration recovery | `credentials/backends/secure-storage.ts:handleCorruptedFile` deletes corrupt bytes; profile paths need audit | Preserve original bytes, report recovery and prevent silent overwrite through the existing store. Verify every profile consumer; do not replace the cipher/store by copying another project. |
+| Browser | `browser-pane-manager.ts`, `browser-tools.ts`, permission metadata | Preserve original navigation/reading/input; validate per-action permission and remove misleading unsupported claims. Human annotations, device emulation and immediate takeover remain separate additions after baseline acceptance. |
+| Skills, Sources and local Pages | Skill parser retains a selected metadata subset; local Pages has actual handlers/data | Report unsupported activation metadata, preserve working tools and local Pages; compare overlapping launchers before deleting. Do not import a new component system in this slice. |
+| Sharing, updates, telemetry and help | Original updater downloads and installs Craft; Pages defaults to hosted publication; Sentry has build-time ingest; help has hosted guidance | Propose local export, no Fleet-to-Craft binary replacement, no telemetry and matching local help; remove associated UI/handlers/hooks/dependencies only after tracing every consumer and legacy cleanup. |
+| Tasks, background tools, automations and remote | Existing distinct owners and lifecycle; some surfaces may overlap | Keep distinct real operations; merge only duplicated presentation. Verify cancellation/reconnect/recovery before proposing deletion; mobile is a later client, not a second task system. |
+| Packaging and platform behavior | Source/build configuration, OS adapters, filesystem/process/credential consumers | Identify shared behavior versus OS adapters, package and verify Windows/macOS/Linux separately; document untested OS/version/architecture combinations. |
+
+This is a review proposal, not a pre-approved removal list. Record accepted rows and exact scope
+in R1/R2 or the owning contract; ordinary implementation choices follow only within that scope.
 
 ## Scope
 
-The owner's foundation-first request has an explicit, bounded early R15/R18 host contract in
-[`R18-right-workbench.md`](R18-right-workbench.md). It starts with the affected baseline/P6 checks
-and existing Files/Notes; it neither marks this complete dirty-tree audit finished nor waits for
-R6/R9. The prohibition below on a replacement shell refers to discarded/parallel hosts, not a
-compared extension of the current host seam. Wholesale rollback still needs an exact owner-approved
-target and recovery plan; no test Project name determines that choice.
+The owner's current instruction supersedes the earlier early-host exception: finish baseline
+rectification before Component registration, new Notes UI, movable layout or domain features.
+The later host contract remains [`R18-right-workbench.md`](R18-right-workbench.md); it does not
+wait for R6/R9 once this baseline exit is satisfied. Wholesale rollback still needs an exact
+owner-approved target and recovery plan; no test Project name determines that choice.
+
+### Inherited-capability disposition
+
+This is the baseline scope, not evidence that the corrections have shipped. `KEEP` preserves useful
+behavior, `RESHAPE` corrects its boundary or presentation, `REMOVE` eliminates an excluded or
+absorbed path, and `LATER` leaves a new capability outside this baseline. Confirm the current
+capability-map entry and production callers before changing each group.
+
+| Inherited group | Disposition | Required baseline result / owning contract |
+|---|---|---|
+| Session/composer, provider runtime, files, search, labels/archive, Tasks and automations | KEEP | Preserve existing behavior and recovery through current authorities. New Task remains Session-backed; background tool work is not a duplicate Board. R0-C2/C3; R1-A1/A4/A6/A7. |
+| Project/Workspace/folder, create flow, list/filter/Board entries | RESHAPE | Distinct Workspace and Project memberships, one Session-backed create flow and one Conversation list; Board may remain a separate projection, never a second store. Preserve useful actions and existing records. R1-A1..A9. |
+| Settings, model/source credentials, Sources and Skills | KEEP / RESHAPE | One settings/credential path; third-party authentication remains legitimate. Distinguish global defaults, selected Project overrides and a mere list filter. Remove duplicate entry points only after their behavior has a wired home. |
+| Permissions, profile isolation and remote dispatch | RESHAPE | Verify denied/recovery paths, selected-profile isolation and host-side admission. Current Craft transport is not proof of Fleet per-device grants. Harden or honestly disable an unsafe inherited path; do not build a new remote product to close it. R0-C2. |
+| BrowserPane, file preview and local Pages | KEEP | Preserve useful local behavior subject to source/caller and permission checks. Preview is not native-format editing; Pages is not the production canvas. |
+| Hosted chat sharing/viewer and Pages publication | REMOVE / RESHAPE | No new hosted publication. Chat delivery becomes local Markdown export. Preserve an explicit cleanup/unpublish route for existing remote copies until resolved. R2-C3. |
+| Telemetry and required Craft/Fleet-operated accounts | REMOVE | No telemetry or mandatory operator account. Preserve required license attribution and explicit third-party connectors. R2-C1/C6. |
+| Craft binary updater | RESHAPE | Disable installation unless a verified Fleet-controlled/user-configured channel exists; never install Craft over Fleet. Creating a release service is outside this cleanup. R2-C2. |
+| Hosted docs/MCP defaults, OAuth relays, help/branding | RESHAPE | Local docs first; external connectors are explicit and optional; unavailable relays fail honestly. Preserve working direct/local authentication and attribution. R2-C4/C5/C6. |
+| Unreachable integration code, replaced documents and old execution ledgers | REMOVE after absorption | Check callers, unique current facts and links; delete the superseded material rather than adding an archive copy. Preserve live data and reference-checkout retention. R0-C1/C3/C6. |
+| Component host, movable panels, Assistant, cross-domain search, memory and domain editors | LATER | Keep the requirements in their existing specs/registry; do not add them to make baseline cleanup appear complete. |
+
+### Baseline exit before feature additions
+
+R0-C1..C6 must hold for the integrated tree, and every agreed `RESHAPE`/`REMOVE` row above must be
+closed with its relevant R1/R2 evidence. R2-C1..C6 include the network-blocked local-core smoke;
+the existing headless bootstrap is not a substitute. The owner accepts changed visible baseline
+surfaces under R0-C7/R1-A1..A9/R2-C7 before the feature gate opens. Unchanged surfaces without fresh
+visual acceptance retain `wired but not visually checked`; that label cannot hide an unresolved
+baseline correction.
+
+Cross-domain search belongs to R5 / INFO-06; the former automatic-work-phase proposal is superseded
+by R1's owner-authorized independent Plan and action permission. R4/R5/R6/R9 are not baseline
+prerequisites. Carry them at their own release anchors. R0 is the current integration owner;
+R1/R2 supply correction contracts, not a cycle that postpones fixing the baseline.
 
 ### In
 
@@ -51,8 +121,24 @@ target and recovery plan; no test Project name determines that choice.
   unreachable and superseded groups.
 - Stabilize modifications already in scope, especially permission/security boundaries, retry and
   recovery, local-only behavior, current Craft capability intake and honest feature gating.
-- Preserve one authority for Sessions, tasks, permissions, settings, assistants, Pages and remote
-  Workspace transport.
+- Honor the existing `CRAFT_CONFIG_DIR` boundary for credentials, bundled docs and their operational
+  prompt/prerequisite references, default Workspaces, interceptor files and server auth/messaging/audit
+  paths. Session MCP preferences/feedback and fallback config validation use that same profile;
+  an arbitrary Workspace folder does not imply a profile through its parents. Malformed preferences
+  are preserved and surfaced as a tool error by the MCP writer. A temporary profile must not read,
+  migrate or delete default-profile credentials; encryption
+  identity and the default location stay unchanged.
+- Preserve unreadable credential bytes and report recovery through the existing credential
+  manager. The original handler still deletes corrupt bytes; the withdrawn Fleet fix and tests
+  do not establish current behavior. Reproduce safely before implementing the approved correction.
+- Audit browser permission classification at the real parser/dispatch boundary, including owned
+  versus foreign tools, command batches and Ask/Explore behavior. The old policy helper and its
+  tests were removed; broader takeover/evidence remains post-baseline work in SYS-04.
+- Audit Skill metadata loss and propose preservation plus visible unsupported-field diagnostics.
+  Foreign triggers are not automatically active; the earlier rawFrontmatter/detail patches were
+  removed. R15 retains broader adapter work.
+- Preserve existing Session, task, permission, settings, Pages and remote Workspace authorities;
+  do not recreate the absent Assistant store during baseline cleanup.
 - Remove dead integration residue only after checking for a caller and migrating any unique current
   fact.
 - Calibrate capability/page/module documentation against the current tree.
@@ -62,9 +148,12 @@ target and recovery plan; no test Project name determines that choice.
 - Restoring any discarded v0.10.5/v0.11/v0.12 renderer or workbench.
 - Building a replacement layout shell, production canvas, document-format editor, marketplace,
   GitHub delivery product, relay service, RemoteTarget abstraction or general computer control.
-- Treating Board as a new task/session authority. Its current independent navigator may remain only
+- Treating Board as a new task/session authority. Current Craft renders Board as a Sessions view mode. A separate navigator may be provided only
   as a projection over the existing Session/Task authorities.
 - Public release, tag creation, pushing, or destructive Git history operations.
+
+R1/R2 corrections run under this active baseline contract. Their release labels do not postpone
+the baseline exit above; any remaining additive R1 work stays outside it.
 
 ## Working method
 
@@ -88,22 +177,80 @@ target and recovery plan; no test Project name determines that choice.
 | Conversation | Existing Craft Session authority and composer remain the production path. |
 | Board | Separate navigator is allowed by the current owner direction, but it projects existing Session/Task state and creates no second store or duplicate Conversations list. |
 | Pages | Local mini-app capability may remain; hosted publication is outside Fleet. Existing remote copies retain a reachable cleanup/unpublish path. |
-| Assistant | Independent `packages/shared/src/assistants` authority; never `labels/config.json`. A component with no production caller is `not implemented`. |
+| Assistant | Independent identity/loadout remains required; its former store is absent. `not implemented`; never restore identity in `labels/config.json`. |
 | Remote connection | Existing Workspace transport only. Listener, pairing and disconnect/recovery must be honest; no relay, RemoteTarget or pairing-socket file sync is added. |
-| Documents | File preview may be `usable`; direct real-format editing stays `not implemented` until a production caller and round-trip path exist. |
+| Documents | Current file preview is `wired but not visually checked`; direct real-format editing stays `not implemented` until a production caller and round-trip path exist. |
 | Canvas/layout | Production canvas and generalized pane renderer are `not implemented`. Do not revive discarded workbench or use a shell rewrite as a substitute. |
 
 ## Acceptance criteria
 
+### Working-tree disposition
+
+Every app path is individually accounted for in [`../UPSTREAM-DELTA.tsv`](../UPSTREAM-DELTA.tsv),
+checked against the current clean Craft pin. The following groups account for the remaining
+repository paths; deletions are intentional only after unique active facts and incoming links
+have been absorbed into the named canonical homes. This is a disposition rule, not permission
+to delete unrelated files or reference checkouts.
+
+| Current changed-path group | Disposition | Retained purpose / replacement |
+|---|---|---|
+| `app/**` | Restored original source; no Fleet delta | Owner-requested v0.13.4 restoration removed Fleet changes, tests, dependencies and builds. Five tracked Fleet-only files are deleted; no upstream file is missing. Reconfirm with the matching-pin gate. |
+| `AGENTS.md`, root/app `README.md`, `docs/*.md`, `docs/core/**`, `docs/specs/**` | KEEP corrected canonical contracts | Current v0.13.4 reality, one R0 exit, explicit future status, runnable entry/gates and R1/R2 acceptance. No old completion claim or second queue survives as authority. |
+| `docs/modules/**` | KEEP corrected execution contracts | One capability owner, first deliverable, data/failure/proof and exact reference route per execution section; draft proof remains a bounded action, never implementation status. |
+| Surviving `docs/design-library/**` | KEEP unique owner intent | OWNER-VOICE, current production canvas, Skill metadata, Project boundary and motion remain indexed. |
+| Deleted `docs/design-library/**` | DROP absorbed obsolete notes | Current product/suite/spec contracts absorb still-valid intent; old TeamRun/AgentSeat/layout contracts and duplicate surface notes are not executable. Git preserves tracked provenance. |
+| Surviving `docs/references/**` | KEEP unique source evidence with explicit consumers and revision limits | Current registry owns admission, refresh and adaptation routes; a historical label alone never justifies keeping a duplicate. |
+| Deleted audit/intake/gap reference documents and unused `app/config/file-size-baseline.txt` | DROP absorbed or caller-free residue | Reference registry and consuming suites own comparison/proof; the old ratchet has no caller and its stale local delta declaration is removed. |
+| Deleted quota context note | DROP absorbed duplicate | SYS-03 quota contract and reference registry own supported acquisition, semantics, source comparison and failures. |
+| `scripts/**`, `.github/workflows/agent-verify.yml` | KEEP executable verification | Matching-pin delta gate, doc ownership/link checks, reference-guide projection, isolated tests, complete source inventory, UI/localization guards and offline backend smoke. No bypass of a failing check. |
+
+Run `git status --short` plus the delta/doc gates to detect any path that no longer fits these
+groups. The tree may remain uncommitted; this accounting never grants a blanket reset or commit.
+
+### Retirement of obsolete material
+
+Cleanup is part of completion, not a separate indefinite project. A file survives only because it
+owns a current contract, provides unique evidence to a named current consumer, is required by a
+real caller/license, contains user data, or covers a named unresolved recovery risk. Age, effort
+spent producing it, a `historical` label or possible future interest is not a retention reason.
+Absorb valid intent into its existing canonical home, replace incoming links, check the relevant
+gate, and delete the superseded file. Do not move it into `archive/`, `_to_delete/`, another drive
+or a new backup merely to avoid deletion. Ordinary Git history supplies tracked provenance.
+
+| Material / exact target | Disposition and exit condition |
+|---|---|
+| Absorbed old design notes, audit reports, candidate/gap lists, dated progress and duplicate plans | Delete in the correcting slice once unique active facts and links are absorbed. Keep no tombstone document. Completed release specs follow the same rule after durable behavior/acceptance moves to current contracts/tests and no queued work still depends on them. |
+| `snapshot/pre-rebuild-2026-09-21` (`7a8f6d5fa5da`), `work/fresh-base-spine` (`ef8d531fe793`) | Retire these reference names after baseline acceptance, current changes are durably recorded, and selective intake is closed by explicit keep/fix/drop decisions. Both tips are ancestors of current `3fa9e63efdcc`; their source is already in ordinary history. Remove active-document recovery pointers in the same retirement change. No replacement archive tag. |
+| `backup/pre-r0-audit` (`4440f2cbdb6d`), `backup/pre-r0-audit-2026-09-09` (`92fbc2e97dd9`) | Each has one commit outside current history, with 302 and 323 changed paths relative to its parent respectively. Classify unique hunks, reference assets and any owner data before retirement. Absorbed or intentionally rejected implementation is not a reason to retain an entire tree. The first backup includes reference-mirror assets; the second includes obsolete `_to_delete/` reports. Names alone do not prove their bytes are redundant. |
+| `archive/musing-dubinsky-2026-09-20` (`964a93fae182`) | Retire after disposing its one unique commit: 54 paths, primarily old document link changes plus the Session watcher regression changes. Compare the test intent with the current isolated/targeted coverage; rejected link edits require no preservation copy. |
+| `archive/stash-2026-07-31-unlanded` and current `stash@{0}` (both `70f852b50bef`) | These name the same stash object, including its index and untracked parent. Review the 43 tracked-file changes and four untracked files (plan-compaction hook, optimistic Session command, RTK test, Markdown sanitizer); keep/fix/drop their intent against the rebuilt app. Retire both names after that disposition and baseline acceptance, with no replacement stash/tag. Re-resolve the stash object immediately before any drop; its ordinal is mutable. |
+| Failed/superseded build, smoke, screenshot and installer outputs created by this task | Remove when the replacement check passes or the associated failure is resolved. Keep only the latest necessary evidence while acceptance is pending. Delete only exact task-owned outputs after checking no process uses them; never use blanket cleanup of `/tmp`, owner screenshots, profiles or caches. |
+| Generated `FLEET-ADAPTATION.md` guides and copied upstream manuals | Keep one current generated guide per retained checkout; regenerate instead of versioning copies. Link existing upstream manuals instead of copying them into Fleet. Reference removal and the Hyperframes byte-preservation backup follow the registry's separate retention decision; resolve their named risk, then retire redundant copies. |
+
+The Git relations above were checked at `3fa9e63efdcc`; repeat reachability, worktree, dirty-file
+and unique-content checks before acting. This table is the concrete retirement proposal, not
+authorization to move/delete refs under R0's current no-ref-movement constraint. Obtain the exact
+owner decision at that final checkpoint; do all safe absorption first. Do not rewrite history,
+expire reflogs or force garbage collection as a substitute for removing obsolete working files.
+`main` is not automatically disposable because it is old: settle the canonical branch role first.
+
+Current/queued contracts, license/NOTICE files, active test fixtures, release notes read by the
+application, user Sessions/artifact histories and the two distinct Craft pins are not obsolete
+project records. Old Codex/Claude chats stop being implementation prerequisites once absorbed;
+deleting the owner's conversations or private histories requires a separate explicit request.
+After retirement, remove resolved inventory rows instead of growing a permanent deletion journal.
+
+### Criteria
+
 | ID | Criterion | Verified by |
 |---|---|---|
-| R0-C1 | Every current modified/untracked path belongs to an explained keep/fix/drop group; no unknown or secretly inherited group remains. A dirty tree is allowed only when every remaining entry is accounted for. | fresh `git status --porcelain`, grouped diff review |
-| R0-C2 | Security, permission, external-network and destructive paths in retained groups fail closed and expose recovery; no forbidden hosted default or silent second authority remains. | targeted boundary tests + code-path review |
+| R0-C1 | Every inherited capability group above has a disposition and current caller evidence; each modified/untracked path belongs to an explained keep/fix/drop group. A dirty tree is allowed only when every remaining entry is accounted for. | capability inventory + fresh `git status --porcelain`, grouped diff review |
+| R0-C2 | Security, permission, external-network and destructive paths in retained groups fail closed and expose recovery; no forbidden hosted default or silent second authority remains. Unreadable credentials preserve original bytes, report failure and cannot be replaced by an empty store on a later save. | targeted boundary tests, including corrupt-credential preservation + code-path review |
 | R0-C3 | Every retained feature claim has a production caller and real data path. Unmounted, deleted or test-only implementation is documented as `not implemented`; obsolete residue is removed or explicitly disconnected. | `rg` caller/existence audit + targeted tests |
-| R0-C4 | All applicable targeted tests, package typechecks, lint checks and `bun run validate:dev` pass on the integrated working tree without weakening the harness. | fresh command output |
+| R0-C4 | All applicable targeted tests, package typechecks, lint checks and the repository `bash scripts/fleet-verify.sh` pass on the integrated working tree without weakening the harness. | fresh command output |
 | R0-C5 | Electron or the cheapest equivalent production bootstrap completes a non-interactive smoke with no new fatal error; required services shut down cleanly. | smoke log + process/port cleanup check |
-| R0-C6 | `PRODUCT.md`, roadmap, capability map, matrix, page architecture, module registry and code map agree with observed code and use the fixed capability-status vocabulary. | doc diff + `scripts/validate-doc-contracts.py` + semantic searches |
-| R0-C7 | Owner has inspected changed visible surfaces. Anything not inspected remains `wired but not visually checked`; no agent upgrades it to `usable`. | owner acceptance |
+| R0-C6 | `PRODUCT.md`, roadmap, capability map, matrix, page architecture, module registry and code map agree with observed code and use the fixed capability-status vocabulary. Absorbed obsolete material is deleted; any temporary recovery item has the explicit unresolved risk and retirement condition above. | doc diff + `scripts/validate-doc-contracts.py` + semantic searches + retirement disposition |
+| R0-C7 | Owner has accepted changed visible baseline surfaces before feature additions. Unchanged, uninspected surfaces remain `wired but not visually checked`; no agent upgrades them to `usable`. | owner acceptance |
 
 ## Verification plan
 
@@ -111,9 +258,14 @@ Run from `app/` unless a command says otherwise:
 
 1. Targeted tests for each retained behavior and its relevant denied/offline/retry/recovery branch.
 2. Applicable package and Electron typechecks.
-3. `bun run lint:ui-contract` for rendered-value changes and `bun run lint:i18n:coverage` for UI copy.
-4. `bun run validate:dev` on the integrated tree.
-5. A bounded non-interactive production bootstrap/smoke followed by process and listener cleanup.
+3. Run `bun run lint:i18n:parity`, `bun run lint:i18n:sorted`, `bun run lint:i18n:coverage` and
+   `bun run lint:ui-contract` only after its restoration is approved and implemented. It is absent in the original source; report this missing check rather than modifying app merely to pass preparation.
+4. From the repository root, `bash scripts/fleet-verify.sh` on the integrated tree. Upstream
+   `validate:dev` is a subset and does not satisfy R0-C4 on its own.
+5. A bounded original-app bootstrap and, after approved corrections, a matching integration smoke.
+   The retained `scripts/smoke-baseline.mjs` expects withdrawn Fleet APIs and needs review before
+   reuse. Previous temporary runtimes/builds/profiles were removed. Prove the fresh launch profile,
+   network behavior and cleanup; a process-level HTTP guard is not an OS firewall.
 6. From the repository root, `python3 scripts/validate-doc-contracts.py` plus existence/caller and
    forbidden-product semantic searches.
 
@@ -122,7 +274,7 @@ Failures are reported as evidence. A passing subset is never described as a pass
 ## References consumed
 
 - [`../PRODUCT.md`](../PRODUCT.md) is the product authority.
-- Craft v0.10.5 is the look pin; the rolling Craft mirror and current `app/` are v0.13.3 comparison
+- Craft v0.10.5 is the look pin; the rolling Craft mirror and current `app/` are v0.13.4 comparison
   and implementation reality. Admit bounded fixes/mechanisms only.
 - [`../08-CRAFT-CAPABILITY-MAP.md`](../08-CRAFT-CAPABILITY-MAP.md) supplies per-capability
   `REUSE`/`EXTEND`/`NEW` classification.
@@ -130,11 +282,17 @@ Failures are reported as evidence. A passing subset is never described as a pass
 
 ## Risks and recovery
 
-- **Mixed authorship in one dirty tree:** inspect the current diff and callers before editing; never
-  overwrite or reset unrelated work. A pre-stabilization recovery copy exists outside the working
-  tree; it is recovery evidence, not an implementation source to merge wholesale.
+- **Unrelated work in the shared tree:** inspect the current diff and callers before editing; never
+  overwrite or reset unrelated work. The pre-rebuild
+  snapshot is recovery evidence, not an implementation source to merge wholesale.
 - **Old documentation promotes deleted code:** existence and caller checks override historical
   `landed`, `wired` and typecheck statements.
+- **Profile isolation is unproved after restoration:** original credential/docs/default-root and
+  other profile consumers need fresh inspection. Never run configuration-mutating probes on user
+  data or assume CRAFT_CONFIG_DIR covers every path.
+- **Desktop versus packaged verification:** dependencies, built outputs and the temporary Electron
+  runtime/profile were deleted on restoration. No current desktop/packaged acceptance is claimed;
+  reproduce original build and safe launch before the joint review, after preparation closes.
 - **A cleanup removes unique value:** migrate the one still-current fact first; use a recoverable
   deletion when practical and stop at the owner checkpoint for material removal.
 - **External/public effects:** prepare locally, but publication, push, release and new production
@@ -142,6 +300,7 @@ Failures are reported as evidence. A passing subset is never described as a pass
 
 ## Completion update
 
-When R0-C1 through R0-C6 have fresh evidence and R0-C7 is resolved or explicitly left as the owner
-visual gate, update the R0 roadmap row and activate exactly one next release. Do not create a dated
-progress report, a baseline tag requirement, or another execution queue.
+When the baseline exit above is satisfied, update the R0 roadmap row, reconcile the R1/R2 criteria
+already closed by its corrections, and activate the next bounded contract. Do not create a dated
+progress report, a baseline tag requirement, or another execution queue. Passing engineering checks
+with unresolved visible baseline acceptance does not open the feature gate.

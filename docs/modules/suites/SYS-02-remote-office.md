@@ -1,9 +1,12 @@
 # SYS-02 — Remote engineering office
 
-**Rows:** EXEC-05, EXEC-07, EXEC-09, EXEC-12, EXEC-13, INFO-01, INFO-08. **Owner:** remote target,
+**Owned execution rows:** EXEC-07, EXEC-09, EXEC-11, EXEC-13, EXEC-15.
+**Consumed rows:** EXEC-05, INFO-01, INFO-08. **Owner:** remote target,
 runtime, Git/worktree and delivery adapters. **Depends on:** SYS-01 identity, policy, action and
 run contracts. **Authority:** ExternalTargetRef, Grant and adapter health.
-**Development order:** R14, then R16/R18 conditional closure.
+**Development order:** R3-era read-only diff, R14 worktree/remote delivery, R16 local-app Component.
+R16 general Core control stays excluded; the owner-requested local-app Component below is
+queued under its bounded R16 contract, not an activated release. R18 only closes its named execution/layout gaps.
 **Craft base:** existing Workspace-routed server transport, Session/Task lifecycle, permission path,
 filesystem tools and process execution; this suite adds scoped external-target/worktree adapters,
 not a remote control plane.
@@ -21,12 +24,170 @@ offline target, expired grant and reconnect recovery.
 
 ## Acceptance and references
 
-Use `EXEC-07-A`, `EXEC-09-A`, `EXEC-13-A`, `INFO-01-A`, `INFO-08-A`. OpenHands is the standing
-executor reference and Codex the protocol comparison; Craft remains the worktree/process starting
-point. Historical lease evidence may be reopened temporarily only for a named uncovered failure.
+Use `EXEC-07-A`, `EXEC-09-A`, `EXEC-13-A`, `INFO-01-A`, `INFO-08-A`. OpenChamber supplies Git/GitHub comparison; Orca and Codex supply bounded worktree/protocol
+candidates. Current Craft is the process/Session starting point. Older OpenHands executor findings
+are historical and do not describe the current Agent Canvas checkout. Historical lease evidence may be reopened temporarily only for a named uncovered failure.
 A successful connection alone is not `usable`.
 
 ## Stop conditions
 
 Stop on shared worktree mutation, unscoped credentials, hidden remote persistence, implicit merge,
 or a second task/run store.
+
+## Messaging boundary (R14 / EXEC-11)
+
+Reuse Craft messaging, credential, settings and Session owners. Authenticate/deduplicate inbound
+provider events, enforce the configured sender/scope rules before routing, and treat content as
+external data rather than permission. An explicitly authorized remote user command still passes
+normal tool policy. Outbound sends bind recipient, content, attachment versions and grant; draft
+creation is not sending. Record provider delivery identity, reconcile unknown delivery before retry,
+and stop new traffic on disable/revoke. Attachments recheck scope, size and sensitivity; failures
+preserve the draft and never leak credentials. There is no second contact/chat database or implicit
+bulk-outreach capability. EXEC-11-A owns the real adapter proof.
+
+## Local-app Computer Use contract
+
+**Owner request:** investigate a plugin for operating specified local applications for interface
+development and office work. **Status:** `not implemented`; R16/EXEC-15 is queued after R0
+and the Component host, with production dependency/signing admission before shipping the helper.
+The bounded Component replaces the old whole-R16 exclusion; general Core control and a second OS
+sandbox remain excluded. Source/product comparisons are
+in the [reference registry](../../references/REFERENCE-REGISTRY.md#local-app-control-comparison).
+
+**Recommendation:** an optional Component contributes typed tools and a small control/status
+surface to the existing Session. The host's permission broker owns authorization; an on-demand,
+native helper performs observation/input for the permitted application/window, with signing and
+distribution requirements declared per platform. Windows, macOS and Linux are desktop targets
+(owner, 2026-09-22); the first local probe may run on this Mac but cannot reduce product scope or
+establish another platform's support. Each adapter declares its own permission, observation/input,
+foreground/background, packaging and cleanup constraints. Do not import another agent loop, model account, task store
+or complete desktop application. MCP can expose the same host-governed adapter to a runtime that
+needs it; MCP is a transport, not the security boundary.
+
+| Layer | Proposed responsibility | Comparison / rejection |
+|---|---|---|
+| Route selection | Prefer the software's supported document API/CLI/connector; use the existing browser for web targets, and local-app control for a GUI-specific gap. | Codex and Claude separate structured integrations, browser use and app control. Cursor Design Mode establishes a web-development loop, not arbitrary desktop-app control. |
+| Observation | Return application identity, process identity, exact window, snapshot ID/time, geometry/scale, AX elements and a screenshot when needed. | Orca provides native observation and input providers; Peekaboo explicitly tracks exact-window/process-start identity. Region screenshots cannot claim source-code identity. |
+| Actions | Resolve an element only against a fresh matching observation. Prefer semantic AX actions; use coordinates only with current geometry. | Peekaboo mutation receipts distinguish pre-dispatch failure, dispatch and unknown outcome. UI-TARS' operator split is useful, but coordinate execution alone does not prove target ownership or background delivery. |
+| Permission | Separate OS accessibility/capture consent, Fleet app/window scope and authorization of the actual effect. | A manifest requests capability, never grants it. Do not authorize another app because it became foreground; app permission does not approve every send/delete/purchase. |
+| Lifecycle and takeover | One active input owner for a target; bounded queue, explicit stop/takeover, cancellation generation, fresh observation before resume, helper cleanup on disable/crash. | Orca's queue prevents an expired waiting request from executing later. Startup abort or a paused agent loop alone does not cancel a delivered OS action. |
+| Evidence and recovery | Record typed result and target attribution through the existing timeline; store captures through ArtifactRef. | An accepted OS input is not proof that the document saved or message sent. Unknown outcome requires observation before retry. Plugin removal revokes execution and retains user-owned artifacts. |
+
+For macOS, compare a thin Orca-style native provider with a bounded Peekaboo CLI/service adapter;
+prefer the former integration shape and the latter's target/freshness invariants. A measured spike
+must decide extraction versus external binary reuse, including signing, binary size, startup and
+background behavior. Cua's VM/provider stack is a separate isolation option, not a dependency for
+this local-app task. UI-TARS is a fallback action/coordinate comparison, not a second Fleet agent.
+
+The user sees the selected app/window, requested action, current control owner and Stop/Take over
+in the existing task. Input that requires foreground control must say so before acquiring it;
+background operation is declared per supported action, never promised for every application.
+Screenshots may contain private data: send only task-relevant evidence through the selected model
+connection, with no independent telemetry or hosted relay.
+
+First proof must use a disposable local test app and then one named office app: observe → act →
+verify → stop/revoke. Include permission denial, ambiguous windows, moved/closed/restarted target,
+stale AX indices, multiple displays/DPI, queued cancellation, concurrent user input, helper crash
+and an uncertain write. Restoring clipboard state must not overwrite a newer user clipboard.
+No unattended control, automatic system-permission approval or lock-screen bypass is part of this
+contract. PRODUCT/R16/EXEC-15 carry this same scope; the execution section below owns the first proof.
+
+## Desktop platforms and later phone connector
+
+Windows/macOS/Linux compatibility applies to the host, files and paths, credentials, process
+lifecycle, browser, native controls, packaging and recovery. Record per-platform evidence rather
+than turning unavailable test hardware into a removed target. Native input and Linux display-server
+support need explicit probes; the shared interface cannot promise identical OS behavior.
+
+The owner adds a later Orca-like phone connector under R14/EXEC-09. The proposed thin client uses
+the existing host Session/Workspace/permission route, with device pairing, visible scope, revoke,
+reconnect and host/client version compatibility. Inspect view/follow-up/approval/stop and artifact
+preview flows before defining the first mobile deliverable. Desktop runtimes remain the execution
+owners; a phone disconnect must not cancel host work or disconnect another peer.
+
+Orca comparison: `software/orca` at `5064469687b59ca5203276ee52db6ce38cac877a`,
+`src/preload/api/mobile-api.ts` exposes pairing QR/URL, device revocation, runtime grants, direct
+endpoint and relay state; `docs/reference/remote-wire-compatibility.md` defines mixed-version
+negotiation. This is bounded interface/document evidence, not a complete transport/security audit.
+Its relay route is not a demonstrated zero-infrastructure direct connection. Mobile framework,
+push, exposure/relay options and iOS/Android packaging need comparison before selection; no second
+Session store, required Fleet account or relay service is implied by this owner request.
+
+## Refreshed local-app implementation evidence
+
+Kimi's current plugin guide documents separate macOS Accessibility/Screen Recording consent and
+Windows input that may need foreground mouse/keyboard control. It is product/installation evidence,
+not proof that the distributed helper implementation is available for extraction. Add these cases
+to EXEC-15's platform declaration and first proof; do not promise universal background control.
+Codex's app-server cancellation documentation also separates cancel acknowledgement from the
+original native operation's terminal result. Stop revokes new dispatch and fences late results;
+an already-delivered effect remains unknown until observation reconciles it. Source paths and
+revision limits are in the [refresh record](../../references/REFERENCE-REGISTRY.md#refresh-mechanisms-and-counter-evidence).
+
+## Execution contracts
+
+These sections own the next step for the listed capability IDs. Read the
+[common execution contract](../../14-MODULE-ARCHITECTURE.md#executable-next-step-contract)
+and the release/spec anchor in [PACKET-INDEX](../PACKET-INDEX.md). Gates do not open merely
+because this packet has instructions. Planned regression targets below do not exist yet unless
+implementation has added them; extend a matching existing behavioral test instead of duplicating it.
+
+### Execution EXEC-07
+
+**Worktree isolation**
+
+- **Next:** `IMPLEMENT` — R14 after R6; Git safety precedes isolation.
+- **Sources:** [`packages/shared/src/workspaces/storage.ts`](../../../app/packages/shared/src/workspaces/storage.ts); [`packages/server-core/src/sessions/SessionManager.ts`](../../../app/packages/server-core/src/sessions/SessionManager.ts); [`packages/shared/src/agent/core/pre-tool-use.ts`](../../../app/packages/shared/src/agent/core/pre-tool-use.ts).
+- **Deliver:** Resolve repository identity and worktree occupancy, create agent-managed isolation only for requested work, and expose apply/discard/review through the Git adapter.
+- **Data:** Existing Project/Session stores references to repository/worktree identity and ownership. Git remains the branch/index/file authority; worktree is not a user-facing execution location.
+- **Failure:** Dirty/occupied worktree is not reset or deleted. Cleanup removes only an owned idle checkout after preserving outputs; no agent moves user HEAD/index/ref/stash.
+- **Proof:** EXEC-07-A — Disposable repo with dirty main checkout, occupied branch, failed creation and restart; isolation/cleanup is repeatable and original HEAD/index/untracked bytes are unchanged. Planned regression/probe target relative to `app/`: `packages/shared/src/workspaces/__tests__/fleet-exec-07.test.ts`. After adding the target, run from `app/`: `bun test packages/shared/src/workspaces/__tests__/fleet-exec-07.test.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** OpenChamber repository/fork identity and serialized Git operations; Craft selected-workspace context. Reject wholesale Git-client imports. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).
+
+### Execution EXEC-09
+
+**Remote and cloud execution**
+
+- **Next:** `IMPLEMENT` — R14; R0 first hardens inherited transport.
+- **Sources:** [`packages/server-core/src/transport/server.ts`](../../../app/packages/server-core/src/transport/server.ts); [`apps/electron/src/transport/routed-client.ts`](../../../app/apps/electron/src/transport/routed-client.ts); [`packages/shared/src/workspaces/storage.ts`](../../../app/packages/shared/src/workspaces/storage.ts).
+- **Deliver:** Extend the existing routed client/server with explicit device identity, expiring pairing and scoped grants; show local/cloud targets as existing Workspace bindings.
+- **Data:** One host connection/grant owner records device, Workspace/resource scope, endpoint, expiry and revision. Per-request admission occurs on host; client filter is not authorization.
+- **Failure:** Disconnect/revoke rejects queued and future dispatch. In-flight effects reconcile on reconnect. Unknown host identity cannot silently reuse trust or credentials.
+- **Proof:** EXEC-09-A — Two test clients and two roots; wrong token, forged Workspace, expired/revoked grant, disconnect-after-dispatch and host restart all preserve scope and truthful outcomes. Planned regression/probe target relative to `app/`: `packages/server-core/src/transport/__tests__/fleet-exec-09.test.ts`. After adding the target, run from `app/`: `bun test packages/server-core/src/transport/__tests__/fleet-exec-09.test.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** Craft routed-client/server first; Cindy/OpenChamber connection lifecycle only. No vendor relay, mandatory hosted account or second remote task system. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).
+
+### Execution EXEC-11
+
+**Messaging and channel adapters**
+
+- **Next:** `PROVE` — R14 after connection/grant path.
+- **Sources:** [`packages/shared/src/sources/storage.ts`](../../../app/packages/shared/src/sources/storage.ts); [`packages/shared/src/sources/token-refresh-manager.ts`](../../../app/packages/shared/src/sources/token-refresh-manager.ts); [`packages/server-core/src/sessions/SessionManager.ts`](../../../app/packages/server-core/src/sessions/SessionManager.ts).
+- **Deliver:** Choose one explicitly requested messaging connector and prove receive → scoped Session → draft → authorized send. Use its official API/connector before GUI control.
+- **Data:** Source owns credential/scope; adapter binds channel/thread/external message IDs to an existing Workspace/Session. Outgoing operation IDs distinguish retry from a new message.
+- **Failure:** Duplicate webhook, revoked credential, offline queue and unknown-send result reconcile using provider receipts before retry. Disconnect leaves local work intact.
+- **Proof:** EXEC-11-A — Synthetic provider fixture covers dedup/order/rate limit and ambiguous send; authenticated real send is only to an explicitly authorized test recipient. Planned regression/probe target relative to `app/`: `scripts/probes/exec-11.ts`. After adding the target, run from `app/`: `bun run scripts/probes/exec-11.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** Craft Sources/token refresh; Hermes/OpenClaw channel evidence is historical and cannot import their gateway or autonomous outreach policy. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).
+
+### Execution EXEC-13
+
+**Git repository, branch and PR review delivery**
+
+- **Next:** `IMPLEMENT` — R3 diff ladder; R14 full delivery.
+- **Sources:** [`packages/shared/src/workspaces/storage.ts`](../../../app/packages/shared/src/workspaces/storage.ts); [`packages/server-core/src/handlers/rpc/sessions.ts`](../../../app/packages/server-core/src/handlers/rpc/sessions.ts); [`packages/shared/src/agent/core/pre-tool-use.ts`](../../../app/packages/shared/src/agent/core/pre-tool-use.ts).
+- **Deliver:** Start with read-only working diff, then explicit apply/discard, commit and PR operations as required by C4. Validate exact repository/source/tracking/fork identity for every PR.
+- **Data:** Git owns files/index/refs. Session evidence references repo, base/head and delivery receipt; review UI is a projection, not an issue/Task authority.
+- **Failure:** Stale base/dirty conflict blocks destructive action; fetch/auth failure is visible. A lost create-PR response is reconciled before retry; no automatic push/merge.
+- **Proof:** EXEC-13-A — Disposable fork/upstream pair, same branch name in two repos, stale diff and dirty files; demonstrate correct PR ownership and no unauthorized Git mutation. Planned regression/probe target relative to `app/`: `packages/shared/src/workspaces/__tests__/fleet-exec-13.test.ts`. After adding the target, run from `app/`: `bun test packages/shared/src/workspaces/__tests__/fleet-exec-13.test.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** OpenChamber packages/web/server/lib/github/pr-status.js and routes.js; preserve its useful identity checks while rejecting whole-server import. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).
+
+### Execution EXEC-15
+
+**Outside-tool execution boundary**
+
+- **Next:** `PROVE` — R16 bounded local-app Component after R0 and foundation.
+- **Sources:** [`packages/server-core/src/services/privileged-execution-broker.ts`](../../../app/packages/server-core/src/services/privileged-execution-broker.ts); [`packages/shared/src/agent/core/pre-tool-use.ts`](../../../app/packages/shared/src/agent/core/pre-tool-use.ts); [`apps/electron/src/main/browser-pane-manager.ts`](../../../app/apps/electron/src/main/browser-pane-manager.ts).
+- **Deliver:** After the owner-reviewed slice opens, prove an optional selected-app Component with platform-specific on-demand adapters for Windows/macOS/Linux. A local macOS probe is one evidence step only. Prefer existing structured API and BrowserPane routes; declare native packaging/signing constraints before shipping.
+- **Data:** Host permission path owns app/window/action grants. Observation identifies app, PID/start identity, window, snapshot/time and geometry; input request binds that snapshot and ownership generation. No general Core controller or second sandbox.
+- **Failure:** Stale/ambiguous target fails before input; Stop revokes queued dispatch and requires fresh observation before resume. Delivered OS input can have unknown outcome; verify rather than blindly replay.
+- **Proof:** EXEC-15-A — Disposable local app then one authorized office app: observe/act/verify/stop/revoke; test moved/restarted window, multi-display scale, denied AX/capture, helper crash and uncertain save. Planned regression/probe target relative to `app/`: `scripts/probes/exec-15.ts`. After adding the target, run from `app/`: `bun run scripts/probes/exec-15.ts`; apply the isolated-profile rule for configuration writes.
+- **Reference:** Orca native provider shape and Peekaboo exact-target/mutation-receipt invariants; UI-TARS coordinate fallback only. Compare native helper versus bounded CLI adapter under the local-app proof below. Source locks and limits: [reference registry](../../references/REFERENCE-REGISTRY.md#bounded-source-review--2026-09-21).

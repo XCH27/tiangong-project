@@ -7,7 +7,7 @@ the same place. Fork of Craft Agents (Apache-2.0). What Fleet is and is not:
 Project vision and the Harness architecture are documented in
 [`docs/WHITEPAPER.md`](docs/WHITEPAPER.md).
 
-> Craft supplies the look and the agent/runtime **base** (currently **v0.13.3**). Cindy supplies
+> Craft supplies the look and the agent/runtime **base** (currently **v0.13.4**). Cindy supplies
 > how features are implemented and how surfaces talk to the backend — **capabilities, not
 > typesetting**. OpenChamber supplies Git/GitHub. Canvas, documents and video are Fleet's own.
 
@@ -31,83 +31,50 @@ ran no typecheck, i18n or doc-contract gate at all.
 | What Fleet is | [`docs/PRODUCT.md`](docs/PRODUCT.md) |
 | What integrates next | [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md) — one ACTIVE row |
 | Capability status | [`docs/08-CRAFT-CAPABILITY-MAP.md`](docs/08-CRAFT-CAPABILITY-MAP.md) |
+| Implement a specific capability | [`docs/modules/PACKET-INDEX.md`](docs/modules/PACKET-INDEX.md) → its unique `Execution <ID>` contract |
+| Adapt a reference project | [`Per-project adaptation routes`](docs/references/REFERENCE-REGISTRY.md#per-project-adaptation-routes) → source lock/files + Fleet target contract |
 
 ## Repository layout
 
 | Path | What it is |
 |---|---|
-| `app/` | Runnable application. Craft **v0.13.3** base plus Fleet work on top. |
+| `app/` | Unmodified official Craft **v0.13.4** source; dependencies/build outputs were removed on restoration. |
 | `docs/` | Product authority. [`PRODUCT.md`](docs/PRODUCT.md) wins disagreements. |
-| `源码参考/` | Read-only reference checkouts (`/Volumes/AIGC/天工参考/源码参考/`). Not product code. |
+| `源码参考/` | Reference source checkouts (`/Volumes/AIGC/天工参考/源码参考/`). Source stays unchanged; generated `FLEET-ADAPTATION.md` files provide owner-requested local guidance. Not product code. |
 | `UI参考/` | UI kits only. Not product authority. |
 
-## Current state (honest)
+## Current implementation
 
-- **Base:** `app/` tracks Craft Agents OSS **v0.13.3** (rolling pin `源码参考/software/craft-agents-oss` at tag `v0.13.3`). v0.10.5 remains a *look* measurement pin, not a shell to restore.
-- **Upstream is ahead: v0.13.4 exists and we are not on it.** It is not a patch release — it ships
-  agent steering / mid-stream queueing, context-window usage and a composer viewport rewrite as
-  upstream code, none of which this fork has. **Do not hand-build those three.** Measured delta and
-  rebase cost: the P2 note in [`docs/02-DECISIONS.md`](docs/02-DECISIONS.md). Sequencing: take the
-  tag *after* `fleet-baseline-r0`, never before. `scripts/init.sh` warns when the pin falls behind.
+`app/` and the rolling Craft pin are **v0.13.4**. The 2026-09-21 rebuild (`5a510cf1d`,
+corrected by `bc7eb0eb7`) replaced the previous Fleet implementation. Its recoverable source is
+`snapshot/pre-rebuild-2026-09-21` (`7a8f6d5fa`). Historical passing tests and feature claims do not
+apply to the rebuilt tree. Review individual mechanisms before readmitting them; do not merge the
+snapshot over `app/`.
 
-### Branches (one working line)
+- Craft's Session/Workspace/runtime, Pages, browser, settings, i18n and panel stack are inherited.
+- Fleet's Component host, Assistant store, generalized layout, per-device remote grants, run-target
+  picker and TE1 cache-economy helpers are **`not implemented`** in
+  this tree. The [capability map](docs/08-CRAFT-CAPABILITY-MAP.md) identifies surviving entry points.
+- The owner's subsequent restoration removed Fleet code changes. Project consolidation, local
+  export/help, relay changes and update/publication/telemetry corrections are **`not implemented`**.
+  Prior tests and temporary desktop walkthroughs are withdrawn as current evidence.
+- Windows, macOS and Linux are desktop targets; a later Orca-like phone connector extends the remote
+  connection scope. Current work is documentation/preparation, then a joint original-Craft review
+  before concrete correction slices are approved. See WORK-ORDER; do not launch or patch early.
+- R0 is the single ACTIVE release. [WORK-ORDER](docs/WORK-ORDER.md) gives the next bounded slice;
+  the local Component/panel foundation still precedes domain Components and does not wait for memory.
+- [UPSTREAM-DELTA.tsv](docs/UPSTREAM-DELTA.tsv) declares actual file differences and why they exist.
+  The delta and component-reference checks complement tests; the reference heuristic does not prove
+  that a component mounts or a feature works.
+- `bash scripts/fleet-verify.sh` is the repository integration gate. Upstream `validate:dev` alone
+  runs only a selected shared-test subset and must not be reported as full-suite evidence.
 
-| Branch | What it is |
-|---|---|
-| `work/craft-0.12-rebase` | **The working line.** HEAD. The name is historical — the tree is v0.13.3, not v0.12.0. |
-| `work/fresh-base-spine` | Ancestor of the working line (0 unique commits). The R0 work done *on its renderer* is closed; do not cut `fleet-baseline-r0` there. |
-| `main` | Ancestor, 73 commits behind, last moved 2026-07-26. Not a release line. |
-| `backup/pre-r0-audit-2026-09-09` | **Keep.** The last tracked mirror content is reachable here (`AGENTS.md` preflight cites it). |
-| `backup/pre-r0-audit` | **Keep.** Older dirty-tree snapshot, 2026-07-20. |
-| `archive/musing-dubinsky-2026-09-20` (tag) | A removed worktree's final state (2157 files). 53 of them are the output of a broken automated link rewrite; archived, not adopted. The worktree itself was 1.8 GB and was deleted on 2026-09-21. |
-| `archive/stash-2026-07-31-unlanded` (tag) | **43 files of work that was never landed** — see below. |
+## Working line
 
-### Unlanded work you would otherwise never find
-
-`git stash` has held **43 files, +1006/−730**, since **2026-07-31**, based on `f8a340021` on
-`work/fresh-base-spine`. Nothing in this repository mentioned it until 2026-09-21, and a `git stash
-clear` would have destroyed it silently, so it is now also reachable as the tag
-`archive/stash-2026-07-31-unlanded`.
-
-It is **not** already in the tree: spot-checked by grepping for the double-settle guard it adds to
-`app/apps/cli/src/client.ts`, which is absent from the current branch. It touches `SessionManager`,
-`transport/server.ts`, `claude-agent.ts`, `pre-tool-use.ts`, `search.ts`, `mode-manager.ts`,
-markdown/HTML-preview components and more, and every file it touches still exists.
-
-**It predates the 2026-09-11 v0.13.3 rebase**, so applying it wholesale will conflict heavily and
-must not be attempted as one operation. Treat it as a salvage list to review hunk by hunk after the
-`fleet-baseline-r0` tag exists, not as a branch to merge. Inspect with:
-
-```bash
-git stash show -p stash@{0}          # or: git show archive/stash-2026-07-31-unlanded
-```
-
-  Every branch except the two `backup/*` snapshots is an ancestor of the working line, so there is
-  nothing to merge — consolidation here means naming, not integration.
-- **Board and conversation are separate navigators.** `/board` is not a session-list view mode.
-- **Canvas is `not implemented`.** Do not put an empty pane in the default window. When it is built, the reference is Canvasight's same-board Pages/Tasks/Assets.
-- **Assistants** exist as a domain (`packages/shared/src/assistants`) and are **not** on the chrome yet. A kit is not a label.
-- **ACTIVE release is R0** (Craft v0.13.3 baseline stabilization) — see
-  [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md), which owns release order. R15 is `DEP`, not ACTIVE.
-  Whatever R0 retains, it is not rearranging Craft chrome.
-- R0 on the discarded `work/fresh-base-spine` renderer is closed. Do not cut `fleet-baseline-r0` on that tree.
-- **The working tree is dirty on purpose and R0 is the job of explaining it.** The count changes as
-  intake and review work lands, so never treat it as a completion percentage. Reproduce the split
-  against the rolling Craft pin before touching it:
-
-  ```bash
-  U=源码参考/software/craft-agents-oss
-  git status --porcelain | sed 's/^...//' | while read p; do
-    rel=${p#app/}; [ -f "$U/$rel" ] && cmp -s "$p" "$U/$rel" && echo "INTAKE $p" || echo "FLEET  $p"
-  done
-  ```
-
-  Only the non-intake paths carry Fleet decisions worth reviewing. Do not reset or overwrite the
-  tree to make it look clean.
-- **P6 is not finished, whatever the R1 row used to say.** 62 zh-Hans strings still say 工作区 beside
-  50 saying 项目; the top bar switches Workspace while the sidebar row named 项目 only filters. See the
-  R1 row in [`docs/05-ROADMAP.md`](docs/05-ROADMAP.md) and OV-008 in
-  [`docs/design-library/OWNER-VOICE.md`](docs/design-library/OWNER-VOICE.md).
+`work/craft-0.12-rebase` is the current working line; its historical name does not identify the app
+version. Use `git status --short` and `git worktree list` for live state. Old branches and snapshots
+have explicit [retirement conditions](docs/specs/R0-baseline-audit.md#retirement-of-obsolete-material),
+not a standing role in development. New agents follow current contracts without reopening old chats.
 
 `源码参考/` and `UI参考/` are gitignored symlinks. Preflight: [`AGENTS.md`](AGENTS.md).
 

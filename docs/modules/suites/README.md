@@ -7,13 +7,14 @@ shared contracts remain owned by SYS-01 and capability truth remains in `REGISTR
 | Suite | Packet | Development order | First executable proof |
 |---|---|---|---|
 | SYS-01 | [Agent operating system](SYS-01-agent-os.md) | R0–R6; R9/R14–R18 integration | one governed action from human and Agent callers |
-| SYS-02 | [Remote engineering office](SYS-02-remote-office.md) | R14; R16/R18 closure | connect → isolated worktree → review → revoke |
+| SYS-02 | [Remote engineering office](SYS-02-remote-office.md) | R14 remote; R16 local-app Component; R18 closure | connect → isolated worktree → review → revoke |
 | SYS-03 | [Token/memory/skills](SYS-03-context-economy.md) | TE1/R3, R9, R15, R17 | same trace on/off with quality and usage evidence |
-| SYS-04 | [Browser/evidence](SYS-04-browser-evidence.md) | R3/R5, R16 | capture with policy, provenance and denied state |
+| SYS-04 | [Browser/evidence](SYS-04-browser-evidence.md) | R3/R5; local-app control belongs to SYS-02 | capture with policy, provenance and denied state |
 | SYS-05 | [Design/web/spatial](SYS-05-design-spatial.md) | R7, R10, R13, R18 | native artifact projected to canvas and preview |
 | SYS-06 | [AIGC/media](SYS-06-media-production.md) | R11–R13 | import → edit → cancellable render → delivery |
 | SYS-07 | [Workflow/delivery](SYS-07-workflow-delivery.md) | R8, then R14 adapter consumption | completed action chain promoted to typed DAG |
-| SYS-08 | [Skill/plugin/MCP marketplaces](SYS-08-marketplaces.md) | R15 | verified package install, rollback and revocation |
+| SYS-08 | [Skill/plugin/MCP marketplaces](SYS-08-marketplaces.md) | local host after R0, then R15 distribution | verified package install, rollback and revocation |
+| SYS-09 | [Workspace compositions](SYS-09-workspace-compositions.md) | foundation after R0; advanced R18 | registered Files/Notes consumers, scoped activation and layout recovery |
 
 ## Assignment rule
 

@@ -29,6 +29,6 @@ for gate in check-upstream-delta check-orphaned-components; do
   fi
 done
 
-# Staged typecheck + i18n gates (same commands husky ran).
-cd "$root/app"
-sh .husky/pre-commit
+# Staged typecheck + i18n. Kept at the repository root: app/ stays identical to the upstream pin,
+# and upstream's OSS export ships none of the staged-check scripts its package.json names.
+bash "$root/scripts/staged-checks.sh"

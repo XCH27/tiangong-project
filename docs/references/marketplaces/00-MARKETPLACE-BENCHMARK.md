@@ -40,9 +40,9 @@ The implementation must still pass the source/license/same-task/deletion tests i
 | Agent Skills `38a2ff82958a` | `docs/specification.mdx` and client guidance define `SKILL.md`, optional resources and staged progressive disclosure | reuse the open format and on-demand loading; apply Fleet policy and receipts around executable resources |
 | MCP Registry `29e32c39dcb5` | typed server metadata, namespace/auth verification, version transactions, validation and integration tests | catalog/publication adapter only; do not equate registry presence with installation trust |
 
-These two are the standing open-source references. Vendor marketplaces above remain product behavior
-evidence, not source architecture. Community registries and smaller Skill managers are not retained
-unless a later concrete gap survives both references and a local Craft extension.
+These two supply the format/registry mechanisms evaluated here. Vendor marketplaces above remain product behavior
+evidence, not source architecture. Other references keep their owner-controlled retention; intake still needs a concrete gap and a
+comparison with a small Craft extension.
 
 ## Verified on-disk interop contract (2026-09-21)
 
@@ -79,15 +79,15 @@ Three properties of this design matter more than the table:
    directory conventions above.** Any design that expects the neutral manifest to describe tools,
    permissions or hooks is misreading it.
 
-### A marketplace is a Git repository, not a service
+### A marketplace can use an existing Git repository
 
 `marketplace.json` (or `.claude-plugin/marketplace.json`) is a catalog listing
 `{name, version?, description?, source}`, where `source` is one of
-`path` · `github` · `git` · `git-subdir` · `url`. There is no central server, no account, and no
-API. OpenClaw additionally reads the user's existing `~/.claude/plugins/known_marketplaces.json`,
+`path` · `github` · `git` · `git-subdir` · `url`. This catalog shape needs no Fleet-operated server/account; remote Git hosting may still require
+its own authorized credentials. OpenClaw additionally reads the user's existing `~/.claude/plugins/known_marketplaces.json`,
 so a user's Claude catalogs carry over without re-entry.
 
-**This is the shape P8 requires.** A Fleet marketplace needs no Fleet-operated service to exist; a
+**This is one local-first shape P8 permits.** A Fleet marketplace needs no Fleet-operated service to exist; a
 catalog is a repo the user or a team already controls. Guardrails observed in the same file, worth
 copying rather than re-deriving: a 256 MB archive ceiling, a 16 MB catalog-manifest ceiling, a
 256 KB neutral-manifest ceiling, hardlink rejection on manifest reads, immutable-commit-ref checks
@@ -101,10 +101,9 @@ Checked against the current tree on 2026-09-21:
   (`name`, `description`, `globs?`, `alwaysAllow?`, `icon?`, `requiredSources?`) across three scopes
   (`~/.agents/skills`, workspace, `{project}/.agents/skills`). **Skills are REUSE/EXTEND, not NEW** —
   and `.agents/` is already the cross-product convention, shared with ZCode.
-- `app/packages/shared/src/components/types.ts` `ComponentManifest` already carries `skills[]`,
-  `mcpServers[]`, `contributions[]`, `requestedPermissions[]`, `integrity`, `license`, `publisher` —
-  a **superset** of all four foreign manifests. The gap is not the model; it is the absence of an
-  adapter layer and of `bundleFormat` provenance.
+- The former `app/packages/shared/src/components/types.ts` and `ComponentManifest` were removed
+  by the v0.13.4 rebuild. They do not establish a current loader or package adapter. P11/R18 own
+  the target and must derive the contract through real consumers after baseline exit.
 - `app/packages/shared/src/sources/` already models `mcp` | `api` | `local` connections with OAuth.
   A bundle's `mcpServers` should install as Sources, not as a second connection authority.
 
@@ -125,6 +124,6 @@ Checked against the current tree on 2026-09-21:
 - A package with a new write tool cannot silently update an existing grant.
 - A dependency conflict leaves the current loadout untouched and explains the resolution.
 - A failed install/update restores the previous package and emits a recovery event.
-- Uninstall removes runtime availability, revokes credentials and leaves historical evidence intact.
+- Uninstall removes runtime availability, revokes package-owned grants/credentials while preserving shared connections and historical evidence.
 - An offline local package can be installed from a verified file or Git checkout without a catalog.
 - A plugin detail view expands into independent skill, MCP, subagent, hook and rule permissions.

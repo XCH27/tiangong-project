@@ -179,8 +179,8 @@ human starts capture → semantic actions are recorded
 ```
 
 Raw coordinates, screenshots, secrets, cookies and personal data are not the default Skill input.
-If a semantic Component command exists, replay uses it; computer-use coordinates are a declared
-fallback with fresh environment observation. A human demonstration can teach a Skill, but cannot
+If a semantic Component command exists, replay uses it; coordinate actions are a declared fallback inside built-in browsing or a specifically authorized
+local-app Component job (R16/EXEC-15), with fresh observation; no universal Core controller is introduced. A human demonstration can teach a Skill, but cannot
 silently modify the runtime, grant permission, or become a global rule without review.
 
 ### Work trajectory is a first-class projection
@@ -251,8 +251,8 @@ For the common design formats in scope:
   available), with a fidelity report; direct `.fig` editing is not promised without a verified
   parser and license path.
 - Photoshop PSD/PSB and Illustrator AI are adapter targets. Layer/text/mask/vector preservation is
-  claimed only per tested feature subset. Flattened image/PDF/SVG import remains a valid visual
-  fallback, always marked as such.
+  claimed only per tested feature subset. A flattened image is a visual fallback. PDF/SVG may retain an editable subset when an adapter
+  proves it; the extension alone does not decide fidelity.
 - Documents use the real format owner and a narrow-patch/save-back path. A preview or conversion is
   not an editing claim.
 
@@ -286,7 +286,8 @@ discover → inspect manifest/dependencies/license → trust decision
 
 Updates create a new revision and reopen review when tools, MCPs, dependencies or requested effects
 change. Failed activation rolls back the Component runtime while preserving core records and native
-artifacts. Uninstall revokes runtime availability and credentials before removing staged files.
+artifacts. Uninstall revokes runtime availability and package-owned grants/credentials before removing staged
+files; shared connections remain while referenced.
 
 Failure recovery stays at or below the radius of the failure: one panel failure does not tear down
 the Session; one Component failure does not disable the Workspace; a Workspace transport failure
@@ -302,62 +303,15 @@ does not corrupt local history. Every refusal names its reason and recovery path
 - not a second Session, Task, Permission, Settings or memory authority;
 - not a promise that every external format, renderer or model capability is fully compatible.
 
-## 12. Development order
+## 12. Execution and implementation boundary
 
-The foundation comes before a large domain catalog:
+Correct and accept the inherited Craft baseline before adding capabilities. Then build the
+Component/panel host before domain Components and external distribution. The single exit is in
+[`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md); order belongs to
+[`05-ROADMAP.md`](05-ROADMAP.md), current work to [`WORK-ORDER.md`](WORK-ORDER.md), and durable
+choices to [`02-DECISIONS.md`](02-DECISIONS.md). This whitepaper supplies product explanation,
+not a second queue or decision ledger.
 
-1. Stabilize and account for the current Craft v0.13.3 baseline.
-2. Prove Workspace/Session context isolation with synthetic fixtures; test content and example names
-   are not product requirements.
-3. Connect existing Files and Notes to one Component/Panel registry.
-4. Implement scoped activation, health, disposal and user-controlled in-window panel layout.
-5. Add the first small native Component and measure startup, context and recovery behavior.
-6. Add document, design, video and canvas Components one at a time, each with shared human/Agent
-   commands and ArtifactRef/Job/Permission evidence.
-7. Add migration adapters and format-specific round-trip fixtures alongside each native Component;
-   do not claim Figma/PSD/AI compatibility from a screenshot or a flattened preview.
-8. Add external Component distribution, update/rollback and marketplace trust only after the local
-   host is real.
-
-The roadmap and module packets own the executable release gates. This whitepaper owns the durable
-vision and the reasoning behind those gates.
-
-## 13. Decision evolution: what survived and what did not
-
-The project has been redesigned several times. An Agent must distinguish durable product intent
-from a superseded implementation attempt.
-
-### Durable intent carried forward
-
-- **P1:** Fleet is an AI work platform, not only a chat tool.
-- **P2/P3:** Craft remains the visual/runtime base, but Fleet simplifies Craft rather than copying
-  every upstream page or navigation decision.
-- **P6/P10:** Project is the one user-facing folder boundary; Conversation remains one list and one
-  create flow, with predicates rather than duplicate homes.
-- **P8/P9:** local-first operation and user-owned remote Fleet execution; no Fleet cloud control
-  plane or general external-computer product.
-- **E5/E5a:** the canvas projects native domain data and governed actions; it does not become a
-  second task/file/job authority, and renderer choice is evidence-gated in the real Electron shell.
-- **E12/E13:** capability is not trimmed to save tokens; the model receives a measured effective
-  projection with raw evidence recoverable.
-- **H40–H43:** Components are scoped, declarative, lazy and disposable; Craft visual language,
-  Cindy information architecture, OpenChamber Git mechanisms and DeepSeek lifecycle/slot mechanics
-  answer different questions.
-
-### Explicitly superseded
-
-- The global **Manager Agent** and privileged manager/captain role. Any Session may delegate through
-  the one Session/Task authority.
-- **ExpertKit-as-label** and storing identity/loadout in `labels/config.json`. Assistant identity is
-  independent; Component composition is separate again.
-- A second memory database, hidden transcript import, or foreign history treated as Fleet truth.
-  Working notes and later reviewed memory remain under the documented single-writer/Workspace rules.
-- A replacement AppShell, a wholesale v0.10.5 renderer restoration, the discarded `FleetLayout`
-  workbench, and the old canvas preview. The current Craft host stays the implementation base.
-- A marketplace or R15 release that must wait for every possible future capability. The local host
-  foundation can be proved with existing Files/Notes; external distribution and component-specific
-  dependencies retain their own gates.
-
-When a historical document conflicts with these entries, use the current `PRODUCT.md`, `02-DECISIONS.md`,
-the active spec and this section in that order. Historical documents remain evidence of why a choice
-was made, not permission to revive a discarded store or shell.
+The v0.13.4 rebuild removed the former Fleet Component registry, layout model, Assistant store,
+remote-device extensions and cache-economy helpers. They remain snapshot evidence, not current
+capabilities. Use the capability map and current callers for implementation status.

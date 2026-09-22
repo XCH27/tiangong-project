@@ -6,6 +6,12 @@
 > record supplements the harness diagnosis with evidence from persistent messaging, heartbeat, cron,
 > cross-device, and mixed-executor environments.
 
+Current qualification: provider versions, prompt byte/tool counts and source mechanisms below
+are measurements at the recorded review boundary. Current app pins Pi 0.85.1 on Craft v0.13.4;
+remeasure before implementation. Current OpenHands is a different Agent Canvas tree, so old
+Python-executor evidence cannot describe its current HEAD. A general Core controller and a second sandbox remain
+excluded; R16 now has the bounded local-app Component contract in SYS-02; these observations authorize no new runtime or environment capability.
+
 ## 1. Combined verdict
 
 Complex products are not solved by prompt reduction alone. OpenClaw's own context examples show a large
@@ -18,7 +24,7 @@ high-leverage future candidate, not current scope.
 
 ## 2. OpenClaw mechanisms
 
-OpenClaw uses the same Pi family (`@earendil-works/pi-tui` 0.80.3; Fleet uses Pi SDK 0.80.6) and adds a
+OpenClaw uses the same Pi family (`@earendil-works/pi-tui` 0.80.3; the reviewed Fleet snapshot used Pi SDK 0.80.6) and adds a
 product-specific gateway and context layer.
 
 | Mechanism | Evidence and transfer |

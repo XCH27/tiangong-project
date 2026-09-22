@@ -62,14 +62,17 @@ type ActionRequestMeta = {
 type ActionOutcome<TRecovery = unknown> = {
   invocationId: string
   correlationId: string
-  status: 'completed' | 'denied' | 'conflict' | 'failed'
+  status: 'approval_required' | 'running' | 'completed' | 'denied' | 'conflict' | 'failed' | 'cancelled' | 'unknown'
   policy: { result: 'allow' | 'ask' | 'deny'; reason?: string }
   recovery?: TRecovery
   error?: { code: string; message: string; retryable: boolean }
 }
 ```
 
-Do not expose fields the runtime cannot truthfully populate.
+Do not expose fields the runtime cannot truthfully populate. `approval_required` and `running`
+are non-final; `unknown` means dispatch/commit may have happened and recovery must inspect the
+owning store or provider receipt before retry. `cancelled` requires confirmed non-dispatch or
+termination; merely requesting cancellation does not settle an effect.
 
 ## Reality anchors and execution order
 

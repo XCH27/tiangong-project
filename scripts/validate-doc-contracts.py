@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import re
 import sys
+import runpy
 from pathlib import Path
+from doc_execution_contracts import validate_execution_contracts, validate_local_links
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,6 +126,15 @@ for line in matrix_text.splitlines():
         else:
             matrix_ids.add(candidate)
 
+errors.extend(validate_execution_contracts(ROOT, registry_ids, packet_text))
+link_errors, internal_links, external_links = validate_local_links(ROOT)
+errors.extend(link_errors)
+try:
+    guide_module = runpy.run_path(str(ROOT / 'scripts/reference-guides.py'))
+    reference_sources, reference_routes, _ = guide_module['read_catalog'](ROOT)
+except (ValueError, KeyError, IndexError, OSError) as error:
+    errors.append(f'reference adaptation contract: {error}')
+
 if errors:
     print("documentation contract validation failed:")
     for error in errors:
@@ -137,7 +148,10 @@ uncovered = sorted(set(registry_ids) - matrix_ids)
 print(
     f"documentation contracts valid: {len(registry_ids)} capability IDs, "
     f"{len(known_pages)} page IDs, {len(known_acceptance)} acceptance IDs, "
-    f"{len(matrix_ids)} matrix-joined IDs"
+    f"{len(matrix_ids)} matrix-joined IDs; execution ownership and source paths valid; "
+    f"{len(reference_routes)} reference adaptation routes; {internal_links} internal links"
 )
+if external_links:
+    print(f"external reference links: {external_links}; mount/source-lock validation belongs to reference-guides.py --check")
 if uncovered:
     print(f"note: {len(uncovered)} registry IDs have no A-F matrix row: {', '.join(uncovered)}")

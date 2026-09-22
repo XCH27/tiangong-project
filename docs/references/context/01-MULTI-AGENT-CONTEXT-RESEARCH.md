@@ -60,8 +60,8 @@ measurement. It does not support a universal global memory.
 | [Continue](https://github.com/continuedev/continue) | IDE/CLI and context-provider adapters | Product comparison; no second settings authority |
 | [agentmemory](https://github.com/jayzeng/agentmemory) | Local Markdown, Git-friendly sharing, search hooks | Adapter evidence only; lacks Fleet identity, sensitivity, approval, and tombstones |
 
-Mem0 is the only standing external memory checkout; the remaining projects are paper/product
-comparison targets and are not cloned by default. Popularity is not admission evidence. Each
+Current checkout presence is recorded in the reference registry; this paper/product list does
+not decide retention or authorize cloning. Popularity is not admission evidence. Each
 candidate needs a pinned commit, license/dependency review,
 specific source symbols, a local seam, the same-task benchmark, and proof that a smaller Craft extension
 does not outperform the imported mechanism.
@@ -79,7 +79,7 @@ CLI | API | subscription | remote-agent adapter
                     ↓
 RunReport / ArtifactRef / UsageRecord / evidence event
                     ↓
-retain-correct-delete proposal → review → new projection version
+scoped evidence → logged single-writer consolidation → new projection version; optional human curation
 ```
 
 This is not a current interface contract. Session, Task, Timeline, permission, and UsageRecord each retain
@@ -95,7 +95,7 @@ After R0, TE1, and real multi-lane callers exist:
 2. Change a source and prove stale display, version advance after refresh, and honest last-known behavior
    offline.
 3. Revoke a lane grant and prove future runs lose access while immutable prior evidence remains auditable.
-4. Let an agent propose retain/correct/delete and prove that no authoritative segment changes before review.
+4. Prove D5 scoped autonomous consolidation, source attribution, preserved pins and effective user correction/deletion; do not require per-entry approval.
 5. Compare success, citation correctness, context precision/recall, tokens, latency, refresh failure,
    revocation latency, and disclosure violations.
 
@@ -110,5 +110,5 @@ registry ID from this research record.
   provider adapters, recovery, and audit.
 - **Conditional:** background refresh, temporal graph retrieval, and automatic compaction after metrics and
   failure states exist.
-- **Reject:** internal MCP bus, hidden global memory, silent automatic write-back, hosted universal profile,
+- **Reject:** internal MCP bus, hidden global memory, unlogged or unscoped automatic write-back, hosted universal profile,
   and unpinned reference claims.

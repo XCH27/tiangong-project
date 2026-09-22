@@ -1,304 +1,182 @@
-# Project = Workspace and Remote Connections
+# Workspaces, Projects, Conversations and Remote Connections
 
-> **Status:** recovered design rationale, not a release contract. P6–P9 in
-> [Decisions](../02-DECISIONS.md) are authoritative. Page status belongs to
-> [Page Architecture](../12-PAGE-ARCHITECTURE.md), sequencing to the
-> [Roadmap](../05-ROADMAP.md), and implementation acceptance to the applicable spec. Re-check current
-> Craft v0.13.3 source before implementation (the current rolling Craft pin).
+> **Status:** supporting rationale, not a release contract or a schema proposal. [PRODUCT](../PRODUCT.md),
+> P6–P9/P9-rev in [Decisions](../02-DECISIONS.md), and the exact statements in
+> [Owner Voice](OWNER-VOICE.md) govern this note. [R1](../specs/R1-one-boundary-language.md) owns the shell/context contract; [Non-negotiables](../03-NON-NEGOTIABLES.md) owns authority and remote-access boundaries.
+> Current `app/` tracks Craft v0.13.4. Earlier Fleet implementation claims do not survive the rebuild.
 
 ## 1. Owner direction and fixed decisions
 
-The owner explicitly chose a simplified Craft fork: the user-facing **Project is the Workspace**. The
-exact source statements remain in [Owner Voice](OWNER-VOICE.md); this record stores their engineering
-interpretation.
+- **P6 revised, 2026-09-22:** retain visible Workspaces, each with independent Projects,
+  Conversations and tool configuration. A Project references a directory; two Workspaces may
+  reference the same directory without sharing their conversation/configuration state.
+- **P7/P9-rev:** connect directly to another user-owned Fleet instance through the existing Workspace route.
+  The host supplies an access link; the client supplies a name and that link. There is no Fleet account,
+  central control plane, relay, or separate network-mode choice.
+- **P8:** remove silent dependence on Craft-operated services; preserve local behavior and honest failure.
+- **P9 / OV-008:** execution choices are **Local / Cloud**. Cloud means a user-owned Fleet runtime;
+  worktree isolation is agent-managed and never a peer location preset.
 
-- **P6:** expose one work boundary named Project; retain Craft Workspace as the backend authority.
-- **P7:** connect a remote Project directly to another user-owned Fleet instance; no Fleet account or
-  central control plane.
-- **P8:** remove silent dependencies on Craft-operated services; use local, user-configured, or honestly
-  disabled behavior.
-- **P9:** cloud mode is the same Fleet runtime on owner/team-controlled hardware, reached through P7.
+## 2. Boundary and source rationale
 
-Nested Craft Projects are upstream compatibility data, not Fleet's long-term product authority.
+Workspace owns configuration and routing; Project owns a membership referencing a working folder;
+Session owns a conversation. These existing Craft authorities remain distinct. Selecting a Project
+never switches Workspace. Project filters change visible rows, never execution context. Shared files
+are intentionally shared when two memberships reference one directory; transcripts and loadouts are not.
 
-## 2. Why the boundary collapses
-
-Craft currently presents Workspace and nested Project as two layers even though both describe a repository,
-client engagement, product, or durable work environment. The duplication creates two selectors, inconsistent
-navigation, both `workspace` and optional `projectId` on Session, renderer-side filtering, and confusing scope
-for Sources and Skills.
-
-Fleet's user model is one root:
-
-```text
-Project (implemented by Craft Workspace)
-├── Sessions and tasks
-├── Sources and Skills
-├── labels, statuses, and automations
-├── working directory and files
-├── assets and MEMORY.md
-└── settings and permissions
-```
-
-This matches Craft CLI's workspace-directory model and local evidence from AionUI and Hermes. The selected
-project directory is the file, permission, and context boundary; Fleet extends Craft's proven Workspace
-implementation instead of adding another store.
+Cindy's `CCAgentSidebarUpper.tsx` and ZCode's `WorkspaceSidebarItem.tsx` supply inline Project groups,
+hover actions and context menus. ZCode's ConversationTimeline/SessionPane supply the empty composer
+arrangement and independent Plan/permission and model/reasoning controls. Cindy's unified model
+panel supplies search, category rail, grouped rows and configure footer. Craft supplies tokens,
+primitives, the panel stack and command/event paths. Exact source
+revisions and admission limits are in [R1](../specs/R1-one-boundary-language.md).
 
 ## 3. Product shape
 
-The sidebar should expose New Session, the unified work surface, labels, Sources, Skills, automations, a flat
-Project list, and settings. A Project row switches the active Workspace. Sessions appear in the unified list
-or board, not duplicated beneath each Project row. Local and remote Projects share the list; grouping appears
-only when remote connections exist.
+One left sidebar contains Project groups and folderless Conversations. Board has its own entry and
+projects existing Task/Session records. Tools use a contextual right panel with Session-scoped tabs,
+not a vertical rail or a second left navigator. Resource settings may have list/detail content without
+duplicating the work list.
 
-The unified work surface shows the active Project's sessions/tasks. List and board are projections of the
-same Session data. Global search may find work across Projects, but the UI must not imply one transactional
-database across unrelated local and remote stores.
-
-A Project home may show overview, recent sessions, files/assets, reviewed memory, and settings. Ordinary
-switching and session opening must not require navigating through that page.
-
-These are design constraints, not claims that the pages are implemented.
+Manual backlog/todo/done categories belong to Board. Conversation activity is automatic: running,
+error/paused, or no marker. Permissions, credentials and plan waits require attention; a successful
+reply clears old failures. Collapsed Project headers aggregate the same child scope. Unread/pinning
+remain reading/organization properties, not additional runtime phases.
 
 ## 4. Single backend authority
 
-| User concept | Existing authority |
+| Concern | Existing authority |
 |---|---|
-| Project | Workspace config plus root path |
-| Project sessions | `SessionManager.getSessions(workspaceId)` |
-| Sources and Skills | current Workspace configuration |
-| Labels, statuses, automations | current Workspace configuration |
-| Files | Workspace root or configured working directory |
-| Assets and reviewed memory | Workspace-scoped paths |
-| Current Project | active Workspace/window mapping |
-| Permission | existing Workspace and Source permission chain |
+| Workspace identity, configuration and remote routing | Workspace store and RoutedClient |
+| Project membership, assets and folder reference | Workspace-scoped Project store |
+| Conversations and tasks | Session/Task stores and lifecycle |
+| Sources, Skills and settings | existing global, Workspace and Session scopes |
+| Files | referenced folder on the executing host; Session directory for folderless work |
+| Permissions and credentials | existing permission and host credential paths |
 
-Do not create `ProjectStore`, another permission evaluator, or another remote Session store. After migration,
-the old shared-project package is compatibility code only; board/task scope follows Workspace and new writes
-stop depending on `session.projectId`.
+## 5. Compatibility
 
-Project-only metadata that survives P6—such as description, color, assets, reviewed memory, or board
-configuration—must extend WorkspaceConfig or a Workspace-owned path. It must not recreate nested ownership.
-
-## 5. Compatibility migration
-
-Migration must be previewable, non-destructive, and preserve sessions and files.
-
-- **No nested Project:** the Workspace becomes the user Project directly.
-- **One nested Project:** merge compatible metadata and bindings into the Workspace after conflict preview;
-  archive legacy data only after verification.
-- **Multiple nested Projects:** require explicit owner selection. Offer separate Workspace creation or a
-  reviewed merge; never silently flatten working directories, assets, memory, or Session bindings.
-
-During compatibility reads, resolve legacy `projectId` without writing new nested ownership. The preview must
-list affected sessions, assets, memory, working directories, conflicts, and the recovery path.
+No Workspace/Project collapse or record migration is authorized. Retain IDs, assets, files and old
+routes. Existing saved status-based sidebar filters must not silently hide Conversations after the
+status menu is removed. A membership removal must preserve its referenced working folder. Resource
+asset deletion retains the existing explicit confirmation. No historical patch is restored wholesale.
 
 ## 6. Remote Projects
 
-Remote connection is a second role on the existing Fleet runtime:
+Craft already provides the embedded/headless server, WebSocket lifecycle, remote Workspace routing and
+Session/Task execution path. Extend that route: the client displays the work, while the connected host owns
+its Workspace files, tools, model calls and credentials. A controller's selected provider or account must not
+silently replace the remote host's configuration.
 
-```text
-Fleet client
-   └── authenticated direct transport
-          └── user-owned Fleet runtime
-                 ├── Workspace/Project authority
-                 ├── SessionManager and TaskRunner
-                 ├── existing permissions
-                 └── local or configured execution adapters
-```
-
-Craft already contains the reusable spine: embedded server, WebSocket lifecycle, handshake/heartbeat,
-reconnect, headless operation, remote workspace routing, Session/Task authority, and local permissions.
-Extend these components. Do not add a Multica-style central server, daemon, PostgreSQL control plane, queue,
-or workspace database.
-
-Multica remains product evidence for named expiring tokens, creation-time-only secret display, browser-first
-pairing with advanced manual setup hidden, true online/offline/last-seen status, and revocation UX. Its generic
-personal access token and multi-tenant control plane are not Fleet's target.
+The same connection contract applies to a home computer and a VPS. An installation or networking mechanism
+used outside Fleet does not become another Project type, control service or connection authority.
 
 ## 7. Access grants and execution truth
 
-A remote credential is an access grant, not merely a transport token. A future representation may need a
-hash, name, target/project scope, capabilities, creation/expiry/revocation timestamps, and last-used evidence.
-The exact interface belongs to the R14 spec and must be extracted from the existing permission path.
+P7 and [Non-negotiables](../03-NON-NEGOTIABLES.md) require explicit, scoped and revocable remote access,
+separate from the host's internal server token. Grant representation and enforcement must extend the
+existing permission path; this note does not predeclare their stored fields.
 
-Required behavior:
-
-- show a secret once; persist only a secure hash or platform credential reference;
-- scope and expire grants; make revocation immediate for new operations;
-- show `connecting`, `online`, `offline`, `expired`, `revoked`, and `incompatible` from real transport state;
-- distinguish last-known data from live data;
-- pin a Session to an `executionTargetId`; never migrate execution silently;
-- require an explicit handoff for target migration;
-- invalidate stale observations and grants before action;
-- preserve immutable prior evidence after disconnect or revocation.
-
-Disconnect removes the active route and new authority to act. It does not erase the user's remote data or
-rewrite historical evidence.
+The UI must distinguish live transport state from last-known data. A running Session remains bound to its
+executing host; changing a selection must never silently move it. Any supported handoff must be explicit,
+permissioned and recoverable. This is a behavioral requirement, not a new Session identifier or registry.
+Disconnect or revocation blocks new unauthorized operations while preserving prior evidence and remote data.
 
 ## 8. Settings surface
 
-The Remote Targets settings page should support:
+P9-rev owns the **Remote connection** flow: host access link, client name plus link, and selection of Projects
+reported by that host without asking the user for internal Workspace IDs. Health, compatibility, grant state,
+reconnect and revocation belong to that connection's existing settings path.
 
-- add by browser pairing or explicit server address plus grant;
-- list user-owned instances and their Projects;
-- select Projects to add without asking for internal Workspace IDs;
-- inspect health, version compatibility, last seen, grant scope, and expiry;
-- reconnect, rename the local label, revoke, and disconnect;
-- reveal VPS/headless installation as an advanced flow with copyable install and start commands.
-
-No page may imply that Fleet operates a cloud account, stores the owner's Projects centrally, or can recover
-a disconnected server it does not control.
+The flow does not introduce an SSH installer, browser-pairing alternative, network-mode selector or separate
+“advanced connection” product. Nor may it imply that Fleet operates the host or can recover its credentials.
 
 ## 9. Network and security boundary
 
-- Default to loopback/local use; remote listening is explicit.
-- Require authenticated encrypted transport outside loopback.
-- Bind grants to allowed Projects and capabilities.
-- Reuse the existing permission decision for every remote action.
-- Validate target identity, protocol version, request size, and replay/stale state.
-- Rate-limit authentication and mutation endpoints and record auditable evidence.
-- Never expose provider keys, raw local secrets, or unrestricted filesystem roots to a remote client.
-- Headless service management belongs to the user's OS service manager, not a second Fleet daemon.
+The binding boundary is [Non-negotiables](../03-NON-NEGOTIABLES.md): explicit remote admission at both
+ends, the existing permission decision, protected credentials, and truthful refusal/recovery. Remote access
+must not expose unrestricted filesystem roots or reinterpret a path on a different host. OS service
+management remains outside Fleet's application authority. P9-rev excludes a second file-sync protocol over
+the pairing connection; Git/GitHub delivery follows the existing OpenChamber-derived contract.
 
 ## 10. Development-order ownership
 
-This note creates no slices or parallel queue. Canonical order is:
+[WORK-ORDER](../WORK-ORDER.md) and the [Roadmap](../05-ROADMAP.md) own sequencing. The current owner order
+starts with inherited Craft capability/service rectification and baseline acceptance, before the Component
+host and added capabilities. This note creates no alternate queue or prerequisite.
 
-- P6 user language and Workspace reuse under R1 and its accepted spec;
-- P8 service independence under R2;
-- real Project/session/file behavior under the first production chain and later accepted suites;
-- P7/P9 remote targets under R14 after the local authorities and action seam are proven.
+## 11. Execution-location comparison and evidence
 
-Status must use only `usable`, `wired but not visually checked`, `display-only`, or `not implemented`.
-Migration, transport, permission, disconnect, stale-state, and recovery behavior require non-visual data-path
-evidence before any capability can be called `usable`; rendered look-and-feel remains owner acceptance.
+Reference products distinguish the machine that executes work from the folder and checkout used there.
+That distinction is useful evidence for host/path isolation; their menus, registries and terminology are not
+Fleet requirements.
 
-## 11. Execution-location comparison and admission
+| Evidence | Relevant distinction |
+|---|---|
+| Craft remote Workspace | `remoteServer` on the existing Workspace identifies its server and remote Workspace. `RoutedClient` uses that mapping for Workspace RPC. |
+| Local folder | A path belongs to the machine whose runtime opens it; choosing it is not attaching a file or creating a second Project authority. |
+| Git worktree | Another checkout provides repository isolation; it does not identify another executing machine. P9 keeps its lifecycle agent-managed. |
+| SSH, WSL and Dev Containers references | Connection/setup and runtime isolation are different concerns. Their existence elsewhere does not admit corresponding Fleet UI or adapters. |
+| Provider-hosted cloud references | These products operate a different execution service. Fleet's user-owned Cloud wording does not promise such a service. |
 
-This section resolves a recurring UI ambiguity: a folder, a worktree, an SSH host, WSL, a remote Fleet
-instance and a hosted cloud container are not interchangeable kinds of "location." The comparison uses only
-the pinned/latest Craft source and first-party product documentation.
+Source pointers:
 
-| Candidate | What the source actually owns | Fleet admission |
-|---|---|---|
-| Craft remote Workspace | A local Workspace record stores `remoteServer { url, token, remoteWorkspaceId }`; `RoutedClient` redirects remote-eligible RPCs to the selected server and translates the local Workspace ID to the remote ID. In thin-client mode, Session logic, tools and model calls execute on the remote server | **REUSE/EXTEND.** This is the existing transport and Project route. Harden target identity, grants, capabilities, health and disconnect truth; do not add a second remote Session store |
-| Local folder | The Project/root and file boundary on the machine that owns the selected runtime | **REUSE.** The folder picker selects or creates the existing Workspace-as-Project authority; it is not an attachment action or a second Project record |
-| Git worktree | OpenAI defines it as another checkout of the same local repository, sharing Git metadata, for isolated parallel work; setup runs when the app creates the worktree for a chat | **NEW behind the existing Task/Session runtime.** Agent-managed isolation, never a peer of Local/Remote/Cloud and never a Project authority |
-| SSH host | VS Code Remote-SSH installs/runs its server, commands and workspace extensions on the SSH host, then opens a folder on that host | **RESHAPE.** SSH may bootstrap or connect a user-owned remote Fleet target. It is not "hosted cloud" and is not implemented merely because a menu item exists |
-| WSL | OpenAI and VS Code treat WSL as a Windows-hosted Linux execution environment whose Linux paths, tools and terminal run inside a selected distribution | **CONDITIONAL.** Show only on Windows when a real WSL runtime/capability is detected. It is an environment of the local machine, not a universal remote target |
-| Dev Container | VS Code describes `devcontainer.json` as the definition for opening a selected folder/repository inside a container; it can also layer on an SSH host | **CONDITIONAL.** Detect after the Project/target is selected; do not make it a top-level location or a new Project |
-| Provider-hosted cloud | OpenAI Codex creates an isolated container, checks out a selected repository revision, runs setup, applies network policy, and returns a diff/PR. Cursor likewise separates Cloud from This Computer and Remote Machines | **NOT IMPLEMENTED and owner checkpoint.** Fleet P7/P9 currently means an owner-controlled Fleet runtime, not a Fleet-operated hosted control plane. Do not label the existing remote-server route as provider-hosted cloud |
-
-Primary evidence:
-
-- Craft v0.13.3 source: [`WorkspaceCreationScreen.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/WorkspaceCreationScreen.tsx), [`AddWorkspaceStep_ConnectRemote.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/AddWorkspaceStep_ConnectRemote.tsx), [`workspace.ts`](../../源码参考/software/craft-agents-oss/packages/core/src/types/workspace.ts), [`routed-client.ts`](../../源码参考/software/craft-agents-oss/apps/electron/src/transport/routed-client.ts), and [remote-server README](../../源码参考/software/craft-agents-oss/README.md#remote-server-headless).
+- Craft source: [`WorkspaceCreationScreen.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/WorkspaceCreationScreen.tsx), [`AddWorkspaceStep_ConnectRemote.tsx`](../../源码参考/software/craft-agents-oss/apps/electron/src/renderer/components/workspace/AddWorkspaceStep_ConnectRemote.tsx), [`workspace.ts`](../../源码参考/software/craft-agents-oss/packages/core/src/types/workspace.ts), [`routed-client.ts`](../../源码参考/software/craft-agents-oss/apps/electron/src/transport/routed-client.ts), and [remote-server README](../../源码参考/software/craft-agents-oss/README.md#remote-server-headless).
 - OpenAI: [local environments](https://learn.chatgpt.com/docs/environments/local-environment), [cloud environments](https://learn.chatgpt.com/docs/environments/cloud-environment), [Git worktrees](https://learn.chatgpt.com/docs/environments/git-worktrees), [WSL](https://learn.chatgpt.com/docs/windows/wsl), and [Codex app announcement](https://openai.com/index/introducing-the-codex-app/).
-- Cursor: [3.11 project/repository picker](https://cursor.com/en-US/changelog#3-11) and [3.0 worktree command/Agents Window](https://cursor.com/changelog/3-0).
+- Cursor: [project/repository picker](https://cursor.com/en-US/changelog#3-11) and [worktree command/Agents Window](https://cursor.com/changelog/3-0).
 - Visual Studio Code: [Remote-SSH](https://code.visualstudio.com/docs/remote/ssh), [WSL](https://code.visualstudio.com/docs/remote/wsl), [Dev Containers](https://code.visualstudio.com/docs/devcontainers/create-dev-container), and [remote extension architecture](https://code.visualstudio.com/api/advanced-topics/remote-extensions).
 
-The mature pattern is consistent even when product labels differ: choose the machine/runtime boundary first,
-choose a folder or repository inside that boundary second, then apply checkout or container isolation. Cursor's
-latest picker makes search explicitly scoped to `This Computer`, `Cloud`, or a named remote machine and no
-longer treats a global search box as if paths from different machines were comparable. OpenAI's Worktree UI
-can expose a user handoff, but the underlying object remains checkout isolation under a local Project.
+These retained citations are comparison sources, not a claim of a fresh external-document audit or that a
+referenced feature is implemented in Fleet. Recheck the relevant source when implementing an admitted slice.
 
-## 12. One execution-target authority
+## 12. Existing Workspace routing
 
-Fleet should extend one target registry behind Workspace routing. It must not create parallel Local, SSH,
-WSL and Cloud Project stores.
+Workspace remains the configuration and remote-routing authority; Project remains a scoped membership. Session create, read, resume and execution
+must resolve through that same boundary. The executing host owns path interpretation and runtime state;
+the local window consumes routed events. No separate execution-target registry, reserved provider kinds or
+new persisted Session fields are authorized by this note.
 
-```text
-Session
-├── workspaceId                 existing Project/Workspace authority
-├── executionTargetId           immutable while running; local sentinel or registered remote target
-├── workingDirectory            path interpreted only by that target
-└── runtime binding             TaskRunner-owned lease, capability snapshot and isolation evidence
-      ├── direct checkout
-      └── managed worktree      only when the selected directory is a Git repository
-
-ExecutionTarget
-├── id, kind                    local | fleet-remote | hosted-cloud (reserved)
-├── identity and transport      embedded | authenticated Fleet route | provider adapter
-├── platform/capabilities       OS, path semantics, Git/worktree/container availability
-├── connection truth            connecting | online | offline | expired | revoked | incompatible
-└── grant reference             existing permission path; no second evaluator
-```
-
-`hosted-cloud` is reserved so future implementation cannot overload `fleet-remote`, but it must not appear
-until a real provider, repository checkout path, secrets/network policy and recovery flow exist. SSH is not a
-new authority record after connection: when used to install or discover Fleet on a machine, the durable result
-is a `fleet-remote` target. WSL is a capability-qualified local runtime variant, not a remote Workspace.
-
-Do not add a generic environment-adapter interface before two real adapters exist. The target capability
-snapshot is enough to conditionally expose WSL, worktree or container behavior while the first implementation
-lands.
+The running-Session host binding and explicit-handoff requirement in §7 must be proven through the existing
+lifecycle. The owning implementation contract determines any necessary data changes after that trace.
 
 ## 13. New Task interaction contract
 
-The new-task composer may show a compact context strip only while no folder has been selected. It is a
-projection over the authorities above, not another creation flow.
+[R1](../specs/R1-one-boundary-language.md) owns one creation flow with a Project/folderless picker inside the active Workspace. P9 and OV-008
+supply the **Local / Cloud** labels; P9-rev supplies the remote connection flow. Cloud means a configured,
+user-owned Fleet runtime and must not appear as an unusable placeholder before the path is implemented.
 
-1. **Execution target first.** Default to **This computer**. Show **Remote** when a configured user-owned
-   Fleet target exists, plus one **Add remote target…** action. Do not say **Cloud** for an SSH host or a
-   user-owned Fleet server. A true **Hosted cloud** row is absent until implemented.
-2. **Project/folder second.** Under This computer, show recent Projects and **Choose folder…**; under a remote
-   target, list Projects reported by that target. A global New Task may remain folder-less as R1 requires.
-   Paths from different targets are never merged into one undifferentiated recent list. The execution-target
-   and Project/folder controls use the same menu row grammar (icon slot, label, selected check and setup
-   action), but remain two controls because they select different authorities. The user-facing label is
-   Project or folder, never Workspace.
-3. **No Worktree location row.** After a local Git directory is selected, TaskRunner may automatically create
-   a managed worktree when concurrency or isolation policy requires it. Non-Git folders run directly.
-4. **Make handoff contextual.** If a managed worktree exists, the task header may show its checkout/branch and
-   an explicit handoff or switch action. This changes the Session's runtime binding through governed Git
-   operations; it does not reselect the Project or create another Session.
-5. **Capability-only environment choices.** On Windows, WSL appears only after detection and identifies the
-   distribution before any Linux path is selected. A detected `devcontainer.json` may offer **Run in
-   container** after Project selection. Neither is always-visible chrome.
-6. **Pin after start.** Once execution begins, `executionTargetId` is pinned. Moving a running Session requires
-   an explicit handoff with preflight, file/change transfer, permission re-evaluation and failure recovery;
-   changing a dropdown must never silently migrate execution.
+The selected Project and folder must belong to the selected host. Keep that relationship explicit without a
+second Project picker, a worktree mode, or new SSH/WSL/container/hosted-cloud menus. Folder-less work remains
+legal under R1. Choosing a location does not create a parallel model or authentication scope and does not
+move an already-running Session.
 
-The add/context menu remains for attachments, Skills, MCP and task controls. It must not also own Project or
-execution-target selection. This prevents the current collision between "attach files" and "work in a
-folder," which have different authority and lifecycle semantics.
-
-The remote branch uses progressive disclosure: the initial picker shows the named target, health and
-reported Projects. URL, grant, version details, installation commands and advanced diagnostics remain in
-Remote Targets settings. Repeating those administration fields in the New Task picker is a failed
-simplification, not useful context.
+Use the same composer in draft and normal conversations. Put Project/context immediately above it;
+put supported attachments/Sources/context actions in the add popup, permission at bottom left and
+separate model/reasoning controls at bottom right. R1 owns the independent Plan plus three-permission
+contract, validated submission snapshot and Cindy model popup. These are target behaviors;
+the restored Craft callbacks do not yet implement them.
 
 ## 14. Connection and setup surfaces
 
-Use one progressive Remote Targets settings flow rather than four top-level connection buttons:
+New Task consumes the existing connection and Workspace state; it does not repeat server administration.
+When a remote connection is needed, use the same Remote connection settings flow described in §8. Connection
+failures, revoked access and unavailable Projects must be distinguishable from an empty local Project.
 
-- **Connect existing Fleet** — URL/pairing plus grant; discover remote Projects through the current Craft
-  server route.
-- **Set up on another machine** — advanced SSH-assisted installation/bootstrap. SSH credentials stay in the
-  platform credential store or SSH agent; after setup Fleet connects through its authenticated transport.
-- **Windows local Linux** — WSL discovery belongs to local environment setup and is hidden on other systems.
-- **Container** — discovered from the selected Project and target; it is not a connection account.
-- **Hosted cloud** — omitted until a provider contract is approved and implemented.
-
-The target list owns health, version, capability and grant status. The new-task picker consumes that list; it
-does not perform server administration inline. If there is no configured remote target, the picker presents a
-setup action and remains honest rather than offering a selectable but non-functional Cloud mode.
+Home-computer and VPS connections use the same host-link/client-name-and-link interaction. Any underlying
+transport detail remains an implementation concern; this note adds no alternate onboarding branch.
 
 ## 15. Backend acceptance evidence
 
-Before any new execution location is `usable`, the implementation must prove the following non-visual path:
+The owning remote slice must prove:
 
-1. the selected Project resolves on the selected target and its path is never interpreted on another host;
-2. Session create/read/resume stays on the one Session authority and preserves `executionTargetId`;
-3. tool, terminal, Source, Skill and MCP calls route through the same target and permission decision;
-4. Git worktree create/reuse/handoff/cleanup is recoverable and never becomes a Project row;
-5. disconnect, restart, revocation and incompatible-version states prevent new mutation without erasing prior
-   evidence;
-6. WSL/container choices are absent when unsupported and identify their real distribution/container when
-   present;
-7. target handoff either completes atomically from the user's perspective or leaves the original target and
-   Session recoverable.
+1. the chosen Project, folder and file operations resolve only on the owning host;
+2. Session create/read/resume and events use the existing Workspace/Session route, without silent host changes;
+3. tools, Sources, Skills, model connections and credentials use the executing host's applicable context and
+   the existing permission path;
+4. disconnect, restart, revocation and incompatible versions refuse invalid new work without erasing evidence;
+5. any supported handoff either completes with explicit permission and recovery evidence or leaves the
+   original Session recoverable.
 
-Current status remains: Craft's remote transport is `usable`; the Fleet target/grant model, SSH bootstrap,
-WSL integration, managed worktrees and provider-hosted cloud are `not implemented` unless separately proven.
+Current inherited remote transport is **`wired but not visually checked`**. Fleet's scoped remote grants and
+their lifecycle are **`not implemented`** after the v0.13.4 rebuild. A loopback startup check does not prove
+cross-machine authentication, context isolation, disconnect recovery or the owner-facing connection flow.

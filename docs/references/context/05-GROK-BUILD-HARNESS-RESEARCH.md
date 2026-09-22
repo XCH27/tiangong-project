@@ -3,9 +3,14 @@
 > **Status:** source evidence, not implementation authority. Audited local checkout:
 > `源码参考/software/grok-build/` at commit
 > `b41c75a578f98bddbd326ab02cd53618451d97ee` (Apache-2.0). The checkout is a
-> mechanism donor only. Craft v0.10.5 remains Fleet's product/interaction baseline, and Fleet's
+> mechanism donor only. Craft v0.10.5 is the look pin; current Fleet implementation tracks Craft v0.13.4, and Fleet's
 > existing Session, permission, timeline, task, settings, source, and provider paths remain the sole
 > authorities.
+
+Current contract qualification: this is historical Grok source evidence. Fleet's Plan entry is
+opt-in (R1 independent Plan contract and the mode-selection comparison), so Grok's silent automatic entry is not a Fleet
+requirement. Priority labels below classify research findings; they do not bypass R0 or activate
+the absent Fleet work-mode implementation.
 
 ## 1. Executive answer
 

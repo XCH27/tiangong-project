@@ -44,7 +44,10 @@ Violating this is how the product fragments into disconnected utilities.
   (Decision G6): spec'd, mock-behind-adapter, reported `display-only`. Nothing unwired ships
   default-visible.
 - Do not make a canvas/panel the authoritative job or native-document store.
-- Do not add a second Markdown editor beside the existing Craft TipTap path.
+- Keep one Markdown editor authority; compare Craft's TipTap implementation before extending or
+  selecting the editor path.
+  `TiptapMarkdownEditor` currently has a playground caller only; it is a reuse candidate, not a
+  mounted production editor or proof of direct document editing.
 - Do not flatten browser, design, video, deck, and code into one universal editable document model.
 - Do not treat external web pages as editable native documents via silent DOM mutation.
 - Do not present display-only, mocked, or stub behavior as `usable`.
@@ -54,13 +57,14 @@ Violating this is how the product fragments into disconnected utilities.
 - Do not require, silently call, or visually imply a required Craft-operated account, server, relay,
   viewer, updater, docs site, or MCP endpoint (Decision P8).
 - Do not model "cloud" as a Fleet-owned control plane (Decision P9).
-- **Remote admission is default-deny.** A channel is reachable from another machine only
-  by appearing in `REMOTE_ELIGIBLE_CHANNELS`; ask `isRemoteAllowed` / `remoteRefusalFor`,
-  never `!isLocalOnly(...)`. Phrasing it as a negation makes every newly added channel
-  remote-reachable by default and turns a forgotten classification into an exposure. The
-  check runs twice — caller before sending, host before dispatch — and the host's is the
-  authoritative one. Never admitted: window/UI control, native dialogs, shell side
-  effects, credential reads or writes, the updater, writes to the host's own global
+- **Remote admission must be default-deny.** A channel may be reachable from another machine only
+  through explicit remote eligibility, never merely `!isLocalOnly(...)`. A negative local-only
+  check can expose an unclassified new channel. Admission must be checked twice — caller before
+  sending, host before dispatch — with the host authoritative. **Current gap:** v0.13.4 exposes
+  `isLocalOnly` and `isRemoteEligible`, but the required double-ended admission boundary is
+  `not implemented`; the former `isRemoteAllowed` / `remoteRefusalFor` helpers are absent. A
+  classification table alone does not prove enforcement. Never admitted: window/UI control, native
+  dialogs, shell side effects, credential reads or writes, the updater, writes to the host's own global
   settings, and raw store writes that bypass a business handler.
 - **A remote credential is per device, hashed, scoped and revocable (Decision P7).** Never
   hand a remote client this machine's own server token, and never put a standing credential
@@ -104,8 +108,10 @@ Violating this is how the product fragments into disconnected utilities.
   `replay`, or `system`, plus Session/Component/Action correlation and before/after version evidence. A replay
   or learned Skill may use a human demonstration only after the user explicitly selects the range
   and approves the generated reusable procedure.
-- No Component, MCP server or renderer may create a private trajectory/history authority. Calls and
-  outputs enter the existing Session/Action/Job/ArtifactRef path; the visible trace is a projection.
+- No Component, MCP server or renderer may create a private trajectory/history authority. Current
+  evidence uses Craft Sessions and SessionEvents. Governed Action, Job and ArtifactRef integration
+  are targets at their owning release rows, not an existing unified path. Those additions must
+  extend the current evidence authority; the visible trace remains a projection.
   Actor identity is recorded separately from operation form (`human`/`agent`/`replay` is not inferred
   from which UI route happened to emit the event).
 - Never resolve a revision target from a name, path, thumbnail or adjacency alone. A prior operation,
@@ -165,14 +171,14 @@ a neighbor.
 | State | Current authority | Fleet rule |
 |---|---|---|
 | sessions and tasks | Craft SessionManager and task stores | reuse |
-| user-facing projects | **Current:** Craft Workspace + nested Project. **Target:** Workspace config/root/session scope (Decision P6) | migrate only through explicit slices; no second project authority |
+| user-facing projects | Workspace configuration/routing plus Workspace-scoped Project memberships (revised P6) | keep both existing authorities; directory sharing never merges conversations/configuration |
 | permission modes and Agent gating | Craft mode-manager, PreToolUse, SessionManager approval flow | extend caller-aware policy; no second engine |
 | session evidence | Craft SessionEvent stream | extend attribution only when a real caller requires it |
 | session-scoped Agent tools | `SESSION_TOOL_DEFS` and handlers | tool registry, not the complete cross-caller invocation layer |
 | project/workspace bytes and permissions | Craft Workspace filesystem paths and `permissions.json` | preserve; no second permission tree |
 | settings, credentials, sources, skills | existing Craft stores and managers | reuse |
 | R5/R8/R11 artifacts, workflows and jobs | no Fleet authority exists yet | define the smallest authority at its ordered row when an implemented real loop needs it |
-| Assistant identity and requested loadout | `packages/shared/src/assistants/` catalog; SessionManager owns the Session `assistantId` binding | never store an Assistant in `labels/config.json`; no new `wearing.json` writes; unresolved loadouts refuse activation; permission requests only narrow the existing Session permission |
+| Assistant identity and requested loadout | The former `packages/shared/src/assistants/` catalog and Session `assistantId` binding are absent after the rebuild; independent identity/loadout remains a target, `not implemented` | never store an Assistant in `labels/config.json`; no new `wearing.json` writes; unresolved loadouts refuse activation; permission requests only narrow the existing Session permission |
 | R6 delegation | Craft child Sessions/Tasks are the only current authority; Fleet TaskBrief/RunReport policy and projection are not implemented | extend Session/TaskRunner when R4/R5 provide real callers; no captain/manager store |
 | R9 memory | no Fleet store, index or consolidation pass exists; H16–H18/H27 retain design principles only | extract the smallest store from repeated real chains; one consolidation writer, no delegate-written shadow memory |
 

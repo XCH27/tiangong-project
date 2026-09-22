@@ -1,13 +1,17 @@
 # UI-SPEC — the measurable half of the UI baseline
 
 > **Scope:** the decidable numbers an agent needs to render a surface without inventing a visual
-> language. This file owns *what the values are*; the pinned v0.10.5 component owns *which
-> component to start from*. When a value here disagrees with the pinned v0.10.5 component, the component wins and this
-> file is corrected in the same slice.
+> language. This file records the v0.10.5 look-pin values. Start from the current production
+> component and compare it with rolling Craft as required by AGENTS Step 0; use the look pin to
+> verify visual choices. Correct a misrecorded measurement from source. A better rolling-Craft
+> interaction or value may be admitted with an explicit reason and a matching update here; the
+> older pin is not an instruction to restore a discarded component or shell.
 >
 > **Provenance:** every table below is measured from
 > `源码参考/software/craft-agents-oss-v0.10.5/apps/electron/src/renderer/` and
-> `app/packages/ui/src/styles/index.css`, not designed. Both pinned snapshots agree on all scales.
+> `app/packages/ui/src/styles/index.css`, not designed. These are look-pin measurements, not a claim that every rebuilt v0.13.4 value was remeasured.
+> Current-component comparison follows AGENTS Step 0; better admitted upstream behavior may be
+> retained without treating the older shell as the product.
 
 ## 0. Why this file exists
 
@@ -31,7 +35,7 @@ Observed drift that this file exists to make impossible:
 | `--font-size-base` | `15px` | body default |
 | `--font-sans` | `system-ui, -apple-system, BlinkMacSystemFont, …` | Inter only where a theme overrides it |
 | `--font-mono` / `--font-serif` | `"JetBrains Mono", ui-monospace, …` | code and monospace only |
-| `--spacing` | `0.25rem` (4 px) | **every** spacing value is a multiple of 4 px, or `2px`/`6px` where a listed component spec says so |
+| `--spacing` | `0.25rem` (4 px) | use the 4 px grid and the exact half-step/component exceptions in §7–§8 |
 | `--radius` | `0rem` | the base token is 0; concrete radii come from §5 |
 
 The theme has exactly six base colors — `background`, `foreground`, `accent`, `info`, `success`,
@@ -278,8 +282,8 @@ ordinary connection editing.
   grouping, not importance.
 - **A visible control has real behavior.** Loading/error/recovery states and the same underlying
   authority as every other caller. See §10.
-- **Motion is functional.** `duration-150` for opacity, `duration-200` for transform. No entrance
-  animations, no parallax, no spring physics. Respect `prefers-reduced-motion`. The decidable
+- **Motion is functional.** `duration-150` for opacity, `duration-200` for transform. No decorative page/list entrance
+  animations; shared occasional overlay transitions follow the motion specification. No parallax, no spring physics. Respect `prefers-reduced-motion`. The decidable
   rest — the frequency test that decides *whether* to animate at all, the easing curves, the
   per-surface durations, and the anti-patterns — is
   [`design-library/22-motion.md`](design-library/22-motion.md). Two durations and no curve was
@@ -334,7 +338,9 @@ Run the repository guard against staged, unstaged, and untracked renderer additi
 cd app && bun run lint:ui-contract
 ```
 
-The guard enforces the opacity, type, radius, elevation, and icon rules below. Electron ESLint also
+**Current limitation:** the owner-requested original-source restoration removed `lint:ui-contract`; no current guard or fixture pass is claimed.
+Any approved replacement must exercise staged, unstaged and untracked additions. The required guard covers
+opacity, type, radius, elevation and icons. Recheck current Electron ESLint before claiming it also
 rejects direct Radix imports from product surfaces: menus, dialogs, popovers, tooltips, and selects
 must enter through `components/ui`, so a caller cannot silently create a second interaction
 primitive. The underlying checks are equivalent to:

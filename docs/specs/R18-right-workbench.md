@@ -1,25 +1,28 @@
 # Component and panel foundation — owner-directed early R15/R18 slice
 
-> Contract revision: 2026-09-15, reconciling the owner's foundation-first and freely movable panel
-> requests. This replaces the former workbench contract and its stale pre-rebase status claims;
+> Contract revision: 2026-09-21 — baseline rectification and acceptance must finish before this
+> foundation starts; panel movement remains the subsequent owner-directed outcome. This replaces the former workbench contract and its stale pre-rebase status claims;
 > it does not weaken or edit any executable tests. Implementation: `not implemented` as a complete
-> registered Component host. R0 remains the only ACTIVE release; this explicit owner slice is the
-> early host part of R15/R18, not an additional release or a wholesale shell restoration.
+> registered Component host. Current implementation was re-measured after the 2026-09-21 reset
+> to Craft v0.13.4; prior Fleet modules remain at `snapshot/pre-rebuild-2026-09-21`. R0 remains
+> the only ACTIVE release. This early R15/R18 host contract is queued after the baseline exit
+> in `R0-baseline-audit.md`, not a parallel implementation permission or shell restoration.
 
-## Current slice
+## Queued slice after baseline exit
 
-- Objective: make existing conversation, Files and Notes surfaces reusable through one registered
-  host, then support user-owned sizing/position and scoped Component activation.
+- Objective: make conversation, Files and Notes reusable through one registered host, using the
+  inherited Files UI and Notes service; then support user-owned sizing/position and scoped activation.
 - Context: `renderer/components/app-shell/`, `renderer/components/right-sidebar/`,
   `renderer/atoms/panel-stack.ts`, `renderer/contexts/NavigationContext.tsx`,
-  `packages/shared/src/{components,layout,workspaces}` and existing Settings/Session handlers.
+  `packages/shared/src/workspaces`, existing Settings/Session handlers, and the Notes RPC path.
+  Fleet `shared/src/components` and `shared/src/layout` are absent from this baseline.
 - Constraints: preserve unrelated dirty work; no HEAD/index/ref movement, live-data migration,
   dependency installation or new Session/Task/permission authority. No canvas placeholder or
   external marketplace merely to demonstrate the host.
 - Evidence: current source/caller comparison, isolated two-Workspace fixtures, targeted interaction
   and lifecycle tests, affected typechecks, production bootstrap and owner look-and-feel review.
-- Next safe action: audit the touched baseline and Workspace/Session binding paths; compare the
-  Craft pins and Cindy registry, then extract the smallest host bridge from two real surfaces.
+- Entry gate: complete the canonical R0 baseline exit. Before it, source comparison and contract
+  review may inform the queued slice, but no host, new Notes consumer or layout implementation begins.
 
 ## Current implementation, not historical claims
 
@@ -27,10 +30,10 @@ Paths below are relative to `app/`.
 
 | Path | Observed fact | Capability status |
 |---|---|---|
-| `apps/electron/src/renderer/components/app-shell/{AppShell,PanelStackContainer,PanelResizeSash}.tsx` | Fixed horizontal content stack and mounted size controls; existing widths/proportions are persisted | `wired but not visually checked` for current sizing |
-| `apps/electron/src/renderer/components/right-sidebar/RightSidebar.tsx` | Fixed Files/Browser/Notes/History list; Files/Notes call existing services; History is empty placeholder content | `wired but not visually checked` for fixed tools; History `display-only` |
-| `packages/shared/src/components/{types,resolve}.ts` | Data contracts and pure resolver, no production host caller; not a validated loader, lifecycle or permission path | `not implemented` for Component activation |
-| `packages/shared/src/layout/tree.ts` | Unmounted pure model; v1 requires empty floats and fixes the sidebar to the left; no general gesture pipeline | `not implemented` for user reposition/docking |
+| `apps/electron/src/renderer/components/app-shell/{AppShell,PanelStackContainer,PanelResizeSash}.tsx`; `renderer/atoms/panel-stack.ts`; `renderer/contexts/NavigationContext.tsx` | Inherited single horizontal panel stack; mounted resize controls; proportions persist in per-Workspace navigation state | `wired but not visually checked` for current sizing |
+| `apps/electron/src/renderer/components/app-shell/SessionInfoPopover.tsx`; `right-sidebar/SessionFilesSection.tsx` | Files is mounted through the Session info popover/drawer. Fleet `right-sidebar/RightSidebar.tsx` and its fixed Files/Browser/Notes/History tools are absent | `wired but not visually checked` for inherited Files |
+| `packages/server-core/src/handlers/rpc/sessions.ts`; Electron transport `channel-map.ts` | `GET_NOTES`/`SET_NOTES` still read/write session `notes.md`; no renderer invokes `getSessionNotes` or `setSessionNotes` | Notes surface `not implemented` |
+| `packages/shared/src/components/`; `packages/shared/src/layout/` | Both Fleet directories, the pure resolver/tree and their tests are absent after the reset | `not implemented` for Component activation and movable/docking host |
 
 No statement here claims embedded browser reparenting, a generic left-tool contribution host, Git
 review, a terminal workbench, or restored plugin tabs is already delivered. BrowserPane itself and
@@ -38,12 +41,14 @@ Session new-window commands remain existing mechanisms, not proof of drag-out/re
 
 ## Sequence and dependency boundary
 
-1. **Scoped baseline and P6 prerequisites.** Prove create/select/context isolation over existing
+1. **Accepted baseline and P6 proof.** Enter only after the R0 baseline exit, then prove
+   create/select/context isolation over existing
    Workspace and Session records; preserve compatibility data. A demo Project name is irrelevant.
-   Do not wait for a live user-data rename to build or test the host. R0 still owns the complete
-   dirty-tree audit and release verification; this slice does not declare that audit finished.
+   Do not rename live data to satisfy a fixture. A real record conflict stays attached to that record;
+   it is not a reason to introduce a second Project authority.
 2. **Registered host with real consumers.** Put Files and Notes behind a shared contribution
-   registry consumed by the tool-entry list and panel body. Both still use their existing handlers.
+   registry consumed by the tool-entry list and panel body. Both use the existing handlers; Notes
+   first needs a mounted editor consumer.
    Keep conversation creation/selection on its present authority; no duplicated navigation lists.
 3. **User-owned in-window layout.** Resize, move left/right/above/below, reorder, float and re-dock
    supported conversation/tool panels; preserve identity/drafts and restore layout per Workspace
@@ -64,8 +69,8 @@ multi-window docking and any advanced layout beyond this in-window contract.
 - Default entries live on the left and tools on the right. These are discoverability/default
   placements, not position locks. User movement does not authorize a component to replace the
   conversation implementation, Session store or permission path.
-- Keep one canonical layout representation. Compare the existing tree and a library-backed model
-  before choosing; do not persist two competing layout trees. A tree plus `@dnd-kit` is not already
+- Keep one canonical layout representation. Compare the inherited panel stack, historical tree and
+  a library-backed model before choosing; do not persist two competing layout trees. A tree plus `@dnd-kit` is not already
   a complete docking system. No new production dependency is selected by this document.
 - Each panel instance has a stable id and explicit Workspace/Session binding. Layout holds ids,
   sizes and positions only. Text drafts, notes, browser instances, terminal jobs and files stay with
@@ -96,9 +101,10 @@ multi-window docking and any advanced layout beyond this in-window contract.
 | FND-08 | Production Electron smoke, relevant tests/type/UI/i18n checks pass without changing their acceptance; owner receives a Craft-styled walkthrough. Passing model tests alone never counts as host completion. |
 
 Existing joins: CORE-11-A / WB-001..003, ORCH-03-A. External-package lifecycle remains ORCH-11-A.
-Relevant existing regression files include `layout/__tests__/tree.test.ts`,
-`components/__tests__/resolve.test.ts`, the Session route/selection tests and Notes handlers.
-Add real renderer/lifecycle tests with implementation; do not replace them with source-string checks.
+Existing regression entry points include Session route/selection and session file-watch tests.
+The old `layout/__tests__/tree.test.ts` and `components/__tests__/resolve.test.ts` are absent;
+the snapshot is historical evidence, not current test coverage. Add real renderer/lifecycle tests
+and Notes save/reload coverage with implementation; do not replace them with source-string checks.
 
 ## Reference and recovery rules
 

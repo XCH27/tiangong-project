@@ -18,9 +18,18 @@ jobs:
       - name: Validate doc contracts
         run: python3 scripts/validate-doc-contracts.py
 
-      # Keep in sync with `app/package.json` -> packageManager/engines.
-      # 1.3.13+ is required: `validate:dev` runs the real suite through
-      # `bun test --isolate`, and `validate:quick` uses `--changed`.
+      - name: Check out the Craft comparison reference
+        uses: actions/checkout@v4
+        with:
+          repository: craft-ai-agents/craft-agents-oss
+          ref: v0.13.4
+          path: .fleet-upstream
+          persist-credentials: false
+
+      - name: Verify immutable reference revision
+        run: test "$(git -C .fleet-upstream rev-parse HEAD)" = b2d6c8aabdfdc96416eea9debd6756ae6d3c0db9
+
+      # The repository verifier uses `bun test --isolate` (requires Bun 1.3.13+).
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -36,5 +45,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run validation suite
+        run: bash scripts/fleet-verify.sh
+        env:
+          FLEET_UPSTREAM_DIR: ${{ github.workspace }}/.fleet-upstream
+
+      - name: Check localization
         working-directory: ./app
-        run: bun run validate:ci
+        run: bun run lint:i18n:parity && bun run lint:i18n:sorted && bun run lint:i18n:coverage

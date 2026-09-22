@@ -3,6 +3,24 @@
 Mandatory entry for every executing agent. Do not preload the whole `docs/` corpus; follow the
 routing table below and read only what the task touches.
 
+## Current owner boundary
+
+The owner restored `app/` to unmodified official Craft v0.13.4 and requires documentation and
+preparation first, then a joint walkthrough of the original application, then approval of concrete
+frontend/backend rectification slices. R0 being ACTIVE and a packet saying IMPLEMENT do not
+authorize software changes before that review. Prior Fleet patch/test/desktop claims are withdrawn
+where the reset removed their code. Follow `docs/WORK-ORDER.md` for this preparation slice.
+Windows, macOS and Linux are desktop targets; a later Orca-like phone connector is in product scope
+under `docs/PRODUCT.md`. A check on the current Mac is not three-platform acceptance.
+
+**Later owner authorization (2026-09-22):** implement R1's single sidebar, independent Board,
+Cindy-informed contextual right panel and ZCode-informed new-conversation layout after source comparison.
+The composer includes independent Plan and action permission, separate model/reasoning controls,
+and Cindy's searchable model popup; these require coherent frontend/backend changes, not relabeling. Workspace
+remains visible and distinct from Project; memberships may reference the same directory across
+Workspaces without sharing conversation/configuration state. This bounded authorization supersedes
+preparation-only wording above; it does not approve unrelated baseline patches or new engines.
+
 ## Read this first
 
 [`docs/PRODUCT.md`](docs/PRODUCT.md) is the single authority on what Fleet is and is not — the four
@@ -17,7 +35,10 @@ only; their product concepts are not importable.
 ## The 10 rules that matter most
 
 1. **This is a product fork of Craft Agents (Apache-2.0). Check Craft first — then admit the best.**
-   The current `app/` tree is implementation reality and tracks Craft OSS **v0.13.3**. Pinned Craft
+   The current `app/` tree is implementation reality and tracks Craft OSS **v0.13.4**. The 2026-09-21
+   rebuild replaced the earlier Fleet implementation; `snapshot/pre-rebuild-2026-09-21` preserves
+   it for selective review, not wholesale restoration. Check current callers before reusing any
+   earlier conversation's completion claim. Pinned Craft
    trees (v0.10.5 look pin, rolling `software/craft-agents-oss` on the latest tag) plus hosted Craft
    docs are **candidate sources**: compare them and **admit the better
    interaction, fix, or backend mechanism** that still lands on one Fleet authority
@@ -39,6 +60,8 @@ only; their product concepts are not importable.
    ordinary fix or refactor does not earn a new document. For whole-system work, route through
    `docs/modules/REGISTRY.md`; breadth and surfaces remain indexed in
    `docs/modules/REGISTRY.md`, `docs/11-PRODUCT-MATRIX.md`, and `docs/12-PAGE-ARCHITECTURE.md`.
+   The current owner order requires the R0 baseline exit before any added capability or preview
+   implementation; the former scoped Component-host bypass is withdrawn.
    Never use near/mid/far-term buckets: every registered capability has a release-order anchor or a
    named conditional-closure row, so an Agent cannot silently defer it forever.
 4. **Keep the task fixed while executing it.** Do not silently change the request, acceptance
@@ -59,7 +82,11 @@ only; their product concepts are not importable.
    path → non-interactive smoke ([`docs/09-QUALITY.md`](docs/09-QUALITY.md)). Owner owns final
    look-and-feel acceptance; agents own everything below it.
 10. **Documentation serves implementation.** Update only the canonical spec, capability row, or
-    user-facing doc whose contract/status actually changed. Never create dated progress reports,
+    user-facing doc whose contract/status actually changed. Absorb unique active facts, update links,
+    then delete superseded project documents/files; do not keep a second archive copy. Age, a historical
+    label, or possible future usefulness is not a retention reason. Temporary recovery material needs
+    a named unresolved risk and an exit condition; apply the [R0 retirement contract](docs/specs/R0-baseline-audit.md#retirement-of-obsolete-material).
+    Never create dated progress reports,
     duplicate plans, or Goal journals; execution evidence belongs in tests, diffs, commits, and the
     Goal/thread state. Project documentation is English-first. Preserve Chinese only for exact
     owner quotations, `zh-Hans` UI literals/fixtures, and proper names that lose identity in
@@ -74,6 +101,12 @@ only; their product concepts are not importable.
   acceptance evidence · next safe action`. Keep this in Goal/thread state, not a new Markdown file.
 - On continuation or context compaction, re-read the Goal, `git status`/relevant diff, and only the
   routed spec/acceptance rows. Do not reload the whole document corpus or repeat completed research.
+- Resolve each capability in `docs/modules/PACKET-INDEX.md` to its unique `Execution <ID>` section.
+  Follow its existing source paths, first deliverable, data owner, failure/rollback and proof under
+  the common execution contract in `docs/14-MODULE-ARCHITECTURE.md`. `IMPLEMENT`/`PROVE` are next
+  actions after the named gate, never implementation status or permission to bypass R0.
+  Reference checkout `FLEET-ADAPTATION.md` files are generated projections of the canonical
+  reference registry; update that registry/contract and regenerate, never maintain a second plan.
 - Continue through reversible in-scope work. At a checkpoint, finish safe preparation and request
   the smallest owner decision; never widen the Goal or mark partial work complete.
 
@@ -91,15 +124,15 @@ authority, and a future single-writer consolidation pass turns evidence into cur
 
 | Concept | Current authority / status | Rule that survives |
 |---|---|---|
-| **Assistant** (H15 revised) | `packages/shared/src/assistants/` is the independent identity store; backend/RPC exists, but its selector is not mounted, so the user-facing path is `not implemented` | Never store identity/loadout in `labels/config.json`; permission in a loadout is a request, never a grant |
+| **Assistant** (H15 revised) | Independent identity/loadout remains the target; the former `packages/shared/src/assistants/` store and RPC were removed by the rebuild. `not implemented` | Never store identity/loadout in `labels/config.json`; permission in a loadout is a request, never a grant |
 | **Catalog vs active** (H19–H21 principle) | Marketplace/routing runtime `not implemented` | A catalog is unbounded; only the selected active context spends attention; do not trim capability to pass a budget |
 | **Delegation** (H10/H11/H28 principle) | Craft child Sessions/Tasks are the starting authority; Fleet TaskBrief/RunReport gates and inline projection are `not implemented` | Any conversation may delegate; no captain/manager role or second task store |
 | **Memory** (H16–H18/H27 principle) | Store/index/consolidation `not implemented` | Delegates return evidence; only one consolidation writer promotes curated memory; foreign history stays searchable evidence, never imported truth |
 | **Artifact history** (H1–H4 principle) | Unified history router `not implemented` | Text, media and operation logs may use different native storage; attribution is orthogonal and required |
 | **Git snapshots** (03 §4) | Snapshot helper `not implemented` | An agent never moves HEAD, index, a ref, branch, tag or stash under the user |
-| **Cost** (H12) | Pricing/session-cost/usage-rollup helpers exist; complete product projection is not implemented | Price cache reads/writes and context tiers separately; unknown is never reported as zero |
+| **Cost** (H12) | Craft usage tracking exists; Fleet pricing/session-cost/usage-rollup and TE1 cache-economy helpers are absent. Complete Fleet projection is `not implemented` | Price cache reads/writes and context tiers separately; unknown is never reported as zero |
 | **CLI agents** (H6–H8 principle) | General ACP catalog/connection adapter `not implemented` | Detection is separate from configuration and records resolved binary paths; never scrape private caches |
-| **Session activity** (H5) | Derived activity helper exists | Activity is live and derived; `sessionStatus` remains the manual label |
+| **Session activity** (H5) | Craft live processing state exists; the former Fleet derived-activity helper is absent | Activity is live and derived; `sessionStatus` remains the manual label |
 
 Three things a newcomer gets wrong, stated plainly:
 
@@ -119,9 +152,9 @@ they do not define a default Project. Separately, a future Trading/Market Analys
 explicit product proposal, not a Core capability; live orders require a separate safety contract.
 Never make a particular demo name a framework prerequisite. A real migration conflict belongs to
 that record and must preserve its data; do not rename, merge or delete it without the relevant user
-decision. The foundation-first
-execution slice is routed through `docs/WORK-ORDER.md` and `docs/specs/R18-right-workbench.md`;
-component registration and requested panel movement do not wait for a memory system or marketplace.
+decision. The current work is inherited Craft baseline rectification under `docs/WORK-ORDER.md`
+and the single exit in `docs/specs/R0-baseline-audit.md`. Only after that exit does the queued
+`docs/specs/R18-right-workbench.md` host/movement slice begin; it still needs no memory or marketplace prerequisite.
 
 ## Reference retention: inventory first, owner decides removal
 
@@ -160,7 +193,7 @@ ls 源码参考/software/craft-agents-oss-v0.10.5 >/dev/null 2>&1 && echo "mirro
 # The baseline pin must be ON its pin. These checkouts carry their own .git, so a checkout run
 # inside one silently moves the baseline; on 2026-08-17 this one sat at v0.12.0 for three weeks.
 git -C 源码参考/software/craft-agents-oss-v0.10.5 describe --tags   # expect exactly v0.10.5 (look pin)
-git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin; must match app/ (currently v0.13.3)
+git -C 源码参考/software/craft-agents-oss describe --tags           # rolling pin; must match app/ (currently v0.13.4)
 ```
 
 `mirror MISSING` is a **classified limitation** (rule 6), not permission to proceed from memory or
@@ -196,7 +229,7 @@ guess for the v0.10.5 baseline.
 | **The owner asked to simplify, merge, move or remove something** | [`docs/design-library/OWNER-VOICE.md`](docs/design-library/OWNER-VOICE.md) — their verbatim words and which decision now carries each one. OV-008 already settles workspace/folder/project and task-first creation |
 | **Changing a surface that already exists in Craft** | Diff the upstream component first (see *Before you write UI* → Step 0), then `docs/UI-SPEC.md` |
 | **Why a surface is shaped the way it is** (shell, settings, panels, new-task, remote, canvas…) | [`docs/design-library/`](docs/design-library/README.md) — owner-intent notes per area. For Project/Workspace/Session/remote and the **new-task interaction contract**, that is [`20-workspace-project-session-remote-connections.md`](docs/design-library/20-workspace-project-session-remote-connections.md) §11–§14 |
-| Two surfaces seem to overlap / duplicate each other | [`docs/design-library/21-entry-overlap-framework-audit.md`](docs/design-library/21-entry-overlap-framework-audit.md) |
+| Two surfaces seem to overlap / duplicate each other | [`docs/specs/R1-one-boundary-language.md`](docs/specs/R1-one-boundary-language.md) and the current page inventory in `docs/12-PAGE-ARCHITECTURE.md` |
 | Tests, verification, acceptance split | `docs/09-QUALITY.md` |
 | UI structure, which component to start from, review method | `docs/UI-SPEC.md` |
 | **Any rendered value** — type, spacing, color/opacity, icon slot, radius, shadow, states | `docs/UI-SPEC.md` (**mandatory before writing UI code**; run its §12 self-check on the diff) |
@@ -264,6 +297,10 @@ Then run the guard on your diff:
 cd app && bun run lint:ui-contract
 ```
 
+**Current limitation:** the owner-requested original-source restoration removed
+`app/scripts/check-ui-contract.ts` and `lint:ui-contract`. Do not patch the app to restore it during
+preparation. Record the missing check and include its restoration in a concrete approved slice.
+
 It checks tokens, radius, type, elevation, stroke width and — since 2026-07-31 — raw Tailwind palette
 colours and `bg-primary`. It does **not** check motion, shared-primitive reuse, or whether you shipped
 the required states; those are yours to verify.
@@ -272,3 +309,18 @@ Three external skills encode craft this repo does not: `npx skills add emilkowal
 `npx skills add Jakubantalik/transitions.dev`, `npx impeccable install`. They are advisory. Where any
 of them disagrees with `UI-SPEC.md`, UI-SPEC wins — they are written for product apps in general, and
 this is a workbench.
+
+## Learned User Preferences
+
+- When settling how a capability should work, research how Codex, Claude Code, Cursor, and relevant
+  open-source projects implement the same problem, then propose the best landing path. Do not ask the
+  owner how they want it designed.
+- Project reviews and audits must be deep and evidence-backed (concrete paths, diffs, or file:line).
+  Shallow survey-style reviews are rejected.
+- Bound improvement work with measurable goals and stop conditions; do not run open-ended
+  “keep optimizing the project” loops.
+
+## Learned Workspace Facts
+
+- Fleet’s product vision is not “another pure coding-agent IDE”; coding-agent forks (Craft, pi,
+  OpenHands, etc.) are harness and interaction references, not the full product shape.

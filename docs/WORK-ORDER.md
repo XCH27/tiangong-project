@@ -1,104 +1,60 @@
 # Work Order — active execution projection
 
-> [`05-ROADMAP.md`](05-ROADMAP.md) owns release order. This file is only the short execution
-> projection for the one ACTIVE release; it is not a second roadmap, dispatch board, Wave system or
-> ownership register. An explicit owner Goal still overrides the default slice without widening it.
+[`05-ROADMAP.md`](05-ROADMAP.md) owns development order. This file names the current owner-authorized
+slice, not another roadmap or progress archive.
 
 ## Active contract
 
-| Release | Objective | Entry contract | Current status |
-|---|---|---|---|
-| R0 — Craft v0.13.3 baseline stabilization | Explain and stabilize the current dirty tree; close security/recovery gaps; remove or disconnect dead residue; calibrate capability status; prove a runnable baseline | [`specs/R0-baseline-audit.md`](specs/R0-baseline-audit.md) | **ACTIVE** — no clean-tree, green-build, release or visual-acceptance claim yet |
+**R1 shell/context rectification, explicitly authorized by the owner on 2026-09-22.** This bounded
+slice overrides the previous preparation-only stop; R0 remains the overall baseline release gate.
 
-R0 does **not** restore the v0.10.5 shell, recreate `fleet-baseline-r0`, resume the old R0-C7
-walkthrough, replace `AppShell`, build a production canvas, add a relay/RemoteTarget, or implement a
-marketplace. Those were different contracts or later releases.
+- **Objective:** one left Conversation/Project sidebar, independent Board, contextual right panel,
+  ZCode-informed composer/layout and Plan/permission interaction, separate model/reasoning controls
+  with Cindy's model popup, preserved Workspace boundaries.
+- **Sources:** current Craft v0.13.4 and matching pin; Cindy sidebar, `RightSidebarShell`, `TabBar`,
+  registry/store and draft creation; ZCode `ConversationTimeline`/`SessionPane`/`ConversationComposer`;
+  ZCode mode/toolbar/submission and permission-service paths; Cindy unified model-panel components.
+  R1 records exact revisions, admitted behavior and current Craft gaps.
+- **Constraints:** reuse Session/Project/Workspace/Permission owners and pinned dependencies;
+  preserve records and files, do not import another shell/runtime or add unwired plugin controls.
+- **Proof:** typecheck/build, route and Workspace/Project isolation regressions, then isolated
+  desktop walkthrough of empty/normal/narrow layouts, tool navigation, project/model selection,
+  and provider-parameter/Plan-permission/queue/restart regressions.
+- **Next:** implement [R1](specs/R1-one-boundary-language.md) and report actual verification limits.
 
-### Current owner-directed slice: Component and panel foundation
+## Preparation exit and joint walkthrough
 
-Follow [`specs/R18-right-workbench.md`](specs/R18-right-workbench.md) for the early host part of
-R15/R18. R0 remains the single ACTIVE release, not a reason to postpone this explicit owner slice
-until a memory system or public marketplace exists.
+The preparation exit in [R0](specs/R0-baseline-audit.md#preparation-and-joint-review) requires current
+facts, coherent contracts, concrete comparison evidence, a disposition for obsolete material and a
+reproducible original-app launch plan. It is not the later implementation acceptance exit.
 
-1. Audit the touched current baseline and prove Workspace/Session context isolation with synthetic
-   fixtures. Preserve all unrelated changes; do not choose a rollback or a live Project name.
-2. Connect existing Files/Notes bodies and tool entries through one real registry.
-3. Prove user-controlled resize, movement, reordering, in-window float/re-dock and scoped restore
-   without losing conversation or editor state.
-4. Wire global/Workspace local Component activation to existing settings and permissions, with
-   lazy loading, named failures and recoverable unload. Then build domain components.
+For slices outside the explicitly approved R1 scope, build and open original Craft for the requested joint
+walkthrough after preparation. For R1, validate the changed application against the compared sources. First establish a review environment that cannot modify existing user credentials,
+Sessions, files or installations; setting one profile variable is not isolation proof. Use original
+source/build commands and their pinned dependencies, and inspect profile/network/update behavior
+before launch. Explain any unexecutable platform or check; do not patch the app to disguise it.
 
-Native multi-window docking and external distribution follow with their own evidence. The R6/R9
-prerequisites of a particular future component do not block this foundation. No new production
-dependency, data migration or bulk rollback is implied by this work order.
+Review startup, Project/context, Conversation/create, models/permissions, files/Pages, browser,
+Skills/Sources, Tasks/automations, settings/remote and quit/recovery as complete flows. For each,
+show current behavior → demonstrated defect/overlap → recommended change → retained capability
+and data → affected backend → acceptance. Record the owner's decision in the canonical contract.
+An available button, duplicate-looking list or old filename alone does not establish redundancy.
 
-## One-slice execution
+## After the approved correction slice
 
-1. Read root `AGENTS.md`, `PRODUCT.md`, the R0 spec and the exact capability row touched.
-2. Run `git status --porcelain`; select one coherent behavior/authority group and preserve all
-   unrelated changes.
-3. Confirm current code and production callers with `rg`; compare the two Craft pins for
-   `REUSE`/`EXTEND` work. File presence, tests or a type alone do not prove a wired capability.
-4. Keep, fix or drop the group. Retained behavior includes relevant denied/offline/retry/recovery
-   paths and never creates a second authority.
-5. Run the cheapest sufficient targeted checks. After all groups settle, run the complete R0
-   verification ladder and synchronize only canonical facts that changed.
+Implement only the approved slice across UI, RPC, state, failure/recovery, localization and cleanup.
+Preserve exact user records; remove retired callers, handlers and dependencies only after proving
+remaining consumers and recovery. Run appropriate checks and show the changed flow for acceptance.
+Then proceed to the next approved slice. Do not use R0 or IMPLEMENT labels as blanket permission.
 
-Material deletion, public/network effects, paid dependencies, pushing, releases and new/replaced
-authorities remain owner checkpoints. Normal reversible fixes inside the current baseline do not.
+The later R0 baseline exit still precedes the Component/panel foundation and new domain features.
+The existing [host contract](specs/R18-right-workbench.md) retains Files/Notes consumers, scoped
+activation and layout proof; its open engine/schema choices remain proposals. External distribution,
+mobile connection and advanced native windows keep their own evidence and review boundaries.
 
-## Queue after R0
+## Obsolete material
 
-This table is a compact mirror of the roadmap, included only so an executor can see the next
-dependency edge. The roadmap wins if the two disagree.
-
-| Release | Outcome | State / unlock |
-|---|---|---|
-| R1 | One Session authority and create flow; Project=folder; zh-Hans | Incomplete boundary work; only the old shell-restore program was closed. Context isolation feeds the foundation; live naming conflicts remain record-local. |
-| R2 | Remove or honestly disable inherited Craft-operated services | **DEP:** R0 |
-| R3 | First real intent→evidence→Markdown→review→delivery chain | **DEP:** R0 + R2 |
-| R4 | Caller-aware governed action seam from two real callers | **DEP:** R3 |
-| R5 | ArtifactRef from one real producer→consumer handoff | **DEP:** R3 |
-| R6 | Bounded delegation and contract gates over current Session/Task mechanisms | **DEP:** R4 + R5 |
-| R7 | One production canvas for images, video, websites and decks | **DEP:** R4 + R5; includes its minimum pane-host seam |
-| R8 | Promote the proven chain to a finite workflow DAG | **DEP:** R4 + R5 |
-| R9 | Layered memory with one consolidation writer | **GATED:** repeated completed R3 chains |
-| R10 | Native design and web authoring on the R7 canvas | **DEP:** R4 + R5 + R7 |
-| R11 | First cancellable image-generation Job loop | **DEP:** R4 + R5 |
-| R12 | Video/audio sequence editing and delivery | **DEP:** R11 |
-| R13 | Deck and motion modes on the R7 canvas | **DEP:** R7 |
-| R14 | User-owned remote Workspace, messaging and Git/GitHub delivery | **DEP:** R6 |
-| R15 | External Component distribution/update closure over the early local host | **DEP:** foundation + relevant R2 independence + supply-chain/permission evidence; no blanket R6/R9 host gate |
-| R16 | General external-computer control | **CLOSED `NO_GAP`:** outside Fleet; no implementation queue |
-| R17 | Evidence-based adaptive policy or `NO_GAP` | **DEP:** R6 + R9 + R12 |
-| R18 | Advanced/native multi-window docking beyond the in-window foundation | **GATED:** packaged-window security and recovery evidence; minimum registry/movement does not wait for this closure |
-
-Remote Workspace transport is R14, not marketplace authority. The current R0 may repair an already
-modified listener or pairing path, but it does not design a new remote product. GitHub is durable
-delivery, not a second file-sync channel.
-
-## Definition of done
-
-- A real caller reaches the authoritative state path and the result returns to the production
-  surface.
-- Relevant normal, empty, denied, offline, cancel/retry and recovery states are observable.
-- Targeted tests and applicable type/lint checks pass; R0 additionally requires `validate:dev` and a
-  non-interactive launch smoke.
-- The capability map, matrix, page architecture, module registry and code map do not claim more than
-  the current tree.
-- Reports use only `usable`, `wired but not visually checked`, `display-only` or `not implemented`.
-
-## Handoff
-
-```text
-SLICE: <R0 behavior/authority group>
-STATUS: usable | wired but not visually checked | display-only | not implemented
-CHANGED: <exact paths>
-AUTHORITY: <canonical store/contract>
-EVIDENCE: <commands and observations>
-RECOVERY: <denied/offline/retry/cancel behavior>
-DOCS: <canonical facts updated, or none>
-BLOCKER: <smallest unresolved owner decision, or none>
-```
-
-“Tests pass” and “page complete” never replace capability status or real-path evidence.
+Absorb unique current requirements/evidence, update incoming links and delete superseded project
+files. Do not create dated reports, duplicate plans or replacement archive copies. Exact Git refs,
+external source checkouts, generated reference guides and user records keep their distinct
+retention decisions in R0 and the reference registry; a general cleanup is not blanket deletion.

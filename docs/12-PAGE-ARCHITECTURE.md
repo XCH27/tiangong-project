@@ -8,8 +8,14 @@
 
 ## 1. Shell regions
 
+**Current implementation, checked 2026-09-21:** `5a510cf1d` replaced `app/` with Craft
+**v0.13.4**; the previous Fleet tree is preserved at `7a8f6d5fa`. Paths and mounted behavior below
+refer to the current tree. Earlier acceptance and test counts do not transfer across this reset.
+The target inventory and owner decisions remain requirements, not evidence of implemented UI.
+
 The current window uses Craft `AppShell` + `PanelStackContainer`.
-`app/packages/shared/src/layout` is an unmounted target model, not the current renderer.
+`app/packages/shared/src/layout` is absent after the reset; its earlier model is archived, not
+an available implementation dependency.
 
 `AppShell.tsx` + `MainContentPanel.tsx` are Craft's current host, but Fleet's target navigation is
 panel-first: a list stays visible while details, configuration, previews and component tools open in
@@ -21,29 +27,33 @@ authority, not a second conversation home.
 
 **Do not add an unrelated capability by adding an `isXNavigation` branch or a new sidebar row.**
 
-| Region | Code | Notes |
-| --- | --- | --- |
-| Layout engine | `packages/shared/src/layout` (model landed; renderer `not implemented`) | Cindy's tree: pane names only `panelKind`; unregistered kinds hide and reflow |
-| Nav sidebar | pane `nav-sidebar` | chrome, not a destination |
-| Navigator | pane `navigator` | The single Conversation/entity list when the sidebar is unavailable; filters and scopes are predicates, not sibling list homes |
-| Main | pane `main` | conversation is one pane |
-| Workbench | pane `workbench` | plugin and tool surfaces |
-| Production surfaces | pane kinds (`surface:canvas`, documents, browser, timeline) | Fleet's own; open as panes, never as sidebar rows |
-| Dialog layer | shared dialog/drawer components | pickers, confirmations |
-| Right tools | `components/right-sidebar/RightSidebar.tsx` | Fixed Files/Browser/Notes/History entries and JSX bodies; History is placeholder content. A generic Component registry is not mounted. |
+The table distinguishes current code from target pane names; there is no mounted generic pane registry.
 
-What still runs today is Craft **v0.13.3** `AppShell` + `PanelStackContainer`. That is the current
+| Region | Current code / target seam | Notes |
+| --- | --- | --- |
+| Layout engine | `components/app-shell/PanelStackContainer.tsx` | Current horizontal stack; the registered layout-tree target is `not implemented` |
+| Nav sidebar | target pane `nav-sidebar` | chrome, not a destination |
+| Navigator | target pane `navigator` | The single Conversation/entity list when the sidebar is unavailable; filters and scopes are predicates, not sibling list homes |
+| Main | target pane `main` | conversation is one pane |
+| Workbench | target pane `workbench` | plugin and tool surfaces |
+| Production surfaces | target pane kinds (`surface:canvas`, documents, browser, timeline) | Fleet's own; open as panes, never as sidebar rows |
+| Dialog layer | shared dialog/drawer components | pickers, confirmations |
+| Session files | `components/right-sidebar/SessionFilesSection.tsx`, mounted by `SessionInfoPopover.tsx` | The file list survives in the session popover/drawer. `RightSidebar.tsx` and its Component registry are absent; the general right workbench is `not implemented`. |
+
+What still runs today is Craft **v0.13.4** `AppShell` + `PanelStackContainer`. That is the current
 host. Cindy work is capabilities (plugins, skills, remote, assistants), not a new overlay chrome.
 
 ### User-owned panel layout — foundation contract
 
 The owner requested resize, drag/reposition, reordering, floating and restore for conversation and
 tool panels. Left tool entries/right panels are defaults, not permanent locks. Those in-window
-behaviors execute with the early host foundation in
-[`specs/R18-right-workbench.md`](specs/R18-right-workbench.md), using existing Files/Notes as real
-consumers before new domain Components. R15 distribution, R9 memory and advanced/native-window R18
-closure are not prerequisites. The current horizontal stack only wires sizing; the pure layout
-tree and Component resolver do not yet have production consumers.
+behaviors execute only after the R0 baseline exit, with the early host foundation in
+[`specs/R18-right-workbench.md`](specs/R18-right-workbench.md), using mounted Files and a real Notes RPC consumer
+before new domain Components. Files survives through the session popover; the former Notes
+host is absent and must not be treated as mounted. R15 distribution, R9 memory and advanced/native-window R18
+closure are not prerequisites. The current horizontal stack wires sizing; the prior pure layout
+tree, Component resolver and right-workbench host were removed by the reset. Their target behavior
+is `not implemented`.
 
 The host keeps stable panel ids, Workspace/Session binding, drafts and native resource ownership
 while moving views. Keyboard move/resize, local-window geometry, missing-component recovery and
@@ -52,73 +62,58 @@ docking, and do not replace Craft's visual tokens to obtain these behaviors.
 
 ### No-duplicate navigation rule
 
-The default shell has one Conversation list. “All conversations”, label results, project results,
-status results, pinned results and archived results are filter states of that list, rendered by the
-same list implementation. They must not appear as parallel permanent sections that repeat the same
-Session rows. Project selection changes the list predicate and opens Project context in the workbench;
-Project context shows files, assets, deliverables and settings, never another conversation list.
-
-List/detail patterns follow Cindy's SkillHub and OpenChamber's ContextPanel evidence: inspect,
-preview, configure and manage actions open an in-list panel, drawer or right workbench surface.
-Retired detail URLs redirect to the canonical list/panel destination. The visual result still uses
-Craft's typography, spacing, colour tokens, elevation, motion and shared primitives. The only
-permanent left-rail entries are canonical capability homes (Conversation, Project/context, Settings,
-and installed Component entries), not every predicate over Session data.
+The product-facing work list is one left sidebar with Project groups and folderless Conversations.
+Workspace remains the visible configuration/routing boundary. Project selection changes context within
+that Workspace; it does not select another Workspace. Board has a separate entry over existing records.
+Conversation activity is a derived running/attention/idle projection, not Board's manual categories.
+Tool and resource lists/details occupy the contextual right panel or existing content panels reached
+through context menus. The panel is a future Cindy-style `RightSidebarShell`/`TabBar` host with a
+registered tab-kind seam; it is not a vertical shortcut rail. The later Component registry remains a
+separate gated capability.
 
 > **Settled, not open.** The owner rejected building the infinite canvas now ("你不应该现在做无限
 > 画布，而且你现在做的无限画布根本都是错误的"), and `FleetLayout` was reverted to
 > `PanelStackContainer` because it ignored sashes, board and chrome. On 2026-09-11 the residue of
 > that revert — `renderer/layout/{FleetLayout,LayoutRoot,LayoutBridge,registry,ledger,builtinPanels}`
 > and `renderer/surfaces/canvas/CanvasPane.tsx`, all with zero production callers, plus three
-> orphaned `canvas.*` i18n keys — was removed from the working tree. `packages/shared/src/layout/tree.ts`
-> stays: it is committed, and R18 already records it as an unmounted model.
+> orphaned `canvas.*` i18n keys — was removed from that working tree. The shared layout model
+> survived that earlier removal, but the 2026-09-21 reset removed it too; retrieve historical
+> evidence from `7a8f6d5fa`, never describe that path as present today.
 >
-> So the current host is Craft `AppShell` + `PanelStackContainer`, and `board`/`pages` navigate by
-> replacing the content panel. The pane sentences above describe the **R7/R18 target shape**, not
-> today's structure. The owner-directed foundation now brings the minimum registered host and
+> The current host remains Craft `AppShell` + `PanelStackContainer`. Board is again a
+> `sessions` view mode; Pages has its own navigator. Both replace the content panel. The pane
+> sentences above describe the **R7/R18 target shape**, not today's structure. After the R0 baseline exit, the owner-directed foundation brings the minimum registered host and
 > in-window movement before domain Components; R7 reuses it. R18's later gate covers additional
 > native-window/advanced behavior, not the minimum host itself.
 
-## 1b. Regression against a decided shell model (recorded 2026-09-13)
+## 1b. Workspace/Project boundary and current callers
 
-The R1 shell was decided and audited. [`design-library/21-entry-overlap-framework-audit.md`](design-library/21-entry-overlap-framework-audit.md)
-§1 records the skeleton and §1 K3 records the owner decision of **2026-07-25**: the TopBar
-`WorkspaceSwitcher` is *removed*, and the sidebar Project rows are the one switcher, with
-`Project row = Workspace`. The 2026-09-10 rebase onto Craft v0.12/v0.13.3 dropped that model, and
-nothing noticed because §21 was unreachable from the routing table until 2026-09-13.
+[R1](specs/R1-one-boundary-language.md) owns the 2026-09-22 authorized implementation: AppShell's
+single sidebar, the contextual right-panel host, and the existing Project/Session commands. No
+`WorkspaceToolRail`, `WorkspaceFooter`, `WorkspaceResourceHome` or `DraftProjectPicker` exists in the
+restored baseline; those names are retired. ProjectInfoPage contains resources/settings, not a second
+Conversation list. The new empty layout reuses Craft's ChatDisplay/InputContainer seam. This is an
+extension of the restored Craft v0.13.4 baseline; earlier Fleet ProjectHomePage and layout engines remain absent.
 
-Measured against the current tree:
+## 2. Page inventory — current mounted surfaces
 
-| Decided (§21 §1/K3, P6) | Current tree | Evidence |
-|---|---|---|
-| TopBar switcher removed; sidebar rows are the switcher | Non-compact `TopBar` has no workspace switcher; compact mode keeps `CompactWorkspaceSwitcher` because the sidebar is hidden | `components/app-shell/TopBar.tsx`, `CompactWorkspaceSwitcher.tsx` |
-| `Project row = Workspace` | Sidebar 项目 rows are built from the Workspace list and selecting one switches the existing Workspace authority; the nested v0.11 project list remains compatibility-only | `AppShell.tsx` workspace rows; `useProjects` only in the legacy compatibility panel |
-| Folder-less Sessions in a sibling **对话 / Conversations** scope | No Conversations section exists | `AppShell.tsx`, no `sidebar.conversations` |
+| Page / surface | Status | Current evidence and limits |
+| --- | --- | --- |
+| ChatPage | `wired but not visually checked` | Mounted conversation and existing Session path; prior Fleet footer/revert acceptance does not transfer |
+| ProjectInfoPage · SkillInfoPage · SourceInfoPage | `wired but not visually checked` | Original mounted detail pages; Fleet ProjectHomePage was withdrawn; one-boundary consolidation not implemented |
+| ShortcutsPage | `wired but not visually checked` | Existing shortcut surface |
+| AutomationInfoPage | `wired but not visually checked` | Mounted from `components/automations/` by `MainContentPanel` |
+| Board (kanban) | `wired but not visually checked` | `sessions` navigation with `viewMode: 'board'`; the owner-requested independent Board navigator is `not implemented` |
+| Pages | `wired but not visually checked` | Upstream mini-app surface; hosted publication is present and still conflicts with Fleet's local-first contract |
+| Settings: AI · App · Appearance · Input · Labels · Messaging · Permissions · Preferences · Server · Shortcuts · Workspace | `wired but not visually checked` | Upstream Settings pages; Server exposes URL/token configuration. Fleet's one-code per-device pairing flow is `not implemented` |
+| Composer — Fleet execution-target selector | `not implemented` | `ComposerLeadingChips` / `NewSessionRunTarget` are absent after reset; existing remote Workspace routing is not this interaction |
+| Design-system playground window | `display-only` | Debug preview host; no Fleet canvas preview currently exists |
+| Browser empty-state page | `wired but not visually checked` | Auxiliary BrowserPane window; the earlier in-shell embedding is absent |
+| Onboarding · Reauth · WorkspacePicker | `wired but not visually checked` | Existing startup/recovery callers; no new visual acceptance claimed |
 
-Consequence, and the reason this block exists: today the control **named** 项目 is not the Project
-boundary, while the control that *is* the boundary is named 工作区 — two meanings of "project" on one
-screen, which is precisely overlap cluster **O4**. Do not re-derive this; do not redesign it. The
-target is already decided — restore it, and treat any deviation as a change that needs the owner.
-
-## 2. Page inventory — current (real code, `app/apps/electron/src/renderer/pages/`)
-
-| Page                                                                                                                                                    | Status            | Notes                                                                                                                                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ChatPage                                                                                                                                                | `usable`          | session conversation                                                                                                                                                                                      |
-| Project settings · SkillInfoPage · SourceInfoPage                                                                                                       | `usable`          | entity info; Project settings target the selected Workspace-as-Project                                                                                                                                    |
-| Nested v0.11 ProjectInfoPage                                                                                                                            | `display-only`    | compatibility route only; not the canonical Project authority                                                                                                                                             |
-| ShortcutsPage                                                                                                                                           | `usable`          |                                                                                                                                                                                                           |
-| AutomationInfoPage                                                                                                                                      | `usable`          | routed automation detail/configuration surface in `MainContentPanel`                                                                                                                                      |
-| Board (kanban)                                                                                                                                          | `usable`          | Own navigator (`board`), not a session-list view mode. Conversation stays on `sessions`. Clicking a tile opens that session.                                                                              |
-| Pages (Craft v0.13.3)                                                                                                                                   | `wired but not visually checked` | Craft-admitted mini-apps (`pages` navigator). Not Fleet's infinite canvas.                                                                                                                                |
-| Settings: AI · App · Appearance · Input · Labels · Messaging · Permissions · Preferences · Remote connection · Shortcuts · Workspace (+ navigator) | mixed | `server` is **远程连接**, two blocks: 当前设备 (accept connections, Add a device → one-time access link, and the list of devices allowed in, each revocable) and 远程设备 (paste a name + link to reach another computer; removing one is confirmed because it deletes that Workspace's credentials and data). Same width as every other settings page (`max-w-3xl`). One icon for the concept — `Monitor`, a computer, never `Cloud` (P8: this is another machine, not a service). Add workspace uses the same name and the same icon, is for creating a folder/project on the remote device rather than configuring it, and routes to Settings when nothing is paired. |
-| Composer — run target chip | `wired but not visually checked` | "Which computer this conversation runs on", on a new conversation only: this computer or a paired one, with that computer's running-session count and a named reason when it cannot be chosen (not reachable / no project yet). Hidden entirely when nothing is paired. Picking a computer selects one of its Workspaces and the existing create flow does the rest — no second session-creation path. Lives in `app-shell/input/{ComposerLeadingChips,NewSessionRunTarget}` because `FreeFormInput` is over the file-size budget. |
-| Design-system playground window                                                                                                                         | `display-only`    | debug-only preview host; never a product authority                                                                                                                                                        |
-| Browser empty-state page                                                                                                                                | `usable`          | BrowserPane auxiliary window entry                                                                                                                                                                        |
-| Onboarding · Reauth · WorkspacePicker startup screens                                                                                                   | `usable`          | pre-shell startup and recovery surfaces                                                                                                                                                                   |
-
-These pages are what Craft **v0.13.3** mounts. Look (tokens, type, motion) still comes from
-[`UI-SPEC.md`](UI-SPEC.md).
+These are the mounted Craft **v0.13.4** surfaces. Fleet's product exclusions still apply: upstream
+telemetry, hosted sharing, update endpoints and cloud documentation have not been admitted merely
+because the reset restored them. Look rules remain in [`UI-SPEC.md`](UI-SPEC.md).
 
 **Every change to one of these starts from the matching upstream component** —
 `源码参考/software/craft-agents-oss/` at the same path. Diff it, then justify each delta. This line
@@ -139,13 +134,13 @@ domain spec (or an owner request) and the frontend-track rules in §5.
 
 | #   | Surface                                          | Surface IDs                  | Domain (matrix row)             | What it shows / does                                                                                                                                                             | Primary home                                                                                                        | Status                                   |
 | --- | ------------------------------------------------ | ---------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| T1  | Project home (P6 single boundary)                | P-03                         | Project/Workspace               | files, assets, deliverables and settings of one Project; one switcher; no Session-list copy                                                                                      | existing sidebar + pages, re-worded                                                                                 | `not implemented`                        |
-| T2  | Deliverables view (`deliverables/` + provenance) | —                            | Files/ArtifactRef               | accepted outputs of a Project                                                                                                                                                    | ProjectInfoPage extension                                                                                           | convention helper `wired but not visually checked`; the view itself is `not implemented` (R3 minimal → R5 real) |
+| T1  | Project resources (Workspace-scoped)                | P-03                         | Project/Workspace               | files, assets, deliverables and settings of one Project; one switcher; no Session-list copy                                                                                      | existing sidebar + pages, re-worded                                                                                 | `not implemented` as Fleet Project home; original nested ProjectInfoPage remains |
+| T2  | Deliverables view (`deliverables/` + provenance) | —                            | Files/ArtifactRef               | accepted outputs of a Project                                                                                                                                                    | ProjectInfoPage extension                                                                                           | `not implemented`; the former deliverable convention helper is absent |
 | T3  | Library view                                     | P-12                         | ArtifactRef & Library           | selected, indexed, provenance-tracked assets; exact versions                                                                                                                     | R5 page/extension decision                                                                                          | `not implemented`                        |
 | T4  | Jobs / generations panel                         | P-36, P-49                   | AIGC jobs                       | running/queued/failed generation jobs, placeholders→results                                                                                                                      | R11 surface decision                                                                                                | `not implemented`                        |
 | T5  | Canvas                                           | P-34                         | Canvas                          | spatial command surface per [`13-ORCHESTRATION.md`](13-ORCHESTRATION.md) §4 (cards, edges, Space/Workflow dual modes)                                                            | new page inside shell (R7; DOM family committed per E5a — React Flow default, custom DOM+SVG fallback, spike picks) | `not implemented`                        |
 | T6  | Workflow editor/run view                         | P-46, P-47                   | Workflows                       | finite DAG definition + run status                                                                                                                                               | new page (R8)                                                                                                       | `not implemented`                        |
-| T7  | Delegation / team view                           | P-20                         | Multi-agent                     | child runs, budgets, RunReports — projections of Session tree                                                                                                                    | Inline `DelegationStrip` on parent ChatDisplay first (no Team page); deeper inspector remains R6                   | `wired but not visually checked`         |
+| T7  | Delegation / team view                           | P-20                         | Multi-agent                     | child runs, budgets, RunReports — projections of Session tree                                                                                                                    | Inline `DelegationStrip` on parent ChatDisplay first (no Team page); deeper inspector remains R6                   | `not implemented`; prior `DelegationStrip` and Fleet brief/report gates are absent |
 | T8  | Cost, usage & context view                       | P-29, P-30                   | Model routing/cost/context      | per-session/project usage, cache/prefix breaks, prompt/tool/context component inventory, source scope and grants                                                                 | TE1/R3 existing session info first; R17 closes any remaining surface gap                                            | `not implemented`                        |
 | T9  | Memory browser & curation                        | P-31                         | Memory & experience             | layered memory files, consolidation log, injected-share display, pin/correct/delete                                                                                              | new page (R9)                                                                                                       | `not implemented`                        |
 | T10 | Video editor                                     | P-35                         | Video                           | timeline NLE over project media                                                                                                                                                  | R12 native page decision                                                                                            | `not implemented`                        |
@@ -171,38 +166,38 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 
 | ID   | Surface                                                                                                                                | Host / primary home                        | Registry rows                               | State                                                                                                                                                                                                                                         |
 | ---- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P-01 | App shell and navigation; global search command surface                                                                                | Global shell                               | CORE-01, CORE-10                            | shell/navigation usable; global search wired but not visually checked                                                                                                                                                                         |
-| P-02 | Session work/conversation, progressive composer and stream inspector; global/Project New Task triggers share one Session path (P10)    | Conversation                               | CORE-03                                     | request-time mode/model/time metadata, changed-file summary and the Session-owned follow-up queue are wired but not visually checked; transcript revert is usable, while completed-turn revert with workspace-file restoration is not implemented |
-| P-03 | Project home and switcher (converging on one Project switcher per P6/R1)                                                               | Main content                               | CORE-02                                     | switcher/settings wired but not visually checked; full target home not implemented                                                                                                                                                            |
-| P-04 | Structured task detail/activity and later task-center projection; Kanban is not the default product surface                            | Task inspector                             | CORE-04                                     | task store/TaskRunner backend usable; the default task-center surface is not implemented (mirrors the CORE-04 registry row) |
-| P-05 | Settings navigator and preference forms                                                                                                | Settings                                   | CORE-05, CORE-10                            | navigator and preference forms usable; on the Expert kits page, name/colour/kind/value-type/prompt usable, and the kit payload region is `wired but not visually checked` since 2026-09-10 — skills are picked from the installed set with their scope shown, counts and unresolved slugs are measured rather than asserted (H38). Source and tool selection remain `not implemented`: neither has a resolver, so they keep their hand-edit path |
-| P-06 | Search and label filters over the one work list; archive management in Settings; global Session/Project-file/Settings/route projection | Sidebar / Settings / command view          | CORE-06, INFO-06                            | wired but not visually checked                                                                                                                                                                                                                |
-| P-07 | First-run and model connection setup                                                                                                   | First run / Settings → Model               | CORE-07                                     | first-run setup and Settings-owned inline add/edit/validate/reauth path usable; the complete §3B OpenCode-admission interaction contract is not implemented                                                                                    |
-| P-08 | Help, local docs and support links                                                                                                     | external doc-links + Settings/Shortcuts    | CORE-08                                     | wired but not visually checked                                                                                                                                                                                                                |
-| P-09 | Update channel, release notes and recovery                                                                                             | Settings / dialog                          | CORE-09                                     | wired but not visually checked                                                                                                                                                                                                                |
+| P-01 | App shell and navigation; global search command surface                                                                                | Global shell                               | CORE-01, CORE-10                            | Craft shell/navigation and Session search `wired but not visually checked`; Fleet cross-domain global search `not implemented` |
+| P-02 | Session work/conversation, progressive composer and stream inspector; global/Project New Task triggers share one Session path (P10)    | Conversation                               | CORE-03                                     | Craft conversation, steering and mid-stream queue `wired but not visually checked`; prior Fleet turn metadata, changes summary and transcript/file revert surface `not implemented` |
+| P-03 | Project resources and draft context picker (revised P6/R1)                                                               | Main content                               | CORE-02                                     | Inherited Workspace switcher and old-record routes `wired but not visually checked`; R1 Project context picker and resource-home changes `not implemented` after rollback |
+| P-04 | Structured task detail/activity and later task-center projection; Kanban is not the default product surface                            | Task inspector                             | CORE-04                                     | Craft Task store/TaskRunner `wired but not visually checked`; Fleet task-center surface `not implemented` |
+| P-05 | Settings navigator and preference forms                                                                                                | Settings                                   | CORE-05, CORE-10                            | upstream Settings forms `wired but not visually checked`; Assistant identity/loadout UI `not implemented`; no ExpertKit-as-label implementation is admitted |
+| P-06 | Search and label filters over the one work list; archive management in Settings; global Session/Project-file/Settings/route projection | Sidebar / Settings / command view          | CORE-06, INFO-06                            | Craft Session search and label/project filters `wired but not visually checked`; Fleet archive-in-Settings and cross-domain command projection `not implemented` |
+| P-07 | First-run and model connection setup                                                                                                   | First run / Settings → Model               | CORE-07                                     | Craft first-run/model connections `wired but not visually checked`; complete §3B interaction contract `not implemented` |
+| P-08 | Help, local docs and support links                                                                                                     | external doc-links + Settings/Shortcuts    | CORE-08                                     | upstream hosted doc links `wired but not visually checked`; Fleet local user-facing documentation routing `not implemented` |
+| P-09 | Update channel, release notes and recovery                                                                                             | Settings / dialog                          | CORE-09                                     | Craft update/release-note path `wired but not visually checked`; independent Fleet update channel `not implemented` |
 | P-10 | User-controlled resize, move, reorder, in-window float/re-dock and layout restore | Existing shell extended by registered panel host | CORE-11 | fixed-column sizing wired but not visually checked; generic registration, user movement and layout restore not implemented; early R15/R18 foundation before domain Components |
-| P-11 | Workspace file browser and file actions                                                                                                | Project home / drawer                      | INFO-01                                     | usable                                                                                                                                                                                                                                        |
+| P-11 | Workspace file browser and file actions                                                                                                | Project home / drawer                      | INFO-01                                     | SessionFilesSection and ProjectHomePage directory/search/preview paths `wired but not visually checked`; advanced file history/actions remain R5 |
 | P-12 | Library, versions and asset inspector                                                                                                  | Library route                              | INFO-02                                     | not implemented                                                                                                                                                                                                                               |
-| P-13 | Source ingestion and conversion progress                                                                                               | Sources / Jobs                             | INFO-04                                     | usable                                                                                                                                                                                                                                        |
-| P-14 | Document editor, preview and co-edit controls                                                                                          | FileViewer overlay / future editor host    | INFO-05, CREATE-16                          | file preview usable; document editor/co-edit not implemented                                                                                                                                                                                  |
-| P-15 | Browser tabs, navigation and capture controls                                                                                          | BrowserPane / right workbench projection   | INFO-03                                     | tabs/navigation usable; in-shell BrowserPane embedding wired but not visually checked; capture controls not implemented                                                                                                                       |
+| P-13 | Source ingestion and conversion progress                                                                                               | Sources / Jobs                             | INFO-04                                     | Craft source ingestion/conversion `wired but not visually checked`; Fleet provenance extension `not implemented` |
+| P-14 | Document editor, preview and co-edit controls                                                                                          | FileViewer overlay / future editor host    | INFO-05, CREATE-16                          | Craft file preview `wired but not visually checked`; native document editing/co-edit `not implemented`; TipTap has a playground caller only |
+| P-15 | Browser tabs, navigation and capture controls                                                                                          | BrowserPane / right workbench projection   | INFO-03                                     | separate BrowserPane window/navigation `wired but not visually checked`; Fleet in-shell embedding and evidence capture `not implemented` |
 | P-16 | Evidence, citation and provenance review                                                                                               | Inspector / timeline                       | INFO-03, INFO-07                            | not implemented                                                                                                                                                                                                                               |
 | P-17 | Import, export and migration wizard                                                                                                    | Dialog / settings                          | INFO-08                                     | not implemented                                                                                                                                                                                                                               |
-| P-18 | Permission prompt, approval history and policy explanation                                                                             | Dialog / inbox                             | EXEC-01, EXEC-02                            | the Craft approval prompt is usable (PreToolUse emits `permission_request`; the conversation renders it); the EXEC-02 caller-aware policy explanation and approval history are not implemented (R4) |
-| P-19 | Terminal session, output and cancellation                                                                                              | Session panel / right workbench projection | EXEC-03                                     | bounded project command runner wired but not visually checked; persistent interactive PTY and cancellation not implemented                                                                                                                    |
-| P-20 | Delegation tree, brief and run report                                                                                                  | Chat / task inspector extension            | EXEC-04                                     | inline `DelegationStrip` on the parent conversation is wired but not visually checked (`DelegationStrip.tsx`, mounted in `ChatDisplay.tsx`); the delegation tree, TaskBrief and RunReport inspector are not implemented (R6) |
-| P-21 | CLI runtime connection and capability health                                                                                           | Settings → Terminal                        | EXEC-05                                     | installed CLI handshake and model/capability health projection usable; OpenCode variant classification and executable Codex/OpenCode/Claude CLI Session adapters not implemented                                                               |
+| P-18 | Permission prompt, approval history and policy explanation                                                                             | Dialog / inbox                             | EXEC-01, EXEC-02                            | Craft permission prompt `wired but not visually checked`; caller-aware policy explanation/approval history `not implemented` |
+| P-19 | Terminal session, output and cancellation                                                                                              | Session panel / right workbench projection | EXEC-03                                     | Craft Bash/background execution `wired but not visually checked`; Fleet command-runner panel and persistent interactive PTY `not implemented` |
+| P-20 | Delegation tree, brief and run report                                                                                                  | Chat / task inspector extension            | EXEC-04                                     | Craft child Sessions/TaskRunner `wired but not visually checked`; Fleet DelegationStrip, TaskBrief and RunReport inspectors `not implemented` |
+| P-21 | CLI runtime connection and capability health                                                                                           | Settings → Terminal                        | EXEC-05                                     | general CLI discovery/handshake and executable CLI Session adapters `not implemented`; upstream SDK/provider lanes remain separate from this target |
 | P-23 | Worktree occupancy and cleanup                                                                                                         | Task inspector                             | EXEC-07                                     | not implemented                                                                                                                                                                                                                               |
-| P-24 | Sandbox profile, limits and denied action                                                                                              | Settings / approval dialog                 | EXEC-08                                     | not implemented                                                                                                                                                                                                                               |
-| P-25 | Remote target, grant and disconnect state                                                                                              | Workspace settings                         | EXEC-09                                     | not implemented                                                                                                                                                                                                                               |
-| P-26 | Automation schedule and run history                                                                                                    | Task / settings extension                  | EXEC-10                                     | usable                                                                                                                                                                                                                                        |
+| P-24 | Inherited execution isolation, limits and denial explanation | Existing settings / approval path | EXEC-08 | inherited mechanisms `wired but not visually checked`; R0/R2 verifies actual boundaries; a second sandbox/profile authority is excluded |
+| P-25 | Remote target, grant and disconnect state                                                                                              | Workspace settings                         | EXEC-09                                     | Craft remote Workspace URL/token routing `wired but not visually checked`; Fleet target identity, per-device grants and unified pairing `not implemented` |
+| P-26 | Automation schedule and run history                                                                                                    | Task / settings extension                  | EXEC-10                                     | Craft automation schedules/history `wired but not visually checked` |
 | P-27 | Messaging channels, delivery and reconnect                                                                                             | Settings / inbox                           | EXEC-11                                     | `not implemented`                                                                                                                                                                                                                             |
-| P-29 | Context preview, compaction and token budget                                                                                           | Session / cost inspector                   | INTEL-01, INTEL-02                          | one composer context indicator, one primary context bar, provider-ledger inspector and estimated visible-message composition usable; exact prompt-section attribution, optimizer attribution and compaction preview not implemented             |
-| P-30 | Model capability, routing and cost ledger                                                                                              | Session / Settings → Model                 | INTEL-03, INTEL-04                          | provider-grouped searchable inventory, discovered icons and advertised reasoning/fast controls usable; generic runtime-mode selection and full CLI execution projection not implemented; Claude/Codex subscription allowance adapters wired but not visually checked with a live subscription; routing ledger not implemented |
+| P-29 | Context preview, compaction and token budget                                                                                           | Session / cost inspector                   | INTEL-01, INTEL-02                          | v0.13.4 composer context indicator and existing compaction `wired but not visually checked`; Fleet TE1 ledger/breakdown inspector and exact attribution `not implemented` |
+| P-30 | Model capability, routing and cost ledger                                                                                              | Session / Settings → Model                 | INTEL-03, INTEL-04                          | upstream model/thinking selection `wired but not visually checked`; Fleet provider inventory, generic runtime controls, subscription allowances and routing ledger `not implemented` |
 | P-31 | Memory layers, consolidation log and curation (pin/correct/delete)                                                                     | Memory route                               | INTEL-05                                    | not implemented                                                                                                                                                                                                                               |
 | P-32 | Skill/capability install, loadout and runtime view                                                                                     | Skills/Sources extension                   | INTEL-06                                    | not implemented                                                                                                                                                                                                                               |
 | P-33 | Evaluation run, regression evidence and comparison                                                                                     | Diagnostics / Jobs                         | INTEL-07                                    | not implemented                                                                                                                                                                                                                               |
-| P-34 | Spatial canvas and node inspector                                                                                                      | Canvas route / right workbench entry       | CREATE-01                                   | not implemented; playground preview and workbench entry are display-only                                                                                                                                                                      |
+| P-34 | Spatial canvas and node inspector                                                                                                      | Canvas route / right workbench entry       | CREATE-01                                   | `not implemented`; prior canvas preview/workbench entry is absent |
 | P-35 | Video sequence, media bin and timeline                                                                                                 | Video route                                | CREATE-02                                   | not implemented                                                                                                                                                                                                                               |
 | P-36 | Image generation/editing and result review                                                                                             | Jobs / media route                         | CREATE-03                        | not implemented                                                                                                                                                                                                                               |
 | P-37 | Audio, voice and music tracks                                                                                                          | Media / video route                        | CREATE-04                                   | not implemented                                                                                                                                                                                                                               |
@@ -218,7 +213,7 @@ packet explicitly proves a new host is necessary. These IDs are the cross-docume
 | P-47 | Workflow run, inputs, outputs and history                                                                                              | Workflow / task extension                  | ORCH-02                                     | not implemented                                                                                                                                                                                                                               |
 | P-48 | Plugin, tool registry, MCP and loadout permissions                                                                                     | Skills/Sources / settings                  | ORCH-03, ORCH-04                            | `not implemented`                                                                                                                                                                                                                             |
 | P-49 | Job queue, resource limits, retry and cancellation                                                                                     | Jobs panel                                 | ORCH-05                                     | not implemented                                                                                                                                                                                                                               |
-| P-50 | Activity timeline and event detail                                                                                                     | Session / project timeline                 | ORCH-06, EXEC-02                            | usable (timeline); EXEC-02 evidence detail not implemented                                                                                                                                                                                    |
+| P-50 | Activity timeline and event detail                                                                                                     | Session / project timeline                 | ORCH-06, EXEC-02                            | Craft SessionEvents timeline `wired but not visually checked`; Fleet caller-aware evidence detail `not implemented` |
 | P-51 | Notifications, approvals and inbox                                                                                                     | Inbox drawer                               | ORCH-07                                     | `not implemented`                                                                                                                                                                                                                             |
 | P-52 | Diagnostics, health checks and recovery actions                                                                                        | Help / settings                            | ORCH-08                                     | not implemented                                                                                                                                                                                                                               |
 | P-54 | Git repository, branch, diff and PR review                                                                                             | Delivery / task extension                  | EXEC-13                                     | not implemented                                                                                                                                                                                                                               |
@@ -236,10 +231,12 @@ mock page in the default product.
 
 ## 3B. Binding model, runtime, usage and message-review contract
 
-This section is the handoff and review contract for P-02, P-07, P-21, P-29 and P-30. OpenCode
-Desktop is the primary workflow and information-hierarchy reference; Craft/Fleet remains the
-rendering and state authority. A reviewer tests the clauses below rather than accepting “similar to
-OpenCode” as evidence.
+This section is the target handoff and review contract for P-02, P-07, P-21, P-29 and P-30.
+The reset did not implement it; current coverage is recorded in §3A and the gap table below.
+[R1](specs/R1-one-boundary-language.md) selects ZCode's composer and independent model/reasoning
+controls, and Cindy's searchable, filtered, grouped model popup. OpenCode remains comparison
+evidence for provider setup, discovery, context usage and review. Craft/Fleet remains the rendering
+and state authority. A reviewer tests the clauses rather than accepting a resemblance as evidence.
 
 ### Surface ownership
 
@@ -249,7 +246,7 @@ OpenCode” as evidence.
 | CLI runtimes | **Settings → Terminal**; handshake before first use records runtime version, health, models, modalities, context, reasoning efforts and typed runtime modes | the first model call performs discovery; a CLI gains its own composer or model-picker design |
 | Model choice | the same provider/connection-grouped searchable picker in Settings and composer; a CLI group uses the connection name while detail still exposes the actual runtime/provider | a flat duplicate list, a transport prefix such as `pi/`, or a separate fast/normal model ID is shown |
 | Defaults | one app/Project new-task default outside a connection editor; an explicit Session selection wins | a connection card carries a “default model” badge or silently overrides a Session choice |
-| Project location | one Project/folder selector; execution target (`this device` or a named user-owned remote Fleet target) is a separate choice with the same menu grammar | Workspace is shown as a peer user concept; folder, remote machine, worktree and cloud are mixed into one location type |
+| Project location | visible Workspace switcher plus a Project/folderless picker for the new Conversation; host follows the Workspace route | Project selection silently changes Workspace; folder, remote machine, worktree and cloud are mixed into one location type |
 
 ### Settings and composer interaction
 
@@ -260,10 +257,12 @@ OpenCode” as evidence.
    the same text searches known models and offers an explicit custom-ID action. There is no second
    search box or chip row. Custom IDs preserve their provider-native value and support keyboard
    removal without exposing an internal transport prefix.
-3. The composer picker groups models by connection/provider, uses the admitted provider icon, and
-   exposes exactly these compact detail rows when known: **Model · Provider/runtime · Input ·
-   Reasoning · Context**. Unknown values render `—`; they never become `0`, “unsupported”, or a
-   guessed capability.
+3. The composer popup follows Cindy's search, category rail, grouped model rows and fixed configure
+   footer as specified in R1. Row hierarchy is model name first, genuine description/account source
+   second, with known capability summary and selection at the right. Input/context detail may use
+   secondary disclosure; do not expand every row into a five-field form. Reasoning is edited by its
+   own composer control. Unknown values render `—` or remain absent; they never become `0`,
+   “unsupported”, or a guessed capability. API price and subscription quota stay distinct.
 4. The reasoning control lists only exact model-advertised effort values, translated for display.
    Binary reasoning stays binary; if a model advertises six or seven official values, all six or
    seven remain independently selectable rather than being collapsed to a global list.
@@ -296,9 +295,11 @@ providers.
 
 1. The composer has one context indicator and the detail has one primary context-usage bar.
    Subscription quota windows appear only for the active subscription connection, after an
-   authenticated provider/CLI response; one or two bars are valid according to the returned
-   windows. API-key connections show no subscription allowance. Missing or undocumented quota data
-   stays unavailable rather than being scraped, estimated or shown as zero.
+   authenticated provider/runtime response. Show the returned windows and native units, with a
+   compact summary and overflow detail rather than a fixed two-window limit. API-key connections
+   show no invented subscription allowance. Missing or undocumented quota data stays unavailable
+   rather than being scraped, estimated or shown as zero. Acquisition, identity and freshness follow
+   [SYS-03](modules/suites/SYS-03-context-economy.md#subscription-allowance-acquisition-and-display).
 2. The one usage ledger owns total/input/output/reasoning/cache-read/cache-write tokens, cost,
    message counts, context limit, created/last-active times and breakdown. Provider events outrank
    estimates. Estimated visible-message composition is labelled estimated and never presented as
@@ -319,17 +320,15 @@ providers.
 
 | Gap | Status | Closure evidence |
 |---|---|---|
-| OpenCode CLI `variants` are currently treated as reasoning efforts without proving their semantics | `not implemented` | fixture showing typed effort versus speed/service/tool modes, with no cross-classification |
-| Non-fast generic runtime modes are stored but not selectable in the composer | `wired but not visually checked` | per-model menu lists classified non-fast modes (`listGenericRuntimeModes`); `setRuntimeMode` persists on the Session; `resolveSessionRuntimeModePayload` asserts request body/header merge independently of Fast |
-| Codex/OpenCode/Claude CLI handshakes do not yet back executable Session adapters | `not implemented` | handshake snapshot selected in the shared picker and executed through the one Session timeline |
-| Claude/Codex subscription windows have parser/RPC wiring but no live membership acceptance | `wired but not visually checked` | authenticated live response, unavailable/error states and owner visual review; no claim of a stable public API where none exists |
-| Exact prompt-section/context-breakdown attribution | `not implemented` | provider/prompt-assembly evidence with one denominator; unknowns remain unknown |
-| Workspace-file restoration after transcript revert | `not implemented` | previewable snapshot/VCS restore with conflict and recovery tests |
-| Compact assistant turns intentionally hide Copy/Markdown/Branch actions | `wired but not visually checked` | Copy remains reachable on compact/touch without exposing desktop-only actions or depending on hover |
-| Touch reveal is proven only under the compact container, not every coarse-pointer desktop layout | `wired but not visually checked` | hybrid/coarse-pointer interaction test plus owner walkthrough |
-| Reasoning level is still rendered inside the same dropdown as model selection (`ModelPickerList.tsx`) | `not implemented` | E9a requires model selection and reasoning selection to be separate controls; closure = a per-model reasoning control outside the model list, with unsupported levels hidden rather than shown disabled |
-| Execution target and folder list are coupled: `filterWorkspacesForExecutionTarget` changes which folders exist when local↔cloud switches | `not implemented` | P9 makes execution location and workspace scope independent choices; closure = switching target leaves the folder list unchanged, proven by a targeted test over `execution-context-options.ts` |
-| The composer's project/folder pickers are floating `Popover`/`DropdownMenu` surfaces (`FreeFormInput.tsx`, `WorkingDirectorySelector.tsx`) while the context strip itself is in document flow | `not implemented` | owner direction: the picker expands from the composer rather than floating over it; closure = in-flow expansion with the §4 state set, or an owner decision that floating is acceptable here |
+| CLI discovery, typed variants and executable Session adapters | `not implemented` | protocol-backed capability snapshot and a real run through the existing Session timeline; old handshake code is absent |
+| Generic runtime modes beyond upstream thinking/fast controls | `not implemented` | classified model modes, Session persistence and verified request body/header mapping; old Fleet mode helpers are absent |
+| Claude/Codex subscription allowance windows | `not implemented` | authenticated response, unavailable/error states and owner visual review; old parser/RPC claims belong to the archived tree |
+| TE1 breakdown and exact prompt-section attribution | `not implemented` | provider/prompt-assembly evidence with one denominator; preserve the upstream context indicator and unknown values |
+| Completed-turn metadata and transcript/file restoration | `not implemented` | request-time mode/model/time evidence; transcript restore distinguished from previewable file recovery |
+| Compact/touch message action acceptance | `wired but not visually checked` | recheck upstream Copy/Branch actions with keyboard and coarse pointer; old Fleet footer tests do not transfer |
+| Separate model and reasoning controls per the target contract | `not implemented` | admitted per-model reasoning control with unsupported levels hidden; old `ModelPickerList.tsx` is absent |
+| Independent execution-target and Project/folder interaction | `not implemented` | target selection, remote folder/model data and Session binding verified together; old `execution-context-options.ts` is absent |
+| Owner-requested composer picker expansion | `not implemented` | R1 specifies a Project/context header, unified add popup, independent permission/Plan and model/reasoning controls, and Cindy model popup; current Craft callbacks do not establish that behavior |
 
 ## 4. Page state standard (every surface, no exceptions)
 
@@ -347,22 +346,23 @@ so each caller invented its own error surface:
 | State                               | Component                                                                                    |
 | ----------------------------------- | -------------------------------------------------------------------------------------------- |
 | empty                               | `components/ui/empty`, `entity-list-empty` (`EntityListEmptyScreen`)                         |
-| error · denied · offline · recovery | `components/ui/surface-state` (`ErrorState`, `DeniedState`, `OfflineState`, `RecoveryState`) |
+| error · denied · offline · recovery | Existing per-surface Craft states; the old Fleet `components/ui/surface-state` wrapper is absent after reset |
 | loading                             | existing skeleton / `LoadingIndicator`                                                       |
 
-All four `surface-state` kinds are selectable in the playground under **Feedback → SurfaceState**,
-which is how a page slice walks them without reproducing the real failure. Values and copy rules are
-in [`UI-SPEC.md`](UI-SPEC.md) §10.
+The former **Feedback → SurfaceState** playground entry is also absent. Its old acceptance is
+archived; each active page slice must use current shared primitives and expose its actual states.
+Values and copy rules remain in [`UI-SPEC.md`](UI-SPEC.md) §10.
 
 Acceptance for any page slice includes walking these states
 ([`09-QUALITY.md`](09-QUALITY.md) CHECK THIS).
 
 ## 5. The frontend track (build pages ahead of behavior, honestly — Decision G6)
 
-Frontend work may run ahead of backend behavior under these rules:
+After the R0 baseline exit, frontend work may run ahead of its backend behavior under these rules.
+The current baseline-first instruction also applies to preview/mock implementations:
 
 1. **Spec first.** A page batch needs its page spec (a section in the domain spec or a short page
-   spec from `specs/SPEC-TEMPLATE.md` §Pages) covering: purpose, primary
+   spec) covering: purpose, primary
    home, information architecture, states (§4), and the data contract it consumes.
 2. **Visual anchor before code.** The Goal names the exact existing shell/page/component and
    playground state that define the visual language, plus one intentional delta. A new page still

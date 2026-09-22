@@ -2,10 +2,11 @@
 
 Status: **EVIDENCE_ONLY**
 
-This note answers a bounded question: how Fleet currently embeds Pi, whether Pi must be
-updated, and which provider, API-key, subscription, model-catalog, capability, and usage
-mechanisms should be admitted from current Pi, Hermes Agent, and OpenClaw without creating a
-second Fleet authority.
+This note retains provider-mechanism findings at the source locks below. Current observation on
+2026-09-21: Fleet/Craft v0.13.4 pins `@earendil-works/pi-ai` and `pi-coding-agent` **0.85.1**.
+`models-pi.ts` and `llm-connections.ts` still import the compatibility catalog. The earlier
+0.80.6→0.82.1 upgrade recommendation is obsolete; inspect the installed 0.85.1 adapter and current
+provider gap before recommending another upgrade. No dependency update is authorized by this note.
 
 ## Source lock
 
@@ -16,16 +17,10 @@ second Fleet authority.
 | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) | `源码参考/software/hermes-agent` | `7e67f64fcee9340f40a1c6f912fc650aa4984510` | MIT |
 | [openclaw/openclaw](https://github.com/openclaw/openclaw) | `源码参考/software/openclaw` | `3cb7f6330c76c385070a4b6f6c2981163c28384b` | MIT |
 
-The Pi checkout currently declares package version `0.82.1`. Fleet pins
-`@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` at `0.80.6`; the published
-`0.82.1` package was built from `b4f293684bba718d59cc1157679bcf6157b3a7f5`.
-The checkout commit is newer than that published package and is research evidence, not a
-dependency lock.
-
-The official Craft `HEAD` is still version `0.11.2` and still pins Pi `0.80.6`. It remains
-the product and interaction baseline, but it is not a current provider-catalog or
-subscription-usage authority. Fleet must compare and admit bounded Craft changes instead of
-assuming that a wholesale Craft update will modernize its model platform.
+At the recorded review, the Pi source declared 0.82.1 and the reviewed Craft 0.11.2 pinned 0.80.6.
+Those numbers are historical source locks, not today's dependency baseline. The current registry
+records refreshed checkouts separately. Source findings below apply to their recorded revisions;
+revalidate relevant exports, authentication and usage semantics against the installed package.
 
 ## How Fleet embeds Pi
 
@@ -151,7 +146,7 @@ single-authority rule.
 
 | Capability | Decision | Fleet boundary |
 |---|---|---|
-| Pi inference and coding-agent runtime | **REUSE / UPDATE** | Keep the subprocess adapter; migrate deliberately from `0.80.6` toward published current Pi after compatibility review. |
+| Pi inference and coding-agent runtime | **REUSE / UPDATE** | Keep the subprocess adapter; retain installed 0.85.1 until a concrete compatibility/security/provider gap justifies an update. |
 | Dynamic provider/model catalog | **EXTEND** | Replace deprecated compat reads with a Fleet adapter over current Pi `Models`, enriched by a normalized catalog contract inspired by OpenClaw. |
 | Provider declarations | **EXTEND** | Admit Hermes-style declarative metadata and auto-registration, but register into Fleet RPC/settings rather than a second registry UI or store. |
 | API key and OAuth credentials | **REUSE / EXTEND** | Fleet connected accounts remain authoritative; expose credential variants through adapters implementing Pi's store interface. |
@@ -185,7 +180,7 @@ all require continuous synchronization. They have different roles:
 
 | Source | Role for Fleet | Update obligation |
 |---|---|---|
-| Craft | Product behavior and interaction baseline | Periodic pinned comparison and bounded best-of admission; never a wholesale merge. |
+| Craft | Visual language and agent/runtime base; PRODUCT owns Fleet concepts | Periodic pinned comparison and bounded best-of admission; never a wholesale merge. |
 | Pi | Embedded inference/runtime dependency behind the Fleet subprocess adapter | Exact version lock; upgrade for security, provider breakage, or admitted capability after compatibility review. |
 | OpenCode | Desktop UX and provider/model/usage mechanism reference | Admit a bounded pattern or licensed implementation, attribute it, then Fleet owns the admitted code. |
 | Hermes | Provider declaration, discovery, and adapter-mechanism reference | Snapshot evidence only; no automatic synchronization. |
@@ -219,20 +214,16 @@ The correct boundary is a Fleet-owned typed domain-command plane:
    effects.
 5. Durable command receipts and resulting domain events project into the existing session
    timeline and task board; they do not form another event store.
-6. Computer-use remains an external-application fallback. Fleet never uses screen coordinates
+6. Specific outside-tool operations use their authorized structured paths; general computer control is excluded. Fleet never uses screen coordinates
    to control its own first-party features.
 
 Therefore Fleet is similar to Hermes/OpenClaw at the adapter edge, but different at the center:
 their reusable contribution is provider and external-tool integration; Fleet's center is its
 own domain-command registry projected through one authority.
 
-## Bottom line
+## Current action boundary
 
-The current Fleet boundary is sound but incomplete. The main defects are the old Pi pin, use
-of its deprecated static compatibility catalog, and missing provider-specific subscription
-usage adapters. Its other architectural gap is the absence of a complete typed self-operation
-surface over existing Fleet services. The best next implementation is not another settings or
-agent-control system: update the Pi adapter, make model capabilities data-driven, add
-declarative provider plugins, project official quota adapters into Fleet's one connected-account
-and usage authority, and expose existing Fleet domain operations through one permissioned
-command plane.
+The source comparisons do not establish that a Pi update is now required or sufficient. Keep one
+provider/credential/usage authority, verify the current adapter against a concrete user-visible gap,
+and route any new provider behavior through its owning post-baseline contract. No provider catalog,
+quota adapter or self-operation command is reported implemented by this research note.

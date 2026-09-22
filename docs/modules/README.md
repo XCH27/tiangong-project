@@ -19,24 +19,10 @@ one in [`../../AGENTS.md`](../../AGENTS.md) rule 7.
 | [`PACKET-INDEX.md`](PACKET-INDEX.md) | The cross-document join: each registry row → its context, page surfaces, packet, release anchor and acceptance IDs |
 | [`ACCEPTANCE-INDEX.md`](ACCEPTANCE-INDEX.md) | The minimum observable gate for each row |
 
-A row with `—` in the packet column is deliberately `BREADTH_ONLY`: named and page-mapped, with no
-packet yet. It must not be implemented from the registry's one-line anchor.
-
-## Consolidated 2026-09-21
-
-Nine `modules/<name>/` directories — `browser`, `canvas`, `design`, `deck-motion`, `jobs`, `memory`,
-`video`, `workbench`, `workflows` — held compatibility records of 17 to 123 lines each. Each was
-referenced by exactly one document (`../14-MODULE-ARCHITECTURE.md`) and by neither `PACKET-INDEX.md`
-nor the suite that owned the same loop, so working on a loop meant reading two files that did not
-link to each other.
-
-Every one of those records is now a **Module boundary** section inside its loop's suite packet, and
-`PACKET-INDEX.md` rows point there. Nothing was dropped; the merge commit carries the mapping, and
-`git log --follow docs/modules/suites/SYS-04-browser-evidence.md` reaches the original files.
-
-This file previously named `REGISTRY.md` as the answer to five different questions and
-`PACKET-INDEX.md` described itself as the register it should be compared against. Both were artifacts
-of a bulk link rewrite, not intent.
+Every row now has one `Execution <ID>` section in its owning packet. Use its `Sources`, `Deliver`,
+`Data`, `Failure`, `Proof` and `Reference` fields together with the common contract in
+`../14-MODULE-ARCHITECTURE.md`. `IMPLEMENT` and `PROVE` describe the next work after the release
+gate opens; neither means the product already works. Do not implement from a registry summary alone.
 
 ## Adding to a loop
 

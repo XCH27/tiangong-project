@@ -50,32 +50,23 @@ reduces attention and schema tax without weakening the kernel or duplicating its
 
 ## 2. Dependency order (why the roadmap is ordered the way it is)
 
-Each capability consumes the verified output of the one before it. This is an integration-order
-constraint, not a calendar and not a permission system (Decision G2):
+Development order is owned by [`05-ROADMAP.md`](05-ROADMAP.md), not this diagram. The owner
+requires inherited Craft rectification and acceptance before adding capabilities:
 
 ```text
-Craft authority baseline
-  → governed execution with evidence          (real commands, truthful output/denial/cancel)
-  → safe files + versioned artifact handoff   (exact version produced → consumed)
-  → complete single-agent production chain    (intent → evidence → output → acceptance → delivery)
-  → caller-aware action seam                  (extracted from ≥2 real dual-caller mutations)
-  → bounded delegation                        (TaskBrief → child run → RunReport)
-  → adaptive organization                     (measured routing among direct/parallel/verified/hierarchical)
-  → workflows + canvas + native modules       (projection matches runtime truth)
-  → layered agent memory                      (notes → logged consolidation → curated layers)
+corrected and accepted Craft baseline (R0 with required R1/R2 corrections)
+  → Component/panel foundation with real Files + Notes consumers
+  → first production chain using existing authorities (R3)
+  → action and artifact contracts extracted from that chain (R4/R5)
+  → delegation, workflows and native domain loops at their roadmap anchors
 ```
 
-There is one owner-directed early branch beside that chain:
+The foundation follows the baseline exit in `specs/R0-baseline-audit.md` and precedes domain
+Components. It adds a real Notes UI over the surviving RPC; it must not claim Notes is already
+mounted. It needs no blanket R4–R9, public catalog or memory prerequisite. Later Action,
+ArtifactRef and Job contracts are introduced only with their real producers and consumers.
 
-```text
-existing Files/Notes → scoped Component/panel host → in-window layout recovery
-```
-
-This branch proves the host with real consumers before domain Components and does not wait for R4–R9,
-a marketplace or a memory store. It may not claim the later action, artifact, canvas, delegation or
-memory contracts; those still enter through the main chain when their first real callers exist.
-
-Two consequences:
+Consequences:
 
 - **Ahead-of-dependency work is allowed when the owner requests it**, but it records the exact
   unresolved edge and cannot be reported `usable` until it connects to verified upstream output.
@@ -123,15 +114,12 @@ products; a short capability-map row cannot safely carry them.
 - Loadout projection and the governed Action seam are adjacent but independent. The former decides
   what a call can see; the latter governs a consequential request after it is made. Neither owns the
   other, and R4 still waits for two real callers.
-- External-computer control stays Craft-first and uses the narrowest reliable route: existing native
-  Fleet/Craft action → structured adapter (BrowserPane/CDP, filesystem, shell/API, remote Fleet RPC)
-  → accessibility/semantic computer-use fallback → raw pixel/coordinate fallback last. A device
-  adapter never becomes a second permission or session authority.
-- A consequential visual/device action binds the exact environment/display/window identity, declared
-  and observed capability, live expiring grant and observation/frame version it was based on.
-  Navigation, focus/display change or grant expiry makes the observation stale and forces a fresh
-  read. Browser remains the first narrow adapter; do not freeze a universal Environment interface
-  until a second real device/remote adapter proves shared semantics.
+- General external-computer control and a universal environment framework are outside Fleet
+  (`PRODUCT.md`). The built-in BrowserPane and specific outside-tool jobs use the narrowest existing
+  permissioned route. A real adapter binds its host/window identity, live grant and observation
+  version; stale observations require a fresh read. A second adapter is not permission to reopen
+  the excluded general product. The optional specified-local-app Component is the bounded R16
+  exception owned by SYS-02; it extends this same permission/evidence path, not Core control.
 
 ### Human, Agent and Replay provenance
 
@@ -395,3 +383,25 @@ A capability is complete only when all applicable parts form one real loop:
 - [Anthropic: parallel agents](https://code.claude.com/docs/en/agents) — parallel sessions multiply token use; overlapping edits require isolation.
 - [Google Research: scaling agent systems](https://research.google/blog/towards-a-science-of-scaling-agent-systems-when-and-why-agent-systems-work/) — large gains for parallelizable tasks, 39–70% degradation for strictly sequential ones: route by measurement, not fixed organization.
 - [OpenAI Agents SDK orchestration](https://openai.github.io/openai-agents-python/multi_agent/) — deterministic flow belongs in code when speed, cost, and predictability matter.
+
+## File mutation and artifact recovery details (R5 target)
+
+The filesystem owns bytes; Library deliberately indexes selected assets; ArtifactRef resolves exact
+native versions; leases coordinate writers after permission. Registration is not automatic copying
+or indexing of every file. These are target requirements, not current Fleet history support.
+
+Normalize paths against the real authorized root, account for symlinks and host case rules, and
+recheck version/hash at commit. Parent/child path overlaps conflict. Acquire leases after approval;
+a lease expiry requires owner/liveness reconciliation before reclaim. TTL, renewal interval and
+snapshot-size limits are measured implementation settings, not inherited numeric promises.
+
+Write to a controlled sibling and atomically replace where supported. Cross-volume movement needs
+copy/verify/commit/delete recovery with an explicit partial state. Protect recovery snapshots like
+the source; undo checks current result hash/version and refuses to overwrite intervening work.
+Missing artifacts leave broken references rather than deleting consumers. Unknown license remains
+unknown; source permission and sensitivity are rechecked when an ArtifactRef is resolved.
+
+Validate generated output before committing it, then correlate native bytes, exact version and
+evidence. If bytes commit but metadata/evidence fails, expose reconciliation and preserve the output;
+retry must not duplicate a file or provider charge. Caches/previews remain rebuildable. A generic
+Git reset/stash/checkout is never a file-undo implementation.

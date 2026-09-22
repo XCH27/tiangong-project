@@ -38,36 +38,26 @@ only place where a bounded implementation may begin.
 > ExpertKit-as-label, delegation, memory, artifact-history, CLI-adapter and workbench modules. H1–H27
 > remain rationale only where they state a durable invariant. Their old `Contract:` paths and
 > `landed` wording are historical, not current implementation status. H15 as revised and
-> [`PRODUCT.md`](PRODUCT.md) make `packages/shared/src/assistants/` the sole identity/loadout
-> authority; no later entry may recreate `LabelConfig.expertKit`.
+> [`PRODUCT.md`](PRODUCT.md) require an independent identity/loadout authority; no later entry may
+> recreate `LabelConfig.expertKit`. The later v0.13.4 rebuild also removed the former Assistant
+> store, Component helpers, remote grants and layout model; these paths are snapshot evidence only.
 
 ## A. Product shape
 
 - **P1 — Fleet is an AI work platform, not a chat tool.** Human owns the top ~10% of judgment and
   the bottom ~10% of common-sense guardrails; agents execute the middle ~80%. (2026-07-08)
-- **P2 — One `app/` tree; Craft is the look and runtime base, not the product.** The committed
-  `app/` remains the one implementation tree and tracks the latest Craft OSS tag (**v0.13.3** as of
-  2026-09-11). Do not overlay discarded Fleet pages back onto `AppShell`. Do not import Qoder/TRAE
-  product concepts. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11, 2026-09-20)
-  > **2026-09-20 — upstream is ahead: v0.13.4 (`b2d6c8a`) exists and we are not on it.** Measured
-  > against the mirror at `源码参考/software/craft-agents-oss`: 96 files, +3366/-1002. It is not a
-  > patch release. It ships, as upstream code, three things this fork has as unbuilt or hand-rolled
-  > work: **agent steering / mid-stream queueing** (`backend/claude/pending-steers.ts`,
-  > `SessionManager.ts` +225, `midstream-queue.test.ts` +238), **context-window usage**
-  > (`agent/context-usage.ts`, `core/types/context-usage.ts`, composer `context-display.ts`), and a
-  > **composer viewport/keyboard rewrite** (`FreeFormInput.tsx` 331 changed, new `input-viewport.ts`,
-  > `useInputAvailableHeight.ts`, `scroll-focused-caret.ts`). It also splits the system prompt
-  > (`prompts/system.ts` -500 net, new `developer-context.ts`, `prompt-sanitize.ts`). We hold **none**
-  > of those files. **Before building any of the above by hand, take upstream's.**
-  > **Rebase cost, measured:** 41 of the 96 files are also dirty in our tree. Most are version bumps;
-  > the real hand-merges are `SessionManager.ts`, `pi-agent.ts`, `prompts/system.ts`,
-  > `agent/core/prompt-builder.ts`, `protocol/dto.ts`, `sessions/{types,storage}.ts`,
-  > `core/types/message.ts`, `pi/event-adapter.ts`, and **all 7 i18n locales** (upstream adds 9 keys
-  > per locale into files our P6 vocabulary work is rewriting — the i18n parity gate will catch it).
-  > **Sequencing:** R0 is still ACTIVE and untagged. Do not start this rebase before the
-  > `fleet-baseline-r0` tag exists; rebasing an unproven baseline destroys the ability to attribute
-  > any regression. Reproduce with:
-  > `git -C 源码参考/software/craft-agents-oss diff --stat v0.13.3 v0.13.4`
+- **P2 — One `app/` tree; Craft is the look and runtime base, not the product.** Current
+  implementation and rolling reference are **v0.13.4**. The 2026-09-21 rebuild (`5a510cf1d`,
+  corrected by `bc7eb0eb7`) supersedes the September 20 uptake plan. The complete earlier Fleet
+  tree is preserved at `snapshot/pre-rebuild-2026-09-21`; it is candidate evidence, not an
+  implementation to restore wholesale. Steering/mid-stream queueing, context-window usage and
+  composer viewport handling now exist in upstream code; inspect those callers before extending
+  them. Each difference is declared in `UPSTREAM-DELTA.tsv` as L0 (defect fix), L1 (visual values),
+  L2 (product behavior) or LOC (local measurement state). Removed controls need a named replacement
+  or explicit retirement decision. R0 remains ACTIVE with fresh verification; no baseline tag is
+  a prerequisite imposed by this contract. Preserve Craft's visual language and the existing
+  authorities; do not reintroduce a discarded shell or import Qoder/TRAE product concepts.
+  (2026-07-08; implementation observation reconciled 2026-09-21.)
 - **P3 — Craft look, Cindy *features*.** Spacing, type, colour and motion stay Craft's. Cindy
   decides how a capability is built and how the surface talks to the backend — plugins, skills,
   remote connection, assistants. Rearranging chrome is not Cindy work. (2026-07-09; revised
@@ -100,9 +90,9 @@ only place where a bounded implementation may begin.
   > - **Revocable from both ends.** `authDisconnect()` deletes locally; the user revokes the grant
   >   at GitHub. Fleet holds nothing that a user cannot destroy without asking us.
   >
-  > **Rules this sets.** Sign-in is never required: every surface works signed-out, and a login
-  > only unlocks what inherently needs that third party (PRs, private team catalogs). Fleet never
-  > mints, stores or validates an identity of its own, and never treats a third-party identity as a
+  > **Rules this sets.** Sign-in is never required: the local core works signed-out, and a login
+  > only unlocks what inherently needs that third party (PRs, private team catalogs). Fleet has no operator-run user identity database; locally stored connection identities and
+  > verification of provider responses remain necessary. Fleet never treats a third-party identity as a
   > Fleet entitlement — there is nothing to gate, because there is no paid tier. A team is not a
   > Fleet concept: **a team is a GitHub org or a repository's collaborators**, so team access
   > control is GitHub's and Fleet only reads it.
@@ -113,29 +103,22 @@ only place where a bounded implementation may begin.
   > path and a pasted personal access token both work with no Fleet `client_id` at all and must
   > stay supported for exactly that reason. (owner question 2026-09-21)
 - **P5 — Craft look is tokens and interaction style, not “restore the v0.10.5 page host”.** Compare
-  pins for the better look. Current base is v0.13.3. Do not restore an older AppShell as the
-  product. Board may remain a separate navigator when it projects the existing Session/Task
+  pins for the better look. Current base is v0.13.4. Do not restore an older AppShell as the
+  product. Board has a separate navigation entry and projects the existing Session/Task
   authorities; it never creates another Project, task or conversation store and does not restore a
   list/Board view toggle. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11)
-- **P6 — One user concept: Project = Workspace = one folder.** The user meets exactly one work
-  boundary — **Project**, which is a chosen folder on disk. Creating a project is picking or
-  creating that folder; opening a folder is opening a project. Workspace remains the invisible
-  storage/config/session/remote-routing implementation authority. No default surface may present
-  "workspace", "local folder" and "project" as parallel concepts; pickers, switchers and
-  "send to…" dialogs converge on the single Project vocabulary and one switcher control. Folder-
-  bound Sessions are grouped under Project rows; folder-less Sessions remain legal and appear in a
-  sibling **Conversations** section rather than being silently attached to a default Project.
-  Selecting a local Project filters the current Session list and does not replace global Sources,
-  Skills or settings context. Adding a local Project opens the operating-system folder picker
-  directly; it does not route through an intermediate creation screen. The one-boundary model is
-  binding;
-  navigation, migration, and remote-project presentation are delivered as coherent verified slices
-  (spec: [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md); design source:
-  [`design-library/20-workspace-project-session-remote-connections.md`](design-library/20-workspace-project-session-remote-connections.md),
-  which is source material, not authorization for a shell rewrite). (owner, binding, 2026-07-11;
-  folder collapse + single-switcher rule, owner direction 2026-07-20)
+- **P6 — Workspaces contain Projects and Conversations.** Owner revision, 2026-09-22:
+  keep Workspace as a visible, independently configurable environment. Each Workspace owns its
+  Conversations, Project memberships, Sources/MCPs, Skills and component/plugin overrides. A Project
+  is a Workspace-scoped record referencing a working folder; the same folder may be opened in
+  multiple Workspaces. Those memberships share filesystem bytes, not transcripts, credentials,
+  permissions or tool activation. Choosing a Project never switches Workspace implicitly. Preserve
+  Craft's existing Workspace/Project/Session records; no collapse migration and no parallel global
+  Project store. A folderless Conversation stays in the selected Workspace. See
+  [`specs/R1-one-boundary-language.md`](specs/R1-one-boundary-language.md).
 - **P7 — Remote Projects connect directly to another Fleet instance; no Fleet account or central
-  coordinator.** Controller supplies only server URL + connection token. A remote access grant is
+  coordinator.** The current connection interaction is P9-rev below: host access link, client name
+  + link. The earlier exposed URL/token form is not the target UI. A remote access grant is
   hashed, revocable, and scoped to explicit Workspace/Project IDs, separate from the embedded
   server's internal token. Reuse Craft's bidirectional Workspace-routed RPC and connection
   lifecycle — no PostgreSQL control server, polling daemon, or Fleet-hosted relay. Desktop hosting
@@ -148,8 +131,9 @@ only place where a bounded implementation may begin.
   direct remote access must work without `agents.craft.do`, `mcp.craft.do`, or any Craft
   account/server. Each inherited cloud hook migrates capability-by-capability: prefer local;
   otherwise user-configured/self-hosted endpoint; retain Craft services only as explicit optional
-  connectors; otherwise honestly disabled. Upstream sharing previously uploaded (removed 2026-07-26) full sessions to
-  Craft's viewer API — never present it as Fleet-native. **Upstream intake stays open:** track
+  connectors; otherwise honestly disabled. The inherited upstream sharing path uploaded sessions to
+  Craft's viewer API; the earlier Fleet removal did not survive the rebuild. Never present it as
+  Fleet-native. **Upstream intake stays open:** track
   official tags/release notes/source to port fixes selectively; but Fleet's binary updater must use
   a Fleet-controlled/user-configured channel (installing an official Craft binary over Fleet would
   erase the fork) or disable cleanly. Spec: [`specs/R2-independence.md`](specs/R2-independence.md).
@@ -157,11 +141,11 @@ only place where a bounded implementation may begin.
 
 ### P8-rev (2026-07-26): Online sharing removed
 
-**Decision**: Remove online sharing/viewer functionality entirely (ChatPage share button, session-menu share item, shareToViewer/updateShare/revokeShare, session_shared/session_unshared events, apps/viewer).
+**Decision**: Remove online sharing/viewer functionality entirely (ChatPage share button, session-menu share item, new shareToViewer/updateShare publication, session_shared events, apps/viewer. Retain bounded revoke/unpublish cleanup for existing remote copies until resolved).
 
 **Rationale**: Default-visible controls with no actual behavior violate 03-NON-NEGOTIABLES.md §2. Owner decision 2026-07-26.
 
-**Impact**: EXEC-12 implementation status updated; P-28 surface removed; viewer boundary retained as forward guard in 03-NON-NEGOTIABLES.md.
+**Current implementation**: original hosted publication was restored. Fleet removal is `not implemented`; review the concrete R2 slice before changing UI or backend.
 
 ### P8-rev-2 (2026-09-11): Share control becomes local Markdown export
 
@@ -169,7 +153,7 @@ only place where a bounded implementation may begin.
 
 **Rationale**: Owner request 2026-09-11. Local-first: the conversation leaves the machine only as a file the user chose to save.
 
-**Impact**: `shareToViewer` / `updateShare` / `revokeShare` and Craft viewer fetch are gone; session JSONL is still the conversation authority.
+**Current implementation**: the Fleet exportMarkdown command/helper and UI path were withdrawn. This replacement is `not implemented`; Session JSONL remains the source to consume in the approved R2 slice.
 
 ### P9-rev (2026-09-11): Remote connection is a thin client; code delivery is GitHub
 
@@ -181,7 +165,9 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
 
 **Rationale**: Owner 2026-09-11: install, a few clicks, then it should work at home, on a VPS, or across different networks. Do not ship a special “VPN mode”. Screen control and SSH install are different products.
 
-**Impact**: Settings `server` is this page. Add workspace uses the same name; if unpaired it opens Settings. EXEC-09 uses Craft transport. EXEC-13 remains the GitHub delivery slice.
+**Target**: Settings owns the remote connection flow; creation reuses it rather than adding a
+second setup UI. EXEC-09 extends Craft transport and EXEC-13 owns GitHub delivery. The Fleet link
+and grant flow is `not implemented` in the current tree.
 
 - **P9 — "Cloud mode" is a user-owned remote execution profile, not a Fleet cloud service.** A cloud
   target is the same Fleet runtime on user/team-controlled hardware, reached via P7 transport.
@@ -197,65 +183,42 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   preset ships only when R14 lands — no disabled placeholder control before that (G6). (owner
   direction 2026-07-13; location presets + agent-managed worktrees, owner direction 2026-07-20)
 
-- **P10 — One Conversation surface and one create flow.** The primary action is **New Task**
-  (「新建任务」), available globally and from Project context, but it creates work through the
-  existing Session authority; R1 does not require a parallel v0.11 Task record for every
-  conversation. The default shell has one Conversation list implementation and one canonical
-  Conversation surface. Project, label, status, pinned and archive choices are predicates/chips over
-  that list, never sibling conversation homes. A Session appears once in that list; its Project
-  association is shown as metadata/grouping and can be used as a filter. Selecting a Project opens
-  its files, assets and settings in the workbench and applies its list predicate when the user asks
-  to see that Project's conversations — it never renders a second Session list. There is no
-  permanent **All Sessions** entry. Pinned is the UI term for the legacy `isFlagged` session field.
-  Label definitions live only in Settings; Session menus assign them. A later Claude/Codex-style
-  task center may project selected Session/Task/Job state through the existing authorities; it is not
-  the v0.11 Kanban Board and does not justify a second store. (owner direction 2026-07-20; revised
-  after source and interaction review 2026-09-14)
-- **P11 — A Plugin is a bundle, not an authority; compatibility is one adapter, not four stores.**
-  Fleet has three capability primitives and they already exist: **Skill**
-  (`packages/shared/src/skills/`, `usable`), **Source** (`packages/shared/src/sources/`, `usable`,
-  `mcp`/`api`/`local`) and **Component** (`packages/shared/src/components/`, `not implemented`).
-  A Plugin is a versioned bundle that *installs* some of those three; it never becomes a fourth
-  authority, never gets its own installer, permission path, connection store or skill store.
-  Compatibility with Claude, Codex and Cursor bundles is achieved by **one adapter** that reads
-  `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json` and the
-  neutral `plugin.json` into the existing `ComponentManifest`, which is already a superset of all
-  four. Three properties are required, not optional: declared paths **merge with** conventional
-  ones; `capabilities[]` is **derived from the filesystem**, never trusted from the manifest; and
-  `bundleFormat` provenance **survives install**. Fleet *publishes* the neutral
-  `agent-plugins.org` 1.0.0 format and keeps its own behavior in `extensions["ai.fleet"]`, because
-  that schema sets `additionalProperties: false` and a non-conforming manifest is not portable.
-  **A catalog is data, not a service** — `marketplace.json` listing
-  `path`/`github`/`git`/`git-subdir`/`url` sources — so distribution needs no Fleet-operated service
-  and P8/P9-rev hold without an exception. **Corrected 2026-09-21:** the first draft of this entry
-  said "there is no store to log into", which wrongly collapsed two different rules. What P4/P8
-  forbid is a **required account** and a **hard dependency** on a Fleet-operated service. Shipping a
-  **default catalog** is allowed and expected — an empty store on first run is a product failure,
-  not a principle. The shape to copy is ZCode's: a **local seed merged with a remote shard**, so the
-  store is populated offline and merely richer online.
-  Three behaviors are the real contract, and they outrank build order: **catalog unavailability
-  never blocks locally installed plugins** (degrade to a non-blocking notice, keep the local list);
-  **one failing source never affects another source or the default catalog**; and **trust is
-  computed locally at install time** — a remote catalog supplies candidates, never verdicts.
-  **Ownership is keyed by source fingerprint, not by name.** A catalog's name is self-declared and
-  reusable, so removing source A and adding a same-named source B yields identical synthesized
-  plugin IDs and lets an unrelated or hostile repository "update" A's installed plugins. The install
-  ledger records the source fingerprint and ownership checks must match both. The fingerprint must
-  serialize unambiguously (JSON array, never separator-joined) or two different sources collide and
-  the check is defeated.
-  **Cross-machine sync is explicit and user-selected, never automatic.** With P7 remote Projects, a
-  remote machine's skills and plugins are its own; pushing them is a deliberate act with a
-  pre-flight remote existence check, a stated reason when an item will be skipped, per-item results
-  (`synced`/`skipped`/`failed`), and size ceilings enforced on selected content, on the archive and
-  again on extracted content.
-  Recommended build order is **Component host → adapter + local install → catalog**, because a
-  catalog only adds ways to fail before install works. This is sequencing guidance, not a
-  prohibition; the degradation and isolation behaviors above are the part that is not negotiable. Evidence and the measured gaps, including that
-  `skills/storage.ts` whitelists six frontmatter keys and silently drops `triggers` — the activation
-  field 220 of 398 real skills use — are in
+- **P10 — One left work list; independent Board; contextual right panel.** Owner revision, 2026-09-22:
+  remove the separate left navigator column. The single sidebar groups existing Conversations by
+  Project and keeps folderless Conversations reachable. Search, archive, status and labels remain
+  predicates/actions on the same Session store. Board gets its own navigation entry, never a toggle
+  in All Conversations. Resource lists/details live inside their tool surface; existing deep links
+  remain valid. Move new-session-panel and browser actions into a contextual right panel. The panel
+  follows Cindy's `RightSidebarShell`/`TabBar`/registry shape: Session-scoped tabs, a `+` tab menu,
+  close/reorder actions, and tab persistence added to the existing panel/layout owner. Craft does
+  not already have that Session tab host; new native docking/window behavior remains under R18.
+  It is not a vertical shortcut rail or a second list authority. This does not migrate or redesign
+  unrelated resource/settings pages. New Conversation uses one Craft composer, with ZCode's responsive centered empty
+  layout and context header pattern; do not import a second editor, runtime, permission system or
+  decorative brand artwork.
+- **P11 — A Plugin is distribution packaging, not another authority.** A Component is Fleet's
+  bounded installable capability; a Plugin bundle packages Components, Skills and Sources. Import
+  compatibility must map into their existing or explicitly introduced native owners, not add
+  parallel installers, settings, connections, Skills or permission stores. Current Craft Skill and
+  Source stores exist; the Fleet Component store, `ComponentManifest` and bundle adapter do not.
+
+  The owner requires freely selected Components, global or Workspace activation, consistent Craft
+  interaction, and locally usable capabilities without a required Fleet account. Installed
+  capabilities must work when a catalog is unavailable; source failures stay isolated; install
+  trust is computed locally; source identity, not a reusable display name, controls update ownership.
+  Cross-machine copying is explicit and user-selected, never an automatic merge of host settings.
+
+  Build order after the baseline exit is **Component host → adapter/local install → catalog and
+  distribution safety**. An offline seed plus optional remote catalog is a candidate mechanism for
+  useful first-run discovery. Claude/Codex/Cursor compatibility and a neutral publishing format are
+  technical candidates, not already implemented contracts or owner-selected schema versions.
+  Validate exact formats, discovery, provenance and permission behavior against real packages when
+  R15 activates; do not freeze a manifest because a reference uses it.
+
+  The source review, candidate mechanisms and detailed package-safety findings belong in
   [`design-library/12-capability---skill---plugin-system.md`](design-library/12-capability---skill---plugin-system.md)
-  §16 and [`references/marketplaces/00-MARKETPLACE-BENCHMARK.md`](references/marketplaces/00-MARKETPLACE-BENCHMARK.md).
-  (owner direction 2026-09-21; grounded in source review of `openclaw@f7dae76bee9`, not vendor docs)
+  §16 and [`references/marketplaces/00-MARKPLACE-BENCHMARK.md`](references/marketplaces/00-MARKETPLACE-BENCHMARK.md).
+  Those records are evidence, not proof that their suggested adapter exists in the current tree.
 
 ## B. The spine (agent-native execution)
 
@@ -263,8 +226,10 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   action definition, caller-aware policy evaluation, executor, state authority, attributed evidence.
   `PreToolUse` remains the Agent adapter; UI callers do not simulate an Agent SDK lifecycle;
   different caller identities may receive different policy decisions. (amended 2026-07-11)
-- **S2 — Manual editing is an escape hatch, not the primary path.** Manual UI edits write through
-  the same action + timeline path agents use. (2026-07-08)
+- **S2 — Human and Agent editing are first-class paths to the same artifact.** Both use the
+  owning domain's validation, mutation, permission and recovery path (S1). A manual edit must not
+  become an untracked side channel, and a preview is not a substitute for an editable surface.
+  PRODUCT's native-production rule supersedes the former “escape hatch” wording.
 - **S3 — Automatic decisions are risk-graded and replayable.** Low risk may be rule-automated;
   medium risk needs a rule or pre-authorization; high risk (destructive, credentials, external side
   effects) always needs explicit confirmation. Reuse Craft's permission modes — no parallel scheme.
@@ -293,12 +258,11 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   no-backdoor / no-permission-bypass invariant, which binds unchanged. Delegation is a
   relationship any session enters by calling `spawn_session`, not a configured identity class.
   (2026-07-08; manager-agent layer superseded by H28, amended in place 2026-08-15)
-- **C2 — Fleet owns the team; a CLI owns one run.** Cross-runtime orchestration uses stable agent
-  seats, runtime-specific lanes, and bounded team-run requests. A **delegating session** may
-  *request* a member run through a narrow authenticated bridge, never directly owning another
-  runtime's tools. "Multi-agent" must not mean "multiple chat bubbles." (2026-07-08; "a CLI leader"
-  reworded to "a delegating session" 2026-08-15 — relationship semantics per H28, no leader class
-  exists. The bridge constraint itself is unchanged and still binding.)
+- **C2 — Fleet coordinates existing Sessions and Tasks; a CLI owns one runtime execution.**
+  Runtime adapters report execution facts through the existing Session/Task authority. Parent/child
+  relationships, TaskBrief/RunReport and bounded messages carry coordination; no TeamRun store,
+  privileged captain identity or independent AgentSeat authority is introduced. A runtime bridge
+  exposes only authorized operations and cannot grant permission (H28).
 - **C3 — No bare subagent spawn.** Spawning requires a **TaskBrief** (goal, scope paths, known
   facts, constraints, deliverable, budget); the child returns a **RunReport** (summary +
   artifact/evidence refs), not a transcript dump. Large outputs pass as pointers. Unscoped "explore
@@ -403,8 +367,9 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
 - **E4 — Native engine per surface, one shared spine.** A "design action/patch" is an *envelope* for
   handoff — never a universal internal document model pretending to natively edit DOM, code, design,
   video, and decks at once. (2026-07-08)
-- **E5 — The canvas projects the artifact relationship graph; it does not own domain truth.**
-  `spatial`, `reference`, execution `input`, immutable `derived-from` provenance, leadership, and
+- **E5 — The production board hosts editing and projects relationships; native owners keep domain truth.**
+  People and Agents generate, edit and arrange on the same board. `spatial`, `reference`, execution
+  `input`, immutable `derived-from` provenance, parent/child `delegation`, and
   executable `workflow` are distinct relationship classes with different owners. A visual connector
   is never automatically an executable edge or a provenance fact. v1 workflows are finite DAGs of
   typed steps, stored as immutable versioned project documents when run. Full vision:
@@ -450,9 +415,11 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   Toggle-only reasoning becomes an honest on/off control. Speed, service tier, tool profile and
   other provider modes remain separate runtime-mode data even when the compact UI places them in
   the same menu. An adapter emits only a value accepted by the installed SDK/protocol and records
-  the applied provider-native value; otherwise the control is hidden. The old Pi
-  `THINKING_TO_PI.max → xhigh` mapping is legacy request compatibility, not a display capability and
-  must never expose a false `max` choice. (owner, 2026-07-11; corrected 2026-07-30)
+  the applied provider-native value; otherwise the control is hidden. Current Craft v0.13.4
+  `agent/backend/pi/constants.ts` passes `max` through and delegates per-model clamping to Pi;
+  the former `THINKING_TO_PI.max → xhigh` mapping is historical. Neither compatibility behavior
+  establishes a supported UI tier: model discovery must prevent a false `max` choice.
+  (owner, 2026-07-11; corrected 2026-07-30; adapter observation 2026-09-21)
 - **E9a — “One authority / one design language” constrains implementation, not the size of a UI
   correction.** Provider, subscription, model, reasoning, speed, and quota configuration may be
   regrouped, added, or removed inside the existing Settings home when that makes the real workflow
@@ -463,16 +430,18 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   separate controls. Reasoning choices and speed controls are projected from the selected model's
   actual capabilities and are hidden when unsupported. Provider setup and reauthentication should
   complete in Settings with progressive disclosure rather than navigating through the first-run
-  onboarding experience. OpenCode Desktop is the primary workflow reference for the provider,
-  model, reasoning, context-usage, and review surfaces: admit its flatter searchable inventories,
-  in-place configuration, and capability-driven controls where they shorten Fleet's workflow.
+  onboarding experience. The 2026-09-22 owner clarification selects **ZCode for composer placement
+  and separate model/reasoning controls, Cindy for the model popup** (search, category rail,
+  grouped rows and configure footer). [R1](specs/R1-one-boundary-language.md) owns that contract.
+  OpenCode remains comparison evidence for provider configuration, discovery, context usage and
+  review; it does not override the two named composer references.
   Existing Fleet composition is not grandfathered; redundant menus, nested pickers, and weak
   information architecture should be removed rather than cosmetically preserved. Admission still
   re-skins the workflow with Fleet/Craft primitives and keeps Fleet's backend stores as the only
   authorities.
 
-  “Follow OpenCode” is a best-of admission rule, not permission to copy its state architecture or
-  every pixel. Live provider/CLI discovery outranks the OpenCode catalog; the catalog may enrich or
+  Reference admission never copies another state architecture or visual language.
+  Live provider/CLI discovery outranks the OpenCode catalog; the catalog may enrich or
   backfill missing metadata but never override a live denial. Low-risk selection and connection
   editing stay inline or in a menu on the current page. OAuth handoff, the operating-system folder
   picker, destructive confirmation, credential recovery and any flow too large to remain
@@ -480,14 +449,10 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   “default model”; one app/Project new-task default may exist outside the connection editor, and an
   explicit Session choice always wins. A speed mode is never duplicated as another model ID.
   (owner clarification, 2026-07-29; boundary review 2026-07-30)
-- **E10 — Identity labels are a built-in product concept; display language is not identity.** The
-  existing Craft label store is the single authority. Untouched starter labels localize at
-  render/search time; user-created or renamed labels stay verbatim. Future Skill/Source/permission
-  bindings use stable persisted identifiers, extend existing stores, and select references — the
-  label itself never enforces access. Session startup/resume must expose the effective profile and
-  actual instruction/capability source paths. A browser-safe built-in metadata catalog may map
-  stable IDs to localization keys; it is not a second label store. Binding/provenance UI:
-  `not implemented`. (owner 2026-07-13; boundaries clarified 2026-07-14/15)
+- **E10 — Labels are work metadata; display language is not identity.** Built-in labels/statuses
+  keep stable IDs and localized display text; user-authored names remain unchanged. Labels never
+  carry Skills, Sources, permission requests or Assistant identity/loadout. H15/H32/H33 supersede
+  the earlier identity-label design; legacy fields are read only as migration input.
 - **E11 — A native design surface uses inspectable, transactional design data; it is not the spatial
   canvas model.** When Fleet gains a real design editor: schema-validated objects, one mutation path
   committing ordered change batches (may carry inverse changes, selection metadata, grouping,
@@ -503,7 +468,7 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   gated model-assisted compression L4 → opt-in output economy L5 → reviewed cross-session
   injection L6). Integration is three-tier: core-fused mechanisms at Fleet seams; optional
   connectors (repomix/context7/codegraph-class via Sources/MCP; optional local binaries with
-  passthrough, like the shipped rtk path); rejected-as-product (relay proxies, universal semantic
+  passthrough, like Craft's optional adapter to a separately installed RTK binary); rejected-as-product (relay proxies, universal semantic
   caches, auto-memory, default output-crippling). Hard rules: every optimizer is measured on a
   fixed trace (ROI = cost per accepted outcome), switchable, never silently semantic-changing,
   and pruned content stays recoverable by pointer; one ledger (E3), no second memory (D5).
@@ -561,16 +526,15 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
      does* — nothing disposes an agent, so a web host retains every session it has touched. Fleet
      inherits Electron's memory profile already and has an explicit resource-honesty decision (E8).
 
-  **What is admitted (mechanism reference, no code import — MIT permits rework, F3 language rule
-  satisfied since it is TypeScript):**
+  **What is admitted (mechanism reference, no code import):** TypeScript fits the current stack,
+  but F3 still requires license, approved-source and product-fit checks before copying code.
 
   - **The capability-seam role split**, as vocabulary and a boundary rule rather than a framework:
     a swappable capability has a **Service Definition** (the contract and its vocabulary), one or
     more **Service Providers** (implementations), and one or more **Consumers** (what the model and
     other callers program against) — so replacing a local executor with a sandboxed one never
-    churns the model-facing schema. Fleet currently demonstrates parts of this shape in
-    `terminal/terminal-capability.ts` and the provider lanes behind EXEC-05; the earlier artifact
-    history and workbench examples were discarded. Naming the roles is free; splitting packages
+    churns the model-facing schema. The current provider lanes behind EXEC-05 are the starting point; the former
+    terminal capability helper, artifact history and workbench examples were discarded. Naming the roles is free; splitting packages
     preemptively is not
     — their own rule is that a capability with one conceivable provider and one Consumer stays one
     package until a second appears. Recorded in `14-MODULE-ARCHITECTURE.md` §2.
@@ -610,7 +574,7 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
 
 
 - **E15 — The runtime adapter contract is capability-gated, capability facts carry an origin, and
-  approval never becomes an adapter verb.** EXEC-05 has been carrying "one adapter contract:
+  approval policy stays outside the adapter.** EXEC-05 has been carrying "one adapter contract:
   start/attach/send/cancel/approve/health/stop" as a sentence with no implementation behind it. A
   source-level pass on 2026-08-15 over four independent implementations — AionCore (Rust,
   Apache-2.0), omnigent (Python, Apache-2.0, Databricks), cindy (TypeScript, Apache-2.0) and waku
@@ -645,13 +609,13 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
      `VERIFIED_CLAUDE_VERSION` / `VERIFIED_CODEX_VERSION` with a
      `{Verified, Older, Newer, Unknown}` verdict. Note that AionCore *removed* CLI bundling on
      purpose: bundled-versus-user-installed divergence proved worse than drift.
-  8. **`approve` is not an adapter verb.** This is the strongest finding and it is unanimous:
-     none of the four implementations puts approval on the adapter. AionCore defaults
+  8. **Adapters transport decisions; they do not grant approval.** AionCore defaults
      `request_external_permission` to `Denied`; omnigent translates every harness's native hook
      payload into one `EvaluationRequest` against a single policy authority and **fails closed** on
      an unreachable or malformed response. Six vendors, one permission path. That is independent
      confirmation of 03 §1 and Decision S1 at a scale Fleet has not reached, and it means EXEC-05's
-     verb list should drop `approve` rather than implement it per-lane.
+     verb list must distinguish policy evaluation from delivering a correlated allow/deny response
+     to the runtime. The adapter may transport that response; it may never decide or broaden it.
 
   **Model routing stays out of the adapter.** cindy proves the boundary is package-enforceable:
   `@cindy/maker-core` (harness orchestration) and `@cindy/model-providers` (catalog + routing)
@@ -670,7 +634,11 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   authority. Credentials stay in established credential pathways. (2026-07-08)
 - **F3 — Source reuse passes both a license gate and a product-fit gate.** A permissive license
   alone is not enough; copy only explicitly approved sources, otherwise adapter or black-box.
-  (2026-07-08)
+  Approval or availability is not proof of superiority: frontend and backend mechanisms must each
+  improve the same task over the current path, a small local fix and the owning software's native
+  facilities, after integration cost. Keep existing behavior when evidence is insufficient; take only
+  the part that wins. See `PRODUCT.md` and the reference registry's promotion record.
+  (2026-07-08; owner clarification 2026-09-21)
 
 ## G. Process
 
@@ -688,11 +656,10 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   implemented callers**, never built speculatively first. Dependency edges describe required
   integration, not a permission system — the owner may request any capability early, and its status
   then reports the unresolved edges honestly. (2026-07-16; time-flavored labels removed 2026-07-17)
-- **G3 — Verification is split: agents own everything below look-and-feel.** Agents run static
-  checks, targeted tests, real non-visual data paths, and non-interactive smoke checks
-  ([`09-QUALITY.md`](09-QUALITY.md)) without asking. Routine interactive/visual acceptance belongs
-  to the owner; agents drive UI automation only on explicit request. (2026-07-16, replaces the
-  blanket "no agent UI verification" rule)
+- **G3 — Agents own verification below final look-and-feel acceptance.** Follow `09-QUALITY.md`:
+  static checks, relevant tests, real data paths and bounded non-destructive rendered checks when
+  needed. Owner acceptance decides the final visual experience. Local verification does not grant
+  permission for paid, public, destructive or unrelated interactive operations.
 - **G4 — Documentation architecture v2.** The authoritative set is the numbered documents indexed
   by `PRODUCT.md`, OWNER-GUIDE, UI baseline, feature registry, `specs/`, `modules/` and
   `references/`. Each rule lives in exactly one canonical document. Superseded planning corpora are
@@ -707,7 +674,8 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   the same slice that changes their facts; depth (full specs) is written when a domain activates or
   the owner requests it. (2026-07-17)
 - **G6 — Frontend track: pages may run ahead of behavior, honestly.** Complete page specs are
-  encouraged ahead of backend work. Early page builds are allowed when: the page spec exists
+  encouraged ahead of backend work. The current baseline-first order applies to previews too:
+  no new page build starts before the R0 baseline exit. After that exit, early page builds are allowed when: the page spec exists
   ([`12-PAGE-ARCHITECTURE.md`](12-PAGE-ARCHITECTURE.md) §5); data flows through a typed adapter
   with mocks behind the adapter (never in components); unwired pages are reachable only behind the
   developer/preview toggle; status is reported `display-only` until actual behavior is connected.
@@ -739,206 +707,94 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   the Session-list header dropdown, acting on the current filtered view; the dormant SidebarMenu
   branch stays gated. Restores the capability per the 简化不等于删除 rule — simplification never
   deletes capability, it relocates the entry with a named surviving path. (2026-07-26)
-- **H1 — Artifact history is routed by kind; git is one backend, not the store.** The first
-  snapshot design hardcoded git. That is right for code and wrong for everything this product is
-  heading toward, in ways that are not recoverable later. Git stores each version of a compressed
-  file whole — delta compression does nothing on media, so a repository grows by the full file size
-  per edit and `git diff` on it is meaningless; this is exactly the problem git-lfs exists to solve,
-  and it solves it by keeping *pointers* in git and the bytes in a separate content-addressed store.
-  A canvas is one JSON document, so a file diff of "moved one node" is a whole-file rewrite; history
-  has to be record-level to carry meaning, which is the shape tldraw's store already uses
-  (`{added, updated: [from, to], removed}`, with a reversible diff and no snapshot required for
-  undo). Decision: three backends behind one routing function —
-  `text → git-tree`, `media → content-store`, `document-graph → operation-log`. A canvas and a video
-  timeline are the same problem (references plus operations), so this is two new mechanisms, not
-  three. Routing is by extension denylist rather than a size heuristic: a threshold would put a small
-  PNG in git and a large generated `.ts` in the content store. Unknown extensions default to text,
-  because misfiling a text file costs storage while misfiling a binary costs a diff nobody can read.
-  The "never touch a ref" rule from the original design is scoped to the **git backend**; a content
-  store has no refs to protect. The prior `artifacts/history-backend.ts` implementation was discarded;
-  this router is `not implemented`.
-  Rejected: git-lfs — it requires a server, which Decision P8 forbids as a startup dependency.
-  (2026-07-30)
-- **H2 — Attribution is orthogonal to history and required by all three backends.** Every change
-  carries `ChangeAttribution { sessionId, agentId?, messageId?, at }`. With one agent this reads as
-  bookkeeping; with several it is the difference between a review that can be read and a pile of
-  interleaved edits, and between reverting your own work and reverting a colleague's. `agentId`
-  absent means the human acted directly, which must stay distinguishable from an agent acting on
-  their behalf. tldraw carries the same field (`source: 'user' | 'remote'`) for the same reason and
-  simply needs fewer values. `planRevert` and `filterReviewDiffs` take an optional `agentId` scope;
-  unscoped remains the default so single-agent sessions are unchanged. (2026-07-30)
-- **H3 — Concurrent writes are admitted, not merged.** Two agents editing one file cannot be
-  reconciled by git in a live session: there is no commit to merge and no human watching conflict
-  markers. One writer at a time per path, second waits. This is a permission decision and belongs on
-  the existing permission path (03 §1), not in a new lock manager. Leases expire so a crashed agent
-  does not hold a file forever, and a holder may re-enter its own lease. `document-graph` is exempt:
-  record-level operations on disjoint nodes genuinely commute, which is the only reason that format
-  can be collaborative when source files cannot. (2026-07-30)
-- **H4 — Worktree isolation is necessary and insufficient; runtime facets are declared with it.**
-  Git worktrees are the established isolation primitive for parallel coding agents and are what
-  Claude Code, Codex and Cursor all use. They stop one agent overwriting another's *files* and do
-  nothing about the ports, databases, caches, scratch space and environment they share — two agents
-  running the same dev server race for one port, and the failure presents as a flaky test rather
-  than a collision. `AgentIsolation` therefore declares worktree **and** runtime facets together, so
-  adding a facet is one edit instead of a bug found in production. Ports are assigned by agent index
-  rather than found free: a found-free port changes every run, which makes a failure impossible to
-  reproduce and a log impossible to read. (2026-07-30)
-- **H5 — Session activity is derived; `sessionStatus` stays manual.** The session-row icon read
-  `sessionStatus`, a Kanban label written only by a context menu, a URL parameter or a board drag —
-  nothing set it automatically, so it answered "what did someone file this as", never "what is this
-  doing". There were already two manual status fields (`sessionStatus`, `kanbanColumn`) and no
-  derived one. `deriveSessionActivity` adds the derived one and replaces neither. Ordering is by
-  urgency, not likelihood: a pending approval outranks running, because the first needs a human and
-  the second does not, and with several agents in flight the only thing worth seeing at a glance is
-  which ones are stuck. Child activity rolls up so a collapsed parent cannot read as calm while
-  something underneath it is blocked. Presentation returns a *tone*, not a colour — themes own the
-  palette — and only `idle` is muted and drawn without an indicator, because a column of identical
-  grey dots hides the two rows that matter. (2026-07-30)
-- **H6 — CLI agents connect over ACP; the three hand-written probes are debt, not design.**
-  `cli-runtime-handshake.ts` reverse-engineers three tools three ways: OpenCode's model list is
-  parsed out of human-readable `--verbose` text by counting braces; Codex gets a hand-rolled
-  JSON-RPC conversation with hardcoded request ids against `codex app-server --stdio`; Claude Code
-  is read by regexing `claude --help` for `--effort <level>` and by opening `~/.claude.json`'s
-  `modelAccessCache` — another program's private state file, empty until that tool has been run and
-  free to change shape without notice. Each of these breaks silently and reports the result as "no
-  models" rather than "we could not read this", and a fourth agent means a fourth hack. The Agent
-  Client Protocol is the standard for exactly this: JSON-RPC 2.0 over stdio, LSP's idea applied to
-  coding agents, created by Zed in August 2025, joined by JetBrains, and by 2026 implemented by 25+
-  agents with a shared registry. Gemini CLI speaks it natively (`--acp`); Claude Code and Codex have
-  adapters (`claude-agent-acp`, `codex-acp`). Decision: one ACP client replaces the probes, the
-  catalog is declarative, and `transport: 'legacy-probe'` marks what has not migrated yet so the
-  debt is visible in the type rather than buried in a service file. The prior
-  `cli-agents/cli-agent-connection.ts` implementation was discarded; the general adapter is
-  `not implemented`. (2026-07-30; status corrected 2026-09-11)
-- **H7 — Detection and configuration are separate layers.** Borrowed from AionUi. **Provenance
-  corrected 2026-08-15:** a source-level pass over the pinned AionUi checkout found **no symbol
-  `DetectedAgent`**. What the checkout actually carries is `ManagedAgent`
-  (`tests/unit/settings/agentFilters.test.ts`, consumed by `filterAgentsByAvailability`), whose
-  fields separate discovered facts (`installed`, `status: 'online'|'offline'|'missing'`) from
-  chosen configuration (`enabled`) — so the *idea* is confirmed and the *name* was wrong. The
-  decision below is unchanged; only its citation is. The type Fleet's design was described against
-  states it outright: what is installed on this machine is a fact to discover;
-  what the user chose is a configuration that *references* those facts. The settings page currently
-  renders probe results directly as the configuration, so a transient handshake failure silently
-  drops the user's configured agent and there is no way to express "I want Claude Code" on a machine
-  where it is not installed yet. `resolveSelection` therefore reports *why* a saved choice is
-  unusable (`not-detected` / `agent-unavailable` / `model-missing`) instead of falling back to
-  something else. (2026-07-30)
-- **H8 — A resolved binary path is recorded, and bare command names are not trusted.** The probes
-  call `execFile('claude', …)` with a bare name. A desktop app launched from Finder or the Dock does
-  not inherit the shell PATH, so anyone who installed through nvm, fnm, mise, asdf, volta or
-  Homebrew-on-ARM is told the tool is not installed while it sits in their terminal. Resolution
-  order is `configured → inherited PATH → login shell → well-known paths`: a configured path is an
-  instruction rather than a hint, and the login shell outranks guessed locations because it reflects
-  the version manager's current selection while a well-known path may be a shim for a removed
-  version. Detection results are cached (5 min on success, 1 min on failure) because every settings
-  visit currently spawns three processes, one of which is an app-server. (2026-07-30)
-- **H9 — The command runner states its boundary instead of letting the user discover it.** The
-  terminal is `execFile` with a 30-second timeout and a 1.5 MB buffer: no PTY, no streaming, no
-  cancellation, no persistent `cd`. Those limits are defensible for the bounded runner R18 scoped;
-  discovering them by waiting thirty seconds for `vim` to hang is not. Commands are classified
-  before they run — `bounded` / `interactive` / `long-running` — and one the backend cannot host is
-  refused with the reason. Output truncation keeps the *tail*, because `maxBuffer` currently kills
-  the process and discards everything including the error at the end, which is the only part anyone
-  wanted. Adding a PTY backend later means declaring a second capability, not rewriting callers.
-  Related: the settings page titled "Terminal" contained no terminal — it is the CLI agent page and
-  is now named so. (2026-07-30)
-- **H10 — Delegation routes by requirement, then by cost, and escalates on mechanical failure.**
-  `spawn_session` lets a captain pick a model and `help=true` lists what exists, but nothing says
-  what any of them are *good for* or what they cost — so the choice is made from a model id, and the
-  predictable outcome is that everything runs on whatever the parent was already using, usually the
-  most expensive option, including tasks that are three lines of text manipulation. "Cheap for
-  simple, expensive for complex" cannot be implemented, because complexity is not observable before
-  the work starts. What *is* observable is what a task requires. So: discard candidates that cannot
-  do the work, take the cheapest that can, and escalate only when the cheap one mechanically fails
-  (`tool-loop-exhausted` / `context-overflow` / `repeated-error` / explicit request). Escalating on a
-  *wrong answer* is out of scope — that needs a judge, and without one the rule would degrade into
-  "escalate when someone is unhappy". The savings come from step three: guessing the tier up front is
-  wrong in both directions and expensive in one of them, while trying cheap and escalating pays the
-  premium price only for the tasks that needed it. An escalation must strictly increase cost or
-  context, otherwise it is a retry wearing a different name. A future escalation path is computed at
-  routing time so the parent can show its plan before spending anything. The prior
-  `agent/delegation-routing.ts` implementation was discarded; requirement/cost routing is
-  `not implemented`. (2026-07-30; status corrected 2026-09-11)
-- **H11 — Sub-agents appear inline in the conversation; the session list stays clean.** Sub-agents
-  are real sessions, and the code already excludes them from the left list (`!s.parentSessionId` in
-  `AppShell`) while the board groups them under their parent. Both are right and neither is enough:
-  five sub-agents per task would make the session list unusable, and a delegation visible only on a
-  board is invisible while reading the conversation that caused it. Decision: the conversation
-  carries a compact delegation strip — who was called, for what, how it ended — with the full
-  sub-session one click away. Day to day the strip is the entire answer, which is the assumption the
-  parent activity rollup (H5) already encodes. Escalations render as one row with its attempts
-  attached, not as sibling delegations, because an escalation is one decision with two attempts.
-  What the captain is *offered* is capabilities and a cost tier rather than a model list: a captain
-  given ids picks by name recognition, and the cheap tier is only ever chosen when it is described
-  by what it is good at rather than by what it lacks. (2026-07-30)
-- **H12 — Model pricing is real data, not a hand-assigned tier.** `delegation-routing` sorted by a
-  `CostTier` someone typed in, while `ModelDefinition` carries context window, modalities, reasoning
-  efforts and runtime modes — and no price, so nothing could answer "what did that turn cost". The
-  shape follows models.dev (which is what OpenCode normalizes against) because two parts of real
-  pricing are easy to model wrongly. **Cache reads and writes are priced separately and not
-  proportionally**: a write typically costs more than fresh input and a read a fraction of one, so
-  collapsing them into "input" makes a cache-heavy agent look expensive and a cache-cold one cheap —
-  exactly backwards for deciding what to delegate. **Price changes with context length**: several
-  providers charge more above 200k, and a flat rate silently under-reports the long-context turns
-  that cost the most. Subscription usage computes its equivalent metered cost and is flagged rather
-  than reported as free — it consumes an allowance the user already paid for — and it sorts ahead of
-  metered options at equal capability, because an unused allowance is money already spent. Unknown
-  pricing sorts *last*: it cannot be shown to be cheap, and guessing in its favour is how an
-  expensive model becomes the silent default. Contract:
-  `packages/shared/src/config/model-pricing.ts`. (2026-07-30)
-- **H13 — An identity loadout spends an attention budget.** The original implementation put this
-  payload on `LabelConfig`; that store was discarded and H15 now assigns it to Assistant. The
-  underlying problem remains: an identity that is only a paragraph while every Session sees the same
-  tools has no effective loadout. That is
-  wrong for a measurable reason: agent accuracy degrades once tool counts pass roughly 10–15 and
-  tool-selection accuracy collapses toward 13% on large tool sets, because functions blur together
-  in attention and irrelevant parameter descriptions occupy working memory that should be spent on
-  the request. OpenAI's guidance is under 20 tools per turn; Anthropic documents degradation past
-  30–50. Giving every session every tool is therefore not generosity, it is an accuracy tax paid
-  every turn. The published remedy is specialisation — the 2026 HTAA framing is an orchestrator plus
-  specialists carrying 5–10 focused tools each — which is exactly what an Assistant describes.
-  Thresholds are recorded as `TOOL_BUDGET` (focused ≤10, crowded ≤15, over-budget >15) and skills and
-  sources count against the same budget, because they arrive in the same window and compete for the
-  same attention. An over-budget role is told to **split**, not trim: trimming loses capability while
-  splitting keeps it and hands the parts to agents that can each hold their share. The old
-  `labels/identity-loadout.ts` contract no longer exists; routing/loadout enforcement is
-  `not implemented`. (2026-07-30; implementation status corrected 2026-09-11)
-- **H14 — A loadout narrows what an agent sees; it never widens what it may do.** Grants stay on the
-  permission path (`03-NON-NEGOTIABLES.md` §1). `requestedPermissionMode` is a *request* the
-  permission path may answer more narrowly, and a session carrying several identity labels takes the
-  **narrowest** requested mode, not the widest — combining roles must never be a way to accumulate
-  permission that neither role was given. Loadouts resolve against the live registries and report
-  what no longer exists rather than silently becoming a weaker role. This is what closes the loop:
-  identity defines the specialist, the tool budget says when a role must split, delegation reaches
-  the specialist instead of growing the current one, and permission decides what any of them may
-  actually do. (2026-07-30)
-- **H15 — An assistant is a wearable identity; labels are not the store.** An identity was a
-  paragraph of text. The payload is now system prompt, commands, model, permission *request*,
-  skills, MCP and plugins — AionUi's assistant effect, Cindy's runtime. It does **not** live on
-  `LabelConfig` and is **not** welded to a CLI. The same record is worn by this session, by a
-  delegate, or optionally by a CLI wrap. If the session already has an identity and the next need
-  is a different specialty, the default wearer is `delegate` (H10/H28), not a self-swap.
-  `kind: 'identity'` remains readable in old label files. Contract:
-  `packages/shared/src/assistants/`. (2026-07-30; revised 2026-09-10)
-- **H16 — Delegates return findings; only the parent Session promotes memory.** D5 and the memory
-  packet settle layers, floors and retrieval, and neither mentions delegation — the packet was
-  written for one agent per session and the phrase "sub-agent" does not appear in it. The gap has two
-  failure modes pulling opposite ways. If every sub-agent writes memory, working notes become the
-  transcript dump D5 forbids: five specialists on one task produce five accounts of the same events,
-  contradicting each other with no way to adjudicate, and the captain later reads its own delegates'
-  notes as independent corroboration — an echo chamber with source pointers attached. If no sub-agent
-  records anything, every finding dies with the sub-session and the next run rediscovers it at full
-  price, which is the cost delegation exists to avoid. So the rule is asymmetric: **a delegate reads
-  a narrow slice and returns a `DelegateFinding`; only the parent Session promotes anything
-  durable, and only the consolidation pass writes curated layers.** A report is evidence; memory is a
-  claim about what is true. Keeping delegates on the evidence side leaves one writer per task and one
-  place a contradiction must be resolved. Delegates are refused *every* layer rather than given a
-  private scratch: a scratch nothing reads wastes disk and attention, and one something reads is the
-  echo chamber again. Promotion refusals are explicit (`no-source-pointer`, `low-confidence`,
-  `sensitive`, `cross-project`) because each names something the parent run could go and fix. The
-  prior `memory/memory-scope.ts` contract was discarded; this remains unimplemented design guidance.
-  (2026-07-30; status corrected 2026-09-11)
+- **H1 — Artifact history follows the native kind; Git is one optional backend.** Text changes may
+  use Git objects without moving the user's HEAD, index or refs; media versions retain immutable
+  bytes; native documents may use validated operations plus recoverable snapshots. These are
+  routes over native owners, not three mandatory new stores. Classify from the owning adapter and
+  verified media type, with a conservative opaque-file fallback for unknown types; an unfamiliar
+  extension is not evidence of text. Git can delta-compress binary data and JSON can have small
+  textual diffs, but neither establishes semantic media/document undo. Git LFS is not a mandatory
+  dependency; any proposed use needs a concrete storage/transfer comparison. The former
+  `artifacts/history-backend.ts` is absent; this router is `not implemented`.
+- **H2 — Attribution is explicit and independent of the history backend.** Record caller kind,
+  actor/Session identity when applicable, operation correlation and time on each semantic change.
+  Missing `agentId` does not prove a human acted: system, workflow, replay and unknown callers
+  must remain distinguishable. Review/restore may filter attribution, but permission and expected
+  version checks still apply. The shared target is H44, not a separate attribution store.
+- **H3 — Concurrent writes require coordination after permission.** A lease never grants access.
+  Reuse the mutation owner for finite path leases and expected-version checks; expiration alone
+  does not prove a still-running writer has stopped. Native document batches may commute only
+  where the domain validator proves that property. Disjoint node IDs alone do not prove it:
+  parents, ordering, references and shared constraints can still conflict.
+- **H4 — Worktree isolation includes runtime resource ownership.** Worktrees isolate checkout
+  files, not ports, databases, caches, scratch space or environment. Declare and scope the required
+  resources per run. Reserve ports by actually binding them, handle collisions, and record the
+  resolved endpoint with run identity; checking a free port and binding later races. A preferred
+  deterministic port is optional and cannot replace reservation or collision recovery.
+- **H5 — Session activity is derived; `sessionStatus` stays manual.** Use live processing,
+  approval and child-run facts for activity. Pending approval takes precedence over running and
+  child blockers roll up without rewriting a manual label. Presentation returns a semantic tone.
+  Craft processing state exists; the former Fleet `deriveSessionActivity` helper is absent and
+  its complete projection is `not implemented`.
+- **H6 — CLI adapters use supported protocols, with ACP where offered.** Retain Craft's native
+  Claude/Pi lanes. An external CLI may use ACP or its documented long-lived protocol; do not wrap
+  a working native session merely to force ACP. Discovery/configuration/health and turn transport
+  are separate responsibilities. Do not parse human help output or private account/model caches
+  as an authoritative capability API. Missing discovery yields an explicit unknown/unavailable
+  state. The former general CLI connection layer is absent and `not implemented`.
+- **H7 — Detection and configuration are separate layers.** Persist what the user selected;
+  attach separately observed installation, connection and model facts with provenance and time.
+  A failed handshake does not erase configuration or silently select a different runtime.
+  Explain `not-detected`, `agent-unavailable` and `model-missing`. AionUi's historical evidence is
+  `ManagedAgent`, not the previously misquoted `DetectedAgent`; its optimistic `Observed` value
+  is not universally a runtime echo (see the current reference registry).
+- **H8 — Record the resolved CLI binary path.** An explicit configured path wins; otherwise
+  inspect inherited PATH, a bounded login-shell environment and known installation locations.
+  Validate the executable and report how it was resolved. Cache observations with refresh and
+  invalidation on configuration/version change; TTLs require runtime evidence. These are target
+  adapter requirements, not a claim that the removed Fleet probes still exist.
+- **H9 — Execution surfaces state their actual limits.** Current Craft Bash/background execution
+  is the baseline. Streaming, cancellation, interactive PTY and persistent shell state must be
+  reported per supported path; refuse unsupported operations with a reason. Preserve bounded
+  output and a retrievable full result when available. The discarded 30-second/1.5-MB runner is
+  historical, not today's terminal contract. R18 adds PTY only for a demonstrated caller gap.
+- **H10 — Routing follows requirements and measured accepted outcomes.** User-selected routes,
+  permission, capabilities and budgets constrain candidates first. Compare latency, reliability
+  and known cost on the same task; do not assume cheapest-first plus retries is cheapest overall.
+  A bounded retry/escalation needs a named failure and a demonstrably relevant alternative, not a
+  strict increase in price. Quality failures need independent evidence. Automatic routing remains
+  `not implemented` and gated by R6/R17 measurements; C5 governs whether delegation is useful.
+- **H11 — Delegates are visible inline and remain existing child Sessions.** Show the bounded
+  assignment, lifecycle, blocker and result in the parent conversation, with an authorized link to
+  the real child transcript. No duplicate transcript or permanent Team page is required. Attempts
+  of one delegated task remain associated; unknown/deleted/unauthorized children show honest
+  unavailable states. The former DelegationStrip was removed and is `not implemented`.
+- **H12 — Pricing is versioned data, not a hand-assigned tier.** Retain separate fresh input,
+  cache-read, cache-write, output and any context-tier rates with provider/model, source and
+  effective date. Subscription allowance and an API-equivalent estimate are not an actual bill.
+  Unknown prices never imply free use or a cheaper route. Craft usage events survive, but the
+  former `config/model-pricing.ts` and Fleet ledger are absent; extend UsageTracker when active.
+- **H13 — Attention budgets apply to active context, not catalog size.** H19–H21 supersede the
+  earlier hard tool-count thresholds and forced role splitting. Measure serialized schema/context
+  size and task quality per model; preserve discovery and missing-tool recovery. Do not cap
+  installed capability, trim requirements or spawn extra agents simply to meet a numeric budget.
+  Runtime enforcement is `not implemented`.
+- **H14 — Requested loadout never widens permission.** Resolve an Assistant's requested Skills,
+  Sources and Components against installed availability, Workspace policy and live grants through
+  one resolver. Missing entries have named reasons; no fallback silently changes identity or scope.
+  Labels are not inputs to loadout or permission. H19–H21 govern active context; C5 governs any
+  delegation decision, without automatic splitting.
+- **H15 — An Assistant is a wearable identity, separate from labels and runtimes.** It declares
+  persona, model/prompt and requested loadout/permission, usable by a Session or an authorized
+  delegate. Changing specialty does not itself require spawning a delegate. C3/C5/H28 and the
+  user's instruction govern delegation; composition changes occur at the next turn boundary.
+  The former `packages/shared/src/assistants/` store was removed; this remains `not implemented`.
+- **H16 — Delegates return findings; curated memory has one writer.** A delegate returns scoped,
+  attributable evidence. The parent may record working notes; the consolidation pass alone
+  promotes curated profile, long-term and domain entries. Human curation may pin/correct/delete.
+  This is autonomous under D5, not a per-entry approval queue. Refusals explain missing sources,
+  sensitivity or scope. The former memory-scope implementation was discarded; the store, index
+  and consolidation remain `not implemented`.
 - **H17 — A delegate's memory read is scoped by its Assistant, for the same reason its tools are.**
   Handing a specialist the whole memory is the same attention tax as handing it every tool (H13). A
   delegate reads its Assistant's domain files and the `tool` partition and nothing else: it was given one
@@ -946,15 +802,11 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   but must still pay attention for. `sensitive-quarantine` and `archive` appear in no scope at all —
   quarantine is never injected (D5 floor 1) and an archived entry reaching a prompt would undo the
   consolidation that archived it. (2026-07-30)
-- **H18 — Tool memory records the fact a call revealed, not the call.** The output is already in the
-  timeline, which stays the evidence authority. What pays for itself is the durable fact: this
-  repository installs with pnpm, that endpoint rate-limits above ten requests a second, this test is
-  flaky on CI and not locally. Those apply to every future turn and rediscovering each one costs a
-  full tool round-trip. Durability requires **repetition, not eloquence** — a single failure is as
-  likely a transient as a rule, and writing it down teaches the agent to avoid something that works,
-  so two independent observations is the threshold. Invalidation is by the tool disappearing or the
-  convention changing, never by age: time-based expiry drops a correct fact about a stable repository
-  while keeping a wrong one about a moving API. (2026-07-30)
+- **H18 — Tool memory records supported facts, not raw calls.** Keep tool output in Session
+  evidence and promote a scoped fact only with sufficient source evidence and uncertainty.
+  Repetition is evidence, not an automatic truth threshold. Invalidate or revalidate against
+  changed tool/version/convention facts; age may trigger review but cannot by itself prove a
+  stable fact false. H26 must not silently delete or override pinned facts by age.
 - **H19 — An Assistant's catalog is not its active loadout; attention governs the active set.** H13
   originally fixed the tool budget to the whole declared catalog, which calls every substantial
   Assistant over-budget and tells
@@ -1026,127 +878,62 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   to read: silently downgrading leaves the Assistant failing later at a write it was told it could perform,
   which reads as the Assistant being broken. The old `labels/kit-sources.ts` implementation was
   discarded; binding enforcement is `not implemented`. (2026-07-30; status corrected 2026-09-11)
-- **H25 — An imported archive is searched, never absorbed.** A chat export from another application
-  is somebody's correspondence. It is exactly the material a memory curator wants and exactly the
-  material that must never be injected wholesale or promoted into durable memory — treating it as
-  "just another source" is how a private conversation ends up in `MEMORY.md` with a source pointer
-  attached. So `local-archive` is forced to `sensitive` **regardless of what the binding declares**:
-  the package author is not the person whose correspondence it points at, and their judgement is not the
-  one that should decide. Its disposition is `search-only`, and nothing derived from it is promotable
-  automatically. This is not a restriction on usefulness — the value of an archive is the *pattern*
-  across it (this team always ships behind a flag; this API is the one that keeps breaking), and a
-  pattern is a new claim the curator states and sources, not a passage it lifts. (2026-07-30)
-- **H26 — The future memory curator, and why its defaults are Hermes'.** A worked example of the
-  design: Assistant-requested sources, routed skills, and a consolidation loop that earns its keep. It is
-  the pass that makes every other Assistant better, because what it produces is what the rest of the system
-  reads. Four choices are taken from Hermes' curator, which solves the same problem — an agent that
-  saves a skill whenever it solves something novel accumulates dozens of narrow near-duplicates that
-  pollute the catalog and cost tokens every turn. **Idle-triggered, not scheduled**: a pass needs
-  both an interval since the last one and a stretch of inactivity, because a cron pass fires mid-task
-  and rewrites the prefix the session is reading. **Two phases, expensive one off by default**:
-  deterministic ageing (30-day stale, 90-day archive) costs nothing and always runs; model-driven
-  consolidation makes broad structural changes and is opt-in. **Never deletes** — the worst outcome
-  is recoverable archival, and pinned entries are untouchable by the pass *and* by the agent, because
-  a promise a background job can override is not one. **First run defers a full interval**, so a user
-  gets a whole cycle to look at what accumulated and pin or opt out before anything moves. Two
-  additions Fleet needs: the consolidation pass declares a *requirement* (tools, no reasoning, modest
-  context) rather than naming a model, so the router picks the cheapest qualifying option — ageing
-  and dedupe are not reasoning work, and paying premium rates for a background pass is the surest way
-  to have it switched off, at which point the duplicates return. And conflicts stay conflicts: when
-  two entries disagree the pass records both, because silently resolving in favour of the newer one
-  is how a correction gets overwritten by the mistake it corrected. A log line naming no entries, or
-  promoting with no sources, is rejected — a consolidation log exists so a person can disagree with a
-  pass they were not present for, and "merged 3 entries" is a receipt rather than an explanation.
-  The prior curator contract file was discarded; no curator is implemented. (2026-07-30; status
-  corrected 2026-09-11)
-- **H27 — Foreign memory is never imported as memory; foreign history is imported as an archive.**
-  Every competing product ships "import your Claude / Cursor / Coze memories". It is the wrong
-  feature here, and not because it is hard. Another product's curated memory is a set of claims *it*
-  judged durable, distilled for *its* retrieval, phrased for *its* prompt, under assumptions about
-  what its agent could see and do. Three consequences make adoption unsafe. They **encode a different
-  tool surface** — "prefers the terminal for file edits" is a fact about an agent that had a terminal
-  and no file tools; it is a workaround, not a preference, and here it is simply wrong. They **carry
-  no evidence pointer this system can follow**, so they violate D5's requirement that every retained
-  entry point back into session evidence and can never be checked, corrected or argued with. And they
-  are **already lossy** — someone else's summariser discarded the context needed to decide whether
-  the claim still holds. What is valuable is the raw history underneath: conversations, project
-  records, decisions actually taken. That is evidence, and the curator can derive Fleet-shaped claims
-  from it with real pointers. So: `conversation-history` and `project-records` import as a searchable
-  archive to mine; `curated-memory` and `agent-instructions` import as read-only documents, quotable
-  with attribution and never adopted as fact. `mayAdoptAsMemory()` returns `false` unconditionally and
-  exists so the next person to ask finds the decision rather than the gap. A mined claim needs three
-  independent occurrences **and must not appear verbatim in its source** — lifting a good sentence out
-  of somebody's chat log and storing it as memory is the exact failure the module prevents, and it is
-  easy to commit by accident when the original phrasing is already good. Mined claims carry their
-  `archiveId`, so dropping an import drops what was derived from it and a revocable import stays
-  revocable. The prior `memory/foreign-memory.ts` contract was discarded; no foreign-memory import
-  path is implemented. (2026-07-30; status corrected 2026-09-11)
+- **H25 — Foreign archives remain searchable evidence.** Explicitly imported chat history keeps
+  origin and scope; it does not become a prompt instruction, permission grant, user preference or
+  curated memory. Paraphrasing or repeated occurrences do not remove this boundary. A separately
+  authorized retention/consolidation flow must validate sources, sensitivity and applicability;
+  search permission alone is not permission to promote foreign claims.
+- **H26 — Consolidation has one writer and measured defaults.** The future curator consumes
+  evidence under D5/H16–H18, logs promotions/conflicts/archives, preserves pins and supports user
+  deletion. Hermes/OpenClaw are mechanism candidates, not authority for universal age, trigger or
+  confidence constants. Model-backed background work respects configured consent and budget;
+  once enabled, ordinary eligible consolidation is autonomous rather than a per-entry approval
+  queue. The previous memory-curator kit/store is absent and `not implemented`.
+- **H27 — Foreign history and native curated memory remain distinct.** H25 governs imports.
+  Preserve source-product identity and an explicitly authorized read scope; no imported record can
+  write native memory or policy. Any later derived claim needs its own validated evidence and
+  authorized retention scope. Neither three occurrences nor rewritten wording establishes truth
+  or permission. Sensitive foreign material is excluded from automatic injection. The former
+  `memory/foreign-memory.ts` is absent and `not implemented`.
 - **H28 — There is no manager agent and no captain role. Delegation is a relationship, not a class.**
   Earlier planning assumed a "管理 Agent" — a Conversations-scoped session configured to coordinate
   others — and a captain/delegate distinction the user would choose between. Assistants, requested
   sources, capability-and-cost routing and scoped memory remove the need for both. **Any session
-  becomes a captain the moment it delegates**, and the same session is a delegate to whatever spawned
+  may delegate through the existing Session/Task path**, and the same session may be a delegate to whatever spawned
   it; the relationship lasts exactly as long as one delegation. There is no mode to enter, nothing to
   configure, and the UI must not offer either — a session that delegates is an ordinary conversation
-  whose turn happened to call `spawn_session`. Naming these as user-facing roles would recreate
+  whose turn happened to request child work. Naming these as user-facing roles would recreate
   precisely what Assistants avoid: a role decision the user should not have to make up front.
   “Parent” and “delegate” are positions in one run relationship, not identity classes. Supersedes the
   management-agent direction recorded under
   G8. (2026-07-30)
-- **H29 — A cost with no rate behind it is reported as unknown, never as zero.** `SessionTokenUsage.costUsd`
-  carries three different meanings behind one number: Claude and Pi backends write a real figure from the
-  provider; `sessions/storage.ts` initialises it to `0`; and every OpenAI-compatible endpoint leaves it at
-  that `0`, because the OpenAI response body has no cost field to copy. That last case is not an edge —
-  it is all seven CN providers, every custom base URL and every discovered model, so in a mixed setup the
-  *majority* of sessions report `$0.00`. Summing that field gives a total that is confident, wrong, and
-  **systematically low**, and it is low in precisely the place a user most needs the truth: the unpriced
-  sessions are the custom endpoints where spend is least visible. So every figure travels with its
-  provenance — `reported` | `derived` | `subscription` | `unknown` — and `unknown` is *not a number*, which
-  forces the caller to render it as unknown. A reported `0` is believed only when the session moved no
-  tokens; otherwise it is the storage default showing through and we derive instead. `derived` is
-  deliberately not called "estimated": the arithmetic is exact, what is uncertain is whether the published
-  rate is the rate this account is billed at. Subscription usage is valued but summed apart, because adding
-  an allowance draw to a metered charge produces a total that matches no bill. Contracts:
-  `packages/shared/src/config/session-cost.ts`, `usage-rollup.ts`. (2026-07-31)
-- **H30 — Rate coverage is measured in tokens, never in sessions.** A usage total assembled from a few
-  priced sessions and many unpriced ones needs to say how much of itself is real. Counting that as a
-  fraction of *sessions* inverts the answer whenever size and pricing correlate — one unpriced session that
-  moved two million tokens against thirty priced ones that moved a thousand each reads as 97% covered and is
-  actually 2%. Tokens are the unit of both cost and attention, so tokens are what rank and what measure.
-  The Usage page states coverage whenever any of it is unpriced, and prefixes the spend figure with
-  "at least". (2026-07-31)
-- **H31 — Users state rates for their own endpoints; the fix lives where the gap is noticed.** Since an
-  OpenAI-compatible endpoint reports no cost, the only route to a real number is the user saying what they
-  pay. Rates are stored as `LlmConnection.modelPricing`, a map keyed by model ID **beside** `models` rather
-  than a field inside it, because that array holds bare strings as well as full definitions and pricing a
-  string entry would mean synthesising a whole `ModelDefinition` around it — a half-invented definition is a
-  worse thing to persist than a separate map. A stated rate always beats the bundled registry: for a custom
-  endpoint the registry is guessing and the user is reading a contract. Only a connection that actually
-  lists the model may hold its rate, or a stray entry would misprice a model that connection never served.
-  The editor is on the Usage page next to the "no rate" it fixes, not in AI settings; four fields, because
-  collapsing cache into input is the standard way a self-built cost display goes wrong, and agent work is
-  overwhelmingly cache-heavy. (2026-07-31)
+- **H29 — Unknown cost is not zero; explicit zero is still a valid reported value.** A provider
+  receipt may report zero (for example a free operation); retain its provenance instead of rejecting
+  it merely because tokens are nonzero. SDK defaults with no billing/rate evidence remain unknown.
+  Token×rate calculations are estimates with a dated rate source, never invented invoice amounts.
+  The complete Fleet cost projection is `not implemented`.
+- **H30 — Cost totals expose coverage.** Distinguish known reported charges, priced estimates and
+  unpriced usage. Measure token-rate coverage over applicable billable token categories; also list
+  unpriced media/other units separately. A mixed subtotal is not an exact total or a guaranteed
+  lower bound on the eventual bill. Do not infer coverage from Session counts.
+- **H31 — Endpoint pricing has one settings owner and visible provenance.** Prefer verified
+  provider/model rates where applicable; custom endpoints can supply explicit user overrides with
+  units and effective date. An unknown-price notice links to that same setting. User entries do
+  not retroactively become provider receipts; cache/context-tier rates remain separate (H12).
 - **H32 — Labels and Assistants are separate authorities with separate meanings.** Labels remain
-  metadata over work. Assistants own identity and requested loadout under
-  `packages/shared/src/assistants/`. A settings surface may navigate to both, but it must never expose
+  metadata over work. Assistants own identity and requested loadout as the target. The earlier
+  `packages/shared/src/assistants/` implementation was removed; status is `not implemented`. A settings surface may navigate to both, but it must never expose
   two editors over one store or place Assistant payloads in `labels/config.json`. Supersedes the
   ExpertKit-as-label ruling. (2026-07-31; revised 2026-09-11)
 - **H33 — Legacy identity-label values are migration input only.** Existing label files may still be
   read without mutation, but new Assistant writes use only the Assistant authority. Compatibility
   must not turn an old label into a second spelling of Assistant. The old ExpertKit normalizer and
   write path were discarded. (2026-07-31; revised 2026-09-11)
-- **H34 — The UI guard now rejects raw palette colours, because that is what it missed.**
-  `check-ui-contract.ts` enforced opacity, radius, type, elevation and stroke width, and said nothing
-  about colour — so `bg-amber-500`, `bg-emerald-500`, `bg-blue-500`, `text-amber-600` and `bg-primary`
-  all shipped through it green, in production surfaces, against a spec (§1, §11.1) that names six
-  colours and forbids a seventh. A palette literal is worse than a wrong shade: it does not
-  participate in theming at all, so it looks right in whichever theme it was written in and wrong in
-  every other, including the light/dark pair. `primary` is a special case worth naming — it is not a
-  token in this theme, it is the shadcn default every model reaches for, and `bg-primary` renders as
-  a fallback rather than failing, so it survives review while responding to nothing. The playground
-  is exempt from the colour rules only, because its swatch demos render palette colours *as content*
-  and failing those would push someone toward disabling the rule rather than fixing a real surface.
-  (2026-07-31)
+- **H34 — Verify UI values against actual Craft before rendered changes.** The Fleet
+  `lint:ui-contract` script and its fixture were removed by the owner-requested original-source
+  restoration. Report that missing check honestly. Any restoration belongs to an approved
+  correction slice; the comparison of shared primitives, motion and required states remains
+  necessary and cannot be certified by a token guard alone.
 - **H35 — Motion has values now, not one sentence.** UI-SPEC §9 gave two durations and no curve,
   which is not enough to decide anything with, so each surface needing a third case invented one.
   [`design-library/22-motion.md`](design-library/22-motion.md) adds the frequency test that decides
@@ -1166,45 +953,22 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   was discarded. The same honesty rule now applies to Assistant loadouts and marketplace metadata:
   never render a measured or active state that the runtime cannot obtain. (2026-09-10; revised
   2026-09-11)
-- **H37 — Capability comes from a live binding, never from a field that says so.** The owner ruling
-  is now [`PRODUCT.md`](PRODUCT.md): Core carries only the common host; a Skill describes how work is
-  done; a plugin carries rich structured interaction; an Assistant is the independent wearable
-  identity/loadout; deterministic branching, validation, permission and recovery stay in code. The
-  writer, resolver, permission decision and runtime consumer must agree on one approved snapshot.
-  Otherwise shrink the surface to the truth. (2026-09-10; resolved 2026-09-11)
+- **H37 — Capability comes from a live binding.** A field or manifest alone is not runtime
+  support. Component contributes native UI/domain behavior; Plugin packages Skill/Source/Component
+  contents without a fourth authority (P11). A live writer, resolver and production consumer are
+  required before claiming the corresponding capability is wired.
 - **H38 — An Assistant selects over installed Skills; it never declares a parallel Skill store.**
   Fleet already loads Skills from disk across its supported scopes. Assistant loadout resolution is
   therefore `REUSE/EXTEND`: declared IDs resolve against that installed set, unresolved IDs are named
   rather than dropped, and routing uses explicit triggers/exclusions rather than descriptions. The
   old `labels/kit-resolve.ts` implementation was discarded; current Assistant-to-runtime resolution
   remains `not implemented`. (2026-09-10; revised 2026-09-11)
-- **H39 — Where a skill lives is where it applies, and that is a choice the product must offer.**
-  `LoadedSkill.source` has always reported three tiers and nothing surfaced or changed them, so
-  "make this skill global instead" had no answer and a skill could only be authored by hand on disk.
-  `skills/scope.ts` makes the tiers one vocabulary: **`global`** is `~/.agents/skills/<slug>/`,
-  reaching every workspace on this machine and **shared with other agent tools** that follow the same
-  convention (Cindy writes there too — `references/REFERENCE-REGISTRY.md`, 2026-09-10); **`workspace`**
-  is that workspace only; **`project`** lives in the project folder and travels with the repository.
-  Because global is shared, every result names which scope it touched: writing there changes something
-  outside the product the user was looking at, and moving out of there removes the skill from those
-  other tools too. Reporting that is not politeness, it is the difference between a scope control and a
-  surprise.
-  Three refusals are load-bearing and each guards a specific failure. **Nothing overwrites** — a slug
-  already taken at the target belongs to whoever wrote it, and a failed move leaves the source where it
-  was rather than nowhere. **A slug is one safe path segment**, checked here rather than trusted from a
-  caller or a model, because these paths are joined into the user's home directory. **Writes stage and
-  rename**, with a copy fallback for the cross-filesystem case, because a partial `SKILL.md` is parsed
-  by `loadAllSkills` into a skill claiming capabilities its body never describes. `manage_skill`
-  additionally validates frontmatter before writing: a file missing `name` or `description` is skipped
-  silently by the loader, so the agent would report success for a skill that never appears.
-  **The permission line is unchanged and is the one place this differs from the request as put.** The
-  owner asked that the agent be able to install, enable, disable and change permissions. The first
-  three are agent-callable — an Assistant narrows what an agent *sees*, never what it *may do*. The fourth is
-  a **request only**: `requestedPermissionMode` records what an Assistant asks for and the permission path
-  decides, possibly narrower. A tool that let an agent widen its own mode would be a second authority
-  over the one decision the permission path exists to make, and every other control in the product
-  would become decorative. Assistant wearing must report that result explicitly so the model cannot
-  conclude it granted itself something. (2026-09-10; revised 2026-09-11)
+- **H39 — Skill scope is an explicit user choice over one Skill authority.** Global installation
+  and Workspace activation/overrides remain distinct; moving or generating a Skill cannot grant
+  permission or affect other Workspaces implicitly. Preserve vendor metadata and unknown fields
+  on import, while stating which activation semantics Fleet actually supports. The former Fleet
+  `skills/scope.ts` and `manage_skill` extensions are absent; their prior tests are not current
+  acceptance. R15 derives the schema and migration from real callers.
 - **H40 — Components are additive workspace capability bundles, not identities or alternate shells.**
   The owner chose a component model on 2026-09-14: an installable Component may bundle a left-tool-rail
   entry, right-workbench panels, native domain commands/data, Skills, MCP declarations, knowledge
@@ -1225,8 +989,8 @@ Durable code handoff is GitHub (OpenChamber's authority, EXEC-13): commit/PR on 
   capability ownership/install-target and permission-request rules;
   OpenChatCut supplies the official video bundle reference. OpenChatCut is AGPL-3.0 and is therefore
   source/product evidence unless an explicit license checkpoint approves direct reuse. The early
-  host uses existing Files/Notes and does not wait for that video choice, R6 delegation, R9 memory
-  or a marketplace; `specs/R18-right-workbench.md` owns its foundation-first acceptance. (owner,
+  host starts after the R0 baseline exit, using mounted Files and a real consumer of the surviving
+  Notes RPC. It does not wait for that video choice, R6 delegation, R9 memory or a marketplace; `specs/R18-right-workbench.md` owns its foundation-first acceptance. (owner,
   binding, 2026-09-14; placement and execution-order clarification 2026-09-15)
 - **H41 — Fleet adopts DeepSeek Harness composition principles without adopting its kernel.**
   Owner direction 2026-09-14 confirms that the Fleet Component system should follow the reference's

@@ -1,8 +1,8 @@
 # Owner Voice — current verbatim product signals
 
 These owner statements remain active product intent. Quote them verbatim when exact wording matters;
-do not turn this file into an archive or infer implementation status from it. The two binding UI
-statements also live in `../PRODUCT.md` §5.
+do not turn this file into an archive or infer implementation status from it. Current scope and
+interface rules are owned by [PRODUCT](../PRODUCT.md#how-the-interface-behaves).
 
 ## OV-001 — Software must keep growing without becoming a mess (2026-07-08)
 
@@ -23,8 +23,9 @@ and tool panels; the architecture must absorb that growth without losing control
 **English gloss:** Concurrent agents may create nodes, code, test, generate media, and edit video; Fleet and
 the local machine must remain responsive, including the infinite canvas.
 
-**Now carried by:** Decision E8 (resource limits are product behavior) and the media/concurrency
-budgets + Electron decision gate in `07-canvas-spatial-orchestration-VISION.md` §§6, 8, 10.
+**Now carried by:** Decision E8 (resource limits are product behavior), the canvas
+[media policy](07-canvas-spatial-orchestration-VISION.md#8-media-and-4k-policy) and
+[representative Electron benchmark](07-canvas-spatial-orchestration-VISION.md#10-representative-electron-decision-gate).
 
 ## OV-003 — Owner speaks in concepts; agents choose the technical route (2026-07-08)
 
@@ -46,7 +47,9 @@ into web, video, dynamic presentations, or editing workflows.
 
 **Now carried by:** `../04-ARCHITECTURE.md` §1 (native surfaces on one spine) and
 `../13-ORCHESTRATION.md` §3, Decisions E4/E5, D4 (one artifact version consumed by several later
-surfaces), and the canvas VISION's artifact-graph-first boundary.
+surfaces), and [SYS-05](../modules/suites/SYS-05-design-spatial.md)'s shared production board.
+People and Agents edit the same artifacts on that board; native document/sequence owners retain
+their models. A relationship graph alone does not satisfy this intent.
 
 ## OV-005 — Agents call modules and create workflows (2026-07-09)
 
@@ -64,10 +67,10 @@ workflow rule; dependent on the action spine (see `../04-ARCHITECTURE.md` and `.
 **English gloss:** Thinking intensity should adapt to each model; models without graded controls must be
 represented honestly rather than forced into a false scale.
 
-**Now carried by:** Decision E9 (one thinking-level vocabulary; per-backend/per-model adaptation;
-honest handling — saturate, collapse to on/off, or hide — for models that cannot be graded). First
-applied in `app/packages/shared/src/agent/backend/pi/constants.ts` (`max → 'xhigh'` saturation on
-pi SDK 0.80.6).
+**Now carried by:** Decision E9 (discover provider-native choices per model; translate only exact
+equivalents; show on/off or hide controls when graded reasoning is unavailable). A backend's
+compatibility fallback does not authorize a misleading UI tier. The former Pi 0.80.6 `max → xhigh`
+mapping is not the current adapter or the product contract.
 
 ## OV-007 — Every plan is a Craft Agents second-development plan (2026-07-20)
 
@@ -97,7 +100,7 @@ Amendment (2026-07-20, same conversation): 「工作树的设计应该交给Agen
 行」 — worktree isolation is agent-managed, never a user preset; user-facing location choices are
 local and cloud only.
 
-**Now carried by:** Decision P6 (folder collapse + single switcher), Decision P10 (task-first
+**Superseded in part by the 2026-09-22 owner revision:** Workspace remains visible and distinct from Project. Decision P6 and R1 now preserve Workspace-scoped memberships and independent Conversations. Decision P10 (task-first
 command surface), Decision P9 presentation rule (location presets + agent-managed worktrees), and
 the R1 dedup inventory in
 [`../specs/R1-one-boundary-language.md`](../specs/R1-one-boundary-language.md).
@@ -114,8 +117,8 @@ delete decisions — must land before differentiating features.
 
 **Now carried by:** Decision C4 presentation rule + landing ladder; Decision P9 (agent-managed
 worktrees); R1 slice order (dedup/merge slices first) in
-[`../specs/R1-one-boundary-language.md`](../specs/R1-one-boundary-language.md); roadmap change log
-2026-07-20.
+[`../specs/R1-one-boundary-language.md`](../specs/R1-one-boundary-language.md); and the
+[baseline-first development order](../05-ROADMAP.md).
 
 ## OV-010 — Test conversations are not product requirements (2026-09-15)
 
@@ -132,6 +135,18 @@ Amendment (2026-09-15): the owner clarified that a trading system was an earlier
 may become an optional Trading/Market Analysis Component. Existing stock-trading messages remain
 test content; the proposed Component is future, Workspace-scoped and not a Core authority. Live
 orders require a separate safety/approval contract.
+
+## OV-011 — Composer controls follow ZCode; model popup follows Cindy (2026-09-22)
+
+> 「思考强度和模型选择也要按照他的设计进行选择对的拆分，但是在选择模型也弹窗页面应该按照Cindy的设计来」
+
+**English gloss:** Separate model and reasoning selection following the ZCode composer reference;
+use Cindy's design for the model popup. The attached model/account/price/usage values are examples,
+not product defaults or evidence that those integrations already work.
+
+**Now carried by:** Decision E9a and [R1](../specs/R1-one-boundary-language.md), including exact
+source paths, same-composer layout, independent Plan/permission, model option validation and
+acceptance. Craft remains the visual and backend-authority baseline.
 
 ## Rules for this file
 

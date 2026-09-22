@@ -1,17 +1,16 @@
 # Core architecture index
 
-This folder is the stable framework index. The canonical documents remain linked below during the
-safe migration from the numbered root layout; links are not duplicated into a second authority.
+This folder is a navigation index. Each topic keeps one canonical document, linked below.
 
 ## Core authorities
 
-- [Product and whitepaper](../PRODUCT.md)
+- [Product boundary](../PRODUCT.md)
+- [Product explanation](../WHITEPAPER.md)
 - [Decision ledger](../02-DECISIONS.md)
 - [Non-negotiables](../03-NON-NEGOTIABLES.md)
 - [Architecture](../04-ARCHITECTURE.md)
 - [Roadmap](../05-ROADMAP.md)
 - [Code map](../06-CODE-MAP.md)
-- Playbook
 - [Craft capability map](../08-CRAFT-CAPABILITY-MAP.md)
 - [Quality](../09-QUALITY.md)
 - [Glossary](../10-GLOSSARY.md)
@@ -19,9 +18,8 @@ safe migration from the numbered root layout; links are not duplicated into a se
 - [Page architecture](../12-PAGE-ARCHITECTURE.md)
 - [Orchestration](../13-ORCHESTRATION.md)
 - [Module architecture and compatibility](../14-MODULE-ARCHITECTURE.md)
-- Documentation contract and reality check
-- Independent system suites
-- Token economy and harness efficiency
+- [Independent system suites](../modules/REGISTRY.md)
+- [Token economy and harness efficiency](../modules/suites/SYS-03-context-economy.md)
 
 ## Core authority rule
 
