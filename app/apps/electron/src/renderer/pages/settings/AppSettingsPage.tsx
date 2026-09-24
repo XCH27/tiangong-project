@@ -331,9 +331,7 @@ export default function AppSettingsPage() {
                     </Button>
                   </SettingsRow>
                   {isElectron && !updateChecker.isDownloading && (
-                    <SettingsRow label={updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion
-                      ? t("settings.about.updateReady")
-                      : t("settings.about.checkForUpdates")}>
+                    <SettingsRow label={t("settings.about.softwareUpdate")}>
                       <Button
                         variant={updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion ? "default" : "outline"}
                         size="sm"

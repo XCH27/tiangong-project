@@ -1535,11 +1535,13 @@ sub-agents casually.
 > 「最新动态移到设置页面的关于下面，并且应该改成更新说明才更贴合里面的内容」
 >
 > 「版本和更新说明可以放一排，XXX版本   更新说明」
+>
+> 「改成软件更新」
 
 **English gloss:** Port much of ZCode's left sidebar directly; the only change is that its 分组
 (grouped) segment becomes 对话 (conversations). The later correction keeps Help in the upper-right
 desktop slot and preserves the original desktop Help submenu with its distinct topic routes. Release
-Notes sits beside the version in Settings → App → About instead of in the Craft popup. The popup's simultaneous Check/Install entries are
+Notes sits beside the version in Settings → App → About instead of in the Craft popup. The following row is consistently labelled Software Updates, with its action reflecting update state. The popup's simultaneous Check/Install entries are
 redundant with Settings → App's stateful update controls. Inspect each duplicate action's route and
 independent shortcut before removing it; compact/mobile Help must remain reachable. The owner's
 request to avoid second-level pages also informs a separate sidebar audit, without authorizing

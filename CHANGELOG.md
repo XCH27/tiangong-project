@@ -5,7 +5,7 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
-- Moved the existing release-notes reader from desktop and compact Craft menus beside the version in Settings → App → About, labelled Release Notes in all supported UI languages. Its unread indicator follows the action; update checking and document contents are unchanged.
+- Moved the existing release-notes reader from desktop and compact Craft menus beside the version in Settings → App → About, labelled Release Notes in all supported UI languages. Its unread indicator follows the action; the next row has a stable Software Updates label while its button reflects the update state. Update checking and document contents are unchanged.
 - Model Settings no longer shows a workspace model override, a repeated connection-model picker,
   or a global thinking default. New conversations use the selected connection's model fallback
   and save their effective model and connection; the existing composer owns each conversation's
