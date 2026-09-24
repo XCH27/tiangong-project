@@ -33,10 +33,6 @@ import {
   resolveEffectiveConnectionSlug,
   type LlmConnectionWithStatus,
 } from '@config/llm-connections'
-import {
-  getThinkingLevelsForModel,
-  type ThinkingLevel,
-} from '@craft-agent/shared/agent/thinking-levels'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 import { derivePickerMode } from './picker-mode'
 import {
@@ -50,8 +46,6 @@ interface CompactModelSelectorProps {
   currentModel: string
   currentConnection?: string
   onModelChange: (model: string, connection?: string) => void
-  thinkingLevel?: ThinkingLevel
-  onThinkingLevelChange?: (level: ThinkingLevel) => void
   isEmptySession?: boolean
   connectionUnavailable?: boolean
   contextStatus?: ContextStatus
@@ -61,8 +55,6 @@ export function CompactModelSelector({
   currentModel,
   currentConnection,
   onModelChange,
-  thinkingLevel = 'medium',
-  onThinkingLevelChange,
   isEmptySession = false,
   connectionUnavailable = false,
   contextStatus,
@@ -132,9 +124,6 @@ export function CompactModelSelector({
     )
     return typeof model === 'string' ? undefined : model
   }, [availableModels, currentModel])
-  const availableThinkingLevels = getThinkingLevelsForModel(selectedModelDefinition)
-  const thinkingDisabled = selectedModelDefinition?.supportsThinking === false && availableThinkingLevels.length === 0
-  const thinkingCapabilityUnknown = selectedModelDefinition?.supportsThinking !== false && selectedModelDefinition?.reasoningEfforts === undefined
 
   const connectionsByProvider = React.useMemo(
     () => groupConnectionsByProvider(llmConnections),
@@ -403,49 +392,6 @@ export function CompactModelSelector({
                 </DrawerClose>
               )
             })
-          )}
-
-          {/* === Thinking section === */}
-          {(availableThinkingLevels.length > 0 || thinkingCapabilityUnknown) && pickerMode !== 'unavailable' && (
-            <>
-              <div className="px-3 pt-4 pb-1 text-xs font-medium text-foreground/60 uppercase tracking-wide select-none">
-                {t('chat.modelPicker.thinkingSection')}
-              </div>
-              {thinkingCapabilityUnknown && (
-                <div className="flex items-center justify-between px-3 py-2 text-sm text-foreground/50">
-                  <span>{t(`thinking.${thinkingLevel}`)}</span>
-                  <span className="text-xs">{t('common.unknown')}</span>
-                </div>
-              )}
-              {availableThinkingLevels.map(({ id, nameKey, descriptionKey }) => {
-                const isSelected = thinkingLevel === id
-                return (
-                  <DrawerClose asChild key={id}>
-                    <button
-                      type="button"
-                      disabled={thinkingDisabled}
-                      onClick={() => onThinkingLevelChange?.(id)}
-                      className={cn(
-                        'flex items-center justify-between w-full px-3 py-2 rounded-lg text-left transition-colors',
-                        thinkingDisabled && 'opacity-50 cursor-not-allowed',
-                        !thinkingDisabled && isSelected && 'bg-foreground/5',
-                        !thinkingDisabled && !isSelected && 'hover:bg-foreground/5',
-                      )}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium">{t(nameKey)}</div>
-                        <div className="text-xs text-foreground/50">
-                          {t(descriptionKey)}
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <Check className="h-3 w-3 text-foreground/60 shrink-0 ml-3" />
-                      )}
-                    </button>
-                  </DrawerClose>
-                )
-              })}
-            </>
           )}
 
           {/* === Context section === */}

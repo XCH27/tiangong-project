@@ -76,7 +76,7 @@ import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import { type ThinkingLevel, getThinkingLevelsForModel, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
+import { type ThinkingLevel, getThinkingLevelsForModel } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
@@ -90,6 +90,7 @@ import {
 import { WorkingDirectorySelector, formatPathForDisplay } from './WorkingDirectorySelector'
 import { CompactPermissionModeSelector } from './CompactPermissionModeSelector'
 import { CompactModelSelector } from './CompactModelSelector'
+import { ThinkingLevelControl } from './ThinkingLevelControl'
 import {
   groupConnectionsByProvider,
   stripPiPrefixForDisplay,
@@ -370,7 +371,6 @@ export function FreeFormInput({
     return typeof model === 'string' ? undefined : model
   }, [availableModels, currentModel])
   const availableThinkingLevels = getThinkingLevelsForModel(selectedModelDefinition)
-  const thinkingDisabled = selectedModelDefinition?.supportsThinking === false && availableThinkingLevels.length === 0
   const thinkingCapabilityUnknown = selectedModelDefinition?.supportsThinking !== false && selectedModelDefinition?.reasoningEfforts === undefined
 
   // Get display name for current model (full name, not short name)
@@ -1761,8 +1761,6 @@ export function FreeFormInput({
               currentModel={currentModel}
               currentConnection={currentConnection}
               onModelChange={onModelChange}
-              thinkingLevel={thinkingLevel}
-              onThinkingLevelChange={onThinkingLevelChange}
               isEmptySession={isEmptySession}
               connectionUnavailable={connectionUnavailable}
               contextStatus={contextStatus}
@@ -2283,55 +2281,6 @@ export function FreeFormInput({
                 </>
               )}
 
-              {/* Thinking level selector — only shown when thinking levels are available
-                  (Claude supports extended thinking, OpenAI backends may not) */}
-              {availableThinkingLevels.length > 0 && (
-                <>
-                  <StyledDropdownMenuSeparator className="my-1" />
-
-                  <DropdownMenuSub>
-                    <StyledDropdownMenuSubTrigger disabled={thinkingDisabled} className={cn("flex items-center justify-between px-2 py-2 rounded-lg", thinkingDisabled && "opacity-50 cursor-not-allowed")}>
-                      <div className="text-left flex-1">
-                        <div className="font-medium text-sm">{t(getThinkingLevelNameKey(thinkingLevel))}</div>
-                        <div className="text-xs text-muted-foreground">{thinkingDisabled ? t('thinking.notSupported') : t('thinking.extendedDesc')}</div>
-                      </div>
-                    </StyledDropdownMenuSubTrigger>
-                    <StyledDropdownMenuSubContent className="min-w-[220px]">
-                      {availableThinkingLevels.map(({ id, nameKey, descriptionKey }) => {
-                        const isSelected = thinkingLevel === id
-                        return (
-                          <StyledDropdownMenuItem
-                            key={id}
-                            onSelect={() => onThinkingLevelChange?.(id)}
-                            className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
-                          >
-                            <div className="text-left">
-                              <div className="font-medium text-sm">{t(nameKey)}</div>
-                              <div className="text-xs text-muted-foreground">{t(descriptionKey)}</div>
-                            </div>
-                            {isSelected && (
-                              <Check className="h-3 w-3 text-foreground shrink-0 ml-3" />
-                            )}
-                          </StyledDropdownMenuItem>
-                        )
-                      })}
-                    </StyledDropdownMenuSubContent>
-                  </DropdownMenuSub>
-                </>
-              )}
-
-              {thinkingCapabilityUnknown && (
-                <>
-                  <StyledDropdownMenuSeparator className="my-1" />
-                  <StyledDropdownMenuItem disabled className="px-2 py-2 rounded-lg">
-                    <div className="text-left">
-                      <div className="font-medium text-sm">{t(getThinkingLevelNameKey(thinkingLevel))}</div>
-                      <div className="text-xs text-muted-foreground">{t('common.unknown')}</div>
-                    </div>
-                  </StyledDropdownMenuItem>
-                </>
-              )}
-
               {/* Context usage footer - snapshot-aware occupancy, not cumulative billing. */}
               {contextDisplay.visible && (
                 <>
@@ -2357,6 +2306,15 @@ export function FreeFormInput({
             </StyledDropdownMenuContent>
           </DropdownMenu>
           )}
+
+          {pickerMode !== 'unavailable' && <ThinkingLevelControl
+            level={thinkingLevel}
+            levels={availableThinkingLevels}
+            capabilityUnknown={thinkingCapabilityUnknown}
+            compact={compactMode}
+            onChange={onThinkingLevelChange}
+            onRequestFocus={() => richInputRef.current?.focus()}
+          />}
 
           {/* Context usage warning/action. Percent text is truthful and may exceed 100%; action requires explicit canCompact. */}
           {contextDisplay.showWarning && contextDisplay.percent !== null && (

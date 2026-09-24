@@ -11,6 +11,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
   input, image-generation and video-generation capability. Multimodal chat models stay available
   for conversation; media-only rows remain read-only. The filter shows only groups with catalog
   evidence and does not infer audio or generation support from names.
+- The composer now presents model and model-supported thinking effort as adjacent controls,
+  following ZCode's direct selection pattern with Craft's existing styling and Session callback.
+  Duplicate effort entries were removed from the desktop model menu and compact model drawer.
 - ChatGPT/Codex subscription connections now read account allowance windows through the selected
   OAuth credential without a second runtime. Settings shows main and additional buckets with
   reset times; missing data, authentication failures and rate limiting remain distinct. The

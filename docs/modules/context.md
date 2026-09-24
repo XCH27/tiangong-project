@@ -75,6 +75,11 @@ provenance and cannot enter the chat picker. A documented but unverified route i
 Filters appear only for capability groups actually present. Model names do not establish media or
 audio capability; absent audio catalog and executor evidence means no audio-generation row is
 claimed.
+The existing composer renders effort directly beside model selection, using that model's
+advertised levels and the existing Session effort callback. The model menu and compact drawer no
+longer duplicate the control; an unknown capability is visible but cannot be selected, and a
+fixed single level is shown without a pointless menu. Compact layout keeps the direct control's
+label visually hidden to protect the send button.
 The connection is an account and credential owner, not a claim that every model uses the chat
 runtime. Its chat list contains only text-output language models; authenticated input/output
 modalities are retained when advertised. Media-only models require the separate media executor
