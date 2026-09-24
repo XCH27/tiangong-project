@@ -503,6 +503,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
               })),
               totalCount: result.models.length,
               source: 'provider' as const,
+              ...(result.mediaModels ? { mediaModels: result.mediaModels, mediaCatalogStatus: 'available' as const } : {}),
             }
           }
         } catch (error) {

@@ -214,6 +214,8 @@ describe('Official API account catalogs', () => {
       expect(init.headers).toEqual({ Authorization: 'Bearer test-key', Accept: 'application/json' });
       return new Response(JSON.stringify({ data: [
         { id: 'gpt-5.6-sol', object: 'model' },
+        { id: 'gpt-image-2', object: 'model' },
+        { id: 'gpt-4o-mini-tts', object: 'model' },
         { id: 'text-embedding-3-large', object: 'model' },
       ] }));
     });
@@ -227,6 +229,10 @@ describe('Official API account catalogs', () => {
       expect(urls).toEqual(['https://api.openai.com/v1/models']);
       expect(result.source).toBe('provider');
       expect(result.models.map(model => model.id)).toEqual(['pi/gpt-5.6-sol']);
+      expect(result.mediaModels).toEqual([
+        { id: 'gpt-image-2', name: 'gpt-image-2', kind: 'image' },
+        { id: 'gpt-4o-mini-tts', name: 'gpt-4o-mini-tts', kind: 'audio', audioMode: 'speech' },
+      ]);
     } finally {
       setOAuthTokenFetcher(null);
     }

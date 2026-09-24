@@ -1,7 +1,7 @@
 import type { ModelDefinition } from '@config/models'
 
 /** Settings-only catalog projection. Routing still belongs to the connection and Pi adapter. */
-export type ModelCapabilityFilter = 'all' | 'chat' | 'multimodal' | 'image' | 'video'
+export type ModelCapabilityFilter = 'all' | 'chat' | 'multimodal' | 'image' | 'video' | 'audio'
 
 /**
  * A chat model remains a chat model even when it accepts images or audio.
@@ -24,7 +24,7 @@ export function chatModelMatchesFilter(
 }
 
 export function mediaModelMatchesFilter(
-  kind: 'image' | 'video',
+  kind: 'image' | 'video' | 'audio',
   filter: ModelCapabilityFilter,
 ): boolean {
   return filter === 'all' || filter === kind

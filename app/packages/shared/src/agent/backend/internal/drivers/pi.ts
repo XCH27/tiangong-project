@@ -7,6 +7,7 @@ import { getValidXaiSubscriptionToken } from '../../../../auth/xai-subscription.
 import { getValidChatGptOAuthToken } from '../../../../auth/state.ts';
 import { getChatGptAccountId } from '../../../../auth/chatgpt-oauth.ts';
 import { fetchOAuthToken } from '../../../../auth/oauth-token-fetch.ts';
+import { parseOpenAiMediaModels } from './openai-media-models.ts';
 
 // Official endpoints establish account membership. Some add capability fields;
 // Pi remains the execution transport and fallback capability source.
@@ -276,9 +277,9 @@ async function fetchIdOnlyAccountModels(
   provider: ApiAccountProvider,
   apiKey: string,
   timeoutMs: number,
-): Promise<ModelDefinition[]> {
+): Promise<{ models: ModelDefinition[]; mediaModels?: ReturnType<typeof parseOpenAiMediaModels> }> {
   if (!apiKey) throw new Error(`${provider} API key is required for model discovery`);
-  if (provider === 'google') return fetchGoogleAccountModels(apiKey, timeoutMs);
+  if (provider === 'google') return { models: await fetchGoogleAccountModels(apiKey, timeoutMs) };
   const response = await fetchOAuthToken(API_ACCOUNT_CATALOGS[provider].modelsUrl, {
     method: 'GET',
     headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
@@ -286,9 +287,18 @@ async function fetchIdOnlyAccountModels(
   });
   if (!response.ok) throw new Error(`${provider} model discovery failed (HTTP ${response.status})`);
   const payload = await readBoundedModelJson(response, provider);
-  const models = matchApiAccountModels(payload, getPiModelsForAuthProvider(provider));
+  const mediaModels = provider === 'openai' ? parseOpenAiMediaModels(payload) : undefined;
+  const mediaOnlyIds = new Set(mediaModels?.filter(model => model.kind !== 'audio'
+    || model.audioMode === 'speech' || model.audioMode === 'transcription').map(model => model.id));
+  const models = matchApiAccountModels(payload, getPiModelsForAuthProvider(provider))
+    .filter(model => !mediaOnlyIds.has(model.id.replace(/^pi\//, '')));
   if (!models.length) throw new Error(`${provider} returned no models executable by the installed Pi adapter`);
-  return models;
+  return {
+    models,
+    // One authenticated response owns both chat membership and read-only
+    // media membership. Media IDs never enter the Pi chat catalog.
+    ...(mediaModels ? { mediaModels } : {}),
+  };
 }
 
 // ── Copilot model types ────────────────────────────────────────────────
@@ -611,8 +621,9 @@ export const piDriver: ProviderDriver = {
     const accountProvider = connection.piAuthProvider;
     if (connection.authType === 'api_key' && isApiAccountProvider(accountProvider)
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
-      const models = await fetchIdOnlyAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
-      return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
+      const { models, mediaModels } = await fetchIdOnlyAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
+      return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id,
+        ...(mediaModels ? { mediaModels } : {}) };
     }
 
     // All other Pi providers: use static Pi SDK model registry
@@ -738,7 +749,7 @@ export const piDriver: ProviderDriver = {
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
       const apiKey = await credentialManager.getLlmApiKey(slug);
       if (!apiKey) return { success: false, error: `${accountProvider} API key is missing` };
-      const models = await fetchIdOnlyAccountModels(accountProvider, apiKey, 15_000);
+      const { models } = await fetchIdOnlyAccountModels(accountProvider, apiKey, 15_000);
       const unavailable = selectedUnavailable(models, accountProvider);
       if (unavailable) return unavailable;
       return { success: true, shouldRefreshModels: true };

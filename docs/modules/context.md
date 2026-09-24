@@ -72,9 +72,14 @@ The selected provider's model list filters by verified capability: all chat-rout
 in Conversation, while an explicitly advertised non-text input also marks a chat model as
 Multimodal input. Account-discovered media-only image/video rows retain their separate endpoint
 provenance and cannot enter the chat picker. A documented but unverified route is labelled as such.
-Filters appear only for capability groups actually present. Model names do not establish media or
-audio capability; absent audio catalog and executor evidence means no audio-generation row is
-claimed.
+Filters appear only for capability groups actually present. For an OpenAI Platform API-key
+connection at the official endpoint, the same authenticated `/v1/models` response supplies chat
+membership and a separate read-only media projection. That API normally provides IDs rather than
+a modality schema, so only OpenAI-documented image, video and audio families are classified;
+explicit response modalities take precedence when supplied. Unknown IDs remain unclassified.
+Audio rows distinguish speech generation, transcription, generic audio and realtime modes. Media-only
+rows cannot become Pi chat choices; the account-visible list proves neither generation entitlement
+nor a Fleet executor. Custom OpenAI endpoints and ChatGPT/Codex OAuth do not borrow this catalog.
 The existing composer renders effort directly beside model selection, using that model's
 advertised levels and the existing Session effort callback. The model menu and compact drawer no
 longer duplicate the control; an unknown capability is visible but cannot be selected, and a

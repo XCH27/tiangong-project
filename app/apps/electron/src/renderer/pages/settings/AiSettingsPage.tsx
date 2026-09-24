@@ -794,7 +794,7 @@ export default function AiSettingsPage() {
   const [mediaRefreshVersion, setMediaRefreshVersion] = useState(0)
   const [mediaCatalog, setMediaCatalog] = useState<{
     slug: string
-    models: Array<{ id: string; name: string; kind: 'image' | 'video' }>
+    models: Array<{ id: string; name: string; kind: 'image' | 'video' | 'audio'; audioMode?: 'speech' | 'transcription' | 'generation' | 'realtime' }>
     status: 'available' | 'partial' | 'unavailable' | 'documented'
   } | null>(null)
 
@@ -1138,11 +1138,17 @@ export default function AiSettingsPage() {
     && selectedConnection.piAuthProvider === 'xai'
     && selectedConnection.authType === 'api_key'
     && selectedConnection.isAuthenticated
+  const selectedHasOpenAiApiCatalog = selectedConnection?.providerType === 'pi'
+    && selectedConnection.piAuthProvider === 'openai'
+    && selectedConnection.authType === 'api_key'
+    && selectedConnection.isAuthenticated
+    && (!selectedConnection.baseUrl || selectedConnection.baseUrl.replace(/\/+$/, '') === 'https://api.openai.com/v1')
+    && !selectedConnection.customEndpoint
   const selectedHasCodexSubscriptionCatalog = selectedConnection?.providerType === 'pi'
     && selectedConnection.piAuthProvider === 'openai-codex'
     && selectedConnection.authType === 'oauth'
     && selectedConnection.isAuthenticated
-  const selectedHasMediaCatalog = selectedHasXaiApiCatalog || selectedHasCodexSubscriptionCatalog
+  const selectedHasMediaCatalog = selectedHasXaiApiCatalog || selectedHasOpenAiApiCatalog || selectedHasCodexSubscriptionCatalog
   useEffect(() => {
     if (!selectedHasMediaCatalog || !selectedConnection) {
       setMediaCatalog(null)
@@ -1150,7 +1156,7 @@ export default function AiSettingsPage() {
     }
     let cancelled = false
     const slug = selectedConnection.slug
-    const provider = selectedHasCodexSubscriptionCatalog ? 'openai-codex' : 'xai'
+    const provider = selectedHasCodexSubscriptionCatalog ? 'openai-codex' : selectedHasOpenAiApiCatalog ? 'openai' : 'xai'
     void window.electronAPI.getPiProviderModels(provider, undefined, slug).then(result => {
       if (cancelled) return
       setMediaCatalog({
@@ -1162,7 +1168,7 @@ export default function AiSettingsPage() {
       if (!cancelled) setMediaCatalog({ slug, models: [], status: 'unavailable' })
     })
     return () => { cancelled = true }
-  }, [selectedConnection?.slug, selectedHasMediaCatalog, selectedHasCodexSubscriptionCatalog, mediaRefreshVersion])
+  }, [selectedConnection?.slug, selectedHasMediaCatalog, selectedHasCodexSubscriptionCatalog, selectedHasOpenAiApiCatalog, mediaRefreshVersion])
   const allSelectedModelOptions = useMemo(
     () => getModelOptionsForConnection(selectedConnection),
     [selectedConnection],
@@ -1179,6 +1185,7 @@ export default function AiSettingsPage() {
     if (mediaCatalog?.slug === selectedConnection?.slug) {
       if (mediaCatalog.models.some(model => model.kind === 'image')) kinds.push('image')
       if (mediaCatalog.models.some(model => model.kind === 'video')) kinds.push('video')
+      if (mediaCatalog.models.some(model => model.kind === 'audio')) kinds.push('audio')
     }
     return kinds
   }, [allSelectedModelOptions, mediaCatalog, selectedConnection])
@@ -1488,6 +1495,7 @@ export default function AiSettingsPage() {
                                 >
                                   {t(kind === 'image' ? 'settings.ai.mediaImageModels'
                                     : kind === 'video' ? 'settings.ai.mediaVideoModels'
+                                      : kind === 'audio' ? 'settings.ai.mediaAudioModels'
                                       : `settings.ai.modelFilter.${kind}`)}
                                 </button>
                               ))}
@@ -1541,7 +1549,7 @@ export default function AiSettingsPage() {
                               />
                             </div>}
                           </div>
-                          {selectedHasMediaCatalog && (modelKindFilter === 'all' || modelKindFilter === 'image' || modelKindFilter === 'video') && (
+                          {selectedHasMediaCatalog && (modelKindFilter === 'all' || modelKindFilter === 'image' || modelKindFilter === 'video' || modelKindFilter === 'audio') && (
                             <div className="border-t border-border/60 px-5 py-4">
                               <h3 className="text-sm font-semibold">{t('settings.ai.mediaModels')}</h3>
                               <p className="mt-0.5 text-xs text-muted-foreground">{t(selectedHasCodexSubscriptionCatalog ? 'settings.ai.mediaModelsCodexDesc' : 'settings.ai.mediaModelsDesc')}</p>
@@ -1551,16 +1559,18 @@ export default function AiSettingsPage() {
                                     {t(mediaCatalog.status === 'documented' ? 'settings.ai.mediaModelsCodexUnverified' :
                                       mediaCatalog.status === 'partial' ? 'settings.ai.mediaModelsPartial' : 'settings.ai.mediaModelsUnavailable')}
                                   </p>}
-                                  {(['image', 'video'] as const).map(kind => {
+                                  {(['image', 'video', 'audio'] as const).map(kind => {
                                     const rows = mediaCatalog.models.filter(model => model.kind === kind
                                       && mediaModelMatchesFilter(model.kind, modelKindFilter)
                                       && `${model.name} ${model.id}`.toLowerCase().includes(modelQuery.trim().toLowerCase()))
                                     if (!rows.length) return null
                                     return <div key={kind} className="mt-4">
-                                      <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t(kind === 'image' ? 'settings.ai.mediaImageModels' : 'settings.ai.mediaVideoModels')}</h4>
+                                      <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t(kind === 'image' ? 'settings.ai.mediaImageModels' : kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')}</h4>
                                       {rows.map(model => <div key={`${kind}:${model.id}`} className="border-b border-border/60 py-2 last:border-b-0">
                                         <span className="block truncate text-sm font-medium">{model.name}</span>
-                                        {model.name !== model.id && <span className="block truncate text-xs text-muted-foreground">{model.id}</span>}
+                                        {(model.name !== model.id || model.audioMode) && <span className="block truncate text-xs text-muted-foreground">
+                                          {model.name !== model.id ? model.id : ''}{model.audioMode ? `${model.name !== model.id ? ' · ' : ''}${t(`settings.ai.mediaAudio.${model.audioMode}`)}` : ''}
+                                        </span>}
                                       </div>)}
                                     </div>
                                   })}

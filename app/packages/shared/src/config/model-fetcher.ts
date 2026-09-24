@@ -30,6 +30,16 @@ export type FetchableProvider = Exclude<LlmProviderType,
   | 'pi_compat'
 >;
 
+/** Account-visible media catalog rows. These are not chat routes or generation executors. */
+export interface MediaCatalogModel {
+  id: string;
+  name: string;
+  kind: 'image' | 'video' | 'audio';
+  audioMode?: 'speech' | 'transcription' | 'generation' | 'realtime';
+  inputModalities?: string[];
+  outputModalities?: string[];
+}
+
 /**
  * Result of a model fetch operation.
  */
@@ -39,6 +49,8 @@ export interface ModelFetchResult {
   serverDefault?: string;
   /** A bundled SDK catalog is not an account-scoped provider response. */
   source?: 'provider' | 'sdk';
+  /** Read-only media membership returned by the same authenticated catalog. */
+  mediaModels?: MediaCatalogModel[];
 }
 
 /**

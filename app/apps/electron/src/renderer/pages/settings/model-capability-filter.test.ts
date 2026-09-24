@@ -33,5 +33,7 @@ describe('model settings capability filters', () => {
     expect(mediaModelMatchesFilter('image', 'chat')).toBe(false)
     expect(mediaModelMatchesFilter('image', 'image')).toBe(true)
     expect(mediaModelMatchesFilter('video', 'image')).toBe(false)
+    expect(mediaModelMatchesFilter('audio', 'audio')).toBe(true)
+    expect(mediaModelMatchesFilter('audio', 'chat')).toBe(false)
   })
 })

@@ -488,6 +488,15 @@ installed Pi adapter, discards explicit inactive/archived/non-chat rows, and nev
 video or subscription allowance from membership alone. Cindy's
 `apps/desktop/src/main/maker-host/provider-model-fetch.ts` supplies the comparison for same-origin
 endpoint selection, credential headers and bounded responses; Fleet keeps Craft's connection store.
+For media classification, Cindy's
+`apps/desktop/src/main/maker-host/model-discovery/openai-media.ts` and
+`packages/model-providers/src/providerMediaModels.ts` separate account-visible
+image/audio/video entries from chat routes. Fleet reuses the official OpenAI
+`/v1/models` response in the existing Pi discovery call, classifies only
+[documented model families](https://developers.openai.com/api/docs/models/all)
+or explicit response modalities, and keeps those rows read-only until the
+separate media executor exists. The [Models API](https://platform.openai.com/docs/api-reference/models/object?lang=curl)
+itself returns basic IDs, not a complete per-model modality or allowance contract.
 
 ### Subscription allowance comparison
 

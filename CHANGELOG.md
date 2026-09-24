@@ -8,9 +8,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 ### 2026-09-24 — account-scoped API model discovery
 
 - Model Settings now groups the selected connection's models by verified conversation, multimodal
-  input, image-generation and video-generation capability. Multimodal chat models stay available
-  for conversation; media-only rows remain read-only. The filter shows only groups with catalog
-  evidence and does not infer audio or generation support from names.
+  input, image-generation, video-generation and audio capability. Multimodal chat models stay
+  available for conversation; media-only rows remain read-only. The filter shows only groups with
+  catalog evidence and does not infer capability for unknown models.
+- OpenAI Platform API-key connections now classify account-visible image, video and audio model
+  families from the same authenticated models response. Audio rows distinguish speech generation,
+  transcription and realtime modes. Media rows remain read-only; account listing alone does not
+  establish generation access or wire a Fleet media executor.
 - The composer now presents model and model-supported thinking effort as adjacent controls,
   following ZCode's direct selection pattern with Craft's existing styling and Session callback.
   Duplicate effort entries were removed from the desktop model menu and compact model drawer.

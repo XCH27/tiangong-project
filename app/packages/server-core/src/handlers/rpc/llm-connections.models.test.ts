@@ -28,6 +28,36 @@ function providerModelsHandler(): HandlerFn {
 }
 
 describe('pre-save account model discovery', () => {
+  it('returns OpenAI API media membership beside, but outside, Pi chat models', async () => {
+    const chat = getModels('openai').find(model => model.id === 'gpt-5.6-sol')!
+    const calls: string[] = []
+    setOAuthTokenFetcher(async (url) => {
+      calls.push(url)
+      return new Response(JSON.stringify({ data: [
+        { id: chat.id, object: 'model' },
+        { id: 'gpt-image-2', object: 'model' },
+        { id: 'sora-2', object: 'model' },
+        { id: 'gpt-4o-mini-tts', object: 'model' },
+      ] }))
+    })
+    try {
+      const result = await providerModelsHandler()(ctx, 'openai', 'test-key', undefined,
+        'https://api.openai.com/v1') as {
+          source: string; models: Array<{ id: string }>;
+          mediaModels: Array<{ id: string; kind: string }>; mediaCatalogStatus: string;
+        }
+      expect(calls).toEqual(['https://api.openai.com/v1/models'])
+      expect(result.source).toBe('provider')
+      expect(result.models.map(model => model.id)).toEqual([`pi/${chat.id}`])
+      expect(result.mediaCatalogStatus).toBe('available')
+      expect(result.mediaModels.map(model => [model.id, model.kind])).toEqual([
+        ['gpt-image-2', 'image'], ['sora-2', 'video'], ['gpt-4o-mini-tts', 'audio'],
+      ])
+    } finally {
+      setOAuthTokenFetcher(null)
+    }
+  })
+
   it('uses a transient Google key with the native catalog and rejects a changed host', async () => {
     const calls: string[] = []
     setOAuthTokenFetcher(async (url, init) => {
