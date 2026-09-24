@@ -237,7 +237,7 @@ export function ApiKeyInput({
   // Hide endpoint/model fields for providers with well-known endpoints handled by the SDK
   const DEFAULT_ENDPOINT_PROVIDERS = new Set(['anthropic', 'openai', 'pi', 'google'])
   const isDefaultProviderPreset = DEFAULT_ENDPOINT_PROVIDERS.has(activePreset)
-  const showsPiModelPicker = !isDefaultProviderPreset || activePreset === 'google'
+  const showsPiModelPicker = !isDefaultProviderPreset || ACCOUNT_CATALOG_PRESETS.has(activePreset)
 
   // Provider-specific placeholders from the active preset
   const activePresetObj = presets.find(p => p.key === activePreset)
@@ -251,7 +251,7 @@ export function ApiKeyInput({
   // are available; SDK entries remain setup hints before a key is entered.
   const loadPiModels = useCallback(async (provider: string) => {
     const requestId = ++modelRequestIdRef.current
-    if (!isPiApiKeyFlow || !provider || provider === 'custom' || (DEFAULT_ENDPOINT_PROVIDERS.has(provider) && provider !== 'google') || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
+    if (!isPiApiKeyFlow || !provider || provider === 'custom' || (DEFAULT_ENDPOINT_PROVIDERS.has(provider) && !ACCOUNT_CATALOG_PRESETS.has(provider)) || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
       setPiModels([])
       setPiCatalogError(null)
       return
