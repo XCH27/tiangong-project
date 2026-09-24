@@ -68,6 +68,13 @@ default-settings section and is constrained by the effective default model. Refr
 visibility preferences for matching IDs and shows newly discovered IDs by default. A legacy
 connection without a saved list uses the same provider fallback in Settings and the visibility
 handler; custom endpoints without an explicit list cannot invent model membership.
+The selected provider's model list filters by verified capability: all chat-routable models remain
+in Conversation, while an explicitly advertised non-text input also marks a chat model as
+Multimodal input. Account-discovered media-only image/video rows retain their separate endpoint
+provenance and cannot enter the chat picker. A documented but unverified route is labelled as such.
+Filters appear only for capability groups actually present. Model names do not establish media or
+audio capability; absent audio catalog and executor evidence means no audio-generation row is
+claimed.
 The connection is an account and credential owner, not a claim that every model uses the chat
 runtime. Its chat list contains only text-output language models; authenticated input/output
 modalities are retained when advertised. Media-only models require the separate media executor

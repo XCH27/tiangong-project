@@ -56,6 +56,7 @@ import { getModelShortName, type ModelDefinition } from '@config/models'
 import { getModelsForProviderType, isCompatProvider, isModelVisibleInPicker, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
 import { toast } from 'sonner'
 import type { CodexUsageReadResult, XaiSubscriptionUsage } from '@craft-agent/shared/auth'
+import { chatInputModalities, chatModelMatchesFilter, mediaModelMatchesFilter, type ModelCapabilityFilter } from './model-capability-filter'
 
 /**
  * Compact token count: 1234 → "1.2K", 1234567 → "1.2M". Used by the RTK
@@ -1167,16 +1168,30 @@ export default function AiSettingsPage() {
     [selectedConnection],
   )
   const [modelQuery, setModelQuery] = useState('')
+  const [modelKindFilter, setModelKindFilter] = useState<ModelCapabilityFilter>('all')
   const [pendingVisibilityModel, setPendingVisibilityModel] = useState<string | null>(null)
+  const modelKindFilters = useMemo(() => {
+    const kinds: ModelCapabilityFilter[] = []
+    if (allSelectedModelOptions.length) kinds.push('chat')
+    if (allSelectedModelOptions.some(option => chatInputModalities(
+      getConnectionModelDefinition(selectedConnection, option.value),
+    ).length > 0)) kinds.push('multimodal')
+    if (mediaCatalog?.slug === selectedConnection?.slug) {
+      if (mediaCatalog.models.some(model => model.kind === 'image')) kinds.push('image')
+      if (mediaCatalog.models.some(model => model.kind === 'video')) kinds.push('video')
+    }
+    return kinds
+  }, [allSelectedModelOptions, mediaCatalog, selectedConnection])
   const selectedModelOptions = useMemo(() => {
     const query = modelQuery.trim().toLowerCase()
-    if (!query) return allSelectedModelOptions
     return allSelectedModelOptions.filter(option =>
-      `${option.label} ${option.value} ${option.description}`.toLowerCase().includes(query),
+      chatModelMatchesFilter(getConnectionModelDefinition(selectedConnection, option.value), modelKindFilter)
+      && (!query || `${option.label} ${option.value} ${option.description}`.toLowerCase().includes(query)),
     )
-  }, [allSelectedModelOptions, modelQuery])
+  }, [allSelectedModelOptions, modelQuery, modelKindFilter, selectedConnection])
   useEffect(() => {
     setModelQuery('')
+    setModelKindFilter('all')
   }, [selectedConnection?.slug])
   const selectedCanRefreshModels = !!selectedConnection && !isCompatProvider(selectedConnection.providerType)
     && (selectedConnection.modelSelectionMode !== 'userDefined3Tier'
@@ -1455,10 +1470,33 @@ export default function AiSettingsPage() {
                                 </Button>}
                               </div>
                             </div>
+                            {modelKindFilters.length > 1 && <div
+                              role="group"
+                              aria-label={t('settings.ai.modelCapabilityFilter')}
+                              className="flex flex-wrap gap-1 border-t border-border/60 px-5 py-2"
+                            >
+                              {(['all', ...modelKindFilters] as ModelCapabilityFilter[]).map(kind => (
+                                <button
+                                  key={kind}
+                                  type="button"
+                                  aria-pressed={modelKindFilter === kind}
+                                  onClick={() => setModelKindFilter(kind)}
+                                  className={cn(
+                                    'rounded-[6px] px-2.5 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                                    modelKindFilter === kind ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.05]',
+                                  )}
+                                >
+                                  {t(kind === 'image' ? 'settings.ai.mediaImageModels'
+                                    : kind === 'video' ? 'settings.ai.mediaVideoModels'
+                                      : `settings.ai.modelFilter.${kind}`)}
+                                </button>
+                              ))}
+                            </div>}
                             {selectedModelOptions.length > 0 ? (
                               <div className="border-t border-border/60">
                                 {selectedModelOptions.map(option => {
                                   const definition = getConnectionModelDefinition(selectedConnection, option.value)
+                                  const inputModalities = chatInputModalities(definition)
                                   const visible = isModelVisibleInPicker(selectedConnection, option.value)
                                   return (
                                     <div
@@ -1470,6 +1508,10 @@ export default function AiSettingsPage() {
                                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">{option.label !== option.value ? option.value : (option.descriptionKey ? t(option.descriptionKey) : option.description)}</span>
                                       </span>
                                       <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                                        {inputModalities.length > 0 && <span
+                                          className="hidden rounded-md bg-foreground/[0.05] px-1.5 py-1 sm:inline-flex"
+                                          title={inputModalities.map(kind => t(`settings.ai.modelInput.${kind}`)).join(', ')}
+                                        >{t('settings.ai.modelFilter.multimodal')}</span>}
                                         {definition?.contextWindow ? <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-1" title={t('chat.contextUsage.contextWindow')}><Gauge className="size-3" />{formatTokenCount(definition.contextWindow)}</span> : null}
                                       </span>
                                       <Switch
@@ -1482,10 +1524,13 @@ export default function AiSettingsPage() {
                                   )
                                 })}
                               </div>
-                            ) : (
-                              <p className="border-t border-border/60 px-5 py-4 text-sm text-muted-foreground">{t('settings.ai.noModels')}</p>
+                            ) : (modelKindFilter === 'chat' || modelKindFilter === 'multimodal'
+                              || (modelKindFilter === 'all' && !selectedHasMediaCatalog)) && (
+                              <p className="border-t border-border/60 px-5 py-4 text-sm text-muted-foreground">
+                                {t(allSelectedModelOptions.length ? 'settings.ai.noMatchingModels' : 'settings.ai.noModels')}
+                              </p>
                             )}
-                            {allSelectedModelOptions.length > 0 && <div className="border-t border-border/60 px-5 py-1">
+                            {allSelectedModelOptions.length > 0 && (modelKindFilter === 'all' || modelKindFilter === 'chat') && <div className="border-t border-border/60 px-5 py-1">
                               <SettingsMenuSelectRow
                                 label={t('apiSetup.defaultModel')}
                                 value={selectedConnection.defaultModel ?? allSelectedModelOptions[0]?.value ?? ''}
@@ -1496,7 +1541,7 @@ export default function AiSettingsPage() {
                               />
                             </div>}
                           </div>
-                          {selectedHasMediaCatalog && (
+                          {selectedHasMediaCatalog && (modelKindFilter === 'all' || modelKindFilter === 'image' || modelKindFilter === 'video') && (
                             <div className="border-t border-border/60 px-5 py-4">
                               <h3 className="text-sm font-semibold">{t('settings.ai.mediaModels')}</h3>
                               <p className="mt-0.5 text-xs text-muted-foreground">{t(selectedHasCodexSubscriptionCatalog ? 'settings.ai.mediaModelsCodexDesc' : 'settings.ai.mediaModelsDesc')}</p>
@@ -1508,6 +1553,7 @@ export default function AiSettingsPage() {
                                   </p>}
                                   {(['image', 'video'] as const).map(kind => {
                                     const rows = mediaCatalog.models.filter(model => model.kind === kind
+                                      && mediaModelMatchesFilter(model.kind, modelKindFilter)
                                       && `${model.name} ${model.id}`.toLowerCase().includes(modelQuery.trim().toLowerCase()))
                                     if (!rows.length) return null
                                     return <div key={kind} className="mt-4">
@@ -1519,6 +1565,10 @@ export default function AiSettingsPage() {
                                     </div>
                                   })}
                                   {mediaCatalog.status === 'available' && !mediaCatalog.models.length && <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.mediaModelsEmpty')}</p>}
+                                  {modelKindFilter !== 'all' && mediaCatalog.models.length > 0 && !mediaCatalog.models.some(model =>
+                                    mediaModelMatchesFilter(model.kind, modelKindFilter)
+                                    && `${model.name} ${model.id}`.toLowerCase().includes(modelQuery.trim().toLowerCase())
+                                  ) && <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.noMatchingModels')}</p>}
                                 </>
                               ) : <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.refreshingModels')}</p>}
                             </div>

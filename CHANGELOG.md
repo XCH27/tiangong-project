@@ -7,6 +7,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ### 2026-09-24 — account-scoped API model discovery
 
+- Model Settings now groups the selected connection's models by verified conversation, multimodal
+  input, image-generation and video-generation capability. Multimodal chat models stay available
+  for conversation; media-only rows remain read-only. The filter shows only groups with catalog
+  evidence and does not infer audio or generation support from names.
 - ChatGPT/Codex subscription connections now read account allowance windows through the selected
   OAuth credential without a second runtime. Settings shows main and additional buckets with
   reset times; missing data, authentication failures and rate limiting remain distinct. The
