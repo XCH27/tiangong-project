@@ -30,6 +30,7 @@ import {
   SettingsInput,
 } from '@/components/settings'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
+import { useAppShellContext } from '@/context/AppShellContext'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -92,6 +93,7 @@ function validateProxyUrl(url: string): string | undefined {
 
 export default function AppSettingsPage() {
   const { t } = useTranslation()
+  const { onOpenReleaseNotes, hasUnseenReleaseNotes } = useAppShellContext()
 
   // Notifications state
   const [notificationsEnabled, setNotificationsEnabled] = useState(true)
@@ -309,18 +311,24 @@ export default function AppSettingsPage() {
               {/* About */}
               <SettingsSection title={t("settings.about.title")}>
                 <SettingsCard>
-                  <SettingsRow label={t("settings.about.version")}>
-                    <div className="flex items-center gap-2">
+                  <SettingsRow label={
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>{t("settings.about.version")}</span>
                       <span className="text-muted-foreground">
                         {updateChecker.updateInfo?.currentVersion ?? t("common.loading")}
                       </span>
                       {isElectron && updateChecker.isDownloading && updateChecker.updateInfo?.latestVersion && (
-                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                        <span className="flex items-center gap-2 text-muted-foreground text-sm">
                           <Spinner className="w-3 h-3" />
-                          <span>{t("settings.about.downloading", { version: updateChecker.updateInfo.latestVersion, percent: updateChecker.downloadProgress })}</span>
-                        </div>
+                          {t("settings.about.downloading", { version: updateChecker.updateInfo.latestVersion, percent: updateChecker.downloadProgress })}
+                        </span>
                       )}
-                    </div>
+                    </span>
+                  }>
+                    <Button variant="outline" size="sm" onClick={onOpenReleaseNotes}>
+                      {t("settings.about.releaseNotes")}
+                      {hasUnseenReleaseNotes && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-accent" />}
+                    </Button>
                   </SettingsRow>
                   {isElectron && !updateChecker.isDownloading && (
                     <SettingsRow label={updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion

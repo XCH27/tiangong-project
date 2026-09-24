@@ -54,17 +54,25 @@ The owner authorized a bounded correction to model setup, discovery, effort sele
 credential use. Keep provider catalogs in the existing LLM connection and runtime adapters; use
 provider/SDK capability fields when available, and show an unknown saved effort without offering
 unverified levels. A bundled SDK/registry catalog cannot revoke a saved model choice; only an
-authenticated provider catalog may replace an unavailable selection. A workspace model override
-applies only while its effective connection is selected; switching connections reconciles a model
-that the runtime cannot use.
-An explicit session or workspace model that would resolve to a different runtime model is rejected
-before persistence. Model Settings changes a connection's default model through a field-only RPC,
-so a stale renderer snapshot cannot overwrite a newly refreshed account catalog.
+authenticated provider catalog may replace an unavailable selection. Existing workspace model
+overrides remain readable for old Sessions and are reconciled when their connection changes, but
+they no longer seed new Sessions. An explicit Session or legacy workspace model that would resolve
+to a different runtime model is rejected before persistence. The existing field-only connection
+model RPC remains for setup and compatibility, so a stale renderer snapshot cannot overwrite a
+newly refreshed account catalog.
 One connection retains its full account-discovered model list. A separate, field-only visibility
 preference hides individual rows from the conversation picker without removing their catalog
-metadata, changing the connection default, or interrupting an existing Session. The connection's
-default model is selected below its list; the application default effort belongs to the separate
-default-settings section and is constrained by the effective default model. Refresh preserves
+metadata, changing the connection fallback, or interrupting an existing Session. The provider
+panel manages authentication, discovery and picker visibility; it does not contain a second
+conversation-model or utility-model selector. The existing composer owns the draft/Session model
+and effort. A new conversation starts from the app's selected connection and its saved model
+fallback, then persists that effective model and connection so an unsent conversation does not
+later inherit a hidden workspace override. Cindy's planning/execution split and vision bridge have
+no matching Craft runtime in this slice and are not exposed as settings. Global and workspace
+default-effort controls are retired: a new Session uses the built-in level reconciled to its
+selected model, while explicit automation/session choices and the composer effort control remain.
+Legacy workspace model/connection and default-effort values stay on disk for existing Session
+compatibility but do not steer new Sessions. Refresh preserves
 visibility preferences for matching IDs and shows newly discovered IDs by default. A legacy
 connection without a saved list uses the same provider fallback in Settings and the visibility
 handler; custom endpoints without an explicit list cannot invent model membership.

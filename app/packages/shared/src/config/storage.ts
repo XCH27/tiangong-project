@@ -56,7 +56,7 @@ export interface StoredConfig {
   // LLM Connections (authoritative source for auth and model config)
   llmConnections?: LlmConnection[];
   defaultLlmConnection?: string;  // Slug of default connection for new sessions
-  defaultThinkingLevel?: ThinkingLevel;  // App-level default thinking level for new sessions
+  defaultThinkingLevel?: ThinkingLevel;  // Legacy preference retained for rollback; new Sessions ignore it.
 
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
@@ -2920,7 +2920,7 @@ export function setDefaultLlmConnection(slug: string): boolean {
 }
 
 /**
- * Get the app-level default thinking level for new sessions.
+ * Get the legacy app-level thinking preference.
  * Falls back to bundled config-defaults when unset.
  */
 export function getDefaultThinkingLevel(): ThinkingLevel {
@@ -2934,7 +2934,7 @@ export function getDefaultThinkingLevel(): ThinkingLevel {
 }
 
 /**
- * Set the app-level default thinking level for new sessions.
+ * Set the legacy app-level thinking preference.
  * @returns true if persisted, false if config could not be loaded
  */
 export function setDefaultThinkingLevel(level: ThinkingLevel): boolean {

@@ -12,7 +12,7 @@ to. Do not preload the whole `docs/` tree.
 - The owner's order is **documentation and preparation → joint walkthrough of original Craft →
   approved rectification slices → implementation and acceptance → added capabilities.**
 - The owner reauthorized **one bounded R1 entry slice**: separate All Conversations and Board
-  navigation; move What's New into the Craft menu; move the desktop Craft logo menu to the lower-left
+  navigation; place Release Notes under Settings → App → About; move the desktop Craft logo menu to the lower-left
   footer, informed by ZCode. The upper-right Help button remains; the later owner direction removes
   genuinely duplicate desktop menu entries and the Debug submenu after checking other access paths
   and shortcuts. App Settings owns update check/install UI; developer tools keep their debug gate.

@@ -21,7 +21,7 @@ import {
   type BackendHostRuntimeContext,
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
-import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
+import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
 import type { LlmConnection, MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
@@ -2625,19 +2625,16 @@ export class SessionManager implements ISessionManager {
       ?? globalDefaults.workspaceDefaults.permissionMode
 
     const userDefaultWorkingDir = wsConfig?.defaults?.workingDirectory || undefined
-    // Resolve thinking level with caller-first precedence, matching permissionMode above:
-    //   caller override → workspace default → global default.
-    // normalizeThinkingLevel() tolerates undefined/unknown inputs.
+    // Effort is a session choice. New sessions use the built-in level, reconciled
+    // to the selected model below; old app/workspace default-effort preferences
+    // stay on disk for compatibility but no longer steer new sessions.
     const configuredThinkingLevel =
       normalizeThinkingLevel(options?.thinkingLevel)
-      ?? normalizeThinkingLevel(wsConfig?.defaults?.thinkingLevel)
-      ?? getDefaultThinkingLevel()
-    // Get default model from workspace config (used when no session-specific model is set)
-    const defaultModel = inheritedWorkspaceModelOverride(
-      wsConfig?.defaults?.model,
-      resolveSessionConnection(options?.llmConnection, wsConfig?.defaults?.defaultLlmConnection),
-      resolveSessionConnection(undefined, wsConfig?.defaults?.defaultLlmConnection),
-    )
+      ?? DEFAULT_THINKING_LEVEL
+    // The selected connection supplies a fallback for a new conversation. A
+    // legacy workspace model override must not choose a model behind the
+    // composer's back; existing sessions keep their saved model and route.
+    const defaultModel = resolveSessionConnection(options?.llmConnection)?.defaultModel
     // Get default enabled sources from workspace config
     const defaultEnabledSourceSlugs = options?.enabledSourceSlugs ?? wsConfig?.defaults?.enabledSourceSlugs
 
@@ -2648,7 +2645,6 @@ export class SessionManager implements ISessionManager {
     if (resolvedModelOption === 'fast' || resolvedModelOption === 'default') {
       const tierConnection = resolveSessionConnection(
         options?.llmConnection,
-        wsConfig?.defaults?.defaultLlmConnection,
       )
       if (tierConnection) {
         resolvedModelOption = resolvedModelOption === 'fast'
@@ -2662,7 +2658,6 @@ export class SessionManager implements ISessionManager {
     // Resolve backend target early for branching policy checks.
     const targetBackendContext = resolveBackendContext({
       sessionConnectionSlug: options?.llmConnection,
-      workspaceDefaultConnectionSlug: wsConfig?.defaults?.defaultLlmConnection,
       managedModel: resolvedModelOption,
     })
     const targetProviderType = targetBackendContext.connection?.providerType
@@ -3009,7 +3004,7 @@ export class SessionManager implements ISessionManager {
       permissionMode: defaultPermissionMode,
       workingDirectory: resolvedWorkingDir,
       model: resolvedModel,
-      llmConnection: options?.llmConnection,
+      llmConnection: targetBackendContext.connection?.slug ?? options?.llmConnection,
       thinkingLevel: defaultThinkingLevel,
       systemPromptPreset: options?.systemPromptPreset,
       enabledSourceSlugs: defaultEnabledSourceSlugs,
@@ -3068,6 +3063,14 @@ export class SessionManager implements ISessionManager {
         }
       }
     }
+
+    // Freeze the new conversation's effective model and connection before it
+    // is announced. Reopening an unsent draft must not revive an obsolete
+    // workspace override or silently switch to a later account default.
+    await updateSessionMetadata(workspaceRootPath, storedSession.id, {
+      model: resolvedModel,
+      llmConnection: managed.llmConnection,
+    })
 
     // Initialize mode-manager state immediately to avoid UI/enforcement races
     // before the agent instance is lazily created.
@@ -8696,8 +8699,8 @@ export class SessionManager implements ISessionManager {
    *
    * The options-object form replaced the previous positional-args signature
    * once the param list outgrew readability — `thinkingLevel` was the trigger.
-   * When `thinkingLevel` is omitted, `createSession` falls back to the
-   * workspace default (then DEFAULT_THINKING_LEVEL).
+   * When `thinkingLevel` is omitted, `createSession` uses the model-compatible
+   * built-in level. The composer owns any subsequent session-level change.
    */
   async executePromptAutomation(
     input: ExecutePromptAutomationInput,

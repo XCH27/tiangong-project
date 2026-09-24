@@ -581,6 +581,18 @@ function AppShellContent({
     })
   }, [])
 
+  // Settings > App > About reuses Craft's release-notes reader and last-seen state.
+  const handleReleaseNotesClick = useCallback(async () => {
+    const content = await window.electronAPI.getReleaseNotes()
+    setReleaseNotesContent(content)
+    setShowWhatsNew(true)
+    setHasUnseenReleaseNotes(false)
+    const latestVersion = await window.electronAPI.getLatestReleaseVersion()
+    if (latestVersion) {
+      storage.set(storage.KEYS.whatsNewLastSeenVersion, latestVersion)
+    }
+  }, [])
+
   const [isResizing, setIsResizing] = React.useState<'sidebar' | 'session-list' | null>(null)
   const [sidebarHandleY, setSidebarHandleY] = React.useState<number | null>(null)
   const [sessionListHandleY, setSessionListHandleY] = React.useState<number | null>(null)
@@ -1703,6 +1715,8 @@ function AppShellContent({
   const appShellContextValue = React.useMemo<AppShellContextType>(() => ({
     ...contextValue,
     onDeleteSession: handleDeleteSession,
+    onOpenReleaseNotes: handleReleaseNotesClick,
+    hasUnseenReleaseNotes,
     enabledSources: sources,
     skills,
     activeSessionWorkingDirectory,
@@ -1726,7 +1740,7 @@ function AppShellContent({
     automationTestResults,
     getAutomationHistory,
     onReplayAutomation: handleReplayAutomation,
-  }), [contextValue, handleDeleteSession, sources, skills, activeSessionWorkingDirectory, displayLabelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, handleJumpToTaskSessions, isAutoCompact, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleReplayAutomation])
+  }), [contextValue, handleDeleteSession, handleReleaseNotesClick, hasUnseenReleaseNotes, sources, skills, activeSessionWorkingDirectory, displayLabelConfigs, handleSessionLabelsChange, enabledModes, effectiveSessionStatuses, handleSessionSourcesChange, handleJumpToTaskSessions, isAutoCompact, searchActive, searchQuery, handleChatMatchInfoChange, handleTestAutomation, handleToggleAutomation, handleDuplicateAutomation, handleDeleteAutomation, automationTestResults, getAutomationHistory, handleReplayAutomation])
 
   // Persist expanded folders to localStorage (workspace-scoped)
   React.useEffect(() => {
@@ -1864,19 +1878,6 @@ function AppShellContent({
   // in compact mode, App fallback on desktop). With an arg → `settings/<subpage>`.
   const handleSettingsClick = useCallback((subpage?: SettingsSubpage) => {
     navigate(routes.view.settings(subpage))
-  }, [])
-
-  // Handler for What's New overlay
-  const handleWhatsNewClick = useCallback(async () => {
-    const content = await window.electronAPI.getReleaseNotes()
-    setReleaseNotesContent(content)
-    setShowWhatsNew(true)
-    setHasUnseenReleaseNotes(false)
-    // Update last seen version
-    const latestVersion = await window.electronAPI.getLatestReleaseVersion()
-    if (latestVersion) {
-      storage.set(storage.KEYS.whatsNewLastSeenVersion, latestVersion)
-    }
   }, [])
 
   // ============================================================================
@@ -2376,8 +2377,6 @@ function AppShellContent({
           onNewWindow={() => window.electronAPI.menuNewWindow()}
           onOpenSettings={onOpenSettings}
           onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
-          onOpenWhatsNew={handleWhatsNewClick}
-          hasUnseenReleaseNotes={hasUnseenReleaseNotes}
           showAppMenu={isAutoCompact || effectiveSidebarAndNavigatorHidden || (!isSidebarVisible && !isSettingsView)}
           onBack={goBack}
           onForward={goForward}
@@ -2439,8 +2438,6 @@ function AppShellContent({
                       onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
                       onToggleSidebar={handleToggleSidebar}
                       onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-                      onOpenWhatsNew={handleWhatsNewClick}
-                      hasUnseenReleaseNotes={hasUnseenReleaseNotes}
                     />
                   </div>
                 )}
@@ -2768,8 +2765,6 @@ function AppShellContent({
                     onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
                     onToggleSidebar={handleToggleSidebar}
                     onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-                    onOpenWhatsNew={handleWhatsNewClick}
-                    hasUnseenReleaseNotes={hasUnseenReleaseNotes}
                   />
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -3927,7 +3922,7 @@ function AppShellContent({
         </>
       )}
 
-      {/* What's New overlay */}
+      {/* Release notes opened from Settings > App > About. */}
       <DocumentFormattedMarkdownOverlay
         isOpen={showWhatsNew}
         onClose={() => setShowWhatsNew(false)}

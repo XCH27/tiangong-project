@@ -16,8 +16,8 @@ change here and in [`docs/decisions.md`](docs/decisions.md).
 ## Current slice — shell entries and Settings presentation
 
 Contract: [`docs/modules/shell.md`](docs/modules/shell.md#active-entry-slice).
-Separate All Conversations and Board entries over the existing Session/Task stores; put What's New
-directly in the Craft menu with its unseen-release signal; move the desktop Craft menu to the lower-left footer
+Separate All Conversations and Board entries over the existing Session/Task stores; put Release Notes
+beside the version in Settings → App → About with its unseen-release signal; move the desktop Craft menu to the lower-left footer
 using Craft values and ZCode's trigger/settings arrangement. The owner kept the upper-right Help
 button. Remove duplicate desktop popup actions and the Debug submenu after proving their remaining
 entry and shortcut; Settings → App owns stateful update check/install controls, while developer tools
@@ -178,7 +178,7 @@ justifies changing live user records.
 | # | Release | Outcome (one line) | State | Dependency / gate |
 |---|---|---|---|---|
 | R0 | **Craft v0.13.4 baseline stabilization** | Classify inherited Craft capabilities, complete agreed R1/R2 corrections, remove absorbed obsolete material and accept a verified baseline before feature additions. | **ACTIVE** — current code, gate coverage and product independence require fresh evidence; upstream equivalence is not Fleet acceptance. | — |
-| R1 | **Conversation shell and context** | Eventually simplify entries without a second Session/Task authority; the visible Workspace/loadout target is reopened. | **Bounded entry slice only** — All Conversations/Board separation, direct What's New in the Craft footer menu, and verified duplicate-entry removal are the current implementation scope. Help remains at upper right. Sidebar restructuring, Workspace/Project changes, right panel and composer are not authorized by this row. | This bounded correction runs inside R0; later R1 work requires its own reviewed slice |
+| R1 | **Conversation shell and context** | Eventually simplify entries without a second Session/Task authority; the visible Workspace/loadout target is reopened. | **Bounded entry slice only** — All Conversations/Board separation, Release Notes beside the version in Settings → App → About, and verified duplicate-entry removal are the current implementation scope. Help remains at upper right. Sidebar restructuring, Workspace/Project changes and right panel are not authorized by this row; the separate model-connection correction retains the existing composer controls. | This bounded correction runs inside R0; later R1 work requires its own reviewed slice |
 | R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, hosted sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | **DEP** — original hosted defaults were restored; Fleet export/help/relay/update/publication/telemetry corrections are not implemented. Prepare and jointly review each service slice before changes. No Fleet release before this boundary closes. | Required independence corrections execute inside R0; closure evidence is shared, never circular |
 | R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | **DEP** | R0 + R2 |
 | R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
@@ -292,7 +292,7 @@ withdrawn; the later owner request authorizes only the current entry moves.
 - **Constraints:** preserve user records, reference checkouts, original routes and Help; no
   Conversation/Project data change, Workspace migration, new backend authority or feature engine.
 - **Proof:** declared upstream delta, typecheck/build, document-contract gate, and isolated desktop
-  review of Board/list routes, Debug/What's New, footer menu, upper-right Help and hidden-sidebar fallback.
+  review of Board/list routes, Release Notes and updater, footer menu, upper-right Help and hidden-sidebar fallback.
 - **Next:** show the bounded change for owner acceptance before another correction slice.
 
 ### Preparation exit and joint walkthrough

@@ -2,7 +2,7 @@ import { HELP_LINKS, ROOT_MENU } from '../../../shared/menu-schema'
 
 /** Every compact-menu row opens its destination directly. */
 export type MobileMenuAction =
-  | { kind: 'callback'; key: 'newChat' | 'newWindow' | 'openSettings' | 'openKeyboardShortcuts' | 'openWhatsNew' }
+  | { kind: 'callback'; key: 'newChat' | 'newWindow' | 'openSettings' | 'openKeyboardShortcuts' }
   | { kind: 'url'; url: string }
   | { kind: 'electronApi'; method: 'menuToggleDevTools' }
 
@@ -16,14 +16,13 @@ export interface MobileMenuRow {
 interface BuildOptions {
   hasNewWindow: boolean
   isDebugMode: boolean
-  hasWhatsNew?: boolean
 }
 
 /**
  * The compact menu keeps the same one-step destinations as the desktop popup.
  * Settings opens its existing navigator; Help opens the one documentation link.
  */
-export function buildMobileMenuRows({ hasNewWindow, isDebugMode, hasWhatsNew = false }: BuildOptions): MobileMenuRow[] {
+export function buildMobileMenuRows({ hasNewWindow, isDebugMode }: BuildOptions): MobileMenuRow[] {
   const rows: MobileMenuRow[] = [
     {
       id: ROOT_MENU.newChat.id,
@@ -62,15 +61,6 @@ export function buildMobileMenuRows({ hasNewWindow, isDebugMode, hasWhatsNew = f
     labelKey: link.labelKey,
     action: { kind: 'url', url: link.url },
   })))
-
-  if (hasWhatsNew) {
-    rows.push({
-      id: 'whatsNew',
-      iconName: 'Cake',
-      labelKey: 'sidebar.whatsNew',
-      action: { kind: 'callback', key: 'openWhatsNew' },
-    })
-  }
 
   if (isDebugMode) {
     rows.push({

@@ -42,7 +42,7 @@ these records.
 layer and select capability suites per Conversation. This supersedes the earlier instruction to
 retain the Workspace switcher. The owner subsequently approved only a small navigation/entry move:
 separate All Conversations and Board, move the Craft logo menu to the lower-left footer, and put
-What's New directly in that popup. Duplicate update/menu actions are retired; Settings → App
+Release Notes under Settings → App → About. Duplicate update/menu actions are retired; Settings → App
 retains stateful update controls. Help stays at the upper right.
 No suite, Project, remote-host, composer or
 right-panel behavior is approved by that slice.

@@ -51,8 +51,8 @@ export function MobileAppMenu(props: AppMenuProps) {
   }, [])
 
   const rows = useMemo(
-    () => buildMobileMenuRows({ hasNewWindow: !!props.onNewWindow, isDebugMode, hasWhatsNew: !!props.onOpenWhatsNew }),
-    [props.onNewWindow, props.onOpenWhatsNew, isDebugMode],
+    () => buildMobileMenuRows({ hasNewWindow: !!props.onNewWindow, isDebugMode }),
+    [props.onNewWindow, isDebugMode],
   )
 
   const close = React.useCallback(() => setIsOpen(false), [])
@@ -79,7 +79,6 @@ export function MobileAppMenu(props: AppMenuProps) {
           case 'newWindow': props.onNewWindow?.(); break
           case 'openSettings': props.onOpenSettings(); break
           case 'openKeyboardShortcuts': props.onOpenKeyboardShortcuts(); break
-          case 'openWhatsNew': props.onOpenWhatsNew?.(); break
         }
         close()
         return
@@ -104,10 +103,7 @@ export function MobileAppMenu(props: AppMenuProps) {
         data-state={isOpen ? 'open' : 'closed'}
         className="rounded-[8px]"
       >
-        <span className="relative">
-          <CraftAgentsSymbol className="!h-5 !w-auto text-accent" />
-          {props.hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
-        </span>
+        <CraftAgentsSymbol className="!h-5 !w-auto text-accent" />
       </TopBarButton>
       <MobileMenuSheet
         isOpen={isOpen}

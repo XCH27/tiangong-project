@@ -46,8 +46,6 @@ interface TopBarProps {
   onNewWindow?: () => void
   onOpenSettings: () => void
   onOpenKeyboardShortcuts: () => void
-  onOpenWhatsNew?: () => void
-  hasUnseenReleaseNotes?: boolean
   showAppMenu?: boolean
   onBack: () => void
   onForward: () => void
@@ -73,8 +71,6 @@ export function TopBar({
   onNewWindow,
   onOpenSettings,
   onOpenKeyboardShortcuts,
-  onOpenWhatsNew,
-  hasUnseenReleaseNotes,
   showAppMenu = true,
   onBack,
   onForward,
@@ -164,8 +160,6 @@ export function TopBar({
           onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
           onToggleSidebar={onToggleSidebar}
           onToggleFocusMode={onToggleFocusMode}
-          onOpenWhatsNew={onOpenWhatsNew}
-          hasUnseenReleaseNotes={hasUnseenReleaseNotes}
         />}
         </div>
 

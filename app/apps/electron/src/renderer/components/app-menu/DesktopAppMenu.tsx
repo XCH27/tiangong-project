@@ -144,8 +144,6 @@ export function DesktopAppMenu({
   onOpenKeyboardShortcuts,
   onToggleSidebar,
   onToggleFocusMode,
-  onOpenWhatsNew,
-  hasUnseenReleaseNotes = false,
 }: AppMenuProps) {
   const { t } = useTranslation()
   const [isDebugMode, setIsDebugMode] = useState(false)
@@ -171,19 +169,13 @@ export function DesktopAppMenu({
         {placement === 'sidebar' ? (
           <Button variant="ghost" size="sm" aria-label={t("menu.craftMenu")}
             className="min-w-0 flex-1 justify-start gap-2 rounded-[6px] px-2 text-[13px] font-normal">
-            <span className="relative shrink-0">
-              <CraftAgentsSymbol className="h-4 text-accent" />
-              {hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
-            </span>
+            <CraftAgentsSymbol className="h-4 shrink-0 text-accent" />
             <span className="min-w-0 flex-1 truncate text-left">Craft Agents</span>
             <Icons.ChevronUp className="h-3.5 w-3.5 text-foreground/40" />
           </Button>
         ) : (
           <TopBarButton aria-label={t("menu.craftMenu")}>
-            <span className="relative">
-              <CraftAgentsSymbol className="h-4 text-accent" />
-              {hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
-            </span>
+            <CraftAgentsSymbol className="h-4 text-accent" />
           </TopBarButton>
         )}
       </DropdownMenuTrigger>
@@ -240,15 +232,6 @@ export function DesktopAppMenu({
             </StyledDropdownMenuItem>
           </StyledDropdownMenuSubContent>
         </DropdownMenuSub>
-        {onOpenWhatsNew && (
-          <StyledDropdownMenuItem onClick={onOpenWhatsNew}>
-            <span className="relative">
-              <Icons.Cake className="h-3.5 w-3.5" />
-              {hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
-            </span>
-            {t('sidebar.whatsNew')}
-          </StyledDropdownMenuItem>
-        )}
         {isDebugMode && (
           <StyledDropdownMenuItem onClick={() => window.electronAPI.menuToggleDevTools()}>
             <Icons.Bug className="h-3.5 w-3.5" />

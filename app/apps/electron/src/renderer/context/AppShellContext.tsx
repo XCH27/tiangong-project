@@ -120,6 +120,9 @@ export interface AppShellContextType {
   // App actions
   onOpenSettings: () => void
   onOpenKeyboardShortcuts: () => void
+  /** Open the existing release-notes document reader from Settings > App > About. */
+  onOpenReleaseNotes?: () => void
+  hasUnseenReleaseNotes?: boolean
   onOpenStoredUserPreferences: () => void
   onReset: () => void
 

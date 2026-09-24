@@ -453,10 +453,13 @@ and grant flow is `not implemented` in the current tree.
   backfill missing metadata but never override a live denial. Low-risk selection and connection
   editing stay inline or in a menu on the current page. OAuth handoff, the operating-system folder
   picker, destructive confirmation, credential recovery and any flow too large to remain
-  understandable may use the existing dialog/drawer/system surface. There is no per-connection
-  “default model”; one app/Project new-task default may exist outside the connection editor, and an
-  explicit Session choice always wins. A speed mode is never duplicated as another model ID.
-  (owner clarification, 2026-07-29; boundary review 2026-07-30)
+  understandable may use the existing dialog/drawer/system surface. A connection retains its
+  inherited backend model fallback, without a repeated Settings picker; an explicit Session choice
+  always wins. The later owner correction (2026-09-24)
+  also rejects Workspace-level model routing and repeated task-model entrances: new Conversations
+  start from the selected connection fallback and save their effective Session model/connection;
+  the existing composer owns subsequent selection and effort. A speed mode is never duplicated as
+  another model ID. (owner clarification, 2026-07-29; boundary review 2026-07-30)
 - **E10 — Labels are work metadata; display language is not identity.** Built-in labels/statuses
   keep stable IDs and localized display text; user-authored names remain unchanged. Labels never
   carry Skills, Sources, permission requests or Assistant identity/loadout. H15/H32/H33 supersede
@@ -1528,11 +1531,15 @@ sub-agents casually.
 > 「还有里面的帮助和文档是不是和右上角帮助里的查看所有文档跳转是一样的，是的话应该直接删除，还有可以键盘快捷键的入口也没必要在这里吗体现也可以直接删除」
 >
 > 「还有我觉得可以不要有二级页了，并且检测更新和安装更新也完全是重复设计，你可以仔细排查整个软件还有哪些地方有类似的错误设计」
+>
+> 「最新动态移到设置页面的关于下面，并且应该改成更新说明才更贴合里面的内容」
+>
+> 「版本和更新说明可以放一排，XXX版本   更新说明」
 
 **English gloss:** Port much of ZCode's left sidebar directly; the only change is that its 分组
 (grouped) segment becomes 对话 (conversations). The later correction keeps Help in the upper-right
-desktop slot, removes the duplicate desktop popup Help, and flattens What's New into the Craft
-popup instead of retaining a Debug submenu. The popup's simultaneous Check/Install entries are
+desktop slot and preserves the original desktop Help submenu with its distinct topic routes. Release
+Notes sits beside the version in Settings → App → About instead of in the Craft popup. The popup's simultaneous Check/Install entries are
 redundant with Settings → App's stateful update controls. Inspect each duplicate action's route and
 independent shortcut before removing it; compact/mobile Help must remain reachable. The owner's
 request to avoid second-level pages also informs a separate sidebar audit, without authorizing

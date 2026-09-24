@@ -13,6 +13,4 @@ export interface AppMenuProps {
   onOpenKeyboardShortcuts: () => void
   onToggleSidebar?: () => void
   onToggleFocusMode?: () => void
-  onOpenWhatsNew?: () => void
-  hasUnseenReleaseNotes?: boolean
 }

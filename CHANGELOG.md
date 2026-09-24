@@ -5,6 +5,13 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Moved the existing release-notes reader from desktop and compact Craft menus beside the version in Settings → App → About, labelled Release Notes in all supported UI languages. Its unread indicator follows the action; update checking and document contents are unchanged.
+- Model Settings no longer shows a workspace model override, a repeated connection-model picker,
+  or a global thinking default. New conversations use the selected connection's model fallback
+  and save their effective model and connection; the existing composer owns each conversation's
+  model and effort. Legacy workspace and global effort values remain on disk for compatibility
+  but do not steer new conversations.
+
 ### 2026-09-24 — account-scoped API model discovery
 
 - Model Settings now groups the selected connection's models by verified conversation, multimodal
@@ -23,8 +30,7 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
   reset times; missing data, authentication failures and rate limiting remain distinct. The
   private endpoint and account entitlement still require a live signed-in check.
 - Model Settings now keeps multiple models under one connection: each catalog row controls picker
-  visibility, while the connection default sits below the list and default thinking sits in the
-  application-default section. Hiding a model does not revoke it, reset a running Session, or erase
+  visibility, while the connection default sits below the list. Hiding a model does not revoke it, reset a running Session, or erase
   the choice on catalog refresh.
 - OpenAI and DeepSeek API-key connections now query their official model-list endpoints and replace
   stale legacy model tiers with the account-visible intersection that the installed Pi adapters can
