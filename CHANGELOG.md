@@ -28,6 +28,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 - Testing an existing Copilot, ChatGPT/Codex, OpenAI, DeepSeek, Groq or Mistral connection now
   checks its authenticated, read-only account model catalog. An invalid credential or unavailable
   selected model is reported, and a stale selection triggers a catalog refresh even when Test fails.
+- During setup, DeepSeek, Groq and Mistral now use the entered key for the same authenticated model
+  catalog as saved connections. Mistral's inherited `/v1` endpoint is treated as official for old
+  connections and omitted as an override in new ones; edited custom hosts remain unqueried.
 
 ### 2026-09-24 — subscription image capability boundary
 

@@ -44,7 +44,7 @@ function isApiAccountCatalog(connection: { providerType: string; piAuthProvider?
   return (connection.piAuthProvider === 'openai' && (!baseUrl || baseUrl === 'https://api.openai.com/v1'))
     || (connection.piAuthProvider === 'deepseek' && (!baseUrl || baseUrl === 'https://api.deepseek.com'))
     || (connection.piAuthProvider === 'groq' && (!baseUrl || baseUrl === 'https://api.groq.com/openai/v1'))
-    || (connection.piAuthProvider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai'))
+    || (connection.piAuthProvider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai' || baseUrl === 'https://api.mistral.ai/v1'))
 }
 
 // ============================================================

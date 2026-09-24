@@ -19,6 +19,8 @@ describe('authenticated account metadata in Pi runtime', () => {
     expect(accountMetadataProvider({ provider: 'groq', authType: 'api_key' })).toBe('groq');
     expect(accountMetadataProvider({ provider: 'mistral', authType: 'api_key',
       baseUrl: 'https://api.mistral.ai/' })).toBe('mistral');
+    expect(accountMetadataProvider({ provider: 'mistral', authType: 'api_key',
+      baseUrl: 'https://api.mistral.ai/v1/' })).toBe('mistral');
     expect(accountMetadataProvider({ provider: 'openai-codex', authType: 'oauth' })).toBe('openai-codex');
     expect(accountMetadataProvider({ provider: 'groq', authType: 'api_key',
       baseUrl: 'https://example.test/openai/v1' })).toBeNull();

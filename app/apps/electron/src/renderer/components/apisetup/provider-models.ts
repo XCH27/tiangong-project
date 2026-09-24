@@ -21,9 +21,10 @@ export function initialBaseUrlForPreset(
   return savedBaseUrl ?? presets.find(preset => preset.key === activePreset)?.url ?? presets[0]?.url ?? ''
 }
 
-/** The native xAI provider owns its official endpoint, even when the form shows it. */
+/** Native providers own their official endpoints, even when the form shows one. */
 export function baseUrlForPiPreset(preset: string, value: string): string | undefined {
   const url = value.trim()
   if (preset === 'xai' && url.replace(/\/+$/, '') === 'https://api.x.ai/v1') return undefined
+  if (preset === 'mistral' && url.replace(/\/+$/, '') === 'https://api.mistral.ai/v1') return undefined
   return url || undefined
 }

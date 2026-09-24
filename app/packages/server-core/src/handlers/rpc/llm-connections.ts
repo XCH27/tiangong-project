@@ -6,6 +6,7 @@ import {
   resolveSetupTestConnectionHint,
   testBackendConnection,
   validateStoredBackendConnection,
+  fetchBackendModels,
   fetchXaiApiModels,
   fetchXaiApiMediaModels,
   fetchXaiSubscriptionModels,
@@ -432,7 +433,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     return getPiProviderBaseUrl(provider)
   })
 
-  server.handle(RPC_CHANNELS.pi.GET_PROVIDER_MODELS, async (_ctx, provider: string, apiKey?: string, connectionSlug?: string) => {
+  server.handle(RPC_CHANNELS.pi.GET_PROVIDER_MODELS, async (_ctx, provider: string, apiKey?: string, connectionSlug?: string, baseUrl?: string) => {
     let effectiveKey = apiKey?.trim()
     if (provider === 'xai' && !effectiveKey && connectionSlug) {
       const connection = getLlmConnection(connectionSlug)
@@ -464,6 +465,49 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         const reason = error instanceof Error ? error.message : String(error)
         deps.platform.logger?.warn(`xAI setup catalog unavailable: ${reason}`)
         return { models: [], totalCount: 0, source: 'sdk' as const, error: reason }
+      }
+    }
+    if (provider === 'openai' || provider === 'deepseek' || provider === 'groq' || provider === 'mistral') {
+      const stored = connectionSlug && !effectiveKey ? getLlmConnection(connectionSlug) : null
+      const matchingStored = stored?.providerType === 'pi' && stored.piAuthProvider === provider
+        && stored.authType === 'api_key' ? stored : null
+      if (!effectiveKey && matchingStored) {
+        effectiveKey = await getCredentialManager().getLlmApiKey(matchingStored.slug) ?? undefined
+      }
+      if (effectiveKey) {
+        try {
+          // The backend driver owns the official endpoint allowlist and the
+          // installed Pi intersection. Never send a key to a preset's arbitrary
+          // edited URL or turn an unexecutable API ID into a picker choice.
+          const connection: LlmConnection = matchingStored ?? {
+            slug: '__setup-catalog', name: provider, providerType: 'pi',
+            piAuthProvider: provider, authType: 'api_key', baseUrl, createdAt: 0,
+          }
+          const result = await fetchBackendModels({
+            connection,
+            credentials: { apiKey: effectiveKey },
+            hostRuntime: buildBackendHostRuntimeContext(deps.platform),
+            timeoutMs: 15_000,
+          })
+          if (result.source === 'provider') {
+            return {
+              models: result.models.map(model => ({
+                id: model.id,
+                name: model.name,
+                costInput: model.pricingPerMillion?.input,
+                costOutput: model.pricingPerMillion?.output,
+                contextWindow: model.contextWindow ?? 0,
+                reasoning: model.supportsThinking ?? false,
+              })),
+              totalCount: result.models.length,
+              source: 'provider' as const,
+            }
+          }
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error)
+          deps.platform.logger?.warn(`${provider} setup catalog unavailable: ${reason}`)
+          return { models: [], totalCount: 0, source: 'sdk' as const, error: reason }
+        }
       }
     }
     // Codex image generation uses the ChatGPT OAuth connection, not an OpenAI

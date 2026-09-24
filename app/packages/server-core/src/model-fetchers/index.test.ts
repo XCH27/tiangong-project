@@ -156,6 +156,7 @@ describe('model refresh provenance', () => {
   for (const { provider, baseUrl } of [
     { provider: 'groq', baseUrl: 'https://api.groq.com/openai/v1' },
     { provider: 'mistral', baseUrl: 'https://api.mistral.ai' },
+    { provider: 'mistral', baseUrl: 'https://api.mistral.ai/v1' },
   ]) {
     it(`replaces a legacy ${provider} tier with its authenticated account list`, async () => {
       let connection: LlmConnection = {

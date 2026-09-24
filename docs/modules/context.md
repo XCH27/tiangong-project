@@ -121,6 +121,14 @@ the existing saved catalog remains. Custom endpoints keep their explicit
 model lists. The official APIs do not expose a complete per-model effort, context or media contract,
 so the UI must leave those fields unknown rather than copying another provider's values. This same
 boundary is why a live API list may be shorter than the provider's marketing catalog.
+During API-key setup, the existing provider-model RPC uses the transient key to query the same
+authenticated Pi driver for DeepSeek, Groq and Mistral; it falls back to visibly labelled bundled
+entries before a key is entered. A failed authenticated query reports the error rather than
+presenting bundled models as account access. OpenAI's inherited default-endpoint form still omits
+the optional pre-save picker and refreshes its account list after save. The Mistral form's historical
+`/v1` URL is accepted as the exact official endpoint in discovery and runtime metadata; new
+connections omit that redundant override. An arbitrary edited host never receives an official
+account-catalog request.
 The authenticated Groq and Mistral limits are also applied to Pi's existing native model routes at
 session creation and runtime refresh. The same applies to Codex context and image-input metadata.
 Each refresh starts from the installed Pi catalog, so removed overrides do not persist; an unknown

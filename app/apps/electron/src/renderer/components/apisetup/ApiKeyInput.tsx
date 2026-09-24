@@ -130,6 +130,7 @@ export const API_KEY_PROVIDER_PRESETS: readonly ApiKeyProviderPreset[] = [
  * gets pinned to openai-completions) but stay branded in the dropdown.
  */
 const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest'])
+const ACCOUNT_CATALOG_PRESETS: ReadonlySet<string> = new Set(['xai', 'openai', 'deepseek', 'groq', 'mistral'])
 
 // OpenAI provider presets - for Codex backend
 // Only direct OpenAI is supported; 3PP providers (OpenRouter, Vercel, Ollama) should be
@@ -245,9 +246,8 @@ export function ApiKeyInput({
     : providerType === 'openai' ? 'sk-...'
     : 'Paste your key here...')
 
-  // Fetch Pi SDK models when a provider is selected in pi_api_key flow.
-  // Returns SDK seeds for the optional default picker. The stored connection
-  // refreshes account membership after credentials are saved.
+  // Query account-scoped models for an official API preset when credentials
+  // are available; SDK entries remain setup hints before a key is entered.
   const loadPiModels = useCallback(async (provider: string) => {
     const requestId = ++modelRequestIdRef.current
     if (!isPiApiKeyFlow || !provider || provider === 'custom' || DEFAULT_ENDPOINT_PROVIDERS.has(provider) || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
@@ -257,13 +257,13 @@ export function ApiKeyInput({
     }
     setPiModelsLoading(true)
     try {
-      const liveKey = provider === 'xai' && apiKey.trim() && !apiKey.includes('••')
+      const liveKey = ACCOUNT_CATALOG_PRESETS.has(provider) && apiKey.trim() && !apiKey.includes('••')
         ? apiKey.trim()
         : undefined
-      const storedConnectionSlug = provider === 'xai' && !liveKey && provider === initialPreset
+      const storedConnectionSlug = ACCOUNT_CATALOG_PRESETS.has(provider) && !liveKey && provider === initialPreset
         ? initialValues?.connectionSlug
         : undefined
-      const result = await window.electronAPI.getPiProviderModels(provider, liveKey, storedConnectionSlug)
+      const result = await window.electronAPI.getPiProviderModels(provider, liveKey, storedConnectionSlug, baseUrl)
       if (requestId !== modelRequestIdRef.current) return
       setPiModels(result.models)
       setPiCatalogSource(result.source ?? 'sdk')
@@ -293,19 +293,20 @@ export function ApiKeyInput({
     } finally {
       if (requestId === modelRequestIdRef.current) setPiModelsLoading(false)
     }
-  }, [isPiApiKeyFlow, apiKey, initialPreset, initialValues?.connectionDefaultModel, initialValues?.connectionSlug])
+  }, [isPiApiKeyFlow, apiKey, baseUrl, initialPreset, initialValues?.connectionDefaultModel, initialValues?.connectionSlug])
 
   useEffect(() => {
     if (isPiApiKeyFlow && activePreset !== 'custom' && !DEFAULT_ENDPOINT_PROVIDERS.has(activePreset) && !isBedrock) {
       setPiModelsLoading(true)
     }
-    const timer = setTimeout(() => { void loadPiModels(activePreset) }, activePreset === 'xai' ? 350 : 0)
+    const timer = setTimeout(() => { void loadPiModels(activePreset) }, ACCOUNT_CATALOG_PRESETS.has(activePreset) ? 350 : 0)
     return () => { clearTimeout(timer); modelRequestIdRef.current++ }
   }, [activePreset, isBedrock, isPiApiKeyFlow, loadPiModels])
 
   // Whether to show the provider-model picker instead of a custom ID field.
   const hasPiModels = isPiApiKeyFlow && piModels.length > 0 && !isDefaultProviderPreset && activePreset !== 'custom' && !isBedrock
-  const showPiCatalog = hasPiModels || (isPiApiKeyFlow && (activePreset === 'xai' || piModelsLoading))
+  const showPiCatalog = hasPiModels || (isPiApiKeyFlow && !isDefaultProviderPreset
+    && (ACCOUNT_CATALOG_PRESETS.has(activePreset) || piModelsLoading))
 
   useEffect(() => {
     if (!openModelPicker) return
@@ -380,12 +381,11 @@ export function ApiKeyInput({
 
     // Pi API key flow: keep a single optional default, then sync the full
     // account catalog. Price does not imply model capability or speed.
-    if (hasPiModels || (isPiApiKeyFlow && activePreset === 'xai')) {
+    if (hasPiModels || (isPiApiKeyFlow && !isDefaultProviderPreset && ACCOUNT_CATALOG_PRESETS.has(activePreset))) {
       onSubmit({
         apiKey: apiKey.trim(),
-        // The xAI preset uses Pi's native endpoint. Sending the visible
-        // official URL as a custom baseUrl bypasses account discovery in the
-        // setup handler and turns the connection into an unverified preset.
+        // Native providers own their official endpoints. The visible Mistral
+        // URL must not turn an account connection into a custom route.
         baseUrl: baseUrlForPiPreset(activePreset, baseUrl),
         connectionDefaultModel: selectedModel || undefined,
         piAuthProvider: effectivePiAuthProvider,

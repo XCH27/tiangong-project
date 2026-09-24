@@ -18,7 +18,7 @@ export function accountMetadataProvider(config: {
     && (!baseUrl || baseUrl === 'https://chatgpt.com/backend-api/codex')) return 'openai-codex';
   if (config.authType !== 'api_key') return null;
   if (config.provider === 'groq' && (!baseUrl || baseUrl === 'https://api.groq.com/openai/v1')) return 'groq';
-  if (config.provider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai')) return 'mistral';
+  if (config.provider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai' || baseUrl === 'https://api.mistral.ai/v1')) return 'mistral';
   return null;
 }
 

@@ -229,7 +229,8 @@ describe('Official API account catalogs', () => {
     });
     try {
       const result = await piDriver.fetchModels!({
-        connection: { slug: 'mistral-api', providerType: 'pi', piAuthProvider: 'mistral', authType: 'api_key' } as any,
+        connection: { slug: 'mistral-api', providerType: 'pi', piAuthProvider: 'mistral', authType: 'api_key',
+          baseUrl: 'https://api.mistral.ai/v1/' } as any,
         credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
         hostRuntime: {} as any, resolvedPaths: {} as any,
       });

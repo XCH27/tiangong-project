@@ -21,6 +21,8 @@ describe('ApiKeyInput model selection', () => {
   it('submits the official xAI preset as a native provider, not a custom endpoint', () => {
     expect(baseUrlForPiPreset('xai', 'https://api.x.ai/v1/')).toBeUndefined()
     expect(baseUrlForPiPreset('xai', 'https://other.example/v1')).toBe('https://other.example/v1')
+    expect(baseUrlForPiPreset('mistral', 'https://api.mistral.ai/v1/')).toBeUndefined()
+    expect(baseUrlForPiPreset('mistral', 'https://other.example/v1')).toBe('https://other.example/v1')
     expect(baseUrlForPiPreset('openrouter', 'https://openrouter.ai/api')).toBe('https://openrouter.ai/api')
   })
 

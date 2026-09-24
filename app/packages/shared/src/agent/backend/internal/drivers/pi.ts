@@ -182,7 +182,8 @@ async function fetchCodexSubscriptionModels(
 function hasOfficialCatalogEndpoint(connection: { baseUrl?: string; customEndpoint?: unknown }, provider: ApiAccountProvider): boolean {
   if (connection.customEndpoint) return false;
   const configured = connection.baseUrl?.trim().replace(/\/+$/, '');
-  return !configured || configured === API_ACCOUNT_CATALOGS[provider].baseUrl;
+  return !configured || configured === API_ACCOUNT_CATALOGS[provider].baseUrl
+    || (provider === 'mistral' && configured === 'https://api.mistral.ai/v1');
 }
 
 /** Keep only account-visible models for which the installed Pi adapter can execute. */
