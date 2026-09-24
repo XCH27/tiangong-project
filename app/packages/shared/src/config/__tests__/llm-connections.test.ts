@@ -7,12 +7,27 @@ import {
   isCompatProvider,
   isAnthropicProvider,
   isPiProvider,
+  isModelVisibleInPicker,
   toBedrockNativeId,
   fromBedrockNativeId,
   normalizeBedrockModelId,
   deriveBedrockRegionPrefix,
 } from '../llm-connections'
 import { ANTHROPIC_MODELS, getModelDisplayName, getModelContextWindow, getModelShortName, isClaudeModel, normalizeDeprecatedModelId } from '../models'
+
+describe('model picker visibility', () => {
+  it('shows every discovered model by default and hides only an explicit choice', () => {
+    const connection = {
+      slug: 'one-provider', name: 'One provider', providerType: 'pi' as const,
+      authType: 'api_key' as const, createdAt: 1,
+      models: ['pi/model-a', 'pi/model-b', 'pi/model-c'],
+      defaultModel: 'pi/model-a', hiddenModelIds: ['pi/model-b'],
+    }
+    expect(connection.models.filter(model => isModelVisibleInPicker(connection, model)))
+      .toEqual(['pi/model-a', 'pi/model-c'])
+    expect(isModelVisibleInPicker({ ...connection, hiddenModelIds: undefined }, 'pi/model-b')).toBe(true)
+  })
+})
 
 // ============================================================
 // getDefaultModelsForConnection

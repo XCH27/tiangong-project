@@ -7,6 +7,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ### 2026-09-24 — account-scoped API model discovery
 
+- Model Settings now keeps multiple models under one connection: each catalog row controls picker
+  visibility, while the connection default sits below the list and default thinking sits in the
+  application-default section. Hiding a model does not revoke it, reset a running Session, or erase
+  the choice on catalog refresh.
 - OpenAI and DeepSeek API-key connections now query their official model-list endpoints and replace
   stale legacy model tiers with the account-visible intersection that the installed Pi adapters can
   actually execute. The existing provider → saved → SDK fallback remains in place; unknown API IDs

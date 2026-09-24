@@ -196,6 +196,7 @@ export const RPC_CHANNELS = {
     GET_API_KEY: 'LLM_Connection:getApiKey',
     SAVE: 'LLM_Connection:save',
     SET_MODEL: 'LLM_Connection:setModel',
+    SET_MODEL_VISIBILITY: 'LLM_Connection:setModelVisibility',
     DELETE: 'LLM_Connection:delete',
     TEST: 'LLM_Connection:test',
     SET_DEFAULT: 'LLM_Connection:setDefault',

@@ -1,5 +1,5 @@
 import { RPC_CHANNELS, type LlmConnectionSetup } from '@craft-agent/shared/protocol'
-import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
+import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, getModelsForProviderType, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { setSetupDeferred } from '@craft-agent/shared/config/storage'
 import {
@@ -32,6 +32,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.llmConnections.GET_API_KEY,
   RPC_CHANNELS.llmConnections.SAVE,
   RPC_CHANNELS.llmConnections.SET_MODEL,
+  RPC_CHANNELS.llmConnections.SET_MODEL_VISIBILITY,
   RPC_CHANNELS.llmConnections.DELETE,
   RPC_CHANNELS.llmConnections.TEST,
   RPC_CHANNELS.llmConnections.SET_DEFAULT,
@@ -660,6 +661,27 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
+  })
+
+  // Visibility is a field-only update on the existing connection. It never
+  // changes account discovery, the default model, or a running Session.
+  server.handle(RPC_CHANNELS.llmConnections.SET_MODEL_VISIBILITY, async (_ctx, slug: string, model: string, visible: boolean): Promise<{ success: boolean; error?: string }> => {
+    const connection = getLlmConnection(slug)
+    if (!connection) return { success: false, error: 'Connection not found' }
+    const availableModels = connection.models?.length
+      ? connection.models
+      : getModelsForProviderType(connection.providerType, connection.piAuthProvider)
+    if (typeof visible !== 'boolean' || !model?.trim() || !availableModels.some(entry =>
+      (typeof entry === 'string' ? entry : entry.id) === model
+    )) return { success: false, error: 'MODEL_UNAVAILABLE_FOR_CONNECTION' }
+
+    const hidden = new Set(connection.hiddenModelIds ?? [])
+    if (visible) hidden.delete(model)
+    else hidden.add(model)
+    if (!updateLlmConnection(slug, { hiddenModelIds: [...hidden] })) {
+      return { success: false, error: 'Failed to update connection' }
+    }
+    return { success: true }
   })
 
   // Delete an LLM connection (at least one connection must remain)

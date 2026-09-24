@@ -28,6 +28,7 @@ import {
 } from '@config/models'
 import {
   isCompatProvider,
+  isModelVisibleInPicker,
   modelSupportsImages,
   resolveEffectiveConnectionSlug,
   type LlmConnectionWithStatus,
@@ -107,6 +108,13 @@ export function CompactModelSelector({
     if (!effectiveConnectionDetails) return ANTHROPIC_MODELS
     return effectiveConnectionDetails.models || ANTHROPIC_MODELS
   }, [effectiveConnectionDetails, connectionUnavailable])
+
+  const pickerModels = React.useMemo(() => effectiveConnectionDetails
+    ? availableModels.filter(model => isModelVisibleInPicker(
+        effectiveConnectionDetails, typeof model === 'string' ? model : model.id,
+      ))
+    : availableModels,
+  [availableModels, effectiveConnectionDetails])
 
   const currentModelDisplayName = React.useMemo(() => {
     const modelToDisplay = connectionDefaultModel ?? currentModel
@@ -282,7 +290,9 @@ export function CompactModelSelector({
                       </button>
                       {isAuthenticated && isExpanded && (
                         <div className="pl-6 flex flex-col gap-0.5">
-                          {(conn.models || ANTHROPIC_MODELS).map(model => {
+                          {(conn.models || ANTHROPIC_MODELS).filter(model => isModelVisibleInPicker(
+                            conn, typeof model === 'string' ? model : model.id,
+                          )).map(model => {
                             const modelId = typeof model === 'string' ? model : model.id
                             const modelName = typeof model === 'string'
                               ? stripPiPrefixForDisplay(getModelShortName(model))
@@ -332,7 +342,7 @@ export function CompactModelSelector({
             ))
           ) : (
             // 'flat' — list models of the active connection
-            availableModels.map(model => {
+            pickerModels.map(model => {
               const modelId = typeof model === 'string' ? model : model.id
               const modelName = typeof model === 'string'
                 ? stripPiPrefixForDisplay(getModelShortName(model))

@@ -60,6 +60,14 @@ that the runtime cannot use.
 An explicit session or workspace model that would resolve to a different runtime model is rejected
 before persistence. Model Settings changes a connection's default model through a field-only RPC,
 so a stale renderer snapshot cannot overwrite a newly refreshed account catalog.
+One connection retains its full account-discovered model list. A separate, field-only visibility
+preference hides individual rows from the conversation picker without removing their catalog
+metadata, changing the connection default, or interrupting an existing Session. The connection's
+default model is selected below its list; the application default effort belongs to the separate
+default-settings section and is constrained by the effective default model. Refresh preserves
+visibility preferences for matching IDs and shows newly discovered IDs by default. A legacy
+connection without a saved list uses the same provider fallback in Settings and the visibility
+handler; custom endpoints without an explicit list cannot invent model membership.
 The connection is an account and credential owner, not a claim that every model uses the chat
 runtime. Its chat list contains only text-output language models; authenticated input/output
 modalities are retained when advertised. Media-only models require the separate media executor
@@ -371,7 +379,7 @@ gate. An allowance reader never switches accounts, redeems credits or enables pa
 | Connection | Recommended acquisition | Limits and fallback |
 |---|---|---|
 | Claude subscription | Consume `rate_limit_event` from the existing Claude runtime. Installed and lockfile-pinned Agent SDK **0.3.258** also exposes `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` sending `get_usage`. | The query is explicitly unstable: isolate behind a version/capability-checked adapter and prove a fixture before enabling. Events may expose only one window and do not guarantee a complete idle-account snapshot. Unsupported/missing data stays unavailable; do not start paid inference just to refresh a meter. |
-| Codex subscription | Use the selected runtime's authenticated `account/rateLimits/read` and `account/rateLimits/updated`; prefer the returned per-limit map over the legacy single bucket. | Bind results to runtime, connection, account and provider workspace. Read returned durations rather than assuming two fixed windows. A missing protocol capability is unavailable, not permission to read another account's cache. |
+| Codex subscription | Codex app-server exposes authenticated `account/rateLimits/read` and `account/rateLimits/updated`, including per-limit buckets. Fleet currently executes ChatGPT/Codex through Pi, not app-server, so that native interface is absent from its selected runtime. | Do not start a second inference runtime just to draw quota. An isolated, explicitly private WHAM read adapter using the existing connection credential is the bounded alternative if adopted; it needs account identity, sparse-bucket handling and cache invalidation. Until then the Pi connection's account allowance is unavailable. |
 | Grok subscription | The current adapter uses Pi 0.87.1's xAI device-code OAuth and the existing connection credential owner, then reads the versioned `https://cli-chat-proxy.grok.com/v1/billing?format=credits` response used by OpenClaw's xAI integration. | The billing transport is private and can change; it is not presented as an official public quota guarantee. Invalid, missing or account-mismatched data stays unavailable. The live login/model/usage path is `wired but not visually checked` until a user account completes the device flow. |
 | Cursor subscription | The official Spending dashboard is the reliable user-facing fallback. Its Admin API is a separate team-scoped integration when the owner supplies the applicable credentials. | This review did not establish an official personal-plan quota API. Do not treat a team spend endpoint as personal remaining capacity or copy browser cookies/private application state. |
 | Other providers/API keys | A provider adapter uses a documented authenticated quota/balance endpoint when present. cc-switch's native balance adapters are a comparison candidate, separate from its custom-script executor. | Preserve native units and scope: balance, key budget, request limit, token limit and plan allowance are different measurements. Check required credential scope per endpoint: OpenRouter `/api/v1/key` describes the current key; account-wide `/api/v1/credits` requires a management key. Ordinary API connections have no invented subscription window. |

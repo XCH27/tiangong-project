@@ -21,6 +21,7 @@ const EXPECTED_CHANNELS: string[] = [
   'LLM_Connection:save',
   'LLM_Connection:setDefault',
   'LLM_Connection:setModel',
+  'LLM_Connection:setModelVisibility',
   'LLM_Connection:setWorkspaceDefault',
   'LLM_Connection:test',
   'appearance:getRichToolDescriptions',

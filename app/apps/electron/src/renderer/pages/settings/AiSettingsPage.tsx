@@ -14,7 +14,8 @@ import { useTranslation } from 'react-i18next'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { X, MoreHorizontal, Pencil, Trash2, Star, ChevronDown, ChevronRight, AlertTriangle, RefreshCcw, Settings2, MessageSquareMore, Zap, Clock, Check, Plus, Search, Gauge, Brain } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { X, MoreHorizontal, Pencil, Trash2, Star, ChevronDown, ChevronRight, AlertTriangle, RefreshCcw, Settings2, MessageSquareMore, Zap, Clock, Check, Plus, Search, Gauge } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import { motion, AnimatePresence } from 'motion/react'
@@ -52,7 +53,7 @@ import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
-import { getModelsForProviderType, isCompatProvider, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
+import { getModelsForProviderType, isCompatProvider, isModelVisibleInPicker, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
 import { toast } from 'sonner'
 import type { XaiSubscriptionUsage } from '@craft-agent/shared/auth'
 
@@ -1107,6 +1108,7 @@ export default function AiSettingsPage() {
     [selectedConnection],
   )
   const [modelQuery, setModelQuery] = useState('')
+  const [pendingVisibilityModel, setPendingVisibilityModel] = useState<string | null>(null)
   const selectedModelOptions = useMemo(() => {
     const query = modelQuery.trim().toLowerCase()
     if (!query) return allSelectedModelOptions
@@ -1153,6 +1155,20 @@ export default function AiSettingsPage() {
       toast.error(error instanceof Error ? error.message : t('settings.ai.modelRefreshFailed'))
     }
   }, [refreshLlmConnections, t])
+
+  const handleModelVisibilityChange = useCallback(async (connection: LlmConnectionWithStatus, model: string, visible: boolean) => {
+    if (!window.electronAPI || pendingVisibilityModel) return
+    setPendingVisibilityModel(model)
+    try {
+      const result = await window.electronAPI.setLlmConnectionModelVisibility(connection.slug, model, visible)
+      if (!result.success) throw new Error(result.error || t('settings.ai.modelVisibilityFailed'))
+      await refreshLlmConnections()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('settings.ai.modelVisibilityFailed'))
+    } finally {
+      setPendingVisibilityModel(null)
+    }
+  }, [pendingVisibilityModel, refreshLlmConnections, t])
 
   const handleDefaultThinkingChange = useCallback(async (level: ThinkingLevel) => {
     if (!window.electronAPI) return
@@ -1352,7 +1368,7 @@ export default function AiSettingsPage() {
                             <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4">
                               <div>
                                 <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
-                                <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.ai.modelDesc')}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.ai.modelListDesc')}</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <div className="relative w-44">
@@ -1381,54 +1397,42 @@ export default function AiSettingsPage() {
                               <div className="border-t border-border/60">
                                 {selectedModelOptions.map(option => {
                                   const definition = getConnectionModelDefinition(selectedConnection, option.value)
-                                  const thinkingLevels = getThinkingLevelsForModel(definition)
-                                  const isDefault = option.value === selectedConnection.defaultModel
+                                  const visible = isModelVisibleInPicker(selectedConnection, option.value)
                                   return (
-                                    <button
+                                    <div
                                       key={option.value}
-                                      type="button"
-                                      onClick={() => { if (!isDefault) handleConnectionModelChange(selectedConnection, option.value) }}
-                                      aria-current={isDefault ? 'true' : undefined}
-                                      className="flex w-full items-center gap-3 border-b border-border/60 px-5 py-3.5 text-left transition-colors last:border-b-0 hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                                      className="flex w-full items-center gap-3 border-b border-border/60 px-5 py-3.5 text-left last:border-b-0"
                                     >
-                                      <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-full border', isDefault ? 'border-foreground bg-foreground text-background' : 'border-border text-transparent')}>
-                                        <Check className="size-3.5" />
-                                      </span>
                                       <span className="min-w-0 flex-1">
                                         <span className="block truncate text-sm font-medium">{option.label}</span>
                                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">{option.label !== option.value ? option.value : (option.descriptionKey ? t(option.descriptionKey) : option.description)}</span>
                                       </span>
                                       <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
                                         {definition?.contextWindow ? <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-1" title={t('chat.contextUsage.contextWindow')}><Gauge className="size-3" />{formatTokenCount(definition.contextWindow)}</span> : null}
-                                        {thinkingLevels.length > 0 && <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-1"><Brain className="size-3" />{t('settings.ai.thinking')}</span>}
                                       </span>
-                                    </button>
+                                      <Switch
+                                        checked={visible}
+                                        disabled={pendingVisibilityModel !== null}
+                                        onCheckedChange={(checked) => void handleModelVisibilityChange(selectedConnection, option.value, checked)}
+                                        aria-label={`${option.label}: ${t('settings.ai.showInModelPicker')}`}
+                                      />
+                                    </div>
                                   )
                                 })}
                               </div>
                             ) : (
                               <p className="border-t border-border/60 px-5 py-4 text-sm text-muted-foreground">{t('settings.ai.noModels')}</p>
                             )}
-                            {selectedConnection.isDefault && (
-                              <div className="border-t border-border/60 px-5 py-1">
-                                <SettingsMenuSelectRow
-                                  label={t('settings.ai.thinking')}
-                                  description={defaultThinkingUnsupported ? t('thinking.notSupported') :
-                                    defaultThinkingLevels.length === 0 ? t('common.unavailable') : t('settings.ai.thinkingDesc')}
-                                  value={defaultThinkingUnsupported ? 'unavailable' :
-                                    defaultThinkingLevels.length === 0 ? defaultThinking : effectiveDefaultThinking}
-                                  onValueChange={(value) => handleDefaultThinkingChange(value as ThinkingLevel)}
-                                  disabled={defaultThinkingLevels.length === 0}
-                                  options={defaultThinkingUnsupported ? [
-                                    { value: 'unavailable', label: t('thinking.notSupported') },
-                                  ] : defaultThinkingLevels.length === 0 ? [
-                                    { value: defaultThinking, label: t(getThinkingLevelNameKey(defaultThinking)) },
-                                  ] : defaultThinkingLevels.map(({ id, nameKey, descriptionKey }) => ({
-                                    value: id, label: t(nameKey), description: t(descriptionKey),
-                                  }))}
-                                />
-                              </div>
-                            )}
+                            {allSelectedModelOptions.length > 0 && <div className="border-t border-border/60 px-5 py-1">
+                              <SettingsMenuSelectRow
+                                label={t('apiSetup.defaultModel')}
+                                value={selectedConnection.defaultModel ?? allSelectedModelOptions[0]?.value ?? ''}
+                                onValueChange={(model) => void handleConnectionModelChange(selectedConnection, model)}
+                                options={allSelectedModelOptions.map(option => ({
+                                  ...option, description: option.descriptionKey ? t(option.descriptionKey) : option.description,
+                                }))}
+                              />
+                            </div>}
                           </div>
                           {selectedHasMediaCatalog && (
                             <div className="border-t border-border/60 px-5 py-4">
@@ -1464,6 +1468,27 @@ export default function AiSettingsPage() {
                     </section>
                   </div>
               </div>
+
+              {defaultConnection && <SettingsSection title={t('settings.ai.defaultSection')} description={t('settings.ai.defaultSectionDesc')}>
+                <SettingsCard>
+                  <SettingsMenuSelectRow
+                    label={t('settings.ai.thinking')}
+                    description={defaultThinkingUnsupported ? t('thinking.notSupported') :
+                      defaultThinkingLevels.length === 0 ? t('common.unavailable') : t('settings.ai.thinkingDesc')}
+                    value={defaultThinkingUnsupported ? 'unavailable' :
+                      defaultThinkingLevels.length === 0 ? defaultThinking : effectiveDefaultThinking}
+                    onValueChange={(value) => handleDefaultThinkingChange(value as ThinkingLevel)}
+                    disabled={defaultThinkingLevels.length === 0}
+                    options={defaultThinkingUnsupported ? [
+                      { value: 'unavailable', label: t('thinking.notSupported') },
+                    ] : defaultThinkingLevels.length === 0 ? [
+                      { value: defaultThinking, label: t(getThinkingLevelNameKey(defaultThinking)) },
+                    ] : defaultThinkingLevels.map(({ id, nameKey, descriptionKey }) => ({
+                      value: id, label: t(nameKey), description: t(descriptionKey),
+                    }))}
+                  />
+                </SettingsCard>
+              </SettingsSection>}
 
               {workspaces.length > 0 && llmConnections.length > 0 && (
                 <SettingsSection title={t('settings.ai.workspaceOverrides')} description={t('settings.ai.workspaceOverridesDesc')}>

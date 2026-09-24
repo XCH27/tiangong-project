@@ -659,6 +659,7 @@ export interface ElectronAPI {
   getLlmConnectionApiKey(slug: string): Promise<string | null>
   saveLlmConnection(connection: LlmConnection): Promise<{ success: boolean; error?: string }>
   setLlmConnectionModel(slug: string, model: string): Promise<{ success: boolean; error?: string }>
+  setLlmConnectionModelVisibility(slug: string, model: string, visible: boolean): Promise<{ success: boolean; error?: string }>
   deleteLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   testLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   refreshLlmConnectionModels(slug: string): Promise<{ success: boolean; source?: 'provider' | 'sdk' | 'saved' | 'registry' | 'manual' | 'unavailable' | 'superseded'; error?: string }>

@@ -116,6 +116,24 @@ describe('updateLlmConnection – customEndpoint', () => {
   })
 })
 
+describe('updateLlmConnection – model picker visibility', () => {
+  it('keeps visibility independent of the full catalog and default model', () => {
+    const { runUpdate, readConnection } = setup([makeConnection({
+      models: ['pi/model-a', 'pi/model-b'], defaultModel: 'pi/model-a',
+    })])
+    expect(runUpdate('custom-compat', { hiddenModelIds: ['pi/model-b'] })).toBe(true)
+    expect(readConnection('custom-compat')).toMatchObject({
+      models: ['pi/model-a', 'pi/model-b'], defaultModel: 'pi/model-a',
+      hiddenModelIds: ['pi/model-b'],
+    })
+    expect(runUpdate('custom-compat', { models: ['pi/model-a', 'pi/model-b', 'pi/model-c'] })).toBe(true)
+    expect(readConnection('custom-compat')).toMatchObject({
+      models: ['pi/model-a', 'pi/model-b', 'pi/model-c'],
+      hiddenModelIds: ['pi/model-b'], defaultModel: 'pi/model-a',
+    })
+  })
+})
+
 describe('updateLlmConnection – Anthropic OAuth identity (issue #838)', () => {
   const identity = {
     oauthAccountUuid: 'acct-uuid-123',

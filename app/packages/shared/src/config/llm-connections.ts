@@ -157,6 +157,9 @@ export interface LlmConnection {
   /** Override available models (for custom endpoints that don't support model listing) */
   models?: Array<ModelDefinition | string>;
 
+  /** Explicit picker visibility overrides; absence means the discovered model is shown. */
+  hiddenModelIds?: string[];
+
   /** Default model for this connection */
   defaultModel?: string;
 
@@ -221,6 +224,11 @@ export interface LlmConnectionWithStatus extends LlmConnection {
 
   /** Whether this is the global default connection */
   isDefault?: boolean;
+}
+
+/** Display preference only: a hidden model remains available to an existing session. */
+export function isModelVisibleInPicker(connection: LlmConnection, modelId: string): boolean {
+  return !connection.hiddenModelIds?.includes(modelId);
 }
 
 // ============================================================

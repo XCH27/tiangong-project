@@ -384,6 +384,7 @@ export const CHANNEL_MAP = {
   getLlmConnectionApiKey: invoke(RPC_CHANNELS.llmConnections.GET_API_KEY),
   saveLlmConnection: invoke(RPC_CHANNELS.llmConnections.SAVE),
   setLlmConnectionModel: invoke(RPC_CHANNELS.llmConnections.SET_MODEL),
+  setLlmConnectionModelVisibility: invoke(RPC_CHANNELS.llmConnections.SET_MODEL_VISIBILITY),
   deleteLlmConnection: invoke(RPC_CHANNELS.llmConnections.DELETE),
   testLlmConnection: invoke(RPC_CHANNELS.llmConnections.TEST),
   refreshLlmConnectionModels: invoke(RPC_CHANNELS.llmConnections.REFRESH_MODELS),
