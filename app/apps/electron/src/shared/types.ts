@@ -448,7 +448,7 @@ export interface ElectronAPI {
   // Pi provider discovery (main process only — Pi SDK can't run in renderer)
   getPiApiKeyProviders(): Promise<Array<{ key: string; label: string; placeholder: string }>>
   getPiProviderBaseUrl(provider: string): Promise<string | undefined>
-  getPiProviderModels(provider: string, apiKey?: string, connectionSlug?: string): Promise<{ models: Array<{ id: string; name: string; costInput?: number; costOutput?: number; contextWindow: number; reasoning: boolean }>; totalCount: number; source?: 'provider' | 'sdk'; error?: string; mediaModels?: Array<{ id: string; name: string; kind: 'image' | 'video'; inputModalities?: string[]; outputModalities?: string[] }>; mediaCatalogStatus?: 'available' | 'partial' | 'unavailable' }>
+  getPiProviderModels(provider: string, apiKey?: string, connectionSlug?: string): Promise<{ models: Array<{ id: string; name: string; costInput?: number; costOutput?: number; contextWindow: number; reasoning: boolean }>; totalCount: number; source?: 'provider' | 'sdk'; error?: string; mediaModels?: Array<{ id: string; name: string; kind: 'image' | 'video'; inputModalities?: string[]; outputModalities?: string[] }>; mediaCatalogStatus?: 'available' | 'partial' | 'unavailable' | 'documented' }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>

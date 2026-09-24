@@ -1002,6 +1002,8 @@
   "settings.ai.localConnection": "Lokalny",
   "settings.ai.mediaImageModels": "Modele obrazów",
   "settings.ai.mediaModels": "Modele multimedialne",
+  "settings.ai.mediaModelsCodexDesc": "Dla tego połączenia subskrypcyjnego ChatGPT istnieje udokumentowana ścieżka obrazów Codex. Generowanie obrazów nie jest jeszcze połączone z Fleet.",
+  "settings.ai.mediaModelsCodexUnverified": "To udokumentowana ścieżka, a nie lista modeli pobrana na żywo z konta. Dostęp do obrazów, faktyczny model i limit nie zostały zweryfikowane.",
   "settings.ai.mediaModelsDesc": "Modele dostępne dla tego klucza API. Generowanie obrazów i wideo nie jest jeszcze połączone z Fleet.",
   "settings.ai.mediaModelsEmpty": "Dla tego klucza API nie zgłoszono modeli obrazów ani wideo.",
   "settings.ai.mediaModelsPartial": "Udało się sprawdzić tylko część katalogu modeli multimedialnych.",

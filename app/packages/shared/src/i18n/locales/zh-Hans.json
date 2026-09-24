@@ -1002,6 +1002,8 @@
   "settings.ai.localConnection": "本地",
   "settings.ai.mediaImageModels": "图像模型",
   "settings.ai.mediaModels": "媒体模型",
+  "settings.ai.mediaModelsCodexDesc": "Codex 为 ChatGPT 订阅登录提供生图接口。Fleet 尚未接入图像生成。",
+  "settings.ai.mediaModelsCodexUnverified": "这里展示的是已知接口，不是账号实时返回的模型列表。生图权限、实际使用的模型和额度尚未验证。",
   "settings.ai.mediaModelsDesc": "此 API 密钥可见的模型。软件尚未接入图像和视频生成。",
   "settings.ai.mediaModelsEmpty": "此 API 密钥未返回图像或视频模型。",
   "settings.ai.mediaModelsPartial": "只能检查部分媒体模型目录。",

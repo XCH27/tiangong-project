@@ -5,6 +5,18 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+### 2026-09-24 — subscription image capability boundary
+
+- Model Settings now recognizes the documented Codex image route beside an authenticated ChatGPT
+  subscription connection, separately from Pi's chat models and xAI's live API-key media catalog.
+  It labels account entitlement and allowance as unverified; Fleet image generation remains unwired.
+- The model connection panel now fits short lists and caps at the viewport for long lists, so a
+  one-model account does not leave a large empty block above the other settings.
+- Compared official Codex, Hermes, latest fetched Cindy and DeepSeek Harness provider adapters before
+  settling the existing Pi/connection boundary. Also reviewed Grok Build and Kimi Code and added
+  shallow MiMo Code, Gemini CLI and Qwen Code source checkouts for bounded model/adapter comparison.
+  No existing reference checkout was repinned.
+
 ### 2026-09-22 — original-source reset, documentation restructure
 
 - **`app/` restored to unmodified official Craft Agents v0.13.4** at the owner's direction

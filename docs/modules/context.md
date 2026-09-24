@@ -68,6 +68,26 @@ key nor a subscription grants every capability by inference.
 For xAI Console API keys, the existing provider-model query also reads the authenticated image
 and video model endpoints. Settings shows these as read-only capability rows separate from chat
 models; a failed or partial media query is reported as such and never grants a generation action.
+For a ChatGPT/Codex OAuth connection, the same Settings section shows the documented native Codex
+image route (`gpt-image-2`) only while that connection has a stored OAuth credential. This
+is **not** an account-discovered model or allowance: Codex's native image request names that model,
+but neither the Pi chat catalog nor credential presence proves this account's image access, the
+model actually used by the service, or remaining image allowance. The row is read-only and says so.
+OpenAI Platform image models and API-key limits remain separate from ChatGPT subscriptions.
+Craft's Pi agent and existing connection/credential/model-refresh owners remain the chat runtime.
+DeepSeek Harness's first-party DeepSeek adapter is a candidate only for bounded provider-wire
+improvements (Messages effort mapping, image Files input, replay and cache accounting), not a
+second Session or generic replacement for Pi. Its own Pi adapter treats static discovery as
+advisory and keeps provider-specific execution behind a registered route. Admit a vendor
+optimization only after the installed Pi route lacks it, an account or fixture proves the
+difference, and the same Session/permission/usage paths still own the result.
+First-party Grok Build, Kimi Code, MiMo Code, Gemini CLI and Qwen Code source comparisons reinforce
+three narrower rules for the next model slice: declare effort and media capabilities per effective
+account/model/adapter route; validate that declaration against the actual wire request (including
+effort-specific model IDs and selected protocol); and treat quota/capacity errors as observed
+runtime health rather than a fabricated allowance. Their catalogs, Agent loops and permission
+engines are evidence, not additional Fleet authorities. Source locks and exact seams are in
+[the reference comparison](../references.md#model-access-and-catalog-source-comparison).
 An Anthropic OAuth token belongs to its connection slug, including
 refresh and failure cleanup; the legacy global credential is migration input only. Copilot account
 models with authenticated context, output limit and supported transport are registered in Pi's

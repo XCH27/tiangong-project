@@ -466,6 +466,21 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         return { models: [], totalCount: 0, source: 'sdk' as const, error: reason }
       }
     }
+    // Codex image generation uses the ChatGPT OAuth connection, not an OpenAI
+    // Platform API key or the Pi chat-model catalog. This is a documented route,
+    // not an account-specific model/allowance response: do not mark it available.
+    const codexConnection = provider === 'openai-codex' && connectionSlug
+      ? getLlmConnection(connectionSlug) : null
+    const codexMedia = connectionSlug
+      && codexConnection?.providerType === 'pi'
+      && codexConnection.piAuthProvider === 'openai-codex'
+      && codexConnection.authType === 'oauth'
+      && await getCredentialManager().hasLlmCredentials(connectionSlug, 'oauth').catch(() => false)
+      ? {
+          mediaModels: [{ id: 'gpt-image-2', name: 'GPT Image (Codex)', kind: 'image' as const }],
+          mediaCatalogStatus: 'documented' as const,
+        }
+      : {}
     const { getModels } = await import('@earendil-works/pi-ai/compat')
     try {
       const models = getModels(provider as Parameters<typeof getModels>[0])
@@ -483,9 +498,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         })),
         totalCount: models.length,
         source: 'sdk' as const,
+        ...codexMedia,
       }
     } catch {
-      return { models: [], totalCount: 0, source: 'sdk' as const }
+      return { models: [], totalCount: 0, source: 'sdk' as const, ...codexMedia }
     }
   })
 

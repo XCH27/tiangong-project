@@ -734,7 +734,7 @@ export default function AiSettingsPage() {
   const [mediaCatalog, setMediaCatalog] = useState<{
     slug: string
     models: Array<{ id: string; name: string; kind: 'image' | 'video' }>
-    status: 'available' | 'partial' | 'unavailable'
+    status: 'available' | 'partial' | 'unavailable' | 'documented'
   } | null>(null)
 
   // Credential health state (for startup warning banner)
@@ -1077,14 +1077,20 @@ export default function AiSettingsPage() {
     && selectedConnection.piAuthProvider === 'xai'
     && selectedConnection.authType === 'api_key'
     && selectedConnection.isAuthenticated
+  const selectedHasCodexSubscriptionCatalog = selectedConnection?.providerType === 'pi'
+    && selectedConnection.piAuthProvider === 'openai-codex'
+    && selectedConnection.authType === 'oauth'
+    && selectedConnection.isAuthenticated
+  const selectedHasMediaCatalog = selectedHasXaiApiCatalog || selectedHasCodexSubscriptionCatalog
   useEffect(() => {
-    if (!selectedHasXaiApiCatalog || !selectedConnection) {
+    if (!selectedHasMediaCatalog || !selectedConnection) {
       setMediaCatalog(null)
       return
     }
     let cancelled = false
     const slug = selectedConnection.slug
-    void window.electronAPI.getPiProviderModels('xai', undefined, slug).then(result => {
+    const provider = selectedHasCodexSubscriptionCatalog ? 'openai-codex' : 'xai'
+    void window.electronAPI.getPiProviderModels(provider, undefined, slug).then(result => {
       if (cancelled) return
       setMediaCatalog({
         slug,
@@ -1095,7 +1101,7 @@ export default function AiSettingsPage() {
       if (!cancelled) setMediaCatalog({ slug, models: [], status: 'unavailable' })
     })
     return () => { cancelled = true }
-  }, [selectedConnection?.slug, selectedHasXaiApiCatalog, mediaRefreshVersion])
+  }, [selectedConnection?.slug, selectedHasMediaCatalog, selectedHasCodexSubscriptionCatalog, mediaRefreshVersion])
   const allSelectedModelOptions = useMemo(
     () => getModelOptionsForConnection(selectedConnection),
     [selectedConnection],
@@ -1232,7 +1238,7 @@ export default function AiSettingsPage() {
 
             <div className="space-y-8">
               <div className="overflow-hidden rounded-[12px] border border-border/60 bg-background shadow-minimal">
-                  <div className="flex flex-col md:h-[65dvh] md:min-h-[20rem] md:max-h-[40rem] md:flex-row">
+                  <div className="flex flex-col md:max-h-[min(65dvh,40rem)] md:flex-row">
                     <aside className="flex w-full shrink-0 flex-col border-b border-border/60 bg-foreground/[0.02] md:min-h-0 md:w-56 md:border-b-0 md:border-r">
                       <div className="flex items-center justify-between px-3 py-3">
                         <span className="text-xs font-medium text-muted-foreground">{t('settings.ai.connections')}</span>
@@ -1424,14 +1430,15 @@ export default function AiSettingsPage() {
                               </div>
                             )}
                           </div>
-                          {selectedHasXaiApiCatalog && (
+                          {selectedHasMediaCatalog && (
                             <div className="border-t border-border/60 px-5 py-4">
                               <h3 className="text-sm font-semibold">{t('settings.ai.mediaModels')}</h3>
-                              <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.ai.mediaModelsDesc')}</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{t(selectedHasCodexSubscriptionCatalog ? 'settings.ai.mediaModelsCodexDesc' : 'settings.ai.mediaModelsDesc')}</p>
                               {mediaCatalog?.slug === selectedConnection.slug ? (
                                 <>
                                   {mediaCatalog.status !== 'available' && <p className="mt-3 text-xs text-muted-foreground">
-                                    {t(mediaCatalog.status === 'partial' ? 'settings.ai.mediaModelsPartial' : 'settings.ai.mediaModelsUnavailable')}
+                                    {t(mediaCatalog.status === 'documented' ? 'settings.ai.mediaModelsCodexUnverified' :
+                                      mediaCatalog.status === 'partial' ? 'settings.ai.mediaModelsPartial' : 'settings.ai.mediaModelsUnavailable')}
                                   </p>}
                                   {(['image', 'video'] as const).map(kind => {
                                     const rows = mediaCatalog.models.filter(model => model.kind === kind

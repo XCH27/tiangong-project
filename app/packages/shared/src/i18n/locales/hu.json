@@ -1002,6 +1002,8 @@
   "settings.ai.localConnection": "Helyi",
   "settings.ai.mediaImageModels": "Képmodellek",
   "settings.ai.mediaModels": "Médiamodellek",
+  "settings.ai.mediaModelsCodexDesc": "Ehhez a ChatGPT-előfizetéses kapcsolathoz dokumentált Codex képgenerálási útvonal tartozik. A képgenerálás még nincs bekötve a Fleetbe.",
+  "settings.ai.mediaModelsCodexUnverified": "Ez dokumentált útvonal, nem a fiók élő modelllistája. A képhozzáférés, a tényleges modell és a keret nincs ellenőrizve.",
   "settings.ai.mediaModelsDesc": "Az API-kulcshoz elérhető modellek. A kép- és videógenerálás még nincs bekötve a Fleetbe.",
   "settings.ai.mediaModelsEmpty": "Ehhez az API-kulcshoz nem jelentettek kép- vagy videómodelleket.",
   "settings.ai.mediaModelsPartial": "A médiamodell-katalógus csak részben volt ellenőrizhető.",

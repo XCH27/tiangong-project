@@ -48,6 +48,12 @@ ArtifactRef; speech-to-text is an input path distinct from text-to-speech output
 Session permission/action path owns the tool call, and the shared Job path owns progress,
 cancellation and persisted output. Until a real adapter and those paths exist, media models remain
 `not implemented` even when account discovery advertises them.
+Codex's native `images/generations` and `images/edits` endpoints and Hermes's OAuth image adapter
+are the ChatGPT subscription transport reference. A Settings row for this documented route does
+not establish account entitlement or implement Fleet's generation Job. Cindy's subscription image
+projection is useful for presenting the capability, while its pinned chat-model image-tool request
+must not replace the native Codex route. The backend may return a different effective image model
+or quality than requested, so a future Job records both requested and reported values.
 
 ## First proof
 
