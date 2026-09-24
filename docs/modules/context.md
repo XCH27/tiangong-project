@@ -72,7 +72,9 @@ An Anthropic OAuth token belongs to its connection slug, including
 refresh and failure cleanup; the legacy global credential is migration input only. Copilot account
 models with authenticated context, output limit and supported transport are registered in Pi's
 existing Copilot provider; incomplete unknown entries are excluded rather than given invented
-limits. The Settings
+limits. Copilot device authorization, token exchange and account-model policy calls use the same
+proxy-aware host transport as the other subscription OAuth flows; a direct Node fetch failed on a
+machine whose authorization browser used the OS proxy. The Settings
 connection menu exposes the existing backend model-list refresh for provider-managed catalogs,
 never for custom endpoints or preserved user-defined tiers. Refresh may retain a cached catalog
 when a provider is unavailable, so completion does not claim a live update. Grok subscription
@@ -82,7 +84,10 @@ the Grok subscription proxy and registered in Pi's native xAI provider. The read
 parses the provider response used by OpenClaw's xAI integration, but that billing endpoint is a
 private adapter rather than a verified public xAI quota API, so the UI remains unavailable when the
 response is missing or malformed and the live path is `wired but not visually checked` until an
-account sign-in is exercised. This correction does not authorize automatic model routing, a new
+account sign-in is exercised. Closing or cancelling a pending ChatGPT, Copilot or Grok authorization
+uses its existing provider cancellation path; a late result cannot reopen the closed form, and the
+backend checks cancellation before saving exchanged credentials. This correction does not authorize
+automatic model routing, a new
 account store, or a second credential owner.
 
 ## First proof

@@ -355,12 +355,28 @@ client.onConnectionStateChanged((state) => {
 // Same shape as performOAuth: callback server (port 1455) → chatgpt:startOAuth →
 // browser → callback → chatgpt:completeOAuth.
 // Overrides the startChatGptOAuth API method so the renderer call is unchanged.
+let activeChatGptOAuth: { cancel: () => Promise<void> } | null = null
 ;(api as any).startChatGptOAuth = async (
   connectionSlug: string,
 ): Promise<{ success: boolean; error?: string }> => {
   let callbackServer: Awaited<ReturnType<typeof createCallbackServer>> | null = null
   let flowId: string | undefined
   let state: string | undefined
+  let cancelled = false
+  let resolveCancelled: (() => void) | undefined
+  const cancelledPromise = new Promise<{ cancelled: true }>(resolve => {
+    resolveCancelled = () => resolve({ cancelled: true })
+  })
+  const flow = {
+    cancel: async () => {
+      if (cancelled) return
+      cancelled = true
+      resolveCancelled?.()
+      callbackServer?.close()
+      if (state) await client.invoke('chatgpt:cancelOAuth', { state })
+    },
+  }
+  activeChatGptOAuth = flow
 
   try {
     // 1. Start callback server on ChatGPT's fixed port with /auth/callback path
@@ -369,17 +385,25 @@ client.onConnectionStateChanged((state) => {
       port: CHATGPT_OAUTH_CONFIG.CALLBACK_PORT,
       callbackPaths: ['/auth/callback'],
     })
+    if (cancelled) return { success: false, error: 'ChatGPT sign-in cancelled' }
 
     // 2. Ask server to prepare the flow (PKCE, auth URL, store pending flow)
     const startResult = await client.invoke('chatgpt:startOAuth', connectionSlug)
     flowId = startResult.flowId
     state = startResult.state
+    if (cancelled) {
+      await client.invoke('chatgpt:cancelOAuth', { state })
+      return { success: false, error: 'ChatGPT sign-in cancelled' }
+    }
 
     // 3. Open browser for user consent
     await shell.openExternal(startResult.authUrl)
+    if (cancelled) return { success: false, error: 'ChatGPT sign-in cancelled' }
 
     // 4. Wait for OpenAI to redirect to our callback server
-    const callback = await callbackServer.promise
+    const callback = await Promise.race([callbackServer.promise, cancelledPromise])
+    if ('cancelled' in callback) return { success: false, error: 'ChatGPT sign-in cancelled' }
+    if (cancelled) return { success: false, error: 'ChatGPT sign-in cancelled' }
 
     if (callback.query.state !== state) {
       await client.invoke('chatgpt:cancelOAuth', { state })
@@ -401,6 +425,7 @@ client.onConnectionStateChanged((state) => {
 
     // 6. Send code to server for token exchange + credential storage
     const result = await client.invoke('chatgpt:completeOAuth', { flowId, code, state })
+    if (cancelled) return { success: false, error: 'ChatGPT sign-in cancelled' }
     return { success: result.success, error: result.error }
   } catch (err) {
     if (state) {
@@ -412,7 +437,13 @@ client.onConnectionStateChanged((state) => {
     }
   } finally {
     callbackServer?.close()
+    if (activeChatGptOAuth === flow) activeChatGptOAuth = null
   }
+}
+
+;(api as any).cancelChatGptOAuth = async (): Promise<{ success: boolean }> => {
+  await activeChatGptOAuth?.cancel()
+  return { success: true }
 }
 
 // App lifecycle — direct IPC (not WS RPC) since it restarts the server itself

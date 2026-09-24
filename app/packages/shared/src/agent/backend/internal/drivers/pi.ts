@@ -73,7 +73,8 @@ async function listModelsViaHttp(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${baseUrl}/models`, {
+    const { fetchOAuthToken } = await import('../../../../auth/oauth-token-fetch.ts');
+    const res = await fetchOAuthToken(`${baseUrl}/models`, {
       method: 'GET',
       signal: controller.signal,
       headers: {

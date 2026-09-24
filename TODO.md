@@ -39,6 +39,11 @@ isolated desktop paths have been checked. Model Settings, Messaging, the upper-r
 reader and its internal/back links are open for owner look-and-feel review; status remains
 `wired but not visually checked` until that review. Further IM platforms need real gateway adapters,
 and the detected media models need the separate generation path before either is offered as usable.
+In the isolated desktop, Grok and ChatGPT authorization could be cancelled without a late form error;
+the ChatGPT callback port closed. Copilot initially failed at device-code fetch, then reached the
+device-code screen after routing its login through the existing proxy-aware host transport; cancelling
+it returned the form to idle. No provider account completed sign-in, model inference or allowance
+verification in this run.
 The former 11-item R1 order and visible-Workspace assumption remain withdrawn. The next unrelated
 slice requires a fresh concrete review.
 

@@ -805,6 +805,13 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
 
       const tokens = await exchangeChatGptTokens(code, flow.codeVerifier)
 
+      // The renderer can close the connection form while the token exchange is
+      // in flight. Cancellation removes this pending flow; skip the credential
+      // write if it was cancelled before persistence begins.
+      if (pendingChatGptFlows.get(state) !== flow) {
+        return { success: false, error: 'ChatGPT sign-in cancelled' }
+      }
+
       await credentialManager.setLlmOAuth(flow.connectionSlug, {
         accessToken: tokens.accessToken,
         idToken: tokens.idToken,
@@ -888,13 +895,14 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     success: boolean
     error?: string
   }> => {
+    // Each request owns its controller; a cancelled older request must not
+    // clear a newer request's cancellation handle.
+    copilotOAuthAbort?.abort()
+    const controller = new AbortController()
+    copilotOAuthAbort = controller
     try {
       const { loginGitHubCopilot } = await import('@craft-agent/shared/auth')
       const credentialManager = getCredentialManager()
-
-      // Cancel any previous in-flight flow
-      copilotOAuthAbort?.abort()
-      copilotOAuthAbort = new AbortController()
 
       deps.platform.logger?.info(`Starting GitHub Copilot OAuth device flow for connection: ${connectionSlug}`)
 
@@ -903,7 +911,6 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       // the correct API endpoint for the user's subscription tier via proxy-ep.
       const credentials = await loginGitHubCopilot({
         onDeviceCode: ({ userCode, verificationUri }) => {
-          deps.platform.logger?.info(`[GitHub OAuth] Device code: ${userCode}`)
           pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
             userCode,
             verificationUri,
@@ -916,10 +923,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         onProgress: (message) => {
           deps.platform.logger?.info(`[GitHub OAuth] ${message}`)
         },
-        signal: copilotOAuthAbort.signal,
+        signal: controller.signal,
       })
 
-      copilotOAuthAbort = null
+      if (controller.signal.aborted) return { success: false, error: 'GitHub sign-in cancelled' }
 
       // Store the full OAuth credential:
       // - accessToken = Copilot API token (contains proxy-ep for correct endpoint)
@@ -935,12 +942,14 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       refreshModelsInBackground(connectionSlug, 'Copilot auth')
       return { success: true }
     } catch (error) {
-      copilotOAuthAbort = null
+      if (controller.signal.aborted) return { success: false, error: 'GitHub sign-in cancelled' }
       deps.platform.logger?.error('GitHub Copilot OAuth failed:', error)
       return {
         success: false,
         error: error instanceof Error ? error.message : 'OAuth authentication failed',
       }
+    } finally {
+      if (copilotOAuthAbort === controller) copilotOAuthAbort = null
     }
   })
 

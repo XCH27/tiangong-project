@@ -100,7 +100,9 @@ export function CredentialsStep({
         description={t("onboarding.credentials.connectChatGPTDesc")}
         actions={
           <>
-            <BackButton onClick={onBack} disabled={status === 'validating'}>{t('common.back')}</BackButton>
+            <BackButton onClick={status === 'validating' ? (onCancelOAuth ?? onBack) : onBack}>
+              {t(status === 'validating' ? 'common.cancel' : 'common.back')}
+            </BackButton>
             <ContinueButton
               onClick={() => onStartOAuth?.()}
               className="gap-2"
@@ -140,7 +142,9 @@ export function CredentialsStep({
         description={t(isXaiOAuth ? 'onboarding.credentials.connectGrokDesc' : 'onboarding.credentials.connectGitHubDesc')}
         actions={
           <>
-            <BackButton onClick={onBack} disabled={status === 'validating'}>{t('common.back')}</BackButton>
+            <BackButton onClick={status === 'validating' ? (onCancelOAuth ?? onBack) : onBack}>
+              {t(status === 'validating' ? 'common.cancel' : 'common.back')}
+            </BackButton>
             <ContinueButton
               onClick={() => onStartOAuth?.()}
               className="gap-2"

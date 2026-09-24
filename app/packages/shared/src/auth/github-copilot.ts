@@ -17,6 +17,8 @@
  * introduced models can't be missed.
  */
 
+import { fetchOAuthToken } from './oauth-token-fetch.ts';
+
 export interface GitHubCopilotTokenCredentials {
   /** The long-lived GitHub OAuth access token (doubles as the refresh credential). */
   refresh: string;
@@ -82,7 +84,7 @@ export async function refreshGitHubCopilotToken(
   if (options.signal) signals.push(options.signal);
   let response: Response;
   try {
-    response = await fetch(COPILOT_TOKEN_URL, {
+    response = await fetchOAuthToken(COPILOT_TOKEN_URL, {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${githubAccessToken}`,
@@ -121,7 +123,7 @@ export async function enableGitHubCopilotModel(copilotToken: string, modelId: st
   const baseUrl = getBaseUrlFromToken(copilotToken);
   if (!baseUrl) return false;
   try {
-    const response = await fetch(`${baseUrl}/models/${encodeURIComponent(modelId)}/policy`, {
+    const response = await fetchOAuthToken(`${baseUrl}/models/${encodeURIComponent(modelId)}/policy`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -168,7 +170,7 @@ export async function enableAllGitHubCopilotModels(
   }
   let gated: string[];
   try {
-    const response = await fetch(`${baseUrl}/models`, {
+    const response = await fetchOAuthToken(`${baseUrl}/models`, {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${copilotToken}`,
@@ -255,7 +257,7 @@ export async function loginGitHubCopilot(
   throwIfAborted(signal);
 
   // Step 1: request a device + user code pair
-  const deviceResponse = await fetch(DEVICE_CODE_URL, {
+  const deviceResponse = await fetchOAuthToken(DEVICE_CODE_URL, {
     method: 'POST',
     headers: {
       Accept: 'application/json',
@@ -312,7 +314,7 @@ export async function loginGitHubCopilot(
     }
     await sleepFn(Math.min(pollIntervalMs, remainingMs), signal);
 
-    const tokenResponse = await fetch(ACCESS_TOKEN_URL, {
+    const tokenResponse = await fetchOAuthToken(ACCESS_TOKEN_URL, {
       method: 'POST',
       headers: {
         Accept: 'application/json',

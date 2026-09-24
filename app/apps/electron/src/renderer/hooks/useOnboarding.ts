@@ -9,7 +9,7 @@
  * 4. Credentials (API Key or Claude OAuth)
  * 5. Complete
  */
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type {
   OnboardingState,
   OnboardingStep,
@@ -263,7 +263,9 @@ export function useOnboarding({
     methodOverride?: ApiSetupMethod,
     connectionSlugOverride?: string,
     updateOnly?: boolean,
+    isCurrent?: () => boolean,
   ): Promise<boolean> => {
+    if (isCurrent && !isCurrent()) return false
     const method = methodOverride ?? state.apiSetupMethod
     if (!method) {
       return false
@@ -290,6 +292,7 @@ export function useOnboarding({
       const result = await window.electronAPI.setupLlmConnection(
         updateOnly ? { ...setup, updateOnly: true } : setup
       )
+      if (isCurrent && !isCurrent()) return false
 
       if (result.success) {
         setState(s => ({ ...s, completionStatus: 'complete' }))
@@ -306,6 +309,7 @@ export function useOnboarding({
         return false
       }
     } catch (error) {
+      if (isCurrent && !isCurrent()) return false
       console.error('[Onboarding] handleSaveConfig error:', error)
       setState(s => ({
         ...s,
@@ -510,15 +514,18 @@ export function useOnboarding({
   // `method` is passed explicitly to break the stale-closure chain — the OAuth
   // await crosses renders, so handleSaveConfig's closure may have an outdated
   // state.apiSetupMethod.
-  const saveAndValidateConnection = useCallback(async (connectionSlug: string, method: ApiSetupMethod, updateOnly?: boolean, oauthIdentity?: ClaudeOAuthIdentityDto): Promise<boolean> => {
+  const saveAndValidateConnection = useCallback(async (connectionSlug: string, method: ApiSetupMethod, updateOnly?: boolean, oauthIdentity?: ClaudeOAuthIdentityDto, isCurrent?: () => boolean): Promise<boolean> => {
+    if (isCurrent && !isCurrent()) return false
     // OAuth exchange has already stored the complete credential on the server.
     // Sending its access token through SETUP would replace and lose refresh data.
-    const saved = await handleSaveConfig(undefined, oauthIdentity ? { oauthIdentity } : undefined, method, connectionSlug, updateOnly)
+    const saved = await handleSaveConfig(undefined, oauthIdentity ? { oauthIdentity } : undefined, method, connectionSlug, updateOnly, isCurrent)
+    if (isCurrent && !isCurrent()) return false
     if (!saved) {
       setState(s => ({ ...s, credentialStatus: 'error' }))
       return false
     }
     const testResult = await window.electronAPI.testLlmConnection(connectionSlug)
+    if (isCurrent && !isCurrent()) return false
     if (testResult.success) {
       setState(s => ({ ...s, credentialStatus: 'success', step: 'complete' }))
       return true
@@ -533,6 +540,32 @@ export function useOnboarding({
 
   // Copilot device code (displayed during device flow)
   const [copilotDeviceCode, setCopilotDeviceCode] = useState<{ userCode: string; verificationUri: string } | undefined>()
+  const oauthAttemptRef = useRef(0)
+  const activeOAuthMethodRef = useRef<ApiSetupMethod | null>(null)
+  const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingOAuthCancelRef = useRef<Promise<void>>(Promise.resolve())
+
+  const cancelPendingOAuth = useCallback(() => {
+    oauthAttemptRef.current += 1
+    if (autoStartTimerRef.current) {
+      clearTimeout(autoStartTimerRef.current)
+      autoStartTimerRef.current = null
+    }
+    const method = activeOAuthMethodRef.current
+    activeOAuthMethodRef.current = null
+    setCopilotDeviceCode(undefined)
+    const cancel = method === 'pi_xai_oauth' ? window.electronAPI.cancelXaiOAuth
+      : method === 'pi_copilot_oauth' ? window.electronAPI.cancelCopilotOAuth
+      : method === 'pi_chatgpt_oauth' ? window.electronAPI.cancelChatGptOAuth
+      : null
+    if (cancel) {
+      pendingOAuthCancelRef.current = pendingOAuthCancelRef.current
+        .then(() => cancel())
+        .then(() => undefined)
+        .catch(error => console.error('[Onboarding] OAuth cancellation failed:', error))
+    }
+    return method
+  }, [])
 
   // Start OAuth flow (Claude or ChatGPT depending on selected method)
   const handleStartOAuth = useCallback(async (methodOverride?: ApiSetupMethod, connectionSlugOverride?: string) => {
@@ -559,16 +592,25 @@ export function useOnboarding({
       return
     }
 
+    const attempt = ++oauthAttemptRef.current
+    activeOAuthMethodRef.current = effectiveMethod
+    const isCurrent = () => oauthAttemptRef.current === attempt
+
     try {
+      // A new login must not overtake cancellation of the prior provider flow.
+      await pendingOAuthCancelRef.current
+      if (!isCurrent()) return
+
       // ChatGPT OAuth (single-step flow - opens browser, captures tokens automatically)
       if (effectiveMethod === 'pi_chatgpt_oauth') {
         const effectiveEditingSlug = connectionSlugOverride ?? editingSlug
         const isReauth = !!effectiveEditingSlug
         const connectionSlug = apiSetupMethodToConnectionSetup(effectiveMethod, {}, effectiveEditingSlug, existingSlugs).slug
         const result = await window.electronAPI.startChatGptOAuth(connectionSlug)
+        if (!isCurrent()) return
 
         if (result.success) {
-          await saveAndValidateConnection(connectionSlug, effectiveMethod, isReauth)
+          await saveAndValidateConnection(connectionSlug, effectiveMethod, isReauth, undefined, isCurrent)
         } else {
           setState(s => ({
             ...s,
@@ -587,14 +629,15 @@ export function useOnboarding({
 
         // Subscribe to device code event before starting the flow
         const cleanup = window.electronAPI.onCopilotDeviceCode((data) => {
-          setCopilotDeviceCode(data)
+          if (isCurrent()) setCopilotDeviceCode(data)
         })
 
         try {
           const result = await window.electronAPI.startCopilotOAuth(connectionSlug)
+          if (!isCurrent()) return
 
           if (result.success) {
-            await saveAndValidateConnection(connectionSlug, effectiveMethod, isReauth)
+            await saveAndValidateConnection(connectionSlug, effectiveMethod, isReauth, undefined, isCurrent)
           } else {
             setState(s => ({
               ...s,
@@ -604,7 +647,7 @@ export function useOnboarding({
           }
         } finally {
           cleanup()
-          setCopilotDeviceCode(undefined)
+          if (isCurrent()) setCopilotDeviceCode(undefined)
         }
         return
       }
@@ -612,17 +655,20 @@ export function useOnboarding({
       if (effectiveMethod === 'pi_xai_oauth') {
         const effectiveEditingSlug = connectionSlugOverride ?? editingSlug
         const connectionSlug = apiSetupMethodToConnectionSetup(effectiveMethod, {}, effectiveEditingSlug, existingSlugs).slug
-        const cleanup = window.electronAPI.onXaiDeviceCode(setCopilotDeviceCode)
+        const cleanup = window.electronAPI.onXaiDeviceCode(data => {
+          if (isCurrent()) setCopilotDeviceCode(data)
+        })
         try {
           const result = await window.electronAPI.startXaiOAuth(connectionSlug)
+          if (!isCurrent()) return
           if (result.success) {
-            await saveAndValidateConnection(connectionSlug, effectiveMethod, !!effectiveEditingSlug)
+            await saveAndValidateConnection(connectionSlug, effectiveMethod, !!effectiveEditingSlug, undefined, isCurrent)
           } else {
             setState(s => ({ ...s, credentialStatus: 'error', errorMessage: result.error || 'Grok authentication failed' }))
           }
         } finally {
           cleanup()
-          setCopilotDeviceCode(undefined)
+          if (isCurrent()) setCopilotDeviceCode(undefined)
         }
         return
       }
@@ -639,6 +685,7 @@ export function useOnboarding({
       }
 
       const result = await window.electronAPI.startClaudeOAuth()
+      if (!isCurrent()) return
 
       if (result.success) {
         // Browser opened successfully, now waiting for user to copy the code
@@ -652,11 +699,15 @@ export function useOnboarding({
         }))
       }
     } catch (error) {
-      setState(s => ({
-        ...s,
-        credentialStatus: 'error',
-        errorMessage: error instanceof Error ? error.message : 'OAuth failed',
-      }))
+      if (isCurrent()) {
+        setState(s => ({
+          ...s,
+          credentialStatus: 'error',
+          errorMessage: error instanceof Error ? error.message : 'OAuth failed',
+        }))
+      }
+    } finally {
+      if (isCurrent()) activeOAuthMethodRef.current = null
     }
   }, [state.apiSetupMethod, saveAndValidateConnection, editingSlug, existingSlugs])
 
@@ -688,7 +739,10 @@ export function useOnboarding({
     // OAuth methods start immediately
     if (autoStartOAuthOnSelect && (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot' || choice === 'xai')) {
       // Defer to next tick so state is updated before handleStartOAuth reads it
-      setTimeout(() => handleStartOAuth(method), 0)
+      autoStartTimerRef.current = setTimeout(() => {
+        autoStartTimerRef.current = null
+        handleStartOAuth(method)
+      }, 0)
     }
   }, [autoStartOAuthOnSelect, handleStartOAuth])
 
@@ -757,11 +811,13 @@ export function useOnboarding({
 
   // Cancel OAuth flow
   const handleCancelOAuth = useCallback(async () => {
+    const method = cancelPendingOAuth()
     setIsWaitingForCode(false)
     setState(s => ({ ...s, credentialStatus: 'idle', errorMessage: undefined }))
-    // Clear OAuth state on backend
-    await window.electronAPI.clearClaudeOAuthState()
-  }, [])
+    if (method === 'claude_oauth' || isWaitingForCode) {
+      await window.electronAPI.clearClaudeOAuthState()
+    }
+  }, [cancelPendingOAuth, isWaitingForCode])
 
   // Git Bash handlers (Windows only)
   const handleBrowseGitBash = useCallback(async () => {
@@ -839,6 +895,7 @@ export function useOnboarding({
 
   // Reset onboarding to initial state (used after logout or modal close)
   const reset = useCallback(() => {
+    cancelPendingOAuth()
     setState({
       step: initialStep,
       loginStatus: 'idle',
@@ -853,7 +910,7 @@ export function useOnboarding({
     window.electronAPI.clearClaudeOAuthState().catch(() => {
       // Ignore errors - state may not exist
     })
-  }, [initialStep, initialApiSetupMethod])
+  }, [initialStep, initialApiSetupMethod, cancelPendingOAuth])
 
   return {
     state,

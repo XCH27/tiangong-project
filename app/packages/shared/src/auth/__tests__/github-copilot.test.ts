@@ -7,6 +7,7 @@ import {
   loginGitHubCopilot,
   refreshGitHubCopilotToken,
 } from '../github-copilot';
+import { setOAuthTokenFetcher } from '../oauth-token-fetch';
 
 const DEVICE_CODE_URL = 'https://github.com/login/device/code';
 const ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token';
@@ -17,6 +18,7 @@ const CANCEL_MESSAGE = 'GitHub Copilot login cancelled';
 
 const originalFetch = globalThis.fetch;
 afterEach(() => {
+  setOAuthTokenFetcher(null);
   globalThis.fetch = originalFetch;
 });
 
@@ -182,6 +184,27 @@ describe('refreshGitHubCopilotToken', () => {
 });
 
 describe('loginGitHubCopilot', () => {
+  it('uses the installed host transport through device login, token exchange and model policy', async () => {
+    const calls = installDeviceFlowFetch({
+      polls: [json({ access_token: 'gh-token' })],
+      models: () => json({ data: [{ id: 'claude-x', policy: { state: 'unconfigured' } }] }),
+    });
+    const hostFetch = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new Error('direct fetch must not run'); }) as unknown as typeof fetch;
+    setOAuthTokenFetcher((url, init) => hostFetch(url, init));
+
+    const credentials = await loginGitHubCopilot({ sleepFn: instantSleep });
+
+    expect(credentials.access).toBe(COPILOT_TOKEN);
+    expect(calls.map(call => call.url)).toEqual([
+      DEVICE_CODE_URL,
+      ACCESS_TOKEN_URL,
+      COPILOT_TOKEN_URL,
+      `${COPILOT_BASE}/models`,
+      `${COPILOT_BASE}/models/claude-x/policy`,
+    ]);
+  });
+
   it('completes the device flow and enables only policy-gated models', async () => {
     const calls = installDeviceFlowFetch({
       polls: [json({ error: 'authorization_pending' }), json({ access_token: 'gh-token' })],
