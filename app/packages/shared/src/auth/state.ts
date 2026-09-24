@@ -21,6 +21,7 @@ import {
   type Workspace,
 } from '../config/storage.ts';
 import { refreshClaudeToken, isTokenExpired } from './claude-token.ts';
+import { refreshChatGptTokens, type ChatGptTokens } from './chatgpt-oauth.ts';
 import { debug } from '../utils/debug.ts';
 
 function toLegacyBillingType(
@@ -54,6 +55,14 @@ export interface MigrationInfo {
 export interface TokenResult {
   accessToken: string | null;
   migrationRequired?: MigrationInfo;
+}
+
+/** Complete credential set returned by a ChatGPT/Codex refresh. */
+export interface ChatGptTokenResult {
+  accessToken: string | null;
+  idToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
 }
 
 export interface AuthState {
@@ -95,6 +104,51 @@ export interface SetupNeeds {
 
 // Refreshes must coalesce per connection, never across different accounts.
 const refreshInProgress = new Map<string, Promise<TokenResult>>();
+const chatGptRefreshInProgress = new Map<string, Promise<ChatGptTokenResult>>();
+
+async function performChatGptTokenRefresh(
+  manager: ReturnType<typeof getCredentialManager>,
+  connectionSlug: string,
+  currentRefreshToken: string,
+  refresh: typeof refreshChatGptTokens,
+): Promise<ChatGptTokenResult> {
+  try {
+    const refreshed: ChatGptTokens = await refresh(currentRefreshToken);
+    if (!refreshed.accessToken) throw new Error('ChatGPT token refresh returned no access token');
+    const current = await manager.getLlmOAuth(connectionSlug);
+    if (current?.refreshToken !== currentRefreshToken) {
+      // A newer sign-in or refresh won while this request was in flight.
+      return {
+        accessToken: current?.accessToken ?? null,
+        idToken: current?.idToken,
+        refreshToken: current?.refreshToken,
+        expiresAt: current?.expiresAt,
+      };
+    }
+    // The OAuth server may omit id_token on refresh; retain the identity from
+    // this same connection so account-scoped discovery still has its header.
+    const idToken = refreshed.idToken || current?.idToken;
+    await manager.setLlmOAuth(connectionSlug, {
+      accessToken: refreshed.accessToken,
+      idToken,
+      refreshToken: refreshed.refreshToken,
+      expiresAt: refreshed.expiresAt,
+    });
+    return { ...refreshed, idToken };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    debug('[auth] Failed to refresh ChatGPT OAuth token:', message);
+    // A timeout or provider outage must not sign the user out. Only an
+    // explicit OAuth revocation/invalid-grant response invalidates this token.
+    if (message.includes('invalid_grant') || message.includes('invalid_refresh_token')) {
+      const current = await manager.getLlmOAuth(connectionSlug);
+      if (current?.refreshToken === currentRefreshToken) {
+        await manager.delete({ type: 'llm_oauth', connectionSlug });
+      }
+    }
+    return { accessToken: null };
+  }
+}
 
 /**
  * Perform the actual token refresh (internal, called only when holding mutex)
@@ -243,6 +297,63 @@ export async function getValidClaudeOAuthToken(
   }
 
   return { accessToken: creds.accessToken };
+}
+
+/**
+ * Get a valid ChatGPT OAuth token for the selected connection.
+ *
+ * Model discovery and the Pi runtime use the same encrypted credential owner.
+ * Refreshing here prevents an expired access token from making an account
+ * catalog look empty, while the per-connection mutex avoids rotating a
+ * refresh token twice in parallel.
+ */
+async function readChatGptOAuthToken(
+  connectionSlug: string,
+  manager: ReturnType<typeof getCredentialManager>,
+  refresh: typeof refreshChatGptTokens,
+  forceRefresh: boolean,
+): Promise<ChatGptTokenResult> {
+  const creds = await manager.getLlmOAuth(connectionSlug);
+  if (!creds?.accessToken) return { accessToken: null };
+
+  const pendingRefresh = chatGptRefreshInProgress.get(connectionSlug);
+  if (pendingRefresh) return pendingRefresh;
+
+  if (!forceRefresh && creds.expiresAt && !isTokenExpired(creds.expiresAt)) {
+    return {
+      accessToken: creds.accessToken,
+      idToken: creds.idToken,
+      refreshToken: creds.refreshToken,
+      expiresAt: creds.expiresAt,
+    };
+  }
+  if (!creds.refreshToken) return { accessToken: null };
+
+  const pending = performChatGptTokenRefresh(manager, connectionSlug, creds.refreshToken, refresh);
+  chatGptRefreshInProgress.set(connectionSlug, pending);
+  try {
+    return await pending;
+  } finally {
+    chatGptRefreshInProgress.delete(connectionSlug);
+  }
+}
+
+/** Reuse the selected connection's OAuth credential for account discovery. */
+export async function getValidChatGptOAuthToken(
+  connectionSlug: string,
+  manager: ReturnType<typeof getCredentialManager> = getCredentialManager(),
+  refresh: typeof refreshChatGptTokens = refreshChatGptTokens,
+): Promise<ChatGptTokenResult> {
+  return readChatGptOAuthToken(connectionSlug, manager, refresh, false);
+}
+
+/** Force a refresh after runtime auth failure, sharing discovery's mutex. */
+export async function refreshChatGptOAuthToken(
+  connectionSlug: string,
+  manager: ReturnType<typeof getCredentialManager> = getCredentialManager(),
+  refresh: typeof refreshChatGptTokens = refreshChatGptTokens,
+): Promise<ChatGptTokenResult> {
+  return readChatGptOAuthToken(connectionSlug, manager, refresh, true);
 }
 
 /**

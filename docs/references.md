@@ -451,6 +451,7 @@ list. The current Fleet owner is still Craft's `LlmConnection` plus its backend 
 |---|---|
 | Craft `v0.13.4` (`b2d6c8a`), `packages/shared/src/agent/backend/internal/drivers/{anthropic,pi}.ts`, `packages/server-core/src/model-fetchers/index.ts` | Preserve the live driver → persisted connection models → offline seed chain. Extend this chain, rather than adding a model store. |
 | Installed Pi `@earendil-works/pi-ai`, `dist/models.js:beginProviderRefresh/publishProviderModels/getSupportedThinkingLevels`, `dist/providers/xai.js` | Reuse the installed model/runtime catalog and its exact `thinkingLevelMap` semantics, last-good storage and generation-checked publication. Pi's xAI OAuth loader exists, but its embedded client/scope is not an official third-party registration grant and Craft currently converts most OAuth to API-key auth. |
+| Official Codex `639d2478cc2e`, `codex-rs/codex-api/src/endpoint/models.rs`, `codex-rs/model-provider/src/models_endpoint.rs`, `codex-rs/protocol/src/openai_models.rs:ModelInfo` | The ChatGPT backend's `/models?client_version=...` response is account-scoped and carries display text, context, input modalities and supported reasoning levels. Codex obtains `chatgpt-account-id` from the stored ID-token claims, bounds the response before decoding and publishes only the current auth identity. Fleet reuses the existing Pi adapter for the wire route and keeps allowance/rate-limit data separate; unknown slugs are unavailable until an adapter proves their output limit and transport. |
 | OpenCode `fe3f3a41f`, `packages/opencode/src/provider/provider.ts:fromModelsDevModel` | Separate provider route, model identity, modalities, token limits and request variants. `models.dev` is a useful offline metadata fallback, not proof of account entitlement or a substitute for the provider's live capabilities. |
 | OpenClaw `b4f1fec13ae`, `src/gateway/server-methods/models.ts:models.list`, `src/agents/prepared-model-catalog-worker.ts` | Serve an auth-scoped, prepared catalog; reject superseded runtime generations. Do not import its gateway and account authorities into Craft. |
 | ZCode `872ad96`, `packages/provider/src/account-provider-service.ts:AccountProviderService`, `packages/ui/src/hooks/useModelSelectionView.ts` | Publish one revisioned provider snapshot; retain the last good view on refresh failure and discard late account results. Do not copy ZCode's provider store. |
@@ -474,6 +475,12 @@ is API-key scoped. Grok Build's [documented ACP interface](https://docs.x.ai/bui
 is the supported local integration candidate for a logged-in subscription; it is a separate runtime
 route from the xAI inference API key. Grok's [Settings → Usage](https://docs.x.ai/grok/faq)
 is the documented allowance view while no stable public personal meter contract is verified.
+
+For ID-only API catalogs, the [OpenAI Models API](https://developers.openai.com/api/reference/resources/models)
+and [DeepSeek List Models API](https://api-docs.deepseek.com/api/list-models/) expose account-visible
+model IDs but do not provide the complete effort/context/modality metadata needed by the chat picker.
+Fleet therefore treats those endpoints as entitlement evidence only and combines them with the
+installed Pi adapter metadata; it does not infer image, video or subscription allowance from an ID.
 
 ### Subscription allowance comparison
 

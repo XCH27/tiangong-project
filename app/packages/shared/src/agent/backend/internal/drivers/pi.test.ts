@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { piDriver, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
+import { piDriver, matchCodexAccountModels, matchIdOnlyAccountModels, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
 import { setOAuthTokenFetcher } from '../../../../auth/oauth-token-fetch.ts';
 
 describe('Copilot account model catalog', () => {
@@ -109,5 +109,167 @@ describe('piDriver.buildRuntime custom endpoint models', () => {
       { id: 'text-only-model', supportsImages: false },
       'plain-model',
     ]);
+  });
+});
+
+describe('ID-only API account catalogs', () => {
+  it('intersects account membership with Pi-executable models without inventing capabilities', () => {
+    const known = { id: 'pi/gpt-known', name: 'Known', shortName: 'Known', description: '', provider: 'pi' as const,
+      contextWindow: 200_000, supportsImages: false, catalogSource: 'sdk' as const };
+    const models = matchIdOnlyAccountModels({ data: [
+      { id: 'image-generator', object: 'model' },
+      { id: 'gpt-known', object: 'model' },
+      { id: 'gpt-known', object: 'model' },
+      { id: 'other-object', object: 'fine_tune' },
+    ] }, [known]);
+    expect(models).toEqual([known]);
+    expect(() => matchIdOnlyAccountModels({ models: [] }, [known])).toThrow('invalid model list');
+  });
+
+  it('uses the host transport for a DeepSeek key and retains Pi metadata', async () => {
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url, init) => {
+      urls.push(url);
+      expect(init.headers).toEqual({ Authorization: 'Bearer test-key', Accept: 'application/json' });
+      return new Response(JSON.stringify({ object: 'list', data: [
+        { id: 'deepseek-v4-pro', object: 'model' },
+        { id: 'deepseek-future', object: 'model' },
+      ] }));
+    });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'deepseek-api', providerType: 'pi', piAuthProvider: 'deepseek', authType: 'api_key' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(urls).toEqual(['https://api.deepseek.com/models']);
+      expect(result.source).toBe('provider');
+      expect(result.models.map(model => model.id)).toEqual(['pi/deepseek-v4-pro']);
+      expect(result.models[0]?.catalogSource).toBe('sdk');
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('uses the official OpenAI models endpoint for an API key', async () => {
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url, init) => {
+      urls.push(url);
+      expect(init.headers).toEqual({ Authorization: 'Bearer test-key', Accept: 'application/json' });
+      return new Response(JSON.stringify({ data: [
+        { id: 'gpt-5.6-sol', object: 'model' },
+        { id: 'text-embedding-3-large', object: 'model' },
+      ] }));
+    });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'openai-api', providerType: 'pi', piAuthProvider: 'openai', authType: 'api_key',
+          baseUrl: 'https://api.openai.com/v1/' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(urls).toEqual(['https://api.openai.com/v1/models']);
+      expect(result.source).toBe('provider');
+      expect(result.models.map(model => model.id)).toEqual(['pi/gpt-5.6-sol']);
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('does not send a key to an arbitrary base URL', async () => {
+    setOAuthTokenFetcher(async () => { throw new Error('remote discovery must not run'); });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'other', providerType: 'pi', piAuthProvider: 'openai', authType: 'api_key',
+          baseUrl: 'https://other.example/v1' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(result.source).toBe('sdk');
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('rejects an oversized account catalog before parsing it', async () => {
+    setOAuthTokenFetcher(async () => new Response('{}', {
+      headers: { 'content-length': String(2 * 1024 * 1024 + 1) },
+    }));
+    try {
+      await expect(piDriver.fetchModels!({
+        connection: { slug: 'openai-api', providerType: 'pi', piAuthProvider: 'openai', authType: 'api_key' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      })).rejects.toThrow('response limit');
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+});
+
+describe('Codex subscription account catalogs', () => {
+  it('merges official account capabilities with Pi metadata and filters unknown slugs', () => {
+    const known = {
+      id: 'pi/gpt-known', name: 'Bundled Name', shortName: 'Bundled', description: '', provider: 'pi' as const,
+      contextWindow: 128_000, maxOutputTokens: 16_000, reasoningEfforts: ['low'] as ('low' | 'medium' | 'high' | 'xhigh' | 'max')[],
+    };
+    const models = matchCodexAccountModels({ models: [
+      { slug: 'gpt-known', display_name: 'Account Name', visibility: 'list', description: 'Account description',
+        context_window: 256_000, supported_reasoning_levels: [{ effort: 'low', description: 'Low' }, { effort: 'high', description: 'High' }],
+        input_modalities: ['text', 'image'] },
+      { slug: 'future-codex', display_name: 'Future', visibility: 'list' },
+      { slug: 'hidden', display_name: 'Hidden', visibility: 'hide' },
+    ] }, [known]);
+    expect(models).toEqual([expect.objectContaining({
+      id: 'pi/gpt-known', name: 'Account Name', contextWindow: 256_000,
+      reasoningEfforts: ['low', 'high'], supportsThinking: true, supportsImages: true,
+      catalogSource: 'provider',
+    })]);
+  });
+
+  it('does not use the Codex override ceiling as the active context or hide an unselectable effort', () => {
+    const known = { id: 'pi/test', name: 'Test', shortName: 'Test', description: '', provider: 'pi' as const,
+      contextWindow: 128_000, maxOutputTokens: 16_000 };
+    const [model] = matchCodexAccountModels({ models: [{
+      slug: 'test', visibility: 'list', max_context_window: 1_000_000,
+      supported_reasoning_levels: [{ effort: 'ultra' }],
+    }] }, [known]);
+    expect(model?.contextWindow).toBe(128_000);
+    expect(model?.supportsThinking).toBe(true);
+    expect(model?.reasoningEfforts).toEqual([]);
+  });
+
+  it('uses the Codex account header and does not expose subscription pricing', async () => {
+    const payload = { header: { alg: 'none' }, payload: { 'https://api.openai.com/auth': { chatgpt_account_id: 'acc_test' } } };
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const idToken = `${encode(payload.header)}.${encode(payload.payload)}.signature`;
+    const token = `${encode(payload.header)}.${encode({ sub: 'access-token' })}.signature`;
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url, init) => {
+      urls.push(url);
+      expect(init.headers).toEqual({
+        Authorization: `Bearer ${token}`,
+        'chatgpt-account-id': 'acc_test',
+        originator: 'pi',
+        Accept: 'application/json',
+      });
+      return new Response(JSON.stringify({ models: [{
+        slug: 'gpt-6-sol', display_name: 'GPT-6 Sol', visibility: 'list', context_window: 272_000,
+        supported_reasoning_levels: [{ effort: 'high', description: 'High' }], input_modalities: ['text', 'image'],
+      }] }));
+    });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'chatgpt', providerType: 'pi', piAuthProvider: 'openai-codex', authType: 'oauth' } as any,
+        credentials: { oauthAccessToken: token, oauthIdToken: idToken }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(urls).toEqual(['https://chatgpt.com/backend-api/codex/models?client_version=0.13.4']);
+      expect(result.source).toBe('provider');
+      expect(result.models[0]).toMatchObject({ id: 'pi/gpt-6-sol', contextWindow: 272_000, supportsImages: true, catalogSource: 'provider' });
+      expect(result.models[0]?.pricingPerMillion).toBeUndefined();
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
   });
 });

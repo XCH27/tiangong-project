@@ -4,6 +4,223 @@ import { getAllPiModels, getPiModelsForAuthProvider } from '../../../../config/m
 import { getPiProviderBaseUrl } from '../../../../config/models-pi.ts';
 import { fetchXaiApiModels, fetchXaiSubscriptionModels, XAI_SUBSCRIPTION_BASE } from './xai-models.ts';
 import { getValidXaiSubscriptionToken } from '../../../../auth/xai-subscription.ts';
+import { fetchOAuthToken } from '../../../../auth/oauth-token-fetch.ts';
+
+// These official endpoints return account-visible IDs, not per-model context,
+// effort or modality metadata. Pi remains the execution-capability source.
+const ID_ONLY_ACCOUNT_CATALOGS = {
+  openai: { baseUrl: 'https://api.openai.com/v1', modelsUrl: 'https://api.openai.com/v1/models' },
+  deepseek: { baseUrl: 'https://api.deepseek.com', modelsUrl: 'https://api.deepseek.com/models' },
+} as const;
+type IdOnlyAccountProvider = keyof typeof ID_ONLY_ACCOUNT_CATALOGS;
+
+const CODEX_SUBSCRIPTION_BASE = 'https://chatgpt.com/backend-api/codex';
+const CODEX_CLIENT_VERSION = '0.13.4';
+const MAX_MODEL_CATALOG_BYTES = 2 * 1024 * 1024;
+const CODEX_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+async function readBoundedModelJson(response: Response, provider: string): Promise<unknown> {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (declaredLength > MAX_MODEL_CATALOG_BYTES) throw new Error(`${provider} model catalog exceeded the response limit`);
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error(`${provider} returned an empty model catalog`);
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_MODEL_CATALOG_BYTES) {
+        await reader.cancel();
+        throw new Error(`${provider} model catalog exceeded the response limit`);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`${provider} returned invalid model JSON`);
+  }
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function extractCodexAccountId(...tokens: Array<string | undefined>): string | null {
+  for (const token of tokens) {
+    if (!token) continue;
+    const accountId = extractCodexAccountIdFromToken(token);
+    if (accountId) return accountId;
+  }
+  return null;
+}
+
+function extractCodexAccountIdFromToken(token: string): string | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const normalized = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(normalized)) as Record<string, unknown>;
+    const auth = jsonRecord(payload['https://api.openai.com/auth']);
+    return typeof auth?.chatgpt_account_id === 'string' && auth.chatgpt_account_id.length > 0
+      ? auth.chatgpt_account_id
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Merge the authenticated Codex catalog with Pi's executable metadata. */
+export function matchCodexAccountModels(
+  payload: unknown,
+  sdkModels: readonly ModelDefinition[],
+): ModelDefinition[] {
+  const rows = jsonRecord(payload)?.models;
+  if (!Array.isArray(rows)) throw new Error('Codex returned an invalid model list');
+  const native = new Map(sdkModels.map(model => [model.id.replace(/^pi\//, ''), model]));
+  const seen = new Set<string>();
+  const result: ModelDefinition[] = [];
+
+  for (const value of rows) {
+    const row = jsonRecord(value);
+    if (!row) continue;
+    const id = typeof row?.slug === 'string' ? row.slug.trim() : '';
+    if (!id || seen.has(id)) continue;
+    if (row?.visibility !== undefined && row.visibility !== 'list') continue;
+    const bundled = native.get(id);
+    // The current Pi adapter supplies the wire protocol and required output
+    // limits. A new server slug is not runnable until Pi knows that route.
+    if (!bundled) continue;
+
+    const effortRows = Array.isArray(row.supported_reasoning_levels) ? row.supported_reasoning_levels : undefined;
+    const effortValues = effortRows
+      ? effortRows.flatMap(item => {
+        const effort = jsonRecord(item)?.effort;
+        return typeof effort === 'string' ? [effort] : [];
+      })
+      : undefined;
+    const reasoningEfforts = effortValues
+      ? CODEX_EFFORTS.filter(level => effortValues.includes(level))
+      : bundled.reasoningEfforts;
+    const inputModalities = Array.isArray(row.input_modalities)
+      ? row.input_modalities.filter((item): item is string => typeof item === 'string')
+      : undefined;
+    // max_context_window is the ceiling for a user override, not the active
+    // context size. Only context_window may replace the Pi adapter's value.
+    const contextWindow = positiveInteger(row.context_window) ?? bundled.contextWindow;
+
+    // Pi's bundled cost table is an API estimate. A ChatGPT subscription is
+    // allowance-based, so never carry those API prices into the account list.
+    const { pricingPerMillion: _pricingPerMillion, ...withoutSubscriptionPricing } = bundled;
+
+    seen.add(id);
+    result.push({
+      ...withoutSubscriptionPricing,
+      id: `pi/${id}`,
+      name: typeof row.display_name === 'string' && row.display_name.trim() ? row.display_name.trim() : bundled.name,
+      shortName: typeof row.display_name === 'string' && row.display_name.trim() ? row.display_name.trim() : bundled.shortName,
+      description: typeof row.description === 'string' ? row.description : bundled.description,
+      ...(contextWindow ? { contextWindow } : {}),
+      ...(effortRows ? {
+        reasoningEfforts: reasoningEfforts ?? [],
+        supportsThinking: effortValues?.some(level => level !== 'none' && level !== 'off') ?? false,
+        reasoningDisableSupported: effortValues?.includes('none') || effortValues?.includes('off') || false,
+      } : {}),
+      ...(inputModalities ? { supportsImages: inputModalities.includes('image') } : {}),
+      catalogSource: 'provider',
+    });
+  }
+  return result;
+}
+
+async function fetchCodexSubscriptionModels(
+  accessToken: string,
+  idToken: string | undefined,
+  timeoutMs: number,
+): Promise<ModelDefinition[]> {
+  if (!accessToken) throw new Error('ChatGPT access token is required for model discovery');
+  // Codex derives the workspace header from the stored ID token. The access
+  // token is retained as a fallback for older OAuth payloads that duplicated
+  // the account claim there.
+  const accountId = extractCodexAccountId(idToken, accessToken);
+  if (!accountId) throw new Error('ChatGPT access token has no account identity for model discovery');
+
+  const url = `${CODEX_SUBSCRIPTION_BASE}/models?client_version=${encodeURIComponent(CODEX_CLIENT_VERSION)}`;
+  const response = await fetchOAuthToken(url, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'chatgpt-account-id': accountId,
+      originator: 'pi',
+      Accept: 'application/json',
+    },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`Codex model discovery failed (HTTP ${response.status})`);
+  const payload = await readBoundedModelJson(response, 'Codex');
+  const models = matchCodexAccountModels(payload, getPiModelsForAuthProvider('openai-codex'));
+  if (!models.length) throw new Error('Codex returned no models executable by the installed Pi adapter');
+  return models;
+}
+
+function hasOfficialCatalogEndpoint(connection: { baseUrl?: string; customEndpoint?: unknown }, provider: IdOnlyAccountProvider): boolean {
+  if (connection.customEndpoint) return false;
+  const configured = connection.baseUrl?.trim().replace(/\/+$/, '');
+  return !configured || configured === ID_ONLY_ACCOUNT_CATALOGS[provider].baseUrl;
+}
+
+/** Keep only account-visible models for which the installed Pi adapter can execute. */
+export function matchIdOnlyAccountModels(
+  payload: unknown,
+  sdkModels: readonly ModelDefinition[],
+): ModelDefinition[] {
+  if (!payload || typeof payload !== 'object' || !('data' in payload) || !Array.isArray(payload.data)) {
+    throw new Error('Provider returned an invalid model list');
+  }
+  const native = new Map(sdkModels.map(model => [model.id.replace(/^pi\//, ''), model]));
+  const seen = new Set<string>();
+  const models: ModelDefinition[] = [];
+  for (const row of payload.data) {
+    if (!row || typeof row !== 'object') continue;
+    const id = typeof row.id === 'string' ? row.id.trim() : '';
+    if (!id || seen.has(id) || (row.object !== undefined && row.object !== 'model')) continue;
+    seen.add(id);
+    const supported = native.get(id);
+    if (supported) models.push(supported);
+  }
+  return models;
+}
+
+async function fetchIdOnlyAccountModels(
+  provider: IdOnlyAccountProvider,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<ModelDefinition[]> {
+  if (!apiKey) throw new Error(`${provider} API key is required for model discovery`);
+  const response = await fetchOAuthToken(ID_ONLY_ACCOUNT_CATALOGS[provider].modelsUrl, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) throw new Error(`${provider} model discovery failed (HTTP ${response.status})`);
+  const payload = await readBoundedModelJson(response, provider);
+  const models = matchIdOnlyAccountModels(payload, getPiModelsForAuthProvider(provider));
+  if (!models.length) throw new Error(`${provider} returned no models executable by the installed Pi adapter`);
+  return models;
+}
 
 // ── Copilot model types ────────────────────────────────────────────────
 type RawCopilotModel = {
@@ -321,6 +538,28 @@ export const piDriver: ProviderDriver = {
     }
     if (connection.piAuthProvider === 'xai' && connection.authType === 'oauth') {
       const models = await fetchXaiSubscriptionModels(await getValidXaiSubscriptionToken(connection.slug), timeoutMs);
+      return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
+    }
+
+    // ChatGPT subscriptions expose an account-scoped Codex catalog with
+    // capability metadata. Keep the OAuth account identity in the request and
+    // merge the response into Pi's existing openai-codex adapter.
+    if (connection.piAuthProvider === 'openai-codex' && connection.authType === 'oauth') {
+      const models = await fetchCodexSubscriptionModels(
+        credentials.oauthAccessToken ?? '',
+        credentials.oauthIdToken,
+        timeoutMs,
+      );
+      return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
+    }
+
+    // OpenAI and DeepSeek expose authenticated ID-only catalogs. Treat those
+    // IDs as membership, while keeping Pi's own metadata and wire adapters.
+    // Custom endpoints retain their explicit user-configured model list.
+    const accountProvider = connection.piAuthProvider;
+    if (connection.authType === 'api_key' && (accountProvider === 'openai' || accountProvider === 'deepseek')
+      && hasOfficialCatalogEndpoint(connection, accountProvider)) {
+      const models = await fetchIdOnlyAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
       return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
     }
 

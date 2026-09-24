@@ -110,6 +110,28 @@ backend checks cancellation before saving exchanged credentials. This correction
 automatic model routing, a new
 account store, or a second credential owner.
 
+OpenAI and DeepSeek API-key connections now use their official authenticated model-list endpoints
+when the endpoint is the provider default. Those responses are membership-only IDs: Fleet intersects
+them with the installed Pi model adapters and keeps Pi's native context, request protocol and
+thinking metadata. An ID that is not in the installed adapter catalog is treated as unavailable
+and never surfaced as runnable; if every returned ID is unknown, the live refresh fails closed and
+the existing saved catalog remains. Custom endpoints keep their explicit
+model lists. The official APIs do not expose a complete per-model effort, context or media contract,
+so the UI must leave those fields unknown rather than copying another provider's values. This same
+boundary is why a live API list may be shorter than the provider's marketing catalog.
+
+ChatGPT/Codex OAuth connections use the official account-scoped `GET /models?client_version=...`
+catalog on `chatgpt.com/backend-api/codex`. The request carries the account identity from the stored
+ID token and the bearer access token through the existing host transport. Directory discovery and the
+running Pi agent share one per-connection token refresh; a temporary network error preserves the
+stored credential, while an explicit invalid grant clears only that connection. Fleet merges returned display,
+description, context, input-modality and reasoning-level fields with the installed Pi Codex adapter;
+the installed adapter remains the proof of the runnable wire route and output limit. Hidden/non-list
+rows and unknown slugs are excluded, so a provider can advertise a newer model without making Fleet
+send an unverified request. Subscription model rows do not inherit API token prices: allowance and
+rate-limit data remain a separate, runtime-owned account surface. If the live response is unavailable,
+the existing refresh fallback retains the last saved catalog; it never claims that saved data is current.
+
 ## First proof
 
 After the R0 baseline exit, complete TE1 as observation-only: normalize provider usage once, report cache/prefix facts and

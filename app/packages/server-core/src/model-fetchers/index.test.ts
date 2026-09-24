@@ -124,6 +124,63 @@ describe('model refresh provenance', () => {
     }
   })
 
+  it('refreshes an official API catalog even for an older three-tier connection', async () => {
+    let connection: LlmConnection = {
+      slug: 'openai', name: 'OpenAI', providerType: 'pi', authType: 'api_key',
+      piAuthProvider: 'openai', baseUrl: 'https://api.openai.com/v1',
+      modelSelectionMode: 'userDefined3Tier', createdAt: 1,
+      defaultModel: 'pi/old', models: [model('pi/old')],
+    }
+    const fetcher = { refreshIntervalMs: 0, fetchModels: async () => ({
+      models: [model('pi/account-model')], source: 'provider' as const,
+    }) }
+    const service = new ModelRefreshService(
+      { pi: fetcher, anthropic: fetcher } as ModelFetcherMap,
+      async () => ({ apiKey: 'test-key' }),
+      {
+        getConnection: () => connection,
+        getConnections: () => [connection],
+        updateConnection: (_slug, updates) => { connection = { ...connection, ...updates }; return true },
+        fallbackModels: () => [],
+      },
+    )
+    try {
+      expect((await service.refreshNow('openai')).source).toBe('provider')
+      expect(connection.models).toEqual([model('pi/account-model')])
+      expect(connection.defaultModel).toBe('pi/account-model')
+    } finally {
+      service.stopAll()
+    }
+  })
+
+  it('refreshes a ChatGPT Codex catalog even for an older three-tier connection', async () => {
+    let connection: LlmConnection = {
+      slug: 'chatgpt', name: 'ChatGPT', providerType: 'pi', authType: 'oauth',
+      piAuthProvider: 'openai-codex', modelSelectionMode: 'userDefined3Tier', createdAt: 1,
+      defaultModel: 'pi/old', models: [model('pi/old')],
+    }
+    const fetcher = { refreshIntervalMs: 0, fetchModels: async () => ({
+      models: [model('pi/account-model')], source: 'provider' as const,
+    }) }
+    const service = new ModelRefreshService(
+      { pi: fetcher, anthropic: fetcher } as ModelFetcherMap,
+      async () => ({ oauthAccessToken: 'access-token', oauthIdToken: 'id-token' }),
+      {
+        getConnection: () => connection,
+        getConnections: () => [connection],
+        updateConnection: (_slug, updates) => { connection = { ...connection, ...updates }; return true },
+        fallbackModels: () => [],
+      },
+    )
+    try {
+      expect((await service.refreshNow('chatgpt')).source).toBe('provider')
+      expect(connection.models).toEqual([model('pi/account-model')])
+      expect(connection.defaultModel).toBe('pi/account-model')
+    } finally {
+      service.stopAll()
+    }
+  })
+
   it('distinguishes a live account response from bundled and stale models', async () => {
     let connection: LlmConnection = {
       slug: 'account', name: 'Account', providerType: 'pi', authType: 'oauth',

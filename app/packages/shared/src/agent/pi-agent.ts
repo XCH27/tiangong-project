@@ -53,8 +53,8 @@ import type { ProjectPromptContext } from '../projects/types.ts';
 // Credential manager for token storage
 import { getCredentialManager } from '../credentials/manager.ts';
 
-// ChatGPT OAuth token refresh (used when Pi routes ChatGPT auth)
-import { refreshChatGptTokens } from '../auth/chatgpt-oauth.ts';
+// ChatGPT OAuth refresh shares the connection-level credential owner with model discovery.
+import { refreshChatGptOAuthToken } from '../auth/state.ts';
 
 // Session-scoped tool callbacks (for SubmitPlan, source auth, etc.)
 import {
@@ -843,15 +843,12 @@ export class PiAgent extends BaseAgent {
             expiresAt: stored.expiresAt ?? 0,
           }, new AbortController().signal);
           await credentialManager.setLlmOAuth(slug, refreshed);
+        } else if (piAuthProvider === 'openai-codex') {
+          // ChatGPT Plus: share discovery's mutex and account-switch guard.
+          const refreshed = await refreshChatGptOAuthToken(slug, credentialManager);
+          if (!refreshed.accessToken) throw new Error('ChatGPT token refresh failed; reconnect if the account was revoked');
         } else {
-          // ChatGPT Plus: use existing refresh utility
-          const newTokens = await refreshChatGptTokens(stored.refreshToken);
-          await credentialManager.setLlmOAuth(slug, {
-            accessToken: newTokens.accessToken,
-            idToken: newTokens.idToken,
-            refreshToken: newTokens.refreshToken,
-            expiresAt: newTokens.expiresAt,
-          });
+          throw new Error(`No OAuth refresh adapter for Pi provider ${piAuthProvider ?? 'unknown'}`);
         }
         this.debug('Token refresh successful');
 

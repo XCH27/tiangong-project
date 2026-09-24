@@ -100,7 +100,7 @@ import { initializeBackendHostRuntime, setXaiCatalogFetcher } from '@craft-agent
 import { setPowerShellValidatorRoot } from '@craft-agent/shared/agent'
 import { handleDeepLink } from './deep-link'
 import { BrowserPaneManager } from './browser-pane-manager'
-import { OAuthFlowStore, getValidClaudeOAuthToken, setOAuthTokenFetcher } from '@craft-agent/shared/auth'
+import { OAuthFlowStore, getValidClaudeOAuthToken, getValidChatGptOAuthToken, setOAuthTokenFetcher } from '@craft-agent/shared/auth'
 import { registerThumbnailScheme, registerThumbnailHandler } from './thumbnail-protocol'
 import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog, autoUpdateLog } from './logger'
 import { setPerfEnabled, enableDebug } from '@craft-agent/shared/utils'
@@ -722,11 +722,20 @@ app.whenReady().then(async () => {
           const claudeOAuthToken = connection?.providerType === 'anthropic' && connection.authType === 'oauth'
             ? await getValidClaudeOAuthToken(slug)
             : null
+          const chatGptOAuthToken = connection?.providerType === 'pi'
+            && connection.piAuthProvider === 'openai-codex'
+            && connection.authType === 'oauth'
+            ? await getValidChatGptOAuthToken(slug)
+            : null
           return {
             apiKey: apiKey ?? undefined,
-            oauthAccessToken: claudeOAuthToken ? claudeOAuthToken.accessToken ?? undefined : oauth?.accessToken,
-            oauthRefreshToken: oauth?.refreshToken,
-            oauthIdToken: oauth?.idToken,
+            oauthAccessToken: claudeOAuthToken
+              ? claudeOAuthToken.accessToken ?? undefined
+              : chatGptOAuthToken
+                ? chatGptOAuthToken.accessToken ?? undefined
+                : oauth?.accessToken,
+            oauthRefreshToken: chatGptOAuthToken?.refreshToken ?? oauth?.refreshToken,
+            oauthIdToken: chatGptOAuthToken?.idToken ?? oauth?.idToken,
           }
         }),
         onClientConnected: ({ clientId, webContentsId }) => {

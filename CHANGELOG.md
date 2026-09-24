@@ -5,6 +5,20 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+### 2026-09-24 — account-scoped API model discovery
+
+- OpenAI and DeepSeek API-key connections now query their official model-list endpoints and replace
+  stale legacy model tiers with the account-visible intersection that the installed Pi adapters can
+  actually execute. The existing provider → saved → SDK fallback remains in place; unknown API IDs
+  do not receive invented context, effort or media metadata, and custom endpoints are unchanged.
+- ChatGPT/Codex OAuth connections now query the official account-scoped Codex model catalog through
+  the stored ID-token account identity, merge its context/modality/reasoning metadata with Pi's
+  executable adapter, and keep subscription rows free of API token prices. Unknown slugs remain
+  unavailable until an installed route proves their transport and output limit; quota data stays
+  under the runtime-owned allowance path.
+- ChatGPT runtime and catalog refresh now share connection-scoped token rotation. A temporary
+  network failure no longer deletes the credential; only an explicit invalid grant does.
+
 ### 2026-09-24 — subscription image capability boundary
 
 - Model Settings now recognizes the documented Codex image route beside an authenticated ChatGPT
