@@ -17,6 +17,8 @@ async function makeRegistry(): Promise<ModelRegistry> {
 describe('authenticated account metadata in Pi runtime', () => {
   it('never applies native overrides to arbitrary or custom endpoints', () => {
     expect(accountMetadataProvider({ provider: 'groq', authType: 'api_key' })).toBe('groq');
+    expect(accountMetadataProvider({ provider: 'google', authType: 'api_key',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/' })).toBe('google');
     expect(accountMetadataProvider({ provider: 'mistral', authType: 'api_key',
       baseUrl: 'https://api.mistral.ai/' })).toBe('mistral');
     expect(accountMetadataProvider({ provider: 'mistral', authType: 'api_key',
@@ -24,11 +26,13 @@ describe('authenticated account metadata in Pi runtime', () => {
     expect(accountMetadataProvider({ provider: 'openai-codex', authType: 'oauth' })).toBe('openai-codex');
     expect(accountMetadataProvider({ provider: 'groq', authType: 'api_key',
       baseUrl: 'https://example.test/openai/v1' })).toBeNull();
+    expect(accountMetadataProvider({ provider: 'google', authType: 'api_key',
+      baseUrl: 'https://example.test/v1beta' })).toBeNull();
     expect(accountMetadataProvider({ provider: 'openai-codex', authType: 'api_key' })).toBeNull();
     expect(accountMetadataProvider({ provider: 'mistral', authType: 'api_key',
       customEndpoint: { api: 'openai-completions' } })).toBeNull();
   });
-  for (const provider of ['groq', 'mistral', 'openai-codex'] as const) {
+  for (const provider of ['google', 'groq', 'mistral', 'openai-codex'] as const) {
     it(`refines ${provider} limits without changing its native request route`, async () => {
       const registry = await makeRegistry();
       const native = getModels(provider)[0]!;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { piDriver, matchCodexAccountModels, matchApiAccountModels, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
+import { piDriver, matchCodexAccountModels, matchApiAccountModels, matchGoogleAccountModels, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
 import { setOAuthTokenFetcher } from '../../../../auth/oauth-token-fetch.ts';
 import { toPiRuntimeModelEntries } from '../driver-types.ts';
 
@@ -126,6 +126,49 @@ describe('piDriver.buildRuntime custom endpoint models', () => {
 });
 
 describe('Official API account catalogs', () => {
+  it('uses Google resource names and generation methods without guessing unknown routes', () => {
+    const known = { id: 'pi/gemini-2.5-flash', name: 'Bundled Gemini', shortName: 'Gemini',
+      description: '', provider: 'pi' as const, contextWindow: 100_000, maxOutputTokens: 8_192 };
+    expect(matchGoogleAccountModels([
+      { name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash',
+        supportedGenerationMethods: ['generateContent'], inputTokenLimit: 1_048_576, outputTokenLimit: 65_536 },
+      { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+      { name: 'models/future-gemini', supportedGenerationMethods: ['generateContent'] },
+    ], [known])).toEqual([expect.objectContaining({
+      id: 'pi/gemini-2.5-flash', name: 'Gemini 2.5 Flash',
+      contextWindow: 1_048_576, maxOutputTokens: 65_536, catalogSource: 'provider',
+    })]);
+    expect(() => matchGoogleAccountModels({ data: [] }, [known])).toThrow('invalid model list');
+  });
+
+  it('pages the official Google catalog using the entered key in a header', async () => {
+    const calls: Array<{ url: string; key: string | null }> = [];
+    setOAuthTokenFetcher(async (url, init) => {
+      calls.push({ url, key: new Headers(init.headers).get('x-goog-api-key') });
+      return new Response(JSON.stringify(calls.length === 1
+        ? { models: [{ name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] }], nextPageToken: 'next-page' }
+        : { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'],
+          inputTokenLimit: 1_048_576, outputTokenLimit: 65_536 }] }));
+    });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'google-api', providerType: 'pi', piAuthProvider: 'google', authType: 'api_key' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(calls).toEqual([
+        { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', key: 'test-key' },
+        { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&pageToken=next-page', key: 'test-key' },
+      ]);
+      expect(result.source).toBe('provider');
+      expect(result.models).toEqual([expect.objectContaining({
+        id: 'pi/gemini-2.5-flash', contextWindow: 1_048_576, maxOutputTokens: 65_536,
+      })]);
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
   it('intersects account membership with Pi-executable models without inventing capabilities', () => {
     const known = { id: 'pi/gpt-known', name: 'Known', shortName: 'Known', description: '', provider: 'pi' as const,
       contextWindow: 200_000, supportsImages: false, catalogSource: 'sdk' as const };
@@ -343,6 +386,26 @@ describe('Codex subscription account catalogs', () => {
 });
 
 describe('stored account connection validation', () => {
+  it('checks Google API access with its account catalog, not credential presence', async () => {
+    setOAuthTokenFetcher(async (url, init) => {
+      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100');
+      expect(new Headers(init.headers).get('x-goog-api-key')).toBe('account-key');
+      return new Response(JSON.stringify({ models: [{ name: 'models/gemini-2.5-flash',
+        supportedGenerationMethods: ['generateContent'] }] }));
+    });
+    try {
+      expect(await piDriver.validateStoredConnection!({
+        slug: 'google-account',
+        connection: { slug: 'google-account', piAuthProvider: 'google', providerType: 'pi',
+          authType: 'api_key', defaultModel: 'pi/gemini-2.5-flash' } as any,
+        credentialManager: { getLlmApiKey: async () => 'account-key' } as any,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      })).toEqual({ success: true, shouldRefreshModels: true });
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
   it('checks the live API account and refreshes a stale selected model', async () => {
     const urls: string[] = [];
     setOAuthTokenFetcher(async (url, init) => {

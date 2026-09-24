@@ -11,11 +11,16 @@ import { fetchOAuthToken } from '../../../../auth/oauth-token-fetch.ts';
 // Pi remains the execution transport and fallback capability source.
 const API_ACCOUNT_CATALOGS = {
   openai: { baseUrl: 'https://api.openai.com/v1', modelsUrl: 'https://api.openai.com/v1/models' },
+  google: { baseUrl: 'https://generativelanguage.googleapis.com/v1beta', modelsUrl: 'https://generativelanguage.googleapis.com/v1beta/models' },
   deepseek: { baseUrl: 'https://api.deepseek.com', modelsUrl: 'https://api.deepseek.com/models' },
   groq: { baseUrl: 'https://api.groq.com/openai/v1', modelsUrl: 'https://api.groq.com/openai/v1/models' },
   mistral: { baseUrl: 'https://api.mistral.ai', modelsUrl: 'https://api.mistral.ai/v1/models' },
 } as const;
 type ApiAccountProvider = keyof typeof API_ACCOUNT_CATALOGS;
+
+function isApiAccountProvider(value: string | undefined): value is ApiAccountProvider {
+  return !!value && Object.hasOwn(API_ACCOUNT_CATALOGS, value);
+}
 
 const CODEX_SUBSCRIPTION_BASE = 'https://chatgpt.com/backend-api/codex';
 const CODEX_CLIENT_VERSION = '0.13.4';
@@ -225,12 +230,78 @@ export function matchApiAccountModels(
   return models;
 }
 
+/** Google lists resource names and generation methods, not OpenAI-style model rows. */
+export function matchGoogleAccountModels(
+  rows: unknown,
+  sdkModels: readonly ModelDefinition[],
+): ModelDefinition[] {
+  if (!Array.isArray(rows)) throw new Error('Google returned an invalid model list');
+  const native = new Map(sdkModels.map(model => [model.id.replace(/^pi\//, ''), model]));
+  const seen = new Set<string>();
+  const models: ModelDefinition[] = [];
+  for (const value of rows) {
+    const row = jsonRecord(value);
+    if (!row) continue;
+    const resource = row.name;
+    if (typeof resource !== 'string' || !resource.startsWith('models/')) continue;
+    const id = resource.slice('models/'.length);
+    if (!id || seen.has(id) || !Array.isArray(row.supportedGenerationMethods)
+      || !row.supportedGenerationMethods.includes('generateContent')) continue;
+    seen.add(id);
+    const supported = native.get(id);
+    if (!supported) continue;
+    const contextWindow = positiveInteger(row.inputTokenLimit);
+    const maxOutputTokens = positiveInteger(row.outputTokenLimit);
+    const name = typeof row.displayName === 'string' && row.displayName.trim()
+      ? row.displayName.trim() : supported.name;
+    models.push({
+      ...supported,
+      name,
+      ...(contextWindow ? { contextWindow } : {}),
+      ...(maxOutputTokens ? { maxOutputTokens } : {}),
+      catalogSource: 'provider',
+    });
+  }
+  return models;
+}
+
+async function fetchGoogleAccountModels(apiKey: string, timeoutMs: number): Promise<ModelDefinition[]> {
+  const rows: unknown[] = [];
+  const seenTokens = new Set<string>();
+  let pageToken: string | undefined;
+  for (let page = 0; page < 20; page++) {
+    const url = new URL(API_ACCOUNT_CATALOGS.google.modelsUrl);
+    url.searchParams.set('pageSize', '100');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+    const response = await fetchOAuthToken(url.toString(), {
+      method: 'GET',
+      headers: { 'x-goog-api-key': apiKey, Accept: 'application/json' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) throw new Error(`Google model discovery failed (HTTP ${response.status})`);
+    const payload = jsonRecord(await readBoundedModelJson(response, 'Google'));
+    if (!payload || !Array.isArray(payload.models)) throw new Error('Google returned an invalid model list');
+    rows.push(...payload.models);
+    const next = typeof payload.nextPageToken === 'string' ? payload.nextPageToken : undefined;
+    if (!next) {
+      const models = matchGoogleAccountModels(rows, getPiModelsForAuthProvider('google'));
+      if (!models.length) throw new Error('Google returned no models executable by the installed Pi adapter');
+      return models;
+    }
+    if (seenTokens.has(next)) throw new Error('Google model catalog repeated a page token');
+    seenTokens.add(next);
+    pageToken = next;
+  }
+  throw new Error('Google model catalog exceeded the page limit');
+}
+
 async function fetchIdOnlyAccountModels(
   provider: ApiAccountProvider,
   apiKey: string,
   timeoutMs: number,
 ): Promise<ModelDefinition[]> {
   if (!apiKey) throw new Error(`${provider} API key is required for model discovery`);
+  if (provider === 'google') return fetchGoogleAccountModels(apiKey, timeoutMs);
   const response = await fetchOAuthToken(API_ACCOUNT_CATALOGS[provider].modelsUrl, {
     method: 'GET',
     headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
@@ -561,8 +632,7 @@ export const piDriver: ProviderDriver = {
     // return bounded capability metadata; Pi still owns the runnable adapter.
     // Custom endpoints retain their explicit user-configured model list.
     const accountProvider = connection.piAuthProvider;
-    if (connection.authType === 'api_key' && (accountProvider === 'openai' || accountProvider === 'deepseek'
-      || accountProvider === 'groq' || accountProvider === 'mistral')
+    if (connection.authType === 'api_key' && isApiAccountProvider(accountProvider)
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
       const models = await fetchIdOnlyAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
       return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
@@ -687,8 +757,7 @@ export const piDriver: ProviderDriver = {
       return { success: true, shouldRefreshModels: true };
     }
     const accountProvider = connection.piAuthProvider;
-    if (connection.authType === 'api_key' && (accountProvider === 'openai' || accountProvider === 'deepseek'
-      || accountProvider === 'groq' || accountProvider === 'mistral')
+    if (connection.authType === 'api_key' && isApiAccountProvider(accountProvider)
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
       const apiKey = await credentialManager.getLlmApiKey(slug);
       if (!apiKey) return { success: false, error: `${accountProvider} API key is missing` };

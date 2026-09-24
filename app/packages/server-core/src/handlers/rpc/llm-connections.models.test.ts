@@ -28,6 +28,29 @@ function providerModelsHandler(): HandlerFn {
 }
 
 describe('pre-save account model discovery', () => {
+  it('uses a transient Google key with the native catalog and rejects a changed host', async () => {
+    const calls: string[] = []
+    setOAuthTokenFetcher(async (url, init) => {
+      calls.push(url)
+      expect(new Headers(init.headers).get('x-goog-api-key')).toBe('test-key')
+      return new Response(JSON.stringify({ models: [{ name: 'models/gemini-2.5-flash',
+        supportedGenerationMethods: ['generateContent'], inputTokenLimit: 1_048_576 }] }))
+    })
+    try {
+      const handler = providerModelsHandler()
+      const result = await handler(ctx, 'google', 'test-key', undefined,
+        'https://generativelanguage.googleapis.com/v1beta') as { source: string; models: Array<{ id: string }> }
+      expect(result.source).toBe('provider')
+      expect(result.models.map(model => model.id)).toContain('pi/gemini-2.5-flash')
+      const edited = await handler(ctx, 'google', 'test-key', undefined,
+        'https://gateway.example/v1beta') as { source: string }
+      expect(edited.source).toBe('sdk')
+      expect(calls).toEqual(['https://generativelanguage.googleapis.com/v1beta/models?pageSize=100'])
+    } finally {
+      setOAuthTokenFetcher(null)
+    }
+  })
+
   it('uses the entered key and official Mistral catalog through the existing Pi driver', async () => {
     const model = getModels('mistral')[0]!
     const calls: Array<{ url: string; authorization: string | null }> = []

@@ -478,9 +478,12 @@ is the documented allowance view while no stable public personal meter contract 
 
 The [OpenAI Models API](https://developers.openai.com/api/reference/resources/models) and
 [DeepSeek List Models API](https://api-docs.deepseek.com/api/list-models/) expose account-visible
-IDs without a complete effort/context/modality contract. The [Groq Models API](https://console.groq.com/docs/api-reference)
+IDs without a complete effort/context/modality contract. [Google Models API](https://ai.google.dev/api/models)
+lists native `models/*` resources, `generateContent` support, input/output limits and page tokens;
+Cindy `apps/desktop/src/main/maker-host/provider-model-fetch.ts` confirms the official
+`x-goog-api-key` header and native `/v1beta/models` route. The [Groq Models API](https://console.groq.com/docs/api-reference)
 adds active state, context and output limits; the [Mistral Models API](https://docs.mistral.ai/api/endpoint/models)
-adds chat/vision capability and context length. Fleet intersects all four with the
+adds chat/vision capability and context length. Fleet intersects all five with the
 installed Pi adapter, discards explicit inactive/archived/non-chat rows, and never infers image,
 video or subscription allowance from membership alone. Cindy's
 `apps/desktop/src/main/maker-host/provider-model-fetch.ts` supplies the comparison for same-origin

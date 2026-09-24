@@ -467,7 +467,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         return { models: [], totalCount: 0, source: 'sdk' as const, error: reason }
       }
     }
-    if (provider === 'openai' || provider === 'deepseek' || provider === 'groq' || provider === 'mistral') {
+    if (provider === 'openai' || provider === 'google' || provider === 'deepseek' || provider === 'groq' || provider === 'mistral') {
       const stored = connectionSlug && !effectiveKey ? getLlmConnection(connectionSlug) : null
       const matchingStored = stored?.providerType === 'pi' && stored.piAuthProvider === provider
         && stored.authType === 'api_key' ? stored : null

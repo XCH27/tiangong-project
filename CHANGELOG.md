@@ -31,6 +31,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 - During setup, DeepSeek, Groq and Mistral now use the entered key for the same authenticated model
   catalog as saved connections. Mistral's inherited `/v1` endpoint is treated as official for old
   connections and omitted as an override in new ones; edited custom hosts remain unqueried.
+- Google AI Studio now uses its official paged model list during setup, refresh and connection
+  validation. Only account-listed `generateContent` IDs with installed Pi routes are selectable;
+  declared input/output limits reach the existing Pi runtime without replacing its effort mapping.
 
 ### 2026-09-24 — subscription image capability boundary
 

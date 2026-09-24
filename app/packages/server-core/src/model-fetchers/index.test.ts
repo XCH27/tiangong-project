@@ -154,6 +154,7 @@ describe('model refresh provenance', () => {
   })
 
   for (const { provider, baseUrl } of [
+    { provider: 'google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
     { provider: 'groq', baseUrl: 'https://api.groq.com/openai/v1' },
     { provider: 'mistral', baseUrl: 'https://api.mistral.ai' },
     { provider: 'mistral', baseUrl: 'https://api.mistral.ai/v1' },

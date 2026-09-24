@@ -130,7 +130,7 @@ export const API_KEY_PROVIDER_PRESETS: readonly ApiKeyProviderPreset[] = [
  * gets pinned to openai-completions) but stay branded in the dropdown.
  */
 const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest'])
-const ACCOUNT_CATALOG_PRESETS: ReadonlySet<string> = new Set(['xai', 'openai', 'deepseek', 'groq', 'mistral'])
+const ACCOUNT_CATALOG_PRESETS: ReadonlySet<string> = new Set(['xai', 'openai', 'google', 'deepseek', 'groq', 'mistral'])
 
 // OpenAI provider presets - for Codex backend
 // Only direct OpenAI is supported; 3PP providers (OpenRouter, Vercel, Ollama) should be
@@ -237,6 +237,7 @@ export function ApiKeyInput({
   // Hide endpoint/model fields for providers with well-known endpoints handled by the SDK
   const DEFAULT_ENDPOINT_PROVIDERS = new Set(['anthropic', 'openai', 'pi', 'google'])
   const isDefaultProviderPreset = DEFAULT_ENDPOINT_PROVIDERS.has(activePreset)
+  const showsPiModelPicker = !isDefaultProviderPreset || activePreset === 'google'
 
   // Provider-specific placeholders from the active preset
   const activePresetObj = presets.find(p => p.key === activePreset)
@@ -250,7 +251,7 @@ export function ApiKeyInput({
   // are available; SDK entries remain setup hints before a key is entered.
   const loadPiModels = useCallback(async (provider: string) => {
     const requestId = ++modelRequestIdRef.current
-    if (!isPiApiKeyFlow || !provider || provider === 'custom' || DEFAULT_ENDPOINT_PROVIDERS.has(provider) || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
+    if (!isPiApiKeyFlow || !provider || provider === 'custom' || (DEFAULT_ENDPOINT_PROVIDERS.has(provider) && provider !== 'google') || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
       setPiModels([])
       setPiCatalogError(null)
       return
@@ -296,16 +297,16 @@ export function ApiKeyInput({
   }, [isPiApiKeyFlow, apiKey, baseUrl, initialPreset, initialValues?.connectionDefaultModel, initialValues?.connectionSlug])
 
   useEffect(() => {
-    if (isPiApiKeyFlow && activePreset !== 'custom' && !DEFAULT_ENDPOINT_PROVIDERS.has(activePreset) && !isBedrock) {
+    if (isPiApiKeyFlow && activePreset !== 'custom' && showsPiModelPicker && !isBedrock) {
       setPiModelsLoading(true)
     }
     const timer = setTimeout(() => { void loadPiModels(activePreset) }, ACCOUNT_CATALOG_PRESETS.has(activePreset) ? 350 : 0)
     return () => { clearTimeout(timer); modelRequestIdRef.current++ }
-  }, [activePreset, isBedrock, isPiApiKeyFlow, loadPiModels])
+  }, [activePreset, isBedrock, isPiApiKeyFlow, loadPiModels, showsPiModelPicker])
 
   // Whether to show the provider-model picker instead of a custom ID field.
-  const hasPiModels = isPiApiKeyFlow && piModels.length > 0 && !isDefaultProviderPreset && activePreset !== 'custom' && !isBedrock
-  const showPiCatalog = hasPiModels || (isPiApiKeyFlow && !isDefaultProviderPreset
+  const hasPiModels = isPiApiKeyFlow && piModels.length > 0 && showsPiModelPicker && activePreset !== 'custom' && !isBedrock
+  const showPiCatalog = hasPiModels || (isPiApiKeyFlow && showsPiModelPicker
     && (ACCOUNT_CATALOG_PRESETS.has(activePreset) || piModelsLoading))
 
   useEffect(() => {
@@ -381,7 +382,7 @@ export function ApiKeyInput({
 
     // Pi API key flow: keep a single optional default, then sync the full
     // account catalog. Price does not imply model capability or speed.
-    if (hasPiModels || (isPiApiKeyFlow && !isDefaultProviderPreset && ACCOUNT_CATALOG_PRESETS.has(activePreset))) {
+    if (hasPiModels || (isPiApiKeyFlow && showsPiModelPicker && ACCOUNT_CATALOG_PRESETS.has(activePreset))) {
       onSubmit({
         apiKey: apiKey.trim(),
         // Native providers own their official endpoints. The visible Mistral

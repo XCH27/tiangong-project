@@ -3,7 +3,7 @@ import { getModels } from '@earendil-works/pi-ai/compat';
 import type { ModelRegistry } from '@earendil-works/pi-coding-agent';
 import type { PiRuntimeModelEntry } from '../../shared/src/agent/backend/internal/driver-types.ts';
 
-type AccountProvider = 'groq' | 'mistral' | 'openai-codex';
+type AccountProvider = 'google' | 'groq' | 'mistral' | 'openai-codex';
 
 /** Never bind account metadata to an unrelated custom host or auth method. */
 export function accountMetadataProvider(config: {
@@ -17,6 +17,7 @@ export function accountMetadataProvider(config: {
   if (config.provider === 'openai-codex' && config.authType === 'oauth'
     && (!baseUrl || baseUrl === 'https://chatgpt.com/backend-api/codex')) return 'openai-codex';
   if (config.authType !== 'api_key') return null;
+  if (config.provider === 'google' && (!baseUrl || baseUrl === 'https://generativelanguage.googleapis.com/v1beta')) return 'google';
   if (config.provider === 'groq' && (!baseUrl || baseUrl === 'https://api.groq.com/openai/v1')) return 'groq';
   if (config.provider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai' || baseUrl === 'https://api.mistral.ai/v1')) return 'mistral';
   return null;
