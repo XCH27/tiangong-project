@@ -25,6 +25,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
   under the runtime-owned allowance path.
 - ChatGPT runtime and catalog refresh now share connection-scoped token rotation. A temporary
   network failure no longer deletes the credential; only an explicit invalid grant does.
+- Testing an existing Copilot, ChatGPT/Codex, OpenAI, DeepSeek, Groq or Mistral connection now
+  checks its authenticated, read-only account model catalog. An invalid credential or unavailable
+  selected model is reported, and a stale selection triggers a catalog refresh even when Test fails.
 
 ### 2026-09-24 — subscription image capability boundary
 

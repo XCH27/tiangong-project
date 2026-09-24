@@ -650,15 +650,18 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         hostRuntime: buildBackendHostRuntimeContext(deps.platform),
       })
 
+      // A valid credential can lose access to the selected model. Refresh the
+      // account catalog even when validation returns that selection error, so
+      // the next choice is based on the current account rather than stale rows.
+      if (result.shouldRefreshModels) {
+        refreshModelsInBackground(slug, 'validation')
+      }
+
       if (!result.success) {
         return { success: false, error: result.error }
       }
 
       touchLlmConnection(slug)
-
-      if (result.shouldRefreshModels) {
-        refreshModelsInBackground(slug, 'validation')
-      }
 
       deps.platform.logger?.info(`LLM connection validated: ${slug}`)
       return { success: true }

@@ -340,3 +340,107 @@ describe('Codex subscription account catalogs', () => {
     }
   });
 });
+
+describe('stored account connection validation', () => {
+  it('checks the live API account and refreshes a stale selected model', async () => {
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url, init) => {
+      urls.push(url);
+      expect(init.headers).toEqual({ Authorization: 'Bearer account-key', Accept: 'application/json' });
+      return new Response(JSON.stringify({ data: [{ id: 'deepseek-v4-pro', object: 'model' }] }));
+    });
+    const base = {
+      slug: 'deepseek-account', piAuthProvider: 'deepseek', providerType: 'pi', authType: 'api_key',
+      defaultModel: 'pi/old-model',
+    } as any;
+    const args = {
+      slug: base.slug, connection: base,
+      credentialManager: { getLlmApiKey: async () => 'account-key' } as any,
+      hostRuntime: {} as any, resolvedPaths: {} as any,
+    };
+    try {
+      expect(await piDriver.validateStoredConnection!(args)).toEqual({
+        success: false, error: 'Selected deepseek model is unavailable: pi/old-model', shouldRefreshModels: true,
+      });
+      expect(urls).toEqual(['https://api.deepseek.com/models']);
+      expect(await piDriver.validateStoredConnection!({ ...args, connection: { ...base, defaultModel: 'pi/deepseek-v4-pro' } })).toEqual({
+        success: true, shouldRefreshModels: true,
+      });
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('rejects an invalid API key instead of reporting that stored credentials mean connected', async () => {
+    setOAuthTokenFetcher(async () => new Response('{}', { status: 401 }));
+    try {
+      await expect(piDriver.validateStoredConnection!({
+        slug: 'openai-account',
+        connection: { slug: 'openai-account', piAuthProvider: 'openai', providerType: 'pi', authType: 'api_key' } as any,
+        credentialManager: { getLlmApiKey: async () => 'invalid-key' } as any,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      })).rejects.toThrow('HTTP 401');
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('validates a ChatGPT subscription against its account-scoped Codex catalog', async () => {
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const idToken = `${encode({ alg: 'none' })}.${encode({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acc_test' } })}.signature`;
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url, init) => {
+      urls.push(url);
+      expect((init.headers as Record<string, string>)['chatgpt-account-id']).toBe('acc_test');
+      return new Response(JSON.stringify({ models: [{ slug: 'gpt-6-sol', visibility: 'list' }] }));
+    });
+    try {
+      const result = await piDriver.validateStoredConnection!({
+        slug: 'chatgpt',
+        connection: { slug: 'chatgpt', piAuthProvider: 'openai-codex', providerType: 'pi', authType: 'oauth',
+          defaultModel: 'pi/gpt-6-sol' } as any,
+        credentialManager: { getLlmOAuth: async () => ({ accessToken: 'account-token', idToken, expiresAt: Date.now() + 3_600_000 }) } as any,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(result).toEqual({ success: true, shouldRefreshModels: true });
+      expect(urls).toEqual(['https://chatgpt.com/backend-api/codex/models?client_version=0.13.4']);
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('validates Copilot through the GitHub token exchange and model policy', async () => {
+    const githubToken = 'tid=1;exp=2;proxy-ep=proxy.individual.githubcopilot.com;st=x';
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url) => {
+      urls.push(url);
+      if (url === 'https://api.github.com/copilot_internal/v2/token') {
+        return new Response(JSON.stringify({ token: githubToken, expires_at: 4_102_444_800 }));
+      }
+      if (url === 'https://api.individual.githubcopilot.com/models') {
+        return new Response(JSON.stringify({ data: [{ id: 'account-model', vendor: 'anthropic',
+          policy: { state: 'enabled' }, capabilities: { type: 'chat', limits: {
+            max_context_window_tokens: 200_000, max_output_tokens: 16_000,
+          } },
+        }] }));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    try {
+      const result = await piDriver.validateStoredConnection!({
+        slug: 'copilot',
+        connection: { slug: 'copilot', piAuthProvider: 'github-copilot', providerType: 'pi', authType: 'oauth',
+          defaultModel: 'account-model' } as any,
+        credentialManager: { getLlmOAuth: async () => ({ accessToken: 'copilot-session', refreshToken: 'github-account-token' }) } as any,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(result).toEqual({ success: true, shouldRefreshModels: true });
+      expect(urls).toEqual([
+        'https://api.github.com/copilot_internal/v2/token',
+        'https://api.individual.githubcopilot.com/models',
+      ]);
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+});

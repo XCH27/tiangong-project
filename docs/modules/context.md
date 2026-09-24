@@ -141,6 +141,13 @@ rows and unknown slugs are excluded, so a provider can advertise a newer model w
 send an unverified request. Subscription model rows do not inherit API token prices: allowance and
 rate-limit data remain a separate, runtime-owned account surface. If the live response is unavailable,
 the existing refresh fallback retains the last saved catalog; it never claims that saved data is current.
+The stored-connection Test action now makes the same read-only account-catalog request for Copilot,
+ChatGPT/Codex and official OpenAI, DeepSeek, Groq and Mistral API connections, alongside the existing
+xAI checks. It reports expired/invalid credentials or a selected model absent from the executable
+account list rather than treating stored bytes as proof of access. When only the selected model is
+stale, Test also refreshes that connection's catalog even though it returns the selection error.
+Providers without an account-catalog validator retain Craft's credential-presence check; none of
+these read-only catalog calls proves a paid inference request or a subscription allowance.
 
 ## First proof
 

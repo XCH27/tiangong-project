@@ -4,6 +4,7 @@ import { getAllPiModels, getPiModelsForAuthProvider } from '../../../../config/m
 import { getPiProviderBaseUrl } from '../../../../config/models-pi.ts';
 import { fetchXaiApiModels, fetchXaiSubscriptionModels, XAI_SUBSCRIPTION_BASE } from './xai-models.ts';
 import { getValidXaiSubscriptionToken } from '../../../../auth/xai-subscription.ts';
+import { getValidChatGptOAuthToken } from '../../../../auth/state.ts';
 import { fetchOAuthToken } from '../../../../auth/oauth-token-fetch.ts';
 
 // Official endpoints establish account membership. Some add capability fields;
@@ -645,11 +646,15 @@ export const piDriver: ProviderDriver = {
     return testAnthropicCompatible(args.apiKey, baseUrl, bareModel, args.timeoutMs);
   },
   validateStoredConnection: async ({ slug, connection, credentialManager }) => {
+    const selectedUnavailable = (models: readonly ModelDefinition[], account: string) =>
+      connection.defaultModel && !models.some(model => model.id === connection.defaultModel)
+        ? { success: false, error: `Selected ${account} model is unavailable: ${connection.defaultModel}`, shouldRefreshModels: true }
+        : null;
+
     if (connection.piAuthProvider === 'xai' && connection.authType === 'oauth') {
       const models = await fetchXaiSubscriptionModels(await getValidXaiSubscriptionToken(slug), 15_000);
-      if (connection.defaultModel && !models.some(model => model.id === connection.defaultModel)) {
-        return { success: false, error: `Selected Grok subscription model is unavailable: ${connection.defaultModel}`, shouldRefreshModels: true };
-      }
+      const unavailable = selectedUnavailable(models, 'Grok subscription');
+      if (unavailable) return unavailable;
       return { success: true, shouldRefreshModels: true };
     }
     if (connection.piAuthProvider === 'xai' && connection.authType === 'api_key') {
@@ -659,14 +664,40 @@ export const piDriver: ProviderDriver = {
       // API without charging for a completion. It does not claim a paid model
       // request or Grok subscription was tested.
       const models = await fetchXaiApiModels(apiKey, 15_000);
-      const selected = connection.defaultModel;
-      if (selected && !models.some(model => model.id === selected)) {
-        return { success: false, error: `Selected xAI model is unavailable: ${selected}`, shouldRefreshModels: true };
-      }
+      const unavailable = selectedUnavailable(models, 'xAI');
+      if (unavailable) return unavailable;
       return { success: true, shouldRefreshModels: true };
     }
-    // Other Pi connection tests still use their inherited behavior. They must
-    // not be described as an inference probe by callers.
+    if (connection.piAuthProvider === 'github-copilot' && connection.authType === 'oauth') {
+      const stored = await credentialManager.getLlmOAuth(slug);
+      const githubToken = stored?.refreshToken || stored?.accessToken;
+      if (!githubToken) return { success: false, error: 'GitHub Copilot credential is missing' };
+      const { models } = await fetchCopilotModels(githubToken, 15_000);
+      const unavailable = selectedUnavailable(models, 'GitHub Copilot');
+      if (unavailable) return unavailable;
+      return { success: true, shouldRefreshModels: true };
+    }
+    if (connection.piAuthProvider === 'openai-codex' && connection.authType === 'oauth' && !connection.customEndpoint) {
+      const token = await getValidChatGptOAuthToken(slug, credentialManager);
+      if (!token.accessToken) return { success: false, error: 'ChatGPT credential is missing or expired' };
+      const models = await fetchCodexSubscriptionModels(token.accessToken, token.idToken, 15_000);
+      const unavailable = selectedUnavailable(models, 'ChatGPT/Codex');
+      if (unavailable) return unavailable;
+      return { success: true, shouldRefreshModels: true };
+    }
+    const accountProvider = connection.piAuthProvider;
+    if (connection.authType === 'api_key' && (accountProvider === 'openai' || accountProvider === 'deepseek'
+      || accountProvider === 'groq' || accountProvider === 'mistral')
+      && hasOfficialCatalogEndpoint(connection, accountProvider)) {
+      const apiKey = await credentialManager.getLlmApiKey(slug);
+      if (!apiKey) return { success: false, error: `${accountProvider} API key is missing` };
+      const models = await fetchIdOnlyAccountModels(accountProvider, apiKey, 15_000);
+      const unavailable = selectedUnavailable(models, accountProvider);
+      if (unavailable) return unavailable;
+      return { success: true, shouldRefreshModels: true };
+    }
+    // Providers without an account catalog retain Craft's inherited behavior.
+    // This is only a credential-presence check, not an inference probe.
     return { success: true };
   },
 };
