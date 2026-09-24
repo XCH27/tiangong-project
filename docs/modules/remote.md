@@ -59,6 +59,41 @@ and stop new traffic on disable/revoke. Attachments recheck scope, size and sens
 preserve the draft and never leak credentials. There is no second contact/chat database or implicit
 bulk-outreach capability. EXEC-11-A owns the real adapter proof.
 
+**Current presentation correction:** `MessagingSettingsPage` uses the same centered `max-w-3xl`
+content width and Craft card tokens as the other Settings pages. The existing Telegram, WhatsApp
+and Lark/Feishu rows retain their real connect, runtime-status, binding and disconnect handlers.
+The original Craft row behavior and visible binding controls remain. This is a renderer-only
+arrangement of Craft's gateway, except for the bounded WhatsApp recovery correction: disabling
+the channel retains its local sign-in and keeps the existing Forget operation reachable; Forget
+removes that local state, including after a restart. It does not revoke the device remotely.
+No additional platform is shown as connectable before its adapter passes the gate below.
+
+**Reference decision for future adapters:** Cindy's current `ImBotSection.tsx` keeps one Settings route
+and collapses personal channel cards when six channels would otherwise make an unbounded form. Its
+`packages/lizi-im/src/types.ts` separates channel transport from the Electron host; `main/im/host.ts`
+injects encrypted secrets, IPC and account generation, while `ImChannelSettingsCard.tsx` keeps
+status and route summary visible when collapsed. Use this lifecycle and information hierarchy
+behind Craft's existing gateway and `SettingsCard`; do not copy Cindy's account database,
+hosted-bot tier, theme or second IM orchestrator. The public ZCode main at
+`872ad960de7e` has no Bot Channel/WeChat source matching the owner's screenshot; use that image
+only for interaction comparison, never as backend evidence.
+
+The next platform should be an official bot transport with a user-owned credential. **DingTalk
+Stream** is the first China-facing candidate because Cindy contains a full transport and DingTalk
+publishes a Node SDK; **Discord DM** is the next cross-region candidate using Cindy's bounded
+DM-only gateway. Enterprise WeCom follows only after its scope/credential model is proven. Personal
+WeChat/iLink remains research-only until protocol availability, account compatibility and recovery
+can be verified; a QR screen alone is not an adapter. This order is an implementation recommendation,
+not a claim that Fleet currently supports those platforms.
+
+Every added row requires: real setup and credential storage; identity and sender-owner pairing;
+deduplicated receive into an existing scoped Session; attachment limits; normal permission prompts;
+receipt-aware send/retry; reconnect, revoke and restart; localized help and honest failure status;
+and an authenticated test using an owner-authorized test account. Only then add its icon and
+Connect action. `@lobehub/icons` is an AI/provider brand collection and does not list these IM
+logos, so keep local platform assets from their permitted brand sources; its package is a candidate
+for model/provider icons, not a messaging transport dependency.
+
 ## Local-app Computer Use contract
 
 **Owner request:** investigate a plugin for operating specified local applications for interface

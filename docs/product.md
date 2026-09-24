@@ -31,31 +31,35 @@ The current owner order is **documentation and preparation → joint walkthrough
 The app reset withdrew the prior Fleet implementation. A surviving draft or passing historical
 check is neither current implementation nor permission to resume those patches.
 
-## Workspace and navigation boundary
+## Conversation, Project and Workspace boundary
 
-Owner revision, 2026-09-22, superseding the earlier Project = Workspace collapse:
+**Current base:** Craft v0.13.4 has visible Workspaces. Workspace storage owns scoped Projects,
+Sessions, Sources and Skills; a Session records its Workspace path and may reference a Project.
+The Board is a Sessions view mode. Restoring the official source did not migrate or remove any of
+these records.
 
-- Keep the visible Workspace switcher. Workspaces own independent Conversations, Project
-  memberships, Sources/MCPs, Skills, and enabled Component/Plugin overrides.
-- A Project references a folder in its owning Workspace. The same folder may be added to another
-  Workspace without copying it or sharing conversation history and tool grants. Files changed through
-  either membership are the same files; Workspace separation is not filesystem isolation.
-- Use one left sidebar with Project-grouped and folderless Conversations. Remove the separate left
-  navigator column. Board is a separate entry over existing Session/Task data.
-- Put existing browser and new-session-panel actions, plus tool entries, in a contextual right
-  panel. The panel is a Cindy-style tabbed host (`RightSidebarShell` + `TabBar` + a registered
-  tab-kind registry) scoped to the active Session; it is not a vertical icon rail and it is not a
-  second navigation authority. Tool lists and details belong inside the selected tab surface, not a
-  second left column.
-- New Conversation follows ZCode's same-composer empty layout, Project/context header above the
-  editor, unified add popup, and separate model/reasoning controls. Plan is independent of the
-  three action permissions (Confirm changes, Auto edit, Full access). Model popup structure follows
-  Cindy: search, category rail, grouped rows and configure footer. Extend Craft's input, Session,
-  model and permission owners; keep Craft visual tokens. No duplicate editor or permission engine.
+**Latest owner direction, pending review:** the owner now prefers to remove the *visible* Workspace
+layer and select capability suites per Conversation. This supersedes the earlier instruction to
+retain the Workspace switcher. The owner subsequently approved only a small navigation/entry move:
+separate All Conversations and Board, move the Craft logo menu to the lower-left footer, and put
+What's New directly in that popup. Duplicate update/menu actions are retired; Settings → App
+retains stateful update controls. Help stays at the upper right.
+No suite, Project, remote-host, composer or
+right-panel behavior is approved by that slice.
 
-This is explicit authorization to implement the bounded R1 navigation/context slice after source
-comparison. Other baseline corrections and new Component engines retain their existing gates.
-The concrete contract and verification are in [R1](modules/shell.md).
+The leading design candidate is a separate execution Host (local or user-owned remote), an optional
+Project bound to a folder on that Host, and a Conversation with its own effective capability loadout.
+Installed Components/Skills/MCPs remain in their existing catalog/settings authorities; Project
+defaults may seed a Conversation, but the Conversation's accepted choices are snapshotted at a turn
+boundary. Permission remains a separate grant path. Craft Workspace records remain readable as a
+compatibility layer until all existing Sessions, Projects, Sources, remote routes and permissions
+have a verified destination. Sharing a folder never merges transcripts or grants. This candidate
+requires a source-based data and remote-routing review before it can replace the current model.
+
+The previously requested single work list, contextual right panel and ZCode/Cindy-informed
+composer remain **design inputs**, not running Fleet features or a standing instruction to
+implement the old R1 order. [R1](modules/shell.md) records the bounded entry slice, current paths,
+reference evidence and remaining review criteria.
 
 ## The four sources, and what each one is for
 
@@ -94,7 +98,7 @@ The earlier Fleet extensions are preserved at `snapshot/pre-rebuild-2026-09-21`,
 this tree. Product requirements below survive; their presence in this document does not establish
 implementation. R0 must also account for inherited hosted services before any Fleet release.
 
-### Components, assistants and workspace compositions
+### Components, assistants and conversation loadouts
 
 Fleet's installable unit is a **Component**: a bounded capability bundle that may contain a native
 panel or surface, domain commands and storage, Skills, MCP server/tool declarations, default
@@ -115,24 +119,13 @@ replaceable component dependencies. A component must expose a useful basic state
 dependency is absent and explain the missing capability with an actionable install/configure path.
 
 An **Assistant** is the identity that performs work (persona, model, prompt, requested loadout and
-permission request). A **Workspace Composition** is the workspace-scoped selection and override
-record: enabled Components, component settings, extra MCPs, extra knowledge sources, personal
-habits, and panel preferences. A component may also be enabled globally, which supplies the default
-for every Workspace; a workspace can disable or override that default. There is no artificial limit
-on the number of enabled components. Defaults come from the installed Component; user and workspace
-values are explicit overrides, not mutations of the vendor package. Removing a Component leaves
-core data and artifacts intact and records an unavailable capability until restored.
-
-The composition resolver is deterministic: official defaults < user profile defaults < workspace
-overrides < session one-off choices. A session one-off is snapshotted at a turn boundary: a running
-turn cannot change its tool/panel composition, and an accepted change is recorded so resume rebuilds
-the same later-turn composition. Components may request capabilities; the existing permission path
-decides whether they are granted. Components contribute through declared additive tool-entry
-and workbench-panel slots. They may declare their own panel state and native domain data,
-but cannot replace the main shell or create a second navigator. The host preserves a fallback entry
-when a component is unavailable. This is the approved direction for per-workspace interfaces; it does not
-authorize components to patch `AppShell` or create a second settings/permission authority. Fleet's
-integration code may extend the existing host seam after the required Craft source comparison.
+permission request). The owner is reconsidering the former **Workspace Composition** design in
+favor of a per-Conversation loadout. No Workspace-scoped Component resolver exists in the current
+app, and the former specification is not an implementation instruction. A sound future resolver
+would distinguish installed catalog entries, defaults, a Conversation's explicit choices and live
+permissions; a turn would use one accepted snapshot so its tools cannot change mid-execution.
+Removing a Component must leave core data and artifacts intact. The exact default precedence and
+storage migration remain open until the Conversation/Project boundary is reviewed.
 
 **Correct the inherited baseline before adding capabilities.** The owner's current order is:
 classify and correct Craft's existing capabilities and services → verify and accept the corrected
@@ -601,7 +594,7 @@ does not corrupt local history. Every refusal names its reason and recovery path
 | **Assistant** | The identity that performs work: persona, model, prompt, requested loadout and permission request. It is distinct from a Component or Session; requests never grant permission. Fleet's independent Assistant store and Session binding are targets, `not implemented` ([`product.md`](product.md)). |
 | **Session** | The existing Craft conversation and execution record owned by SessionManager, with its transcript, context, permissions and events. Child Sessions may link through `parentSessionId`; an Assistant identity is not another conversation store. |
 | **Task** | A unit of work. The user-facing **New Task** action starts work through the Session authority and does not require a duplicate structured Task record (P10). Craft's explicit structured Task is separately represented by a TaskSpec DAG and run log, executed through child Sessions by TaskRunner. |
-| **Workspace Composition** | The workspace-scoped enabled-component set plus explicit configuration overrides, extra MCPs/knowledge sources, personal habits, and layout preferences. It is not a second capability or permission store. |
+| **Conversation loadout (proposal)** | The Component/Skill/MCP choices accepted for one Conversation, derived from installed availability and defaults; it cannot grant permissions. Storage and migration are not yet selected. |
 | **Component default** | A vendor-provided value shipped by a Component. It is immutable package input; user and workspace changes are stored as overrides. |
 | **Frontend track** | Pages may be spec'd, mocked behind typed adapters and built preview-gated ahead of their backend behavior, reported `display-only` until wired ([`capabilities.md`](capabilities.md#page-structure) §5, Decision G6). New feature work remains subject to the baseline exit in `TODO.md`; preview gating does not bypass it. |
 | **Preview gate** | The developer/preview toggle behind which unwired pages live; the default user surface never shows controls without real behavior. |
@@ -632,12 +625,10 @@ does not corrupt local history. Every refusal names its reason and recovery path
 | **TaskBrief / RunReport** | The target bounded delegation envelope in and result envelope out for supporting agents (Decision C3; roadmap R6). These Fleet runtime contracts are `not implemented`; no template or type alone establishes the delegation path. |
 | **Owner checkpoint** | A decision class the agent must never take alone: money, irreversible/public effects, production dependencies, new/replaced authorities, product forks ([`AGENTS.md`](../AGENTS.md#owner-protocol)). |
 | **Owner** | The human product owner. States intent in plain language; owns final acceptance and checkpoints. Agents choose technical routes (Decision G1). |
-| **Workspace / Project** | Workspace: visible, independent configuration/routing and conversation boundary. Project: a Workspace-scoped membership referencing a working directory; the same directory can belong to multiple Workspaces without sharing their transcripts or configuration (revised P6). New Task globally or on a Project row enters the same Session-backed create flow (P10). |
+| **Workspace / Project** | Current Craft: Workspace scopes Project and Session records. Proposed UI: no visible Workspace tier; Host identifies local/remote execution, Project identifies an optional folder on that Host, and Conversation keeps its own history and loadout. No data migration is approved. |
 | **BrowserPane** | Craft's in-app governed browser surface; in Fleet, an evidence-capture input, never a stealth browser (Decision E6). |
 | **Native surface / module** | A production surface owning its own document/job model (Markdown editor, video editor…), registering capabilities on the spine instead of becoming a separate app (Decision E4). |
 | **Loadout** | The scoped set of capabilities/tools enabled for a given agent/task, narrower than what is installed (Decision E2). It contributes to effective projection but does not replace permission or the governed Action seam. |
 | **Agent lane** | A provider/runtime route used by Fleet (local CLI, API, subscription-backed or remote); lanes consume context projections but do not own shared memory or project context. |
 | **Upstream intake** | Reviewing official Craft tags/release notes/source to selectively port changes — never merging the upstream tree wholesale (Decision P8). |
-| **Design library** | Owner-intent source notes under `docs/design-library/` — input material for slices, never implementation authorization. |
-| **Design asset** | A source note in `design-library/` with durable product-design value. It may guide a module but cannot set current scope, order, implementation status or acceptance; reconcile it against code and canonical documents before use. |
 | **Vibe Coding** | The owner-directed, agent-executed development mode this project runs on. Its known failure modes and countermeasures are [`architecture.md`](architecture.md) §4. |

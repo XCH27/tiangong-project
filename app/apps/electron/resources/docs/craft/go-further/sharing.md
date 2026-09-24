@@ -1,0 +1,95 @@
+# Sharing Conversations
+
+> Share your conversations online with a single click
+
+Craft Agents lets you share any conversation as a read-only web page. Recipients get a link they can open in any browser — no account or app required.
+
+## How to Share
+
+1. Open a conversation
+2. Click the **share icon** in the header (or use the title menu)
+3. Select **Share Online**
+
+The conversation uploads to our viewer and the link is automatically copied to your clipboard. A toast notification confirms success with an option to open it directly.
+
+## What Gets Shared
+
+When you share a conversation, the following is uploaded:
+
+* All messages (user and assistant)
+* Tool calls and their results
+* Code blocks, diffs, and terminal output
+* Session metadata (title, model used)
+
+**Not included:** file attachments, local file paths, plan files, and workspace-specific configuration.
+
+## Managing a Shared Conversation
+
+Once shared, the share icon turns **accent-colored** and clicking it shows additional options:
+
+| Action              | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| **Open in Browser** | Opens the shared page in your default browser     |
+| **Copy Link**       | Copies the URL to your clipboard                  |
+| **Update Share**    | Re-uploads the conversation with any new messages |
+| **Stop Sharing**    | Permanently deletes the shared page               |
+
+<Note>
+  **Update Share** re-uploads the entire conversation. This is useful after continuing a conversation you've previously shared.
+</Note>
+
+## Privacy & Access
+
+Shared conversations are accessible to **anyone with the link**. There is no password protection or login required to view them.
+
+The link contains a cryptographically random 21-character ID, making it practically impossible to guess. However, anyone you share the link with can forward it to others.
+
+<Warning>
+  **Review your conversation before sharing.** If it contains sensitive information like API keys, passwords, or confidential data, that content will be visible to anyone with the link.
+</Warning>
+
+## The Viewer
+
+Recipients see a clean, read-only view of your conversation:
+
+* Full message history with proper formatting
+* Syntax-highlighted code blocks
+* Diff previews for file edits
+* Terminal output for command executions
+* Dark/light theme toggle
+
+Viewers cannot send messages, run code, or interact with the conversation in any way.
+
+## Transfer Between Workspaces
+
+In addition to sharing online, you can transfer a session to another workspace using **Send to Workspace**. This creates an independent copy (fork) of the session on the target workspace.
+
+1. Open the session menu (right-click or header menu)
+2. Select **Send to Workspace**
+3. Choose any other workspace from the list — local or remote
+4. The session is copied with a conversation summary for AI context
+
+The transfer includes all messages and metadata. The forked session is independent — changes in one workspace don't affect the other.
+
+Send to Workspace works between any two configured workspaces (local→local, local→remote, remote→local, and remote→remote). Remote transfers use a 120-second request timeout, which keeps large session bundles from failing on slower links.
+
+<Note>
+  The target workspace must be reachable at the time of transfer. Disconnected [remote workspaces](/docs/go-further/workspaces#remote-workspaces) appear greyed out with a CloudOff icon.
+</Note>
+
+## Limitations
+
+| Limit          | Value                         |
+| -------------- | ----------------------------- |
+| Maximum size   | 5 MB per conversation         |
+| Attachments    | Not included                  |
+| Authentication | None (link-based access)      |
+| Expiration     | None (persists until revoked) |
+
+If your conversation exceeds 5 MB, sharing will fail with an error. This typically only happens with very long conversations containing large tool outputs.
+
+## Revoking Access
+
+When you click **Stop Sharing**, the shared page is immediately and permanently deleted. The URL will return a 404 error for anyone who tries to access it afterward.
+
+Your local conversation is not affected — only the online copy is removed.

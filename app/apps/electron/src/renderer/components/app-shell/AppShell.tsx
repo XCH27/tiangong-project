@@ -5,6 +5,7 @@ import { useAtomValue, useStore } from "jotai"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Archive,
+  ArrowLeft,
   Settings,
   ChevronRight,
   ChevronDown,
@@ -23,7 +24,6 @@ import {
   Inbox,
   Globe,
   FolderOpen,
-  Cake,
   Calendar,
   Layers,
   ListTodo,
@@ -39,6 +39,7 @@ import {
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
 import { TopBar } from "./TopBar"
+import { AppMenu } from "../AppMenu"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { McpIcon } from "../icons/McpIcon"
 import { cn } from "@/lib/utils"
@@ -48,6 +49,7 @@ import { HeaderIconButton } from "@/components/ui/HeaderIconButton"
 import { resolveInheritedFilterParams, type FilterMode } from "./inherited-filter-params"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipTrigger, TooltipContent, DocumentFormattedMarkdownOverlay } from "@craft-agent/ui"
+import { LocalHelpOverlay } from "@/components/help/LocalHelpOverlay"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -75,6 +77,7 @@ import {
 } from "@/components/ui/collapsible"
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
+import SettingsNavigator from "@/pages/settings/SettingsNavigator"
 import { PanelStackContainer } from "./PanelStackContainer"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
@@ -137,7 +140,6 @@ import { SendToWorkspaceDialog } from "./SendToWorkspaceDialog"
 import { CreateProjectDialog } from "../projects/CreateProjectDialog"
 import { MessagingDialogHost } from "@/components/messaging/MessagingDialogHost"
 import { EditPopover, getEditConfig, type EditContextKey } from "@/components/ui/EditPopover"
-import SettingsNavigator from "@/pages/settings/SettingsNavigator"
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
@@ -527,7 +529,6 @@ function AppShellContent({
     onRenameSession,
     onOpenSettings,
     onOpenKeyboardShortcuts,
-    onOpenStoredUserPreferences,
     onReset,
     onSendMessage,
     openNewChat,
@@ -595,6 +596,8 @@ function AppShellContent({
   // UNIFIED NAVIGATION STATE - single source of truth from NavigationContext
   // Derived from focused panel's route — all panels are peers
   const navState = useNavigationState()
+  const isSettingsView = isSettingsNavigation(navState)
+  const settingsSubpage = isSettingsNavigation(navState) ? navState.subpage ?? 'app' : 'app'
 
   const store = useStore()
   const panelStack = useAtomValue(panelStackAtom)
@@ -2139,11 +2142,8 @@ function AppShellContent({
     result.push({ id: 'nav:projects', type: 'nav', action: handleProjectsClick })
     result.push({ id: 'nav:pages', type: 'nav', action: handlePagesClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
-    result.push({ id: 'nav:settings', type: 'nav', action: () => handleSettingsClick() })
-    result.push({ id: 'nav:whats-new', type: 'nav', action: handleWhatsNewClick })
-
     return result
-  }, [handleAllSessionsClick, handleBoardClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick, handleSettingsClick, handleWhatsNewClick])
+  }, [handleAllSessionsClick, handleBoardClick, handleFlaggedClick, handleArchivedClick, handleSessionStatusClick, effectiveSessionStatuses, handleLabelClick, labelConfigs, labelTree, viewConfigs, handleViewClick, handleSourcesClick, handleSkillsClick, handleProjectsClick, handlePagesClick, handleAutomationsClick])
 
   // Toggle folder expanded state
   const handleToggleFolder = React.useCallback((path: string) => {
@@ -2375,9 +2375,10 @@ function AppShellContent({
           onNewChat={() => handleNewChat()}
           onNewWindow={() => window.electronAPI.menuNewWindow()}
           onOpenSettings={onOpenSettings}
-          onOpenSettingsSubpage={handleSettingsClick}
           onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
-          onOpenStoredUserPreferences={onOpenStoredUserPreferences}
+          onOpenWhatsNew={handleWhatsNewClick}
+          hasUnseenReleaseNotes={hasUnseenReleaseNotes}
+          showAppMenu={isAutoCompact || effectiveSidebarAndNavigatorHidden || (!isSidebarVisible && !isSettingsView)}
           onBack={goBack}
           onForward={goForward}
           canGoBack={canGoBack}
@@ -2402,7 +2403,50 @@ function AppShellContent({
         }}
       >
         <PanelStackContainer
-          sidebarSlot={
+          sidebarSlot={isSettingsView ? (
+            <div
+              ref={sidebarRef}
+              style={{ width: sidebarWidth }}
+              className="h-full font-sans relative"
+              data-focus-zone="sidebar"
+            >
+              <div className="flex h-full flex-col select-none">
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="px-2 pb-2 shrink-0">
+                    <Button
+                      variant="ghost"
+                      onClick={() => navigate(routes.view.allSessions())}
+                      className="w-full justify-start gap-2 py-[7px] px-2 text-[13px] font-normal rounded-[6px] shadow-minimal bg-background"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+                      {t("settings.backToWorkspace")}
+                    </Button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto min-h-0 mask-fade-bottom pb-4">
+                    <SettingsNavigator
+                      selectedSubpage={settingsSubpage}
+                      onSelectSubpage={(subpage) => navigate(routes.view.settings(subpage))}
+                    />
+                  </div>
+                </div>
+                {!isAutoCompact && (
+                  <div className="flex shrink-0 items-center gap-1 border-t border-foreground/10 px-2 py-2">
+                    <AppMenu
+                      placement="sidebar"
+                      onNewChat={() => handleNewChat()}
+                      onNewWindow={() => window.electronAPI.menuNewWindow()}
+                      onOpenSettings={onOpenSettings}
+                      onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
+                      onToggleSidebar={handleToggleSidebar}
+                      onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
+                      onOpenWhatsNew={handleWhatsNewClick}
+                      hasUnseenReleaseNotes={hasUnseenReleaseNotes}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
             <div
               ref={sidebarRef}
               style={{ width: sidebarWidth }}
@@ -2707,29 +2751,6 @@ function AppShellContent({
                         },
                       ],
                     },
-                    // --- Separator ---
-                    { id: "separator:skills-settings", type: "separator" },
-                    // --- Settings ---
-                    {
-                      id: "nav:settings",
-                      title: t("sidebar.settings"),
-                      icon: Settings,
-                      variant: isSettingsNavigation(navState) ? "default" : "ghost",
-                      onClick: () => handleSettingsClick(),
-                    },
-                    // --- What's New ---
-                    {
-                      id: "nav:whats-new",
-                      title: t("sidebar.whatsNew"),
-                      icon: hasUnseenReleaseNotes ? (
-                        <span className="relative">
-                          <Cake className="h-3.5 w-3.5" />
-                          <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
-                        </span>
-                      ) : Cake,
-                      variant: "ghost" as const,
-                      onClick: handleWhatsNewClick,
-                    },
                   ]}
                 />
                 {/* Agent Tree: Hierarchical list of agents */}
@@ -2737,10 +2758,36 @@ function AppShellContent({
                 </div>
               </div>
 
+              {!isAutoCompact && (
+                <div className="flex shrink-0 items-center gap-1 border-t border-foreground/10 px-2 py-2">
+                  <AppMenu
+                    placement="sidebar"
+                    onNewChat={() => handleNewChat()}
+                    onNewWindow={() => window.electronAPI.menuNewWindow()}
+                    onOpenSettings={onOpenSettings}
+                    onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
+                    onToggleSidebar={handleToggleSidebar}
+                    onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
+                    onOpenWhatsNew={handleWhatsNewClick}
+                    hasUnseenReleaseNotes={hasUnseenReleaseNotes}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="sm" onClick={onOpenSettings}
+                        aria-label={t("sidebar.settings")}
+                        className="h-8 w-8 shrink-0 rounded-[6px] p-0">
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{t("sidebar.settings")}</TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+
             </div>
           </div>
-          }
-          sidebarWidth={effectiveSidebarAndNavigatorHidden ? 0 : (isSidebarVisible ? sidebarWidth : 0)}
+          )}
+          sidebarWidth={effectiveSidebarAndNavigatorHidden ? 0 : ((isSidebarVisible || isSettingsView) ? sidebarWidth : 0)}
           navigatorSlot={
             <div
               style={{ width: isAutoCompact ? '100%' : sessionListWidth }}
@@ -3502,7 +3549,13 @@ function AppShellContent({
                 </>
               }
             />
-            {/* Content: SessionList, SourcesListPanel, or SettingsNavigator based on navigation state */}
+            {/* Content: SessionList or entity list; compact settings keeps its navigator here. */}
+            {isAutoCompact && isSettingsView && (
+              <SettingsNavigator
+                selectedSubpage={settingsSubpage}
+                onSelectSubpage={(subpage) => navigate(routes.view.settings(subpage))}
+              />
+            )}
             {isSourcesNavigation(navState) && (
               /* Sources List - filtered by type if sourceFilter is active */
               <SourcesListPanel
@@ -3549,13 +3602,6 @@ function AppShellContent({
                 onDeleteAutomation={handleDeleteAutomation}
                 selectedAutomationId={isAutomationsNavigation(navState) && navState.details ? navState.details.automationId : null}
                 workspaceRootPath={activeWorkspace?.rootPath}
-              />
-            )}
-            {isSettingsNavigation(navState) && (
-              /* Settings Navigator */
-              <SettingsNavigator
-                selectedSubpage={navState.subpage}
-                onSelectSubpage={(subpage) => handleSettingsClick(subpage)}
               />
             )}
             {isSessionsNavigation(navState) && (
@@ -3625,7 +3671,7 @@ function AppShellContent({
             )}
             </div>
           }
-          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isBoardView || isPagesView ? 0 : sessionListWidth)}
+          navigatorWidth={isSettingsView && !isAutoCompact ? 0 : isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isBoardView || isPagesView ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
           isRightSidebarVisible={false}
           isCompact={isAutoCompact}
@@ -3649,7 +3695,7 @@ function AppShellContent({
             width: PANEL_SASH_HIT_WIDTH,
             top: PANEL_STACK_VERTICAL_OVERFLOW,
             bottom: PANEL_STACK_VERTICAL_OVERFLOW,
-            left: isSidebarVisible
+            left: isSidebarVisible || isSettingsView
               ? sidebarWidth + (PANEL_GAP / 2) - PANEL_SASH_HALF_HIT_WIDTH
               : -PANEL_GAP,
             transition: isResizing === 'sidebar' ? undefined : 'left 0.15s ease-out',
@@ -3666,7 +3712,7 @@ function AppShellContent({
         )}
 
         {/* Session List Resize Handle (absolute, hidden in focused mode, board view, and pages) */}
-        {!effectiveSidebarAndNavigatorHidden && !isBoardView && !isPagesView && (
+        {!isSettingsView && !effectiveSidebarAndNavigatorHidden && !isBoardView && !isPagesView && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}
@@ -3888,6 +3934,10 @@ function AppShellContent({
         content={releaseNotesContent}
         onOpenUrl={(url) => window.electronAPI.openUrl(url)}
       />
+
+      {/* Help keeps Craft's original document overlay, but reads the packaged
+          Markdown copy instead of opening the hosted documentation site. */}
+      <LocalHelpOverlay />
 
       {/* Delete automation confirmation dialog */}
       <Dialog open={!!automationPendingDelete} onOpenChange={(open) => { if (!open) setAutomationPendingDelete(null) }}>

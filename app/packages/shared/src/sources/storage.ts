@@ -557,7 +557,8 @@ export async function createSource(
   }
 
   // Create guide.md with skeleton template
-  // (bundled guides removed - service-specific guidance lives in the product docs at https://thecraftagents.com/docs)
+  // Service setup articles are installed under docs/craft/source-guides/;
+  // this per-source guide.md remains a user-editable skeleton.
   const guideContent = `# ${input.name}
 
 ## Guidelines
@@ -602,4 +603,3 @@ export function sourceExists(workspaceRootPath: string, sourceSlug: string): boo
 // ============================================================
 
 export { parseGuideMarkdown };
-

@@ -126,9 +126,9 @@ export interface CreateSessionOptions {
   permissionMode?: PermissionMode
   /**
    * Reasoning/thinking level override. When set, takes precedence over workspace
-   * and global defaults. Silently ignored by the underlying SDK on non-reasoning
-   * models (e.g. gpt-4o) — provider drivers don't attach the reasoning param to
-   * the API request for models with `reasoning: false` in the Pi SDK catalog.
+   * and global defaults. Callers should use the selected model's published
+   * capabilities; the create-session path does not yet reject every unsupported
+   * override before the provider runtime sees it.
    */
   thinkingLevel?: ThinkingLevel
   /**
@@ -411,7 +411,7 @@ export type SessionEvent =
   | { type: 'session_archived'; sessionId: string }
   | { type: 'session_unarchived'; sessionId: string }
   | { type: 'name_changed'; sessionId: string; name?: string }
-  | { type: 'session_model_changed'; sessionId: string; model: string | null }
+  | { type: 'session_model_changed'; sessionId: string; model: string | null; thinkingLevel?: ThinkingLevel; llmConnection?: string }
   | { type: 'session_status_changed'; sessionId: string; sessionStatus: SessionStatus }
   | { type: 'session_metadata_changed'; sessionId: string; changes: Partial<Pick<Session, 'taskNodeCount' | 'kanbanColumn' | 'taskDraft' | 'taskSlug' | 'projectId'>> }
   | { type: 'session_deleted'; sessionId: string }
@@ -756,7 +756,6 @@ export interface WorkspaceSettings {
 
 export interface ClaudeOAuthResult {
   success: boolean
-  token?: string
   error?: string
   /**
    * Resolved Anthropic identity (issue #838), forwarded to the renderer so it

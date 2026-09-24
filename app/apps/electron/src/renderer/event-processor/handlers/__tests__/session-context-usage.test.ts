@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { handleComplete, handleUsageUpdate } from '../session'
+import { handleComplete, handleSessionModelChanged, handleUsageUpdate } from '../session'
 import type { SessionState } from '../../types'
 
 const usage = { inputTokens: 419000, outputTokens: 10, totalTokens: 419010, contextTokens: 419000, costUsd: 2, contextWindow: 1000000 }
@@ -28,5 +28,21 @@ describe('renderer occupancy is separate from cumulative usage', () => {
     const unknown = { ...contextUsage, usedTokens: null, isStale: true }
     const finished = handleComplete(updated.state, { type: 'complete', sessionId: 's', tokenUsage: { ...usage, contextUsage: unknown } })
     expect(finished.state.session.tokenUsage?.contextUsage).toEqual(unknown)
+  })
+})
+
+describe('model switch state', () => {
+  it('projects model, connection and reconciled effort together', () => {
+    const before = state()
+    before.session.model = 'pi/grok-4.6'
+    before.session.thinkingLevel = 'max'
+    before.session.llmConnection = 'old-account'
+    const after = handleSessionModelChanged(before, {
+      type: 'session_model_changed', sessionId: 's', model: 'pi/grok-4.3',
+      thinkingLevel: 'medium', llmConnection: 'new-account',
+    }).state.session
+    expect([after.model, after.thinkingLevel, after.llmConnection]).toEqual([
+      'pi/grok-4.3', 'medium', 'new-account',
+    ])
   })
 })

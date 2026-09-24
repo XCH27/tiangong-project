@@ -26,7 +26,8 @@ import {
   ExternalLink,
 } from 'lucide-react'
 import { useMenuComponents } from '@/components/ui/menu-context'
-import { getDocUrl, type DocFeature } from '@craft-agent/shared/docs/doc-links'
+import type { DocFeature } from '@craft-agent/shared/docs/doc-links'
+import { openLocalHelp } from '@/lib/local-help'
 
 export type SidebarMenuType = 'allSessions' | 'flagged' | 'status' | 'sources' | 'skills' | 'automations' | 'projects' | 'labels' | 'views' | 'newSession'
 
@@ -202,7 +203,7 @@ export function SidebarMenu({
           </MenuItem>
         )}
         <Separator />
-        <MenuItem onClick={() => window.electronAPI.openUrl(getDocUrl(docFeature))}>
+        <MenuItem onClick={() => openLocalHelp(docFeature)}>
           <ExternalLink className="h-3.5 w-3.5" />
           <span className="flex-1">{learnMoreLabel}</span>
         </MenuItem>
@@ -245,7 +246,7 @@ export function SidebarMenu({
           </MenuItem>
         )}
         <Separator />
-        <MenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('automations'))}>
+        <MenuItem onClick={() => openLocalHelp('automations')}>
           <ExternalLink className="h-3.5 w-3.5" />
           <span className="flex-1">{t("sidebarMenu.learnMoreAutomations")}</span>
         </MenuItem>

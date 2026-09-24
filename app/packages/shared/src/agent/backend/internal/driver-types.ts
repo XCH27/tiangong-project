@@ -8,6 +8,7 @@ import type {
 } from '../types.ts';
 import type { LlmConnection } from '../../../config/storage.ts';
 import type { ModelFetchResult } from '../../../config/model-fetcher.ts';
+import type { ModelPricingPerMillion } from '../../../config/models.ts';
 import type { CredentialManager } from '../../../credentials/manager.ts';
 import type { ResolvedBackendRuntimePaths } from './runtime-resolver.ts';
 
@@ -20,6 +21,16 @@ export interface BackendRuntimePaths {
   piServer?: string;
 }
 
+export type PiRuntimeModelEntry = string | {
+  id: string;
+  contextWindow?: number;
+  supportsImages?: boolean;
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+  maxOutputTokens?: number;
+  runtimeApi?: 'anthropic-messages' | 'openai-completions' | 'openai-responses';
+  pricingPerMillion?: ModelPricingPerMillion;
+};
+
 export interface BackendRuntimePayload extends Record<string, unknown> {
   paths?: BackendRuntimePaths;
   piAuthProvider?: string;
@@ -28,7 +39,7 @@ export interface BackendRuntimePayload extends Record<string, unknown> {
   /** Custom endpoint protocol config (api type for routing). */
   customEndpoint?: { api: string; supportsImages?: boolean };
   /** Models registered for a custom endpoint. Strings default to 128K context; objects allow overrides. */
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: PiRuntimeModelEntry[];
 }
 
 export interface BackendResolutionContext {

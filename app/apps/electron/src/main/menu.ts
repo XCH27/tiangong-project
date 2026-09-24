@@ -1,11 +1,11 @@
-import { Menu, app, shell, BrowserWindow } from 'electron'
+import { Menu, app, BrowserWindow } from 'electron'
 import { i18n } from '@craft-agent/shared/i18n'
 import { RPC_CHANNELS, type BroadcastEventMap } from '../shared/types'
 import { EDIT_MENU, VIEW_MENU, WINDOW_MENU } from '../shared/menu-schema'
 import type { MenuItem } from '../shared/menu-schema'
 import type { WindowManager } from './window-manager'
 import type { EventSink } from '@craft-agent/server-core/transport'
-import { mainLog, isDebugMode } from './logger'
+import { isDebugMode } from './logger'
 
 type ClientResolver = (webContentsId: number) => string | undefined
 
@@ -40,7 +40,8 @@ export function setMenuEventSink(sink: EventSink, resolver: ClientResolver): voi
  * Rebuilds the application menu with current update state.
  * Call this when update availability changes.
  *
- * On Windows/Linux: Menu is hidden - all functionality is in the Craft logo menu.
+ * On Windows/Linux the native menu is hidden. In-app Edit/View, window chrome,
+ * Settings and action-registry shortcuts provide the retained actions.
  * On macOS: Native menu is required by Apple guidelines, so we keep it synced.
  */
 export async function rebuildMenu(): Promise<void> {
@@ -49,8 +50,8 @@ export async function rebuildMenu(): Promise<void> {
   const windowManager = cachedWindowManager
   const isMac = process.platform === 'darwin'
 
-  // On Windows/Linux, hide the native menu entirely
-  // Users access menu via the Craft logo dropdown in the app
+  // On Windows/Linux, hide the native menu; renderer and window chrome own the
+  // pointer-accessible actions that remain.
   if (!isMac) {
     Menu.setApplicationMenu(null)
     return
@@ -189,52 +190,13 @@ export async function rebuildMenu(): Promise<void> {
       ]
     },
 
-    // Debug menu (development only)
-    ...(!app.isPackaged ? [{
-      label: i18n.t("menu.debug"),
-      submenu: [
-        {
-          label: i18n.t("menu.checkForUpdates"),
-          click: async () => {
-            const { checkForUpdates } = await import('./auto-update')
-            const info = await checkForUpdates({ autoDownload: true })
-            mainLog.info('[debug-menu] Update check result:', info)
-          }
-        },
-        {
-          label: i18n.t("menu.installUpdate"),
-          click: async () => {
-            const { installUpdate } = await import('./auto-update')
-            try {
-              await installUpdate()
-            } catch (err) {
-              mainLog.error('[debug-menu] Install failed:', err)
-            }
-          }
-        },
-        { type: 'separator' as const },
-        {
-          label: i18n.t("menu.resetToDefaults"),
-          click: async () => {
-            const { dialog } = await import('electron')
-            await dialog.showMessageBox({
-              type: 'info',
-              message: i18n.t("menu.resetToDefaultsTitle"),
-              detail: i18n.t("menu.resetToDefaultsDetail"),
-              buttons: [i18n.t("common.ok")]
-            })
-          }
-        }
-      ]
-    }] : []),
-
     // Help menu
     {
       label: i18n.t("menu.help"),
       submenu: [
         {
           label: i18n.t("menu.helpAndDocs"),
-          click: () => shell.openExternal('https://thecraftagents.com/docs')
+          click: () => sendToRenderer(RPC_CHANNELS.menu.OPEN_HELP)
         },
         {
           label: i18n.t("menu.keyboardShortcuts"),

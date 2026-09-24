@@ -27,7 +27,7 @@ import type { SourceManager } from '../core/source-manager.ts';
 import { AbortReason, type RecoveryMessage } from '../core/index.ts';
 export { AbortReason, type RecoveryMessage };
 
-import type { ModelProvider } from '../../config/models.ts';
+import type { ModelPricingPerMillion, ModelProvider } from '../../config/models.ts';
 
 // Import LLM connection types for auth
 import type { LlmAuthType, LlmProviderType } from '../../config/llm-connections.ts';
@@ -41,7 +41,14 @@ export interface BackendRuntimeUpdate {
     baseUrl?: string;
     piAuthProvider?: string;
     customEndpoint?: { api: string; supportsImages?: boolean };
-    customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+    customModels?: Array<string | {
+      id: string;
+      contextWindow?: number;
+      supportsImages?: boolean;
+      reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+      maxOutputTokens?: number;
+      pricingPerMillion?: ModelPricingPerMillion;
+    }>;
     [key: string]: unknown;
   };
 }
@@ -220,6 +227,9 @@ export interface CoreBackendConfig {
 
   /** Callback when SDK session ID is captured/updated */
   onSdkSessionIdUpdate?: (sdkSessionId: string) => void;
+
+  /** Optional active Claude SDK model capability capture (no new catalog owner). */
+  onClaudeSupportedModels?: (models: readonly unknown[]) => void;
 
   /** Callback when SDK session ID is cleared (e.g., after failed resume) */
   onSdkSessionIdCleared?: () => void;

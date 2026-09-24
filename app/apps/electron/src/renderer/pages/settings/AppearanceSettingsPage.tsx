@@ -9,13 +9,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LANGUAGES, type LanguageCode } from '@craft-agent/shared/i18n'
 import type { ColumnDef } from '@tanstack/react-table'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { SettingsPageTitle } from '@/components/settings/SettingsPageTitle'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import { useTheme } from '@/context/ThemeContext'
 import { useAppShellContext } from '@/context/AppShellContext'
-import { routes } from '@/lib/navigate'
 import { Monitor, Sun, Moon } from 'lucide-react'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import type { ToolIconMapping } from '../../../shared/types'
@@ -307,10 +305,7 @@ export default function AppearanceSettingsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader
-        title={t("settings.appearance.title")}
-        actions={<HeaderMenu route={routes.view.settings('appearance')} helpFeature="themes" />}
-      />
+      <SettingsPageTitle title={t("settings.appearance.title")} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">

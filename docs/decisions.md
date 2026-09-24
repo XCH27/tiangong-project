@@ -111,15 +111,14 @@ only place where a bounded implementation may begin.
   product. Board has a separate navigation entry and projects the existing Session/Task
   authorities; it never creates another Project, task or conversation store and does not restore a
   list/Board view toggle. (2026-07-08; revised 2026-07-21, 2026-07-28, 2026-09-10, 2026-09-11)
-- **P6 — Workspaces contain Projects and Conversations.** Owner revision, 2026-09-22:
-  keep Workspace as a visible, independently configurable environment. Each Workspace owns its
-  Conversations, Project memberships, Sources/MCPs, Skills and component/plugin overrides. A Project
-  is a Workspace-scoped record referencing a working folder; the same folder may be opened in
-  multiple Workspaces. Those memberships share filesystem bytes, not transcripts, credentials,
-  permissions or tool activation. Choosing a Project never switches Workspace implicitly. Preserve
-  Craft's existing Workspace/Project/Session records; no collapse migration and no parallel global
-  Project store. A folderless Conversation stays in the selected Workspace. See
-  [`modules/shell.md`](modules/shell.md).
+- **P6 — Workspace/Project target is reopened; preserve the current records.** Craft v0.13.4 still
+  scopes Projects, Conversations, Sources and Skills under visible Workspaces. The owner first asked
+  to retain that layer, then proposed removing its visible UI and selecting capability suites per
+  Conversation. The second request supersedes the visible-Workspace target, but does not authorize
+  a data migration or replacement store. The candidate Host → optional Project/folder → Conversation
+  mapping and its unresolved migration proof are in [`modules/shell.md`](modules/shell.md). Until a
+  reviewed slice replaces it, the current Workspace/Project/Session authority and remote routes
+  remain intact. Same-folder access never implies shared transcripts or grants.
 - **P7 — Remote Projects connect directly to another Fleet instance; no Fleet account or central
   coordinator.** The current connection interaction is P9-rev below: host access link, client name
   + link. The earlier exposed URL/token form is not the target UI. A remote access grant is
@@ -187,7 +186,7 @@ and grant flow is `not implemented` in the current tree.
   preset ships only when R14 lands — no disabled placeholder control before that (G6). (owner
   direction 2026-07-13; location presets + agent-managed worktrees, owner direction 2026-07-20)
 
-- **P10 — One left work list; independent Board; contextual right panel.** Owner revision, 2026-09-22:
+- **P10 — One left work list; independent Board; contextual right panel (paused target).** Owner revision, 2026-09-22:
   remove the separate left navigator column. The single sidebar groups existing Conversations by
   Project and keeps folderless Conversations reachable. Search, archive, status and labels remain
   predicates/actions on the same Session store. Board gets its own navigation entry, never a toggle
@@ -199,18 +198,22 @@ and grant flow is `not implemented` in the current tree.
   It is not a vertical shortcut rail or a second list authority. This does not migrate or redesign
   unrelated resource/settings pages. New Conversation uses one Craft composer, with ZCode's responsive centered empty
   layout and context header pattern; do not import a second editor, runtime, permission system or
-  decorative brand artwork.
+  decorative brand artwork. The owner subsequently paused Conversation/Project changes and asked
+  for small, reviewed corrections after the original-app walkthrough. None of this UI is currently
+  Fleet implementation; the old R1 delivery order is withdrawn.
 - **P11 — A Plugin is distribution packaging, not another authority.** A Component is Fleet's
   bounded installable capability; a Plugin bundle packages Components, Skills and Sources. Import
   compatibility must map into their existing or explicitly introduced native owners, not add
   parallel installers, settings, connections, Skills or permission stores. Current Craft Skill and
   Source stores exist; the Fleet Component store, `ComponentManifest` and bundle adapter do not.
 
-  The owner requires freely selected Components, global or Workspace activation, consistent Craft
+  The owner requires freely selected Components, consistent Craft
   interaction, and locally usable capabilities without a required Fleet account. Installed
   capabilities must work when a catalog is unavailable; source failures stay isolated; install
   trust is computed locally; source identity, not a reusable display name, controls update ownership.
   Cross-machine copying is explicit and user-selected, never an automatic merge of host settings.
+  The former Workspace-activation default is reopened under P6; per-Conversation suite selection is
+  the current design candidate, not an implemented resolver.
 
   Build order after the baseline exit is **Component host → adapter/local install → catalog and
   distribution safety**. An offline seed plus optional remote catalog is a candidate mechanism for
@@ -436,7 +439,8 @@ and grant flow is `not implemented` in the current tree.
   complete in Settings with progressive disclosure rather than navigating through the first-run
   onboarding experience. The 2026-09-22 owner clarification selects **ZCode for composer placement
   and separate model/reasoning controls, Cindy for the model popup** (search, category rail,
-  grouped rows and configure footer). [R1](modules/shell.md) owns that contract.
+  grouped rows and configure footer). [R1](modules/shell.md) retains the comparison; implementation
+  is paused pending the original-app walkthrough.
   OpenCode remains comparison evidence for provider configuration, discovery, context usage and
   review; it does not override the two named composer references.
   Existing Fleet composition is not grandfathered; redundant menus, nested pickers, and weak
@@ -1378,9 +1382,9 @@ Amendment (2026-07-20, same conversation): 「工作树的设计应该交给Agen
 行」 — worktree isolation is agent-managed, never a user preset; user-facing location choices are
 local and cloud only.
 
-**Superseded in part by OV-013 (2026-09-22):** Workspace stays visible and distinct from Project;
-Decision P6 and R1 carry the revision. Task-first creation remains carried by Decision P10; local and
-cloud location presets with agent-managed worktrees by Decision P9.
+**Superseded by later owner directions:** OV-013 briefly retained the visible Workspace layer;
+OV-020 reopened that choice. P6 now records the current Craft authority and candidate without an
+approved migration. Task-first creation and local/cloud execution remain separate design inputs.
 
 ### OV-009 — Branch UX follows Claude/Codex desktop; upstream basics land first (2026-07-20)
 
@@ -1450,7 +1454,8 @@ its own components, plugins, Skills and MCPs, and has independent conversations 
 the same Project may be opened in another Workspace. Turn the bottom frame into a right function
 panel. Study Cindy's frontend and backend, and how Codex and Claude do it.
 
-**Now carried by:** Decision P6, R1 contract items 1–5. Supersedes OV-008's Workspace collapse.
+**Superseded in part by OV-020:** the visible-Workspace and Workspace-wide suite choices are no
+longer settled. P10 still records the sidebar/Board/right-panel intent; R1 implementation is paused.
 
 ### OV-014 — New conversation and sidebar follow ZCode and Craft (2026-09-22)
 
@@ -1508,17 +1513,44 @@ sub-agents casually.
 
 **Now carried by:** `AGENTS.md` rule 11 and *Learned owner preferences*.
 
-### OV-018 — Sidebar from ZCode; What's New and Help into the app menu (2026-09-22)
+### OV-018 — Sidebar entries, What's New, and one desktop Help home (2026-09-22)
 
 > 「还有对于左侧栏的很多设计可以直接按照ZCode的进行整改只要把分组按钮改成对话就行」
 >
 > 「最新动态可以放进调试里，右上角的帮助按钮跟左侧的帮助做整合」
+>
+> 「我想了一下之前的帮助还是放回右上角比较好，撤回相关修改」
+>
+> 「有些重复的按钮是可以删除的」
+>
+> 「比如设置就是，弹窗里有，外面也有，弹窗里的很多按钮都是重复的，你排查清楚它们是否有必要留着，是不是删了就会无法使用快捷键，还是怎么样，为什么弹窗里有那么多外面已有功能的入口」
+>
+> 「还有里面的帮助和文档是不是和右上角帮助里的查看所有文档跳转是一样的，是的话应该直接删除，还有可以键盘快捷键的入口也没必要在这里吗体现也可以直接删除」
+>
+> 「还有我觉得可以不要有二级页了，并且检测更新和安装更新也完全是重复设计，你可以仔细排查整个软件还有哪些地方有类似的错误设计」
 
 **English gloss:** Port much of ZCode's left sidebar directly; the only change is that its 分组
-(grouped) segment becomes 对话 (conversations). Move What's New into the Debug submenu, and merge the
-top-right Help button into the app menu's Help.
+(grouped) segment becomes 对话 (conversations). The later correction keeps Help in the upper-right
+desktop slot, removes the duplicate desktop popup Help, and flattens What's New into the Craft
+popup instead of retaining a Debug submenu. The popup's simultaneous Check/Install entries are
+redundant with Settings → App's stateful update controls. Inspect each duplicate action's route and
+independent shortcut before removing it; compact/mobile Help must remain reachable. The owner's
+request to avoid second-level pages also informs a separate sidebar audit, without authorizing
+unreviewed Project/Conversation data changes.
 
-**Now carried by:** [`modules/shell.md`](modules/shell.md#delivery-order) items 1 and 11, R1-A10.
+**Now carried by:** P10 and [`modules/shell.md`](modules/shell.md#active-entry-slice); the bounded
+entry correction is active, while the broader sidebar redesign remains paused.
+
+**Later Settings correction:** the owner asked for ZCode-informed direct category navigation,
+then rejected replacing the entire left sidebar when Settings opens: 「点一下设置左边一整块都变了排版和样式这是很不合理的」,
+「和外部的左边栏很割裂」. Keep the Craft global sidebar mounted and place Settings categories and
+forms together in its content panel. The repeated visible page title and per-page ellipsis are
+retired. The owner explicitly rejected the newly added 「了解更多 · 外观」 row in upper-right Help;
+that menu retains its original items. Translate the Workspace, messaging and model/connection
+labels without creating another settings store. This correction is carried by
+[`modules/shell.md`](modules/shell.md#active-entry-slice). **Superseded by OV-022 below:** the later
+instruction clarifies that Settings should replace the existing sidebar *contents* in the same
+slot, with Back to Workspace in its first row, and Help should be local.
 
 ### OV-019 — Port ZCode's sidebar, but merge Craft's own design into it (2026-09-22)
 
@@ -1528,7 +1560,53 @@ top-right Help button into the app menu's Help.
 filter popover (status, labels, grouping, search) and the conversation menu — must be merged into
 it deliberately, not dropped.
 
-**Now carried by:** [`modules/shell.md`](modules/shell.md#sidebar-merge-map-item-1).
+**Now carried by:** [`modules/shell.md`](modules/shell.md) as reference evidence, not a port order.
+
+### OV-020 — Reconsider the visible Workspace layer (2026-09-22)
+
+> 「工作区觉得还是可以删除的，而功能套件等设计可以直接做成让每个对话可以加载不同的套件，或者你看看怎么设计是最佳方案」
+>
+> 「工作文件夹远程服务器等相关设计都会受到影响，但是你直接按照Cindy，OpenChamber，ZCode的前后端设计梳理出最佳方案进行整改就行」
+
+**English gloss:** Reconsider the visible Workspace tier; a Conversation may choose its own suite.
+Folder, Project and remote-host identity must be designed together using source evidence from Cindy,
+OpenChamber and ZCode. This is a changed design direction, not permission to discard existing data.
+
+**Now carried by:** P6 and [`modules/shell.md`](modules/shell.md#resume-criteria).
+
+### OV-021 — Pause Conversation/Project implementation and clear the app delta (2026-09-22)
+
+> 「而且你现在的很多修改并不合理你没考虑到各种相关的设计，你之前的很多修改也不合理，感觉还是先从一些简单的相关的设计慢慢改回更好，比如先调整按钮位置，各种入口等」
+>
+> 「不要你先做别的调整，先不做对话和项目相关的整改」
+>
+> 「先把项目的修改都清除好，并且梳理好文档」
+
+**English gloss:** Withdraw the current app edits. Pause Conversation and Project changes, reconcile
+the documents, then review the original Craft interface before any small, bounded correction.
+
+**Now carried by:** `AGENTS.md` *Current boundary*, [`TODO.md`](../TODO.md) and
+[`modules/baseline.md`](modules/baseline.md#preparation-and-joint-review).
+
+### OV-022 — Settings slot, local Help and IM channel comparison (2026-09-22)
+
+> 「点击设置的时候，左侧边栏变成设置页面的，新建🎨变成返回工作区按钮就行」
+>
+> 「把原版的帮助功能完全本地化」
+>
+> 「帮助文档要在我们项目做完或者某个功能确定改好了没问题的时候做更新，而且帮助文档也要做多语言适配」
+>
+> 「消息连接的页面排版页面宽度等跟其他页面不一致，并且参考应该参考Cindy的IM 机器人功能的前后端设计和ZCode的Bot Channel的前后端和相关设计，增加我们对其他平台的适配和各种设计优化」
+
+**English gloss:** The Settings category list takes over the existing left sidebar slot; its top
+action returns to the workspace. Local Help belongs in Settings and the upper-right trigger keeps
+its position. Feature questions or requests use the installed guide as context for the existing
+Agent path. Translate UI Help metadata now; publish translated operational detail only after the
+feature is verified. Align Messaging Settings width with sibling pages and study real channel
+adapters before adding a platform, so an icon or Connect row never overstates capability.
+
+**Now carried by:** [`modules/shell.md`](modules/shell.md#active-entry-slice) and
+[`modules/remote.md`](modules/remote.md#messaging-boundary-r14--exec-11).
 
 ### Rules for this file
 

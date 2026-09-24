@@ -17,6 +17,7 @@ import {
   formatProjectContextForPrompt,
 } from '../system'
 import type { ProjectPromptContext } from '../../projects/types.ts'
+import { DOC_REFS } from '../../docs/index.ts'
 
 const GIT_CONVENTIONS_HEADING = '## Git Conventions'
 const CO_AUTHOR_TRAILER = 'Co-Authored-By: Craft Agent <agents-noreply@craft.do>'
@@ -49,7 +50,15 @@ describe('system prompt guidance', () => {
     const prompt = getMiniAgentSystemPrompt('/tmp/workspace')
 
     expect(prompt).toContain('MCP tool calls require _displayName and _intent metadata')
-    expect(prompt).toContain('read the matching local doc in ~/.craft-agent/docs/')
+    expect(prompt).toContain(`read the matching local doc in ${DOC_REFS.docsDir}/`)
+  })
+
+  it('prioritizes the inherited task guides and makes the local article index readable by the Agent', () => {
+    const prompt = getSystemPrompt(undefined, undefined, '/tmp/workspace', '/tmp/workspace')
+    expect(prompt).toContain('first read the matching task-specific guide in the Configuration Documentation table below')
+    expect(prompt).toContain(`${DOC_REFS.docsDir}/craft/index.md`)
+    expect(prompt).toContain('follow its relative Markdown file links')
+    expect(prompt).toContain(`| Sources | \`${DOC_REFS.sources}\``)
   })
 
   it('keeps automations defined as a first-class feature area', () => {
@@ -57,7 +66,7 @@ describe('system prompt guidance', () => {
 
     expect(prompt).toContain('## Automations')
     expect(prompt).toContain('Automations run prompts, webhooks, or workspace-local scripts')
-    expect(prompt).toContain('Read `~/.craft-agent/docs/automations.md` before creating or modifying automations.')
+    expect(prompt).toContain(`Read \`${DOC_REFS.automations}\` before creating or modifying automations.`)
     expect(prompt).toContain('Script actions run workspace-local scripts, not arbitrary shell snippets.')
   })
 

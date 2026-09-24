@@ -111,9 +111,9 @@ implementation has added them; extend a matching existing behavioral test instea
 
 **Project/Workspace boundary**
 
-- **Next:** `IMPLEMENT` — R0 corrections under R1-A1..A9.
+- **Next:** `PROVE` — inventory current Workspace/Project/Session identities and remote routes before any R1 data redesign. The bounded Board/sidebar entry slice does not alter these stores.
 - **Sources:** [`packages/shared/src/workspaces/storage.ts`](../../app/packages/shared/src/workspaces/storage.ts); [`packages/shared/src/projects/storage.ts`](../../app/packages/shared/src/projects/storage.ts); [`packages/shared/src/config/storage.ts`](../../app/packages/shared/src/config/storage.ts).
-- **Deliver:** Retain visible Workspaces and scoped Project memberships; implement the owner-approved single sidebar, separate Board, contextual right panel and shared Conversation create/select flow. Preserve IDs and compatibility reads; remove a duplicate entry only after its actions have a working home.
+- **Deliver:** Preserve current Workspace and Project records. The active UI slice separates the existing Board entry and removes only verified duplicate controls. A future visible-Workspace change, single sidebar, contextual right panel and Conversation create/select flow require a separate reviewed contract with ID-preserving compatibility reads.
 - **Data:** Project selection resolves the existing workspace identity/root. Active context, list filter and Session binding are different fields; changing a filter never changes execution scope.
 - **Failure:** Canonicalize/symlink-check actual file access. Conflict or migration failure leaves original records readable; never merge same-named folders or rename live data automatically.
 - **Proof:** CORE-02-A — Fixtures with equal names, different roots, a symlink escape and old nested-Project data: create/select/restart retains the right records; denied access reveals no foreign content. Planned regression/probe target relative to `app/`: `packages/shared/src/workspaces/__tests__/fleet-core-02.test.ts`. After adding the target, run from `app/`: `bun test packages/shared/src/workspaces/__tests__/fleet-core-02.test.ts`; apply the isolated-profile rule for configuration writes.
@@ -219,7 +219,7 @@ implementation has added them; extend a matching existing behavioral test instea
 
 **Permissions, approvals and safety**
 
-- **Next:** `IMPLEMENT` — R0-C2 before new actions; the owner-authorized R1 Plan/permission composer slice extends this same owner.
+- **Next:** `IMPLEMENT` — R0-C2 before new actions. Independent R1 Plan/permission controls remain a paused design input and require their own reviewed slice.
 - **Sources:** [`packages/shared/src/agent/core/pre-tool-use.ts`](../../app/packages/shared/src/agent/core/pre-tool-use.ts); [`packages/shared/src/agent/mode-manager.ts`](../../app/packages/shared/src/agent/mode-manager.ts); [`packages/server-core/src/services/privileged-execution-broker.ts`](../../app/packages/server-core/src/services/privileged-execution-broker.ts).
 - **Deliver:** Trace real dispatch for every inherited effect, especially browser_tool and remote RPC. Classify operation effect before approval and enforce it at the existing broker/PreToolUse path. R1 extends this path with independent Plan and three action permissions across Session persistence and both adapters; no UI-only relabeling.
 - **Data:** Existing caller, Workspace, target, permission mode and grant own decisions. A tool name or OS permission cannot imply authorization of all its operations.
@@ -272,7 +272,7 @@ implementation has added them; extend a matching existing behavioral test instea
 - **Deliver:** Keep installed Claude/Pi lanes. For a requested CLI, resolve its installed binary/version and protocol handshake, compare native protocol with ACP only if supported, then implement one adapter.
 - **Data:** Detection, user configuration, authenticated connection and runtime availability are separate facts. Persist resolved identity/capabilities under the existing connection; Session owns each run.
 - **Failure:** Missing/unsupported protocol is unavailable. Reconnect requires capability/account validation; stderr is diagnostic, not a fake result. Disabling adapter releases its processes only.
-- **Proof:** EXEC-05-A — Include a reused branch name in a fresh worktree, a matching historical PR head ancestor and shallow/unavailable ancestry; uncertainty never establishes ownership. Handshake, model/options discovery, one prompt/tool approval/cancel cycle and restart using a protocol fixture plus installed binary. Unsupported parameter must fail before dispatch. Planned regression/probe target relative to `app/`: `scripts/probes/exec-05.ts`. After adding the target, run from `app/`: `bun run scripts/probes/exec-05.ts`; apply the isolated-profile rule for configuration writes.
+- **Proof:** EXEC-05-A — Include a reused branch name in a fresh worktree, a matching historical PR head ancestor and shallow/unavailable ancestry; uncertainty never establishes ownership. Handshake, model/options discovery, one prompt/tool approval/cancel cycle and restart using a protocol fixture plus installed binary. Unsupported parameter must fail before dispatch. Existing regression/probe target relative to `app/`: `scripts/probes/exec-05.ts`. It currently proves only a read-only Grok ACP version 1 handshake and cached-token authentication with no prompt or tool call; on this host Grok Build CLI 1.0.40 passed. Run from `app/`: `bun run scripts/probes/exec-05.ts`. Model/options, permission, cancel and restart proof remains open; apply the isolated-profile rule for configuration writes.
 - **Reference:** Craft SDK adapters; Codex app-server, OpenCode and Waku protocol distinctions. Never scrape private client caches or import a harness wholesale. Source locks and limits: [reference registry](../references.md#bounded-source-review--2026-09-21).
 
 ### Execution EXEC-08

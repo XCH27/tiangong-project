@@ -13,6 +13,8 @@
  */
 import { randomBytes, createHash } from 'node:crypto';
 import { CHATGPT_OAUTH_CONFIG } from './chatgpt-oauth-config.ts';
+import { formatOAuthTokenError } from './oauth-errors.ts';
+import { fetchOAuthToken } from './oauth-token-fetch.ts';
 
 // OAuth configuration from shared config
 const CLIENT_ID = CHATGPT_OAUTH_CONFIG.CLIENT_ID;
@@ -105,7 +107,7 @@ export async function exchangeChatGptTokens(
     code_verifier: codeVerifier,
   });
 
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchOAuthToken(TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -116,14 +118,7 @@ export async function exchangeChatGptTokens(
 
   if (!response.ok) {
     const errorText = await response.text();
-    let errorMessage: string;
-    try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.error_description || errorJson.error || errorText;
-    } catch {
-      errorMessage = errorText;
-    }
-    throw new Error(`Token exchange failed: ${response.status} - ${errorMessage}`);
+    throw new Error(formatOAuthTokenError('Token exchange', response.status, errorText));
   }
 
   const data = (await response.json()) as {
@@ -161,7 +156,7 @@ export async function refreshChatGptTokens(
   });
 
   try {
-    const response = await fetch(TOKEN_URL, {
+    const response = await fetchOAuthToken(TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -172,14 +167,7 @@ export async function refreshChatGptTokens(
 
     if (!response.ok) {
       const errorText = await response.text();
-      let errorMessage: string;
-      try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error_description || errorJson.error || errorText;
-      } catch {
-        errorMessage = errorText;
-      }
-      throw new Error(`Token refresh failed: ${response.status} - ${errorMessage}`);
+      throw new Error(formatOAuthTokenError('Token refresh', response.status, errorText));
     }
 
     const data = (await response.json()) as {
@@ -224,7 +212,7 @@ export async function exchangeIdTokenForApiKey(idToken: string): Promise<string>
     requested_token: 'openai-api-key',
   });
 
-  const response = await fetch(TOKEN_URL, {
+  const response = await fetchOAuthToken(TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -235,17 +223,7 @@ export async function exchangeIdTokenForApiKey(idToken: string): Promise<string>
 
   if (!response.ok) {
     const errorText = await response.text();
-    let errorMessage: string;
-    try {
-      const errorJson = JSON.parse(errorText);
-      // Handle both string and object error formats
-      const errorDesc = errorJson.error_description;
-      const errorCode = typeof errorJson.error === 'string' ? errorJson.error : JSON.stringify(errorJson.error);
-      errorMessage = errorDesc || errorCode || errorText;
-    } catch {
-      errorMessage = errorText;
-    }
-    throw new Error(`Token exchange failed: ${response.status} - ${errorMessage}`);
+    throw new Error(formatOAuthTokenError('Token exchange', response.status, errorText));
   }
 
   const data = (await response.json()) as {

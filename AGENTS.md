@@ -5,15 +5,35 @@ to. Do not preload the whole `docs/` tree.
 
 ## Current boundary
 
-- `app/` is **unmodified official Craft Agents v0.13.4**. `scripts/check-upstream-delta.py` enforces
-  zero undeclared difference from the pin; every change you make must earn a line in
+- `app/` is official Craft Agents v0.13.4 plus the bounded, declared entry corrections.
+  `scripts/check-upstream-delta.py` enforces zero undeclared difference from the pin; every change
+  you make must earn a line in
   [`docs/UPSTREAM-DELTA.tsv`](docs/UPSTREAM-DELTA.tsv).
 - The owner's order is **documentation and preparation → joint walkthrough of original Craft →
   approved rectification slices → implementation and acceptance → added capabilities.**
-- The one slice currently authorized is **R1 shell and context rectification** (sidebar, Board,
-  right panel, new-conversation layout, composer model/reasoning/permission). Its contract is
-  [`docs/modules/shell.md`](docs/modules/shell.md); the checklist
-  is in [`TODO.md`](TODO.md). Everything outside it needs its own approval.
+- The owner reauthorized **one bounded R1 entry slice**: separate All Conversations and Board
+  navigation; move What's New into the Craft menu; move the desktop Craft logo menu to the lower-left
+  footer, informed by ZCode. The upper-right Help button remains; the later owner direction removes
+  genuinely duplicate desktop menu entries and the Debug submenu after checking other access paths
+  and shortcuts. App Settings owns update check/install UI; developer tools keep their debug gate.
+  The latest owner-approved Settings correction **reuses the original left sidebar slot**: opening
+  Settings replaces its rows with Settings categories, and the top New Conversation row becomes
+  Back to Workspace. The selected form occupies the existing content panel; no extra sidebar or
+  drill-in page is mounted. The upper-right Help button retains Craft's topic menu and opens
+  packaged local Craft reference documents in its existing full-document reader; the native Help
+  action and contextual Learn More use the same local documents. Existing feature-page Agent
+  controls own contextual questions and edits. Page titles and ellipses
+  are reduced without changing Craft's visual values. The owner also authorized the Messaging
+  settings width correction and a source-backed review of additional IM channels. A channel is
+  not surfaced as connectable until receive, scope, permission, send and reconnect are real.
+  This does not authorize the old 11-item R1 plan,
+  Conversation/Project data changes, Workspace removal, unrelated composer or right-panel work. See
+  [`docs/modules/shell.md`](docs/modules/shell.md#active-entry-slice) and [`TODO.md`](TODO.md).
+- Later owner instructions separately authorize a model-connection correction across setup,
+  discovery, model/effort selection and runtime credentials. Keep it bounded to existing
+  connection, credential, Session and provider owners; do not infer model capabilities,
+  subscription allowances or Grok subscription login from API-key support. See
+  [`docs/modules/context.md`](docs/modules/context.md#model-connection-correction).
 - A 2026-09-22 attempt at this slice was rejected and reverted. The owner's words:
   「你的很多修改是完全错误的，我只让你修改所有对话和项目等模块，你却随意修改了其他部份，而且你的UI
   设计没有遵循原版的配色间距设计风格，交互逻辑和排版方案也没使用两个参考项目的，完全自己随意创建了
@@ -69,7 +89,7 @@ and execution rows. Read the module first, and the shared documents only for wha
 | Before you touch… | Read |
 |---|---|
 | **Anything rendered** — a value, layout, motion | [`DESIGN.md`](DESIGN.md), then the module — mandatory before UI code |
-| Sidebar, navigation, Workspace/Project, new conversation, composer, right panel (R1) | [`docs/modules/shell.md`](docs/modules/shell.md) |
+| Sidebar, navigation, Workspace/Project, new conversation, composer, right panel (paused R1) | [`docs/modules/shell.md`](docs/modules/shell.md) |
 | Updater, hosted Pages, telemetry, help, OAuth relays, branding (R2) | [`docs/modules/services.md`](docs/modules/services.md), then [packaging](docs/engineering.md#building-and-packaging) |
 | The walkthrough, baseline exit, or any original-Craft behaviour (R0) | [`docs/modules/baseline.md`](docs/modules/baseline.md) |
 | Sessions, permissions, actions, tasks, orchestration | [`docs/modules/agent-core.md`](docs/modules/agent-core.md) |
@@ -122,7 +142,7 @@ U=源码参考/software/craft-agents-oss
 diff app/apps/electron/src/renderer/<path> $U/apps/electron/src/renderer/<path>
 ```
 
-For the R1 surfaces, also open the named Cindy and ZCode components listed in [delivery order](docs/modules/shell.md#delivery-order) and in
+For a future approved R1 surface, also open the named Cindy and ZCode components listed in [source comparison](docs/modules/shell.md#source-comparison) and in
 [`docs/references.md`](docs/references.md). Read what they do, then justify each delta. Real cases
 this step would have caught: a button given `h-7` because `size="sm"` "looked too big" while
 upstream uses `size="sm"` everywhere; a dropdown hand-rolled from `<button>` rows beside a sibling

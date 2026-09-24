@@ -1,0 +1,85 @@
+# Google Docs
+
+Access and manage Google Docs documents.
+
+## API Reference
+
+This source provides a single flexible `api_google-docs` tool that accepts:
+
+*   `path`: API endpoint (e.g., “/v1/documents/{documentId}”)
+*   `method`: HTTP method (GET, POST)
+*   `params`: Request body or query parameters
+
+### Common Endpoints
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| /v1/documents | POST | Create a new document |
+| /v1/documents/{documentId} | GET | Get document content and structure |
+| /v1/documents/{documentId}:batchUpdate | POST | Update document content |
+
+### batchUpdate Requests
+
+The `:batchUpdate` endpoint accepts an array of requests:
+
+```json
+{
+  "requests": [
+    {
+      "insertText": {
+        "location": { "index": 1 },
+        "text": "Hello World"
+      }
+    }
+  ]
+}
+```
+
+**Common request types:**
+
+*   `insertText` - Insert text at a location
+*   `deleteContentRange` - Delete content in a range
+*   `updateTextStyle` - Apply text formatting
+*   `insertTable` - Insert a table
+*   `replaceAllText` - Find and replace text
+
+## Guidelines
+
+*   **Batch updates**: Use `:batchUpdate` for efficient multi-operation updates.
+*   **Indexes**: Text positions use 1-based indexing (index 1 = start of document).
+*   **Read before write**: Get document structure before making targeted edits.
+
+* * *
+
+## Setup Guide
+
+### Configuration
+
+**Required config.json:**
+
+```json
+{
+  "name": "Google Docs",
+  "slug": "google-docs",
+  "enabled": true,
+  "provider": "google",
+  "type": "api",
+  "api": {
+    "baseUrl": "https://docs.googleapis.com/v1/",
+    "authType": "bearer",
+    "googleService": "docs",
+    "googleOAuthClientId": "your-client-id.apps.googleusercontent.com",
+    "googleOAuthClientSecret": "your-client-secret"
+  },
+  "iconUrl": "https://docs.google.com"
+}
+```
+
+### Authentication
+
+See [Google OAuth Setup](/docs/source-guides/google-oauth-setup) for instructions on creating OAuth credentials, then use `source_google_oauth_trigger` to start the OAuth flow.
+
+### Rate Limits
+
+*   300 read requests per minute per user
+*   60 write requests per minute per user

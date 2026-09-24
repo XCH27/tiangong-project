@@ -78,6 +78,8 @@ export {
   type ThinkingLevelDefinition,
   THINKING_LEVELS,
   DEFAULT_THINKING_LEVEL,
+  getThinkingLevelsForModel,
+  reconcileThinkingLevelForModel,
   getThinkingTokens,
   getThinkingLevelNameKey,
   isValidThinkingLevel,

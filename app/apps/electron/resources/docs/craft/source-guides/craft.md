@@ -1,0 +1,152 @@
+# Craft
+
+Everything in Craft is scoped to a **Space**. Users may have multiple spaces, but you can only act within the current space.
+
+## Craft Environment
+
+Within a space, documents can be organized into folders. There are also smart folders:
+
+| Smart Folder | Purpose |
+| --- | --- |
+| All Docs | All documents in the space |
+| Starred | Starred documents |
+| Unsorted | Documents not in any folder |
+| Tags | Documents filtered by tag |
+| Calendar | All daily notes |
+| Tasks | Task inbox, today, upcoming, all |
+
+## Documents
+
+Documents are the core of Craft. Each document has a unique ID.
+
+**Daily Notes** are special documents attached to calendar dates. Their titles follow the pattern `2025.01.31` but users see them in their regional date format.
+
+## Document Structure
+
+Documents are **not linear** - they are hierarchical structures made of blocks. Each block:
+
+*   Has a unique shortened ID (integer)
+*   Can contain nested child blocks (subblocks)
+*   When a block has children, it’s called a “Page” or “Subpage”
+
+### Block Types
+
+| Type | Description |
+| --- | --- |
+| text | Text content with styling |
+| url | Link/bookmark |
+| image | Image content |
+| video | Video content |
+| file | File attachment |
+| collection | Database-like structure |
+| table | Table content |
+| drawing | Drawing/sketch |
+| line | Divider line |
+
+### Text Blocks
+
+Text blocks can serve as:
+
+*   **Headings**: Different text styles act like markdown #, ##, ###
+*   **Pages**: Visual indicator of nested content
+*   **Tasks**: Checkbox with optional schedule and due dates
+*   **List items**: Numbered, bullet, or toggle lists
+*   **Rich text**: Content styled with CommonMark markdown
+
+## Collections
+
+Collections are database-like structures embedded within documents. They have a schema (columns) and items (rows).
+
+### Creating a Collection
+
+Use `collections_create` with a schema defining the collection name, content property (primary column), and typed properties:
+
+```json
+{
+  "name": "Movies",
+  "contentPropDetails": { "name": "Title" },
+  "properties": [
+    { "type": "number", "name": "Year" },
+    { "type": "number", "name": "Rating" },
+    { "type": "text", "name": "Director" },
+    { "type": "singleSelect", "name": "Genre", "options": [
+      { "name": "Drama" }, { "name": "Action" }, { "name": "Comedy" }
+    ]}
+  ]
+}
+```
+
+**Available property types:** `text`, `number`, `date`, `url`, `email`, `phone`, `boolean`, `singleSelect`, `multiSelect`, `blockLink`, `relation`
+
+### Adding Items (CRITICAL)
+
+**Always call `collectionSchema_get(format='json-schema-items')` before `collectionItems_add`.** The returned schema tells you the exact item shape and property keys.
+
+Items use a **nested structure** — NOT flat key/value objects:
+
+```json
+{
+  "title": "The Shawshank Redemption",
+  "properties": {
+    "year": 1994,
+    "rating": 9.3,
+    "director": "Frank Darabont",
+    "genre": "Drama"
+  }
+}
+```
+
+*   `title` (string) — the content/primary column value
+*   `properties` (object) — values keyed by property **key** from the schema (not the display name)
+
+**Do NOT** send flat objects like `{ "title": "...", "year": 1994 }`. The item schema is loosely typed (`properties: {}`), so validation won’t catch the mistake — fields will be silently lost.
+
+### Updating Schema
+
+`collectionSchema_update` **replaces the entire schema**. Always include all existing fields you want to keep. Property keys must remain stable — renaming select options loses associated data.
+
+* * *
+
+## Setup Guide
+
+### Prerequisites
+
+1.  Open the Craft app
+2.  Go to Space Settings → MCP Link
+3.  Generate an MCP link - you’ll get a URL like `https://mcp.craft.do/links/ABC123/mcp`
+
+### Configuration
+
+**Required config.json:**
+
+```json
+{
+  "name": "Craft",
+  "slug": "craft",
+  "enabled": true,
+  "provider": "craft",
+  "type": "mcp",
+  "mcp": {
+    "url": "https://mcp.craft.do/links/{linkId}/mcp",
+    "authType": "none"
+  }
+}
+```
+
+Replace `{linkId}` with your actual link ID from the Craft app.
+
+### Authentication
+
+MCP links are pre-authenticated - no OAuth required. The link itself provides access to the space.
+
+### Recommended Questions
+
+*   What types of documents do you primarily work with?
+*   Do you use daily notes?
+*   Are there specific folders or documents you frequently access?
+
+### Caching Recommendations
+
+*   Fetch and store folder structure (IDs + names)
+*   If user mentions specific docs, store their IDs
+*   Note any frequently used smart folders

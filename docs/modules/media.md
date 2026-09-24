@@ -31,6 +31,24 @@ Prompt/source/reference → image/audio/video or deck → analysis/storyboard/ca
 sequence/document → cancellable render Job → ArtifactRef → delivery. Native 3D authoring, panorama
 and multi-camera shot grids are excluded by PRODUCT; a research catalogue does not reopen them.
 
+## Model pairing and Agent dispatch
+
+One existing connection may authenticate chat, image, video and audio models, but each model's
+membership, input/output mode, endpoint, credential scope and allowance are separate facts. The
+conversation LLM plans and calls a capability tool; the configured image/video/speech model executes
+it. A model name, shared account or image-input flag alone never enables a generation tool. Follow
+Cindy's provider-bound media catalog/channel split (`apps/desktop/src/main/cindy-brain/{cindyMediaCatalog,index}.ts`),
+Hermes's opt-in tools and entitlement checks (`tools/{image_generation_tool,video_generation_tool,tts_tool}.py`,
+`hermes_cli/nous_subscription.py`), and OpenClaw's per-capability model selection and cancellable
+preflight (`src/agents/tools/media-generate-background.ts`). These paths are relative to their
+`源码参考/software/<project>/` checkouts. Cherry Studio's shared image core
+(`src/main/ai/tools/painting.ts`) is behavior evidence only
+(AGPL-3.0), not code to import. An image result can become a later video reference through its
+ArtifactRef; speech-to-text is an input path distinct from text-to-speech output. The existing
+Session permission/action path owns the tool call, and the shared Job path owns progress,
+cancellation and persisted output. Until a real adapter and those paths exist, media models remain
+`not implemented` even when account discovery advertises them.
+
 ## First proof
 
 Import real media, perform one shared trim/split operation, render a real output with cancellation,

@@ -63,8 +63,8 @@ only their statement that the rolling Craft checkout was still on the old pin. C
 comparison uses v0.13.4; v0.10.5 supplies look measurements, not a product shell to restore.
 
 
-Read-only inventory rechecked on 2026-09-21: **45 Git checkouts
-in `software/`, 22 in `plugins/`**. These are 67 checkouts, not 67 distinct upstream products: the
+Read-only inventory rechecked on 2026-09-21, with owner-requested Cherry Studio intake on
+2026-09-24: **46 Git checkouts in `software/`, 22 in `plugins/`**. These are 68 checkouts, not 68 distinct upstream products: the
 two Craft pins have different comparison roles.
 
 An earlier owner-directed refresh advanced many checkouts. `meta/REVIEWED-HEADS.tsv` was not
@@ -79,7 +79,7 @@ The reference root is `/Volumes/AIGC/天工参考/源码参考/` (workspace syml
 
 | Root / subject | Count | Existing directories |
 |---|---|---|
-| `software/` — agent clients and workbenches | 23 | `AionCore`, `AionUi`, `browser-harness`, `cindy`, `codex`, `craft-agents-oss`, `craft-agents-oss-v0.10.5`, `deepseek-harness`, `grok-build`, `herdr`, `hermes-agent`, `kimi-code`, `Kun`, `multica`, `omnigent`, `openchamber`, `openclaw`, `opencode`, `OpenHands`, `orca`, `pi-mono`, `waku`, `ZCode` |
+| `software/` — agent clients and workbenches | 24 | `AionCore`, `AionUi`, `browser-harness`, `cherry-studio`, `cindy`, `codex`, `craft-agents-oss`, `craft-agents-oss-v0.10.5`, `deepseek-harness`, `grok-build`, `herdr`, `hermes-agent`, `kimi-code`, `Kun`, `multica`, `omnigent`, `openchamber`, `openclaw`, `opencode`, `OpenHands`, `orca`, `pi-mono`, `waku`, `ZCode` |
 | `software/` — provider configuration tools | 3 | `CLIProxyAPI`, `cc-switch`, `cockpit-tools` |
 | `software/` — canvas, design and documents | 7 | `Cowart`, `genoffice`, `html-anything`, `open-design`, `openpencil`, `penpot`, `tldraw` |
 | `software/` — video and media | 6 | `OpenChatCut`, `OpenMontage`, `opencut`, `opencut-classic`, `openreel-video`, `palmier-pro` |
@@ -182,7 +182,8 @@ needs comparison at the consuming capability before implementation. Fetching nev
 | `software/browser-harness` | `afbcc381b963040c19627d788e40c7e7663171ee` (main; unchanged) | `CONTRIBUTING.md` | Contributor guide distinguishes checkout launcher from installed command and locates domain skills. Keep private IPC evidence; no new browser ownership or automatic runtime installation. |
 | `software/browser-use` | `d8110c5ff87ccba887aaa726cdb780f2f84bef8d` (main; unchanged) | `BETA_AGENT_INTEGRATION_FEATURES.md` | Beta ledger describes an opt-in Rust SDK server while Python Agent stays separate. Protocol compatibility and claimed feature parity require their own proof; no wholesale agent runtime replacement. |
 | `software/cc-switch` | `56df6513943062e8ca9eb80d8928eef7cf08a76d` (main; updated) | `docs/user-manual/en/2-providers/2.5-usage-query.md`; `docs/user-manual/en/3-extensions/3.3-skills.md` | Usage guide separates subscription windows from balance/scripts and explains ambiguous provider query modes. Its endpoint descriptions are not proof of a supported public API; Fleet uses runtime-owned credentials and typed identity-scoped samples. |
-| `software/cindy` | `64e96e3a351797b1a3e305b52b6627f376dbf2b3` (main; updated) | `docs/dev-rules/architecture-invariants.md`; `docs/dev-rules/electron-security-and-process-boundaries.md` | Read current panelKind/layout ownership and Electron sender validation. Preserve unknown panels and distinguish applied from persisted; reject its corrupt-layout overwrite, fixed conversation width and user-global layout policy as Fleet defaults. |
+| `software/cindy` | `c5517717cc8d4a84fe8229b6ec9109c7dd38a3bc` (main; updated) | `docs/dev-rules/architecture-invariants.md`; `docs/dev-rules/electron-security-and-process-boundaries.md` | Read current panelKind/layout ownership and Electron sender validation. Preserve unknown panels and distinguish applied from persisted; reject its corrupt-layout overwrite, fixed conversation width and user-global layout policy as Fleet defaults. |
+| `software/cherry-studio` | `dab09e391270` (owner-requested shallow clone; AGPL-3.0) | `packages/provider-registry/README.md`; `src/shared/data/api/schemas/models.ts`; `src/renderer/pages/settings/ProviderSettings/utils/modelSync.ts`; `src/renderer/pages/settings/ProviderSettings/ModelList/useProviderModelPullReconcile.ts` | `EVIDENCE_ONLY`: provider-scoped model rows carry separate capabilities, input/output modalities, endpoint types and limits; a remote sync preview keeps user-defined rows and protects in-use defaults. Compare that behavior with Fleet's existing connection owner. AGPL code is not admitted for copying or runtime import. |
 | `software/cockpit-tools` | `d4f1dbf2a019a2384202bfd5537f81bc6b654473` (main; updated) | `CONTRIBUTING.md`; `docs/CODEX_API_SERVICE_HANDOFF.md` | Contributor guide identifies shared core/GUI/CLI and targeted checks. API Service handoff describes credential/config injection into a local gateway, not a supported quota API; keep the existing quota scheduler comparison and restricted-license boundary. |
 | `software/codex` | `639d2478cc2e16d6ca715952d2e726a3aecc024e` (main; updated) | `codex-rs/app-server/README.md`; `codex-rs/ext/extension-api/notes.md` | App-server documents cancellation acknowledgement versus original completion and auth-generation fencing. Saved disabledPluginIds explicitly does not yet filter capabilities. Sparse quota updates are corroborated in protocol/v2/account.rs; extension notes alone are not an SDK contract. |
 | `software/craft-agents-oss` | `b2d6c8aabdfdc96416eea9debd6756ae6d3c0db9` (v0.13.4 stable; unchanged) | `CONTRIBUTING.md`; `apps/electron/README.md` | Use Electron build/transport/package entry guidance with current scripts as authority. Do not run upstream secret-sync, publishing or hosted-service setup; v0.13.4 remains the release comparison. |
@@ -433,6 +434,32 @@ No helper was installed/launched and no user's app was controlled for this revie
 | [Peekaboo](https://github.com/openclaw/Peekaboo/tree/94c00517565aa9a9fffb113cc67651a266630b9b) · MIT (`LICENSE`); online only; steipete URL redirects to openclaw | `Core/PeekabooAutomationKit/Sources/PeekabooAutomationKit/Services/Observation/ObservationTargetResolver+WindowSelection.swift`; `Apps/CLI/Sources/PeekabooCLI/Commands/Shared/SnapshotMutationCoordinator.swift` and `Apps/CLI/Tests/CLIAutomationTests/SnapshotMutationCoordinatorTargetTests.swift`. Exact window/process-start identity, ambiguous-target refusal and mutation receipts preserving uncertain delivery. | Stronger bounded target/freshness/retry comparison. Missing snapshot ID bypasses that coordinator's lease, so Fleet's adapter must require observation for observed-element actions. External CLI reuse versus leaf extraction still needs signing/startup/size and same-app tests; do not import its agent runtime. |
 | [UI-TARS Desktop](https://github.com/bytedance/UI-TARS-desktop/tree/c2ad42e3eb9b27830db41a3e6f51ca7179d9b168) · Apache-2.0 (`LICENSE`); online only | `multimodal/gui-agent/shared/src/base/operator.ts`, `agent-sdk/src/GUIAgent.ts`, `apps/ui-tars/src/main/agent/operator.ts`: screenshot/action operator abstraction and coordinate normalization; desktop operator uses native input/clipboard. | Useful executor interface comparison. Its inspected operator signature has no explicit cancellation signal; surrounding agent pause does not prove input interruption. Adding its GUI agent loop would duplicate Fleet's runtime. Native input dependency licenses/binaries require separate review. |
 | [Cua](https://github.com/trycua/cua/tree/9bbfa7dd3e27ca7f1861ede70aaca390174493f9) · root MIT (`LICENSE.md`); online only | `libs/python/computer/computer/{computer.py,interface/base.py}` separates computer interface and VM providers, with an explicit host-server option; tracing/telemetry wrappers are also present. Review limited to this Python path, not the entire Rust driver/VM stack. | A VM-oriented alternative if isolation later becomes a requirement. Not a prerequisite for specified local apps; no VM service, cloud account or telemetry admission. Subpackage/binary licenses remain unreviewed. |
+
+### Model access and catalog source comparison
+
+Read from the retained checkouts on 2026-09-23; these are local source locks, not a claim that
+any private provider endpoint is supported or that a model can run merely because it appears in a
+list. The current Fleet owner is still Craft's `LlmConnection` plus its backend driver and
+`ModelRefreshService`; no reference's account database or provider registry is imported.
+
+| Source lock and inspected code | Reusable mechanism; Fleet boundary |
+|---|---|
+| Craft `v0.13.4` (`b2d6c8a`), `packages/shared/src/agent/backend/internal/drivers/{anthropic,pi}.ts`, `packages/server-core/src/model-fetchers/index.ts` | Preserve the live driver → persisted connection models → offline seed chain. Extend this chain, rather than adding a model store. |
+| Installed Pi `@earendil-works/pi-ai`, `dist/models.js:beginProviderRefresh/publishProviderModels/getSupportedThinkingLevels`, `dist/providers/xai.js` | Reuse the installed model/runtime catalog and its exact `thinkingLevelMap` semantics, last-good storage and generation-checked publication. Pi's xAI OAuth loader exists, but its embedded client/scope is not an official third-party registration grant and Craft currently converts most OAuth to API-key auth. |
+| OpenCode `fe3f3a41f`, `packages/opencode/src/provider/provider.ts:fromModelsDevModel` | Separate provider route, model identity, modalities, token limits and request variants. `models.dev` is a useful offline metadata fallback, not proof of account entitlement or a substitute for the provider's live capabilities. |
+| OpenClaw `b4f1fec13ae`, `src/gateway/server-methods/models.ts:models.list`, `src/agents/prepared-model-catalog-worker.ts` | Serve an auth-scoped, prepared catalog; reject superseded runtime generations. Do not import its gateway and account authorities into Craft. |
+| ZCode `872ad96`, `packages/provider/src/account-provider-service.ts:AccountProviderService`, `packages/ui/src/hooks/useModelSelectionView.ts` | Publish one revisioned provider snapshot; retain the last good view on refresh failure and discard late account results. Do not copy ZCode's provider store. |
+| Cindy `c5517717c`, `apps/desktop/src/main/maker-host/model-discovery/anthropic.ts:mapAnthropicHttpModels`, `apps/desktop/src/renderer/components/new-chat/UnifiedModelPanel.tsx` | Source-aware searchable model grouping, separate per-model effort/Fast controls and a real-session SDK discovery hook. Its HTTP fallback synthesizes unsupported effort tiers when metadata is absent; Fleet uses only explicit provider/SDK evidence. Keep Craft's visual tokens. |
+| cc-switch `56df6513`, `src-tauri/src/services/subscription_grok.rs`; Cockpit Tools `d4f1dbf2`, `src-tauri/src/modules/grok_account.rs` | Their Grok meter reaches private billing endpoints, and cc-switch scans undocumented protobuf fields to infer windows. Borrow bounded refresh, account identity and last-good presentation ideas; do not present this transport as an official or stable subscription quota API. Cockpit Tools' CC-BY-NC-SA declaration also rules out a casual code import. |
+
+Official account/model capability contracts take precedence over third-party guesses:
+[Claude Models API](https://platform.claude.com/docs/en/api/models) exposes exact effort support,
+adaptive-thinking type and input/output limits; [Claude Opus 5.5](https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5)
+rejects disabled thinking even though earlier Opus models accept it. [xAI language-model list](https://docs.x.ai/developers/rest-api-reference/inference/models)
+is API-key scoped. Grok Build's [documented ACP interface](https://docs.x.ai/build/cli/headless-scripting)
+is the supported local integration candidate for a logged-in subscription; it is a separate runtime
+route from the xAI inference API key. Grok's [Settings → Usage](https://docs.x.ai/grok/faq)
+is the documented allowance view while no stable public personal meter contract is verified.
 
 ### Subscription allowance comparison
 

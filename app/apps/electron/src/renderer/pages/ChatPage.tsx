@@ -23,6 +23,7 @@ import { useAppShellContext, usePendingPermission, usePendingCredential, useSess
 import { rendererPerf } from '@/lib/perf'
 import { isAbsolutePath } from '@/lib/drafts'
 import { navigate, routes } from '@/lib/navigate'
+import { openLocalHelp } from '@/lib/local-help'
 import { coerceInputText } from '@/lib/input-text'
 import { deriveSessionMessagesLoadState, formatSessionLoadFailure } from '@/lib/session-load'
 import { ensureSessionMessagesLoadedAtom, forceSessionMessagesReloadAtom, loadedSessionsAtom, sessionMetaMapAtom } from '@/atoms/sessions'
@@ -285,19 +286,15 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
   // Session model change handler - persists per-session model and connection
   const handleModelChange = React.useCallback((model: string, connection?: string) => {
     if (activeWorkspaceId) {
-      window.electronAPI.setSessionModel(sessionId, activeWorkspaceId, model, connection)
+      void window.electronAPI.setSessionModel(sessionId, activeWorkspaceId, model, connection)
+        .catch(error => {
+          const message = error instanceof Error ? error.message : String(error)
+          toast.error(message.includes('MODEL_UNAVAILABLE_FOR_CONNECTION')
+            ? t('chat.modelUnavailableForConnection')
+            : message)
+        })
     }
-  }, [sessionId, activeWorkspaceId])
-
-  // Session connection change handler - can only change before first message
-  const handleConnectionChange = React.useCallback(async (connectionSlug: string) => {
-    try {
-      await window.electronAPI.sessionCommand(sessionId, { type: 'setConnection', connectionSlug })
-    } catch (error) {
-      // Connection change may fail if session already started or connection is invalid
-      console.error('Failed to change connection:', error)
-    }
-  }, [sessionId])
+  }, [sessionId, activeWorkspaceId, t])
 
   // Check if session's locked connection has been removed
   const connectionUnavailable = React.useMemo(() =>
@@ -583,7 +580,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
               <span className="flex-1">{t('sessionMenu.stopSharing')}</span>
             </StyledDropdownMenuItem>
             <StyledDropdownMenuSeparator />
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl('https://thecraftagents.com/docs/go-further/sharing')}>
+            <StyledDropdownMenuItem onClick={() => openLocalHelp('sharing')}>
               <Info className="h-3.5 w-3.5" />
               <span className="flex-1">{t('chat.learnMore')}</span>
             </StyledDropdownMenuItem>
@@ -597,7 +594,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
               <span className="flex-1">{t('chat.shareOnline')}</span>
             </StyledDropdownMenuItem>
             <StyledDropdownMenuSeparator />
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl('https://thecraftagents.com/docs/go-further/sharing')}>
+            <StyledDropdownMenuItem onClick={() => openLocalHelp('sharing')}>
               <Info className="h-3.5 w-3.5" />
               <span className="flex-1">{t('chat.learnMore')}</span>
             </StyledDropdownMenuItem>
@@ -751,7 +748,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
                 onOpenUrl={handleOpenUrl}
                 currentModel={effectiveModel}
                 onModelChange={handleModelChange}
-                onConnectionChange={handleConnectionChange}
                 pendingPermission={undefined}
                 onRespondToPermission={onRespondToPermission}
                 pendingCredential={undefined}
@@ -828,7 +824,6 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
             onOpenUrl={handleOpenUrl}
             currentModel={effectiveModel}
             onModelChange={handleModelChange}
-            onConnectionChange={handleConnectionChange}
             pendingPermission={pendingPermission}
             onRespondToPermission={onRespondToPermission}
             pendingCredential={pendingCredential}

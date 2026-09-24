@@ -93,9 +93,8 @@ export interface SetupNeeds {
 // Token Refresh Mutex
 // ============================================
 
-// Mutex to prevent concurrent token refresh attempts
-// When a refresh is in progress, other callers wait for it to complete
-let refreshInProgress: Promise<TokenResult> | null = null;
+// Refreshes must coalesce per connection, never across different accounts.
+const refreshInProgress = new Map<string, Promise<TokenResult>>();
 
 /**
  * Perform the actual token refresh (internal, called only when holding mutex)
@@ -105,27 +104,24 @@ export async function performTokenRefresh(
   manager: ReturnType<typeof getCredentialManager>,
   refreshToken: string,
   originalSource: 'native' | 'cli' | undefined,
-  connectionSlug: string
+  connectionSlug: string,
+  refresh: typeof refreshClaudeToken = refreshClaudeToken,
 ): Promise<TokenResult> {
   try {
-    const refreshed = await refreshClaudeToken(refreshToken);
+    const refreshed = await refresh(refreshToken);
 
     // Format expiry time for logging
     const expiresAtDate = refreshed.expiresAt ? new Date(refreshed.expiresAt).toISOString() : 'never';
     debug(`[auth] Successfully refreshed Claude OAuth token (expires: ${expiresAtDate})`);
 
-    // Store the new credentials
-    // If refresh succeeded with our native endpoint, mark as 'native'
-    // (successful refresh proves compatibility with our OAuth system)
-    await manager.setClaudeOAuthCredentials({
-      accessToken: refreshed.accessToken,
-      refreshToken: refreshed.refreshToken,
-      expiresAt: refreshed.expiresAt,
-      source: 'native',
-    });
+    const current = await manager.getLlmOAuth(connectionSlug);
+    if (current?.refreshToken !== refreshToken) {
+      // A new sign-in replaced this account while the refresh was in flight.
+      return { accessToken: current?.accessToken ?? null };
+    }
 
-    // Also save to LLM connection (dual-write for backwards compatibility)
-    // This ensures both legacy and modern auth paths have the refreshed token
+    // The connection is the credential owner. Do not overwrite another Claude
+    // account through the legacy global slot.
     await manager.setLlmOAuth(connectionSlug, {
       accessToken: refreshed.accessToken,
       refreshToken: refreshed.refreshToken,
@@ -162,16 +158,12 @@ export async function performTokenRefresh(
         };
       }
 
-      // Clear the incompatible credentials to force fresh authentication
-      // Clear from both legacy and LLM connection locations
-      await manager.setClaudeOAuthCredentials({
-        accessToken: '',
-        refreshToken: undefined,
-        expiresAt: undefined,
-      });
-
-      // Also clear from LLM connection (dual-clear for consistency)
-      await manager.deleteLlmCredentials(connectionSlug);
+      // Only revoke this connection's OAuth credential. Other connections and
+      // any API key associated with this slug must survive a failed refresh.
+      const current = await manager.getLlmOAuth(connectionSlug);
+      if (current?.refreshToken === refreshToken) {
+        await manager.delete({ type: 'llm_oauth', connectionSlug });
+      }
     }
 
     // Token refresh failed - return null token with optional migration info
@@ -187,23 +179,19 @@ export async function performTokenRefresh(
  * Get and refresh Claude OAuth token if needed
  *
  * This function:
- * 1. Checks if we have a token in our credential store
- * 2. Detects legacy tokens (from Claude CLI) and triggers migration
- * 3. If token is expired and we have a refresh token, refreshes it
- * 4. Returns TokenResult with valid access token and optional migration info
+ * 1. Reads this connection's credential, never the old global Claude slot
+ * 2. Refreshes an expired token for this connection only
+ * 3. Returns a valid access token or a reauthentication result
  *
- * MUTEX: Only one refresh can happen at a time. If a refresh is already
- * in progress, other callers wait for it and then re-read credentials.
- *
- * MIGRATION (v0.3.0+):
- * - We NO LONGER import tokens from Claude CLI keychain
- * - Legacy tokens are detected and cleared, prompting re-authentication
+ * MUTEX: Only one refresh per connection can happen at a time.
  */
-export async function getValidClaudeOAuthToken(connectionSlug: string): Promise<TokenResult> {
-  const manager = getCredentialManager();
-
+export async function getValidClaudeOAuthToken(
+  connectionSlug: string,
+  manager: ReturnType<typeof getCredentialManager> = getCredentialManager(),
+  refresh: typeof refreshClaudeToken = refreshClaudeToken,
+): Promise<TokenResult> {
   // Try to get credentials from our store
-  const creds = await manager.getClaudeOAuthCredentials();
+  const creds = await manager.getLlmOAuth(connectionSlug);
 
   if (!creds || !creds.accessToken) {
     return { accessToken: null };
@@ -217,15 +205,16 @@ export async function getValidClaudeOAuthToken(connectionSlug: string): Promise<
     // Try to refresh if we have a refresh token
     if (creds.refreshToken) {
       // Check if a refresh is already in progress
-      if (refreshInProgress) {
+      const pendingRefresh = refreshInProgress.get(connectionSlug);
+      if (pendingRefresh) {
         debug('[auth] Token refresh already in progress, waiting...');
         try {
-          await refreshInProgress;
+          await pendingRefresh;
         } catch {
           // Ignore errors from the other refresh attempt
         }
         // Re-read credentials after waiting (they may have been updated)
-        const updatedCreds = await manager.getClaudeOAuthCredentials();
+        const updatedCreds = await manager.getLlmOAuth(connectionSlug);
         if (updatedCreds?.accessToken && !isTokenExpired(updatedCreds.expiresAt)) {
           const expiresAtDate = updatedCreds.expiresAt ? new Date(updatedCreds.expiresAt).toISOString() : 'never';
           debug(`[auth] Got refreshed token from concurrent refresh (expires: ${expiresAtDate})`);
@@ -238,14 +227,14 @@ export async function getValidClaudeOAuthToken(connectionSlug: string): Promise<
 
       // Start the refresh and set the mutex
       debug('[auth] Starting token refresh (holding mutex)');
-      refreshInProgress = performTokenRefresh(manager, creds.refreshToken, creds.source, connectionSlug);
+      const pending = performTokenRefresh(manager, creds.refreshToken, 'native', connectionSlug, refresh);
+      refreshInProgress.set(connectionSlug, pending);
 
       try {
-        const result = await refreshInProgress;
+        const result = await pending;
         return result;
       } finally {
-        // Release the mutex
-        refreshInProgress = null;
+        refreshInProgress.delete(connectionSlug);
       }
     } else {
       debug('[auth] No refresh token available, cannot refresh expired token');
@@ -354,5 +343,5 @@ export function getSetupNeeds(state: AuthState, setupDeferred?: boolean): SetupN
  * This allows tests to start with a clean state
  */
 export function _resetRefreshMutex(): void {
-  refreshInProgress = null;
+  refreshInProgress.clear();
 }

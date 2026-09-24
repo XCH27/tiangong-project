@@ -12,7 +12,8 @@
  */
 
 import { Brain } from 'lucide-react'
-import { getProviderIcon } from '@/lib/provider-icons'
+import { getProviderIcon, getProviderIconKey } from '@/lib/provider-icons'
+import { hasProviderBrandIcon, ProviderBrandIcon } from './ProviderBrandIcon'
 import { getModelDisplayName } from '@config/models'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import type { LlmConnectionWithStatus } from '../../../shared/types'
@@ -29,21 +30,23 @@ interface ConnectionIconProps {
 }
 
 export function ConnectionIcon({ connection, size = 16, className = '', showTooltip = false }: ConnectionIconProps) {
+  const providerIconKey = getProviderIconKey(
+    connection.providerType || connection.type || '',
+    connection.baseUrl,
+    connection.piAuthProvider
+  )
   const providerIcon = getProviderIcon(
     connection.providerType || connection.type || '',
     connection.baseUrl,
     connection.piAuthProvider
   )
 
-  const iconElement = providerIcon ? (
-    <img
-      src={providerIcon}
-      alt=""
-      width={size}
-      height={size}
-      className={`rounded-[3px] flex-shrink-0 ${className}`}
-      style={{ width: size, height: size }}
-    />
+  const iconElement = hasProviderBrandIcon(providerIconKey) ? (
+    <span className={`inline-flex shrink-0 items-center justify-center ${className}`} style={{ width: size, height: size }} aria-hidden>
+      <ProviderBrandIcon provider={providerIconKey} size={size} />
+    </span>
+  ) : providerIcon ? (
+    <img src={providerIcon} alt="" width={size} height={size} className={`rounded-[3px] flex-shrink-0 ${className}`} style={{ width: size, height: size }} />
   ) : (
     <div
       className={`rounded-[3px] bg-foreground/10 flex items-center justify-center flex-shrink-0 ${className}`}

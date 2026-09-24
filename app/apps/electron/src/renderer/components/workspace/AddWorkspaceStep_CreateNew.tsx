@@ -63,7 +63,7 @@ export function AddWorkspaceStep_CreateNew({
       try {
         const result = await window.electronAPI.checkWorkspaceSlug(slug)
         if (result.exists) {
-          setError(`A workspace named "${slug}" already exists`)
+          setError(t('workspace.nameAlreadyExists', { name: slug }))
         } else {
           setError(null)
         }
@@ -77,7 +77,7 @@ export function AddWorkspaceStep_CreateNew({
     // Debounce validation
     const timeout = setTimeout(validateSlug, 300)
     return () => clearTimeout(timeout)
-  }, [slug])
+  }, [slug, t])
 
   const handleFolderSelected = useCallback((path: string) => {
     setCustomPath(path)

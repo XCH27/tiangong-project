@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">
+
+  <url>
+    <loc>https://agents.craft.do/docs/automations/overview</loc>
+    <lastmod>2026-04-30T15:44:40.369Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/browser/api-discovery</loc>
+    <lastmod>2026-02-28T20:25:08.235Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/browser/examples</loc>
+    <lastmod>2026-02-28T20:25:08.237Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/browser/overview</loc>
+    <lastmod>2026-05-25T22:22:11.126Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/core-concepts/conversations</loc>
+    <lastmod>2026-04-21T11:14:50.506Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/core-concepts/interactions</loc>
+    <lastmod>2026-05-07T12:31:33.504Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/core-concepts/permissions</loc>
+    <lastmod>2026-01-28T17:06:27.060Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/core-concepts/projects</loc>
+    <lastmod>2026-07-22T11:38:50.612Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/core-concepts/working-directory</loc>
+    <lastmod>2026-01-28T17:06:27.063Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/customisation/colors</loc>
+    <lastmod>2026-01-28T17:06:27.046Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/customisation/icons</loc>
+    <lastmod>2026-01-28T17:06:27.044Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/customisation/themes</loc>
+    <lastmod>2026-02-07T18:46:12.317Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/getting-started/installation</loc>
+    <lastmod>2026-06-02T13:41:51.994Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/getting-started/introduction</loc>
+    <lastmod>2026-05-19T21:43:19.390Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/connect-to-anything</loc>
+    <lastmod>2026-03-17T17:24:55.532Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/deeplinks</loc>
+    <lastmod>2026-02-07T18:46:12.858Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/document-tools</loc>
+    <lastmod>2026-02-28T20:25:08.818Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/kanban</loc>
+    <lastmod>2026-07-22T11:38:50.601Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/performance</loc>
+    <lastmod>2026-05-19T21:41:46.561Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/rich-output</loc>
+    <lastmod>2026-05-24T16:17:14.479Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/sharing</loc>
+    <lastmod>2026-03-25T09:32:07.793Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/tasks</loc>
+    <lastmod>2026-07-22T11:38:50.197Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/go-further/workspaces</loc>
+    <lastmod>2026-07-22T11:38:50.195Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/labels/auto-rules</loc>
+    <lastmod>2026-01-28T17:06:27.110Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/labels/overview</loc>
+    <lastmod>2026-06-09T22:17:02.825Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/messaging/lark</loc>
+    <lastmod>2026-04-30T15:44:40.411Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/messaging/overview</loc>
+    <lastmod>2026-05-19T21:41:47.223Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/messaging/telegram</loc>
+    <lastmod>2026-05-05T13:32:33.208Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/messaging/whatsapp</loc>
+    <lastmod>2026-04-30T15:44:40.411Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/cli</loc>
+    <lastmod>2026-03-05T16:15:11.565Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/config-file</loc>
+    <lastmod>2026-06-22T02:36:01.912Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/credentials</loc>
+    <lastmod>2026-03-18T21:43:16.319Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/custom-endpoint</loc>
+    <lastmod>2026-05-05T09:09:04.948Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/environment-variables</loc>
+    <lastmod>2026-03-25T09:32:07.822Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/llm-connections</loc>
+    <lastmod>2026-07-01T11:35:31.761Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/network-proxy</loc>
+    <lastmod>2026-03-18T15:01:32.542Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/reference/config/preferences</loc>
+    <lastmod>2026-04-09T21:32:35.044Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/server/cli</loc>
+    <lastmod>2026-03-05T16:46:47.568Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/server/headless</loc>
+    <lastmod>2026-05-25T22:22:11.128Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/skills/overview</loc>
+    <lastmod>2026-02-16T13:07:22.246Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/apis/curl-examples</loc>
+    <lastmod>2026-04-14T13:10:00.843Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/apis/overview</loc>
+    <lastmod>2026-04-14T13:10:00.841Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/local-filesystems</loc>
+    <lastmod>2026-01-28T17:06:27.290Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/mcp-servers/authentication</loc>
+    <lastmod>2026-01-28T17:06:27.289Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/mcp-servers/connecting-servers</loc>
+    <lastmod>2026-01-28T17:06:27.291Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/mcp-servers/overview</loc>
+    <lastmod>2026-01-28T17:06:27.297Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/sources/overview</loc>
+    <lastmod>2026-02-26T23:41:32.360Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/statuses/customizing</loc>
+    <lastmod>2026-01-28T17:06:27.299Z</lastmod>
+  </url>
+
+  <url>
+    <loc>https://agents.craft.do/docs/statuses/overview</loc>
+    <lastmod>2026-01-28T17:06:27.296Z</lastmod>
+  </url>
+</urlset>

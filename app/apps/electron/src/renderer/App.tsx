@@ -27,6 +27,7 @@ import { useSession } from '@/hooks/useSession'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { NavigationProvider } from '@/contexts/NavigationContext'
 import { navigate, routes } from './lib/navigate'
+import { openLocalHelp } from './lib/local-help'
 import { attachmentFromContentRef, toDraftRef } from './lib/drafts'
 import { stripMarkdown } from './utils/text'
 import { coerceInputText } from './lib/input-text'
@@ -997,6 +998,7 @@ export default function App() {
 
         // Update atom directly (UI sees update immediately)
         updateSessionDirect(sessionId, () => updatedSession)
+        if (event.type === 'session_model_changed') syncSessionOptionsFromSession(updatedSession)
 
         // Handle side effects
         handleEffects(effects, sessionId, event.type)
@@ -1062,6 +1064,7 @@ export default function App() {
 
       // Update per-session atom
       updateSessionDirect(sessionId, () => updatedSession)
+      if (event.type === 'session_model_changed') syncSessionOptionsFromSession(updatedSession)
 
       // Update metadata map
       const metaMap = store.get(sessionMetaMapAtom)
@@ -1150,12 +1153,16 @@ export default function App() {
     const unsubSettings = window.electronAPI.onMenuOpenSettings(() => {
       handleOpenSettings()
     })
+    const unsubHelp = window.electronAPI.onMenuOpenHelp(() => {
+      openLocalHelp('all')
+    })
     const unsubShortcuts = window.electronAPI.onMenuKeyboardShortcuts(() => {
       navigate(routes.view.settings('shortcuts'))
     })
     return () => {
       unsubNewChat()
       unsubSettings()
+      unsubHelp()
       unsubShortcuts()
     }
   }, [])
@@ -1448,9 +1455,20 @@ export default function App() {
     }
     if (updates.thinkingLevel !== undefined) {
       // Sync thinking level change with backend (session-level, persisted)
-      window.electronAPI.sessionCommand(sessionId, { type: 'setThinkingLevel', level: updates.thinkingLevel })
+      void window.electronAPI.sessionCommand(sessionId, { type: 'setThinkingLevel', level: updates.thinkingLevel })
+        .catch(async error => {
+          toast.error(error instanceof Error ? error.message : String(error))
+          // A catalog refresh or model switch may have invalidated the choice.
+          // Restore the persisted value rather than leave an optimistic lie.
+          try {
+            const fresh = await window.electronAPI.getSessionMessages(sessionId)
+            if (fresh) syncSessionOptionsFromSession(fresh)
+          } catch (refreshError) {
+            console.error('Failed to reload session thinking level:', refreshError)
+          }
+        })
     }
-  }, [sessionOptions])
+  }, [syncSessionOptionsFromSession])
 
   // Handle input draft changes per session with debounced persistence
   const draftSaveTimeoutRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())

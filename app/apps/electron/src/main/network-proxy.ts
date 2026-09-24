@@ -17,6 +17,15 @@ import log from './logger';
 // Track the current dispatcher so we can close it when reconfiguring
 let currentProxyDispatcher: Dispatcher | null = null;
 
+// In-memory session: OAuth token requests should follow the OS proxy used by
+// the user's external authorization browser, without changing Craft's other
+// browser/default-session network behavior.
+const OAUTH_TOKEN_SESSION_PARTITION = 'oauth-token';
+
+export function getOAuthTokenSession(): Electron.Session {
+  return session.fromPartition(OAUTH_TOKEN_SESSION_PARTITION);
+}
+
 /**
  * Custom undici Dispatcher that routes requests through proxy agents based on protocol,
  * bypasses proxied destinations listed in NO_PROXY rules, and falls back to a direct Agent.
@@ -104,7 +113,7 @@ function configureNodeProxy(settings: NetworkProxySettings | undefined): void {
 }
 
 /**
- * Configure Electron session proxies (default session + browser-pane partition).
+ * Configure Craft's existing sessions and the OAuth-only token session.
  * Requires app to be ready.
  */
 async function configureElectronProxy(settings: NetworkProxySettings | undefined): Promise<void> {
@@ -119,7 +128,12 @@ async function configureElectronProxy(settings: NetworkProxySettings | undefined
     session.fromPartition(BROWSER_PANE_SESSION_PARTITION),
   ];
 
-  await Promise.all(sessions.map(ses => ses.setProxy(proxyConfig)));
+  await Promise.all([
+    ...sessions.map(ses => ses.setProxy(proxyConfig)),
+    getOAuthTokenSession().setProxy(settings?.enabled
+      ? proxyConfig
+      : { mode: 'system' }),
+  ]);
 }
 
 function buildElectronProxyConfig(settings: NetworkProxySettings): Electron.ProxyConfig {

@@ -147,12 +147,22 @@ export function resolveClaudeThinkingOptions(args: {
   model: string;
   providerType?: BackendConfig['providerType'];
   minimizeThinking: boolean;
+  supportsThinking?: boolean;
+  adaptiveThinkingSupported?: boolean;
+  reasoningEfforts?: readonly ('low' | 'medium' | 'high' | 'xhigh' | 'max')[];
 }): Partial<Options> {
-  const { thinkingLevel, model, providerType, minimizeThinking } = args;
+  const { thinkingLevel, model, providerType, minimizeThinking, supportsThinking, adaptiveThinkingSupported, reasoningEfforts } = args;
   const isClaude = isClaudeModel(model);
   const effort = THINKING_TO_EFFORT[thinkingLevel];
+  // The Models API exposes effort independently of visible thinking. A model
+  // that advertises effort but no thinking must not receive adaptive thinking.
+  if (isClaude && supportsThinking === false) {
+    return !minimizeThinking && effort && reasoningEfforts?.includes(effort) ? { effort } : {};
+  }
   const isHaiku = model.toLowerCase().includes('haiku');
-  const supportsAdaptiveThinking = isClaude && !isHaiku;
+  // Prefer the Models API's thinking type over a family-name heuristic. The
+  // latter remains only for older saved catalogs that lack capability data.
+  const supportsAdaptiveThinking = isClaude && (adaptiveThinkingSupported ?? !isHaiku);
   // Mythos-class models (Fable 5 / Mythos 5) have adaptive thinking ALWAYS ON and
   // reject `thinking: { type: 'disabled' }`. There's no way to turn thinking off;
   // the lowest we can go is adaptive + 'low' effort.
@@ -186,6 +196,7 @@ export interface ClaudeAgentConfig {
   model?: string;
   thinkingLevel?: ThinkingLevel; // Initial thinking level (defaults to 'medium')
   onSdkSessionIdUpdate?: (sdkSessionId: string) => void;  // Callback when SDK session ID is captured
+  onClaudeSupportedModels?: (models: readonly unknown[]) => void;
   onSdkSessionIdCleared?: () => void;  // Callback when SDK session ID is cleared (e.g., after failed resume)
   /**
    * Callback when branch-fork metadata is invalidated (parent cwd missing on this machine,
@@ -786,6 +797,7 @@ export class ClaudeAgent extends BaseAgent {
       debugMode: config.debugMode,
       systemPromptPreset: config.systemPromptPreset,
       onSdkSessionIdUpdate: config.onSdkSessionIdUpdate,
+      onClaudeSupportedModels: config.onClaudeSupportedModels,
       onSdkSessionIdCleared: config.onSdkSessionIdCleared,
       onBranchForkInvalidated: config.onBranchForkInvalidated,
       getRecoveryMessages: config.getRecoveryMessages,
@@ -1126,11 +1138,19 @@ export class ClaudeAgent extends BaseAgent {
         debug(`[chat] Custom provider: baseUrl=${activeBaseUrl}, model=${model}, hasApiKey=${!!process.env.ANTHROPIC_API_KEY}`);
       }
 
+      const activeConn = this.config.connectionSlug ? getLlmConnection(this.config.connectionSlug) : defaultConn;
+      const configuredModel = activeConn?.models?.find(entry =>
+        (typeof entry === 'string' ? entry : entry.id) === model,
+      );
+      const modelCapabilities = typeof configuredModel === 'object' ? configuredModel : undefined;
       const thinkingOptions = resolveClaudeThinkingOptions({
         thinkingLevel: this._thinkingLevel,
         model,
         providerType: this.config.providerType,
         minimizeThinking: miniConfig.minimizeThinking,
+        supportsThinking: modelCapabilities?.supportsThinking,
+        adaptiveThinkingSupported: modelCapabilities?.adaptiveThinkingSupported,
+        reasoningEfforts: modelCapabilities?.reasoningEfforts,
       });
       if ('effort' in thinkingOptions && thinkingOptions.effort) {
         debug(`[chat] Thinking: level=${this._thinkingLevel}, effort=${thinkingOptions.effort}`);
@@ -1676,6 +1696,17 @@ This is a branched conversation. All prior messages in this conversation are par
         const prompt = this.buildTextPrompt(effectiveUserMessage, attachments);
         this.currentQuery = query({ prompt, options: optionsWithAbort });
         turnMessageSource = this.currentQuery;
+      }
+
+      // Like Cindy's Claude Code host, read the active SDK session's explicit
+      // capability map without starting a second query or delaying the turn.
+      if (this.config.onClaudeSupportedModels && this.currentQuery) {
+        void this.currentQuery.supportedModels().then(
+          models => {
+            try { this.config.onClaudeSupportedModels?.(models); } catch { /* discovery is optional */ }
+          },
+          () => { /* HTTP catalog and saved models remain available */ },
+        );
       }
 
       // Initialize event adapter for this turn

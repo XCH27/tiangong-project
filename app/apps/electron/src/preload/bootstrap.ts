@@ -381,6 +381,11 @@ client.onConnectionStateChanged((state) => {
     // 4. Wait for OpenAI to redirect to our callback server
     const callback = await callbackServer.promise
 
+    if (callback.query.state !== state) {
+      await client.invoke('chatgpt:cancelOAuth', { state })
+      return { success: false, error: 'OAuth state mismatch - please start the connection again' }
+    }
+
     // 5. Check for errors from the provider
     if (callback.query.error) {
       const error = callback.query.error_description || callback.query.error

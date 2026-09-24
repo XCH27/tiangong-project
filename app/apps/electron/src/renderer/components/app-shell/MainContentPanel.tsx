@@ -236,16 +236,12 @@ export function MainContentPanel({
     </StoplightProvider>
   )
 
-  // Settings navigator - uses component map from settings-pages.ts.
-  // Bare `settings` route (subpage === null) means navigator-only view in compact mode;
-  // PanelStackContainer hides the content panel entirely. On desktop the panel still
-  // mounts, so fall back to the App page so it isn't empty.
+  // Settings uses the same content panel while its navigator replaces the left sidebar.
   if (isSettingsNavigation(navState)) {
-    const subpage = navState.subpage ?? 'app'
-    const SettingsPageComponent = getSettingsPageComponent(subpage)
+    const Page = getSettingsPageComponent(navState.subpage ?? 'app')
     return wrapWithStoplight(
       <Panel variant="grow" className={className}>
-        <SettingsPageComponent />
+        <Page />
       </Panel>
     )
   }

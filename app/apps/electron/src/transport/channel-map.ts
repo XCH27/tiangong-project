@@ -122,6 +122,7 @@ export const CHANNEL_MAP = {
   // Menu event listeners
   onMenuNewChat: listener(RPC_CHANNELS.menu.NEW_CHAT),
   onMenuOpenSettings: listener(RPC_CHANNELS.menu.OPEN_SETTINGS),
+  onMenuOpenHelp: listener(RPC_CHANNELS.menu.OPEN_HELP),
   onMenuKeyboardShortcuts: listener(RPC_CHANNELS.menu.KEYBOARD_SHORTCUTS),
   onMenuToggleFocusMode: listener(RPC_CHANNELS.menu.TOGGLE_FOCUS_MODE),
   onMenuToggleSidebar: listener(RPC_CHANNELS.menu.TOGGLE_SIDEBAR),
@@ -157,6 +158,10 @@ export const CHANNEL_MAP = {
   getCopilotAuthStatus: invoke(RPC_CHANNELS.copilot.GET_AUTH_STATUS),
   copilotLogout: invoke(RPC_CHANNELS.copilot.LOGOUT),
   onCopilotDeviceCode: listener(RPC_CHANNELS.copilot.DEVICE_CODE),
+  startXaiOAuth: invoke(RPC_CHANNELS.xai.START_OAUTH),
+  cancelXaiOAuth: invoke(RPC_CHANNELS.xai.CANCEL_OAUTH),
+  onXaiDeviceCode: listener(RPC_CHANNELS.xai.DEVICE_CODE),
+  readXaiSubscriptionUsage: invoke(RPC_CHANNELS.xai.READ_USAGE),
 
   // Server info (REMOTE_ELIGIBLE)
   getServerHomeDir: invoke(RPC_CHANNELS.server.HOME_DIR),
@@ -378,8 +383,10 @@ export const CHANNEL_MAP = {
   getLlmConnection: invoke(RPC_CHANNELS.llmConnections.GET),
   getLlmConnectionApiKey: invoke(RPC_CHANNELS.llmConnections.GET_API_KEY),
   saveLlmConnection: invoke(RPC_CHANNELS.llmConnections.SAVE),
+  setLlmConnectionModel: invoke(RPC_CHANNELS.llmConnections.SET_MODEL),
   deleteLlmConnection: invoke(RPC_CHANNELS.llmConnections.DELETE),
   testLlmConnection: invoke(RPC_CHANNELS.llmConnections.TEST),
+  refreshLlmConnectionModels: invoke(RPC_CHANNELS.llmConnections.REFRESH_MODELS),
   setDefaultLlmConnection: invoke(RPC_CHANNELS.llmConnections.SET_DEFAULT),
   setWorkspaceDefaultLlmConnection: invoke(RPC_CHANNELS.llmConnections.SET_WORKSPACE_DEFAULT),
 

@@ -1,0 +1,94 @@
+# Google OAuth Setup
+
+Craft Agents does not include pre-configured Google OAuth credentials. You’ll need to create your own Google Cloud project and OAuth credentials to use Google services (Gmail, Calendar, Drive, Docs, Sheets, YouTube, Search Console).
+
+This is a one-time setup that takes about 5 minutes.
+
+## Step 1: Create a Google Cloud Project
+
+1.  Go to [Google Cloud Console](https://console.cloud.google.com)
+2.  Click the project dropdown (top left) → **New Project**
+3.  Enter a project name (e.g., “Craft Agent”)
+4.  Click **Create**
+
+## Step 2: Enable Required APIs
+
+Go to **APIs & Services → Library** and enable the APIs you need:
+
+| Service | API to Enable |
+| --- | --- |
+| Gmail | Gmail API |
+| Calendar | Google Calendar API |
+| Drive | Google Drive API |
+| Docs | Google Docs API |
+| Sheets | Google Sheets API |
+| YouTube | YouTube Data API v3 |
+| Search Console | Google Search Console API |
+
+Tip
+
+You can enable multiple APIs in the same project. One set of OAuth credentials works for all enabled APIs.
+
+## Step 3: Configure OAuth Consent Screen
+
+1.  Go to **APIs & Services → OAuth consent screen**
+2.  Select **External** user type (unless you have Google Workspace)
+3.  Fill in required fields:
+    *   **App name**: e.g., “Craft Agent”
+    *   **User support email**: your email
+    *   **Developer contact**: your email
+4.  Click **Save and Continue** through the Scopes section (defaults are fine)
+5.  Add yourself as a **Test user** (required for External apps)
+6.  Complete the wizard
+
+Caution
+
+External apps in “Testing” mode are limited to 100 users. For personal use, this is fine. For wider distribution, you’ll need to complete Google’s verification process.
+
+## Step 4: Create OAuth Credentials
+
+Caution
+
+**Pick “Web application” — not “Desktop app”.** Craft Agent routes every Google OAuth flow (desktop, WebUI, and headless server) through a single hosted callback at `https://thecraftagents.com/auth/callback`. Google’s “Desktop app” client type rejects this as `redirect_uri_mismatch` because it doesn’t allow registering arbitrary HTTPS redirect URIs — only loopback. The “Web application” client type is the right fit.
+
+1.  Go to **APIs & Services → Credentials**
+2.  Click **Create Credentials → OAuth Client ID**
+3.  Application type: **Web application**
+4.  Name: e.g., “Craft Agent”
+5.  Under **Authorized redirect URIs**, add this exact URI:
+    *   `https://thecraftagents.com/auth/callback`
+6.  Click **Create**
+7.  **Copy the Client ID and Client Secret** — you’ll need these next
+
+Tip
+
+**One client for every surface.** The same “Web application” OAuth client works for the desktop app, the WebUI, and the headless server — they all hand the OAuth round-trip to the hosted relay at `thecraftagents.com/auth/callback`, which routes the result back to the right destination.
+
+## Step 5: Add Credentials to Your Source
+
+Add the credentials to your Google source’s `config.json`:
+
+```json
+{
+  "api": {
+    "googleOAuthClientId": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "googleOAuthClientSecret": "YOUR_CLIENT_SECRET"
+  }
+}
+```
+
+Then use `source_google_oauth_trigger` to start the OAuth flow.
+
+## Security Notes
+
+*   Your OAuth credentials are stored encrypted alongside other source credentials
+*   Never commit credentials to version control
+*   The Client Secret is required by Craft Agents for Google OAuth flows
+*   For production use, consider getting your OAuth consent screen verified
+
+## Alternatives
+
+If you don’t want to create your own credentials, you can connect Google services through third-party MCP aggregators:
+
+*   **Zapier MCP** — Go to [zapier.com/mcp](https://zapier.com/mcp), connect the Google service, and add the generated MCP server URL as a source
+*   **Composio** — Go to [composio.dev](https://composio.dev), connect the Google service, and use their MCP server URL as a source

@@ -26,5 +26,5 @@ echo "review profile: $REVIEW/profile"
 echo "electron data:  $REVIEW/electron"
 cd "$ROOT/app"
 [ "${SKIP_BUILD:-0}" = "1" ] || "$BUN" run electron:build
-HOME="$REVIEW/home" CRAFT_CONFIG_DIR="$REVIEW/profile" \
+HOME="$REVIEW/home" CRAFT_CONFIG_DIR="$REVIEW/profile" CRAFT_BUN="$BUN" \
   node_modules/.bin/electron apps/electron --user-data-dir="$REVIEW/electron"

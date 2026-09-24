@@ -1,7 +1,7 @@
 /**
  * TopBar - Persistent top bar above all panels (Slack-style)
  *
- * Layout: [Sidebar] [Menu] [Back] [Forward] [Workspace selector] ... [Browser strip] [+] [Help]
+ * Layout: [Sidebar] [Menu when sidebar hidden] [Back] [Forward] [Workspace selector] ... [Browser strip] [+] [Help]
  *
  * Fixed at top of window, 48px tall.
  * macOS: offset left to avoid stoplight controls.
@@ -22,14 +22,13 @@ import {
   StyledDropdownMenuItem,
   StyledDropdownMenuSeparator,
 } from "@/components/ui/styled-dropdown"
-import type { SettingsMenuItem } from "../../../shared/menu-schema"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
-import { getDocUrl } from "@craft-agent/shared/docs/doc-links"
+import { openLocalHelp } from '@/lib/local-help'
 import { AppMenu } from "../AppMenu"
 
 const RIGHT_SLOT_FULL_BADGES_THRESHOLD = 420
@@ -46,9 +45,10 @@ interface TopBarProps {
   onNewChat: () => void
   onNewWindow?: () => void
   onOpenSettings: () => void
-  onOpenSettingsSubpage: (subpage: SettingsMenuItem['id']) => void
   onOpenKeyboardShortcuts: () => void
-  onOpenStoredUserPreferences: () => void
+  onOpenWhatsNew?: () => void
+  hasUnseenReleaseNotes?: boolean
+  showAppMenu?: boolean
   onBack: () => void
   onForward: () => void
   canGoBack: boolean
@@ -72,9 +72,10 @@ export function TopBar({
   onNewChat,
   onNewWindow,
   onOpenSettings,
-  onOpenSettingsSubpage,
   onOpenKeyboardShortcuts,
-  onOpenStoredUserPreferences,
+  onOpenWhatsNew,
+  hasUnseenReleaseNotes,
+  showAppMenu = true,
   onBack,
   onForward,
   canGoBack,
@@ -127,7 +128,7 @@ export function TopBar({
   // Stoplight padding clears macOS traffic-light controls, which only exist
   // in the Electron desktop window. The webui runs in a regular browser tab
   // and has no traffic lights regardless of host OS — collapse to a normal
-  // 12px inset so the logo sits at the edge.
+  // 12px inset for the sidebar toggle and navigation controls.
   const menuLeftPadding = isMac && !isWebUI ? 86 : 12
 
   return (
@@ -156,16 +157,16 @@ export function TopBar({
         </Tooltip>
         )}
 
-        <AppMenu
+        {showAppMenu && <AppMenu
           onNewChat={onNewChat}
           onNewWindow={onNewWindow}
           onOpenSettings={onOpenSettings}
-          onOpenSettingsSubpage={onOpenSettingsSubpage}
           onOpenKeyboardShortcuts={onOpenKeyboardShortcuts}
-          onOpenStoredUserPreferences={onOpenStoredUserPreferences}
           onToggleSidebar={onToggleSidebar}
           onToggleFocusMode={onToggleFocusMode}
-        />
+          onOpenWhatsNew={onOpenWhatsNew}
+          hasUnseenReleaseNotes={hasUnseenReleaseNotes}
+        />}
         </div>
 
         {/* Back / Forward / Workspace selector (moved from center).
@@ -245,7 +246,6 @@ export function TopBar({
           </StyledDropdownMenuContent>
         </DropdownMenu>
 
-        {/* Help button */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TopBarButton aria-label={t("menu.helpAndDocs")} className="h-[26px] w-[26px] rounded-lg">
@@ -253,40 +253,23 @@ export function TopBar({
             </TopBarButton>
           </DropdownMenuTrigger>
           <StyledDropdownMenuContent align="end" minWidth="min-w-48">
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('sources'))}>
-              <Icons.DatabaseZap className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("sidebar.sources")}</span>
-              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('skills'))}>
-              <Icons.Zap className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("sidebar.skills")}</span>
-              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('statuses'))}>
-              <Icons.CheckCircle2 className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("sidebar.statuses")}</span>
-              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('permissions'))}>
-              <Icons.Settings className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("settings.permissions.title")}</span>
-              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('automations'))}>
-              <Icons.Webhook className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("sidebar.automations")}</span>
-              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl(getDocUrl('messaging'))}>
-              <Icons.MessageSquare className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("settings.messaging.title")}</span>
-              <Icons.ExternalLink className="h-3 w-3 text-muted-foreground" />
-            </StyledDropdownMenuItem>
+            {([
+              ['sources', Icons.DatabaseZap, t('sidebar.sources')],
+              ['skills', Icons.Zap, t('sidebar.skills')],
+              ['statuses', Icons.CheckCircle2, t('sidebar.statuses')],
+              ['permissions', Icons.Settings, t('settings.permissions.title')],
+              ['automations', Icons.Webhook, t('sidebar.automations')],
+              ['messaging', Icons.MessageSquare, t('settings.messaging.title')],
+            ] as const).map(([feature, Icon, label]) => (
+              <StyledDropdownMenuItem key={feature} onClick={() => openLocalHelp(feature)}>
+                <Icon className="h-3.5 w-3.5" />
+                <span className="flex-1">{label}</span>
+              </StyledDropdownMenuItem>
+            ))}
             <StyledDropdownMenuSeparator />
-            <StyledDropdownMenuItem onClick={() => window.electronAPI.openUrl('https://thecraftagents.com/docs')}>
-              <Icons.ExternalLink className="h-3.5 w-3.5" />
-              <span className="flex-1">{t("menu.allDocumentation")}</span>
+            <StyledDropdownMenuItem onClick={() => openLocalHelp('all')}>
+              <Icons.BookOpen className="h-3.5 w-3.5" />
+              <span className="flex-1">{t('menu.allDocumentation')}</span>
             </StyledDropdownMenuItem>
           </StyledDropdownMenuContent>
         </DropdownMenu>

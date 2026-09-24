@@ -3,6 +3,20 @@ import { resolveClaudeThinkingOptions } from '../claude-agent.ts'
 import { getThinkingTokens } from '../thinking-levels.ts'
 
 describe('resolveClaudeThinkingOptions', () => {
+  it('applies effort without adaptive thinking when the model reports no thinking', () => {
+    expect(resolveClaudeThinkingOptions({
+      thinkingLevel: 'high', model: 'claude-opus-4-8', providerType: 'anthropic',
+      minimizeThinking: false, supportsThinking: false, reasoningEfforts: ['low', 'high'],
+    })).toEqual({ effort: 'high' });
+  })
+
+  it('does not send effort to a model that advertises neither thinking nor effort', () => {
+    expect(resolveClaudeThinkingOptions({
+      thinkingLevel: 'medium', model: 'claude-opus-4-8', providerType: 'anthropic',
+      minimizeThinking: false, supportsThinking: false,
+    })).toEqual({});
+  })
+
   it('uses adaptive thinking for true Anthropic backends', () => {
     const result = resolveClaudeThinkingOptions({
       thinkingLevel: 'medium',
@@ -28,6 +42,21 @@ describe('resolveClaudeThinkingOptions', () => {
     expect(result).toEqual({
       maxThinkingTokens: 6_000,
     })
+  })
+
+  it('uses an advertised adaptive thinking type even for a future Haiku model', () => {
+    expect(resolveClaudeThinkingOptions({
+      thinkingLevel: 'high', model: 'claude-haiku-5', providerType: 'anthropic',
+      minimizeThinking: false, supportsThinking: true, adaptiveThinkingSupported: true,
+      reasoningEfforts: ['low', 'medium', 'high'],
+    })).toEqual({ thinking: { type: 'adaptive' }, effort: 'high' })
+  })
+
+  it('uses manual thinking when the provider explicitly rejects adaptive thinking', () => {
+    expect(resolveClaudeThinkingOptions({
+      thinkingLevel: 'medium', model: 'claude-sonnet-4-5-20250929', providerType: 'anthropic',
+      minimizeThinking: false, supportsThinking: true, adaptiveThinkingSupported: false,
+    })).toEqual({ maxThinkingTokens: 10_000 })
   })
 
   it('uses correct max budget for Haiku', () => {
@@ -167,6 +196,13 @@ describe('resolveClaudeThinkingOptions', () => {
     expect(result).toEqual({
       thinking: { type: 'disabled' },
     })
+  })
+
+  it('keeps Opus 5.5 adaptive when an old session requests off', () => {
+    expect(resolveClaudeThinkingOptions({
+      thinkingLevel: 'off', model: 'claude-opus-5-5', providerType: 'anthropic',
+      minimizeThinking: false,
+    })).toEqual({ thinking: { type: 'adaptive' }, effort: 'low' })
   })
 })
 

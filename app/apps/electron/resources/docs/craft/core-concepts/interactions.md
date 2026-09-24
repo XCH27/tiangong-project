@@ -1,0 +1,128 @@
+# Interactions
+
+> Mentions, file attachments, session management, and keyboard shortcuts
+
+Beyond typing messages, Craft Agent supports several ways to interact with your conversations — from mentioning sources to attaching files and managing sessions.
+
+## Mentions
+
+Use `@` mentions in your messages to activate sources and skills inline.
+
+### Source Mentions
+
+Type `@` followed by a source name to tell the agent to use that source:
+
+```text theme={null}
+"Check @linear for my open issues"
+"Search @slack for messages about the deployment"
+"Read my latest emails from @gmail"
+```
+
+When you mention a source, it's automatically activated for the conversation — the agent gets access to that source's tools without you needing to configure anything.
+
+### Skill Mentions
+
+Similarly, mention skills with `@` to invoke them:
+
+```text theme={null}
+"Run @daily-standup"
+"Use the @code-review skill on this PR"
+```
+
+<Tip>
+  As you type `@`, an autocomplete menu appears showing available sources and skills. Select one to insert the mention.
+</Tip>
+
+## File Attachments
+
+You can share files with the agent by:
+
+* **Drag and drop** — Drag files directly into the chat input
+* **Paste** — Paste images or files from your clipboard
+* **File picker** — Click the attachment icon to browse and select files
+
+The agent can read and process most common file types:
+
+| Type          | Examples                  | What the agent can do               |
+| ------------- | ------------------------- | ----------------------------------- |
+| **Code**      | .py, .ts, .js, .go, .rs   | Read, review, refactor, explain     |
+| **Documents** | .pdf, .docx, .xlsx, .pptx | Extract text, summarise, convert    |
+| **Images**    | .png, .jpg, .svg, .webp   | View, describe, resize, convert     |
+| **Data**      | .json, .csv, .xml, .yaml  | Parse, analyse, transform           |
+| **Notebooks** | .ipynb                    | Read cells, outputs, visualisations |
+
+## Sending While the Agent Is Responding
+
+You can send a follow-up message at any time — even while the agent is still streaming a response or running a tool. How that message lands is controlled per **AI connection** with two modes:
+
+| Mode      | What happens                                                                                 | When to use                                                         |
+| --------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Steer** | Your message is delivered into the in-flight turn so the agent picks it up before finishing. | Course-correcting an ongoing task ("actually, use Python instead"). |
+| **Queue** | The current turn finishes naturally; your message is replayed as a new turn afterwards.      | Adding a follow-up without disturbing the current work.             |
+
+### Visual cue
+
+When you send a message that gets queued, the user bubble shows a small **Queued** chip until it's picked up. Steered messages are delivered immediately and don't show the chip.
+
+### Defaults
+
+The default depends on the backend:
+
+* **Anthropic (Claude Agent SDK)** → `queue`. Claude's emulated steer relies on the model invoking a tool before the turn ends; if it doesn't, the steer falls back to a re-queue and you've paid for the original turn's tokens for nothing. Defaulting to queue is more predictable.
+* **Pi-backed providers** (OpenAI, Gemini, OpenRouter, Ollama, custom endpoints) → `steer`. Pi's native steer is non-destructive — your message is delivered after the current tool call finishes, full context preserved.
+
+### Changing the mode
+
+Open **Settings → AI**, scroll to the **Connections** section, click the **`…`** menu on the relevant connection (or right-click the row), and choose **Mid-stream sends → Steer immediately** or **Queue until ready**. The choice is saved on the connection and applies to every session that uses it. The setting can be flipped at any time and takes effect on the next mid-stream send.
+
+<Tip>
+  If you're unsure, leave the default. The two modes deliver the same end result for a calm follow-up — the difference only matters when you're actively redirecting an in-flight task.
+</Tip>
+
+For the schema-level field, see [LLM Connections → midStreamBehavior](/docs/reference/config/llm-connections#mid-stream-behavior).
+
+## Session Management
+
+Every conversation in Craft Agent is a **session**. You can manage sessions from the sidebar:
+
+### Flagging
+
+Flag important sessions to mark them for follow-up. Flagged sessions appear with a flag icon and can be filtered in the sidebar.
+
+### Archiving
+
+Archive completed or inactive sessions to keep your sidebar clean. Archived sessions are hidden from the default view but can be accessed via the filter.
+
+### Batch Operations
+
+Select multiple sessions to perform bulk actions:
+
+* **Archive** multiple sessions at once
+* **Delete** sessions you no longer need
+* **Apply labels** across sessions
+
+### Read / Unread
+
+Sessions are marked as unread when the agent produces new output. Click a session to mark it as read.
+
+## Keyboard Shortcuts
+
+Craft Agent includes keyboard shortcuts for common actions. Open the shortcuts reference with:
+
+* **macOS:** `Cmd + /`
+* Or click the **?** icon in the bottom corner
+
+Key shortcuts include:
+
+| Shortcut      | Action                            |
+| ------------- | --------------------------------- |
+| `Cmd + N`     | New conversation                  |
+| `Cmd + K`     | Quick search / command palette    |
+| `Shift + Tab` | Cycle permission modes            |
+| `Cmd + Enter` | Send message                      |
+| `Escape`      | Stop the agent's current response |
+| `Cmd + /`     | Show keyboard shortcuts           |
+
+<Note>
+  Keyboard shortcuts can be customised. Ask the agent: "Help me customise my keyboard shortcuts" to modify bindings.
+</Note>

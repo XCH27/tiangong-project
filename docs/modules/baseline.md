@@ -129,7 +129,8 @@ visual acceptance retain `wired but not visually checked`; that label cannot hid
 baseline correction.
 
 Cross-domain search belongs to R5 / INFO-06; the former automatic-work-phase proposal is superseded
-by R1's owner-authorized independent Plan and action permission. R4/R5/R6/R9 are not baseline
+by the owner's independent Plan and action-permission design input, which remains outside the
+current bounded entry slice. R4/R5/R6/R9 are not baseline
 prerequisites. Carry them at their own release anchors. R0 is the current integration owner;
 R1/R2 supply correction contracts, not a cycle that postpones fixing the baseline.
 

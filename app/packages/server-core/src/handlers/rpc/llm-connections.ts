@@ -6,6 +6,10 @@ import {
   resolveSetupTestConnectionHint,
   testBackendConnection,
   validateStoredBackendConnection,
+  fetchXaiApiModels,
+  fetchXaiApiMediaModels,
+  fetchXaiSubscriptionModels,
+  XAI_SUBSCRIPTION_BASE,
 } from '@craft-agent/shared/agent/backend'
 import { getModelRefreshService } from '@craft-agent/server-core/model-fetchers'
 import { parseTestConnectionError, createBuiltInConnection, validateModelList, piAuthProviderDisplayName, validateSetupTestInput, setupTestRequiresApiKey, resolveCustomEndpointSetup } from '@craft-agent/server-core/domain'
@@ -14,9 +18,11 @@ import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { randomUUID } from 'node:crypto'
 import { CLIENT_OPEN_EXTERNAL } from '@craft-agent/server-core/transport'
+import { assertWorkspaceModelSelection, reconcileWorkspaceModelOverride } from '../../sessions/model-defaults'
 
 // Local OAuth state
 let copilotOAuthAbort: AbortController | null = null
+let xaiOAuthAbort: AbortController | null = null
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.llmConnections.LIST,
@@ -24,6 +30,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.llmConnections.GET,
   RPC_CHANNELS.llmConnections.GET_API_KEY,
   RPC_CHANNELS.llmConnections.SAVE,
+  RPC_CHANNELS.llmConnections.SET_MODEL,
   RPC_CHANNELS.llmConnections.DELETE,
   RPC_CHANNELS.llmConnections.TEST,
   RPC_CHANNELS.llmConnections.SET_DEFAULT,
@@ -38,6 +45,9 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.copilot.CANCEL_OAUTH,
   RPC_CHANNELS.copilot.GET_AUTH_STATUS,
   RPC_CHANNELS.copilot.LOGOUT,
+  RPC_CHANNELS.xai.START_OAUTH,
+  RPC_CHANNELS.xai.CANCEL_OAUTH,
+  RPC_CHANNELS.xai.READ_USAGE,
   RPC_CHANNELS.settings.SETUP_LLM_CONNECTION,
   RPC_CHANNELS.settings.TEST_LLM_CONNECTION_SETUP,
   RPC_CHANNELS.pi.GET_API_KEY_PROVIDERS,
@@ -85,9 +95,16 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       }
 
       const updates: Partial<LlmConnection> = {}
-      const hasConfiguredBaseUrl = !!setup.baseUrl?.trim()
+      // Older xAI setup forms persisted the official URL as though it were a
+      // custom endpoint. Treat that exact URL as Pi's native xAI endpoint so
+      // account discovery and runtime model registration still apply on edit.
+      const isNativeXaiEndpoint = setup.piAuthProvider === 'xai'
+        && !setup.customEndpoint
+        && setup.baseUrl?.trim().replace(/\/+$/, '') === 'https://api.x.ai/v1'
+      const configuredBaseUrl = isNativeXaiEndpoint ? undefined : setup.baseUrl?.trim() || undefined
+      const hasConfiguredBaseUrl = !!configuredBaseUrl
       if (setup.baseUrl !== undefined) {
-        updates.baseUrl = setup.baseUrl?.trim() || undefined
+        updates.baseUrl = configuredBaseUrl
 
         // Only mutate providerType for API key connections (not OAuth connections)
         if (isAnthropicProvider(connection.providerType) && connection.authType !== 'oauth') {
@@ -152,17 +169,41 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       // Skip when custom endpoint protocol is driving routing.
       if (setup.piAuthProvider && !isCustomEndpointCompat) {
         updates.piAuthProvider = setup.piAuthProvider
-        // Update connection name to show the actual provider (e.g. "Craft Agents Backend (Google AI Studio)")
-        const providerName = piAuthProviderDisplayName(setup.piAuthProvider)
-        if (providerName) {
-          updates.name = `Craft Agents Backend (${providerName})`
+        if (connection.authType !== 'oauth') {
+          // API-key presets use the provider name; a subscription keeps its
+          // built-in account name and discovers its own account-scoped models.
+          const providerName = piAuthProviderDisplayName(setup.piAuthProvider)
+          if (providerName) {
+            updates.name = `Craft Agents Backend (${providerName})`
+          }
+          // Only seed models for a standard Pi API-key provider when none were selected.
+          if (!hasConfiguredBaseUrl && !setup.models?.length) {
+            updates.models = getDefaultModelsForConnection('pi', setup.piAuthProvider)
+            if (!setup.defaultModel) {
+              updates.defaultModel = getDefaultModelForConnection('pi', setup.piAuthProvider)
+            }
+            updates.modelSelectionMode ??= 'automaticallySyncedFromProvider'
+          }
         }
-        // Only set default models when using standard Pi provider AND user didn't pick explicit models
-        if (!hasConfiguredBaseUrl && !setup.models?.length) {
-          updates.models = getDefaultModelsForConnection('pi', setup.piAuthProvider)
-          updates.defaultModel = getDefaultModelForConnection('pi', setup.piAuthProvider)
-          updates.modelSelectionMode ??= 'automaticallySyncedFromProvider'
-        }
+      }
+
+      if (setup.piAuthProvider === 'xai' && connection.authType === 'oauth' && !isCustomEndpointCompat) {
+        const { getValidXaiSubscriptionToken } = await import('@craft-agent/shared/auth')
+        const accountModels = await fetchXaiSubscriptionModels(await getValidXaiSubscriptionToken(setup.slug), 15_000)
+        updates.baseUrl = XAI_SUBSCRIPTION_BASE
+        updates.models = accountModels
+        updates.modelSelectionMode = 'automaticallySyncedFromProvider'
+        if (!setup.defaultModel) updates.defaultModel = accountModels.find(model => model.id === 'pi/grok-4.7')?.id ?? accountModels[0]?.id
+      } else if (setup.piAuthProvider === 'xai' && !hasConfiguredBaseUrl && !isCustomEndpointCompat) {
+        const suppliedKey = setup.credential?.includes('••') ? undefined : setup.credential?.trim()
+        const key = suppliedKey || await manager.getLlmApiKey(setup.slug)
+        if (!key) return { success: false, error: 'xAI API key is required' }
+        // Resolve the account catalog before validating the selected model.
+        // A bundled SDK list may be older than this account's real models.
+        const accountModels = await fetchXaiApiModels(key, 15_000)
+        updates.models = accountModels
+        updates.modelSelectionMode = 'automaticallySyncedFromProvider'
+        if (!setup.defaultModel) updates.defaultModel = accountModels[0]?.id
       }
 
       // Pi+Bedrock auth method override — set authType for IAM or environment auth.
@@ -211,6 +252,13 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       const pendingConnection: LlmConnection = {
         ...connection,
         ...updates,
+      }
+
+      // OAuth token exchange already stored access, refresh and expiry data in
+      // the credential manager. A setup payload containing only the access
+      // token must never replace that complete record.
+      if (pendingConnection.authType === 'oauth' && setup.credential && !setup.credential.includes('••')) {
+        return { success: false, error: 'OAuth credentials are managed by the sign-in flow. Sign in again to change accounts.' }
       }
 
       if (pendingConnection.providerType === 'pi') {
@@ -269,14 +317,8 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       // Store credential if provided (skip masked placeholders from GET_API_KEY)
       const isMasked = setup.credential?.includes('••')
       if (setup.credential && !isMasked) {
-        const authType = pendingConnection.authType
-        if (authType === 'oauth') {
-          await manager.setLlmOAuth(setup.slug, { accessToken: setup.credential })
-          deps.platform.logger?.info('Saved OAuth access token to LLM connection')
-        } else {
-          await manager.setLlmApiKey(setup.slug, setup.credential)
-          deps.platform.logger?.info('Saved API key to LLM connection')
-        }
+        await manager.setLlmApiKey(setup.slug, setup.credential)
+        deps.platform.logger?.info('Saved API key to LLM connection')
       }
 
       // Pi+Bedrock IAM credentials — stored separately from API keys
@@ -390,11 +432,46 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     return getPiProviderBaseUrl(provider)
   })
 
-  server.handle(RPC_CHANNELS.pi.GET_PROVIDER_MODELS, async (_ctx, provider: string) => {
+  server.handle(RPC_CHANNELS.pi.GET_PROVIDER_MODELS, async (_ctx, provider: string, apiKey?: string, connectionSlug?: string) => {
+    let effectiveKey = apiKey?.trim()
+    if (provider === 'xai' && !effectiveKey && connectionSlug) {
+      const connection = getLlmConnection(connectionSlug)
+      if (connection?.providerType === 'pi' && connection.piAuthProvider === 'xai' && connection.authType === 'api_key') {
+        effectiveKey = await getCredentialManager().getLlmApiKey(connectionSlug) ?? undefined
+      }
+    }
+    if (provider === 'xai' && effectiveKey) {
+      try {
+        const discovered = await fetchXaiApiModels(effectiveKey, 15_000)
+        const mediaCatalog = await fetchXaiApiMediaModels(effectiveKey)
+        return {
+          models: discovered.map(model => ({
+            id: model.id,
+            name: model.name,
+            costInput: model.pricingPerMillion?.input,
+            costOutput: model.pricingPerMillion?.output,
+            contextWindow: model.contextWindow,
+            reasoning: model.supportsThinking ?? false,
+          })),
+          totalCount: discovered.length,
+          source: 'provider' as const,
+          mediaModels: mediaCatalog.models,
+          mediaCatalogStatus: mediaCatalog.status,
+        }
+      } catch (error) {
+        // A failed account query must stay visible. Bundled entries below are
+        // only setup hints, not proof that this key may run them.
+        const reason = error instanceof Error ? error.message : String(error)
+        deps.platform.logger?.warn(`xAI setup catalog unavailable: ${reason}`)
+        return { models: [], totalCount: 0, source: 'sdk' as const, error: reason }
+      }
+    }
     const { getModels } = await import('@earendil-works/pi-ai/compat')
     try {
       const models = getModels(provider as Parameters<typeof getModels>[0])
-      const sorted = [...models].sort((a, b) => b.cost.output - a.cost.output || b.cost.input - a.cost.input)
+      // Price is neither capability nor latency. Keep discovery order from the
+      // provider adapter instead of implying a "best/fast" ranking by cost.
+      const sorted = models
       return {
         models: sorted.map(m => ({
           id: m.id.startsWith('pi/') ? m.id : `pi/${m.id}`,
@@ -405,9 +482,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
           reasoning: m.reasoning,
         })),
         totalCount: models.length,
+        source: 'sdk' as const,
       }
     } catch {
-      return { models: [], totalCount: 0 }
+      return { models: [], totalCount: 0, source: 'sdk' as const }
     }
   })
 
@@ -496,6 +574,31 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     } catch (error) {
       deps.platform.logger?.error('Failed to save LLM connection:', error)
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
+  // Set only the selected model. Sending an entire renderer snapshot here can
+  // overwrite a catalog that finished refreshing after the page was rendered.
+  server.handle(RPC_CHANNELS.llmConnections.SET_MODEL, async (_ctx, slug: string, model: string): Promise<{ success: boolean; error?: string }> => {
+    const connection = getLlmConnection(slug)
+    if (!connection) return { success: false, error: 'Connection not found' }
+    if (!model?.trim() || (connection.models?.length && !connection.models.some(entry =>
+      (typeof entry === 'string' ? entry : entry.id) === model
+    ))) return { success: false, error: 'MODEL_UNAVAILABLE_FOR_CONNECTION' }
+    try {
+      assertWorkspaceModelSelection(model, connection)
+      if (!updateLlmConnection(slug, { defaultModel: model })) {
+        return { success: false, error: 'Failed to update connection' }
+      }
+      sessionManager.refreshConnectionRuntime(slug).catch(error => {
+        deps.platform.logger?.warn(
+          `Detached model runtime push failed for ${slug}: ${error instanceof Error ? error.message : error}`,
+        )
+      })
+      if (getDefaultLlmConnection() === slug) await sessionManager.reinitializeAuth()
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   })
 
@@ -593,6 +696,11 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       } else {
         delete config.defaults.defaultLlmConnection
       }
+      if (config.defaults.model) {
+        const effectiveSlug = slug ?? getDefaultLlmConnection()
+        const connection = effectiveSlug ? getLlmConnection(effectiveSlug) : null
+        config.defaults.model = reconcileWorkspaceModelOverride(config.defaults.model, connection)
+      }
 
       saveWorkspaceConfig(workspace.rootPath, config)
       deps.platform.logger?.info(`Workspace ${workspaceId} default LLM connection set to: ${slug}`)
@@ -604,15 +712,19 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
   })
 
   // Refresh available models for a connection (dynamic model discovery)
-  server.handle(RPC_CHANNELS.llmConnections.REFRESH_MODELS, async (_ctx, slug: string): Promise<{ success: boolean; error?: string }> => {
+  server.handle(RPC_CHANNELS.llmConnections.REFRESH_MODELS, async (_ctx, slug: string): Promise<{ success: boolean; source?: import('../../model-fetchers/index').ModelRefreshSource; error?: string }> => {
     try {
       const connection = getLlmConnection(slug)
       if (!connection) {
         return { success: false, error: 'Connection not found' }
       }
 
-      await getModelRefreshService().refreshNow(slug)
-      return { success: true }
+      const result = await getModelRefreshService().refreshNow(slug)
+      return {
+        success: result.source !== 'unavailable' && result.source !== 'superseded',
+        source: result.source,
+        error: result.error,
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       deps.platform.logger?.error(`Failed to refresh models for ${slug}: ${msg}`)
@@ -706,10 +818,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       return { success: true }
     } catch (error) {
       pendingChatGptFlows.delete(state)
-      deps.platform.logger?.error('[ChatGPT OAuth] Token exchange failed:', error)
+      deps.platform.logger?.error('[ChatGPT OAuth] Connection completion failed:', error instanceof Error ? error.message : String(error))
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Token exchange failed',
+        error: error instanceof Error ? error.message : 'Connection setup failed',
       }
     }
   })
@@ -870,5 +982,53 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       deps.platform.logger?.error('Failed to clear Copilot credentials:', error)
       return { success: false }
     }
+  })
+
+  // Grok subscription uses Pi's device-code OAuth and the separate Grok
+  // subscription catalog. A successful token exchange alone is not enough to
+  // claim this account can run a subscription model.
+  server.handle(RPC_CHANNELS.xai.START_OAUTH, async (ctx, connectionSlug: string): Promise<{ success: boolean; error?: string }> => {
+    xaiOAuthAbort?.abort()
+    const controller = new AbortController()
+    xaiOAuthAbort = controller
+    try {
+      const { loginXaiSubscription } = await import('@craft-agent/shared/auth')
+      const tokens = await loginXaiSubscription({
+        signal: controller.signal,
+        onDeviceCode: ({ userCode, verificationUri }) => {
+          pushTyped(server, RPC_CHANNELS.xai.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+            userCode, verificationUri,
+          })
+          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, verificationUri).catch(error => {
+            deps.platform.logger?.warn(`Failed to open xAI verification page: ${error}`)
+          })
+        },
+      })
+      if (controller.signal.aborted) return { success: false, error: 'Grok sign-in cancelled' }
+      await fetchXaiSubscriptionModels(tokens.accessToken, 15_000)
+      if (controller.signal.aborted) return { success: false, error: 'Grok sign-in cancelled' }
+      await getCredentialManager().setLlmOAuth(connectionSlug, tokens)
+      refreshModelsInBackground(connectionSlug, 'Grok subscription auth')
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Grok sign-in failed' }
+    } finally {
+      if (xaiOAuthAbort === controller) xaiOAuthAbort = null
+    }
+  })
+
+  server.handle(RPC_CHANNELS.xai.CANCEL_OAUTH, async (): Promise<{ success: boolean }> => {
+    xaiOAuthAbort?.abort()
+    xaiOAuthAbort = null
+    return { success: true }
+  })
+
+  server.handle(RPC_CHANNELS.xai.READ_USAGE, async (_ctx, connectionSlug: string) => {
+    const connection = getLlmConnection(connectionSlug)
+    if (!connection || connection.providerType !== 'pi' || connection.piAuthProvider !== 'xai' || connection.authType !== 'oauth') {
+      throw new Error('Grok subscription connection not found')
+    }
+    const { fetchXaiSubscriptionUsage } = await import('@craft-agent/shared/auth')
+    return fetchXaiSubscriptionUsage(connectionSlug)
   })
 }

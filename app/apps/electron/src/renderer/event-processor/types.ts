@@ -6,6 +6,7 @@
  */
 
 import type { Session, SessionEvent, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
+import type { ThinkingLevel } from '@craft-agent/shared/agent/thinking-levels'
 
 /** Explicit SDK retry boundaries; keep their transport shape authoritative. */
 export type TextDiscardEvent = Extract<SessionEvent, { type: 'text_discard' }>
@@ -340,6 +341,8 @@ export interface SessionModelChangedEvent {
   type: 'session_model_changed'
   sessionId: string
   model: string | null
+  thinkingLevel?: ThinkingLevel
+  llmConnection?: string
 }
 
 /**

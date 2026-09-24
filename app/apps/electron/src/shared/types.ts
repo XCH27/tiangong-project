@@ -396,6 +396,7 @@ export interface ElectronAPI {
   // Menu event listeners
   onMenuNewChat(callback: () => void): () => void
   onMenuOpenSettings(callback: () => void): () => void
+  onMenuOpenHelp(callback: () => void): () => void
   onMenuKeyboardShortcuts(callback: () => void): () => void
   onMenuToggleFocusMode(callback: () => void): () => void
   onMenuToggleSidebar(callback: () => void): () => void
@@ -435,6 +436,10 @@ export interface ElectronAPI {
   getCopilotAuthStatus(connectionSlug: string): Promise<{ authenticated: boolean }>
   copilotLogout(connectionSlug: string): Promise<{ success: boolean }>
   onCopilotDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
+  startXaiOAuth(connectionSlug: string): Promise<{ success: boolean; error?: string }>
+  cancelXaiOAuth(): Promise<{ success: boolean }>
+  onXaiDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
+  readXaiSubscriptionUsage(connectionSlug: string): Promise<import('@craft-agent/shared/auth').XaiSubscriptionUsage>
 
   /** Unified LLM connection setup */
   setupLlmConnection(setup: LlmConnectionSetup): Promise<{ success: boolean; error?: string }>
@@ -443,7 +448,7 @@ export interface ElectronAPI {
   // Pi provider discovery (main process only — Pi SDK can't run in renderer)
   getPiApiKeyProviders(): Promise<Array<{ key: string; label: string; placeholder: string }>>
   getPiProviderBaseUrl(provider: string): Promise<string | undefined>
-  getPiProviderModels(provider: string): Promise<{ models: Array<{ id: string; name: string; costInput: number; costOutput: number; contextWindow: number; reasoning: boolean }>; totalCount: number }>
+  getPiProviderModels(provider: string, apiKey?: string, connectionSlug?: string): Promise<{ models: Array<{ id: string; name: string; costInput?: number; costOutput?: number; contextWindow: number; reasoning: boolean }>; totalCount: number; source?: 'provider' | 'sdk'; error?: string; mediaModels?: Array<{ id: string; name: string; kind: 'image' | 'video'; inputModalities?: string[]; outputModalities?: string[] }>; mediaCatalogStatus?: 'available' | 'partial' | 'unavailable' }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
@@ -653,8 +658,10 @@ export interface ElectronAPI {
   getLlmConnection(slug: string): Promise<LlmConnection | null>
   getLlmConnectionApiKey(slug: string): Promise<string | null>
   saveLlmConnection(connection: LlmConnection): Promise<{ success: boolean; error?: string }>
+  setLlmConnectionModel(slug: string, model: string): Promise<{ success: boolean; error?: string }>
   deleteLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   testLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
+  refreshLlmConnectionModels(slug: string): Promise<{ success: boolean; source?: 'provider' | 'sdk' | 'saved' | 'registry' | 'manual' | 'unavailable' | 'superseded'; error?: string }>
   setDefaultLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   getDefaultThinkingLevel(): Promise<ThinkingLevel>
   setDefaultThinkingLevel(level: ThinkingLevel): Promise<{ success: boolean; error?: string }>

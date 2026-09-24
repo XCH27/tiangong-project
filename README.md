@@ -8,8 +8,10 @@ Targets: **Windows, macOS and Linux** desktop; a later phone connector for a use
 
 ## Status
 
-`app/` is **unmodified official Craft Agents v0.13.4**. Fleet's product work restarts from this
-baseline, one approved slice at a time; the current slice is R1 shell and context rectification.
+`app/` starts from official Craft Agents v0.13.4. The current bounded change separates the
+All Conversations/Board entries and moves the existing What's New and Craft menu entry points;
+every difference is declared in `docs/UPSTREAM-DELTA.tsv`. Conversation/Project storage,
+Workspace design, composer and right-panel changes remain on hold.
 What is planned and in progress: [`TODO.md`](TODO.md). What changed and why the project restarted:
 [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -65,7 +67,7 @@ docs/
   references.md               which open-source project to reference for what, and where
   UPSTREAM-DELTA.tsv          every declared difference from upstream Craft
   modules/                    one self-contained document per module
-    baseline.md shell.md services.md          active release slices R0, R1, R2
+    baseline.md shell.md services.md          R0 baseline, bounded R1 entry slice, queued R2
     agent-core.md context.md browser.md       feature modules, each with its
     canvas.md media.md workflow.md            execution rows and references
     remote.md marketplace.md components.md

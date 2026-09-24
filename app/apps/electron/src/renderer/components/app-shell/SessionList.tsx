@@ -25,7 +25,7 @@ import { useSessionActions } from "@/hooks/useSessionActions"
 import { useEntityListInteractions } from "@/hooks/useEntityListInteractions"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useEscapeInterrupt } from "@/context/EscapeInterruptContext"
-import { useNavigation, useNavigationState, routes, isSessionsNavigation } from "@/contexts/NavigationContext"
+import { useNavigation, useNavigationState, isSessionsNavigation } from "@/contexts/NavigationContext"
 import { useFocusContext } from "@/context/FocusContext"
 import { sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import type { ViewConfig } from "@craft-agent/shared/views"
@@ -160,7 +160,7 @@ export function SessionList({
   } = useSessionSelection()
   const selectionStore = useSessionSelectionStore()
 
-  const { navigate, navigateToSession: navigateToSessionPrimary } = useNavigation()
+  const { navigateToSession: navigateToSessionPrimary } = useNavigation()
   const navigateToSession = onNavigateToSession ?? navigateToSessionPrimary
   const navState = useNavigationState()
   const { showEscapeOverlay } = useEscapeInterrupt()
@@ -747,19 +747,7 @@ export function SessionList({
         title={t("session.noSessionsYet")}
         description={t("session.noSessionsYetDesc")}
         className="h-full"
-      >
-        <button
-          onClick={() => {
-            const params: { status?: string; label?: string } = {}
-            if (currentFilter?.kind === 'state') params.status = currentFilter.stateId
-            else if (currentFilter?.kind === 'label') params.label = currentFilter.labelId
-            navigate(routes.action.newSession(Object.keys(params).length > 0 ? params : undefined))
-          }}
-          className="inline-flex items-center h-7 px-3 text-xs font-medium rounded-[8px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors"
-        >
-          {t("session.newSession")}
-        </button>
-      </EntityListEmptyScreen>
+      />
     )
   }
 

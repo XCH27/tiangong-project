@@ -12,9 +12,8 @@
 import * as React from 'react'
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { SettingsPageTitle } from '@/components/settings/SettingsPageTitle'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { Loader2 } from 'lucide-react'
 import { useAppShellContext, useActiveWorkspace } from '@/context/AppShellContext'
 import { type PermissionsConfigFile } from '@craft-agent/shared/agent/modes'
@@ -27,8 +26,7 @@ import {
   SettingsCard,
 } from '@/components/settings'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
-import { getDocUrl } from '@craft-agent/shared/docs/doc-links'
-import { routes } from '@/lib/navigate'
+import { openLocalHelp } from '@/lib/local-help'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 
 export const meta: DetailsPageMeta = {
@@ -204,7 +202,7 @@ export default function PermissionsSettingsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.permissions.title")} actions={<HeaderMenu route={routes.view.settings('permissions')} helpFeature="permissions" />} />
+      <SettingsPageTitle title={t("settings.permissions.title")} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">
@@ -228,7 +226,7 @@ export default function PermissionsSettingsPage() {
                         <p>
                           <button
                             type="button"
-                            onClick={() => window.electronAPI?.openUrl(getDocUrl('permissions'))}
+                            onClick={() => openLocalHelp('permissions')}
                             className="text-foreground/70 hover:text-foreground underline underline-offset-2"
                           >
                             {t("common.learnMore")}

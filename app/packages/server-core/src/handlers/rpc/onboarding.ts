@@ -150,7 +150,7 @@ export function registerOnboardingHandlers(server: RpcServer, deps: HandlerDeps)
       const identity = (tokens.account || tokens.organization)
         ? { account: tokens.account, organization: tokens.organization }
         : undefined
-      return { success: true, token: tokens.accessToken, identity }
+      return { success: true, identity }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       log.error('[Onboarding] Exchange Claude code error:', message)

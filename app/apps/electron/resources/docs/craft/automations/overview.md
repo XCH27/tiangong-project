@@ -1,0 +1,941 @@
+# Automations
+
+> Automate workflows by triggering actions on app and agent events
+
+<Tip>
+  **Just ask your agent.** Say things like "create an automation that notifies me when a session is flagged" or "set up a daily morning briefing at 9am". The agent will create and validate the configuration for you.
+</Tip>
+
+Automations let you trigger actions automatically when events happen in Craft Agent. You can run shell commands, send prompts to start new sessions, or schedule recurring workflows — all configured in a single JSON file.
+
+## Getting Started
+
+The easiest way to set up automations is to describe what you want in plain language. Here are some prompts you can try:
+
+| What you want             | What to say                                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------ |
+| **Scheduled briefing**    | "Set up a daily standup briefing every weekday at 9am"                               |
+| **Desktop notifications** | "Notify me with a macOS notification when a session is labelled urgent"              |
+| **Audit logging**         | "Log all permission mode changes to a file"                                          |
+| **Auto-label**            | "When a session starts, run a command that checks the working directory and logs it" |
+| **Recurring report**      | "Every Friday at 5pm, create a session that summarises this week's completed tasks"  |
+| **Webhook integration**   | "When I flag a session, send a curl request to my webhook URL"                       |
+
+### Your First Automation
+
+Here's the simplest possible automation — it logs a message every time a label is added to a session:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "LabelAdd": [
+      {
+        "actions": [
+          { "type": "command", "command": "echo \"Label added: $CRAFT_LABEL\" >> ~/craft-automations.log" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Save this as `~/.craft-agent/workspaces/{workspaceId}/automations.json` and it starts working immediately — no restart needed.
+
+### Scheduling a Prompt
+
+Want Craft Agent to do something for you on a schedule? Use a prompt action with a cron expression:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "SchedulerTick": [
+      {
+        "cron": "0 9 * * 1-5",
+        "timezone": "America/New_York",
+        "labels": ["Scheduled"],
+        "actions": [
+          { "type": "prompt", "prompt": "Check @github for any new issues assigned to me and summarise them" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This creates a new session every weekday at 9 AM, activates the GitHub source, and asks the agent to check your issues. The session is automatically labelled "Scheduled" for easy filtering.
+
+## How Automations Work
+
+When an event fires (e.g., a label is added, a tool runs, or a cron schedule matches), Craft Agent checks your configuration for matching entries and executes them.
+
+There are two types of actions:
+
+* **Command actions** — execute shell commands with event data available as environment variables
+* **Prompt actions** — send a prompt to Craft Agent, creating a new session (App events only)
+
+## Configuration File
+
+Automations are configured per-workspace in `automations.json`:
+
+```
+~/.craft-agent/workspaces/{workspaceId}/automations.json
+```
+
+### Basic Structure
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "EventName": [
+      {
+        "matcher": "regex-pattern",
+        "actions": [
+          { "type": "command", "command": "echo 'Hello'" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Each event type maps to an array of matchers, and each matcher contains an array of actions to execute when the matcher's pattern matches the event value.
+
+## Managing Automations
+
+### In the UI
+
+Automations are listed in the sidebar under **Automations**. From here you can:
+
+* **Enable / Disable** — Toggle individual automations on or off without removing them
+* **Duplicate** — Create a copy of an existing automation with a "Copy" suffix
+* **Delete** — Remove an automation permanently
+* **Test** — Manually trigger an automation to verify it works before waiting for the real event. The test runner resolves `@mentions`, enables sources, and uses the configured `llmConnection`/`model` — the same code path as the scheduler.
+* **Execution history** — Each automation records success and failure to a timeline, viewable in the detail page. History is stored in `automations-history.jsonl` and retained to the last 20 runs per automation (max 1000 entries total).
+
+Batch operations are supported — select multiple automations and enable, disable, or delete them together. The list is sorted by most recent execution for quick access to active automations.
+
+### In the Config File
+
+You can also manage automations by editing `automations.json` directly. Changes take effect immediately — no restart required.
+
+**Enabling and disabling:** Set `"enabled": false` on any matcher to temporarily disable it without removing the configuration. Omit the field or set it to `true` to re-enable.
+
+```json theme={null}
+{
+  "matcher": "^urgent$",
+  "enabled": false,
+  "actions": [
+    { "type": "command", "command": "notify-send 'Urgent!'" }
+  ]
+}
+```
+
+**Deleting:** Remove the matcher entry from `automations.json`. If an event type has no remaining matchers, you can remove the entire event key.
+
+<Tip>
+  **Ask your agent** to manage automations for you: "disable all my scheduled automations" or "remove the urgent notification automation". The agent will read and update `automations.json` directly.
+</Tip>
+
+## Events
+
+### App Events
+
+Triggered by Craft Agent itself. Support both command and prompt actions.
+
+| Event                  | Trigger                     | Match Value               |
+| ---------------------- | --------------------------- | ------------------------- |
+| `LabelAdd`             | Label added to session      | Label ID (e.g., `urgent`) |
+| `LabelRemove`          | Label removed from session  | Label ID                  |
+| `LabelConfigChange`    | Label configuration changed | Always matches            |
+| `PermissionModeChange` | Permission mode changed     | New mode name             |
+| `FlagChange`           | Session flagged/unflagged   | `true` or `false`         |
+| `SessionStatusChange`  | Session status changed      | New status (e.g., `done`) |
+| `SchedulerTick`        | Runs every minute           | Uses cron matching        |
+
+<Info>
+  **Renamed:** `TodoStateChange` was renamed to `SessionStatusChange`. The old name still works as a deprecated alias but will show a validation warning. Update your automations to use `SessionStatusChange`.
+</Info>
+
+<Tip>
+  **Status changes:** To react to status/workflow state changes (e.g., when a session moves to "done" or "in-progress"), use the `SessionStatusChange` event. The match value is the new status name, so you can use a matcher like `"^done$"` to trigger only on specific transitions.
+</Tip>
+
+### Agent Events
+
+Passed to the Claude SDK. Only command actions are supported (no prompt actions).
+
+| Event                | Trigger                    | Match Value     |
+| -------------------- | -------------------------- | --------------- |
+| `PreToolUse`         | Before a tool executes     | Tool name       |
+| `PostToolUse`        | After a tool succeeds      | Tool name       |
+| `PostToolUseFailure` | After a tool fails         | Tool name       |
+| `UserPromptSubmit`   | User submits a prompt      | Event data JSON |
+| `SessionStart`       | Session starts             | Event data JSON |
+| `SessionEnd`         | Session ends               | Event data JSON |
+| `Stop`               | Agent stops                | Event data JSON |
+| `SubagentStart`      | Subagent spawned           | Event data JSON |
+| `SubagentStop`       | Subagent completes         | Event data JSON |
+| `Notification`       | Notification received      | Event data JSON |
+| `PreCompact`         | Before context compaction  | Event data JSON |
+| `PermissionRequest`  | Permission requested       | Event data JSON |
+| `Setup`              | Agent setup/initialization | Event data JSON |
+
+## Action Types
+
+### Command Actions
+
+Execute a shell command when the event fires. Event data is available through environment variables.
+
+```json theme={null}
+{
+  "type": "command",
+  "command": "echo \"Label $CRAFT_LABEL was added\" >> ~/automation-log.txt",
+  "timeout": 60000
+}
+```
+
+| Property  | Type        | Default  | Description              |
+| --------- | ----------- | -------- | ------------------------ |
+| `type`    | `"command"` | Required | Action type              |
+| `command` | string      | Required | Shell command to execute |
+| `timeout` | number      | `60000`  | Timeout in milliseconds  |
+
+### Prompt Actions
+
+Send a prompt to Craft Agent, creating a new session. Only works with App events.
+
+```json theme={null}
+{
+  "type": "prompt",
+  "prompt": "Run the @weather skill and summarize today's forecast"
+}
+```
+
+| Property        | Type                                                                 | Default           | Description                                     |
+| --------------- | -------------------------------------------------------------------- | ----------------- | ----------------------------------------------- |
+| `type`          | `"prompt"`                                                           | Required          | Action type                                     |
+| `prompt`        | string                                                               | Required          | Prompt text to send                             |
+| `llmConnection` | string                                                               | Workspace default | LLM connection slug (configured in AI Settings) |
+| `model`         | string                                                               | Workspace default | Model ID for the created session                |
+| `thinkingLevel` | `"off"` \| `"low"` \| `"medium"` \| `"high"` \| `"xhigh"` \| `"max"` | Workspace default | Thinking level for the spawned session          |
+
+**Features:**
+
+* Use `@mentions` to reference sources or skills (e.g., `@github`, `@linear`)
+* Environment variables are expanded (e.g., `$CRAFT_LABEL`, `${CRAFT_SESSION_NAME}`)
+* Mentioned sources are automatically activated for the new session
+
+**Per-Action Overrides:** You can override the AI provider, model, and thinking level for the session created by a prompt action. Each field is independent — omit any of them to inherit the workspace default.
+
+```json theme={null}
+{
+  "type": "prompt",
+  "prompt": "Quick code review of recent changes",
+  "llmConnection": "my-copilot-connection",
+  "model": "gemini-2.5-flash",
+  "thinkingLevel": "high"
+}
+```
+
+The `llmConnection` value is the slug of an LLM connection configured in AI Settings. The `model` value is a model ID supported by the provider. If either is invalid or not found, it gracefully falls back to the workspace default.
+
+**Thinking level resolution:** `thinkingLevel` on the action takes precedence; if omitted, the workspace default applies; if neither is set, sessions default to `"medium"`. The legacy `"think"` value from older configs is silently migrated to `"medium"`. Backends gracefully cap unsupported values (e.g. Anthropic auto-degrades `xhigh` → `high` on models that don't support it; Pi caps `max` at `xhigh`).
+
+## Matchers
+
+### Regex Matching
+
+Most events use regex matching against the event's match value:
+
+```json theme={null}
+{
+  "matcher": "^urgent$",
+  "actions": [
+    { "type": "command", "command": "notify-send 'Urgent!'" }
+  ]
+}
+```
+
+Omit the `matcher` field to match all events of that type.
+
+**Examples:**
+
+| Pattern        | Matches                         |
+| -------------- | ------------------------------- |
+| `^urgent$`     | Exact match for "urgent"        |
+| `bug\|feature` | Either "bug" or "feature"       |
+| `^prod-`       | Any value starting with "prod-" |
+| *(omitted)*    | All events of that type         |
+
+### Cron Matching
+
+For `SchedulerTick` events, use cron expressions instead of regex:
+
+```json theme={null}
+{
+  "cron": "0 9 * * 1-5",
+  "timezone": "Europe/Budapest",
+  "actions": [
+    { "type": "prompt", "prompt": "Give me a morning briefing" }
+  ]
+}
+```
+
+**Cron format:** `minute hour day-of-month month day-of-week`
+
+| Field        | Range            | Examples     |
+| ------------ | ---------------- | ------------ |
+| Minute       | 0–59             | `0`, `*/15`  |
+| Hour         | 0–23             | `9`, `14`    |
+| Day of month | 1–31             | `1`, `15`    |
+| Month        | 1–12             | `1`, `*/3`   |
+| Day of week  | 0–6 (0 = Sunday) | `1-5`, `0,6` |
+
+**Common patterns:**
+
+| Cron           | Schedule                     |
+| -------------- | ---------------------------- |
+| `*/15 * * * *` | Every 15 minutes             |
+| `0 9 * * *`    | Daily at 9:00 AM             |
+| `0 9 * * 1-5`  | Weekdays at 9:00 AM          |
+| `30 14 1 * *`  | 1st of each month at 2:30 PM |
+| `0 */6 * * *`  | Every 6 hours                |
+
+**Timezone:** Uses IANA timezone names (e.g., `Europe/Budapest`, `America/New_York`). Defaults to system timezone if not specified. Verify with [crontab.guru](https://crontab.guru/).
+
+## Conditions
+
+Conditions are optional filters that run **after** the matcher/cron matches but **before** actions fire. All conditions in the array must pass (implicit AND). If the array is empty or omitted, actions fire unconditionally.
+
+<Tip>
+  Conditions are composable — you can combine time windows, weekday filters, and state checks to build precise automation triggers without complex cron expressions.
+</Tip>
+
+```json theme={null}
+{
+  "cron": "0 9 * * *",
+  "timezone": "Europe/Budapest",
+  "conditions": [
+    {
+      "condition": "time",
+      "weekday": ["mon", "tue", "wed", "thu", "fri"]
+    }
+  ],
+  "actions": [
+    { "type": "prompt", "prompt": "Good morning! Here's your daily briefing." }
+  ]
+}
+```
+
+### Time Conditions
+
+Check time-of-day and day-of-week in a given timezone.
+
+```json theme={null}
+{
+  "condition": "time",
+  "after": "09:00",
+  "before": "17:00",
+  "weekday": ["mon", "tue", "wed", "thu", "fri"],
+  "timezone": "Europe/Budapest"
+}
+```
+
+| Property   | Type       | Description                                                      |
+| ---------- | ---------- | ---------------------------------------------------------------- |
+| `after`    | `"HH:MM"`  | Start of time window (inclusive)                                 |
+| `before`   | `"HH:MM"`  | End of time window (exclusive)                                   |
+| `weekday`  | `string[]` | Allowed days: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`    |
+| `timezone` | string     | IANA timezone. Falls back to matcher timezone, then system local |
+
+<Info>
+  **Overnight ranges:** If `after` is later than `before` (e.g., `"after": "22:00", "before": "06:00"`), the range wraps across midnight.
+</Info>
+
+### State Conditions
+
+Check fields from the event payload. Useful for filtering on specific transitions or values.
+
+```json theme={null}
+{
+  "condition": "state",
+  "field": "permissionMode",
+  "from": "safe",
+  "to": "allow-all"
+}
+```
+
+| Property    | Type   | Description                                                                         |
+| ----------- | ------ | ----------------------------------------------------------------------------------- |
+| `field`     | string | Payload field name (e.g., `permissionMode`, `sessionStatus`, `labels`, `isFlagged`) |
+| `value`     | any    | Exact match                                                                         |
+| `from`      | any    | Previous value (for transition events)                                              |
+| `to`        | any    | New value (for transition events)                                                   |
+| `contains`  | string | Array membership check (e.g., check if a label is present)                          |
+| `not_value` | any    | Matches anything except this value                                                  |
+
+<Info>
+  **Transition fields:** For `permissionMode` and `sessionStatus`, `from`/`to` automatically resolve to the correct payload keys (`oldMode`/`newMode`, `oldState`/`newState`).
+</Info>
+
+### Logical Composition
+
+Combine conditions with `and`, `or`, and `not`:
+
+```json theme={null}
+{
+  "condition": "and",
+  "conditions": [
+    { "condition": "time", "weekday": ["mon", "tue", "wed", "thu", "fri"] },
+    { "condition": "time", "after": "09:00", "before": "17:00" }
+  ]
+}
+```
+
+```json theme={null}
+{
+  "condition": "or",
+  "conditions": [
+    { "condition": "state", "field": "permissionMode", "value": "allow-all" },
+    { "condition": "state", "field": "isFlagged", "value": true }
+  ]
+}
+```
+
+```json theme={null}
+{
+  "condition": "not",
+  "conditions": [
+    { "condition": "time", "weekday": ["sat", "sun"] }
+  ]
+}
+```
+
+| Type  | Behaviour                            |
+| ----- | ------------------------------------ |
+| `and` | All sub-conditions must pass         |
+| `or`  | At least one sub-condition must pass |
+| `not` | None of the sub-conditions may pass  |
+
+<Warning>
+  Conditions can be nested up to 8 levels deep. A simplification warning is emitted at depth 4. Keep conditions flat when possible. Unknown condition types fail closed (evaluate to false).
+</Warning>
+
+## Matcher Options
+
+Each matcher entry supports these optional fields:
+
+| Property         | Type      | Default   | Description                                                                                               |
+| ---------------- | --------- | --------- | --------------------------------------------------------------------------------------------------------- |
+| `matcher`        | string    | Match all | Regex pattern for event filtering                                                                         |
+| `cron`           | string    | —         | Cron expression (SchedulerTick only)                                                                      |
+| `timezone`       | string    | System TZ | IANA timezone for cron                                                                                    |
+| `conditions`     | array     | `[]`      | Conditions that must all pass before actions fire (see [Conditions](#conditions))                         |
+| `permissionMode` | string    | `"safe"`  | Security mode for commands                                                                                |
+| `labels`         | string\[] | `[]`      | Labels applied to prompt-created sessions                                                                 |
+| `telegramTopic`  | string    | —         | Routes spawned sessions to a Telegram forum topic — see [Telegram Topic Routing](#telegram-topic-routing) |
+| `enabled`        | boolean   | `true`    | Set to `false` to disable without deleting                                                                |
+| `actions`        | array     | Required  | Array of command/prompt actions                                                                           |
+
+## Telegram Topic Routing
+
+When you have a Telegram supergroup paired in **Settings → Messaging → Telegram**,
+you can route the sessions a matcher spawns into a dedicated forum topic by
+setting the `telegramTopic` field.
+
+```json theme={null}
+{
+  "automations": {
+    "LabelAdd": [
+      {
+        "matcher": "^urgent$",
+        "telegramTopic": "Urgent Alerts",
+        "permissionMode": "ask",
+        "actions": [
+          { "type": "prompt", "prompt": "Look at the urgent issue: $LABEL" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+When the matcher fires, the spawned session is bound to a forum topic of the
+given name. The topic is **created on first use** and **reused** thereafter, so
+subsequent runs of the same matcher (and any other matcher that uses the same
+`telegramTopic` value) post into the same topic.
+
+### Activation requirements
+
+All of these must hold; otherwise the field is **silently ignored** and the
+session runs without a Telegram binding (same as if the field were absent):
+
+* A Telegram supergroup is paired at **Settings → Messaging → Telegram**
+* The Telegram bot is connected
+* The bot has the **Manage Topics** admin permission in the supergroup
+
+### Setting up the Telegram supergroup
+
+If you haven't paired a supergroup yet, follow these steps. The whole flow takes
+about a minute.
+
+#### 1. Create a supergroup with topics enabled
+
+A regular Telegram group can't host topics — you need a **supergroup with
+"Topics" mode enabled**.
+
+* **New group**: Telegram → New Group → add anyone (or yourself for a solo
+  workspace) → set a name. Telegram converts groups to supergroups
+  automatically once members exceed a threshold or you flip Topics on.
+* **Enable Topics**: Open the group → tap the group name → **Edit**
+  (pencil icon on mobile, ⋯ on desktop) → toggle **Topics** on → **Save**.
+  The group is now a forum supergroup; you'll see a "General" topic and a
+  "+" button to create more.
+
+#### 2. Add the bot to the supergroup
+
+Open the supergroup → tap the group name → **Add members** → search for your
+bot's username (e.g. `@CraftAgentsBot`) → add it.
+
+#### 3. Make the bot an admin with "Manage Topics"
+
+This is the step most people miss — the bot needs explicit permission to
+create new topics, otherwise topic-creation calls return
+`400: Bad Request: not enough rights to create a topic`.
+
+1. In the supergroup, tap the group name → **Edit** → **Administrators**.
+2. Tap **Add Administrator** → pick the bot.
+3. In the permissions list, **toggle on Manage Topics** (other permissions
+   like Delete Messages or Pin Messages are optional and not required by
+   the topic-routing feature).
+4. Tap **Save** / **Done**.
+
+<Tip>
+  **Verify after pairing**: in your Craft Agent app, open Settings → Messaging
+  → Telegram and check the "Supergroup" row shows the group title. The first
+  automation run will surface an error in
+  `~/.craft-agent/logs/messaging-gateway.log` if the bot is still missing
+  "Manage Topics" — look for `automation_topic_bind_failed`.
+</Tip>
+
+#### 4. Pair the supergroup with the workspace
+
+1. In the Craft Agent app: **Settings → Messaging → Telegram → Pair Supergroup**.
+2. The dialog shows a 6-digit code, a deep link to the bot, and a 5-minute
+   countdown.
+3. In Telegram, in **any topic** of your supergroup, type `/pair <code>`
+   (replace `<code>` with the digits from the dialog).
+4. The bot replies with a confirmation. The dialog closes automatically and
+   the Settings row updates with the supergroup's title and chat ID.
+
+That's it — automations with `telegramTopic` set will now create topics in
+this supergroup.
+
+### Notes
+
+* Topic names are 1–128 characters and **case-sensitive** (`"Reports"` and `"reports"` are different topics).
+* Two matchers using the same `telegramTopic` value share one topic — useful for grouping related automations.
+* If you change a matcher's `telegramTopic` value, the next run uses (or creates) the new topic; the old topic remains in Telegram with its history intact.
+* Renaming the topic in Telegram doesn't sync back — the binding follows the topic ID, not the display name.
+
+## Environment Variables
+
+### Common Variables
+
+Available to all command actions:
+
+| Variable             | Description                                 |
+| -------------------- | ------------------------------------------- |
+| `CRAFT_EVENT`        | Event name (e.g., `LabelAdd`, `PreToolUse`) |
+| `CRAFT_EVENT_DATA`   | Full event payload as JSON                  |
+| `CRAFT_SESSION_ID`   | Current session ID                          |
+| `CRAFT_SESSION_NAME` | Current session name                        |
+| `CRAFT_WORKSPACE_ID` | Current workspace ID                        |
+
+### App Event Variables
+
+Dynamically generated from event payloads:
+
+**Label events** (`LabelAdd`, `LabelRemove`):
+
+* `CRAFT_LABEL` — Label ID being added/removed
+
+**PermissionModeChange:**
+
+* `CRAFT_OLD_MODE` — Previous permission mode
+* `CRAFT_NEW_MODE` — New permission mode
+
+**FlagChange:**
+
+* `CRAFT_IS_FLAGGED` — `true` or `false`
+
+**SessionStatusChange:**
+
+* `CRAFT_OLD_STATE` — Previous session status
+* `CRAFT_NEW_STATE` — New session status
+
+**SchedulerTick:**
+
+* `CRAFT_LOCAL_TIME` — Current time (HH:MM)
+* `CRAFT_LOCAL_DATE` — Current date (YYYY-MM-DD)
+
+### Agent Event Variables
+
+**Tool events** (`PreToolUse`, `PostToolUse`, `PostToolUseFailure`):
+
+* `CRAFT_TOOL_NAME` — Tool being used
+* `CRAFT_TOOL_INPUT` — Tool parameters as JSON
+* `CRAFT_TOOL_RESPONSE` — Tool output (PostToolUse only)
+* `CRAFT_ERROR` — Error message (PostToolUseFailure only)
+
+**Session events** (`SessionStart`):
+
+* `CRAFT_SOURCE` — Session source (e.g., `startup`, `resume`)
+* `CRAFT_MODEL` — Model name
+
+**Subagent events** (`SubagentStart`, `SubagentStop`):
+
+* `CRAFT_AGENT_ID` — Subagent ID
+* `CRAFT_AGENT_TYPE` — Subagent type
+
+## Permission Modes
+
+Command actions run with security checks by default. You can adjust this per matcher:
+
+| Mode        | Behaviour                          | Use Case                |
+| ----------- | ---------------------------------- | ----------------------- |
+| `safe`      | Commands checked against allowlist | Default, recommended    |
+| `allow-all` | Bypass security checks             | Trusted automation only |
+
+<Warning>
+  Only use `allow-all` for commands you fully trust. It allows arbitrary shell execution.
+</Warning>
+
+```json theme={null}
+{
+  "matcher": "^urgent$",
+  "permissionMode": "allow-all",
+  "actions": [
+    { "type": "command", "command": "osascript -e 'display notification \"Urgent!\" with title \"Craft Agent\"'" }
+  ]
+}
+```
+
+## Labels for Prompt Actions
+
+Prompt actions can attach labels to the sessions they create. This makes it easy to filter and organise scheduled sessions:
+
+```json theme={null}
+{
+  "cron": "0 9 * * *",
+  "labels": ["Scheduled", "morning-briefing"],
+  "actions": [
+    { "type": "prompt", "prompt": "Give me today's priorities" }
+  ]
+}
+```
+
+Labels also support environment variable expansion: `"priority::${CRAFT_LABEL}"`.
+
+## Rate Limits
+
+To prevent runaway loops (e.g., an automation that indirectly triggers itself), the event bus enforces rate limits:
+
+| Event            | Max fires / minute |
+| ---------------- | ------------------ |
+| `SchedulerTick`  | 60 (1/sec)         |
+| All other events | 10                 |
+
+Excess events are silently dropped for the remainder of the 60-second window.
+
+## Examples
+
+### Daily Morning Briefing
+
+Schedule a prompt every weekday at 9 AM:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "SchedulerTick": [
+      {
+        "cron": "0 9 * * 1-5",
+        "timezone": "Europe/Budapest",
+        "labels": ["Scheduled", "briefing"],
+        "actions": [
+          { "type": "prompt", "prompt": "Run the @daily-standup skill" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Weekday-Only AI News (with Conditions)
+
+Use a `time` condition to restrict a daily schedule to weekdays:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "SchedulerTick": [
+      {
+        "name": "Morning AI news",
+        "cron": "0 9 * * *",
+        "timezone": "Europe/Budapest",
+        "conditions": [
+          {
+            "condition": "time",
+            "weekday": ["mon", "tue", "wed", "thu", "fri"],
+            "timezone": "Europe/Budapest"
+          }
+        ],
+        "labels": ["Scheduled", "ai-news"],
+        "actions": [
+          { "type": "prompt", "prompt": "Run the @ai-news skill and summarize today's AI developments" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Permission Mode Gate (with Conditions)
+
+Only notify when permission mode changes specifically from `safe` to `allow-all`:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "PermissionModeChange": [
+      {
+        "conditions": [
+          {
+            "condition": "state",
+            "field": "permissionMode",
+            "from": "safe",
+            "to": "allow-all"
+          }
+        ],
+        "actions": [
+          { "type": "command", "command": "osascript -e 'display notification \"Permission escalated to allow-all\" with title \"Craft Agent\"'" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Log Label Changes
+
+Track when labels are added or removed:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "LabelAdd": [
+      {
+        "permissionMode": "allow-all",
+        "actions": [
+          { "type": "command", "command": "echo \"[$(date)] Added: $CRAFT_LABEL\" >> ~/label-log.txt" }
+        ]
+      }
+    ],
+    "LabelRemove": [
+      {
+        "permissionMode": "allow-all",
+        "actions": [
+          { "type": "command", "command": "echo \"[$(date)] Removed: $CRAFT_LABEL\" >> ~/label-log.txt" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### macOS Notification on Urgent Label
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "LabelAdd": [
+      {
+        "matcher": "^urgent$",
+        "permissionMode": "allow-all",
+        "actions": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Urgent session flagged\" with title \"Craft Agent\"'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Audit Permission Mode Changes
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "PermissionModeChange": [
+      {
+        "permissionMode": "allow-all",
+        "actions": [
+          {
+            "type": "command",
+            "command": "echo \"$(date): $CRAFT_OLD_MODE -> $CRAFT_NEW_MODE\" >> ~/mode-audit.log"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Multiple Schedules with Enable/Disable
+
+Run different automations at different times, and disable some without deleting:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "SchedulerTick": [
+      {
+        "cron": "0 9 * * 1-5",
+        "timezone": "Europe/Budapest",
+        "labels": ["Scheduled"],
+        "actions": [
+          { "type": "prompt", "prompt": "Give me a morning briefing" }
+        ]
+      },
+      {
+        "cron": "0 17 * * 5",
+        "timezone": "Europe/Budapest",
+        "enabled": false,
+        "labels": ["Scheduled"],
+        "actions": [
+          { "type": "prompt", "prompt": "Summarise this week's completed tasks" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The second automation (Friday summary) is disabled and won't run until `"enabled"` is set to `true` or removed.
+
+### Prompt with Custom Connection, Model, and Thinking Level
+
+Override provider, model, and thinking level for a specific automation:
+
+```json theme={null}
+{
+  "version": 2,
+  "automations": {
+    "SchedulerTick": [
+      {
+        "cron": "0 8 * * 1-5",
+        "timezone": "Europe/Budapest",
+        "labels": ["Scheduled"],
+        "actions": [
+          {
+            "type": "prompt",
+            "prompt": "Review overnight @github pull requests",
+            "llmConnection": "openrouter",
+            "model": "anthropic/claude-sonnet-4.6",
+            "thinkingLevel": "high"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Validation
+
+Ask Craft Agent to validate your automations:
+
+```
+Validate my automations configuration
+```
+
+Or use the `config_validate` tool with `target: "all"`.
+
+The validator checks for:
+
+* Invalid JSON syntax
+* Unknown event names
+* Empty actions arrays
+* Invalid cron expressions or timezones
+* Invalid or unsafe regex patterns (ReDoS prevention)
+* References to non-existent labels
+* Invalid condition types, field names, or weekday values
+* Condition nesting depth exceeding limits
+* Missing `llmConnection` slugs (error — will fail at runtime)
+* Model/provider mismatches when both `llmConnection` and `model` are specified (warning)
+* Invalid `thinkingLevel` values (legacy `"think"` is silently migrated to `"medium"`)
+
+## Security
+
+Automations include several built-in safety measures:
+
+* **Shell injection prevention** — User-controlled values in environment variables (session names, labels, prompts) are automatically escaped
+* **ReDoS protection** — Regex patterns are limited to 500 characters and checked for catastrophic backtracking patterns
+* **Rate limiting** — Prevents infinite loops from automations that trigger other automations
+* **Permission modes** — Commands are checked against an allowlist by default
+* **Timeouts** — Commands are killed after their timeout expires (with SIGKILL fallback)
+
+<AccordionGroup>
+  <Accordion title="Best Practices">
+    - **Start simple** — Test with `echo` commands before writing complex scripts
+    - **Use labels** — Tag scheduled sessions for easy filtering
+    - **Set timeouts** — Prevent runaway commands with the `timeout` field
+    - **Log failures** — Redirect stderr to track issues: `command 2>> ~/automation-errors.log`
+    - **Be specific** — Use matchers to avoid triggering on every event
+    - **Test cron** — Use [crontab.guru](https://crontab.guru/) to verify expressions
+    - **Use `enabled: false`** — Temporarily disable automations instead of deleting them during debugging
+  </Accordion>
+
+  <Accordion title="Troubleshooting: Automation not firing">
+    1. **Check event name** — Must be exact (e.g., `LabelAdd` not `labeladd`)
+    2. **Check matcher** — Regex must match the event's match value
+    3. **Check cron** — For SchedulerTick, verify your cron expression
+    4. **Check enabled** — Ensure the matcher doesn't have `"enabled": false`
+    5. **Check logs** — Look for `[automations]` in the application logs
+  </Accordion>
+
+  <Accordion title="Troubleshooting: Command blocked">
+    If you see "Bash command blocked" errors:
+
+    1. Add `"permissionMode": "allow-all"` to the matcher
+    2. Or simplify the command to avoid shell constructs like `$()`
+  </Accordion>
+
+  <Accordion title="Troubleshooting: Prompt not creating session">
+    1. Ensure the event is an **App event** (prompt actions don't work with Agent events)
+    2. Check that the prompt text is not empty
+    3. Verify `@mentions` reference valid sources or skills
+  </Accordion>
+
+  <Accordion title="Troubleshooting: Condition not matching">
+    1. **Check weekday spelling** — Must be 3-letter lowercase: `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`
+    2. **Check timezone** — Use IANA names (e.g., `Europe/Budapest`). Invalid timezones silently fall back to system local
+    3. **Check time format** — Must be `HH:MM` in 24-hour format (e.g., `09:00`, not `9:00 AM`)
+    4. **Check state field names** — Use `permissionMode`, `sessionStatus`, `labels`, `isFlagged`
+    5. **Check nesting depth** — Conditions nested deeper than 8 levels always evaluate to false
+    6. **Check logs** — Look for `[automations]` entries that mention condition evaluation
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,369 @@
+# Permissions
+
+> How Craft Agents handles sensitive operations
+
+Craft Agents can execute powerful operations on your behalf - reading files, running commands, and modifying documents. To keep you in control, the app provides three permission modes that determine how much autonomy the agent has.
+
+<Tip>
+  **Chat-first customization:** You can ask your agent to customize permissions for you. Try "Allow npm build in Explore mode" or "Let me run pytest without prompts" and the agent will update your configuration automatically.
+</Tip>
+
+## Permission Modes
+
+Craft Agents offers three distinct permission modes. Use **SHIFT+TAB** to cycle through them:
+
+| Mode            | Description               | Use Case                         |
+| --------------- | ------------------------- | -------------------------------- |
+| **Explore**     | Read-only exploration     | Safe research and investigation  |
+| **Ask to Edit** | Prompts before edits      | Default mode for controlled work |
+| **Execute**     | Full autonomous execution | Trusted automation workflows     |
+
+### Explore Mode (Safe Mode)
+
+Explore mode is a read-only safe mode for research and investigation. The agent can gather information but cannot make any changes.
+
+**Allowed operations:**
+
+* `Read` - Reading file contents
+* `Glob` - Finding files by pattern
+* `Grep` - Searching file contents
+* `WebSearch`, `WebFetch` - Web search and content fetching
+* `Task`, `TaskOutput` - Sub-agent tasks
+* `TodoWrite`, `SubmitPlan` - Planning operations
+* `LSP` - Language server queries (hover, definitions, etc.)
+* Read-only bash commands (see [Safe Commands](#safe-commands) below)
+
+**Blocked operations:**
+
+* `Write` - Creating or overwriting files
+* `Edit`, `MultiEdit` - Modifying file contents
+* `NotebookEdit` - Modifying Jupyter notebooks
+* Bash mutations (`rm`, `mv`, `mkdir`, etc.)
+* MCP tool mutations (create, update, delete operations)
+* API mutations (POST, PUT, DELETE requests)
+
+Use Explore mode when you want the agent to research and analyze without any risk of unintended changes.
+
+### Ask to Edit Mode (Default)
+
+Ask to Edit is the default mode. It uses a three-tier permission system:
+
+| Command Type           | Behavior                                      |
+| ---------------------- | --------------------------------------------- |
+| **Safe commands**      | Auto-allowed (same as Explore mode)           |
+| **Regular commands**   | Prompts for approval, can use "always allow"  |
+| **Dangerous commands** | Prompts for approval, "always allow" disabled |
+
+When the agent needs to run a non-safe command, you'll see a permission prompt:
+
+```
+The agent wants to run: npm install lodash
+
+Allow? [y]es / [n]o / [a]lways allow
+```
+
+Your options:
+
+* **y (yes)** - Allow this specific operation
+* **n (no)** - Deny the request
+* **a (always)** - Allow this command for the rest of the session (disabled for dangerous commands)
+
+### Execute Mode (Allow-All Mode)
+
+Execute mode gives the agent full autonomous execution capabilities. Operations run without prompting, enabling fast, uninterrupted workflows.
+
+<Warning>
+  Execute mode bypasses permission prompts. Only use this when you fully trust the operations being performed, such as in controlled automation scenarios.
+</Warning>
+
+## Switching Modes
+
+Press **SHIFT+TAB** to cycle through permission modes:
+
+```
+Explore → Ask to Edit → Execute → Explore → ...
+```
+
+The current mode is always displayed in the interface so you know what level of autonomy the agent has.
+
+## Dangerous Commands
+
+Dangerous commands are a subset of non-safe commands that require extra caution. The key difference from regular commands:
+
+* **Regular commands**: Can be auto-allowed with "always allow" for the session
+* **Dangerous commands**: Must be approved individually every time ("always allow" is silently ignored)
+* **curl/wget special case**: "Always allow" whitelists the domain, not the command
+
+In Execute mode, all commands including dangerous ones run automatically.
+
+```
+rm, rmdir              # File/directory deletion
+mv, cp                 # File move/copy (can overwrite)
+sudo, su               # Privilege escalation
+chmod, chown, chgrp    # Permission changes
+dd, mkfs, fdisk, parted # Disk operations
+kill, killall, pkill   # Process termination
+reboot, shutdown, halt, poweroff # System control
+curl, wget             # Network downloads (can fetch malicious content)
+ssh, scp, rsync        # Remote access/transfer
+git push               # Push to remote repository
+git reset              # Reset git state
+git rebase             # Rewrite git history
+git checkout           # Can discard changes
+```
+
+## Safe Commands
+
+Explore mode allows a comprehensive set of read-only commands. These run without prompting in any mode:
+
+**File exploration:**
+
+```
+ls, ll, la, tree       # Directory listings
+cat, head, tail, less, more  # File viewing
+file, stat, du, df, wc # File information
+bat                    # Modern alternative with syntax highlighting
+```
+
+**Search tools:**
+
+```
+find, locate, which, whereis, type
+grep, rg, ag, ack, fd, fzf
+```
+
+**Git (read-only):**
+
+```
+git status, git log, git diff, git show
+git branch, git tag, git remote
+git stash list, git blame, git reflog
+```
+
+**GitHub CLI (read-only):**
+
+```
+gh pr view/list, gh issue view/list
+gh repo view, gh release list
+gh api (GET requests only)
+```
+
+**Package managers (read-only):**
+
+```
+npm ls/list/view/outdated/audit
+yarn list/info/why/outdated
+pnpm list/ls/why/outdated
+pip list/show/freeze
+cargo tree/metadata
+go list/mod graph
+```
+
+**Docker & Kubernetes (read-only):**
+
+```
+docker ps, images, logs, inspect, stats
+kubectl get, describe, logs, top, explain
+```
+
+**System info:**
+
+```
+pwd, whoami, id, uname, hostname
+date, uptime, env, ps, free
+```
+
+**Text processing:**
+
+```
+jq, yq, xq, xmllint    # Structured data processors
+sort, uniq, cut, tr, column
+sed -n (print-only mode)
+```
+
+**Network diagnostics:**
+
+```
+ping, traceroute, dig, nslookup
+netstat, ss, ip addr/link/route
+```
+
+**Version checks:**
+
+```
+node --version, python --version
+npm --version, cargo --version
+(and other runtime version commands)
+```
+
+## Customizing Explore Mode
+
+<Info>
+  **Just ask your agent.** The easiest way to customize Explore mode is to tell your agent what you need:
+
+  * "Allow npm build in Explore mode"
+  * "Let Linear comments work in safe mode"
+  * "Add bun run test to allowed commands"
+
+  The agent handles the configuration files automatically.
+</Info>
+
+If you prefer manual configuration, Explore mode permissions are highly customizable. You can extend what's allowed to match your workflow - add specific bash commands, MCP tool patterns, API endpoints, and even file write paths.
+
+### Permission Configuration
+
+Permissions are configured using `permissions.json` files at multiple levels:
+
+```
+~/.craft-agent/permissions/default.json                    # App-wide defaults
+~/.craft-agent/workspaces/{id}/permissions.json            # Workspace-specific
+~/.craft-agent/workspaces/{id}/sources/{slug}/permissions.json  # Source-specific
+```
+
+More specific configurations extend (not replace) general ones. Source-level patterns are automatically scoped to that source's tools.
+
+### Configuration Schema
+
+```json theme={null}
+{
+  "allowedBashPatterns": [
+    { "pattern": "^npm run build\\b", "comment": "Allow npm build" },
+    { "pattern": "^make\\s+test\\b", "comment": "Allow make test" }
+  ],
+  "allowedMcpPatterns": [
+    { "pattern": "create_draft", "comment": "Allow creating drafts" }
+  ],
+  "allowedApiEndpoints": [
+    { "method": "POST", "path": "/api/drafts", "comment": "Create drafts" }
+  ],
+  "allowedWritePaths": [
+    "tmp/**",
+    "*.draft.md"
+  ]
+}
+```
+
+### Pattern Types
+
+**`allowedBashPatterns`** - Regex patterns for bash commands:
+
+```json theme={null}
+{ "pattern": "^npm run (build|test|lint)\\b", "comment": "npm scripts" }
+```
+
+**`allowedMcpPatterns`** - Patterns matching MCP tool names:
+
+```json theme={null}
+{ "pattern": "linear_create_comment", "comment": "Allow Linear comments" }
+```
+
+Source-level patterns are auto-scoped. In a source's `permissions.json`, write `create_comment` and it becomes `mcp__linear__.*create_comment` internally—the `.*` means the pattern matches anywhere in the tool name suffix.
+
+**`allowedApiEndpoints`** - HTTP method + path combinations:
+
+```json theme={null}
+{ "method": "POST", "path": "/api/comments", "comment": "Create comments" }
+```
+
+Method must be one of: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`. Path is a regex pattern.
+
+**`allowedWritePaths`** - Glob patterns for file paths the agent can write to in Explore mode:
+
+```json theme={null}
+["plans/**", "drafts/**", "*.tmp"]
+```
+
+### Example: Allow npm Scripts in Explore Mode
+
+Create `~/.craft-agent/permissions/default.json`:
+
+```json theme={null}
+{
+  "allowedBashPatterns": [
+    { "pattern": "^npm run\\b", "comment": "All npm scripts" },
+    { "pattern": "^yarn\\b", "comment": "All yarn commands" },
+    { "pattern": "^bun run\\b", "comment": "All bun scripts" }
+  ]
+}
+```
+
+### Example: Allow Linear Comments in Explore Mode
+
+Create `~/.craft-agent/workspaces/{id}/sources/linear/permissions.json`:
+
+```json theme={null}
+{
+  "allowedMcpPatterns": [
+    { "pattern": "create_comment", "comment": "Allow posting comments" }
+  ]
+}
+```
+
+## Blocked Shell Constructs
+
+Even allowed commands are blocked if they contain potentially dangerous shell constructs:
+
+**Command chaining** - Could chain to dangerous commands:
+
+```
+&&  ||  ;  |  &  |&
+```
+
+**Redirects** - Could overwrite files:
+
+```
+>  >>  >&
+```
+
+**Substitution** - Could execute embedded commands:
+
+```
+$()  `backticks`  <()  >()
+```
+
+**Control characters** - Act as command separators:
+
+```
+newlines, carriage returns
+```
+
+For compound commands where all parts are safe (like `git status && git log`), the system validates each part separately using AST parsing.
+
+<Note>
+  Even safe commands become blocked when combined with shell constructs. For example, `ls | grep foo` is blocked in Explore mode because the pipe could be used to chain to dangerous commands. Run safe commands separately without pipes or redirects.
+</Note>
+
+## API and MCP Credentials
+
+Credentials for external services are handled securely:
+
+* Stored encrypted in `~/.craft-agent/credentials.enc`
+* Never displayed in plain text after entry
+* Scoped to specific workspaces and sources
+* You control which services each agent can access
+
+When an agent needs to use a new API, you're prompted to provide credentials. These are then stored securely for future use.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Start in Explore mode">
+    When investigating unfamiliar code or systems, start in Explore mode to safely research before making changes.
+  </Accordion>
+
+  <Accordion title="Use Ask to Edit for normal work">
+    The default Ask to Edit mode provides a good balance of productivity and control for most tasks.
+  </Accordion>
+
+  <Accordion title="Reserve Execute for trusted workflows">
+    Only use Execute mode for well-understood, repeatable tasks where you trust the agent's actions.
+  </Accordion>
+
+  <Accordion title="Customize Explore mode for your workflow">
+    Add your common build commands, test runners, and safe MCP operations to permissions.json so they work in Explore mode.
+  </Accordion>
+
+  <Accordion title="Review before approving">
+    In Ask to Edit mode, take a moment to read what will change before approving, especially for unfamiliar operations.
+  </Accordion>
+</AccordionGroup>

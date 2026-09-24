@@ -1,0 +1,169 @@
+# Preferences
+
+> Reference for ~/.craft-agent/preferences.json
+
+The preferences file stores personal settings that customize how the agent interacts with you.
+
+## Location
+
+```
+~/.craft-agent/preferences.json
+```
+
+## Structure
+
+```json theme={null}
+{
+  "name": "Alex",
+  "timezone": "America/New_York",
+  "location": {
+    "city": "New York",
+    "region": "New York",
+    "country": "USA"
+  },
+  "notes": "I prefer concise responses",
+  "includeCoAuthoredBy": true,
+  "updatedAt": 1737451800000
+}
+```
+
+## Fields
+
+### name
+
+Your name or how you'd like to be addressed.
+
+```json theme={null}
+"name": "Alex"
+```
+
+The agent may use this in greetings or personalized responses.
+
+### timezone
+
+Your timezone in [IANA format](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones).
+
+```json theme={null}
+"timezone": "America/New_York"
+```
+
+Used for:
+
+* Accurate date/time references ("today", "this week")
+* Daily note access
+* Task due dates
+
+**Common values:**
+
+* `America/New_York`
+* `America/Los_Angeles`
+* `Europe/London`
+* `Europe/Berlin`
+* `Asia/Tokyo`
+* `Australia/Sydney`
+
+### location
+
+Your location, stored as a nested object with `city`, `region`, and `country` fields:
+
+```json theme={null}
+"location": {
+  "city": "New York",
+  "region": "New York",
+  "country": "USA"
+}
+```
+
+The location fields are used for location-aware responses like weather, local events, or time-sensitive information.
+
+### updatedAt
+
+Timestamp (in milliseconds) of when preferences were last updated. This is set automatically.
+
+```json theme={null}
+"updatedAt": 1737451800000
+```
+
+### Language
+
+Language is controlled via **Settings > Appearance > Language**, not through preferences.json.
+
+The selected language applies to both the app UI and the agent's response language — changing the Appearance language to Japanese, for example, automatically tells the agent to respond in Japanese.
+
+<Note>
+  If your preferences.json still has a `language` field from a previous version, it is safely ignored.
+</Note>
+
+### notes
+
+Free-form notes about your preferences.
+
+```json theme={null}
+"notes": "I prefer bullet points over paragraphs. Technical background."
+```
+
+These notes are included in the agent's context and influence response style.
+
+### includeCoAuthoredBy
+
+Controls whether the agent appends a `Co-Authored-By: Craft Agent` trailer to git commits. Defaults to `true`.
+
+```json theme={null}
+"includeCoAuthoredBy": false
+```
+
+Set to `false` to suppress the Craft Agent co-author trailer on all git commits. Changes take effect on the next session.
+
+## Editing Preferences
+
+### Using the Command
+
+```
+> /prefs
+```
+
+Opens an interactive editor for your preferences.
+
+### Manual Editing
+
+Edit the file directly:
+
+```bash theme={null}
+nano ~/.craft-agent/preferences.json
+```
+
+Changes take effect on the next conversation (start a new session or restart the app).
+
+## How Preferences Are Used
+
+Preferences are included in the system prompt, so the agent knows:
+
+* What to call you
+* Your current time and timezone
+* Where you're located
+* Which language to respond in (from Appearance > Language)
+* Whether to include a co-author trailer on git commits
+
+This context makes responses more relevant and personalized.
+
+## Example
+
+```json theme={null}
+{
+  "name": "Jordan",
+  "timezone": "Europe/Berlin",
+  "location": {
+    "city": "Berlin",
+    "region": "Berlin",
+    "country": "Germany"
+  },
+  "notes": "Software engineer. Prefer code examples over descriptions. Use metric units."
+}
+```
+
+With these preferences, the agent will:
+
+* Use Berlin time for scheduling references
+* Respond in the language selected in Appearance settings
+* Lean toward showing code
+* Use kilometers, Celsius, etc.

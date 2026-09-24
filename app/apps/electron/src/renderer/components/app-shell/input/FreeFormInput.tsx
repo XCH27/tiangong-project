@@ -76,7 +76,7 @@ import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
+import { type ThinkingLevel, getThinkingLevelsForModel, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
@@ -234,7 +234,6 @@ export interface FreeFormInputProps {
   /** Current LLM connection slug (locked after first message) */
   currentConnection?: string
   /** Callback when connection changes (only works when session is empty) */
-  onConnectionChange?: (connectionSlug: string) => void
   /** When true, the session's locked connection has been removed */
   connectionUnavailable?: boolean
   /**
@@ -301,7 +300,6 @@ export function FreeFormInput({
   compactMode = false,
   enableCompactModelPicker = false,
   currentConnection,
-  onConnectionChange,
   connectionUnavailable = false,
   isCollapsedInCompact = false,
   onRequestExpand,
@@ -367,13 +365,13 @@ export function FreeFormInput({
     return connection.models || ANTHROPIC_MODELS
   }, [llmConnections, currentConnection, workspaceDefaultConnection, connectionUnavailable])
 
-  const availableThinkingLevels = THINKING_LEVELS
-
-  // Disable thinking selector when the current model explicitly doesn't support it
-  const thinkingDisabled = React.useMemo(() => {
+  const selectedModelDefinition = React.useMemo(() => {
     const model = availableModels.find(m => typeof m !== 'string' && m.id === currentModel)
-    return typeof model !== 'string' && model?.supportsThinking === false
+    return typeof model === 'string' ? undefined : model
   }, [availableModels, currentModel])
+  const availableThinkingLevels = getThinkingLevelsForModel(selectedModelDefinition)
+  const thinkingDisabled = selectedModelDefinition?.supportsThinking === false && availableThinkingLevels.length === 0
+  const thinkingCapabilityUnknown = selectedModelDefinition?.supportsThinking !== false && selectedModelDefinition?.reasoningEfforts === undefined
 
   // Get display name for current model (full name, not short name)
   const currentModelDisplayName = React.useMemo(() => {
@@ -1501,7 +1499,10 @@ export function FreeFormInput({
     && !!effectiveConnectionDetails
     && isCompatProvider(effectiveConnectionDetails.providerType)
     && !modelSupportsImages(effectiveConnectionDetails, currentModel)
-  const contextDisplay = getContextDisplay(contextStatus, getModelContextWindow(currentModel))
+  const contextDisplay = getContextDisplay(
+    contextStatus,
+    selectedModelDefinition?.contextWindow ?? getModelContextWindow(currentModel),
+  )
   const contextLabels = getContextDisplayLabels(contextDisplay, t)
 
   React.useLayoutEffect(() => {
@@ -1760,7 +1761,6 @@ export function FreeFormInput({
               currentModel={currentModel}
               currentConnection={currentConnection}
               onModelChange={onModelChange}
-              onConnectionChange={onConnectionChange}
               thinkingLevel={thinkingLevel}
               onThinkingLevelChange={onThinkingLevelChange}
               isEmptySession={isEmptySession}
@@ -2140,11 +2140,7 @@ export function FreeFormInput({
                                   <StyledDropdownMenuItem
                                     key={modelId}
                                     onSelect={() => {
-                                      // If selecting a different connection, update both connection and model
-                                      if (!isCurrentConnection && onConnectionChange) {
-                                        onConnectionChange(conn.slug)
-                                      }
-                                      // Always pass connection with model for proper persistence
+                                      // One server command persists connection and model together.
                                       onModelChange(modelId, conn.slug)
                                     }}
                                     className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
@@ -2321,6 +2317,18 @@ export function FreeFormInput({
                       })}
                     </StyledDropdownMenuSubContent>
                   </DropdownMenuSub>
+                </>
+              )}
+
+              {thinkingCapabilityUnknown && (
+                <>
+                  <StyledDropdownMenuSeparator className="my-1" />
+                  <StyledDropdownMenuItem disabled className="px-2 py-2 rounded-lg">
+                    <div className="text-left">
+                      <div className="font-medium text-sm">{t(getThinkingLevelNameKey(thinkingLevel))}</div>
+                      <div className="text-xs text-muted-foreground">{t('common.unknown')}</div>
+                    </div>
+                  </StyledDropdownMenuItem>
                 </>
               )}
 

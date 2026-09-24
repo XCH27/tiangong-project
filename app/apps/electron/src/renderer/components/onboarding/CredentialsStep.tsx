@@ -36,6 +36,7 @@ interface CredentialsStepProps {
   copilotDeviceCode?: { userCode: string; verificationUri: string }
   // Edit mode (pre-fill existing connection values)
   editInitialValues?: {
+    connectionSlug?: string
     apiKey?: string
     baseUrl?: string
     connectionDefaultModel?: string
@@ -62,6 +63,7 @@ export function CredentialsStep({
   const isClaudeOAuth = apiSetupMethod === 'claude_oauth'
   const isChatGptOAuth = apiSetupMethod === 'pi_chatgpt_oauth'
   const isCopilotOAuth = apiSetupMethod === 'pi_copilot_oauth'
+  const isXaiOAuth = apiSetupMethod === 'pi_xai_oauth'
   const isAnthropicApiKey = apiSetupMethod === 'anthropic_api_key'
   const isPiApiKey = apiSetupMethod === 'pi_api_key'
   const isApiKey = isAnthropicApiKey || isPiApiKey
@@ -98,7 +100,7 @@ export function CredentialsStep({
         description={t("onboarding.credentials.connectChatGPTDesc")}
         actions={
           <>
-            <BackButton onClick={onBack} disabled={status === 'validating'} />
+            <BackButton onClick={onBack} disabled={status === 'validating'}>{t('common.back')}</BackButton>
             <ContinueButton
               onClick={() => onStartOAuth?.()}
               className="gap-2"
@@ -131,14 +133,14 @@ export function CredentialsStep({
   }
 
   // --- Copilot OAuth flow (device flow) ---
-  if (isCopilotOAuth) {
+  if (isCopilotOAuth || isXaiOAuth) {
     return (
       <StepFormLayout
-        title={t("onboarding.credentials.connectGitHub")}
-        description={t("onboarding.credentials.connectGitHubDesc")}
+        title={t(isXaiOAuth ? 'onboarding.credentials.connectGrok' : 'onboarding.credentials.connectGitHub')}
+        description={t(isXaiOAuth ? 'onboarding.credentials.connectGrokDesc' : 'onboarding.credentials.connectGitHubDesc')}
         actions={
           <>
-            <BackButton onClick={onBack} disabled={status === 'validating'} />
+            <BackButton onClick={onBack} disabled={status === 'validating'}>{t('common.back')}</BackButton>
             <ContinueButton
               onClick={() => onStartOAuth?.()}
               className="gap-2"
@@ -146,7 +148,7 @@ export function CredentialsStep({
               loadingText={t("onboarding.credentials.waitingForAuth")}
             >
               <ExternalLink className="size-4" />
-              {t("onboarding.credentials.signInGitHub")}
+              {t(isXaiOAuth ? 'onboarding.credentials.signInGrok' : 'onboarding.credentials.signInGitHub')}
             </ContinueButton>
           </>
         }
@@ -155,7 +157,7 @@ export function CredentialsStep({
           {copilotDeviceCode ? (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm space-y-3">
               <p className="text-muted-foreground text-center">
-                {t("onboarding.credentials.enterCodeOnGitHub")}
+                {t(isXaiOAuth ? 'onboarding.credentials.enterCodeOnGrok' : 'onboarding.credentials.enterCodeOnGitHub')}
               </p>
               <div className="flex flex-col items-center justify-center gap-2">
                 <button
@@ -171,12 +173,12 @@ export function CredentialsStep({
                 </span>
               </div>
               <p className="text-muted-foreground text-xs text-center">
-                {t("onboarding.credentials.browserOpenedGitHub")}
+                {t(isXaiOAuth ? 'onboarding.credentials.browserOpenedGrok' : 'onboarding.credentials.browserOpenedGitHub')}
               </p>
             </div>
           ) : (
             <div className="rounded-xl bg-foreground-2 p-4 text-sm text-muted-foreground text-center">
-              <p>{t("onboarding.credentials.clickToSignInGitHub")}</p>
+              <p>{t(isXaiOAuth ? 'onboarding.credentials.clickToSignInGrok' : 'onboarding.credentials.clickToSignInGitHub')}</p>
             </div>
           )}
           {status === 'error' && errorMessage && (
@@ -186,7 +188,7 @@ export function CredentialsStep({
           )}
           {status === 'success' && (
             <div className="rounded-lg bg-success/10 text-success text-sm p-3 text-center">
-              {t("onboarding.credentials.copilotConnected")}
+              {t(isXaiOAuth ? 'onboarding.credentials.grokConnected' : 'onboarding.credentials.copilotConnected')}
             </div>
           )}
         </div>
@@ -233,7 +235,7 @@ export function CredentialsStep({
         description={t("onboarding.credentials.claudeSubscriptionDesc")}
         actions={
           <>
-            <BackButton onClick={onBack} disabled={status === 'validating'} />
+            <BackButton onClick={onBack} disabled={status === 'validating'}>{t('common.back')}</BackButton>
             <ContinueButton
               onClick={() => onStartOAuth?.()}
               className="gap-2"
@@ -262,12 +264,13 @@ export function CredentialsStep({
   // Determine provider type and description based on selected method
   const providerType = isPiApiKey ? 'pi_api_key' : 'anthropic'
   const apiKeyDescription = isPiApiKey
-    ? "Select a provider preset and enter the API key. For arbitrary Anthropic-compatible endpoints, use Anthropic API Key mode."
-    : "Enter your API key. Optionally configure a custom endpoint for OpenRouter, Ollama, or compatible APIs."
+    ? t('onboarding.credentials.apiKeyDescriptionPi')
+    : t('onboarding.credentials.apiKeyDescriptionAnthropic')
 
   const apiKeyInputKey = [
     apiSetupMethod,
     editInitialValues?.activePreset ?? '',
+    editInitialValues?.connectionSlug ?? '',
     editInitialValues?.baseUrl ?? '',
     editInitialValues?.connectionDefaultModel ?? '',
     (editInitialValues?.models ?? []).join('|'),
@@ -280,14 +283,14 @@ export function CredentialsStep({
       description={apiKeyDescription}
       actions={
         <>
-          <BackButton onClick={onBack} disabled={status === 'validating'} />
+          <BackButton onClick={onBack} disabled={status === 'validating'}>{t('common.back')}</BackButton>
           <ContinueButton
             type="submit"
             form="api-key-form"
             disabled={false}
             loading={status === 'validating'}
             loadingText={t("common.validating")}
-          />
+          >{t('common.continue')}</ContinueButton>
         </>
       }
     >

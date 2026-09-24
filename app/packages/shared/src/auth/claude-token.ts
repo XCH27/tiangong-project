@@ -1,6 +1,8 @@
 import { CLAUDE_OAUTH_CONFIG } from './claude-oauth-config';
 import { APP_VERSION } from '../version/index.ts';
 import { debug } from '../utils/debug.ts';
+import { formatOAuthTokenError } from './oauth-errors.ts';
+import { fetchOAuthToken } from './oauth-token-fetch.ts';
 
 export interface ClaudeOAuthCredential {
   accessToken: string;
@@ -25,7 +27,7 @@ export async function refreshClaudeToken(refreshToken: string): Promise<{
     client_id: CLAUDE_OAUTH_CONFIG.CLIENT_ID,
   };
 
-  const response = await fetch(CLAUDE_OAUTH_CONFIG.TOKEN_URL, {
+  const response = await fetchOAuthToken(CLAUDE_OAUTH_CONFIG.TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -43,15 +45,7 @@ export async function refreshClaudeToken(refreshToken: string): Promise<{
       errorText = `HTTP ${response.status} ${response.statusText}`;
     }
 
-    let errorMessage: string;
-    try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.error_description || errorJson.error || errorText;
-    } catch {
-      errorMessage = errorText;
-    }
-
-    throw new Error(`Token refresh failed: ${response.status} - ${errorMessage}`);
+    throw new Error(formatOAuthTokenError('Token refresh', response.status, errorText));
   }
 
   const data = (await response.json()) as {

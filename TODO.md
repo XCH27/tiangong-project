@@ -5,23 +5,42 @@ change here and in [`docs/decisions.md`](docs/decisions.md).
 
 ## Where the project is
 
-- `app/` = unmodified official Craft Agents v0.13.4 (zero upstream delta).
+- `app/` = official Craft Agents v0.13.4 plus the exact shell/settings changes declared in
+  `docs/UPSTREAM-DELTA.tsv`.
 - Owner order: documentation and preparation → joint walkthrough of original Craft → approved
   rectification slices → implementation and acceptance → added capabilities.
-- **R0 (baseline stabilization) is the single ACTIVE release.** Inside it, the owner has authorized
-  one slice ahead of the walkthrough: **R1 shell and context rectification.**
+- **R0 (baseline stabilization) is the single ACTIVE release.** The owner authorized bounded R1
+  shell-entry and Settings presentation slices; Conversation/Project data, Workspace, composer and
+  right-panel work remain paused.
 
-## Active slice — R1 shell and context rectification
+## Current slice — shell entries and Settings presentation
 
-Contract: [`docs/modules/shell.md`](docs/modules/shell.md).
-Status: item 2 (All Sessions/Board split) `wired but not visually checked`, awaiting the owner's
-look; all other items `not implemented`. Next: item 1, the ZCode sidebar.
+Contract: [`docs/modules/shell.md`](docs/modules/shell.md#active-entry-slice).
+Separate All Conversations and Board entries over the existing Session/Task stores; put What's New
+directly in the Craft menu with its unseen-release signal; move the desktop Craft menu to the lower-left footer
+using Craft values and ZCode's trigger/settings arrangement. The owner kept the upper-right Help
+button. Remove duplicate desktop popup actions and the Debug submenu after proving their remaining
+entry and shortcut; Settings → App owns stateful update check/install controls, while developer tools
+remain debug-only. Preserve compact and hidden-sidebar access.
+Settings replaces the **contents of the existing left sidebar slot**; Back to Workspace occupies
+the former New Conversation position, and the selected form uses the existing content panel. There
+is no added settings sidebar or navigator-only drill-in. Remove redundant visible page titles and
+per-page ellipses while keeping Craft section/card styling and accessible headings. The upper-right
+Help button remains but opens bundled local Help; existing feature-page Agent controls remain the
+question/edit entry. Localize Settings and Workspace onboarding labels. Keep upstream web
+pages visibly marked as unverified English reference until each Fleet feature is accepted.
 
-Eleven deliverables in a fixed order (sidebar and Board → Workspace boundary → composer → right panel
-→ activity → footer → app menu), each with the reference component to port and its acceptance ID:
-[delivery order](docs/modules/shell.md#delivery-order). Each step is diffed against Craft and the
-reference, declared in `docs/UPSTREAM-DELTA.tsv`, typechecked, run, and shown to the owner before the
-next one starts.
+The newly requested Messaging settings slice aligns its card container with other Settings pages.
+Compare Cindy's real IM adapters and ZCode's published source before choosing the next channel;
+do not add a platform row without end-to-end receive, scoped Session, permission, send and reconnect.
+
+The declared upstream diff, documentation contracts, typechecks, i18n checks, renderer build and
+isolated desktop paths have been checked. Model Settings, Messaging, the upper-right local Help
+reader and its internal/back links are open for owner look-and-feel review; status remains
+`wired but not visually checked` until that review. Further IM platforms need real gateway adapters,
+and the detected media models need the separate generation path before either is offered as usable.
+The former 11-item R1 order and visible-Workspace assumption remain withdrawn. The next unrelated
+slice requires a fresh concrete review.
 
 ## Next inside R0
 
@@ -32,10 +51,16 @@ These come from the R0 walkthrough groups and R2. Each needs owner approval as i
   `https://thecraftagents.com/electron/latest`; dismissing a version only hides the notice
   (`auto-update.ts:502`). See [`docs/engineering.md`](docs/engineering.md#building-and-packaging) and [R2](docs/modules/services.md).
 - **Other Craft-operated services (R2):** Pages hosted publication default, Sentry build-time ingest,
-  hosted help guidance in the Agent prompt, OAuth relays, Craft branding in packaging
+  OAuth relays and Craft branding in packaging. The Agent prompt now points to bundled local
+  guides; the guide bodies still need feature-by-feature review and translation
   ([services](docs/modules/services.md)).
 - **Credential recovery:** `credentials/backends/secure-storage.ts:handleCorruptedFile` deletes
   corrupt bytes; preserve them and report instead ([agent-core](docs/modules/agent-core.md)).
+- **Subscription sign-in:** Claude and ChatGPT authorization can reach token exchange but a real
+  account connection has not passed acceptance. The inherited flows use Craft-owned exchange code;
+  classify the provider's structured rejection in a fresh isolated attempt and compare supported
+  SDK/runtime login paths before changing authentication. Offline credential tests do not prove a
+  subscription login or allowance meter.
 - **Browser tool permissions:** `browser_tool` is allowed whole in Explore/Safe; classify per action
   ([browser](docs/modules/browser.md)).
 - **Skill metadata:** the parser keeps a six-key subset and drops `triggers` (220 of 398 real skills)
@@ -44,9 +69,8 @@ These come from the R0 walkthrough groups and R2. Each needs owner approval as i
   built and launched on their own platform. A Mac run certifies only the Mac.
 - **Restore the UI-contract guard** removed with the original-source reset. Its implementation and
   test are recoverable from `snapshot/pre-rebuild-2026-09-21` (`app/scripts/check-ui-contract.ts`).
-- **Upstream test defects (L0), 33 tests in 6 files plus one timing-flaky test** — recorded with
-  causes in `scripts/known-upstream-test-failures.txt`: a stale RPC channel list (v0.13.4 added
-  `pages:getShareDataScan`), a millisecond timestamp that makes a prompt test nondeterministic,
+- **Upstream test defects (L0), 31 deterministic failures in 5 files plus one timing-flaky test** — recorded with
+  causes in `scripts/known-upstream-test-failures.txt`: a millisecond timestamp that makes a prompt test nondeterministic,
   browser test mocks without `webContents`, a connection test that only passes against a real user
   profile, and two isolated tests whose module mocks predate v0.13.4 imports
   (`defaultMidStreamBehavior`, `getBrowserToolEnabled`).
@@ -63,8 +87,7 @@ Joint walkthrough groups and the corrected-baseline exit: [R0](docs/modules/base
 2. Domain features in release order (ladder below).
 3. External component distribution ([`docs/modules/marketplace.md`](docs/modules/marketplace.md#plugin-skill-and-marketplace-design)).
 
-Plan corrections made in the 2026-09-22 restructure: the R1 row no longer says "Project = folder"
-(superseded by the Workspace revision); the updater is scheduled before any packaged distribution;
+The updater is scheduled before any packaged distribution;
 the far releases R5–R18 stay in the ladder; their `Execution` sections in `docs/modules/` name
 the next step after their gate opens and are never current work.
 
@@ -125,11 +148,11 @@ features, preview implementations or capability scaffolding before the R0 baseli
 
 The owner's current order is **finish documentation/preparation → jointly inspect original Craft
 → approve concrete corrections → correct and accept the baseline → build the Component/panel host
-→ add domain Components**. R0 is currently in its preparation substep; it does not authorize app
-patches before the joint review. Desktop scope is Windows/macOS/Linux; the later phone connector
-extends R14/EXEC-09, with transport and mobile implementation still subject to source/proof review.
-This supersedes the earlier exception permitting
-host implementation after only scoped baseline checks. The single baseline exit, including
+→ add domain Components**. R0 remains in preparation and correction. The owner has authorized
+only the bounded shell/Settings entry correction named above; unrelated app capabilities remain
+outside this slice. Desktop scope is Windows/macOS/Linux; the later phone connector extends
+R14/EXEC-09, with transport and mobile implementation still subject to source/proof review.
+The single baseline exit, including
 inherited-capability dispositions and required R1/R2 corrections, is in
 [`modules/baseline.md`](docs/modules/baseline.md). R0 remains ACTIVE until that exit is met.
 Neither upstream equivalence, green tests nor a partial bootstrap opens the feature gate.
@@ -150,7 +173,7 @@ justifies changing live user records.
 | # | Release | Outcome (one line) | State | Dependency / gate |
 |---|---|---|---|---|
 | R0 | **Craft v0.13.4 baseline stabilization** | Classify inherited Craft capabilities, complete agreed R1/R2 corrections, remove absorbed obsolete material and accept a verified baseline before feature additions. | **ACTIVE** — current code, gate coverage and product independence require fresh evidence; upstream equivalence is not Fleet acceptance. | — |
-| R1 | **Workspaces, one sidebar, contextual tools and composer** | Visible Workspaces with Project memberships; one Session authority and one create flow; zh-Hans. Board is its own entry over the same Session/Task data, never a second store. | **Owner-authorized slice** — R1 single sidebar, separate Board, contextual right panel, ZCode composer/Plan-permission controls and Cindy model popup have a source-backed contract; implementation status is `not implemented` after rollback. Workspaces and scoped Projects stay distinct. | Required corrections execute inside R0; additive R1 capabilities remain after baseline exit |
+| R1 | **Conversation shell and context** | Eventually simplify entries without a second Session/Task authority; the visible Workspace/loadout target is reopened. | **Bounded entry slice only** — All Conversations/Board separation, direct What's New in the Craft footer menu, and verified duplicate-entry removal are the current implementation scope. Help remains at upper right. Sidebar restructuring, Workspace/Project changes, right panel and composer are not authorized by this row. | This bounded correction runs inside R0; later R1 work requires its own reviewed slice |
 | R2 | **Independence** | No silent Craft-operated service dependencies (P8): updater, hosted sharing, docs links, OAuth relays, branding — local / user-configured / honestly disabled. | **DEP** — original hosted defaults were restored; Fleet export/help/relay/update/publication/telemetry corrections are not implemented. Prepare and jointly review each service slice before changes. No Fleet release before this boundary closes. | Required independence corrections execute inside R0; closure evidence is shared, never circular |
 | R3 | **First production chain** | One real chain in one Project: intent → research/evidence → Markdown deliverable → review → accepted output → delivery. Existing Craft capability + minimal glue. | **DEP** | R0 + R2 |
 | R4 | **Action seam** | Caller-aware governed action contract extracted from ≥2 real dual-caller mutations (labels + R3 acceptance). | DEP | R3 (supplies the second caller) |
@@ -254,22 +277,18 @@ slice, not another roadmap or progress archive.
 
 ### Active contract
 
-**R1 shell/context rectification, explicitly authorized by the owner on 2026-09-22.** This bounded
-slice overrides the previous preparation-only stop; R0 remains the overall baseline release gate.
+**R0 baseline with the owner's bounded R1 entry correction.** The old R1 delivery order remains
+withdrawn; the later owner request authorizes only the current entry moves.
 
-- **Objective:** one left Conversation/Project sidebar, independent Board, contextual right panel,
-  ZCode-informed composer/layout and Plan/permission interaction, separate model/reasoning controls
-  with Cindy's model popup, preserved Workspace boundaries.
-- **Sources:** current Craft v0.13.4 and matching pin; Cindy sidebar, `RightSidebarShell`, `TabBar`,
-  registry/store and draft creation; ZCode `ConversationTimeline`/`SessionPane`/`ConversationComposer`;
-  ZCode mode/toolbar/submission and permission-service paths; Cindy unified model-panel components.
-  R1 records exact revisions, admitted behavior and current Craft gaps.
-- **Constraints:** reuse Session/Project/Workspace/Permission owners and pinned dependencies;
-  preserve records and files, do not import another shell/runtime or add unwired plugin controls.
-- **Proof:** typecheck/build, route and Workspace/Project isolation regressions, then isolated
-  desktop walkthrough of empty/normal/narrow layouts, tool navigation, project/model selection,
-  and provider-parameter/Plan-permission/queue/restart regressions.
-- **Next:** implement [R1](docs/modules/shell.md) and report actual verification limits.
+- **Objective:** implement the named entry moves on the v0.13.4 base and make current documentation
+  distinguish those code changes from the still-paused design proposals.
+- **Sources:** current `app/`, matching Craft pin, current user instructions, and the bounded source
+  comparisons already recorded in the owning modules.
+- **Constraints:** preserve user records, reference checkouts, original routes and Help; no
+  Conversation/Project data change, Workspace migration, new backend authority or feature engine.
+- **Proof:** declared upstream delta, typecheck/build, document-contract gate, and isolated desktop
+  review of Board/list routes, Debug/What's New, footer menu, upper-right Help and hidden-sidebar fallback.
+- **Next:** show the bounded change for owner acceptance before another correction slice.
 
 ### Preparation exit and joint walkthrough
 
@@ -277,8 +296,8 @@ The preparation exit in [R0](docs/modules/baseline.md#preparation-and-joint-revi
 facts, coherent contracts, concrete comparison evidence, a disposition for obsolete material and a
 reproducible original-app launch plan. It is not the later implementation acceptance exit.
 
-For slices outside the explicitly approved R1 scope, build and open original Craft for the requested joint
-walkthrough after preparation. For R1, validate the changed application against the compared sources. First establish a review environment that cannot modify existing user credentials,
+Build and open original Craft for the requested joint walkthrough after preparation. First establish
+a review environment that cannot modify existing user credentials,
 Sessions, files or installations; setting one profile variable is not isolation proof. Use original
 source/build commands and their pinned dependencies, and inspect profile/network/update behavior
 before launch. Explain any unexecutable platform or check; do not patch the app to disguise it.

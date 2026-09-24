@@ -1,0 +1,120 @@
+# Filesystem
+
+
+Local filesystem sources provide direct access to directories on your machine. Use them to connect:
+
+*   **Code repositories** - Browse and work with local Git repos
+*   **Note vaults** - Obsidian vaults, Logseq graphs, Zettelkasten folders
+*   **Project folders** - Design files, documents, data directories
+*   **Config directories** - Dotfiles, application settings
+
+## How It Works
+
+Filesystem sources are **direct bookmarks** to local directories. Unlike MCP servers, they don’t require running external processes—Craft Agent accesses files directly through its built-in file tools (Read, Write, Edit, Glob, Grep).
+
+When you create a filesystem source, you’re telling Craft Agent: “This folder is important—treat it as a named source I can reference.”
+
+## Key Concepts
+
+### Path Scope
+
+Each source points to a single directory. All file operations are scoped to that path and its subdirectories.
+
+### Source Context
+
+When active, the source’s `guide.md` is loaded into context, helping Craft Agent understand:
+
+*   What the directory contains
+*   How to navigate the structure
+*   Any special conventions or patterns
+
+### Permissions
+
+In Explore mode, only read operations are allowed (Read, Glob, Grep). Write and Edit require Ask to Edit or Execute mode.
+
+* * *
+
+## Setup Guide
+
+### Configuration
+
+**Required config.json:**
+
+```json
+{
+  "name": "My Project",
+  "slug": "my-project",
+  "enabled": true,
+  "provider": "filesystem",
+  "type": "local",
+  "icon": "📁",
+  "tagline": "Local project files and documentation",
+  "local": {
+    "path": "/Users/you/Projects/my-project"
+  }
+}
+```
+
+Caution
+
+The `path` must be an **absolute path** to an existing directory. Use `~` expansion or full paths like `/Users/you/...`
+
+### Recommended Questions
+
+*   Which directory do you want to connect?
+*   What does this directory contain? (code, notes, data, etc.)
+*   How is it organized? (any special folder structure)
+
+### Example: Obsidian Vault
+
+```json
+{
+  "name": "Personal Vault",
+  "slug": "personal-vault",
+  "enabled": true,
+  "provider": "obsidian",
+  "type": "local",
+  "icon": "https://obsidian.md/favicon.ico",
+  "tagline": "Personal notes, journals, and knowledge base",
+  "local": {
+    "path": "/Users/you/Documents/ObsidianVault"
+  }
+}
+```
+
+### Example: GitHub Repository
+
+```json
+{
+  "name": "My App",
+  "slug": "my-app",
+  "enabled": true,
+  "provider": "github",
+  "type": "local",
+  "icon": "https://github.githubassets.com/favicons/favicon.svg",
+  "tagline": "iOS app source code and documentation",
+  "local": {
+    "path": "/Users/you/Developer/my-app"
+  }
+}
+```
+
+### Permissions for Explore Mode
+
+Filesystem sources use Bash patterns for Explore mode permissions:
+
+```json
+{
+  "allowedBashPatterns": [
+    { "pattern": "^(ls|cat|head|tail|grep|find|tree)\\s", "comment": "Read-only file commands" }
+  ]
+}
+```
+
+Note
+
+Built-in file tools (Read, Glob, Grep) are always allowed in Explore mode. Bash patterns are only needed if you want to allow specific shell commands.
+
+### No Authentication Required
+
+Local sources access files directly—no API keys, tokens, or OAuth needed.

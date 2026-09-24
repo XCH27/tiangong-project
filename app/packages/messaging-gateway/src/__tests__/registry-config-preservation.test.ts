@@ -13,7 +13,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { CredentialManager } from '@craft-agent/shared/credentials'
@@ -78,6 +78,24 @@ function makeFakeTelegramAdapter(): PlatformAdapter {
 }
 
 describe('MessagingGatewayRegistry — config preservation across writes', () => {
+  it('keeps WhatsApp local sign-in discoverable after disable and clears it on forget', async () => {
+    const { registry, workspaceId } = makeRegistry()
+    const authDir = join(dir, 'workspaces', workspaceId, 'messaging', 'whatsapp-auth')
+    mkdirSync(authDir, { recursive: true })
+    writeFileSync(join(authDir, 'creds.json'), '{}')
+
+    expect(registry.getConfig(workspaceId)?.runtime.whatsapp?.configured).toBe(true)
+    await registry.disconnectPlatform(workspaceId, 'whatsapp')
+    expect(registry.getConfig(workspaceId)?.runtime.whatsapp?.configured).toBe(true)
+    expect(registry.getConfig(workspaceId)?.runtime.whatsapp?.connected).toBe(false)
+
+    const restarted = makeRegistry().registry
+    expect(restarted.getConfig(workspaceId)?.runtime.whatsapp?.configured).toBe(true)
+    await restarted.forgetPlatform(workspaceId, 'whatsapp')
+    expect(existsSync(authDir)).toBe(false)
+    expect(restarted.getConfig(workspaceId)?.runtime.whatsapp?.configured).toBe(false)
+  })
+
   it('owners survive bindWorkspaceSupergroup', async () => {
     const { registry, workspaceId } = makeRegistry()
     // Set up an owner via the public method.

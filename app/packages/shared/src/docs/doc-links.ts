@@ -3,8 +3,6 @@
  * Summaries provide quick context; "Learn more" opens the full docs.
  */
 
-const DOC_BASE_URL = 'https://thecraftagents.com/docs'
-
 export type DocFeature =
   | 'sources'
   | 'sources-api'
@@ -22,7 +20,7 @@ export type DocFeature =
   | 'messaging'
 
 export interface DocInfo {
-  /** Path relative to DOC_BASE_URL */
+  /** Hosted-doc path retained as the stable mapping key for local packaging. */
   path: string
   /** Display title for the help popover */
   title: string
@@ -118,10 +116,11 @@ export const DOCS: Record<DocFeature, DocInfo> = {
 }
 
 /**
- * Get the full documentation URL for a feature
+ * Get the local documentation target for a feature. The renderer resolves this
+ * target to the packaged Markdown copy; it is intentionally not a web URL.
  */
 export function getDocUrl(feature: DocFeature): string {
-  return `${DOC_BASE_URL}${DOCS[feature].path}`
+  return `local:${feature}`
 }
 
 /**

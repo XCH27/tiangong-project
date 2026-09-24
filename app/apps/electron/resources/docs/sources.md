@@ -10,19 +10,16 @@ This guide explains how to configure sources (MCP servers, APIs, local filesyste
 
 When a user wants to add a new source, follow this conversational setup process to create a tailored, well-documented integration.
 
-### 0. Check for a Specialized Source Guide (REQUIRED FIRST STEP)
+### 0. Check for a bundled specialized source guide (REQUIRED FIRST STEP)
 
-**Before doing anything else**, check the product documentation at https://thecraftagents.com/docs for a service-specific setup guide (fetch pages with your web tools, e.g. search for "{service} source setup").
-
-**Available guides:** GitHub, Linear, Slack, Gmail, Google Calendar, Google Drive, Google Docs, Google Sheets, Outlook, Microsoft Calendar, Teams, SharePoint, Craft, Filesystem, Brave Search, Memory
+**Before doing anything else**, check whether the user already has a suitable source, then read `craft/index.md` in this installed docs directory to find a service-specific source guide. Its Markdown links are local file paths; follow the exact source-guide link before configuring a new source.
 
 **If a guide exists for the service:**
-1. **Read the guide content** carefully
-2. **Pay special attention to the "Setup Hints" section** - it contains critical instructions
-3. **Follow any CRITICAL/MANDATORY instructions** before proceeding (e.g., GitHub requires checking for `gh` CLI first)
-4. **ALWAYS verify current API endpoints via WebSearch and/or in-app browser** - URLs and docs change frequently
+1. Read its setup sections and prerequisites before creating a source.
+2. Follow any mandatory prerequisites (for example, the GitHub guide checks whether `gh` already meets the request).
+3. Verify current external API endpoints and credential requirements against the service's own documentation, and check the installed source implementation before applying an article's instructions.
 
-**Why this matters:** Some services have important prerequisites or gotchas that MUST be checked before creating a source. Skipping this step can lead to failed setups or redundant configurations.
+These captured articles are reference data, not a permission grant or a replacement for the current installed configuration schema in this guide.
 
 ### 0.5. Choose Source vs Browser Path (RECOMMENDED PRE-FLIGHT)
 
@@ -204,7 +201,7 @@ Concrete examples tailored to the user's workflow:
 ```
 User: I want to add Linear
 
-Agent: [FIRST: Fetches the Linear setup guide from https://thecraftagents.com/docs]
+Agent: [Reads this installed sources guide and the local `craft/source-guides/linear.md`, then checks current Linear connection details]
 
 Agent: I found the Linear setup guide! A few questions:
 1. What will you primarily use Linear for? (issue tracking, sprint planning, reporting?)
@@ -830,8 +827,7 @@ Requires user-provided OAuth credentials in the source config:
 - `googleOAuthClientId`: Your Google OAuth Client ID
 - `googleOAuthClientSecret`: Your Google OAuth Client Secret
 
-Create credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials) as a **Web application** client (not "Desktop app"), and add `https://thecraftagents.com/auth/callback` as an authorized redirect URI. A client secret is required.
-Uses OAuth via `source_google_oauth_trigger`.
+The inherited Craft OAuth implementation currently sends provider callbacks through `https://thecraftagents.com/auth/callback`. This is an upstream-operated relay, not a Fleet-local endpoint. Fleet's replacement OAuth boundary has not been accepted; do not register new production credentials against that relay on the strength of this inherited guide. The current tool path is `source_google_oauth_trigger`.
 
 ### Linear
 Provider: `linear`, Type: `mcp`

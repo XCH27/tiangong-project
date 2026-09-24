@@ -511,7 +511,12 @@ export function handleSessionModelChanged(
 
   return {
     state: {
-      session: { ...session, model: event.model ?? undefined },
+      session: {
+        ...session,
+        model: event.model ?? undefined,
+        thinkingLevel: event.thinkingLevel ?? session.thinkingLevel,
+        llmConnection: event.llmConnection ?? session.llmConnection,
+      },
       streaming,
     },
     effects: [],
@@ -1031,4 +1036,3 @@ export function handleUsageUpdate(
     effects: [],
   }
 }
-

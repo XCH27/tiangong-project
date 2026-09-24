@@ -5,13 +5,15 @@
  */
 
 import * as React from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { SettingsPageTitle } from '@/components/settings/SettingsPageTitle'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { SettingsSection, SettingsCard, SettingsRow } from '@/components/settings'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import { isMac } from '@/lib/platform'
 import { actionsByCategory, useActionLabel, type ActionId } from '@/actions'
+import { EDIT_MENU, VIEW_MENU, WINDOW_MENU, getShortcutDisplay, type MenuSection } from '../../../shared/menu-schema'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -127,9 +129,12 @@ function ActionShortcutRow({ actionId }: { actionId: ActionId }) {
 export default function ShortcutsPage() {
   const { t } = useTranslation()
   const componentSpecificSections = useComponentSpecificSections()
+  const [isDebugMode, setIsDebugMode] = useState(false)
+  useEffect(() => { void window.electronAPI.isDebugMode().then(setIsDebugMode) }, [])
+  const inheritedMenuSections: MenuSection[] = [EDIT_MENU, VIEW_MENU, ...(isMac ? [WINDOW_MENU] : [])]
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.shortcuts.title")} />
+      <SettingsPageTitle title={t("settings.shortcuts.title")} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto space-y-8">
@@ -143,6 +148,26 @@ export default function ShortcutsPage() {
                 </SettingsCard>
               </SettingsSection>
             ))}
+
+            {/* Electron menu roles are real shortcuts, but are not in the app action registry. */}
+            {inheritedMenuSections.map(section => {
+              const roles = section.items.filter(item => item.type === 'role' && getShortcutDisplay(item, isMac))
+              if (!roles.length) return null
+              return <SettingsSection key={section.id} title={t(section.labelKey)}>
+                <SettingsCard>
+                  {roles.map(item => item.type === 'role' && <SettingsRow key={item.role} label={t(item.labelKey)}>
+                    <Kbd>{getShortcutDisplay(item, isMac)}</Kbd>
+                  </SettingsRow>)}
+                </SettingsCard>
+              </SettingsSection>
+            })}
+            {isDebugMode && <SettingsSection title={t('menu.debug')}>
+              <SettingsCard>
+                <SettingsRow label={t('menu.toggleDevTools')}>
+                  <Kbd>{isMac ? '⌥⌘I' : 'Ctrl+Shift+I'}</Kbd>
+                </SettingsRow>
+              </SettingsCard>
+            </SettingsSection>}
 
             {/* Component-specific sections */}
             {componentSpecificSections.map((section) => (

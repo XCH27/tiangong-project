@@ -59,6 +59,35 @@ describe('resolveServerPath fallback', () => {
   });
 });
 
+describe('Pi Bun runtime resolution', () => {
+  const tmpBase = join(tmpdir(), `bun-runtime-test-${Date.now()}`);
+  const previousConfiguredBun = process.env.CRAFT_BUN;
+
+  afterEach(() => {
+    if (previousConfiguredBun === undefined) delete process.env.CRAFT_BUN;
+    else process.env.CRAFT_BUN = previousConfiguredBun;
+    rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it('uses an explicit Bun path in an isolated development profile', () => {
+    mkdirSync(tmpBase, { recursive: true });
+    const bunPath = join(tmpBase, process.platform === 'win32' ? 'bun.exe' : 'bun');
+    writeFileSync(bunPath, 'stub');
+    process.env.CRAFT_BUN = bunPath;
+
+    const paths = resolveBackendRuntimePaths({ appRootPath: tmpBase, resourcesPath: tmpBase, isPackaged: false });
+    expect(paths.nodeRuntimePath).toBe(bunPath);
+  });
+
+  it('does not run a Bun bundle under Electron when packaged Bun is missing', () => {
+    mkdirSync(tmpBase, { recursive: true });
+    process.env.CRAFT_BUN = join(tmpBase, 'untrusted-runtime');
+
+    const paths = resolveBackendRuntimePaths({ appRootPath: tmpBase, resourcesPath: tmpBase, isPackaged: true });
+    expect(paths.nodeRuntimePath).toBeUndefined();
+  });
+});
+
 describe('resolveRipgrepPath', () => {
   const tmpBase = join(tmpdir(), `rg-resolver-test-${Date.now()}`);
 

@@ -5,28 +5,19 @@ import { cn } from '@/lib/utils'
 
 export interface MobileMenuPageProps {
   title: string
-  /**
-   * When true, the leading control is a back chevron that calls `onBack`.
-   * When false, no leading control is shown (root page).
-   */
-  showBack?: boolean
-  onBack?: () => void
-  /** Trailing close X button. Always available. */
   onClose: () => void
   children: React.ReactNode
   className?: string
 }
 
 /**
- * Generic full-screen page shell used for the root menu and every sub-page.
+ * Full-screen shell for the compact app menu.
  *
- * Layout: a sticky header (back/title/close) followed by a scrollable body.
+ * Layout: a sticky header (title/close) followed by a scrollable body.
  * Padding respects iOS safe areas (`env(safe-area-inset-*)`).
  */
 export function MobileMenuPage({
   title,
-  showBack,
-  onBack,
   onClose,
   children,
   className,
@@ -44,18 +35,7 @@ export function MobileMenuPage({
       }}
     >
       <header className="shrink-0 h-12 border-b border-border flex items-center px-2">
-        <div className="w-10 shrink-0">
-          {showBack && onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              aria-label={t('common.back')}
-              className="h-10 w-10 flex items-center justify-center rounded-full active:bg-foreground/10"
-            >
-              <Icons.ChevronLeft className="h-5 w-5 text-foreground/80" strokeWidth={1.75} />
-            </button>
-          )}
-        </div>
+        <div className="w-10 shrink-0" />
         <h2 className="flex-1 text-center text-[15px] font-medium text-foreground truncate px-2">
           {title}
         </h2>

@@ -87,6 +87,8 @@ export { EventQueue } from './event-queue.ts';
 // Provider-specific event adapters
 export { ClaudeEventAdapter } from './claude/event-adapter.ts';
 export { PiEventAdapter } from './pi/event-adapter.ts';
+export { fetchXaiApiModels, fetchXaiApiMediaModels, fetchXaiSubscriptionModels, setXaiCatalogFetcher, XAI_SUBSCRIPTION_BASE } from './internal/drivers/xai-models.ts';
+export type { XaiMediaModel, XaiMediaCatalog } from './internal/drivers/xai-models.ts';
 
 // Agent implementations are imported directly by factory.ts
 // Consumers should use createAgent() / createBackend() instead of concrete classes

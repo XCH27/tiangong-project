@@ -150,6 +150,7 @@ export const RPC_CHANNELS = {
     NEW_CHAT: 'menu:newChat',
     NEW_WINDOW: 'menu:newWindow',
     OPEN_SETTINGS: 'menu:openSettings',
+    OPEN_HELP: 'menu:openHelp',
     KEYBOARD_SHORTCUTS: 'menu:keyboardShortcuts',
     TOGGLE_FOCUS_MODE: 'menu:toggleFocusMode',
     TOGGLE_SIDEBAR: 'menu:toggleSidebar',
@@ -194,6 +195,7 @@ export const RPC_CHANNELS = {
     GET: 'LLM_Connection:get',
     GET_API_KEY: 'LLM_Connection:getApiKey',
     SAVE: 'LLM_Connection:save',
+    SET_MODEL: 'LLM_Connection:setModel',
     DELETE: 'LLM_Connection:delete',
     TEST: 'LLM_Connection:test',
     SET_DEFAULT: 'LLM_Connection:setDefault',
@@ -214,6 +216,12 @@ export const RPC_CHANNELS = {
     GET_AUTH_STATUS: 'copilot:getAuthStatus',
     LOGOUT: 'copilot:logout',
     DEVICE_CODE: 'copilot:deviceCode',
+  },
+  xai: {
+    START_OAUTH: 'xai:startOAuth',
+    CANCEL_OAUTH: 'xai:cancelOAuth',
+    DEVICE_CODE: 'xai:deviceCode',
+    READ_USAGE: 'xai:readUsage',
   },
   settings: {
     SETUP_LLM_CONNECTION: 'settings:setupLlmConnection',

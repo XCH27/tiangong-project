@@ -96,11 +96,11 @@ import { initializeReleaseNotes } from '@craft-agent/shared/release-notes'
 import { ensureDefaultPermissions } from '@craft-agent/shared/agent/permissions-config'
 import { ensureToolIcons, ensurePresetThemes } from '@craft-agent/shared/config'
 import { setBundledAssetsRoot } from '@craft-agent/shared/utils'
-import { initializeBackendHostRuntime } from '@craft-agent/shared/agent/backend'
+import { initializeBackendHostRuntime, setXaiCatalogFetcher } from '@craft-agent/shared/agent/backend'
 import { setPowerShellValidatorRoot } from '@craft-agent/shared/agent'
 import { handleDeepLink } from './deep-link'
 import { BrowserPaneManager } from './browser-pane-manager'
-import { OAuthFlowStore } from '@craft-agent/shared/auth'
+import { OAuthFlowStore, getValidClaudeOAuthToken, setOAuthTokenFetcher } from '@craft-agent/shared/auth'
 import { registerThumbnailScheme, registerThumbnailHandler } from './thumbnail-protocol'
 import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog, autoUpdateLog } from './logger'
 import { setPerfEnabled, enableDebug } from '@craft-agent/shared/utils'
@@ -232,7 +232,7 @@ if (process.defaultApp) {
 }
 
 // Apply network proxy settings early (Node-level only — Electron sessions require app.whenReady)
-import { applyConfiguredProxySettings } from './network-proxy'
+import { applyConfiguredProxySettings, getOAuthTokenSession } from './network-proxy'
 void applyConfiguredProxySettings()
 
 // Accept self-signed / untrusted certificates when connecting to a user-configured remote server.
@@ -412,6 +412,13 @@ app.whenReady().then(async () => {
   // Re-apply proxy settings now that Electron sessions are available
   // (first call before app.whenReady only configured Node-level proxy)
   await applyConfiguredProxySettings()
+  // Subscription token exchange/refresh must use the same OS proxy route as the
+  // authorization browser, including GUI launches without proxy env variables.
+  const oauthTokenSession = getOAuthTokenSession()
+  setOAuthTokenFetcher((url, init) => oauthTokenSession.fetch(url, init))
+  // The read-only xAI account catalog uses the same proxy-aware host route;
+  // Node fetch bypasses the OS proxy on GUI launches without proxy env vars.
+  setXaiCatalogFetcher((url, init) => oauthTokenSession.fetch(url, init))
 
   // Note: electron-updater handles pending updates internally via autoInstallOnAppQuit
 
@@ -705,14 +712,19 @@ app.whenReady().then(async () => {
         initializeSessionManager: (sm) => sm.initialize(),
         initModelRefreshService: () => initModelRefreshService(async (slug: string) => {
           const { getCredentialManager } = await import('@craft-agent/shared/credentials')
+          const { getLlmConnection } = await import('@craft-agent/shared/config')
           const manager = getCredentialManager()
+          const connection = getLlmConnection(slug)
           const [apiKey, oauth] = await Promise.all([
             manager.getLlmApiKey(slug).catch(() => null),
             manager.getLlmOAuth(slug).catch(() => null),
           ])
+          const claudeOAuthToken = connection?.providerType === 'anthropic' && connection.authType === 'oauth'
+            ? await getValidClaudeOAuthToken(slug)
+            : null
           return {
             apiKey: apiKey ?? undefined,
-            oauthAccessToken: oauth?.accessToken,
+            oauthAccessToken: claudeOAuthToken ? claudeOAuthToken.accessToken ?? undefined : oauth?.accessToken,
             oauthRefreshToken: oauth?.refreshToken,
             oauthIdToken: oauth?.idToken,
           }

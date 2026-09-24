@@ -19,7 +19,8 @@ import {
   StyledDropdownMenuItem,
   StyledDropdownMenuSeparator,
 } from './styled-dropdown'
-import { type DocFeature, getDocUrl } from '@craft-agent/shared/docs/doc-links'
+import type { DocFeature } from '@craft-agent/shared/docs/doc-links'
+import { openLocalHelp } from '@/lib/local-help'
 
 interface HeaderMenuProps {
   /** Route string for Open in New Window action */
@@ -43,7 +44,7 @@ export function HeaderMenu({ route, children, helpFeature }: HeaderMenuProps) {
   }
 
   const handleLearnMore = helpFeature ? () => {
-    window.electronAPI?.openUrl(getDocUrl(helpFeature))
+    openLocalHelp(helpFeature)
   } : undefined
 
   return (

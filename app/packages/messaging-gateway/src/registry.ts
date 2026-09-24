@@ -261,7 +261,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         lastError: undefined,
       })
       this.setPlatformRuntime(workspaceId, state, 'whatsapp', {
-        configured: false,
+        configured: this.hasWhatsAppAuthState(workspaceId),
         connected: false,
         state: 'disconnected',
         identity: undefined,
@@ -289,7 +289,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       }
       if (!configured) {
         this.setPlatformRuntime(workspaceId, state, platform, {
-          configured: false,
+          configured: platform === 'whatsapp' && this.hasWhatsAppAuthState(workspaceId),
           connected: false,
           state: 'disconnected',
           identity: undefined,
@@ -749,7 +749,9 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     }
 
     this.setPlatformRuntime(workspaceId, state, platform, {
-      configured: false,
+      // A disabled WhatsApp channel can retain local login data. Keep that
+      // fact visible so the UI can still offer its existing Forget action.
+      configured: platform === 'whatsapp' && this.hasWhatsAppAuthState(workspaceId),
       connected: false,
       state: 'disconnected',
       identity: undefined,
@@ -777,6 +779,16 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
           error: err,
         })
         throw err
+      }
+      const state = this.workspaces.get(workspaceId)
+      if (state) {
+        this.setPlatformRuntime(workspaceId, state, 'whatsapp', {
+          configured: false,
+          connected: false,
+          state: 'disconnected',
+          identity: undefined,
+          lastError: undefined,
+        })
       }
     }
   }
@@ -1013,7 +1025,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       whatsapp: null,
       runtime: {
         telegram: createRuntime('telegram', isPlatformConfigured(cfg, 'telegram')),
-        whatsapp: createRuntime('whatsapp', isPlatformConfigured(cfg, 'whatsapp')),
+        whatsapp: createRuntime('whatsapp', isPlatformConfigured(cfg, 'whatsapp') || this.hasWhatsAppAuthState(workspaceId)),
         lark: createRuntime('lark', isPlatformConfigured(cfg, 'lark')),
       },
     }

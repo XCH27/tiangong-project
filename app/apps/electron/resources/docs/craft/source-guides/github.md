@@ -1,0 +1,140 @@
+# GitHub
+
+GitHub organizes code and collaboration around:
+
+*   **Repositories** - Code projects with version control
+*   **Issues** - Bug reports, feature requests, tasks
+*   **Pull Requests** - Code changes for review and merge
+*   **Actions** - CI/CD workflows
+
+## Key Concepts
+
+### Repository Structure
+
+*   Branches (main/master is default)
+*   Commits and commit history
+*   Tags and releases
+
+### Issues and PRs
+
+*   Can be assigned, labeled, milestoned
+*   Support markdown formatting
+*   Have a state: open or closed
+
+### Organizations and Teams
+
+*   Repos can belong to users or organizations
+*   Teams provide access control within orgs
+
+* * *
+
+## Setup Guide
+
+There are three ways to access GitHub from Craft Agents, listed from simplest to most complex. **Most users should use Tier 1.**
+
+* * *
+
+### Tier 1 — Recommended: GitHub CLI (`gh`)
+
+Caution
+
+**You may not need a source at all.** If the GitHub CLI is installed and authenticated, you already have full GitHub access through Craft Agent’s built-in Bash tool — no source setup required.
+
+The `gh` CLI is the simplest and most reliable way to work with GitHub:
+
+*   **Zero configuration** — works out of the box after `gh auth login`
+*   **Full API coverage** — `gh issue list`, `gh pr view`, `gh repo clone`, `gh api repos/{owner}/{repo}/...`
+*   **No tokens to manage** — authentication is handled by `gh auth`
+*   **Always up to date** — no dependency on third-party MCP wrappers
+
+**Quick check:**
+
+```bash
+gh --version    # Is it installed?
+gh auth status  # Is it authenticated?
+```
+
+If both pass, you’re done — just use `gh` commands directly. No source creation needed.
+
+**If `gh` is not installed:** install it from [cli.github.com](https://cli.github.com), then run `gh auth login`.
+
+* * *
+
+### Tier 2 — MCP Source with Personal Access Token (stdio)
+
+For users who want structured MCP tool calls instead of raw CLI output, you can set up GitHub as an MCP source using a Personal Access Token (PAT).
+
+**Step 1:** Create a PAT at GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Grant `repo` access (and optionally `read:org`).
+
+**Step 2:** Use this `config.json`:
+
+```json
+{
+  "name": "GitHub",
+  "slug": "github",
+  "enabled": true,
+  "provider": "github",
+  "type": "mcp",
+  "tagline": "GitHub via MCP (stdio)",
+  "mcp": {
+    "transport": "stdio",
+    "command": "docker",
+    "args": ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": "<your-pat-here>"
+    },
+    "authType": "none"
+  }
+}
+```
+
+Note
+
+This uses the official GitHub MCP server Docker image (`ghcr.io/github/github-mcp-server`). Requires Docker to be installed and running.
+
+**Step 3:** Use `source_credential_prompt` to securely collect the PAT from the user instead of hardcoding it.
+
+* * *
+
+### Tier 3 — API Source with OAuth
+
+If you have your own GitHub OAuth App (Settings → Developer settings → OAuth Apps), you can configure GitHub as an API source with automatic OAuth:
+
+```json
+{
+  "name": "GitHub",
+  "slug": "github",
+  "enabled": true,
+  "provider": "github",
+  "type": "api",
+  "tagline": "GitHub REST API via OAuth",
+  "api": {
+    "baseUrl": "https://api.github.com/",
+    "authType": "oauth",
+    "oauth": {
+      "authorizationUrl": "https://github.com/login/oauth/authorize",
+      "tokenUrl": "https://github.com/login/oauth/access_token",
+      "clientId": "<your-oauth-app-client-id>",
+      "clientSecret": "<your-oauth-app-client-secret>",
+      "scopes": ["repo", "read:user", "read:org"]
+    },
+    "testEndpoint": {
+      "method": "GET",
+      "path": "user"
+    }
+  }
+}
+```
+
+Set your OAuth App’s callback URL to `http://localhost:8914/callback`.
+
+Note
+
+GitHub’s remote **MCP** endpoint at `https://api.githubcopilot.com/mcp/` requires a pre-registered Copilot client — that path won’t work with Craft Agents. Use this API OAuth approach, or Tier 1/2 instead.
+
+* * *
+
+### Rate Limits
+
+*   5000 requests per hour for authenticated users
+*   Search API has separate lower limits

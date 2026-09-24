@@ -139,7 +139,6 @@ interface ChatDisplayProps {
   onModelChange: (model: string, connection?: string) => void
   // Connection selection (locked after first message)
   /** Callback when LLM connection changes (only works when session is empty) */
-  onConnectionChange?: (connectionSlug: string) => void
   /** Ref for the input, used for external focus control */
   textareaRef?: React.RefObject<RichTextInputHandle>
   /** When true, disables input (e.g., when agent needs activation) */
@@ -442,7 +441,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   onOpenUrl,
   currentModel,
   onModelChange,
-  onConnectionChange,
   textareaRef: externalTextareaRef,
   disabled = false,
   pendingPermission,
@@ -1585,7 +1583,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                   {/* Empty state for compact mode - inviting conversational prompt, centered in full popover */}
                   {compactMode && turns.length === 0 && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center select-none gap-1 pointer-events-none">
-                      <span className="text-sm text-muted-foreground">{t("editPopover.whatToChange")}</span>
+                      <span className="text-sm text-muted-foreground">{emptyStateLabel || t("editPopover.whatToChange")}</span>
                       <span className="text-xs text-muted-foreground/50">{t("editPopover.justDescribe")}</span>
                     </div>
                   )}
@@ -1959,7 +1957,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               connectionUnavailable,
               isEmptySession: session.messages.length === 0,
               currentConnection: session.llmConnection,
-              onConnectionChange,
               contextStatus: {
                 isCompacting: session.currentStatus?.statusType === 'compacting',
                 inputTokens: session.tokenUsage?.inputTokens,

@@ -27,6 +27,19 @@ import type { ModelDefinition } from './models.ts';
 function piModelToDefinition(m: Model<Api>): ModelDefinition {
   const lastPart = m.name.split(/[\s-]/).pop() ?? m.name;
   const shortName = m.name.length > 20 ? lastPart : m.name;
+  const runtimeApi: ModelDefinition['runtimeApi'] = m.api === 'anthropic-messages'
+    ? 'anthropic-messages' : m.api === 'openai-completions'
+      ? 'openai-completions' : m.api === 'openai-responses'
+        ? 'openai-responses' : undefined;
+  // Pi uses its provider defaults for omitted low/medium/high entries. Only
+  // xhigh/max require an explicit opt-in; null explicitly disables a level.
+  // Off is exposed only when the model declares a real off mapping, because
+  // some providers translate Pi's off to a non-off request internally.
+  const nativeEfforts = m.reasoning
+    ? (['low', 'medium', 'high', 'xhigh', 'max'] as const)
+        .filter(level => m.thinkingLevelMap?.[level] !== null
+          && (level !== 'xhigh' && level !== 'max' || m.thinkingLevelMap?.[level] !== undefined))
+    : [];
 
   return {
     id: `pi/${m.id}`,
@@ -36,6 +49,13 @@ function piModelToDefinition(m: Model<Api>): ModelDefinition {
     provider: 'pi',
     contextWindow: m.contextWindow,
     supportsThinking: m.reasoning,
+    supportsImages: m.input.includes('image'),
+    reasoningEfforts: [...nativeEfforts],
+    reasoningDisableSupported: m.thinkingLevelMap?.off != null,
+    maxOutputTokens: m.maxTokens,
+    ...(m.provider === 'github-copilot' && runtimeApi ? { runtimeApi } : {}),
+    pricingPerMillion: { input: m.cost.input, output: m.cost.output, cacheRead: m.cost.cacheRead },
+    catalogSource: 'sdk',
   };
 }
 

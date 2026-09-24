@@ -154,7 +154,7 @@ export function SettingsMenuSelect({
         <div className="space-y-0.5 max-h-64 overflow-auto">
           {filteredOptions.length === 0 ? (
             <div className="px-2.5 py-3 text-sm text-muted-foreground text-center">
-              No results found
+              {t('chat.noResults')}
             </div>
           ) : (
             filteredOptions.map((option) => {

@@ -1,0 +1,89 @@
+# Skills
+
+> Extend what Craft Agents can do
+
+Skills extend what Craft Agents can do. Create a `SKILL.md` file with instructions, and Craft Agents adds it to its toolkit—using it automatically when relevant, or when you `@mention` it directly.
+
+Skills follow the [Agent Skills](https://agentskills.io) open standard, making them compatible with Claude Code and other tools that support the spec.
+
+## Creating Skills
+
+**Just ask Craft Agents to create one.** Describe what you want, and the agent will create the skill for you:
+
+```
+Create a skill called "commit" that generates conventional commit messages
+```
+
+Craft Agents knows where skills live and how to write them. This is the [agent-native](https://every.to/guides/agent-native) approach—instead of manually creating files, let the agent do it.
+
+## Skill Structure
+
+Skills are folders in your workspace containing a `SKILL.md` file:
+
+```
+~/.craft-agent/workspaces/{id}/skills/{slug}/
+├── SKILL.md      # Required: YAML frontmatter + instructions
+└── icon.png      # Auto-generated: cached icon from URL (if specified)
+```
+
+### SKILL.md Format
+
+```markdown theme={null}
+---
+name: Commit
+description: Create well-formatted git commit messages
+icon: 🔧
+globs:
+  - "**/.git/**"
+alwaysAllow:
+  - Bash(git status)
+  - Bash(git diff)
+requiredSources:
+  - github
+---
+
+When creating commits:
+- Use conventional commit format (feat:, fix:, docs:, etc.)
+- Keep subject line under 72 characters
+- Explain why, not what
+```
+
+The frontmatter tells Craft Agents when to use the skill. The body contains instructions the agent follows when invoked.
+
+### Frontmatter Fields
+
+| Field             | Required | Description                                                            |
+| ----------------- | -------- | ---------------------------------------------------------------------- |
+| `name`            | Yes      | Display name for the skill                                             |
+| `description`     | Yes      | Brief description shown in skill list                                  |
+| `icon`            | No       | Emoji (e.g., `🔧`) or URL. Relative paths are not supported.           |
+| `globs`           | No       | File patterns that auto-trigger this skill (e.g., `["**/*.test.ts"]`)  |
+| `alwaysAllow`     | No       | Tools to auto-allow when skill is active (e.g., `["Bash(npm test)"]`)  |
+| `requiredSources` | No       | Source slugs to auto-enable when skill is invoked (e.g., `["linear"]`) |
+
+<Info>
+  When a skill declares `requiredSources`, those sources are automatically enabled for the session when the skill is invoked — so the agent has access to their tools from the first turn. Sources must be configured in the workspace and authenticated; unauthenticated sources are skipped and handled at runtime.
+</Info>
+
+<Info>
+  For the full SKILL.md schema including advanced fields like `allowed-tools`, `context`, and `agent`, see the [Claude Code skills documentation](https://code.claude.com/docs/en/skills).
+</Info>
+
+## Using Skills
+
+Mention the skill with `@` in your message:
+
+```
+@commit
+@review the authentication changes
+@deploy to staging
+```
+
+## Skill Locations
+
+| Location  | Path                                            | Precedence                 |
+| --------- | ----------------------------------------------- | -------------------------- |
+| Workspace | `~/.craft-agent/workspaces/{id}/skills/{slug}/` | First (overrides built-in) |
+| Built-in  | Bundled with Craft Agents                       | Fallback                   |
+
+Create a workspace skill with the same slug as a built-in to override it with your own behavior.

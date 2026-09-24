@@ -7,12 +7,13 @@ import { StepFormLayout } from "./primitives"
 import claudeIcon from "@/assets/provider-icons/claude.svg"
 import openaiIcon from "@/assets/provider-icons/openai.svg"
 import copilotIcon from "@/assets/provider-icons/copilot.svg"
+import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 
 /**
  * The high-level provider choice the user makes on first launch.
  * This maps to one or more ApiSetupMethods downstream.
  */
-export type ProviderChoice = 'claude' | 'chatgpt' | 'copilot' | 'api_key' | 'local'
+export type ProviderChoice = 'claude' | 'chatgpt' | 'copilot' | 'xai' | 'api_key' | 'local'
 
 interface ProviderOption {
   id: ProviderChoice
@@ -25,6 +26,7 @@ const PROVIDER_ICONS: Record<ProviderChoice, React.ReactNode> = {
   claude: <img src={claudeIcon} alt="" className="size-5 rounded-[3px]" />,
   chatgpt: <img src={openaiIcon} alt="" className="size-5 rounded-[3px]" />,
   copilot: <img src={copilotIcon} alt="" className="size-5 rounded-[3px]" />,
+  xai: <ConnectionIcon size={20} connection={{ name: 'xAI', providerType: 'pi', piAuthProvider: 'xai' }} />,
   api_key: <Key className="size-5" />,
   local: <Monitor className="size-5" />,
 }
@@ -65,15 +67,21 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
       icon: PROVIDER_ICONS.copilot,
     },
     {
+      id: 'xai',
+      name: t('onboarding.providerSelect.grokSubscription'),
+      description: t('onboarding.providerSelect.grokSubscriptionDesc'),
+      icon: PROVIDER_ICONS.xai,
+    },
+    {
       id: 'api_key',
       name: t("onboarding.providerSelect.otherProvider"),
-      description: 'Anthropic, AWS Bedrock, OpenRouter, Google or any compatible provider.',
+      description: t("onboarding.providerSelect.otherProviderDesc"),
       icon: PROVIDER_ICONS.api_key,
     },
     {
       id: 'local',
       name: t("onboarding.providerSelect.localModel"),
-      description: 'Run models locally with Ollama.',
+      description: t("onboarding.providerSelect.localModelDesc"),
       icon: PROVIDER_ICONS.local,
     },
   ]

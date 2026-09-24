@@ -31,7 +31,7 @@ describe('models-pi filtering', () => {
   it('returns current DeepSeek models from the Pi SDK catalog', () => {
     const models = getPiModelsForAuthProvider('deepseek');
     const ids = models.map(m => m.id);
-    expect(ids).toContain('pi/deepseek-v4-flash');
+    expect(ids).toContain('pi/deepseek-flash');
     expect(ids).toContain('pi/deepseek-v4-pro');
   });
 
@@ -50,9 +50,11 @@ describe('models-pi filtering', () => {
     expect(bedrockIds).toContain('pi/us.anthropic.claude-opus-5');
   });
 
-  it('returns the DeepSeek V4 Flash vision model from the Pi SDK catalog', () => {
-    const ids = getPiModelsForAuthProvider('deepseek').map(m => m.id);
-    expect(ids).toContain('pi/deepseek-v4-flash-vision-exp');
+  it('uses the installed Pi image-input metadata without inventing a separate vision model', () => {
+    const models = getPiModelsForAuthProvider('deepseek');
+    expect(models.some(model => model.id === 'pi/deepseek-v4-flash-vision-exp')).toBe(false);
+    expect(models.find(model => model.id === 'pi/deepseek-flash')?.supportsImages).toBe(true);
+    expect(models.find(model => model.id === 'pi/deepseek-v4-pro')?.supportsImages).toBe(false);
   });
 
   it('returns GPT-6 Astra from the Pi SDK catalog for OpenAI API keys and ChatGPT accounts', () => {

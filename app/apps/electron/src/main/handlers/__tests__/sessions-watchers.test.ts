@@ -13,6 +13,11 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+async function waitForEvent(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 2_000
+  while (!predicate() && Date.now() < deadline) await wait(25)
+}
+
 describe('sessions file watchers', () => {
   const handlers = new Map<string, HandlerFn>()
   const pushed: Array<{ channel: string; target: any; args: any[] }> = []
@@ -103,7 +108,8 @@ describe('sessions file watchers', () => {
 
     writeFileSync(join(sessionDirA, 'a.txt'), `a-${Date.now()}`)
     writeFileSync(join(sessionDirB, 'b.txt'), `b-${Date.now()}`)
-    await wait(300)
+    await waitForEvent(() => pushed.some((evt) => evt.target?.clientId === 'client-a' && evt.args[0] === 'session-a')
+      && pushed.some((evt) => evt.target?.clientId === 'client-b' && evt.args[0] === 'session-b'))
 
     const aEvents = pushed.filter((evt) => evt.target?.to === 'client' && evt.target?.clientId === 'client-a')
     const bEvents = pushed.filter((evt) => evt.target?.to === 'client' && evt.target?.clientId === 'client-b')
@@ -116,7 +122,7 @@ describe('sessions file watchers', () => {
 
     writeFileSync(join(sessionDirA, 'a.txt'), `a2-${Date.now()}`)
     writeFileSync(join(sessionDirB, 'b.txt'), `b2-${Date.now()}`)
-    await wait(300)
+    await waitForEvent(() => pushed.some((evt) => evt.target?.clientId === 'client-b' && evt.args[0] === 'session-b'))
 
     const aEventsAfter = pushed.filter((evt) => evt.target?.clientId === 'client-a')
     const bEventsAfter = pushed.filter((evt) => evt.target?.clientId === 'client-b')

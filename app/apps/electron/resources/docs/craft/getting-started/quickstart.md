@@ -1,0 +1,107 @@
+# Quickstart
+
+When you launch Craft Agents for the first time, a setup wizard configures authentication and billing. Then you’re ready to work.
+
+## Setup Wizard
+
+Sign in to Craft (optional)
+
+Connect your Craft account to access your documents. A browser window opens for authentication.
+
+Skip this if you only want to use Craft Agents with other sources like GitHub, local files, or APIs.
+
+Choose your Craft space
+
+If you signed in, select which Craft space to connect. This becomes your first source—the agent can read and write documents in that space.
+
+Set up API connection
+
+Choose how to connect to an AI model:
+
+| Option | Best For |
+| --- | --- |
+| Claude Pro/Max | Use your existing Claude subscription via OAuth. |
+| API Key | Direct API access. Supports Anthropic, OpenRouter, Vercel AI Gateway, Ollama, or any compatible endpoint. |
+| Codex (OpenAI) | Use ChatGPT Plus OAuth for Codex-powered sessions. |
+
+If you choose **API Key**, you’ll see a Base URL preset selector with options for Anthropic, OpenRouter, Vercel AI Gateway, or a custom endpoint. For non-Anthropic providers, you can also specify a model name (e.g. `anthropic/claude-sonnet-4` for OpenRouter).
+
+Tip
+
+**Not sure which to pick?** If you have a Claude Pro or Max subscription, use that. Otherwise, get an API key from [Anthropic](https://console.anthropic.com) or [OpenRouter](https://openrouter.ai/keys). You can change your connection method later in Settings.
+
+Done
+
+You’ll see the main interface: inbox on the left, prompt at the bottom, and a status bar showing your current mode and model.
+
+## The Workflow: Explore → Ask → Execute
+
+Craft Agents has three permission modes. The recommended workflow:
+
+1\. Explore
+
+Start here. The agent reads, searches, and analyzes but cannot make changes. Research safely.
+
+2\. Ask to Edit
+
+Ready for changes? Switch here. The agent proposes actions and waits for your approval.
+
+3\. Execute
+
+Once aligned, switch here. The agent works autonomously. Review results when done.
+
+Press **SHIFT+TAB** to cycle through modes. The status bar shows your current mode.
+
+Tip
+
+**The pattern:** Explore until you understand the problem. Ask to Edit while refining the approach. Execute once you trust the plan.
+
+## Try This Now
+
+Type something to start your first conversation:
+
+```plaintext
+What can you help me with?
+```
+
+Or try a specific task:
+
+```plaintext
+Summarize the last 3 files I modified in this folder
+```
+
+```plaintext
+Search my Craft documents for anything about project planning
+```
+
+If you connected a Craft space, the agent can already access your documents. Add more sources (GitHub, Linear, local files) from Settings or by asking the agent:
+
+```plaintext
+Connect my GitHub account
+```
+
+## The Interface
+
+**Inbox** — Your conversations, organized like email. Each maintains its own context. Start new ones with **CMD/CTRL+N**.
+
+**Sources** — Connections to external data (Craft spaces, GitHub, APIs, local files). Manage in Settings or the sidebar.
+
+**Status bar** — Shows permission mode, model, and workspace. Click to change settings.
+
+Note
+
+You can add multiple connections later in **Settings → AI**, and each session locks to a connection after the first message. Start a new session to switch connections.
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| SHIFT+TAB | Cycle permission modes |
+| CMD/CTRL+N | New conversation |
+| CMD/CTRL+K | Command palette |
+| ESC | Cancel current request |
+
+## Next Steps
+
+- [Your first conversation](/docs/getting-started/first-conversation) — Detailed walkthrough of interacting with the agent.
+- [Add sources](/docs/sources/overview) — Connect GitHub, Linear, local files, and more.

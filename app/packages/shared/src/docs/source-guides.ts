@@ -2,9 +2,9 @@
  * Source Guides System
  *
  * Provides parsing utilities for source guides.
- * Setup guidance lives in the product docs at https://thecraftagents.com/docs.
- *
- * The agent should consult the product docs for setup guidance when creating sources.
+ * The historical parser below is retained for source guide.md metadata. The
+ * captured service setup articles are installed separately under
+ * docs/craft/source-guides/ and linked from docs/craft/index.md.
  */
 
 // ============================================================
@@ -184,21 +184,20 @@ export function extractDomainFromSource(source: {
 }
 
 // ============================================================
-// Guide Lookup (Deprecated - see product docs instead)
+// Parsed Guide Lookup (Deprecated)
 // ============================================================
 
 /**
- * @deprecated Bundled guides have been removed.
- * Setup guides live in the product docs at https://thecraftagents.com/docs.
+ * @deprecated This lookup no longer serves bundled parsed guide objects.
+ * Read the installed docs/craft/source-guides/ articles instead.
  */
 export function getSourceGuideForDomain(_domain: string): ParsedSourceGuide | null {
-  // Bundled guides removed - guides now live in the product docs
   return null;
 }
 
 /**
- * @deprecated Bundled guides have been removed.
- * Setup guides live in the product docs at https://thecraftagents.com/docs.
+ * @deprecated This lookup no longer serves bundled parsed guide objects.
+ * Read the installed docs/craft/source-guides/ articles instead.
  */
 export function getSourceGuide(_source: {
   type?: string;
@@ -206,13 +205,12 @@ export function getSourceGuide(_source: {
   mcp?: { url?: string };
   api?: { baseUrl?: string };
 }): ParsedSourceGuide | null {
-  // Bundled guides removed - guides now live in the product docs
   return null;
 }
 
 /**
- * @deprecated Bundled guides have been removed.
- * Setup guides live in the product docs at https://thecraftagents.com/docs.
+ * @deprecated This lookup no longer serves bundled parsed guide objects.
+ * Read the installed docs/craft/source-guides/ articles instead.
  */
 export function getSourceKnowledge(_source: {
   type?: string;
@@ -220,6 +218,5 @@ export function getSourceKnowledge(_source: {
   mcp?: { url?: string };
   api?: { baseUrl?: string };
 }): string | null {
-  // Bundled guides removed - guides now live in the product docs
   return null;
 }

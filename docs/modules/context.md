@@ -48,6 +48,43 @@ The effective projection is a view over existing prompt/profile/policy/tool fact
 prove a seam. Reviewed memory is a separate derivative module; it cannot repair an oversized base
 prompt or an indiscriminate tool catalog.
 
+## Model connection correction
+
+The owner authorized a bounded correction to model setup, discovery, effort selection and
+credential use. Keep provider catalogs in the existing LLM connection and runtime adapters; use
+provider/SDK capability fields when available, and show an unknown saved effort without offering
+unverified levels. A bundled SDK/registry catalog cannot revoke a saved model choice; only an
+authenticated provider catalog may replace an unavailable selection. A workspace model override
+applies only while its effective connection is selected; switching connections reconciles a model
+that the runtime cannot use.
+An explicit session or workspace model that would resolve to a different runtime model is rejected
+before persistence. Model Settings changes a connection's default model through a field-only RPC,
+so a stale renderer snapshot cannot overwrite a newly refreshed account catalog.
+The connection is an account and credential owner, not a claim that every model uses the chat
+runtime. Its chat list contains only text-output language models; authenticated input/output
+modalities are retained when advertised. Media-only models require the separate media executor
+and entitlement check in [media](media.md) before any UI can mark them runnable. Neither an API
+key nor a subscription grants every capability by inference.
+For xAI Console API keys, the existing provider-model query also reads the authenticated image
+and video model endpoints. Settings shows these as read-only capability rows separate from chat
+models; a failed or partial media query is reported as such and never grants a generation action.
+An Anthropic OAuth token belongs to its connection slug, including
+refresh and failure cleanup; the legacy global credential is migration input only. Copilot account
+models with authenticated context, output limit and supported transport are registered in Pi's
+existing Copilot provider; incomplete unknown entries are excluded rather than given invented
+limits. The Settings
+connection menu exposes the existing backend model-list refresh for provider-managed catalogs,
+never for custom endpoints or preserved user-defined tiers. Refresh may retain a cached catalog
+when a provider is unavailable, so completion does not claim a live update. Grok subscription
+login now uses Pi 0.87.1's xAI device-code grant through Craft's proxy-aware transport and the
+existing connection-scoped credential manager; its authenticated model catalog is routed through
+the Grok subscription proxy and registered in Pi's native xAI provider. The read-only usage adapter
+parses the provider response used by OpenClaw's xAI integration, but that billing endpoint is a
+private adapter rather than a verified public xAI quota API, so the UI remains unavailable when the
+response is missing or malformed and the live path is `wired but not visually checked` until an
+account sign-in is exercised. This correction does not authorize automatic model routing, a new
+account store, or a second credential owner.
+
 ## First proof
 
 After the R0 baseline exit, complete TE1 as observation-only: normalize provider usage once, report cache/prefix facts and
@@ -248,9 +285,10 @@ accounting. R11/R17 decide activation; this paragraph creates no earlier impleme
 
 ## Subscription allowance acquisition and display
 
-**Status:** `not implemented`. Extend the existing connection/runtime and usage projection; do not
-add an account store or infer remaining membership capacity from Session token counts. The current
-SDK exposes useful data that Fleet does not consume. The source comparison is recorded in the
+General subscription allowance acquisition remains `not implemented` beyond provider-specific
+adapters. Extend the existing connection/runtime and usage projection; do not add an account store
+or infer remaining membership capacity from Session token counts. The current SDK exposes useful
+data that Fleet does not consume. The source comparison is recorded in the
 [reference registry](../references.md#subscription-allowance-comparison).
 Acquisition/display stays in the existing P-30 / INTEL-04 queue with R17 closure; TE1/R3 measurement
 does not authorize a new quota surface or adapter. Adaptive routing remains a separate real-caller
@@ -260,6 +298,7 @@ gate. An allowance reader never switches accounts, redeems credits or enables pa
 |---|---|---|
 | Claude subscription | Consume `rate_limit_event` from the existing Claude runtime. Installed and lockfile-pinned Agent SDK **0.3.258** also exposes `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` sending `get_usage`. | The query is explicitly unstable: isolate behind a version/capability-checked adapter and prove a fixture before enabling. Events may expose only one window and do not guarantee a complete idle-account snapshot. Unsupported/missing data stays unavailable; do not start paid inference just to refresh a meter. |
 | Codex subscription | Use the selected runtime's authenticated `account/rateLimits/read` and `account/rateLimits/updated`; prefer the returned per-limit map over the legacy single bucket. | Bind results to runtime, connection, account and provider workspace. Read returned durations rather than assuming two fixed windows. A missing protocol capability is unavailable, not permission to read another account's cache. |
+| Grok subscription | The current adapter uses Pi 0.87.1's xAI device-code OAuth and the existing connection credential owner, then reads the versioned `https://cli-chat-proxy.grok.com/v1/billing?format=credits` response used by OpenClaw's xAI integration. | The billing transport is private and can change; it is not presented as an official public quota guarantee. Invalid, missing or account-mismatched data stays unavailable. The live login/model/usage path is `wired but not visually checked` until a user account completes the device flow. |
 | Cursor subscription | The official Spending dashboard is the reliable user-facing fallback. Its Admin API is a separate team-scoped integration when the owner supplies the applicable credentials. | This review did not establish an official personal-plan quota API. Do not treat a team spend endpoint as personal remaining capacity or copy browser cookies/private application state. |
 | Other providers/API keys | A provider adapter uses a documented authenticated quota/balance endpoint when present. cc-switch's native balance adapters are a comparison candidate, separate from its custom-script executor. | Preserve native units and scope: balance, key budget, request limit, token limit and plan allowance are different measurements. Check required credential scope per endpoint: OpenRouter `/api/v1/key` describes the current key; account-wide `/api/v1/credits` requires a management key. Ordinary API connections have no invented subscription window. |
 

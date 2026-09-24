@@ -20,41 +20,93 @@ import {
   getModelsForProviderType,
 } from '@craft-agent/shared/config'
 import { MODEL_FETCHERS } from './registry'
+import { mergeClaudeSdkCapabilities } from './anthropic'
 import { handlerLog } from './runtime'
 
 /** Copilot models are server-managed — refresh every 10 minutes to pick up policy changes. */
 const COPILOT_REFRESH_INTERVAL_MS = 10 * 60 * 1000
+/** xAI's API-key and subscription catalogs are live, but do not need a minute-scale poll. */
+const XAI_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+function isXaiAccountCatalog(connection: { providerType: string; piAuthProvider?: string; authType?: string }): boolean {
+  return connection.providerType === 'pi' && connection.piAuthProvider === 'xai'
+    && (connection.authType === 'api_key' || connection.authType === 'oauth')
+}
 
 // ============================================================
 // Types
 // ============================================================
 
 type CredentialResolver = (slug: string) => Promise<ModelFetcherCredentials>
+export type ModelRefreshSource = 'provider' | 'sdk' | 'saved' | 'registry' | 'manual' | 'unavailable' | 'superseded'
+export interface ModelRefreshOutcome {
+  source: ModelRefreshSource
+  error?: string
+}
+type ModelRefreshStore = {
+  getConnection: typeof getLlmConnection
+  getConnections: typeof getLlmConnections
+  updateConnection: typeof updateLlmConnection
+  fallbackModels: typeof getModelsForProviderType
+}
+
+const defaultStore: ModelRefreshStore = {
+  getConnection: getLlmConnection,
+  getConnections: getLlmConnections,
+  updateConnection: updateLlmConnection,
+  fallbackModels: getModelsForProviderType,
+}
 
 // ============================================================
 // ModelRefreshService
 // ============================================================
 
-class ModelRefreshService {
+export class ModelRefreshService {
   private timers = new Map<string, ReturnType<typeof setInterval>>()
-  private inFlight = new Map<string, Promise<void>>()
+  private inFlight = new Map<string, Promise<ModelRefreshOutcome>>()
+  private generations = new Map<string, number>()
 
   constructor(
     private fetchers: ModelFetcherMap,
     private getCredentials: CredentialResolver,
+    private store: ModelRefreshStore = defaultStore,
   ) {}
+
+  /** Refine an OAuth account's existing catalog from its active Claude SDK query. */
+  noteClaudeSdkSupportedModels(
+    slug: string,
+    account: { createdAt: number; uuid?: string; email?: string },
+    raw: unknown,
+  ): boolean {
+    if (!account.uuid && !account.email) return false
+    const current = this.store.getConnection(slug)
+    if (!current || current.providerType !== 'anthropic' || current.authType !== 'oauth'
+      || current.createdAt !== account.createdAt
+      || current.oauthAccountUuid !== account.uuid
+      || current.oauthAccountEmail !== account.email
+      || !current.models?.length
+      || current.models.some(model => typeof model === 'string')) return false
+
+    const models = current.models as ModelDefinition[]
+    const refined = mergeClaudeSdkCapabilities(models, raw)
+    if (refined === models) return false
+    this.store.updateConnection(slug, { models: refined })
+    return true
+  }
 
   /**
    * Fetch models for a connection through the fallback chain.
-   * Deduplicates concurrent calls for the same slug — if a refresh is already
-   * in progress, callers share the same promise instead of racing.
+   * Periodic callers share an in-flight refresh. A credential change or manual
+   * refresh supersedes it, so an old account cannot publish after a new one.
    */
-  async refreshConnection(slug: string): Promise<void> {
+  async refreshConnection(slug: string, supersede = false): Promise<ModelRefreshOutcome> {
     const existing = this.inFlight.get(slug)
-    if (existing) return existing
+    if (existing && !supersede) return existing
 
-    const promise = this._doRefresh(slug).finally(() => {
-      this.inFlight.delete(slug)
+    const generation = (this.generations.get(slug) ?? 0) + 1
+    this.generations.set(slug, generation)
+    const promise = this._doRefresh(slug, generation).finally(() => {
+      if (this.inFlight.get(slug) === promise) this.inFlight.delete(slug)
     })
     this.inFlight.set(slug, promise)
     return promise
@@ -66,87 +118,122 @@ class ModelRefreshService {
    * Preserves user's defaultModel if still valid.
    * Updates connection.models in storage on success.
    */
-  private async _doRefresh(slug: string): Promise<void> {
-    const connection = getLlmConnection(slug)
+  private async _doRefresh(slug: string, generation: number): Promise<ModelRefreshOutcome> {
+    const connection = this.store.getConnection(slug)
     if (!connection) {
       handlerLog.warn(`Model refresh: connection not found: ${slug}`)
-      return
+      return { source: 'unavailable', error: 'Connection not found' }
     }
 
     // Skip compat providers — users configure models manually
     if (isCompatProvider(connection.providerType)) {
-      return
+      return { source: 'manual' }
     }
 
     const providerType = connection.providerType as FetchableProvider
     const fetcher = this.fetchers[providerType]
     if (!fetcher) {
       handlerLog.warn(`Model refresh: no fetcher for provider type: ${providerType}`)
-      return
+      return { source: 'unavailable', error: 'No model fetcher for this provider' }
     }
 
     let newModels: ModelDefinition[] | null = null
     let serverDefault: string | undefined
+    let fetchedSource: 'provider' | 'sdk' = 'sdk'
+    let fetchError: string | undefined
 
     // Layer 1: Provider API/SDK
     try {
       const credentials = await this.getCredentials(slug)
       handlerLog.info(`Model refresh [${slug}]: fetching (provider=${connection.providerType}, piAuth=${connection.piAuthProvider}, hasOAuthRefresh=${!!credentials.oauthRefreshToken}, hasOAuthAccess=${!!credentials.oauthAccessToken})`)
       const result = await fetcher.fetchModels(connection, credentials)
+      if (result.models.length === 0) throw new Error('Model catalog was empty')
       newModels = result.models
       serverDefault = result.serverDefault
+      fetchedSource = result.source ?? 'sdk'
       handlerLog.info(`Model refresh [${slug}]: fetched ${newModels.length} models from provider: ${newModels.map(m => m.id).join(', ')}`)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
+      fetchError = msg
       handlerLog.warn(`Model refresh [${slug}]: provider fetch failed: ${msg}`)
     }
 
+    // Publish only from the newest refresh for the same connection identity.
+    // Read the current record again: setup can replace the account/provider or
+    // delete and recreate a slug while a network request is still in flight.
+    const current = this.store.getConnection(slug)
+    if (this.generations.get(slug) !== generation || !current
+      || current.providerType !== connection.providerType
+      || current.piAuthProvider !== connection.piAuthProvider
+      || current.authType !== connection.authType
+      || current.baseUrl !== connection.baseUrl
+      || current.createdAt !== connection.createdAt
+      || current.oauthAccountUuid !== connection.oauthAccountUuid
+      || current.oauthAccountEmail !== connection.oauthAccountEmail) {
+      handlerLog.info(`Model refresh [${slug}]: discarded superseded result`)
+      return { source: 'superseded' }
+    }
+
     // Layer 2: Persisted connection.models (keep what we have)
-    if (!newModels && connection.models && connection.models.length > 0) {
-      handlerLog.warn(`Model refresh [${slug}]: keeping ${connection.models.length} stale persisted models (live fetch failed)`)
-      return // Nothing to update
+    if (!newModels && current.models && current.models.length > 0) {
+      handlerLog.warn(`Model refresh [${slug}]: keeping ${current.models.length} stale persisted models (live fetch failed)`)
+      return { source: 'saved', error: fetchError } // Nothing to update
     }
 
     // Layer 3: MODEL_REGISTRY hardcoded fallback
     if (!newModels) {
-      const registryModels = getModelsForProviderType(providerType, connection.piAuthProvider)
+      const registryModels = this.store.fallbackModels(providerType, current.piAuthProvider)
       if (registryModels.length > 0) {
         newModels = registryModels
+        fetchedSource = 'sdk'
         handlerLog.info(`Model refresh [${slug}]: using ${newModels.length} models from MODEL_REGISTRY`)
       }
     }
 
     if (!newModels || newModels.length === 0) {
       handlerLog.warn(`Model refresh [${slug}]: no models available from any source`)
-      return
+      return { source: 'unavailable', error: fetchError ?? 'No models available' }
     }
 
     // For Pi connections with explicit user-owned 3-tier selection,
     // never overwrite model lists from background refresh.
-    // Exception: Copilot connections are always server-managed — GitHub's
-    // model policy controls which models are enabled, so we must always
-    // accept the live API result.
-    const isCopilot = connection.providerType === 'pi' && connection.piAuthProvider === 'github-copilot'
-    if (connection.providerType === 'pi' && connection.modelSelectionMode === 'userDefined3Tier' && !isCopilot) {
-      const modelCount = connection.models?.length ?? 0
+    // Exceptions: Copilot and xAI catalogs are account-managed. Keep
+    // an existing selected default when it remains available, but refresh the
+    // membership list so a legacy 3-tier setup cannot hide newly granted
+    // models or retain a model the account can no longer use.
+    const isCopilot = current.providerType === 'pi' && current.piAuthProvider === 'github-copilot'
+    const isXaiAccount = isXaiAccountCatalog(current)
+    if (current.providerType === 'pi' && current.modelSelectionMode === 'userDefined3Tier' && !isCopilot && !isXaiAccount) {
+      const modelCount = current.models?.length ?? 0
       handlerLog.info(`Model refresh [${slug}]: preserving user-defined Pi model list (${modelCount} models)`)
       if (modelCount > 10) {
         handlerLog.warn(`Model refresh [${slug}]: userDefined3Tier has suspicious model count (${modelCount})`)
       }
-      return
+      return { source: 'manual' }
     }
 
-    // Preserve user's defaultModel if still valid
-    const currentDefault = connection.defaultModel
-    const stillValid = currentDefault && newModels.some(m => m.id === currentDefault)
-    const newDefault = stillValid
+    // An SDK/registry list is only a bundled snapshot, not an account's model
+    // entitlement. Keep a selected model that the snapshot does not know yet,
+    // including its saved metadata when available. Only a live provider
+    // catalog may replace an unavailable selection.
+    const currentDefault = current.defaultModel
+    const stillListed = !!currentDefault && newModels.some(m => m.id === currentDefault)
+    const authoritative = fetchedSource === 'provider' && !fetchError
+    let modelsToSave: Array<ModelDefinition | string> = newModels
+    if (currentDefault && !stillListed && !authoritative) {
+      const saved = current.models?.find(m => (typeof m === 'string' ? m : m.id) === currentDefault)
+      modelsToSave = [...newModels, saved ?? currentDefault]
+    }
+    const newDefault = currentDefault && (!authoritative || stillListed)
       ? currentDefault
       : serverDefault ?? newModels[0]?.id
 
-    updateLlmConnection(slug, {
-      models: newModels,
-      ...(newDefault && !stillValid ? { defaultModel: newDefault } : {}),
+    const saved = this.store.updateConnection(slug, {
+      models: modelsToSave,
+      ...(newDefault && newDefault !== currentDefault ? { defaultModel: newDefault } : {}),
     })
+    if (!saved) return { source: 'unavailable', error: 'Could not save the model list' }
+    return { source: fetchError ? 'registry' : fetchedSource, error: fetchError }
   }
 
   /**
@@ -155,7 +242,7 @@ class ModelRefreshService {
    * Call on app startup after IPC handlers are registered.
    */
   startAll(): void {
-    const connections = getLlmConnections()
+    const connections = this.store.getConnections()
 
     for (const conn of connections) {
       if (isCompatProvider(conn.providerType)) continue
@@ -173,8 +260,11 @@ class ModelRefreshService {
       // (models are server-managed by GitHub policy), other providers use
       // the fetcher's generic interval (0 = no periodic refresh for static SDK models).
       const isCopilot = conn.providerType === 'pi' && conn.piAuthProvider === 'github-copilot'
+      const isXaiAccount = isXaiAccountCatalog(conn)
       if (isCopilot) {
         this.startTimer(conn.slug, COPILOT_REFRESH_INTERVAL_MS)
+      } else if (isXaiAccount) {
+        this.startTimer(conn.slug, XAI_REFRESH_INTERVAL_MS)
       } else if (fetcher.refreshIntervalMs > 0) {
         this.startTimer(conn.slug, fetcher.refreshIntervalMs)
       }
@@ -197,27 +287,33 @@ class ModelRefreshService {
    * Also starts a periodic timer if the fetcher supports it.
    * Called when: connection created, auth completed, user clicks refresh.
    */
-  async refreshNow(slug: string): Promise<void> {
-    await this.refreshConnection(slug)
+  async refreshNow(slug: string): Promise<ModelRefreshOutcome> {
+    const outcome = await this.refreshConnection(slug, true)
 
     // Ensure periodic timer is running
-    const connection = getLlmConnection(slug)
-    if (!connection || isCompatProvider(connection.providerType)) return
+    const connection = this.store.getConnection(slug)
+    if (!connection || isCompatProvider(connection.providerType)) return outcome
 
     const providerType = connection.providerType as FetchableProvider
     const fetcher = this.fetchers[providerType]
     const isCopilot = connection.providerType === 'pi' && connection.piAuthProvider === 'github-copilot'
+    const isXaiAccount = isXaiAccountCatalog(connection)
     if (isCopilot && !this.timers.has(slug)) {
       this.startTimer(slug, COPILOT_REFRESH_INTERVAL_MS)
+    } else if (isXaiAccount && !this.timers.has(slug)) {
+      this.startTimer(slug, XAI_REFRESH_INTERVAL_MS)
     } else if (fetcher && fetcher.refreshIntervalMs > 0 && !this.timers.has(slug)) {
       this.startTimer(slug, fetcher.refreshIntervalMs)
     }
+    return outcome
   }
 
   /**
    * Stop timer for a specific connection (e.g., when deleted).
    */
   stopConnection(slug: string): void {
+    this.generations.set(slug, (this.generations.get(slug) ?? 0) + 1)
+    this.inFlight.delete(slug)
     const timer = this.timers.get(slug)
     if (timer) {
       clearInterval(timer)

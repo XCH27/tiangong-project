@@ -14,11 +14,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { SettingsPageTitle } from '@/components/settings/SettingsPageTitle'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { HeaderMenu } from '@/components/ui/HeaderMenu'
-import { routes } from '@/lib/navigate'
 import { Spinner } from '@craft-agent/ui'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import type { NetworkProxySettings } from '../../../shared/types'
@@ -201,7 +199,7 @@ export default function AppSettingsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.app.title")} actions={<HeaderMenu route={routes.view.settings('app')} helpFeature="app-settings" />} />
+      <SettingsPageTitle title={t("settings.app.title")} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">
@@ -324,15 +322,21 @@ export default function AppSettingsPage() {
                       )}
                     </div>
                   </SettingsRow>
-                  {isElectron && (
-                    <SettingsRow label={t("settings.about.checkForUpdates")}>
+                  {isElectron && !updateChecker.isDownloading && (
+                    <SettingsRow label={updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion
+                      ? t("settings.about.updateReady")
+                      : t("settings.about.checkForUpdates")}>
                       <Button
-                        variant="outline"
+                        variant={updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion ? "default" : "outline"}
                         size="sm"
-                        onClick={handleCheckForUpdates}
+                        onClick={updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion
+                          ? updateChecker.installUpdate
+                          : handleCheckForUpdates}
                         disabled={isCheckingForUpdates}
                       >
-                        {isCheckingForUpdates ? (
+                        {updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion ? (
+                          t("settings.about.restartToUpdate", { version: updateChecker.updateInfo.latestVersion })
+                        ) : isCheckingForUpdates ? (
                           <>
                             <Spinner className="mr-1.5" />
                             {t("common.checking")}
@@ -340,16 +344,6 @@ export default function AppSettingsPage() {
                         ) : (
                           t("settings.about.checkNow")
                         )}
-                      </Button>
-                    </SettingsRow>
-                  )}
-                  {isElectron && updateChecker.isReadyToInstall && updateChecker.updateInfo?.latestVersion && (
-                    <SettingsRow label={t("settings.about.updateReady")}>
-                      <Button
-                        size="sm"
-                        onClick={updateChecker.installUpdate}
-                      >
-                        {t("settings.about.restartToUpdate", { version: updateChecker.updateInfo.latestVersion })}
                       </Button>
                     </SettingsRow>
                   )}

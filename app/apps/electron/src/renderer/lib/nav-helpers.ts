@@ -17,7 +17,7 @@ import type { NavigationState } from '../../shared/types'
  *
  * Per-navigator semantics:
  * - sessions: a session is selected
- * - settings: a subpage is selected (bare `settings` route → false)
+ * - settings: a category has been selected
  * - sources / skills / automations: a detail item is selected
  * - pages: always — both the library grid and a page render in the content
  *   panel (pages has no navigator list to fall back to)

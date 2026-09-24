@@ -101,6 +101,8 @@ import { applySystemPromptOverride } from './system-prompt-override.ts';
 import { readContextUsage, deferContextUsage } from './context-usage.ts';
 import type { PiCompactResult, PiContextUsagePayload } from '../../shared/src/agent/backend/pi/protocol.ts';
 import { adaptCredentialForPiSdk, type PiCredential } from './adapt-credential.ts';
+import type { PiRuntimeModelEntry } from '../../shared/src/agent/backend/internal/driver-types.ts';
+import { registerXaiLiveModels } from './xai-live-models.ts';
 
 // ============================================================
 // Types — JSONL Protocol
@@ -128,7 +130,7 @@ interface InitMessage {
   branchFromSessionPath?: string;
   branchFromSdkTurnId?: string;
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: PiRuntimeModelEntry[];
   piAuth?: { provider: string; credential: PiCredential };
 }
 
@@ -140,7 +142,7 @@ interface RuntimeConfigUpdateMessage {
   authType?: string;
   baseUrl?: string;
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: PiRuntimeModelEntry[];
 }
 
 /** Messages from main process (stdin) */
@@ -551,6 +553,17 @@ async function createAuthenticatedRuntime(): Promise<{
         modelsStore: new InMemoryModelsStore(),
       });
       const modelRegistry = new PiModelRegistry(modelRuntime);
+
+      if (initConfig?.piAuth?.provider === 'xai' && !initConfig.customEndpoint && initConfig.customModels?.length) {
+        const count = registerXaiLiveModels(modelRegistry, initConfig.customModels,
+          initConfig.baseUrl === 'https://cli-chat-proxy.grok.com/v1' ? initConfig.baseUrl : undefined);
+        debugLog(`Registered ${count} account-discovered xAI model(s) in native Pi runtime`);
+      }
+      if (initConfig?.piAuth?.provider === 'github-copilot' && !initConfig.customEndpoint && initConfig.customModels?.length) {
+        const { registerCopilotLiveModels } = await import('./copilot-live-models.ts');
+        const count = registerCopilotLiveModels(modelRegistry, initConfig.customModels);
+        debugLog(`Registered ${count} account-discovered Copilot model(s) in native Pi runtime`);
+      }
 
       // Register custom endpoint models dynamically via Pi SDK's registerProvider API.
       // This makes arbitrary OpenAI/Anthropic-compatible endpoints work through the Pi SDK
@@ -1670,6 +1683,15 @@ async function handleUpdateRuntimeConfig(msg: RuntimeConfigUpdateMessage): Promi
       customEndpointModelIds = new Set();
       customModelOverrides.clear();
       registerCustomEndpointModels(piModelRegistry, initConfig.customEndpoint.api, initConfig.baseUrl.trim(), modelEntries);
+    }
+
+    if (piModelRegistry && initConfig.piAuth?.provider === 'xai' && !initConfig.customEndpoint && initConfig.customModels?.length) {
+      registerXaiLiveModels(piModelRegistry, initConfig.customModels,
+        initConfig.baseUrl === 'https://cli-chat-proxy.grok.com/v1' ? initConfig.baseUrl : undefined);
+    }
+    if (piModelRegistry && initConfig.piAuth?.provider === 'github-copilot' && !initConfig.customEndpoint && initConfig.customModels?.length) {
+      const { registerCopilotLiveModels } = await import('./copilot-live-models.ts');
+      registerCopilotLiveModels(piModelRegistry, initConfig.customModels);
     }
 
     if (piSession && piModelRegistry) {

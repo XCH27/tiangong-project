@@ -10,6 +10,7 @@ import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { requestClientOpenFileDialog } from '@craft-agent/server-core/transport'
 import { isValidWorkingDirectory } from '../../utils/path-validation'
+import { assertWorkspaceModelSelection, reconcileWorkspaceModelOverride } from '../../sessions/model-defaults'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.workspace.SETTINGS_GET,
@@ -155,6 +156,15 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
       throw new Error(`Failed to load workspace config: ${workspaceId}`)
     }
 
+    if (key === 'model' && normalizedValue !== undefined && normalizedValue !== null) {
+      if (typeof normalizedValue !== 'string' || !normalizedValue.trim()) {
+        throw new Error('MODEL_UNAVAILABLE_FOR_CONNECTION')
+      }
+      const { getLlmConnection, getDefaultLlmConnection } = await import('@craft-agent/shared/config/storage')
+      const slug = config.defaults?.defaultLlmConnection || getDefaultLlmConnection()
+      assertWorkspaceModelSelection(normalizedValue, slug ? getLlmConnection(slug) : null)
+    }
+
     // Handle 'name' specially - it's a top-level config property, not in defaults
     if (key === 'name') {
       config.name = String(normalizedValue).trim()
@@ -166,6 +176,14 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
       // Update the setting in defaults
       config.defaults = config.defaults || {}
       ;(config.defaults as Record<string, unknown>)[key] = normalizedValue
+      if (key === 'defaultLlmConnection' && config.defaults.model) {
+        const { getLlmConnection, getDefaultLlmConnection } = await import('@craft-agent/shared/config/storage')
+        const effectiveSlug = typeof normalizedValue === 'string' && normalizedValue
+          ? normalizedValue
+          : getDefaultLlmConnection()
+        const connection = effectiveSlug ? getLlmConnection(effectiveSlug) : null
+        config.defaults.model = reconcileWorkspaceModelOverride(config.defaults.model, connection)
+      }
     }
 
     // Save the config

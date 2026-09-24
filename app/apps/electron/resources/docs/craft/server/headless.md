@@ -1,0 +1,462 @@
+# Remote Server
+
+> Run Craft Agents as a remote server with browser, desktop, and CLI access
+
+# Remote Server
+
+Craft Agents can run as a remote server, letting you keep long-running sessions alive on a remote machine, access them from multiple clients (desktop app, browser, or CLI), and run compute-heavy tasks on a powerful server.
+
+## Prerequisites
+
+Choose the setup path that fits your deployment:
+
+* **Run from source** — install [Bun](https://bun.sh) (v1.0+)
+* **Run the published container** — install [Docker](https://docs.docker.com/get-docker/)
+
+If you're running from source, install Bun with:
+
+```bash theme={null}
+curl -fsSL https://bun.sh/install | bash
+```
+
+### Quick setup from source
+
+Clone and run the install script:
+
+```bash theme={null}
+git clone https://github.com/lukilabs/craft-agents-oss.git
+cd craft-agents-oss
+./scripts/install-server.sh
+```
+
+The script installs dependencies, generates a token, and prints the run command. **Save your token — it cannot be recovered.**
+
+### Docker container
+
+If you just want a deployable server, use the public GitHub Container Registry package:
+
+* [craft-agents-server package](https://github.com/orgs/lukilabs/packages/container/package/craft-agents-server)
+
+Use the `latest` container tag:
+
+```bash theme={null}
+export CRAFT_SERVER_TOKEN=$(openssl rand -hex 32)
+echo $CRAFT_SERVER_TOKEN  # Save this
+
+docker run -d \
+  --name craft-agents-server \
+  --restart unless-stopped \
+  -p 9100:9100 \
+  -e CRAFT_SERVER_TOKEN=$CRAFT_SERVER_TOKEN \
+  -e CRAFT_RPC_HOST=0.0.0.0 \
+  -v craft-agents-data:/home/craftagents/.craft-agent \
+  ghcr.io/lukilabs/craft-agents-server:latest
+```
+
+This image already includes the browser-accessible Web UI, so you can open `http://your-server:9100` immediately after the container starts. For any networked deployment, terminate TLS at a reverse proxy or mount certificates and set `CRAFT_RPC_TLS_CERT` / `CRAFT_RPC_TLS_KEY`.
+
+If you prefer Docker Compose:
+
+```yaml theme={null}
+services:
+  craft-agents:
+    image: ghcr.io/lukilabs/craft-agents-server:latest
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    environment:
+      CRAFT_SERVER_TOKEN: ${CRAFT_SERVER_TOKEN}
+      CRAFT_RPC_HOST: 0.0.0.0
+    volumes:
+      - craft-agents-data:/home/craftagents/.craft-agent
+
+volumes:
+  craft-agents-data:
+```
+
+### Docker troubleshooting
+
+**Sessions return empty responses (no errors)**
+
+When running with `--user` and a custom `HOME` directory, the Claude Agent SDK needs `$HOME/.claude/` to be writable. If the HOME directory is read-only (e.g., owned by root), the SDK silently returns empty responses with no error logged.
+
+**Fix:** Mount a writable volume at the HOME path. For example, if running as a host user whose home is `/Users/alice`:
+
+```bash theme={null}
+docker run -d \
+  --name craft-agents-server \
+  --user $(id -u):$(id -g) \
+  -e HOME=/Users/alice \
+  -e CRAFT_SERVER_TOKEN=$CRAFT_SERVER_TOKEN \
+  -p 9100:9100 \
+  -v /Users/alice/.craft-agent/docker-home:/Users/alice \
+  -v /Users/alice/.craft-agent:/Users/alice/.craft-agent \
+  ghcr.io/lukilabs/craft-agents-server:latest
+```
+
+The volume stack works in layers:
+
+1. `docker-home` → `/Users/alice` — writable HOME for the SDK (`~/.claude/`)
+2. `.craft-agent` → `/Users/alice/.craft-agent` — workspace data (overlays on top)
+
+<Note>
+  The default Docker image uses `HOME=/home/craftagents` with a pre-created writable directory. This issue only occurs when overriding `HOME` to match a host user path.
+</Note>
+
+**Web UI not loading**
+
+If the server starts but `http://your-server:9100` returns a 404 or connection error:
+
+* **`CRAFT_WEBUI_DIR` not set** — The Docker image sets this to `/app/apps/webui/dist` by default. If your `docker-compose.yml` or `.env` file overrides environment variables, make sure `CRAFT_WEBUI_DIR` is included or not overridden to empty.
+* **Volume shadows the app directory** — Mounting a volume over `/app` replaces the built WebUI assets. Only mount volumes to `/home/craftagents/.craft-agent` (or your custom HOME path), not to `/app`.
+* **Older image tag** — Pre-0.8.0 images don't include the WebUI. Use `latest` or `0.8.0+`.
+
+Verify inside the container:
+
+```bash theme={null}
+docker exec craft-agents-server ls /app/apps/webui/dist/index.html
+docker exec craft-agents-server echo $CRAFT_WEBUI_DIR
+```
+
+### Manual setup from source
+
+```bash theme={null}
+git clone https://github.com/lukilabs/craft-agents-oss.git
+cd craft-agents-oss
+bun install
+```
+
+Generate a token and start:
+
+```bash theme={null}
+export CRAFT_SERVER_TOKEN=$(openssl rand -hex 32)
+echo $CRAFT_SERVER_TOKEN  # Save this
+
+CRAFT_SERVER_TOKEN=$CRAFT_SERVER_TOKEN \
+CRAFT_RPC_HOST=0.0.0.0 \
+CRAFT_RPC_TLS_CERT=certs/cert.pem \
+CRAFT_RPC_TLS_KEY=certs/key.pem \
+bun run packages/server/src/index.ts
+```
+
+For development TLS, generate a self-signed certificate:
+
+```bash theme={null}
+./scripts/generate-dev-cert.sh
+# Creates certs/cert.pem and certs/key.pem (valid 365 days)
+```
+
+For production, use certificates from a trusted CA (e.g., Let's Encrypt) or place the server behind a reverse proxy (nginx, Caddy) that terminates TLS.
+
+The server prints connection details on startup:
+
+```
+CRAFT_SERVER_URL=wss://0.0.0.0:9100
+CRAFT_SERVER_TOKEN=<your-token>
+```
+
+## Web UI
+
+The server can serve a browser-accessible web UI on the same port.
+
+* **Docker image:** already includes the Web UI
+* **Run from source:** build and enable it with:
+
+```bash theme={null}
+# Build the web UI assets
+bun run webui:build
+
+# Start the server with Web UI enabled
+CRAFT_SERVER_TOKEN=$CRAFT_SERVER_TOKEN \
+CRAFT_WEBUI_DIR=apps/webui/dist \
+CRAFT_RPC_HOST=0.0.0.0 \
+bun run packages/server/src/index.ts
+```
+
+Or use the convenience script that builds everything:
+
+```bash theme={null}
+bun run server:prod
+```
+
+### Accessing the Web UI
+
+Open `https://your-server:9100` (or `http://` without TLS) in any browser. You'll see a login page.
+
+### Authentication
+
+Enter the server token as the password. The server issues a session cookie on successful login.
+
+* Login attempts are rate-limited to **5 per 60 seconds** per IP
+* The session persists until you log out or the cookie expires
+
+### What you can do
+
+The web UI provides the same session interface as the desktop app — create sessions, send messages, manage workspaces. OAuth flows for Claude and Copilot work directly in the browser.
+
+<Warning>
+  **Never run without TLS on a network.** The server token and all session data are transmitted over the WebSocket connection. Without TLS, anyone on the network can intercept them.
+</Warning>
+
+## Connecting Clients
+
+### Desktop App (Hybrid Mode)
+
+Connect to a remote server while keeping local workspaces:
+
+1. Click the workspace dropdown in the sidebar
+2. Select **Add Workspace...** → **Connect to Remote Server**
+3. Enter the server URL (e.g., `wss://192.168.1.100:9100`) and token
+4. Click **Test Connection** to verify
+5. Select an existing workspace or create a new one on the server
+
+Once connected, remote workspaces appear in your workspace switcher alongside local ones. A CloudOff icon indicates when a remote workspace is unreachable.
+
+### Desktop App (Thin Client)
+
+Launch the app as a pure thin client — all logic runs on the server:
+
+```bash theme={null}
+CRAFT_SERVER_URL=wss://your-server:9100 \
+CRAFT_SERVER_TOKEN=<token> \
+bun run electron:start
+```
+
+### Web UI
+
+Open the server URL in any browser and log in with the token. See [Web UI](#web-ui) above.
+
+### CLI Client
+
+Use the terminal client for scripting and automation:
+
+```bash theme={null}
+export CRAFT_SERVER_URL=wss://your-server:9100
+export CRAFT_SERVER_TOKEN=<token>
+
+craft-cli ping
+craft-cli sessions
+craft-cli send abc-123 "Run the tests"
+```
+
+See the [CLI guide](/docs/server/cli) for the full command reference.
+
+## Environment Variables
+
+| Variable             | Required | Default     | Description                             |
+| -------------------- | -------- | ----------- | --------------------------------------- |
+| `CRAFT_SERVER_TOKEN` | Yes      | —           | Bearer token for authentication         |
+| `CRAFT_SERVER_URL`   | No       | —           | Server URL for client connections       |
+| `CRAFT_RPC_HOST`     | No       | `127.0.0.1` | Bind address (`0.0.0.0` for remote)     |
+| `CRAFT_RPC_PORT`     | No       | `9100`      | Bind port                               |
+| `CRAFT_RPC_TLS_CERT` | Yes\*    | —           | PEM certificate file (enables `wss://`) |
+| `CRAFT_RPC_TLS_KEY`  | Yes\*    | —           | PEM private key file                    |
+| `CRAFT_RPC_TLS_CA`   | No       | —           | PEM CA chain file (optional)            |
+| `CRAFT_DEBUG`        | No       | `false`     | Enable debug logging                    |
+
+\* Required for remote connections. Can be omitted for `localhost`-only development.
+
+## Running at Startup
+
+### Linux (systemd)
+
+Create the environment file at `/path/to/craft-agents-oss/.env`:
+
+```bash theme={null}
+CRAFT_SERVER_TOKEN=<your-token>
+CRAFT_RPC_HOST=0.0.0.0
+CRAFT_RPC_PORT=9100
+CRAFT_RPC_TLS_CERT=/path/to/cert.pem
+CRAFT_RPC_TLS_KEY=/path/to/key.pem
+```
+
+Create a service file at `/etc/systemd/system/craft-agents.service`:
+
+```ini theme={null}
+[Unit]
+Description=Craft Agents Server
+After=network.target
+
+[Service]
+Type=simple
+User=<your-user>
+WorkingDirectory=/path/to/craft-agents-oss
+EnvironmentFile=/path/to/craft-agents-oss/.env
+ExecStart=/home/<your-user>/.bun/bin/bun run packages/server/src/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash theme={null}
+sudo systemctl daemon-reload
+sudo systemctl enable craft-agents
+sudo systemctl start craft-agents
+
+# Check status
+sudo systemctl status craft-agents
+
+# View logs
+journalctl -u craft-agents -f
+```
+
+### macOS (launchd)
+
+Create a plist at `~/Library/LaunchAgents/com.craft.agents-server.plist`:
+
+```xml theme={null}
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.craft.agents-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOU/.bun/bin/bun</string>
+    <string>run</string>
+    <string>packages/server/src/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/craft-agents-oss</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>CRAFT_SERVER_TOKEN</key>
+    <string>YOUR_TOKEN</string>
+    <key>CRAFT_RPC_HOST</key>
+    <string>0.0.0.0</string>
+    <key>CRAFT_RPC_PORT</key>
+    <string>9100</string>
+    <key>CRAFT_RPC_TLS_CERT</key>
+    <string>/path/to/cert.pem</string>
+    <key>CRAFT_RPC_TLS_KEY</key>
+    <string>/path/to/key.pem</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/craft-agents.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/craft-agents.log</string>
+</dict>
+</plist>
+```
+
+Load and start:
+
+```bash theme={null}
+launchctl load ~/Library/LaunchAgents/com.craft.agents-server.plist
+
+# Check status
+launchctl list | grep craft
+
+# View logs
+tail -f /tmp/craft-agents.log
+
+# Stop and unload
+launchctl unload ~/Library/LaunchAgents/com.craft.agents-server.plist
+```
+
+## Secure Access
+
+Exposing the server directly to the internet is not recommended. Instead, use one of these approaches:
+
+### Tailscale (recommended)
+
+[Tailscale](https://tailscale.com) creates a private mesh network between your devices. Install it on both the server and client machines — no port forwarding, no certificates, no firewall rules needed.
+
+```bash theme={null}
+# On the server: bind to Tailscale IP only
+CRAFT_RPC_HOST=100.x.y.z \
+CRAFT_SERVER_TOKEN=$TOKEN \
+bun run packages/server/src/index.ts
+```
+
+Traffic is encrypted end-to-end by Tailscale, so you can skip TLS certificate setup entirely. The server is only reachable from your Tailscale network.
+
+### Reverse proxy (nginx, Caddy)
+
+Place the server behind a reverse proxy that handles TLS termination and access control. This is the standard approach for production deployments.
+
+**Caddy** (automatic HTTPS):
+
+```
+craft.example.com {
+    reverse_proxy localhost:9100
+}
+```
+
+**nginx**:
+
+```nginx theme={null}
+server {
+    listen 443 ssl;
+    server_name craft.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/craft.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/craft.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:9100;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+}
+```
+
+When using a reverse proxy, bind the server to localhost only (`CRAFT_RPC_HOST=127.0.0.1`) and let the proxy handle external access.
+
+### Cloudflare Tunnel
+
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) exposes your server over HTTPS without opening ports or managing certificates. Install `cloudflared` and run:
+
+```bash theme={null}
+# Quick tunnel — instant HTTPS URL, no config needed
+cloudflared tunnel --url http://localhost:9100
+```
+
+This prints a `https://<random>.trycloudflare.com` URL you can open in any browser. For a permanent custom domain:
+
+```bash theme={null}
+# One-time setup
+cloudflared tunnel login
+cloudflared tunnel create craft-agents
+cloudflared tunnel route dns craft-agents agents.yourdomain.com
+
+# Run the tunnel
+cloudflared tunnel run --url http://localhost:9100 craft-agents
+```
+
+<Note>
+  Cloudflare Tunnel handles TLS termination automatically — no need to set `CRAFT_RPC_TLS_CERT` / `CRAFT_RPC_TLS_KEY`. Keep `CRAFT_RPC_HOST=127.0.0.1` so the server only listens locally.
+</Note>
+
+### SSH tunnel
+
+For quick, ad-hoc access without any setup:
+
+```bash theme={null}
+# On the client: forward local port 9100 to the remote server
+ssh -L 9100:localhost:9100 user@your-server
+```
+
+Then connect to `ws://localhost:9100` from the desktop app or browser. The tunnel encrypts all traffic over SSH.
+
+## Browser tool
+
+The built-in [browser](/docs/browser/overview) bridges from the remote server to the connected desktop client — pages open on your local machine, using your cookies and signed-in sessions. The browser tool is available when at least one desktop client is connected; web UI and CLI clients cannot host browser windows.
+
+See [Browser on remote workspaces](/docs/browser/overview#browser-on-remote-workspaces) for the security model and the `allowRemoteEvaluate` switch.
+
+## Version Compatibility
+
+The server includes its version in the connection handshake. When a client connects to an older server (pre-0.8.0), it shows a warning that some features may not be available.

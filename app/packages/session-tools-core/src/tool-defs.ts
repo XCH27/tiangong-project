@@ -180,7 +180,7 @@ export const SpawnSessionSchema = z.object({
   enabledSourceSlugs: z.array(z.string()).optional().describe('Source slugs to enable in the new session'),
   permissionMode: z.enum(['safe', 'ask', 'allow-all']).optional().describe('Permission mode for the new session'),
   thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']).optional()
-    .describe('Reasoning level for the new session. Silently ignored on non-reasoning models (e.g. gpt-4o, gemini-2.5-flash). Omit to inherit the workspace default.'),
+    .describe('Reasoning level request for the new session. Use a level supported by the selected model; omit to inherit the workspace default.'),
   labels: z.array(z.string()).optional().describe('Labels for the new session'),
   workingDirectory: z.string().optional().describe('Working directory for the new session'),
   attachments: z.array(z.object({
@@ -528,7 +528,7 @@ When spawning, the 'prompt' parameter is required.
 
 Optional overrides: \`model\`, \`llmConnection\`, \`permissionMode\`, \`thinkingLevel\`, \`enabledSourceSlugs\`, \`labels\`, \`workingDirectory\`. Omitted fields inherit from the spawning session or the workspace default.
 
-\`thinkingLevel\` is silently ignored on non-reasoning models (e.g. gpt-4o, gemini-2.5-flash) — the SDK drops the reasoning param rather than erroring. Use it when you want to force deeper reasoning on a supported model, or set it to \`off\` when spawning a session that doesn't need to think.
+\`thinkingLevel\` should match the selected model's advertised capabilities. Omit it to inherit the workspace default; models without a published reasoning map do not expose an effort selector.
 
 The spawned session appears in the session list and runs fire-and-forget.
 Only use 'attachments' for existing file paths on disk — the tool reads them automatically.`,

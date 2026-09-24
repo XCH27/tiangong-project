@@ -1,0 +1,102 @@
+# Gmail
+
+Access and manage your Gmail emails through the Gmail API.
+
+Note
+
+**Bring Your Own Google OAuth Credentials**
+
+Craft Agents does not include pre-configured Google OAuth credentials. See [Google OAuth Setup](/docs/source-guides/google-oauth-setup) for a 5-minute setup guide.
+
+**Alternatives:** [Zapier MCP](https://zapier.com/mcp) or [Composio](https://composio.dev) can connect Gmail without your own credentials.
+
+## API Reference
+
+This source provides a single flexible `api_gmail` tool that accepts:
+
+*   `path`: API endpoint (e.g., “/gmail/v1/users/me/messages”)
+*   `method`: HTTP method (GET, POST, etc.)
+*   `params`: Request body or query parameters
+
+### Common Endpoints
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| /gmail/v1/users/me/messages | GET | List messages (use q param for search) |
+| /gmail/v1/users/me/messages/{id} | GET | Get message by ID |
+| /gmail/v1/users/me/drafts | POST | Create draft |
+| /gmail/v1/users/me/messages/{id}/trash | POST | Trash message |
+
+## Gmail Search Syntax
+
+Common search operators:
+
+*   `from:sender@example.com` - Messages from specific sender
+*   `to:recipient@example.com` - Messages to specific recipient
+*   `subject:keyword` - Messages with keyword in subject
+*   `is:unread` - Unread messages
+*   `has:attachment` - Messages with attachments
+*   `after:2024/01/01` - Messages after a date
+*   `in:inbox` - Messages in inbox
+
+Combine operators: `from:john@example.com after:2024/01/01 has:attachment`
+
+## Guidelines
+
+*   **Privacy**: This source accesses personal email. All data remains local.
+*   **Trashing**: ALWAYS ask for explicit user permission before trashing emails.
+*   **Drafts**: Draft emails are saved but NOT sent automatically.
+
+* * *
+
+## Setup Guide
+
+### Configuration
+
+**Required config.json:**
+
+```json
+{
+  "name": "Gmail",
+  "slug": "gmail",
+  "enabled": true,
+  "provider": "google",
+  "type": "api",
+  "api": {
+    "baseUrl": "https://gmail.googleapis.com/",
+    "authType": "bearer",
+    "googleService": "gmail",
+    "googleOAuthClientId": "your-client-id.apps.googleusercontent.com",
+    "googleOAuthClientSecret": "your-client-secret"
+  },
+  "iconUrl": "https://mail.google.com"
+}
+```
+
+### Authentication
+
+See [Google OAuth Setup](/docs/source-guides/google-oauth-setup) for instructions on creating OAuth credentials, then use `source_google_oauth_trigger` to start the OAuth flow.
+
+If you authenticate through **WebUI / headless browser access**, use a **Web application** Google OAuth client and register this exact redirect URI:
+
+*   `https://thecraftagents.com/auth/callback`
+
+### Troubleshooting
+
+#### “Gmail API has not been used in project” error
+
+The Gmail API needs to be enabled in your Google Cloud project:
+
+1.  Visit the [Gmail API page](https://console.developers.google.com/apis/api/gmail.googleapis.com/overview)
+2.  Click **Enable**
+3.  Wait 1-2 minutes for changes to propagate
+
+#### “Google OAuth credentials not configured” error
+
+Add your OAuth client ID and secret to the source’s `config.json` under the `api` section.
+
+### Rate Limits
+
+*   250 quota units per user per second
+*   Most read operations cost 1-5 units
+*   Avoid rapid sequential requests

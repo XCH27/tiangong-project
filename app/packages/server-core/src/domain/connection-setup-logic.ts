@@ -159,6 +159,12 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
     authType: 'oauth',
     piAuthProvider: 'github-copilot',
   },
+  'grok-subscription': {
+    name: 'Grok (Subscription)',
+    providerType: 'pi',
+    authType: 'oauth',
+    piAuthProvider: 'xai',
+  },
   'pi-api-key': {
     name: 'Craft Agents Backend (API Key)',
     providerType: 'pi',

@@ -1,5 +1,6 @@
 import { getModelDisplayName, getModelShortName, getModelProvider } from '@config/models'
-import { getProviderIcon } from '@/lib/provider-icons'
+import { hasProviderBrandIcon, ProviderBrandIcon } from '@/components/icons/ProviderBrandIcon'
+import { getProviderIcon, getProviderIconKey } from '@/lib/provider-icons'
 import { cn } from '@/lib/utils'
 
 interface ModelChipProps {
@@ -17,6 +18,7 @@ interface ModelChipProps {
  */
 export function ModelChip({ model, short = false, className }: ModelChipProps) {
   const provider = getModelProvider(model) ?? 'anthropic'
+  const iconKey = getProviderIconKey(provider) ?? undefined
   const iconUrl = getProviderIcon(provider)
   const label = short ? getModelShortName(model) : getModelDisplayName(model)
 
@@ -28,7 +30,9 @@ export function ModelChip({ model, short = false, className }: ModelChipProps) {
         className
       )}
     >
-      {iconUrl ? (
+      {hasProviderBrandIcon(iconKey) ? (
+        <ProviderBrandIcon provider={iconKey} size={12} />
+      ) : iconUrl ? (
         <img src={iconUrl} alt="" className="h-3 w-3 shrink-0 rounded-[2px]" aria-hidden />
       ) : (
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" aria-hidden />

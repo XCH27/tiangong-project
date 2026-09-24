@@ -12,11 +12,9 @@
  * Session-level setting with workspace defaults.
  *
  * Provider mappings:
- * - Anthropic: adaptive thinking + effort levels (current Opus models). On models that
- *   don't accept `xhigh`, the Anthropic SDK silently falls back to `high`.
- * - Pi/OpenAI: reasoning_effort via Pi SDK levels, passed through 1:1 up to `max`.
- *   Pi clamps per model internally, so models without native `max` support
- *   (everything except GPT-5.6, GPT-6 and adaptive Claude) degrade to their own ceiling.
+ * - Anthropic: adaptive thinking + provider-advertised effort levels.
+ * - Pi/OpenAI: reasoning_effort via the native Pi model definition. The Pi
+ *   provider supplies omitted standard levels; xhigh/max need explicit opt-in.
  */
 
 /**
@@ -59,6 +57,39 @@ export const THINKING_LEVELS: readonly ThinkingLevelDefinition[] = [
   { id: 'xhigh', nameKey: 'thinking.xhigh', descriptionKey: 'thinking.xhighDesc' },
   { id: 'max', nameKey: 'thinking.max', descriptionKey: 'thinking.maxDesc' },
 ] as const;
+
+/** Keep model-advertised effort separate from speed and provider defaults. */
+export function getThinkingLevelsForModel(model?: {
+  provider?: string;
+  supportsThinking?: boolean;
+  reasoningEfforts?: readonly ('low' | 'medium' | 'high' | 'xhigh' | 'max')[];
+  reasoningDisableSupported?: boolean;
+}): readonly ThinkingLevelDefinition[] {
+  if (!model) return [];
+  // API effort and visible thinking are distinct capabilities (notably for
+  // Claude). An explicit effort map is still usable when thinking is off.
+  if (model.supportsThinking === false && !model.reasoningEfforts?.length) return [];
+  // An absent capability map is unknown. Do not invent a six-step scale: a
+  // provider may support only a subset, or no reasoning at all.
+  if (!model.reasoningEfforts) return [];
+  const allowed = new Set<ThinkingLevel>(model.reasoningEfforts);
+  if (model.reasoningDisableSupported) allowed.add('off');
+  return THINKING_LEVELS.filter(level => allowed.has(level.id));
+}
+
+/** Keep a session's effort valid when its model changes; unknown maps stay unchanged. */
+export function reconcileThinkingLevelForModel(
+  current: ThinkingLevel,
+  model?: Parameters<typeof getThinkingLevelsForModel>[0],
+): ThinkingLevel {
+  if (!model) return current;
+  const available = getThinkingLevelsForModel(model);
+  if (available.some(level => level.id === current)) return current;
+  if (available.length > 0) {
+    return available.find(level => level.id === DEFAULT_THINKING_LEVEL)?.id ?? available[0]!.id;
+  }
+  return model.supportsThinking === false ? 'off' : current;
+}
 
 /** Default thinking level for new sessions when workspace has no default */
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'medium';

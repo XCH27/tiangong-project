@@ -11,10 +11,12 @@
  * Run: bun scripts/copy-assets.ts
  */
 
-import { cpSync, copyFileSync, mkdirSync } from 'fs';
+import { cpSync, copyFileSync, rmSync } from 'fs';
 import { join } from 'path';
 
 // Copy all resources (icons, themes, docs, permissions, tool-icons, etc.)
+// Do not preserve assets removed from the source tree on an incremental build.
+rmSync('dist/resources', { recursive: true, force: true });
 cpSync('resources', 'dist/resources', { recursive: true });
 
 console.log('✓ Copied resources/ → dist/resources/');

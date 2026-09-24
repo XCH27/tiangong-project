@@ -33,7 +33,7 @@ import {
   type LlmConnectionWithStatus,
 } from '@config/llm-connections'
 import {
-  THINKING_LEVELS,
+  getThinkingLevelsForModel,
   type ThinkingLevel,
 } from '@craft-agent/shared/agent/thinking-levels'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
@@ -49,7 +49,6 @@ interface CompactModelSelectorProps {
   currentModel: string
   currentConnection?: string
   onModelChange: (model: string, connection?: string) => void
-  onConnectionChange?: (connectionSlug: string) => void
   thinkingLevel?: ThinkingLevel
   onThinkingLevelChange?: (level: ThinkingLevel) => void
   isEmptySession?: boolean
@@ -61,7 +60,6 @@ export function CompactModelSelector({
   currentModel,
   currentConnection,
   onModelChange,
-  onConnectionChange,
   thinkingLevel = 'medium',
   onThinkingLevelChange,
   isEmptySession = false,
@@ -120,12 +118,15 @@ export function CompactModelSelector({
     return model.name ?? stripPiPrefixForDisplay(model.id)
   }, [availableModels, currentModel, connectionDefaultModel])
 
-  const thinkingDisabled = React.useMemo(() => {
+  const selectedModelDefinition = React.useMemo(() => {
     const model = availableModels.find(
       m => typeof m !== 'string' && m.id === currentModel,
     )
-    return typeof model !== 'string' && model?.supportsThinking === false
+    return typeof model === 'string' ? undefined : model
   }, [availableModels, currentModel])
+  const availableThinkingLevels = getThinkingLevelsForModel(selectedModelDefinition)
+  const thinkingDisabled = selectedModelDefinition?.supportsThinking === false && availableThinkingLevels.length === 0
+  const thinkingCapabilityUnknown = selectedModelDefinition?.supportsThinking !== false && selectedModelDefinition?.reasoningEfforts === undefined
 
   const connectionsByProvider = React.useMemo(
     () => groupConnectionsByProvider(llmConnections),
@@ -136,7 +137,10 @@ export function CompactModelSelector({
     !!effectiveConnectionDetails &&
     llmConnections.length > 1 &&
     storage.get(storage.KEYS.showConnectionIcons, true)
-  const contextDisplay = getContextDisplay(contextStatus, getModelContextWindow(currentModel))
+  const contextDisplay = getContextDisplay(
+    contextStatus,
+    selectedModelDefinition?.contextWindow ?? getModelContextWindow(currentModel),
+  )
   const contextLabels = getContextDisplayLabels(contextDisplay, t)
 
   // Reset accordion state when the drawer closes so re-open shows top-level switcher.
@@ -154,14 +158,12 @@ export function CompactModelSelector({
 
   const handlePickSwitcherModel = React.useCallback(
     (connSlug: string, modelId: string) => {
-      const isCurrentConnection = effectiveConnection === connSlug
-      if (!isCurrentConnection && onConnectionChange) {
-        onConnectionChange(connSlug)
-      }
+      // The model command persists model and connection together. Sending a
+      // separate connection command here races the model command on the server.
       onModelChange(modelId, connSlug)
       setOpen(false)
     },
-    [onModelChange, onConnectionChange, effectiveConnection],
+    [onModelChange],
   )
 
   return (
@@ -394,12 +396,18 @@ export function CompactModelSelector({
           )}
 
           {/* === Thinking section === */}
-          {THINKING_LEVELS.length > 0 && pickerMode !== 'unavailable' && (
+          {(availableThinkingLevels.length > 0 || thinkingCapabilityUnknown) && pickerMode !== 'unavailable' && (
             <>
               <div className="px-3 pt-4 pb-1 text-xs font-medium text-foreground/60 uppercase tracking-wide select-none">
                 {t('chat.modelPicker.thinkingSection')}
               </div>
-              {THINKING_LEVELS.map(({ id, nameKey, descriptionKey }) => {
+              {thinkingCapabilityUnknown && (
+                <div className="flex items-center justify-between px-3 py-2 text-sm text-foreground/50">
+                  <span>{t(`thinking.${thinkingLevel}`)}</span>
+                  <span className="text-xs">{t('common.unknown')}</span>
+                </div>
+              )}
+              {availableThinkingLevels.map(({ id, nameKey, descriptionKey }) => {
                 const isSelected = thinkingLevel === id
                 return (
                   <DrawerClose asChild key={id}>

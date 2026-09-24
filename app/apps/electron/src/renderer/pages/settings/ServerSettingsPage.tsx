@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, Eye, EyeOff, AlertTriangle, RotateCw } from 'lucide-react'
 import { toast } from 'sonner'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { SettingsPageTitle } from '@/components/settings/SettingsPageTitle'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@craft-agent/ui'
@@ -168,7 +168,7 @@ export default function ServerSettingsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <PanelHeader title={t("settings.server.title")} />
+      <SettingsPageTitle title={t("settings.server.title")} />
       <ScrollArea className="flex-1">
         <div className="px-5 py-7 max-w-3xl mx-auto space-y-5">
 
@@ -242,10 +242,10 @@ export default function ServerSettingsPage() {
                 <SettingsRow label={t("settings.server.certificate")}>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {form.tlsCertPath || 'Not configured'}
+                      {form.tlsCertPath || t('settings.server.notConfigured')}
                     </span>
                     <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 shrink-0" onClick={handleBrowseCert}>
-                      Browse
+                      {t('common.browse')}
                     </Button>
                   </div>
                 </SettingsRow>
@@ -253,10 +253,10 @@ export default function ServerSettingsPage() {
                 <SettingsRow label={t("settings.server.privateKey")}>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                      {form.tlsKeyPath || 'Not configured'}
+                      {form.tlsKeyPath || t('settings.server.notConfigured')}
                     </span>
                     <Button variant="outline" size="sm" className="h-6 text-[11px] px-2 shrink-0" onClick={handleBrowseKey}>
-                      Browse
+                      {t('common.browse')}
                     </Button>
                   </div>
                 </SettingsRow>
@@ -282,11 +282,11 @@ export default function ServerSettingsPage() {
           {(isDirty || error) && (
             <SettingsCardFooter>
               <Button variant="outline" size="sm" onClick={handleReset} disabled={isSaving}>
-                Reset
+                {t('common.reset')}
               </Button>
               <Button size="sm" onClick={handleSave} disabled={isSaving}>
                 {isSaving ? <Spinner className="mr-1.5" /> : null}
-                Save
+                {t('common.save')}
               </Button>
             </SettingsCardFooter>
           )}

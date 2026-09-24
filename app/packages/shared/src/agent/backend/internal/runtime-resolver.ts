@@ -72,6 +72,10 @@ function resolveBundledRuntimePath(hostRuntime: BackendHostRuntimeContext): stri
   // Packaged apps must ship their own bundled bun — never resolve from PATH
   // to avoid picking up an incompatible system install.
   if (!hostRuntime.isPackaged) {
+    // Review/dev launchers may have an isolated HOME whose login shell replaces
+    // PATH. Use their explicit Bun path before asking that shell to find it.
+    const configuredBun = process.env.CRAFT_BUN;
+    if (configuredBun && existsSync(configuredBun)) return configuredBun;
     try {
       const whichCmd = process.platform === 'win32' ? 'where' : 'which';
       const systemBun = execFileSync(whichCmd, ['bun'], { encoding: 'utf-8' }).trim();
@@ -225,7 +229,9 @@ export function resolveBackendRuntimePaths(hostRuntime: BackendHostRuntimeContex
     sessionServerPath: resolveServerPath(hostRuntime, 'session-mcp-server'),
     bridgeServerPath: resolveServerPath(hostRuntime, 'bridge-mcp-server'),
     piServerPath: resolveServerPath(hostRuntime, 'pi-agent-server'),
-    nodeRuntimePath: hostRuntime.nodeRuntimePath || bundledRuntimePath || process.execPath,
+    // The Pi subprocess is bundled for Bun. Electron/Node cannot execute it:
+    // falling back to process.execPath produces a 45-second connection timeout.
+    nodeRuntimePath: hostRuntime.nodeRuntimePath || bundledRuntimePath,
     bundledRuntimePath,
   };
 }

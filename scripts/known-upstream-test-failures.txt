@@ -2,17 +2,13 @@
 #
 # Read by scripts/run-bun-tests.py. The full gate fails on any failure NOT listed here, and on any
 # listed failure in a file that ran and no longer fails — so this file cannot hide a new regression
-# or outlive a fix. Totals: 33 deterministic failures in 6 files, 1 timing-flaky test.
-# app/ is kept identical to upstream, so these are recorded rather than patched; fixing them is an
-# L0 correction awaiting approval (TODO.md). Verified 2026-09-22 by running each file on its own
+# or outlive a fix. Totals: 31 deterministic failures in 5 files, 1 timing-flaky test.
+# These failures reproduce in the unmodified upstream pin, so they are recorded rather than
+# attributed to the declared Fleet deltas. Verified 2026-09-22 by running each file on its own
 # under an empty CRAFT_CONFIG_DIR.
 #
 # One entry per line: "<file relative to app/> :: <test name as bun prints it after (fail) >".
 # An error bun reports between tests is recorded as "<file> :: <unhandled error>".
-
-# ipc-channels.test.ts — v0.13.4 added pages:getShareDataScan and did not update the pinned list.
-apps/electron/src/shared/__tests__/ipc-channels.test.ts :: RPC_CHANNELS wire-format stability > contains exactly 354 channel strings
-apps/electron/src/shared/__tests__/ipc-channels.test.ts :: RPC_CHANNELS wire-format stability > preserves exact wire-format strings (sorted equality)
 
 # prompt-builder-context-split.test.ts — the date prompt gained a millisecond ISO timestamp, so two
 # builder calls a few milliseconds apart are no longer byte-identical.

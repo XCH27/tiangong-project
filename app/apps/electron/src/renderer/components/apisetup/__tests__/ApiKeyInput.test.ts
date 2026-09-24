@@ -4,7 +4,7 @@ import {
   resolvePiAuthProviderForSubmit,
   resolvePresetStateForBaseUrlChange,
 } from '../submit-helpers'
-import { pickTierDefaults, resolveTierModels } from '../tier-models'
+import { baseUrlForPiPreset, initialBaseUrlForPreset, resolvePreferredModel } from '../provider-models'
 
 const MODELS = [
   { id: 'pi/zai-best', name: 'Best', costInput: 10, costOutput: 20, contextWindow: 200000, reasoning: true },
@@ -12,38 +12,25 @@ const MODELS = [
   { id: 'pi/zai-fast', name: 'Fast', costInput: 1, costOutput: 2, contextWindow: 128000, reasoning: false },
 ]
 
-describe('ApiKeyInput tier hydration helpers', () => {
-  it('resolveTierModels keeps saved tier selections when all are valid', () => {
-    const saved = ['pi/zai-fast', 'pi/zai-balanced', 'pi/zai-best']
-    const resolved = resolveTierModels(MODELS, saved)
-
-    expect(resolved).toEqual({
-      best: 'pi/zai-fast',
-      default_: 'pi/zai-balanced',
-      cheap: 'pi/zai-best',
-    })
+describe('ApiKeyInput model selection', () => {
+  it('preserves an existing default absent from the bundled SDK catalog', () => {
+    expect(resolvePreferredModel(MODELS, 'pi/grok-4.7')).toBe('pi/grok-4.7')
+    expect(resolvePreferredModel(MODELS)).toBe('')
   })
 
-  it('resolveTierModels preserves duplicate tiers when saved models are valid', () => {
-    const saved = ['pi/zai-best', 'pi/zai-best', 'pi/zai-fast']
-    const resolved = resolveTierModels(MODELS, saved)
-
-    expect(resolved).toEqual({
-      best: 'pi/zai-best',
-      default_: 'pi/zai-best',
-      cheap: 'pi/zai-fast',
-    })
+  it('submits the official xAI preset as a native provider, not a custom endpoint', () => {
+    expect(baseUrlForPiPreset('xai', 'https://api.x.ai/v1/')).toBeUndefined()
+    expect(baseUrlForPiPreset('xai', 'https://other.example/v1')).toBe('https://other.example/v1')
+    expect(baseUrlForPiPreset('openrouter', 'https://openrouter.ai/api')).toBe('https://openrouter.ai/api')
   })
 
-  it('resolveTierModels falls back per-slot for invalid/missing saved values', () => {
-    const resolved = resolveTierModels(MODELS, ['pi/zai-best', 'pi/not-real'])
-    const defaults = pickTierDefaults(MODELS)
-
-    expect(resolved).toEqual({
-      best: 'pi/zai-best',
-      default_: defaults.default_,
-      cheap: defaults.cheap,
-    })
+  it('initializes a catalog-selected provider with its own endpoint', () => {
+    const presets = [
+      { key: 'anthropic', url: 'https://api.anthropic.com' },
+      { key: 'deepseek', url: 'https://api.deepseek.com' },
+    ]
+    expect(initialBaseUrlForPreset('deepseek', presets)).toBe('https://api.deepseek.com')
+    expect(initialBaseUrlForPreset('deepseek', presets, 'https://example.com')).toBe('https://example.com')
   })
 })
 

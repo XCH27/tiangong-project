@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'path'
 import { existsSync } from 'fs'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { randomUUID } from 'node:crypto'
-import { type AgentEvent, setPermissionMode, hydratePreviousPermissionMode, getPermissionModeDiagnostics, type PermissionMode, unregisterSessionScopedToolCallbacks, mergeSessionScopedToolCallbacks, AbortReason, type AuthRequest, type AuthResult, type CredentialAuthRequest, type BrowserPaneFns, generateConversationSummary, resolveKeepBackgroundTasksAlive } from '@craft-agent/shared/agent'
+import { type AgentEvent, setPermissionMode, hydratePreviousPermissionMode, getPermissionModeDiagnostics, type PermissionMode, unregisterSessionScopedToolCallbacks, mergeSessionScopedToolCallbacks, AbortReason, type AuthRequest, type AuthResult, type CredentialAuthRequest, type BrowserPaneFns, generateConversationSummary, resolveKeepBackgroundTasksAlive, getThinkingLevelsForModel, reconcileThinkingLevelForModel } from '@craft-agent/shared/agent'
 import {
   resolveSessionConnection,
   createBackendFromConnection,
@@ -21,7 +21,7 @@ import {
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
 import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, getDefaultThinkingLevel, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
-import type { MidStreamBehavior } from '@craft-agent/shared/config'
+import type { LlmConnection, MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
@@ -35,6 +35,7 @@ import {
   migrateLegacyLlmConnectionsConfig,
   migrateOrphanedDefaultConnections,
   MODEL_REGISTRY,
+  getModelById,
   type Workspace,
   type WorkspaceInfo,
 } from '@craft-agent/shared/config'
@@ -80,6 +81,7 @@ import { buildPagesToolCallbacks } from '../pages/tool-callbacks'
 import { buildServersFromSources as buildServersFromSourcesShared } from '../sources/build-servers'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
 import { getValidClaudeOAuthToken } from '@craft-agent/shared/auth'
+import { getModelRefreshService } from '../model-fetchers'
 import { resolveAuthEnvVars } from '@craft-agent/shared/config'
 import { toolMetadataStore, getLastApiError } from '@craft-agent/shared/interceptor'
 import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
@@ -103,6 +105,7 @@ import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
 import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAttachmentsForModelInput } from './runtime-config'
 import { validateArchiveTarget } from './archive-guards'
+import { assertSessionModelSelection, inheritedWorkspaceModelOverride } from './model-defaults'
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
@@ -119,6 +122,42 @@ let sessionLog: Logger = createScopedLogger(CONSOLE_LOGGER, 'session')
 export function setSessionPlatform(platform: PlatformServices): void {
   _platform = platform
   sessionLog = createScopedLogger(platform.logger, 'session')
+}
+
+function modelDefinitionForSession(modelId: string | undefined, connection?: LlmConnection | null) {
+  if (!modelId) return undefined
+  const configuredModel = connection?.models?.find(entry => {
+    const id = typeof entry === 'string' ? entry : entry.id
+    return id === modelId || id.replace(/^pi\//, '') === modelId.replace(/^pi\//, '')
+  })
+  return typeof configuredModel === 'object'
+    ? configuredModel
+    : getModelById(modelId)
+}
+
+function assertModelThinkingLevel(level: ThinkingLevel, modelId: string | undefined, connection?: LlmConnection | null): void {
+  const modelDefinition = modelDefinitionForSession(modelId, connection)
+  // Legacy records with only a broad supportsThinking flag do not identify
+  // individual levels. Enforce only an exact level map or an explicit no.
+  const exactEfforts = modelDefinition?.reasoningEfforts?.length
+  if (modelDefinition && ((exactEfforts && !getThinkingLevelsForModel(modelDefinition).some(candidate => candidate.id === level))
+    || (!exactEfforts && modelDefinition.supportsThinking === false && level !== 'off'))) {
+    throw new Error(`Thinking level "${level}" is not supported by model "${modelId}"`)
+  }
+}
+
+/** An inherited default follows the selected model; an explicit choice must be valid. */
+export function resolveInitialSessionThinkingLevel(
+  level: ThinkingLevel,
+  modelId: string | undefined,
+  connection: LlmConnection | null | undefined,
+  explicit: boolean,
+): ThinkingLevel {
+  if (explicit) {
+    assertModelThinkingLevel(level, modelId, connection)
+    return level
+  }
+  return reconcileThinkingLevelForModel(level, modelDefinitionForSession(modelId, connection))
 }
 
 interface SessionRuntimeHooks {
@@ -2588,12 +2627,16 @@ export class SessionManager implements ISessionManager {
     // Resolve thinking level with caller-first precedence, matching permissionMode above:
     //   caller override → workspace default → global default.
     // normalizeThinkingLevel() tolerates undefined/unknown inputs.
-    const defaultThinkingLevel =
+    const configuredThinkingLevel =
       normalizeThinkingLevel(options?.thinkingLevel)
       ?? normalizeThinkingLevel(wsConfig?.defaults?.thinkingLevel)
       ?? getDefaultThinkingLevel()
     // Get default model from workspace config (used when no session-specific model is set)
-    const defaultModel = wsConfig?.defaults?.model
+    const defaultModel = inheritedWorkspaceModelOverride(
+      wsConfig?.defaults?.model,
+      resolveSessionConnection(options?.llmConnection, wsConfig?.defaults?.defaultLlmConnection),
+      resolveSessionConnection(undefined, wsConfig?.defaults?.defaultLlmConnection),
+    )
     // Get default enabled sources from workspace config
     const defaultEnabledSourceSlugs = options?.enabledSourceSlugs ?? wsConfig?.defaults?.enabledSourceSlugs
 
@@ -2624,6 +2667,12 @@ export class SessionManager implements ISessionManager {
     const targetProviderType = targetBackendContext.connection?.providerType
       ?? (targetBackendContext.provider === 'pi' ? 'pi' : 'anthropic')
     const targetPiAuthProvider = targetBackendContext.connection?.piAuthProvider
+    const defaultThinkingLevel = resolveInitialSessionThinkingLevel(
+      configuredThinkingLevel,
+      targetBackendContext.resolvedModel,
+      targetBackendContext.connection,
+      options?.thinkingLevel !== undefined,
+    )
 
     // Resolve working directory from options:
     // - 'user_default' or undefined: Use workspace's configured default
@@ -3440,6 +3489,23 @@ export class SessionManager implements ISessionManager {
         sessionPersistenceQueue.flush(managed.id)
       }
 
+      // The SDK list belongs to the OAuth account that created this query.
+      // A later sign-out or account replacement must not publish its result.
+      const claudeCatalogAccount = connection?.providerType === 'anthropic' && connection.authType === 'oauth'
+        ? { createdAt: connection.createdAt, uuid: connection.oauthAccountUuid, email: connection.oauthAccountEmail }
+        : null
+      const onClaudeSupportedModels = claudeCatalogAccount && connection
+        ? (models: readonly unknown[]) => {
+            try {
+              if (getModelRefreshService().noteClaudeSdkSupportedModels(connection.slug, claudeCatalogAccount, models)) {
+                this.broadcastLlmConnectionsChanged()
+              }
+            } catch (error) {
+              sessionLog.warn(`Claude SDK model discovery failed: ${error instanceof Error ? error.message : error}`)
+            }
+          }
+        : undefined
+
       const onBranchForkInvalidated = () => {
         managed.sdkSessionId = undefined
         managed.branchFromSdkSessionId = undefined
@@ -3524,6 +3590,7 @@ export class SessionManager implements ISessionManager {
         thinkingLevel: managed.thinkingLevel,
         session: sessionConfig,
         onSdkSessionIdUpdate,
+        onClaudeSupportedModels,
         onSdkSessionIdCleared,
         onBranchForkInvalidated,
         getRecoveryMessages,
@@ -5462,30 +5529,72 @@ export class SessionManager implements ISessionManager {
     sessionLog.info(`[updateSessionModel] sessionId=${sessionId}, model=${model}, connection=${connection}`)
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+      const currentConnection = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
+      // A deleted locked connection stays unavailable; never silently treat
+      // the workspace fallback as permission to switch its provider.
+      const currentConnectionSlug = managed.llmConnection ?? currentConnection?.slug
+      if (connection) {
+        if (connection !== currentConnectionSlug && (managed.connectionLocked || managed.messages.length > 0)) {
+          throw new Error('Cannot change connection after session has started')
+        }
+        if (!getLlmConnection(connection)) {
+          throw new Error(`LLM connection "${connection}" not found`)
+        }
+      }
+      const connectionChanged = !!connection && connection !== managed.llmConnection
+        && !managed.connectionLocked && managed.messages.length === 0
+      const connectionSlug = connectionChanged ? connection : managed.llmConnection
+      const sessionConn = resolveSessionConnection(connectionSlug, wsConfig?.defaults?.defaultLlmConnection)
+      const workspaceModel = inheritedWorkspaceModelOverride(
+        wsConfig?.defaults?.model,
+        sessionConn,
+        resolveSessionConnection(undefined, wsConfig?.defaults?.defaultLlmConnection),
+      )
+      const effectiveModel = resolveBackendContext({
+        sessionConnectionSlug: connectionSlug,
+        workspaceDefaultConnectionSlug: wsConfig?.defaults?.defaultLlmConnection,
+        managedModel: model ?? workspaceModel,
+      }).resolvedModel
+      assertSessionModelSelection(model, effectiveModel)
+      const nextThinkingLevel = reconcileThinkingLevelForModel(
+        managed.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+        modelDefinitionForSession(effectiveModel, sessionConn),
+      )
+      const thinkingChanged = nextThinkingLevel !== managed.thinkingLevel
       managed.model = model ?? undefined
       // Also update connection if provided and not already locked
-      if (connection && !managed.connectionLocked) {
+      if (connectionChanged) {
         managed.llmConnection = connection
       }
       // Persist to disk (include connection if it was updated)
       const updates: { model?: string; llmConnection?: string } = { model: model ?? undefined }
-      if (connection && !managed.connectionLocked) {
+      if (connectionChanged) {
         updates.llmConnection = connection
       }
       await updateSessionMetadata(managed.workspace.rootPath, sessionId, updates)
+      if (thinkingChanged) {
+        managed.thinkingLevel = nextThinkingLevel
+        this.persistSession(managed)
+      }
       // Update agent model if it already exists (takes effect on next query)
       if (managed.agent) {
-        // Fallback chain: session model > workspace default > connection default
-        const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
-        const sessionConn = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
-        const effectiveModel = model ?? wsConfig?.defaults?.model ?? sessionConn?.defaultModel!
         sessionLog.info(`[updateSessionModel] Calling agent.setModel(${effectiveModel}) [agent exists=${!!managed.agent}, connectionLocked=${managed.connectionLocked}]`)
-        managed.agent.setModel(effectiveModel)
+        managed.agent.setModel(effectiveModel!)
+        if (thinkingChanged) managed.agent.setThinkingLevel(nextThinkingLevel)
       } else {
         sessionLog.info(`[updateSessionModel] No agent yet, model will apply on next agent creation`)
       }
       // Notify renderer of the model change
-      this.sendEvent({ type: 'session_model_changed', sessionId, model }, managed.workspace.id)
+      this.sendEvent({ type: 'session_model_changed', sessionId, model, thinkingLevel: nextThinkingLevel, llmConnection: managed.llmConnection }, managed.workspace.id)
+      if (connectionChanged) {
+        this.sendEvent({
+          type: 'connection_changed',
+          sessionId,
+          connectionSlug: connection,
+          supportsBranching: resolveSupportsBranching(managed),
+        }, managed.workspace.id)
+      }
       sessionLog.info(`Session ${sessionId} model updated to: ${model ?? '(global config)'}`)
     }
   }
@@ -7559,6 +7668,11 @@ export class SessionManager implements ISessionManager {
   setSessionThinkingLevel(sessionId: string, level: ThinkingLevel): void {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+      const connection = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
+      const modelId = managed.model ?? wsConfig?.defaults?.model ?? connection?.defaultModel
+      assertModelThinkingLevel(level, modelId, connection)
+
       // Update thinking level in managed session
       managed.thinkingLevel = level
 

@@ -35,7 +35,7 @@ import {
   Settings2,
   Trash2,
 } from 'lucide-react'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
+import { SettingsPageTitle } from '@/components/settings/SettingsPageTitle'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import {
@@ -47,7 +47,7 @@ import {
   StyledDropdownMenuItem,
   StyledDropdownMenuSeparator,
 } from '@/components/ui/styled-dropdown'
-import { SettingsSection, SettingsCard } from '@/components/settings'
+import { SettingsCard, SettingsSection } from '@/components/settings'
 import { MessagingPlatformIcon } from '@/components/messaging/MessagingPlatformIcon'
 import { TelegramConnectDialog } from '@/components/messaging/TelegramConnectDialog'
 import { LarkConnectDialog } from '@/components/messaging/LarkConnectDialog'
@@ -111,22 +111,29 @@ export default function MessagingSettingsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <PanelHeader title={t('settings.messaging.title')} />
-      <ScrollArea className="flex-1">
-        <div className="space-y-6 p-6">
-          <SettingsSection title={t('settings.messaging.title')}>
-            <SettingsCard>
-              <PlatformRow platform="telegram" workspaceId={activeWorkspace.id} />
-            </SettingsCard>
-            <SettingsCard>
-              <PlatformRow platform="whatsapp" workspaceId={activeWorkspace.id} />
-            </SettingsCard>
-            <SettingsCard>
-              <PlatformRow platform="lark" workspaceId={activeWorkspace.id} />
-            </SettingsCard>
-          </SettingsSection>
-        </div>
-      </ScrollArea>
+      <SettingsPageTitle title={t('settings.messaging.title')} />
+      <div className="flex-1 min-h-0 mask-fade-y">
+        <ScrollArea className="h-full">
+          <div className="px-5 py-7 max-w-3xl mx-auto">
+            <SettingsSection
+              title={t('settings.messaging.title')}
+              description={t('settings.messaging.description')}
+            >
+              <div className="space-y-3">
+                <SettingsCard>
+                  <PlatformRow platform="telegram" workspaceId={activeWorkspace.id} />
+                </SettingsCard>
+                <SettingsCard>
+                  <PlatformRow platform="whatsapp" workspaceId={activeWorkspace.id} />
+                </SettingsCard>
+                <SettingsCard>
+                  <PlatformRow platform="lark" workspaceId={activeWorkspace.id} />
+                </SettingsCard>
+              </div>
+            </SettingsSection>
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -257,11 +264,18 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
 
   React.useEffect(() => {
     let cancelled = false
-    window.electronAPI.getMessagingConfig().then((cfg) => {
-      if (cancelled) return
-      const next = cfg?.runtime?.[platform]
-      setRuntime((next ?? defaultRuntime(platform)) as MessagingPlatformRuntimeInfo)
-    })
+    void window.electronAPI.getMessagingConfig()
+      .then((cfg) => {
+        if (cancelled) return
+        const next = cfg?.runtime?.[platform]
+        setRuntime((next ?? defaultRuntime(platform)) as MessagingPlatformRuntimeInfo)
+      })
+      .catch(() => {
+        // A failed status read is not proof that the channel disconnected.
+        if (!cancelled) setRuntime(previous => previous.connected
+          ? previous
+          : { ...previous, state: 'error', lastError: undefined })
+      })
     const off = window.electronAPI.onMessagingPlatformStatus((wsId, p, status) => {
       if (wsId !== workspaceId || p !== platform) return
       setRuntime(status)
@@ -316,9 +330,9 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
     try {
       await window.electronAPI.forgetMessagingPlatform(platform)
       toast.success(
-        t(`settings.messaging.${platform}.disconnected`, {
-          defaultValue: 'Disconnected',
-        }),
+        platform === 'whatsapp'
+          ? t('settings.messaging.whatsapp.forgot')
+          : t(`settings.messaging.${platform}.disconnected`, { defaultValue: 'Disconnected' }),
       )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('common.error'))
@@ -378,7 +392,7 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
                       <span>{t('common.disconnect')}</span>
                     </StyledDropdownMenuItem>
                   </>
-                ) : (
+                ) : platform === 'whatsapp' ? (
                   <>
                     <StyledDropdownMenuItem onClick={() => runAfterMenuClose(handleConnect)}>
                       <RefreshCcw className="h-3.5 w-3.5" />
@@ -391,6 +405,18 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
                     <StyledDropdownMenuSeparator />
                     <StyledDropdownMenuItem onClick={handleForget} variant="destructive">
                       <Trash2 className="h-3.5 w-3.5" />
+                      <span>{t('settings.messaging.whatsapp.forget')}</span>
+                    </StyledDropdownMenuItem>
+                  </>
+                ) : (
+                  <>
+                    <StyledDropdownMenuItem onClick={() => runAfterMenuClose(handleReconfigure)}>
+                      <Settings2 className="h-3.5 w-3.5" />
+                      <span>{t('common.reconfigure')}</span>
+                    </StyledDropdownMenuItem>
+                    <StyledDropdownMenuSeparator />
+                    <StyledDropdownMenuItem onClick={handleDisconnect} variant="destructive">
+                      <PowerOff className="h-3.5 w-3.5" />
                       <span>{t('common.disconnect')}</span>
                     </StyledDropdownMenuItem>
                   </>
@@ -398,10 +424,31 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
               </StyledDropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button variant="outline" size="sm" onClick={handleConnect}>
-              <Plus className="h-3.5 w-3.5" />
-              {t('common.connect')}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button variant="outline" size="sm" onClick={handleConnect}>
+                <Plus className="h-3.5 w-3.5" />
+                {t('common.connect')}
+              </Button>
+              {platform === 'whatsapp' && runtime.configured && (
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="rounded-md p-1.5 transition-colors hover:bg-foreground/[0.05]"
+                      aria-label={t('common.more')}
+                    >
+                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <StyledDropdownMenuContent align="end">
+                    <StyledDropdownMenuItem onClick={handleForget} variant="destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>{t('settings.messaging.whatsapp.forget')}</span>
+                    </StyledDropdownMenuItem>
+                  </StyledDropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           )}
         </div>
 
@@ -774,6 +821,7 @@ function TopicBindingRow({
   onUnbind: () => void
   onAccessChange: (next: BindingAccess) => void
 }) {
+  const { t } = useTranslation()
   const meta = sessionMetaMap.get(binding.sessionId)
   const sessionLabel = meta ? getSessionTitle(meta) : binding.channelName || binding.channelId
   const topicName = binding.channelName || binding.channelId
@@ -785,7 +833,7 @@ function TopicBindingRow({
         <div className="mt-0.5 flex items-center gap-1.5 text-xs text-foreground/50">
           <Hash className="h-3 w-3" />
           <span className="truncate">
-            {topicName} <span className="text-foreground/30">·</span> Topic #{binding.threadId}
+            {topicName} <span className="text-foreground/30">·</span> {t('settings.messaging.telegram.topicNumber', { number: binding.threadId })}
           </span>
         </div>
       </div>
@@ -861,12 +909,18 @@ function buildDescription(
     return t(`settings.messaging.${platform}.connected`, { defaultValue: 'Connected' })
   }
   if (runtime.state === 'connecting') {
-    return t('dialog.whatsapp.starting', { defaultValue: 'Connecting…' })
+    return t('common.connecting')
   }
-  if (runtime.state === 'error' && runtime.lastError) {
-    return runtime.lastError
+  if (runtime.state === 'error') {
+    return runtime.lastError || t('settings.messaging.connectionError')
   }
-  return t(`settings.messaging.${platform}.notConnected`, { defaultValue: 'Not connected' })
+  if (runtime.state === 'reconnect_required') {
+    return t('settings.messaging.reconnectRequired')
+  }
+  if (platform === 'whatsapp' && runtime.configured) {
+    return t('settings.messaging.whatsapp.disabledWithSavedSignIn')
+  }
+  return t('settings.messaging.notConnected')
 }
 
 function defaultRuntime(platform: Platform): MessagingPlatformRuntimeInfo {

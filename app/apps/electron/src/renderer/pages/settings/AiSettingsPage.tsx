@@ -9,21 +9,17 @@
  * Follows the Appearance settings pattern: app-level defaults + workspace overrides.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { HeaderMenu } from '@/components/ui/HeaderMenu'
-import { routes } from '@/lib/navigate'
-import { X, MoreHorizontal, Pencil, Trash2, Star, ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, RefreshCcw, Settings2, MessageSquareMore, Zap, Clock, Check } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { X, MoreHorizontal, Pencil, Trash2, Star, ChevronDown, ChevronRight, AlertTriangle, RefreshCcw, Settings2, MessageSquareMore, Zap, Clock, Check, Plus, Search, Gauge, Brain } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
-import { Spinner, FullscreenOverlayBase, Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
-import { useSetAtom } from 'jotai'
-import { fullscreenOverlayOpenAtom } from '@/atoms/overlay'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import { motion, AnimatePresence } from 'motion/react'
 import type { LlmConnectionWithStatus, ThinkingLevel, WorkspaceSettings, Workspace } from '../../../shared/types'
-import { DEFAULT_THINKING_LEVEL, THINKING_LEVELS } from '@craft-agent/shared/agent/thinking-levels'
+import { DEFAULT_THINKING_LEVEL, THINKING_LEVELS, getThinkingLevelsForModel, reconcileThinkingLevelForModel, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import {
   DropdownMenu,
@@ -49,12 +45,16 @@ import {
 } from '@/components/settings'
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { useWorkspaceIcon } from '@/hooks/useWorkspaceIcon'
-import { OnboardingWizard, type ApiSetupMethod } from '@/components/onboarding'
+import { CredentialsStep, LocalModelStep, type ApiSetupMethod } from '@/components/onboarding'
+import { ApiKeyInput } from '@/components/apisetup'
+import { ProviderCatalog } from '@/components/apisetup/ProviderCatalog'
+import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
-import { getModelsForProviderType, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
+import { getModelsForProviderType, isCompatProvider, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
 import { toast } from 'sonner'
+import type { XaiSubscriptionUsage } from '@craft-agent/shared/auth'
 
 /**
  * Compact token count: 1234 → "1.2K", 1234567 → "1.2M". Used by the RTK
@@ -65,6 +65,48 @@ function formatTokenCount(n: number): string {
   if (n < 1000) return String(n)
   if (n < 1_000_000) return `${(n / 1000).toFixed(1)}K`
   return `${(n / 1_000_000).toFixed(1)}M`
+}
+
+function GrokSubscriptionUsage({ connectionSlug }: { connectionSlug: string }) {
+  const { t, i18n } = useTranslation()
+  const [usage, setUsage] = useState<XaiSubscriptionUsage | null>(null)
+  const [error, setError] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError(false)
+    try {
+      setUsage(await window.electronAPI.readXaiSubscriptionUsage(connectionSlug))
+    } catch {
+      setUsage(null)
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [connectionSlug])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  return <div className="border-t border-border/60 px-5 py-4">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">{t('settings.ai.grokUsage')}</h3>
+        {usage?.plan && <p className="mt-0.5 text-xs text-muted-foreground">{usage.plan}</p>}
+      </div>
+      <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={loading} aria-label={t('settings.ai.refreshUsage')}>
+        <RefreshCcw className={cn('size-3.5', loading && 'animate-spin')} />
+        <span className="hidden sm:inline">{t('settings.ai.refreshUsage')}</span>
+      </Button>
+    </div>
+    {usage?.window ? <p className="mt-3 text-xs text-muted-foreground">
+      {t(`settings.ai.grokUsage.${usage.window.label}`)} · {t('settings.ai.grokUsage.used', { percent: Math.round(usage.window.usedPercent) })}
+      {usage.window.resetAt ? ` · ${t('settings.ai.grokUsage.resets', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(usage.window.resetAt) })}` : ''}
+    </p> : error ? <p className="mt-3 text-xs text-muted-foreground">{t('common.unavailable')}</p> : null}
+    {usage?.prepaidBalanceUsd !== undefined && <p className="mt-1 text-xs text-muted-foreground">
+      {t('settings.ai.grokUsage.prepaidBalance')} · {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'USD' }).format(usage.prepaidBalanceUsd)}
+    </p>}
+  </div>
 }
 
 /**
@@ -96,6 +138,19 @@ function getModelOptionsForConnection(
     description: m.description,
     descriptionKey: m.descriptionKey,
   }))
+}
+
+/** Prefer live connection metadata; use the exact provider registry ID for legacy string entries. */
+function getConnectionModelDefinition(
+  connection: LlmConnectionWithStatus | undefined,
+  modelId: string,
+): ModelDefinition | undefined {
+  if (!connection || !modelId) return undefined
+  const saved = connection.models?.find(candidate =>
+    (typeof candidate === 'string' ? candidate : candidate.id) === modelId)
+  if (saved && typeof saved !== 'string') return saved
+  return getModelsForProviderType(connection.providerType, connection.piAuthProvider)
+    .find(candidate => candidate.id === modelId)
 }
 
 export const meta: DetailsPageMeta = {
@@ -160,9 +215,9 @@ function CredentialHealthBanner({ issues, onReauthenticate }: CredentialHealthBa
 // ============================================
 
 const PI_AUTH_PROVIDER_LABELS: Record<string, string> = {
-  anthropic: 'Anthropic API',
+  anthropic: 'Anthropic',
   openai: 'OpenAI API',
-  'openai-codex': 'OpenAI API',
+  'openai-codex': 'ChatGPT / Codex',
   google: 'Google AI Studio',
   openrouter: 'OpenRouter',
   'azure-openai-responses': 'Azure OpenAI',
@@ -181,6 +236,14 @@ const PI_AUTH_PROVIDER_LABELS: Record<string, string> = {
   'moonshotai-cn': 'Moonshot AI (CN)',
   'vercel-ai-gateway': 'Vercel AI Gateway',
   'github-copilot': 'GitHub Copilot',
+}
+
+function getConnectionProviderLabel(connection: LlmConnectionWithStatus): string {
+  if (connection.providerType === 'anthropic') return 'Anthropic'
+  if (connection.providerType === 'pi') {
+    return PI_AUTH_PROVIDER_LABELS[connection.piAuthProvider ?? ''] || connection.piAuthProvider || connection.name
+  }
+  return connection.name
 }
 
 // ============================================
@@ -240,24 +303,7 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
     // Provider type (fall back to legacy 'type' field if providerType missing)
     // OAuth = subscription (Pro/Plus/Max), API key = API
     const provider = connection.providerType || connection.type
-    const isSubscription = connection.authType === 'oauth'
-    switch (provider) {
-      case 'anthropic': parts.push(isSubscription ? 'Anthropic Subscription' : 'Anthropic API'); break
-      case 'pi': {
-        // Show upstream provider name for API key connections (e.g. "Google AI Studio")
-        const piLabel = !isSubscription && connection.piAuthProvider
-          ? PI_AUTH_PROVIDER_LABELS[connection.piAuthProvider]
-          : null
-        parts.push(piLabel ?? 'Craft Agents Backend')
-        break
-      }
-      case 'pi_compat':
-        parts.push(connection.baseUrl?.toLowerCase().includes('manifest.build')
-          ? 'Manifest'
-          : 'Craft Agents Backend Compatible')
-        break
-      default: parts.push(provider || 'Unknown')
-    }
+    parts.push(getConnectionProviderLabel(connection))
 
     // Base URL for API key connections (show custom endpoint or default for provider)
     if (connection.authType !== 'oauth') {
@@ -280,8 +326,8 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
       }
     }
 
-    // Auth status
-    if (!connection.isAuthenticated) parts.push(t("settings.ai.notAuthenticated"))
+    // Keep connection state in the same summary row as its actions.
+    parts.push(t(connection.isAuthenticated ? "settings.ai.connected" : "settings.ai.notAuthenticated"))
 
     return parts.join(' · ')
   }
@@ -301,8 +347,8 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
             <ConnectionIcon connection={connection} size={14} />
             <span>{connection.name}</span>
             {connection.isDefault && (
-              <span className="inline-flex items-center h-5 px-2 text-[11px] font-medium rounded-[4px] bg-background shadow-minimal text-foreground/60">
-                {t("common.default")}
+              <span className="inline-flex h-5 items-center rounded-[4px] bg-foreground/[0.05] px-2 text-[11px] text-foreground/60">
+                {t('common.default')}
               </span>
             )}
             {isDuplicateAccount && (
@@ -323,6 +369,14 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
       )}
       description={getDescription()}
     >
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onValidate}
+        disabled={validationState === 'validating'}
+      >
+        {t(validationState === 'validating' ? 'settings.ai.validating' : 'settings.ai.validateConnection')}
+      </Button>
       <DropdownMenu modal={false} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
@@ -354,13 +408,6 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
               <span>{t("common.edit")}</span>
             </StyledDropdownMenuItem>
           )}
-          <StyledDropdownMenuItem
-            onClick={onValidate}
-            disabled={validationState === 'validating'}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            <span>{t("settings.ai.validateConnection")}</span>
-          </StyledDropdownMenuItem>
           {(() => {
             const currentBehavior = resolveMidStreamBehavior(connection)
             return (
@@ -452,12 +499,21 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
 
     try {
       await window.electronAPI.updateWorkspaceSetting(workspace.id, key, value)
+      // The backend may reconcile a model override when its connection
+      // changes. Read the saved state so the selector matches the next run.
+      if (key === 'defaultLlmConnection') {
+        const persisted = await window.electronAPI.getWorkspaceSettings(workspace.id).catch(() => null)
+        if (persisted) setSettings(persisted)
+      }
       onSettingsChange()
     } catch (error) {
       // Roll back only the changed key
       setSettings(prev => prev ? { ...prev, [key]: previousValue } : prev)
 
-      const message = error instanceof Error ? error.message : 'Unknown error'
+      const rawMessage = error instanceof Error ? error.message : 'Unknown error'
+      const message = rawMessage.includes('MODEL_UNAVAILABLE_FOR_CONNECTION')
+        ? t('chat.modelUnavailableForConnection')
+        : rawMessage
       const settingLabel = WORKSPACE_SETTING_LABELS[key] ?? String(key)
       console.error(`Failed to save ${String(key)}:`, error)
       toast.error(t("toast.failedToSaveSetting", { setting: settingLabel }), {
@@ -498,6 +554,10 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
     const connSlug = settings?.defaultLlmConnection
     return connSlug ? llmConnections.find(c => c.slug === connSlug) : llmConnections.find(c => c.isDefault)
   }, [settings?.defaultLlmConnection, llmConnections])
+  const workspaceEffectiveModel = settings?.model || workspaceEffectiveConnection?.defaultModel || ''
+  const workspaceModelDefinition = getConnectionModelDefinition(workspaceEffectiveConnection, workspaceEffectiveModel)
+  const workspaceThinkingLevels = getThinkingLevelsForModel(workspaceModelDefinition)
+  const workspaceThinkingUnsupported = workspaceModelDefinition?.supportsThinking === false && workspaceThinkingLevels.length === 0
 
   // Get summary text for collapsed state
   const getSummary = () => {
@@ -573,9 +633,7 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
                   ...llmConnections.map((conn) => ({
                     value: conn.slug,
                     label: conn.name,
-                    description: conn.providerType === 'anthropic' ? 'Anthropic' :
-                                 conn.providerType === 'pi' ? 'Craft Agents Backend' :
-                                 conn.providerType || 'Unknown',
+                    description: getConnectionProviderLabel(conn),
                   })),
                 ]}
               />
@@ -593,12 +651,18 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
               />
               <SettingsMenuSelectRow
                 label={t("settings.ai.thinking")}
-                description={t("settings.ai.thinkingDesc")}
-                value={currentThinking}
+                description={workspaceThinkingUnsupported ? t('thinking.notSupported') :
+                  workspaceThinkingLevels.length === 0 ? t('common.unavailable') : t("settings.ai.thinkingDesc")}
+                value={workspaceThinkingUnsupported ? 'unavailable' : currentThinking}
                 onValueChange={handleThinkingChange}
-                options={[
+                disabled={workspaceThinkingLevels.length === 0}
+                options={workspaceThinkingUnsupported ? [
+                  { value: 'unavailable', label: t('thinking.notSupported') },
+                ] : workspaceThinkingLevels.length === 0 ? [
+                  { value: currentThinking, label: currentThinking === 'global' ? t('settings.ai.useDefault') : t(getThinkingLevelNameKey(currentThinking as ThinkingLevel)) },
+                ] : [
                   { value: 'global', label: t("settings.ai.useDefault"), description: t("settings.ai.inheritFromApp") },
-                  ...THINKING_LEVELS.map(({ id, nameKey, descriptionKey }) => ({
+                  ...workspaceThinkingLevels.map(({ id, nameKey, descriptionKey }) => ({
                     value: id,
                     label: t(nameKey),
                     description: t(descriptionKey),
@@ -631,12 +695,15 @@ function getApiKeyMethodForConnection(conn: LlmConnectionWithStatus): ApiSetupMe
 export default function AiSettingsPage() {
   const { t } = useTranslation()
   const { llmConnections, refreshLlmConnections, activeWorkspaceId } = useAppShellContext()
+  const [selectedConnectionSlug, setSelectedConnectionSlug] = useState<string | null>(null)
+  const [showProviderCatalog, setShowProviderCatalog] = useState(false)
+  const pendingCreatedSlugs = useRef<Set<string> | null>(null)
 
   // API Setup overlay state
   const [showApiSetup, setShowApiSetup] = useState(false)
   const [editingConnectionSlug, setEditingConnectionSlug] = useState<string | null>(null)
-  const [isDirectEdit, setIsDirectEdit] = useState(false)
   const [editInitialValues, setEditInitialValues] = useState<{
+    connectionSlug?: string
     apiKey?: string
     baseUrl?: string
     connectionDefaultModel?: string
@@ -644,7 +711,6 @@ export default function AiSettingsPage() {
     models?: string[]
     customApi?: CustomEndpointApi
   } | undefined>(undefined)
-  const setFullscreenOverlayOpen = useSetAtom(fullscreenOverlayOpenAtom)
 
   // Workspaces for override cards
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
@@ -663,6 +729,13 @@ export default function AiSettingsPage() {
     state: ValidationState
     error?: string
   }>>({})
+  const [refreshingModelSlug, setRefreshingModelSlug] = useState<string | null>(null)
+  const [mediaRefreshVersion, setMediaRefreshVersion] = useState(0)
+  const [mediaCatalog, setMediaCatalog] = useState<{
+    slug: string
+    models: Array<{ id: string; name: string; kind: 'image' | 'video' }>
+    status: 'available' | 'partial' | 'unavailable'
+  } | null>(null)
 
   // Credential health state (for startup warning banner)
   const [credentialHealthIssues, setCredentialHealthIssues] = useState<CredentialHealthIssue[]>([])
@@ -707,18 +780,16 @@ export default function AiSettingsPage() {
     load()
   }, [activeWorkspaceId])
 
-  // Helpers to open/close the fullscreen API setup overlay
+  // Add/edit remains in the selected provider panel; the connection hook still owns saving.
   const openApiSetup = useCallback((connectionSlug?: string) => {
     setEditingConnectionSlug(connectionSlug || null)
     setShowApiSetup(true)
-    setFullscreenOverlayOpen(true)
-  }, [setFullscreenOverlayOpen])
+  }, [])
 
   const closeApiSetup = useCallback(() => {
     setShowApiSetup(false)
-    setFullscreenOverlayOpen(false)
     setEditingConnectionSlug(null)
-  }, [setFullscreenOverlayOpen])
+  }, [])
 
   // Derive existing slugs for unique slug generation
   const existingSlugs = useMemo(
@@ -741,6 +812,7 @@ export default function AiSettingsPage() {
     },
     editingSlug: editingConnectionSlug,
     existingSlugs,
+    autoStartOAuthOnSelect: false,
   })
 
   const handleApiSetupFinish = useCallback(() => {
@@ -749,7 +821,6 @@ export default function AiSettingsPage() {
     apiSetupOnboarding.reset()
     // Clear any credential health issues after successful re-authentication
     setCredentialHealthIssues([])
-    setIsDirectEdit(false)
     setEditInitialValues(undefined)
   }, [closeApiSetup, refreshLlmConnections, apiSetupOnboarding])
 
@@ -757,9 +828,44 @@ export default function AiSettingsPage() {
   const handleCloseApiSetup = useCallback(() => {
     closeApiSetup()
     apiSetupOnboarding.reset()
-    setIsDirectEdit(false)
     setEditInitialValues(undefined)
+    pendingCreatedSlugs.current = null
   }, [closeApiSetup, apiSetupOnboarding])
+
+  // Settings has no onboarding completion page: return to the selected connection after save.
+  useEffect(() => {
+    if (showApiSetup && apiSetupOnboarding.state.step === 'complete') {
+      handleApiSetupFinish()
+    }
+  }, [showApiSetup, apiSetupOnboarding.state.step, handleApiSetupFinish])
+
+  const handleAddConnection = useCallback((choice: ProviderChoice, preset?: string) => {
+    pendingCreatedSlugs.current = new Set(existingSlugs)
+    setShowProviderCatalog(false)
+    setEditInitialValues(preset ? { activePreset: preset } : undefined)
+    requestAnimationFrame(() => {
+      openApiSetup()
+      apiSetupOnboarding.handleSelectProvider(choice)
+    })
+  }, [apiSetupOnboarding, existingSlugs, openApiSetup])
+
+  const handleOpenProviderCatalog = useCallback(() => {
+    closeApiSetup()
+    apiSetupOnboarding.reset()
+    setEditInitialValues(undefined)
+    pendingCreatedSlugs.current = null
+    setShowProviderCatalog(true)
+  }, [apiSetupOnboarding, closeApiSetup])
+
+  // After connection setup, show its model list in the same provider detail panel.
+  useEffect(() => {
+    if (!pendingCreatedSlugs.current) return
+    const created = llmConnections.find(connection => !pendingCreatedSlugs.current!.has(connection.slug))
+    if (created) {
+      setSelectedConnectionSlug(created.slug)
+      pendingCreatedSlugs.current = null
+    }
+  }, [llmConnections])
 
   // Handler for re-authenticate button in credential health banner
   const handleReauthenticate = useCallback(() => {
@@ -809,26 +915,19 @@ export default function AiSettingsPage() {
   }, [renamingConnection, renameValue, refreshLlmConnections])
 
   const handleReauthenticateConnection = useCallback((connection: LlmConnectionWithStatus) => {
+    setSelectedConnectionSlug(connection.slug)
     openApiSetup(connection.slug)
-    apiSetupOnboarding.reset()
-
     if (connection.authType === 'oauth') {
       const method = connection.providerType === 'pi'
-                   ? (connection.piAuthProvider === 'github-copilot' ? 'pi_copilot_oauth' : 'pi_chatgpt_oauth')
+                   ? (connection.piAuthProvider === 'github-copilot' ? 'pi_copilot_oauth'
+                     : connection.piAuthProvider === 'xai' ? 'pi_xai_oauth' : 'pi_chatgpt_oauth')
                    : 'claude_oauth'
-      apiSetupOnboarding.handleStartOAuth(method, connection.slug)
+      apiSetupOnboarding.jumpToCredentials(method)
+      requestAnimationFrame(() => apiSetupOnboarding.handleStartOAuth(method, connection.slug))
     }
   }, [apiSetupOnboarding, openApiSetup])
 
-  const handleEditConnection = useCallback(async (connection: LlmConnectionWithStatus) => {
-    // Fetch stored API key (best-effort — if IPC not available yet, skip pre-fill)
-    let apiKey: string | undefined
-    try {
-      apiKey = (await window.electronAPI.getLlmConnectionApiKey(connection.slug)) ?? undefined
-    } catch {
-      // IPC method may not exist if app wasn't restarted after code change
-    }
-
+  const handleEditConnection = useCallback((connection: LlmConnectionWithStatus) => {
     // Build model string from connection's models array
     const modelStr = connection.models
       ?.map((m: string | ModelDefinition) => typeof m === 'string' ? m : m.id)
@@ -842,17 +941,17 @@ export default function AiSettingsPage() {
     const isCustomEndpointConnection = !!connection.customEndpoint && !!connection.baseUrl?.trim()
 
     setEditInitialValues({
-      apiKey,
+      connectionSlug: connection.slug,
       baseUrl: connection.baseUrl,
-      connectionDefaultModel: modelStr,
+      connectionDefaultModel: isCustomEndpointConnection ? modelStr : connection.defaultModel,
       activePreset: isCustomEndpointConnection ? 'custom' : (connection.piAuthProvider || undefined),
       models: modelIds,
       customApi: connection.customEndpoint?.api,
     })
 
-    // Open overlay and jump directly to credentials step (no reset — jumpToCredentials sets state)
+    // Keep the edit form in this provider's detail panel.
+    setSelectedConnectionSlug(connection.slug)
     openApiSetup(connection.slug)
-    setIsDirectEdit(true)
     const method = getApiKeyMethodForConnection(connection)
     apiSetupOnboarding.jumpToCredentials(method)
   }, [apiSetupOnboarding, openApiSetup])
@@ -907,6 +1006,25 @@ export default function AiSettingsPage() {
     }
   }, [t])
 
+  const handleRefreshModels = useCallback(async (slug: string) => {
+    if (refreshingModelSlug || !window.electronAPI) return
+    setRefreshingModelSlug(slug)
+    try {
+      const result = await window.electronAPI.refreshLlmConnectionModels(slug)
+      if (!result.success) throw new Error(result.error || 'Model refresh failed')
+      await refreshLlmConnections()
+      setMediaRefreshVersion(version => version + 1)
+      toast.info(t(result.source === 'provider' ? 'settings.ai.modelsCheckedProvider'
+        : result.source === 'sdk' ? 'settings.ai.modelsCheckedSdk'
+        : 'settings.ai.modelsCheckedCached'))
+    } catch (error) {
+      console.error('Failed to check connection models:', error)
+      toast.error(t('settings.ai.modelRefreshFailed'))
+    } finally {
+      setRefreshingModelSlug(null)
+    }
+  }, [refreshingModelSlug, refreshLlmConnections, t])
+
   const handleSetDefaultConnection = useCallback(async (slug: string) => {
     if (!window.electronAPI) return
     try {
@@ -949,6 +1067,54 @@ export default function AiSettingsPage() {
   const defaultConnection = useMemo(() => {
     return llmConnections.find(c => c.isDefault)
   }, [llmConnections])
+  const sortedConnections = useMemo(() => [...llmConnections].sort((a, b) => {
+    if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
+    return a.name.localeCompare(b.name)
+  }), [llmConnections])
+  const selectedConnection = llmConnections.find(c => c.slug === selectedConnectionSlug)
+    ?? defaultConnection ?? sortedConnections[0]
+  const selectedHasXaiApiCatalog = selectedConnection?.providerType === 'pi'
+    && selectedConnection.piAuthProvider === 'xai'
+    && selectedConnection.authType === 'api_key'
+    && selectedConnection.isAuthenticated
+  useEffect(() => {
+    if (!selectedHasXaiApiCatalog || !selectedConnection) {
+      setMediaCatalog(null)
+      return
+    }
+    let cancelled = false
+    const slug = selectedConnection.slug
+    void window.electronAPI.getPiProviderModels('xai', undefined, slug).then(result => {
+      if (cancelled) return
+      setMediaCatalog({
+        slug,
+        models: result.mediaModels ?? [],
+        status: result.mediaCatalogStatus ?? 'unavailable',
+      })
+    }).catch(() => {
+      if (!cancelled) setMediaCatalog({ slug, models: [], status: 'unavailable' })
+    })
+    return () => { cancelled = true }
+  }, [selectedConnection?.slug, selectedHasXaiApiCatalog, mediaRefreshVersion])
+  const allSelectedModelOptions = useMemo(
+    () => getModelOptionsForConnection(selectedConnection),
+    [selectedConnection],
+  )
+  const [modelQuery, setModelQuery] = useState('')
+  const selectedModelOptions = useMemo(() => {
+    const query = modelQuery.trim().toLowerCase()
+    if (!query) return allSelectedModelOptions
+    return allSelectedModelOptions.filter(option =>
+      `${option.label} ${option.value} ${option.description}`.toLowerCase().includes(query),
+    )
+  }, [allSelectedModelOptions, modelQuery])
+  useEffect(() => {
+    setModelQuery('')
+  }, [selectedConnection?.slug])
+  const selectedCanRefreshModels = !!selectedConnection && !isCompatProvider(selectedConnection.providerType)
+    && (selectedConnection.modelSelectionMode !== 'userDefined3Tier'
+      || selectedConnection.piAuthProvider === 'github-copilot'
+      || selectedConnection.piAuthProvider === 'xai')
 
   // Anthropic account UUIDs that resolve from 2+ connections (issue #838).
   // Surfaces a warning when several Claude connections share one account/quota.
@@ -962,17 +1128,25 @@ export default function AiSettingsPage() {
   }, [llmConnections])
 
   const defaultModel = defaultConnection?.defaultModel ?? ''
+  const hasAnthropicApiConnection = llmConnections.some(connection =>
+    connection.providerType === 'anthropic' && connection.authType === 'api_key')
+  const defaultModelDefinition = getConnectionModelDefinition(defaultConnection, defaultModel)
+  const defaultThinkingLevels = getThinkingLevelsForModel(defaultModelDefinition)
+  const defaultThinkingUnsupported = defaultModelDefinition?.supportsThinking === false && defaultThinkingLevels.length === 0
+  const effectiveDefaultThinking = reconcileThinkingLevelForModel(defaultThinking, defaultModelDefinition)
 
-  // App-level default handlers
-  const handleDefaultModelChange = useCallback(async (model: string) => {
-    if (!window.electronAPI || !defaultConnection) return
-    // Update defaultModel on the connection, then save the full connection
-    const updated = { ...defaultConnection, defaultModel: model }
-    // Remove status fields that aren't part of LlmConnection
-    const { isAuthenticated: _a, authError: _b, isDefault: _c, ...connectionData } = updated
-    await window.electronAPI.saveLlmConnection(connectionData as import('../../../shared/types').LlmConnection)
-    await refreshLlmConnections()
-  }, [defaultConnection, refreshLlmConnections])
+  // Each connection owns its selected model; changing another connection never changes the default.
+  const handleConnectionModelChange = useCallback(async (connection: LlmConnectionWithStatus, model: string) => {
+    if (!window.electronAPI) return
+    try {
+      const result = await window.electronAPI.setLlmConnectionModel(connection.slug, model)
+      if (result.success) await refreshLlmConnections()
+      else toast.error(result.error?.includes('MODEL_UNAVAILABLE_FOR_CONNECTION')
+        ? t('chat.modelUnavailableForConnection') : result.error || t('settings.ai.modelRefreshFailed'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('settings.ai.modelRefreshFailed'))
+    }
+  }, [refreshLlmConnections, t])
 
   const handleDefaultThinkingChange = useCallback(async (level: ThinkingLevel) => {
     if (!window.electronAPI) return
@@ -1043,10 +1217,13 @@ export default function AiSettingsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      <PanelHeader title={t("settings.ai.title")} actions={<HeaderMenu route={routes.view.settings('ai')} />} />
       <div className="flex-1 min-h-0 mask-fade-y">
         <ScrollArea className="h-full">
           <div className="px-5 py-7 max-w-3xl mx-auto">
+            <header className="mb-3 px-1">
+              <h1 className="text-base font-semibold">{t('settings.ai.title')}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{t('settings.ai.description')}</p>
+            </header>
             {/* Credential Health Warning Banner */}
             <CredentialHealthBanner
               issues={credentialHealthIssues}
@@ -1054,122 +1231,258 @@ export default function AiSettingsPage() {
             />
 
             <div className="space-y-8">
-              {/* Default Settings - only show if connections exist */}
-              {llmConnections.length > 0 && (
-              <SettingsSection title={t("settings.ai.defaultSection")} description={t("settings.ai.defaultSectionDesc")}>
-                <SettingsCard>
-                  <SettingsMenuSelectRow
-                    label={t("settings.ai.connection")}
-                    description={t("settings.ai.connectionDesc")}
-                    value={defaultConnection?.slug || ''}
-                    onValueChange={handleSetDefaultConnection}
-                    options={llmConnections.map((conn) => ({
-                      value: conn.slug,
-                      label: conn.name,
-                      description: conn.providerType === 'anthropic' ? 'Anthropic API' :
-                                   conn.providerType === 'pi' ? 'Craft Agents Backend' :
-                                   conn.providerType === 'pi_compat' ? (conn.baseUrl?.toLowerCase().includes('manifest.build') ? 'Manifest' : 'Craft Agents Backend Compatible') :
-                                   conn.providerType || 'Unknown',
-                    }))}
-                  />
-                  <SettingsMenuSelectRow
-                    label={t("settings.ai.model")}
-                    description={t("settings.ai.modelDesc")}
-                    value={defaultModel}
-                    onValueChange={handleDefaultModelChange}
-                    options={getModelOptionsForConnection(defaultConnection).map(o => ({
-                      ...o, description: o.descriptionKey ? t(o.descriptionKey) : o.description,
-                    }))}
-                  />
-                  <SettingsMenuSelectRow
-                    label={t("settings.ai.thinking")}
-                    description={t("settings.ai.thinkingDesc")}
-                    value={defaultThinking}
-                    onValueChange={(v) => handleDefaultThinkingChange(v as ThinkingLevel)}
-                    options={THINKING_LEVELS.map(({ id, nameKey, descriptionKey }) => ({
-                      value: id,
-                      label: t(nameKey),
-                      description: t(descriptionKey),
-                    }))}
-                  />
-                </SettingsCard>
-              </SettingsSection>
-              )}
+              <div className="overflow-hidden rounded-[12px] border border-border/60 bg-background shadow-minimal">
+                  <div className="flex flex-col md:h-[65dvh] md:min-h-[20rem] md:max-h-[40rem] md:flex-row">
+                    <aside className="flex w-full shrink-0 flex-col border-b border-border/60 bg-foreground/[0.02] md:min-h-0 md:w-56 md:border-b-0 md:border-r">
+                      <div className="flex items-center justify-between px-3 py-3">
+                        <span className="text-xs font-medium text-muted-foreground">{t('settings.ai.connections')}</span>
+                        <span className="text-xs tabular-nums text-muted-foreground/70">{sortedConnections.length}</span>
+                      </div>
+                      <nav aria-label={t('settings.ai.connections')} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+                        {sortedConnections.map((conn) => (
+                          <button
+                            key={conn.slug}
+                            type="button"
+                            onClick={() => { setShowProviderCatalog(false); setSelectedConnectionSlug(conn.slug); handleCloseApiSetup() }}
+                            aria-current={!showApiSetup && !showProviderCatalog && selectedConnection?.slug === conn.slug ? 'page' : undefined}
+                            className={cn(
+                              'flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-[13px] outline-none transition-colors',
+                              'hover:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-ring',
+                              !showApiSetup && !showProviderCatalog && selectedConnection?.slug === conn.slug && 'bg-background shadow-minimal',
+                            )}
+                          >
+                            <ConnectionIcon connection={conn} size={18} />
+                            <span className="min-w-0 flex-1 truncate font-medium">{conn.name}</span>
+                            <span
+                              className={cn('size-1.5 shrink-0 rounded-full', conn.isAuthenticated ? 'bg-success' : 'bg-foreground/20')}
+                              aria-label={conn.isAuthenticated ? t('settings.ai.connected') : t('settings.ai.notAuthenticated')}
+                            />
+                          </button>
+                        ))}
+                        {sortedConnections.length === 0 && (
+                          <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">{t('settings.ai.noConnections')}</p>
+                        )}
+                      </nav>
+                      <div className="border-t border-border/60 p-2">
+                        <Button size="sm" variant="outline" onClick={handleOpenProviderCatalog} className="w-full justify-start gap-2" aria-label={t('settings.ai.addConnection')}>
+                          <Plus className="h-4 w-4" />
+                          {t('settings.ai.addConnection')}
+                        </Button>
+                      </div>
+                    </aside>
 
-              {/* Workspace Overrides - only show if connections exist */}
+                    <section className="min-w-0 flex-1 md:min-h-0 md:overflow-y-auto">
+                      {showProviderCatalog || (!showApiSetup && !selectedConnection) ? (
+                        <ProviderCatalog onSelect={handleAddConnection} />
+                      ) : showApiSetup ? (
+                        <div className="max-w-2xl space-y-4 p-5">
+                          <div className="flex justify-end">
+                            <button type="button" onClick={handleCloseApiSetup} aria-label={t('common.close')} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          {apiSetupOnboarding.state.step === 'credentials' &&
+                            (apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' || apiSetupOnboarding.state.apiSetupMethod === 'anthropic_api_key') ? (
+                            <>
+                              <ApiKeyInput
+                                key={[editingConnectionSlug, editInitialValues?.activePreset, editInitialValues?.baseUrl].join(':')}
+                                status={apiSetupOnboarding.state.credentialStatus}
+                                errorMessage={apiSetupOnboarding.state.errorMessage}
+                                onSubmit={apiSetupOnboarding.handleSubmitCredential}
+                                providerType={apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' ? 'pi_api_key' : 'anthropic'}
+                                providerLocked
+                                initialValues={editInitialValues}
+                              />
+                              <div className="flex justify-end gap-2">
+                                <Button variant="outline" size="sm" onClick={handleCloseApiSetup}>{t('common.cancel')}</Button>
+                                <Button size="sm" type="submit" form="api-key-form" disabled={apiSetupOnboarding.state.credentialStatus === 'validating'}>
+                                  {t(apiSetupOnboarding.state.credentialStatus === 'validating' ? 'common.validating' : 'common.save')}
+                                </Button>
+                              </div>
+                            </>
+                          ) : apiSetupOnboarding.state.step === 'credentials' && apiSetupOnboarding.state.apiSetupMethod ? (
+                            <CredentialsStep
+                              apiSetupMethod={apiSetupOnboarding.state.apiSetupMethod}
+                              status={apiSetupOnboarding.state.credentialStatus}
+                              errorMessage={apiSetupOnboarding.state.errorMessage}
+                              onSubmit={apiSetupOnboarding.handleSubmitCredential}
+                              onStartOAuth={apiSetupOnboarding.handleStartOAuth}
+                              onBack={editingConnectionSlug ? handleCloseApiSetup : handleOpenProviderCatalog}
+                              isWaitingForCode={apiSetupOnboarding.isWaitingForCode}
+                              onSubmitAuthCode={apiSetupOnboarding.handleSubmitAuthCode}
+                              onCancelOAuth={apiSetupOnboarding.handleCancelOAuth}
+                              copilotDeviceCode={apiSetupOnboarding.copilotDeviceCode}
+                            />
+                          ) : apiSetupOnboarding.state.step === 'local-model' ? (
+                            <LocalModelStep
+                              onSubmit={apiSetupOnboarding.handleSubmitLocalModel}
+                              onBack={handleOpenProviderCatalog}
+                              status={apiSetupOnboarding.state.credentialStatus === 'validating' ? 'validating' : apiSetupOnboarding.state.credentialStatus === 'error' ? 'error' : 'idle'}
+                              errorMessage={apiSetupOnboarding.state.errorMessage}
+                            />
+                          ) : null}
+                        </div>
+                      ) : selectedConnection ? (
+                        <div className="min-w-0">
+                          <ConnectionRow
+                            connection={selectedConnection}
+                            isLastConnection={llmConnections.length <= 1}
+                            onRenameClick={() => handleRenameClick(selectedConnection)}
+                            onDelete={() => handleDeleteConnection(selectedConnection.slug)}
+                            onSetDefault={() => handleSetDefaultConnection(selectedConnection.slug)}
+                            onValidate={() => handleValidateConnection(selectedConnection.slug)}
+                            onReauthenticate={() => handleReauthenticateConnection(selectedConnection)}
+                            onEdit={() => handleEditConnection(selectedConnection)}
+                            onSetMidStreamBehavior={(behavior) => handleSetMidStreamBehavior(selectedConnection, behavior)}
+                            validationState={validationStates[selectedConnection.slug]?.state || 'idle'}
+                            validationError={validationStates[selectedConnection.slug]?.error}
+                            isDuplicateAccount={!!selectedConnection.oauthAccountUuid && duplicateAccountUuids.has(selectedConnection.oauthAccountUuid)}
+                          />
+
+                          {selectedConnection.providerType === 'pi' && selectedConnection.piAuthProvider === 'xai' && selectedConnection.authType === 'oauth'
+                            && <GrokSubscriptionUsage key={selectedConnection.slug} connectionSlug={selectedConnection.slug} />}
+
+                          <div className="border-t border-border/60">
+                            <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4">
+                              <div>
+                                <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.ai.modelDesc')}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="relative w-44">
+                                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                                  <Input
+                                    value={modelQuery}
+                                    onChange={(event) => setModelQuery(event.target.value)}
+                                    placeholder={t('common.search')}
+                                    aria-label={t('common.search')}
+                                    className="h-8 rounded-lg pl-8 pr-2 text-xs"
+                                  />
+                                </div>
+                                {selectedCanRefreshModels && <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRefreshModels(selectedConnection.slug)}
+                                  disabled={refreshingModelSlug !== null}
+                                  aria-label={t('settings.ai.refreshModels')}
+                                >
+                                  <RefreshCcw className={cn('size-3.5', refreshingModelSlug === selectedConnection.slug && 'animate-spin')} />
+                                  <span className="hidden sm:inline">{t(refreshingModelSlug === selectedConnection.slug ? 'settings.ai.refreshingModels' : 'settings.ai.refreshModels')}</span>
+                                </Button>}
+                              </div>
+                            </div>
+                            {selectedModelOptions.length > 0 ? (
+                              <div className="border-t border-border/60">
+                                {selectedModelOptions.map(option => {
+                                  const definition = getConnectionModelDefinition(selectedConnection, option.value)
+                                  const thinkingLevels = getThinkingLevelsForModel(definition)
+                                  const isDefault = option.value === selectedConnection.defaultModel
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      onClick={() => { if (!isDefault) handleConnectionModelChange(selectedConnection, option.value) }}
+                                      aria-current={isDefault ? 'true' : undefined}
+                                      className="flex w-full items-center gap-3 border-b border-border/60 px-5 py-3.5 text-left transition-colors last:border-b-0 hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                                    >
+                                      <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-full border', isDefault ? 'border-foreground bg-foreground text-background' : 'border-border text-transparent')}>
+                                        <Check className="size-3.5" />
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-sm font-medium">{option.label}</span>
+                                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{option.label !== option.value ? option.value : (option.descriptionKey ? t(option.descriptionKey) : option.description)}</span>
+                                      </span>
+                                      <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                                        {definition?.contextWindow ? <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-1" title={t('chat.contextUsage.contextWindow')}><Gauge className="size-3" />{formatTokenCount(definition.contextWindow)}</span> : null}
+                                        {thinkingLevels.length > 0 && <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-1"><Brain className="size-3" />{t('settings.ai.thinking')}</span>}
+                                      </span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <p className="border-t border-border/60 px-5 py-4 text-sm text-muted-foreground">{t('settings.ai.noModels')}</p>
+                            )}
+                            {selectedConnection.isDefault && (
+                              <div className="border-t border-border/60 px-5 py-1">
+                                <SettingsMenuSelectRow
+                                  label={t('settings.ai.thinking')}
+                                  description={defaultThinkingUnsupported ? t('thinking.notSupported') :
+                                    defaultThinkingLevels.length === 0 ? t('common.unavailable') : t('settings.ai.thinkingDesc')}
+                                  value={defaultThinkingUnsupported ? 'unavailable' :
+                                    defaultThinkingLevels.length === 0 ? defaultThinking : effectiveDefaultThinking}
+                                  onValueChange={(value) => handleDefaultThinkingChange(value as ThinkingLevel)}
+                                  disabled={defaultThinkingLevels.length === 0}
+                                  options={defaultThinkingUnsupported ? [
+                                    { value: 'unavailable', label: t('thinking.notSupported') },
+                                  ] : defaultThinkingLevels.length === 0 ? [
+                                    { value: defaultThinking, label: t(getThinkingLevelNameKey(defaultThinking)) },
+                                  ] : defaultThinkingLevels.map(({ id, nameKey, descriptionKey }) => ({
+                                    value: id, label: t(nameKey), description: t(descriptionKey),
+                                  }))}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          {selectedHasXaiApiCatalog && (
+                            <div className="border-t border-border/60 px-5 py-4">
+                              <h3 className="text-sm font-semibold">{t('settings.ai.mediaModels')}</h3>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.ai.mediaModelsDesc')}</p>
+                              {mediaCatalog?.slug === selectedConnection.slug ? (
+                                <>
+                                  {mediaCatalog.status !== 'available' && <p className="mt-3 text-xs text-muted-foreground">
+                                    {t(mediaCatalog.status === 'partial' ? 'settings.ai.mediaModelsPartial' : 'settings.ai.mediaModelsUnavailable')}
+                                  </p>}
+                                  {(['image', 'video'] as const).map(kind => {
+                                    const rows = mediaCatalog.models.filter(model => model.kind === kind
+                                      && `${model.name} ${model.id}`.toLowerCase().includes(modelQuery.trim().toLowerCase()))
+                                    if (!rows.length) return null
+                                    return <div key={kind} className="mt-4">
+                                      <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t(kind === 'image' ? 'settings.ai.mediaImageModels' : 'settings.ai.mediaVideoModels')}</h4>
+                                      {rows.map(model => <div key={`${kind}:${model.id}`} className="border-b border-border/60 py-2 last:border-b-0">
+                                        <span className="block truncate text-sm font-medium">{model.name}</span>
+                                        {model.name !== model.id && <span className="block truncate text-xs text-muted-foreground">{model.id}</span>}
+                                      </div>)}
+                                    </div>
+                                  })}
+                                  {mediaCatalog.status === 'available' && !mediaCatalog.models.length && <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.mediaModelsEmpty')}</p>}
+                                </>
+                              ) : <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.refreshingModels')}</p>}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex h-full min-h-64 items-center justify-center px-6 text-center text-sm text-muted-foreground">{t('settings.ai.noConnections')}</div>
+                      )}
+                    </section>
+                  </div>
+              </div>
+
               {workspaces.length > 0 && llmConnections.length > 0 && (
-                <SettingsSection title={t("settings.ai.workspaceOverrides")} description={t("settings.ai.workspaceOverridesDesc")}>
+                <SettingsSection title={t('settings.ai.workspaceOverrides')} description={t('settings.ai.workspaceOverridesDesc')}>
                   <div className="space-y-2">
                     {workspaces.map((workspace) => (
-                      <WorkspaceOverrideCard
-                        key={workspace.id}
-                        workspace={workspace}
-                        llmConnections={llmConnections}
-                        onSettingsChange={handleWorkspaceSettingsChange}
-                      />
+                      <WorkspaceOverrideCard key={workspace.id} workspace={workspace} llmConnections={llmConnections} onSettingsChange={handleWorkspaceSettingsChange} />
                     ))}
                   </div>
                 </SettingsSection>
               )}
 
-              {/* Connections Management */}
-              <SettingsSection title={t("settings.ai.connections")} description={t("settings.ai.connectionsDesc")}>
-                <SettingsCard>
-                  {llmConnections.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      {t("settings.ai.noConnections")}
-                    </div>
-                  ) : (
-                    [...llmConnections]
-                      .sort((a, b) => {
-                        if (a.isDefault && !b.isDefault) return -1
-                        if (!a.isDefault && b.isDefault) return 1
-                        return a.name.localeCompare(b.name)
-                      })
-                      .map((conn) => (
-                      <ConnectionRow
-                        key={conn.slug}
-                        connection={conn}
-                        isLastConnection={false}
-                        onRenameClick={() => handleRenameClick(conn)}
-                        onDelete={() => handleDeleteConnection(conn.slug)}
-                        onSetDefault={() => handleSetDefaultConnection(conn.slug)}
-                        onValidate={() => handleValidateConnection(conn.slug)}
-                        onReauthenticate={() => handleReauthenticateConnection(conn)}
-                        onEdit={() => handleEditConnection(conn)}
-                        onSetMidStreamBehavior={(behavior) => handleSetMidStreamBehavior(conn, behavior)}
-                        validationState={validationStates[conn.slug]?.state || 'idle'}
-                        validationError={validationStates[conn.slug]?.error}
-                        isDuplicateAccount={!!conn.oauthAccountUuid && duplicateAccountUuids.has(conn.oauthAccountUuid)}
-                      />
-                    ))
-                  )}
-                </SettingsCard>
-                <div className="pt-0">
-                  <button
-                    onClick={() => openApiSetup()}
-                    className="inline-flex items-center h-8 px-3 text-sm rounded-lg bg-background shadow-minimal hover:bg-foreground/[0.02] transition-colors"
-                  >
-                    {t("settings.ai.addConnection")}
-                  </button>
-                </div>
-              </SettingsSection>
-
               {/* Performance */}
-              <SettingsSection title={t("settings.ai.performance")} description={t("settings.ai.performanceDesc")}>
+              {llmConnections.length > 0 && <SettingsSection title={t("settings.ai.performance")} description={t("settings.ai.performanceDesc")}>
                 <SettingsCard>
-                  <SettingsToggle
+                  {hasAnthropicApiConnection && <SettingsToggle
                     label={t("settings.ai.extendedContext")}
                     description={t("settings.ai.extendedContextDesc")}
                     checked={enable1MContext}
                     onCheckedChange={handleEnable1MContextChange}
-                  />
-                  <SettingsToggle
+                  />}
+                  {hasAnthropicApiConnection && <SettingsToggle
                     label={t("settings.ai.extendedPromptCache")}
                     description={t("settings.ai.extendedPromptCacheDesc")}
                     checked={extendedPromptCache}
                     onCheckedChange={handleExtendedPromptCacheChange}
-                  />
+                  />}
                   {rtkStatus?.installed ? (
                     <>
                       <SettingsToggle
@@ -1229,44 +1542,7 @@ export default function AiSettingsPage() {
                     </SettingsRow>
                   )}
                 </SettingsCard>
-              </SettingsSection>
-
-              {/* API Setup Fullscreen Overlay */}
-              <FullscreenOverlayBase
-                isOpen={showApiSetup}
-                onClose={handleCloseApiSetup}
-                className="z-splash flex flex-col bg-foreground-2"
-              >
-                <OnboardingWizard
-                  state={apiSetupOnboarding.state}
-                  onContinue={apiSetupOnboarding.handleContinue}
-                  onBack={isDirectEdit ? handleCloseApiSetup : apiSetupOnboarding.handleBack}
-                  onSelectProvider={apiSetupOnboarding.handleSelectProvider}
-                  onSelectApiSetupMethod={apiSetupOnboarding.handleSelectApiSetupMethod}
-                  onSubmitCredential={apiSetupOnboarding.handleSubmitCredential}
-                  onSubmitLocalModel={apiSetupOnboarding.handleSubmitLocalModel}
-                  onStartOAuth={apiSetupOnboarding.handleStartOAuth}
-                  onFinish={handleApiSetupFinish}
-                  isWaitingForCode={apiSetupOnboarding.isWaitingForCode}
-                  onSubmitAuthCode={apiSetupOnboarding.handleSubmitAuthCode}
-                  onCancelOAuth={apiSetupOnboarding.handleCancelOAuth}
-                  copilotDeviceCode={apiSetupOnboarding.copilotDeviceCode}
-                  editInitialValues={editInitialValues}
-                  className="h-full"
-                />
-                <div
-                  className="fixed top-0 right-0 h-[50px] flex items-center pr-5 [-webkit-app-region:no-drag]"
-                  style={{ zIndex: 'var(--z-fullscreen, 350)' }}
-                >
-                  <button
-                    onClick={handleCloseApiSetup}
-                    className="p-1.5 rounded-[6px] transition-all bg-background shadow-minimal text-muted-foreground/50 hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    title={t("common.closeEsc")}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </FullscreenOverlayBase>
+              </SettingsSection>}
 
               {/* Rename Connection Dialog */}
               <RenameDialog

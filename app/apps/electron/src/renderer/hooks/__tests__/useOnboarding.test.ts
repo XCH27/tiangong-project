@@ -62,7 +62,7 @@ describe('apiSetupMethodToConnectionSetup', () => {
     expect(setup.models).toEqual(['model-a'])
   })
 
-  it('claude_oauth includes only credential', () => {
+  it('claude_oauth leaves its server-owned OAuth credential out of setup', () => {
     const setup = apiSetupMethodToConnectionSetup(
       'claude_oauth',
       { credential: 'oauth-token-123' },
@@ -70,7 +70,7 @@ describe('apiSetupMethodToConnectionSetup', () => {
       new Set(),
     )
     expect(setup.slug).toBe('claude-max')
-    expect(setup.credential).toBe('oauth-token-123')
+    expect(setup.credential).toBeUndefined()
     expect(setup.baseUrl).toBeUndefined()
   })
 

@@ -351,6 +351,16 @@ describe('resolveModelForProvider', () => {
 
     expect(resolveModelForProvider('pi', 'pi/claude-opus-4-6', connection)).toBe('pi/claude-opus-4-7');
   });
+
+  it('does not pass an unregistered pi-prefixed model into the Claude backend', () => {
+    const connection = {
+      providerType: 'anthropic', defaultModel: 'claude-sonnet-4-6',
+      models: ['claude-sonnet-4-6'],
+    } as unknown as LlmConnection;
+
+    expect(resolveModelForProvider('anthropic', 'pi/new-account-model', connection))
+      .toBe('claude-sonnet-4-6');
+  });
 });
 
 describe('ClaudeAgent model switching', () => {

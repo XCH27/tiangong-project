@@ -12,6 +12,7 @@
  */
 
 import { ListTodo } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Markdown } from '../markdown'
 import type { AnnotationV1 } from '@craft-agent/core'
 import type { ExternalOpenAnnotationRequest } from '../annotations/use-annotation-interaction-controller'
@@ -36,6 +37,12 @@ export interface DocumentFormattedMarkdownOverlayProps {
   filePath?: string
   /** Optional type badge — tool/format indicator (e.g. "Write") shown in header */
   typeBadge?: OverlayTypeBadge
+  /** Optional title shown in the shared document header */
+  title?: string
+  /** Optional actions rendered in the existing document header action slot */
+  headerActions?: ReactNode
+  /** Accessible dialog title */
+  accessibleTitle?: string
   /** Optional error message — renders a tinted error banner above the content card */
   error?: string
   /** Optional session id used for annotation payload source metadata */
@@ -67,6 +74,9 @@ export function DocumentFormattedMarkdownOverlay({
   onOpenFile,
   filePath,
   typeBadge,
+  title,
+  headerActions,
+  accessibleTitle,
   error,
   sessionId,
   messageId,
@@ -84,6 +94,9 @@ export function DocumentFormattedMarkdownOverlay({
       onClose={onClose}
       filePath={filePath}
       typeBadge={typeBadge}
+      title={title}
+      headerActions={headerActions}
+      accessibleTitle={accessibleTitle}
       copyContent={content}
       error={error ? { label: 'Write Failed', message: error } : undefined}
     >

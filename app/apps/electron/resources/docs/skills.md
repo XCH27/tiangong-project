@@ -8,45 +8,45 @@ This guide explains how to create and configure skills in Craft Agent.
 
 ## What Are Skills?
 
-Skills are specialized instructions that extend Claude's capabilities for specific tasks. They use **the exact same SKILL.md format as the Claude Code SDK** - making skills fully compatible between systems.
+Skills are Markdown instructions with YAML frontmatter. The current loader accepts a subset of fields; a file loading successfully does not prove that every activation rule in its frontmatter is supported.
 
 **Key points:**
 - Skills are invoked via slash commands (e.g., `/commit`, `/review-pr`)
 - Skills can be automatically triggered by file patterns (globs)
 - Skills can pre-approve specific tools to run without prompting
-- The SKILL.md format is identical to what Claude Code uses internally
+- Review imported skill frontmatter before relying on its activation rules
 
-## Same Format as Claude Code SDK
+## Supported Fields and Compatibility
 
-Craft Agent uses **the identical SKILL.md format** as the Claude Code SDK. This means:
+The current loader reads `name`, `description`, `globs`, `alwaysAllow`, `icon`, and `requiredSources`, plus the Markdown body. It does not preserve every field used by other skill systems. In particular, an imported `triggers` rule or localized-name field such as `zh_name` is discarded without a warning. Do not assume an imported skill will activate at the same time or display the same metadata as it did in its original app.
 
-1. **Format compatibility**: Any skill written for Claude Code works in Craft Agent
-2. **Same frontmatter fields**: `name`, `description`, `globs`, `alwaysAllow`, `requiredSources`
-3. **Same content structure**: Markdown body with instructions for Claude
+1. **Required fields**: `name` and `description` must be present for the loader to accept a skill.
+2. **Optional fields used here**: `globs`, `alwaysAllow`, `icon`, and `requiredSources`.
+3. **Instructions**: The Markdown body is loaded when the skill is used.
 
 **What Craft Agent adds:**
 - **Visual icons**: Display custom icons in the UI for each skill
-- **Workspace organization**: Skills are scoped to workspaces
+- **Scoped organization**: Skills may come from a global, workspace, or project directory
 - **UI management**: Browse, edit, and validate skills through the interface
 
 ## Skill Precedence
 
-When a skill is invoked (e.g., `/commit`):
+When skills share a slug, the loader uses this order (highest priority first):
 
-1. **Workspace skill checked first** - If `~/.craft-agent/workspaces/{id}/skills/commit/SKILL.md` exists, it's used
-2. **SDK skill as fallback** - If no workspace skill exists, the built-in SDK skill is used
+1. **Project** — `{project}/.agents/skills/{slug}/SKILL.md`
+2. **Workspace** — `~/.craft-agent/workspaces/{id}/skills/{slug}/SKILL.md`
+3. **Global** — `~/.agents/skills/{slug}/SKILL.md`
 
 This allows you to:
-- **Override SDK skills** - Create a workspace skill with the same slug to replace built-in behavior
-- **Extend SDK skills** - Reference SDK behavior in your custom skill and add workspace-specific instructions
-- **Create new skills** - Add entirely new skills not in the SDK
+- **Override a lower-priority skill** - Create a project or workspace skill with the same slug
+- **Create a new skill** - Add a slug not present in those locations
 
 ## Skill Storage
 
 Skills are stored as folders:
 ```
 ~/.craft-agent/workspaces/{workspaceId}/skills/{slug}/
-├── SKILL.md          # Required: Skill definition (same format as Claude Code SDK)
+├── SKILL.md          # Required: Markdown instructions with supported frontmatter
 ├── icon.svg          # Recommended: Skill icon for UI display
 ├── icon.png          # Alternative: PNG icon
 └── (other files)     # Optional: Additional resources
@@ -54,7 +54,7 @@ Skills are stored as folders:
 
 ## SKILL.md Format
 
-The format is identical to Claude Code SDK skills:
+The supported format is:
 
 ```yaml
 ---
@@ -292,16 +292,16 @@ When triaging issues:
 When this skill is invoked, the `linear` source is automatically enabled for the
 session — no manual toggle needed.
 
-## Overriding SDK Skills
+## Overriding a Lower-Priority Skill
 
-To customize a built-in SDK skill like `/commit`:
+To customize a global skill such as `/commit` for one workspace:
 
 1. Create `~/.craft-agent/workspaces/{ws}/skills/commit/SKILL.md`
 2. Write your custom instructions
 3. Add an icon
 4. Run `skill_validate({ skillSlug: "commit" })`
 
-Your skill will be used instead of the SDK's built-in version.
+The workspace skill takes precedence over a global skill of the same slug. A project skill with that slug takes precedence over both.
 
 This is useful for:
 - Adding team-specific commit message formats

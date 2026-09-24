@@ -44,6 +44,88 @@ export const providerIcons = {
 
 export type ProviderIconKey = keyof typeof providerIcons
 
+/**
+ * Provider key understood by @lobehub/icons. This is intentionally a string
+ * projection instead of a second icon registry: Lobe owns the vendor catalog,
+ * while Craft still owns the slot size, spacing and monochrome treatment.
+ */
+export function getProviderIconKey(
+  providerType: LlmProviderType | string,
+  baseUrl?: string | null,
+  piAuthProvider?: string | null,
+): string | null {
+  const provider = (providerType || '').toLowerCase()
+  const authProvider = (piAuthProvider || '').toLowerCase()
+
+  // Compatible endpoints are identified by their actual host before their
+  // generic protocol. This keeps OpenAI-compatible Moonshot, Qwen, Groq, etc.
+  // from collapsing into the OpenAI icon.
+  if (baseUrl) {
+    const url = baseUrl.toLowerCase()
+    if (url.includes('openrouter.ai')) return 'openrouter'
+    if (url.includes('ollama')) return 'ollama'
+    if (url.includes('api.anthropic.com')) return 'anthropic'
+    if (url.includes('api.openai.com')) return 'openai'
+    if (url.includes('x.ai') || url.includes('xai')) return 'xai'
+    if (url.includes('deepseek.com')) return 'deepseek'
+    if (url.includes('groq.com')) return 'groq'
+    if (url.includes('cerebras.ai')) return 'cerebras'
+    if (url.includes('z.ai') || url.includes('zhipu')) return 'zhipu'
+    if (url.includes('moonshot.ai') || url.includes('moonshot.cn')) return 'moonshot'
+    if (url.includes('minimax.io') || url.includes('minimaxi.com')) return 'minimax'
+    if (url.includes('mistral.ai')) return 'mistral'
+    if (url.includes('generativelanguage.googleapis.com') || url.includes('ai.google')) return 'google'
+    if (url.includes('qwen') || url.includes('dashscope') || url.includes('aliyuncs.com')) return 'qwen'
+    if (url.includes('bedrock')) return 'bedrock'
+    if (url.includes('huggingface.co')) return 'huggingface'
+    if (url.includes('v0.dev') || url.includes('vercel')) return 'vercel'
+  }
+
+  // Pi connections use the exact upstream auth-provider identifier. These
+  // identifiers are also accepted by Lobe's provider keyword map.
+  if ((provider === 'pi' || provider === 'pi_compat') && authProvider) {
+    const aliases: Record<string, string> = {
+      'openai-codex': 'openai',
+      'github-copilot': 'githubcopilot',
+      'amazon-bedrock': 'bedrock',
+      'azure-openai-responses': 'azure',
+      'vercel-ai-gateway': 'vercelaigateway',
+      'kimi-coding': 'moonshot',
+      'moonshotai': 'moonshot',
+      'moonshotai-cn': 'moonshot',
+      'minimax-global': 'minimax',
+      'minimax-cn': 'minimax',
+      'zai-coding-cn': 'zhipu',
+    }
+    return aliases[authProvider] || authProvider
+  }
+
+  const aliases: Record<string, string> = {
+    anthropic: 'anthropic',
+    aws: 'aws',
+    azure: 'azure',
+    copilot: 'githubcopilot',
+    google: 'google',
+    huggingface: 'huggingface',
+    kimi: 'moonshot',
+    minimax: 'minimax',
+    mistral: 'mistral',
+    ollama: 'ollama',
+    openai: 'openai',
+    openrouter: 'openrouter',
+    vercel: 'vercel',
+    xai: 'xai',
+    deepseek: 'deepseek',
+    groq: 'groq',
+    cerebras: 'cerebras',
+    zai: 'zhipu',
+    qwen: 'qwen',
+    alibaba: 'alibaba',
+    'amazon-bedrock': 'bedrock',
+  }
+  return aliases[provider] || null
+}
+
 /** Human-readable provider names */
 const providerDisplayNames: Record<string, string> = {
   anthropic: 'Anthropic',

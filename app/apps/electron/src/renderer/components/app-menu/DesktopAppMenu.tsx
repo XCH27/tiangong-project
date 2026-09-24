@@ -7,29 +7,28 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuShortcut,
-  DropdownMenuSub,
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
   StyledDropdownMenuSeparator,
+  DropdownMenuSub,
   StyledDropdownMenuSubTrigger,
   StyledDropdownMenuSubContent,
 } from "@/components/ui/styled-dropdown"
 import { CraftAgentsSymbol } from "../icons/CraftAgentsSymbol"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
-import { SETTINGS_ICONS } from "../icons/SettingsIcons"
 import { TopBarButton } from "../ui/TopBarButton"
+import { Button } from "../ui/button"
 import {
   EDIT_MENU,
   VIEW_MENU,
   WINDOW_MENU,
-  SETTINGS_ITEMS,
   ROOT_MENU,
   HELP_LINKS,
-  DEBUG_MENU,
   getShortcutDisplay,
 } from "../../../shared/menu-schema"
 import type { MenuItem, MenuSection } from "../../../shared/menu-schema"
 import type { AppMenuProps } from "./types"
+import { openLocalHelp } from "@/lib/local-help"
 
 type MenuActionHandlers = {
   toggleFocusMode?: () => void
@@ -68,10 +67,9 @@ function renderSubmenuItem(
   if (item.type === 'url') {
     const Icon = getIcon(item.icon)
     return (
-      <StyledDropdownMenuItem key={item.id} onClick={() => window.electronAPI.openUrl(item.url)}>
+      <StyledDropdownMenuItem key={item.id} onClick={() => openLocalHelp(item.url)}>
         {Icon && <Icon className="h-3.5 w-3.5" />}
         {t(item.labelKey)}
-        <Icons.ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
       </StyledDropdownMenuItem>
     )
   }
@@ -131,20 +129,23 @@ function renderMenuSection(
 }
 
 /**
- * Desktop AppMenu — Craft logo dropdown with Edit/View/Window/Settings/Help/Debug submenus.
+ * Desktop AppMenu — Craft logo dropdown. Retain the original Edit/View/Window
+ * controls and their displayed shortcuts on every desktop platform.
  *
  * Behavior matches the pre-refactor version that lived inline in `TopBar.tsx`.
- * Labels, hotkey strings, and update-actions are pulled from `menu-schema.ts`
- * so the mobile sheet and this dropdown share a single source of truth.
+ * Labels and hotkey strings come from `menu-schema.ts`. Update actions live in
+ * Settings > App, which has the readiness state needed to show only valid actions.
  */
 export function DesktopAppMenu({
+  placement = 'topbar',
   onNewChat,
   onNewWindow,
   onOpenSettings,
-  onOpenSettingsSubpage,
   onOpenKeyboardShortcuts,
   onToggleSidebar,
   onToggleFocusMode,
+  onOpenWhatsNew,
+  hasUnseenReleaseNotes = false,
 }: AppMenuProps) {
   const { t } = useTranslation()
   const [isDebugMode, setIsDebugMode] = useState(false)
@@ -167,16 +168,33 @@ export function DesktopAppMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <TopBarButton aria-label={t("menu.craftMenu")}>
-          <CraftAgentsSymbol className="h-4 text-accent" />
-        </TopBarButton>
+        {placement === 'sidebar' ? (
+          <Button variant="ghost" size="sm" aria-label={t("menu.craftMenu")}
+            className="min-w-0 flex-1 justify-start gap-2 rounded-[6px] px-2 text-[13px] font-normal">
+            <span className="relative shrink-0">
+              <CraftAgentsSymbol className="h-4 text-accent" />
+              {hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-left">Craft Agents</span>
+            <Icons.ChevronUp className="h-3.5 w-3.5 text-foreground/40" />
+          </Button>
+        ) : (
+          <TopBarButton aria-label={t("menu.craftMenu")}>
+            <span className="relative">
+              <CraftAgentsSymbol className="h-4 text-accent" />
+              {hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
+            </span>
+          </TopBarButton>
+        )}
       </DropdownMenuTrigger>
-      <StyledDropdownMenuContent align="start" minWidth="min-w-48">
-        <StyledDropdownMenuItem onClick={onNewChat}>
-          <SquarePenRounded className="h-3.5 w-3.5" />
-          {t(ROOT_MENU.newChat.labelKey)}
-          {newChatHotkey && <DropdownMenuShortcut className="pl-6">{newChatHotkey}</DropdownMenuShortcut>}
-        </StyledDropdownMenuItem>
+      <StyledDropdownMenuContent align="start" side={placement === 'sidebar' ? 'top' : 'bottom'} minWidth="min-w-48">
+        {placement !== 'sidebar' && (
+          <StyledDropdownMenuItem onClick={onNewChat}>
+            <SquarePenRounded className="h-3.5 w-3.5" />
+            {t(ROOT_MENU.newChat.labelKey)}
+            {newChatHotkey && <DropdownMenuShortcut className="pl-6">{newChatHotkey}</DropdownMenuShortcut>}
+          </StyledDropdownMenuItem>
+        )}
         {onNewWindow && (
           <StyledDropdownMenuItem onClick={onNewWindow}>
             <Icons.AppWindow className="h-3.5 w-3.5" />
@@ -186,56 +204,32 @@ export function DesktopAppMenu({
         )}
 
         <StyledDropdownMenuSeparator />
-
         {renderMenuSection(EDIT_MENU, actionHandlers, t)}
         {renderMenuSection(VIEW_MENU, actionHandlers, t)}
         {renderMenuSection(WINDOW_MENU, actionHandlers, t)}
 
         <StyledDropdownMenuSeparator />
 
-        <DropdownMenuSub>
-          <StyledDropdownMenuSubTrigger>
+        {placement !== 'sidebar' && (
+          <StyledDropdownMenuItem onClick={onOpenSettings}>
             <Icons.Settings className="h-3.5 w-3.5" />
-            {t("sidebar.settings")}
-          </StyledDropdownMenuSubTrigger>
-          <StyledDropdownMenuSubContent>
-            <StyledDropdownMenuItem onClick={onOpenSettings}>
-              <Icons.Settings className="h-3.5 w-3.5" />
-              {t("menu.settings")}
-              {settingsHotkey && <DropdownMenuShortcut className="pl-6">{settingsHotkey}</DropdownMenuShortcut>}
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuSeparator />
-            {SETTINGS_ITEMS.map((item) => {
-              const Icon = SETTINGS_ICONS[item.id]
-              return (
-                <StyledDropdownMenuItem
-                  key={item.id}
-                  onClick={() => onOpenSettingsSubpage(item.id)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {t(item.labelKey)}
-                </StyledDropdownMenuItem>
-              )
-            })}
-          </StyledDropdownMenuSubContent>
-        </DropdownMenuSub>
+            {t("menu.settings")}
+            {settingsHotkey && <DropdownMenuShortcut className="pl-6">{settingsHotkey}</DropdownMenuShortcut>}
+          </StyledDropdownMenuItem>
+        )}
 
         <DropdownMenuSub>
           <StyledDropdownMenuSubTrigger>
             <Icons.HelpCircle className="h-3.5 w-3.5" />
-            {t("menu.help")}
+            {t('menu.help')}
           </StyledDropdownMenuSubTrigger>
           <StyledDropdownMenuSubContent>
             {HELP_LINKS.map((link) => {
               const Icon = getIcon(link.icon)
               return (
-                <StyledDropdownMenuItem
-                  key={link.id}
-                  onClick={() => window.electronAPI.openUrl(link.url)}
-                >
+                <StyledDropdownMenuItem key={link.id} onClick={() => openLocalHelp(link.url)}>
                   {Icon && <Icon className="h-3.5 w-3.5" />}
                   {t(link.labelKey)}
-                  <Icons.ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
                 </StyledDropdownMenuItem>
               )
             })}
@@ -246,8 +240,22 @@ export function DesktopAppMenu({
             </StyledDropdownMenuItem>
           </StyledDropdownMenuSubContent>
         </DropdownMenuSub>
-
-        {isDebugMode && renderDebugSubmenu(t)}
+        {onOpenWhatsNew && (
+          <StyledDropdownMenuItem onClick={onOpenWhatsNew}>
+            <span className="relative">
+              <Icons.Cake className="h-3.5 w-3.5" />
+              {hasUnseenReleaseNotes && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-accent" />}
+            </span>
+            {t('sidebar.whatsNew')}
+          </StyledDropdownMenuItem>
+        )}
+        {isDebugMode && (
+          <StyledDropdownMenuItem onClick={() => window.electronAPI.menuToggleDevTools()}>
+            <Icons.Bug className="h-3.5 w-3.5" />
+            {t('menu.toggleDevTools')}
+            <DropdownMenuShortcut className="pl-6">{isMac ? '⌥⌘I' : 'Ctrl+Shift+I'}</DropdownMenuShortcut>
+          </StyledDropdownMenuItem>
+        )}
 
         <StyledDropdownMenuSeparator />
 
@@ -259,49 +267,4 @@ export function DesktopAppMenu({
       </StyledDropdownMenuContent>
     </DropdownMenu>
   )
-}
-
-/**
- * Renders the Debug submenu by mapping over `DEBUG_MENU.items`. The three actions
- * that drive it (`checkForUpdates`, `installUpdate`, `toggleDevTools`) all live on
- * `window.electronAPI` directly and never traverse the menu IPC channels.
- */
-function renderDebugSubmenu(t: (key: string) => string): React.ReactNode {
-  const SectionIcon = getIcon(DEBUG_MENU.icon)
-  return (
-    <DropdownMenuSub>
-      <StyledDropdownMenuSubTrigger>
-        {SectionIcon && <SectionIcon className="h-3.5 w-3.5" />}
-        {t(DEBUG_MENU.labelKey)}
-      </StyledDropdownMenuSubTrigger>
-      <StyledDropdownMenuSubContent>
-        {DEBUG_MENU.items.map((item, index) => {
-          if (item.type === 'separator') {
-            return <StyledDropdownMenuSeparator key={`sep-${index}`} />
-          }
-          if (item.type !== 'action') return null
-          const Icon = getIcon(item.icon)
-          const shortcut = isMac ? item.shortcutDisplayMac : item.shortcutDisplayOther
-          const handler = debugHandlers[item.id]
-          if (!handler) {
-            console.warn(`[DesktopAppMenu] No debug handler for id: ${item.id}`)
-            return null
-          }
-          return (
-            <StyledDropdownMenuItem key={item.id} onClick={handler}>
-              {Icon && <Icon className="h-3.5 w-3.5" />}
-              {t(item.labelKey)}
-              {shortcut && <DropdownMenuShortcut className="pl-6">{shortcut}</DropdownMenuShortcut>}
-            </StyledDropdownMenuItem>
-          )
-        })}
-      </StyledDropdownMenuSubContent>
-    </DropdownMenuSub>
-  )
-}
-
-const debugHandlers: Record<string, () => void> = {
-  checkForUpdates: () => window.electronAPI.checkForUpdates(),
-  installUpdate: () => window.electronAPI.installUpdate(),
-  toggleDevTools: () => window.electronAPI.menuToggleDevTools(),
 }

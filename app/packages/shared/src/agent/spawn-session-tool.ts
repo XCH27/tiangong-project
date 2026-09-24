@@ -49,7 +49,8 @@ When spawning, the 'prompt' parameter is required.
 
 Optional overrides: model, llmConnection, permissionMode, thinkingLevel, enabledSourceSlugs, labels, workingDirectory. Omitted fields inherit from the spawning session or the workspace default.
 
-thinkingLevel is silently ignored on non-reasoning models (e.g. gpt-4o, gemini-2.5-flash) — the SDK drops the reasoning param rather than erroring.
+thinkingLevel should match the selected model's advertised capabilities. Models that do not
+publish a reasoning map do not expose a selectable effort; omit the field to inherit the default.
 
 The spawned session appears in the session list and runs fire-and-forget.
 Only use 'attachments' for existing file paths on disk — the tool reads them automatically.`,
@@ -69,7 +70,7 @@ Only use 'attachments' for existing file paths on disk — the tool reads them a
       permissionMode: z.enum(['safe', 'ask', 'allow-all']).optional()
         .describe('Permission mode for the new session'),
       thinkingLevel: z.enum(['off', 'low', 'medium', 'high', 'xhigh', 'max']).optional()
-        .describe('Reasoning level for the new session. Silently ignored on non-reasoning models (e.g. gpt-4o, gemini-2.5-flash). Omit to inherit the workspace default.'),
+        .describe('Reasoning level request for the new session. Use a level supported by the selected model; omit to inherit the workspace default.'),
       labels: z.array(z.string()).optional()
         .describe('Labels for the new session'),
       workingDirectory: z.string().optional()

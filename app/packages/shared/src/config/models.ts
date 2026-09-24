@@ -94,6 +94,19 @@ export function normalizeDeprecatedModelId(modelId: string): string {
  */
 export type ModelProvider = 'anthropic' | 'pi';
 
+/** Live provider rates in USD per million tokens; long-context rates are request-wide. */
+export interface ModelPricingPerMillion {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  longContext?: {
+    inputTokensAtOrAbove: number;
+    input: number;
+    output: number;
+    cacheRead?: number;
+  };
+}
+
 /**
  * Full model definition with capabilities and costs.
  * Used throughout the application for model selection and display.
@@ -112,12 +125,30 @@ export interface ModelDefinition {
   descriptionKey?: string;
   /** Provider that offers this model */
   provider: ModelProvider;
-  /** Maximum context window in tokens */
-  contextWindow: number;
-  /** Whether this model supports thinking/reasoning effort. Defaults to true when undefined. */
+  /** Maximum context window in tokens; absent when neither provider nor installed catalog knows it. */
+  contextWindow?: number;
+  /** Whether this model supports thinking/reasoning effort. Undefined means the provider has not advertised it. */
   supportsThinking?: boolean;
+  /** Provider-advertised adaptive thinking type; absent uses the legacy model-family fallback. */
+  adaptiveThinkingSupported?: boolean;
   /** Explicit per-model image input capability hint, primarily for custom endpoints. */
   supportsImages?: boolean;
+  /** Authenticated catalog input/output types; absent means the provider did not say. */
+  modalities?: { input: string[]; output: string[] };
+  /** Provider-advertised reasoning levels. Absent means the exact levels are unknown. */
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+  /** Explicit evidence that reasoning can be turned off for this model. */
+  reasoningDisableSupported?: boolean;
+  /** Provider-advertised output limit; absent means unknown. */
+  maxOutputTokens?: number;
+  /** Pi transport for a live Copilot model absent from the bundled catalog. */
+  runtimeApi?: 'anthropic-messages' | 'openai-completions' | 'openai-responses';
+  /** Claude SDK-advertised fast mode support; absent means unknown. */
+  supportsFastMode?: boolean;
+  /** Provider-advertised USD price per million tokens, when available. */
+  pricingPerMillion?: ModelPricingPerMillion;
+  /** Whether context and reasoning data came from the live account or bundled SDK. */
+  catalogSource?: 'provider' | 'sdk';
 }
 
 // ============================================
@@ -368,15 +399,15 @@ export function isClaudeModel(modelId: string): boolean {
 }
 
 /**
- * Mythos-class models (Claude Fable 5 / Mythos 5 / Mythos Preview) where adaptive
+ * Models where adaptive
  * thinking is ALWAYS ON and `thinking: { type: 'disabled' }` is rejected by the
  * Messages API. Callers must use adaptive thinking + the `effort` parameter to
  * control depth on these models — there is no way to turn thinking off.
- * (The Messages API is unchanged for Opus/Sonnet/Haiku, which still accept `disabled`.)
+ * Anthropic documents this for Fable/Mythos and, from Opus 5.5, for Opus.
  * Matches bare, pi/-prefixed, and Bedrock-native id forms.
  */
 export function isAdaptiveThinkingAlwaysOnModel(modelId: string): boolean {
-  return /claude-(fable|mythos)/i.test(modelId);
+  return /claude-(?:fable|mythos|opus-5-5(?:-|$))/i.test(modelId);
 }
 
 

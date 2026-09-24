@@ -37,6 +37,8 @@ export interface ModelFetchResult {
   models: ModelDefinition[];
   /** Which model the provider considers the default (optional) */
   serverDefault?: string;
+  /** A bundled SDK catalog is not an account-scoped provider response. */
+  source?: 'provider' | 'sdk';
 }
 
 /**

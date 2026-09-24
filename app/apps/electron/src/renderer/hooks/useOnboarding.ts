@@ -39,6 +39,8 @@ interface UseOnboardingOptions {
   editingSlug?: string | null
   /** Set of slugs already in use (for generating unique slugs when creating new) */
   existingSlugs?: Set<string>
+  /** First-run can start OAuth at selection; Settings shows the chosen provider before authorization. */
+  autoStartOAuthOnSelect?: boolean
 }
 
 interface UseOnboardingReturn {
@@ -96,6 +98,7 @@ export const BASE_SLUG_FOR_METHOD: Record<ApiSetupMethod, string> = {
   claude_oauth: 'claude-max',
   pi_chatgpt_oauth: 'chatgpt-plus',
   pi_copilot_oauth: 'github-copilot',
+  pi_xai_oauth: 'grok-subscription',
   pi_api_key: 'pi-api-key',
 }
 
@@ -167,15 +170,15 @@ export function apiSetupMethodToConnectionSetup(
     case 'claude_oauth':
       return {
         slug,
-        credential: options.credential,
         oauthIdentity: options.oauthIdentity,
       }
     case 'pi_chatgpt_oauth':
     case 'pi_copilot_oauth':
       return {
         slug,
-        credential: options.credential,
       }
+    case 'pi_xai_oauth':
+      return { slug, piAuthProvider: 'xai' }
     case 'pi_api_key':
       return {
         slug,
@@ -202,6 +205,7 @@ export function useOnboarding({
   onConfigSaved,
   editingSlug = null,
   existingSlugs = new Set(),
+  autoStartOAuthOnSelect = true,
 }: UseOnboardingOptions): UseOnboardingReturn {
   // Main wizard state
   const [state, setState] = useState<OnboardingState>({
@@ -456,7 +460,10 @@ export function useOnboarding({
         provider: setupTestProvider,
         apiKey: data.apiKey,
         baseUrl: data.baseUrl,
-        model: data.models?.[0],
+        // A provider-managed catalog can submit an optional default without
+        // sending a custom models array. Test that choice, not a stale bundled
+        // default for the provider.
+        model: data.connectionDefaultModel || data.models?.[0],
         piAuthProvider: data.piAuthProvider,
         customEndpoint: data.customEndpoint,
       })
@@ -503,8 +510,10 @@ export function useOnboarding({
   // `method` is passed explicitly to break the stale-closure chain — the OAuth
   // await crosses renders, so handleSaveConfig's closure may have an outdated
   // state.apiSetupMethod.
-  const saveAndValidateConnection = useCallback(async (connectionSlug: string, method: ApiSetupMethod, credential?: string, updateOnly?: boolean, oauthIdentity?: ClaudeOAuthIdentityDto): Promise<boolean> => {
-    const saved = await handleSaveConfig(credential, oauthIdentity ? { oauthIdentity } : undefined, method, connectionSlug, updateOnly)
+  const saveAndValidateConnection = useCallback(async (connectionSlug: string, method: ApiSetupMethod, updateOnly?: boolean, oauthIdentity?: ClaudeOAuthIdentityDto): Promise<boolean> => {
+    // OAuth exchange has already stored the complete credential on the server.
+    // Sending its access token through SETUP would replace and lose refresh data.
+    const saved = await handleSaveConfig(undefined, oauthIdentity ? { oauthIdentity } : undefined, method, connectionSlug, updateOnly)
     if (!saved) {
       setState(s => ({ ...s, credentialStatus: 'error' }))
       return false
@@ -559,7 +568,7 @@ export function useOnboarding({
         const result = await window.electronAPI.startChatGptOAuth(connectionSlug)
 
         if (result.success) {
-          await saveAndValidateConnection(connectionSlug, effectiveMethod, undefined, isReauth)
+          await saveAndValidateConnection(connectionSlug, effectiveMethod, isReauth)
         } else {
           setState(s => ({
             ...s,
@@ -585,13 +594,31 @@ export function useOnboarding({
           const result = await window.electronAPI.startCopilotOAuth(connectionSlug)
 
           if (result.success) {
-            await saveAndValidateConnection(connectionSlug, effectiveMethod, undefined, isReauth)
+            await saveAndValidateConnection(connectionSlug, effectiveMethod, isReauth)
           } else {
             setState(s => ({
               ...s,
               credentialStatus: 'error',
               errorMessage: result.error || 'GitHub authentication failed',
             }))
+          }
+        } finally {
+          cleanup()
+          setCopilotDeviceCode(undefined)
+        }
+        return
+      }
+
+      if (effectiveMethod === 'pi_xai_oauth') {
+        const effectiveEditingSlug = connectionSlugOverride ?? editingSlug
+        const connectionSlug = apiSetupMethodToConnectionSetup(effectiveMethod, {}, effectiveEditingSlug, existingSlugs).slug
+        const cleanup = window.electronAPI.onXaiDeviceCode(setCopilotDeviceCode)
+        try {
+          const result = await window.electronAPI.startXaiOAuth(connectionSlug)
+          if (result.success) {
+            await saveAndValidateConnection(connectionSlug, effectiveMethod, !!effectiveEditingSlug)
+          } else {
+            setState(s => ({ ...s, credentialStatus: 'error', errorMessage: result.error || 'Grok authentication failed' }))
           }
         } finally {
           cleanup()
@@ -639,6 +666,7 @@ export function useOnboarding({
       claude: 'claude_oauth',
       chatgpt: 'pi_chatgpt_oauth',
       copilot: 'pi_copilot_oauth',
+      xai: 'pi_xai_oauth',
       api_key: 'pi_api_key',
     }
 
@@ -658,11 +686,11 @@ export function useOnboarding({
     }))
 
     // OAuth methods start immediately
-    if (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot') {
+    if (autoStartOAuthOnSelect && (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot' || choice === 'xai')) {
       // Defer to next tick so state is updated before handleStartOAuth reads it
       setTimeout(() => handleStartOAuth(method), 0)
     }
-  }, [handleStartOAuth])
+  }, [autoStartOAuthOnSelect, handleStartOAuth])
 
   // Submit authorization code (second step of OAuth flow)
   const handleSubmitAuthCode = useCallback(async (code: string) => {
@@ -681,9 +709,9 @@ export function useOnboarding({
       const connectionSlug = apiSetupMethodToConnectionSetup('claude_oauth', {}, editingSlug, existingSlugs).slug
       const result = await window.electronAPI.exchangeClaudeCode(code.trim(), connectionSlug)
 
-      if (result.success && result.token) {
+      if (result.success) {
         setIsWaitingForCode(false)
-        await saveAndValidateConnection(connectionSlug, 'claude_oauth', result.token, !!editingSlug, result.identity)
+        await saveAndValidateConnection(connectionSlug, 'claude_oauth', !!editingSlug, result.identity)
       } else {
         setState(s => ({
           ...s,

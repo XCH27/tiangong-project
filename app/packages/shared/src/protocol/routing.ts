@@ -108,6 +108,7 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   RPC_CHANNELS.menu.NEW_CHAT,
   RPC_CHANNELS.menu.NEW_WINDOW,
   RPC_CHANNELS.menu.OPEN_SETTINGS,
+  RPC_CHANNELS.menu.OPEN_HELP,
   RPC_CHANNELS.menu.KEYBOARD_SHORTCUTS,
   RPC_CHANNELS.menu.TOGGLE_FOCUS_MODE,
   RPC_CHANNELS.menu.TOGGLE_SIDEBAR,
@@ -298,6 +299,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.llmConnections.GET,
   RPC_CHANNELS.llmConnections.GET_API_KEY,
   RPC_CHANNELS.llmConnections.SAVE,
+  RPC_CHANNELS.llmConnections.SET_MODEL,
   RPC_CHANNELS.llmConnections.DELETE,
   RPC_CHANNELS.llmConnections.TEST,
   RPC_CHANNELS.llmConnections.SET_DEFAULT,
@@ -318,6 +320,10 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.copilot.GET_AUTH_STATUS,
   RPC_CHANNELS.copilot.LOGOUT,
   RPC_CHANNELS.copilot.DEVICE_CODE,
+  RPC_CHANNELS.xai.START_OAUTH,
+  RPC_CHANNELS.xai.CANCEL_OAUTH,
+  RPC_CHANNELS.xai.DEVICE_CODE,
+  RPC_CHANNELS.xai.READ_USAGE,
 
   // Claude OAuth — runs on workspace server so credentials and connection config
   // end up on the same server that will use them. Browser opening is client-side.

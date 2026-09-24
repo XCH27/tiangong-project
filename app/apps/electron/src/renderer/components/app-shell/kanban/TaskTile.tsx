@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { Check, ChevronDown, ChevronRight, Clock, Flag, MessageSquare, Pencil, Play, Plus } from 'lucide-react'
+import { hasProviderBrandIcon, ProviderBrandIcon } from '@/components/icons/ProviderBrandIcon'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import { formatDistanceToNowStrict, type Locale } from 'date-fns'
 import { DEFAULT_MODEL, getModelShortName } from '@config/models'
 import { cn } from '@/lib/utils'
-import { getProviderIcon } from '@/lib/provider-icons'
+import { getProviderIcon, getProviderIconKey } from '@/lib/provider-icons'
 import { shortTimeLocale } from '@/utils/session'
 import { kanbanLivePulseAtom } from '@/atoms/kanban'
 import { useKanbanColumnColors } from '@/hooks/useKanbanColumnColors'
@@ -34,11 +35,13 @@ import { SubtaskProgress } from './SubtaskProgress'
 import type { KanbanModelProviderGroup, KanbanProject, KanbanTask } from './types'
 
 /**
- * Brand icon for a provider key. Providers with a bundled SVG (anthropic,
- * openai) resolve directly; others (google, mistral, xai, groq, deepseek, …)
- * resolve through the Pi auth-provider path, which covers both the remaining
- * SVGs and the favicon fallback for icon-less providers.
+ * Resolve the provider identity for the Lobe SVGs. The existing Craft SVG
+ * lookup remains the fallback for providers outside the imported brand set.
  */
+function resolveProviderBrand(provider: string): string | null {
+  return getProviderIconKey(provider) ?? getProviderIconKey('pi', null, provider)
+}
+
 function resolveProviderIcon(provider: string): string | null {
   return getProviderIcon(provider) ?? getProviderIcon('pi', null, provider)
 }
@@ -428,6 +431,7 @@ function AddSubtask({
 
   const selectedGroup = modelGroups?.find(g => g.models.some(m => m.id === model))
   const selectedName = options.find(o => o.id === model)?.name ?? getModelShortName(model)
+  const selectedBrand = selectedGroup ? resolveProviderBrand(selectedGroup.provider) : null
   const selectedIcon = selectedGroup ? resolveProviderIcon(selectedGroup.provider) : null
 
   const submit = () => {
@@ -488,7 +492,9 @@ function AddSubtask({
                 type="button"
                 className="inline-flex min-w-0 items-center gap-1 rounded-md border border-border/60 bg-background px-1.5 py-1 text-[11px] font-medium text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
               >
-                {selectedIcon ? (
+                {hasProviderBrandIcon(selectedBrand) ? (
+                  <ProviderBrandIcon provider={selectedBrand} size={12} />
+                ) : selectedIcon ? (
                   <img src={selectedIcon} alt="" className="h-3 w-3 shrink-0 rounded-[2px]" aria-hidden />
                 ) : (
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-foreground/40" aria-hidden />
@@ -498,18 +504,17 @@ function AddSubtask({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="max-w-[240px]">
-              {modelGroups.map((group, gi) => (
-                <React.Fragment key={group.provider}>
+              {modelGroups.map((group, gi) => {
+                const brand = resolveProviderBrand(group.provider)
+                const icon = resolveProviderIcon(group.provider)
+                return <React.Fragment key={group.provider}>
                   {gi > 0 && <DropdownMenuSeparator />}
                   <DropdownMenuLabel className="flex items-center gap-1.5 text-[11px] text-foreground/50">
-                    {resolveProviderIcon(group.provider) && (
-                      <img
-                        src={resolveProviderIcon(group.provider)!}
-                        alt=""
-                        className="h-3 w-3 rounded-[2px]"
-                        aria-hidden
-                      />
-                    )}
+                    {hasProviderBrandIcon(brand) ? (
+                      <ProviderBrandIcon provider={brand} size={12} />
+                    ) : icon ? (
+                      <img src={icon} alt="" className="h-3 w-3 rounded-[2px]" aria-hidden />
+                    ) : null}
                     {group.label}
                   </DropdownMenuLabel>
                   {group.models.map(opt => (
@@ -519,7 +524,7 @@ function AddSubtask({
                     </DropdownMenuItem>
                   ))}
                 </React.Fragment>
-              ))}
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (

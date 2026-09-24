@@ -30,10 +30,20 @@ def main() -> int:
 
     proc = subprocess.Popen(["bun", "test", *sys.argv[1:]], stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True)
-    current, seen, failed, ran = None, set(), set(), False
+    current, seen, failed, ran, in_summary = None, set(), set(), False, False
     for line in proc.stdout:
         sys.stdout.write(line)
         text = line.rstrip("\n")
+        # Bun repeats every failed test after the run as a bare `(fail)` list.
+        # Those lines have no file header and must not be attributed to the
+        # final file that happened to run.
+        if re.match(r"^\d+ tests? failed:$", text):
+            in_summary = True
+            continue
+        if in_summary:
+            if re.match(r"^Ran \d+ tests?", text):
+                ran = True
+            continue
         header = FILE_HEADER.match(text)
         if header:
             current = header.group(1).removeprefix("./")

@@ -450,7 +450,10 @@ export class PiAgent extends BaseAgent {
       throw new Error('piServerPath not configured. Cannot spawn Pi subprocess.');
     }
 
-    const nodePath = runtime.paths?.node || process.execPath;
+    const nodePath = runtime.paths?.node;
+    if (!nodePath) {
+      throw new Error('Bun runtime is unavailable. Install Bun for development or use a package that includes it.');
+    }
     const cwd = this.resolvedCwd();
 
     this.debug(`Spawning Pi subprocess: ${nodePath} ${piServerPath}`);
@@ -674,6 +677,13 @@ export class PiAgent extends BaseAgent {
       if (this.config.authType === 'oauth') {
         const oauth = await credentialManager.getLlmOAuth(slug);
         if (oauth?.accessToken) {
+          if (piAuthProvider === 'xai') {
+            const { getValidXaiSubscriptionToken } = await import('../auth/xai-subscription.ts');
+            return {
+              provider: piAuthProvider,
+              credential: { type: 'api_key', key: await getValidXaiSubscriptionToken(slug) },
+            };
+          }
           // Copilot: pass full OAuth credential so the Pi SDK can derive the
           // correct API endpoint from the Copilot token's proxy-ep field.
           // The refresh token is the GitHub access token used to obtain fresh
@@ -690,7 +700,10 @@ export class PiAgent extends BaseAgent {
               },
             };
           }
-          // Other OAuth providers: pass as api_key (bearer token)
+          // xAI subscription OAuth uses a distinct Grok proxy URL on the
+          // connection; the current bearer is sent as request auth while this
+          // class persists refreshes in Craft's one credential manager.
+          // Other OAuth providers also pass the access token as bearer auth.
           this.debug(`Retrieved OAuth access token for Pi provider: ${piAuthProvider}`);
           return {
             provider: piAuthProvider,
@@ -822,6 +835,14 @@ export class PiAgent extends BaseAgent {
             refreshToken: newCreds.refresh,
             expiresAt: newCreds.expires,
           });
+        } else if (piAuthProvider === 'xai') {
+          const { refreshXaiSubscription } = await import('../auth/xai-subscription.ts');
+          const refreshed = await refreshXaiSubscription({
+            accessToken: stored.accessToken,
+            refreshToken: stored.refreshToken,
+            expiresAt: stored.expiresAt ?? 0,
+          }, new AbortController().signal);
+          await credentialManager.setLlmOAuth(slug, refreshed);
         } else {
           // ChatGPT Plus: use existing refresh utility
           const newTokens = await refreshChatGptTokens(stored.refreshToken);

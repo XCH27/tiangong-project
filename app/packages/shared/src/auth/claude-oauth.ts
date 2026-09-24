@@ -12,6 +12,8 @@ import { CLAUDE_OAUTH_CONFIG } from './claude-oauth-config'
 import { openUrl } from '../utils/open-url.ts'
 import { APP_VERSION } from '../version/index.ts'
 import { debug } from '../utils/debug.ts'
+import { formatOAuthTokenError } from './oauth-errors.ts'
+import { fetchOAuthToken } from './oauth-token-fetch.ts'
 
 // OAuth configuration from shared config
 const CLAUDE_CLIENT_ID = CLAUDE_OAUTH_CONFIG.CLIENT_ID
@@ -216,7 +218,7 @@ export async function exchangeClaudeCode(
   }
 
   try {
-    const response = await fetch(CLAUDE_TOKEN_URL, {
+    const response = await fetchOAuthToken(CLAUDE_TOKEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -228,14 +230,7 @@ export async function exchangeClaudeCode(
 
     if (!response.ok) {
       const errorText = await response.text()
-      let errorMessage: string
-      try {
-        const errorJson = JSON.parse(errorText)
-        errorMessage = errorJson.error_description || errorJson.error || errorText
-      } catch {
-        errorMessage = errorText
-      }
-      throw new Error(`Token exchange failed: ${response.status} - ${errorMessage}`)
+      throw new Error(formatOAuthTokenError('Token exchange', response.status, errorText))
     }
 
     const data = (await response.json()) as {

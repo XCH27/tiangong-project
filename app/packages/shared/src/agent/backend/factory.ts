@@ -633,7 +633,9 @@ export function resolveModelForProvider(
   // to the connection's default. This prevents e.g. sending a Claude model to Pi.
   if (managedModel) {
     managedModel = normalizeDeprecatedModelId(managedModel);
-    const modelProvider = getModelProvider(managedModel);
+    // Pi's explicit namespace remains meaningful for a newly discovered model
+    // that is not in this build's static registry yet.
+    const modelProvider = managedModel.startsWith('pi/') ? 'pi' : getModelProvider(managedModel);
     if (modelProvider && modelProvider !== provider) {
       managedModel = undefined; // Clear — will fall through to connection default
     }
