@@ -428,6 +428,7 @@ export interface ElectronAPI {
   startChatGptOAuth(connectionSlug: string): Promise<{ success: boolean; error?: string }>
   cancelChatGptOAuth(): Promise<{ success: boolean }>
   getChatGptAuthStatus(connectionSlug: string): Promise<{ authenticated: boolean; expiresAt?: number; hasRefreshToken?: boolean }>
+  readCodexSubscriptionUsage(connectionSlug: string): Promise<import('@craft-agent/shared/auth').CodexUsageReadResult>
   chatGptLogout(connectionSlug: string): Promise<{ success: boolean }>
 
   // GitHub Copilot OAuth

@@ -34,6 +34,24 @@ export interface ChatGptTokens {
   expiresAt?: number;
 }
 
+/** Account identity carried by the OAuth tokens, shared by Codex catalog and allowance reads. */
+export function getChatGptAccountId(...tokens: Array<string | undefined>): string | null {
+  for (const token of tokens) {
+    const part = token?.split('.')[1];
+    if (!part || part.length > 16_384) continue;
+    try {
+      const normalized = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+      const payload = JSON.parse(atob(normalized)) as Record<string, unknown>;
+      const auth = payload['https://api.openai.com/auth'];
+      if (auth && typeof auth === 'object' && !Array.isArray(auth)) {
+        const accountId = (auth as Record<string, unknown>).chatgpt_account_id;
+        if (typeof accountId === 'string' && accountId.length > 0) return accountId;
+      }
+    } catch { /* A token without a decodable account claim is not an identity. */ }
+  }
+  return null;
+}
+
 /**
  * Generate a secure random state parameter
  */

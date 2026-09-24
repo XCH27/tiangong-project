@@ -7,6 +7,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ### 2026-09-24 — account-scoped API model discovery
 
+- ChatGPT/Codex subscription connections now read account allowance windows through the selected
+  OAuth credential without a second runtime. Settings shows main and additional buckets with
+  reset times; missing data, authentication failures and rate limiting remain distinct. The
+  private endpoint and account entitlement still require a live signed-in check.
 - Model Settings now keeps multiple models under one connection: each catalog row controls picker
   visibility, while the connection default sits below the list and default thinking sits in the
   application-default section. Hiding a model does not revoke it, reset a running Session, or erase

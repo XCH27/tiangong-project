@@ -55,7 +55,7 @@ import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
 import { getModelsForProviderType, isCompatProvider, isModelVisibleInPicker, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
 import { toast } from 'sonner'
-import type { XaiSubscriptionUsage } from '@craft-agent/shared/auth'
+import type { CodexUsageReadResult, XaiSubscriptionUsage } from '@craft-agent/shared/auth'
 
 /**
  * Compact token count: 1234 → "1.2K", 1234567 → "1.2M". Used by the RTK
@@ -106,6 +106,65 @@ function GrokSubscriptionUsage({ connectionSlug }: { connectionSlug: string }) {
     </p> : error ? <p className="mt-3 text-xs text-muted-foreground">{t('common.unavailable')}</p> : null}
     {usage?.prepaidBalanceUsd !== undefined && <p className="mt-1 text-xs text-muted-foreground">
       {t('settings.ai.grokUsage.prepaidBalance')} · {new Intl.NumberFormat(i18n.language, { style: 'currency', currency: 'USD' }).format(usage.prepaidBalanceUsd)}
+    </p>}
+  </div>
+}
+
+function CodexSubscriptionUsage({ connectionSlug }: { connectionSlug: string }) {
+  const { t, i18n } = useTranslation()
+  const [result, setResult] = useState<CodexUsageReadResult | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      setResult(await window.electronAPI.readCodexSubscriptionUsage(connectionSlug))
+    } catch {
+      setResult({ status: 'unavailable' })
+    } finally {
+      setLoading(false)
+    }
+  }, [connectionSlug])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  const usage = result?.status === 'available' ? result.usage : null
+  const windowLabel = (minutes: number): string => minutes % 1440 === 0
+    ? t('settings.ai.codexUsage.days', { value: minutes / 1440 })
+    : minutes % 60 === 0
+      ? t('settings.ai.codexUsage.hours', { value: minutes / 60 })
+      : t('settings.ai.codexUsage.minutes', { value: minutes })
+  return <div className="border-t border-border/60 px-5 py-4">
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">{t('settings.ai.codexUsage')}</h3>
+        {usage?.plan && <p className="mt-0.5 text-xs text-muted-foreground">{usage.plan}</p>}
+      </div>
+      <Button size="sm" variant="outline" onClick={() => void refresh()} disabled={loading} aria-label={t('settings.ai.refreshUsage')}>
+        <RefreshCcw className={cn('size-3.5', loading && 'animate-spin')} />
+        <span className="hidden sm:inline">{t('settings.ai.refreshUsage')}</span>
+      </Button>
+    </div>
+    {usage ? <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+      {usage.buckets.map(bucket => <div key={bucket.id}>
+        <p className="font-medium text-foreground">{bucket.id === 'default' ? t('settings.ai.codexUsage.general') : bucket.id}</p>
+        {bucket.windows.map((window, index) => <div key={`${bucket.id}:${index}`} className="mt-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 tabular-nums">
+            <span>{window.windowMinutes ? windowLabel(window.windowMinutes) : t('settings.ai.codexUsage.window', { value: index + 1 })}</span>
+            <div role="progressbar" aria-valuenow={window.usedPercent} aria-valuemin={0} aria-valuemax={100}
+              aria-label={`${bucket.id === 'default' ? t('settings.ai.codexUsage.general') : bucket.id} · ${t('settings.ai.grokUsage.used', { percent: Math.round(window.usedPercent) })}`}
+              className="h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-foreground/70" style={{ width: `${window.usedPercent}%` }} />
+            </div>
+            <span className="font-medium text-foreground">{t('settings.ai.grokUsage.used', { percent: Math.round(window.usedPercent) })}</span>
+          </div>
+          {window.resetAt && <p className="mt-0.5">
+            {t('settings.ai.grokUsage.resets', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }).format(window.resetAt) })}
+          </p>}
+        </div>)}
+      </div>)}
+    </div> : result && <p className="mt-3 text-xs text-muted-foreground">
+      {t(`settings.ai.codexUsage.${result.status}`)}
     </p>}
   </div>
 }
@@ -1363,6 +1422,9 @@ export default function AiSettingsPage() {
 
                           {selectedConnection.providerType === 'pi' && selectedConnection.piAuthProvider === 'xai' && selectedConnection.authType === 'oauth'
                             && <GrokSubscriptionUsage key={selectedConnection.slug} connectionSlug={selectedConnection.slug} />}
+
+                          {selectedConnection.providerType === 'pi' && selectedConnection.piAuthProvider === 'openai-codex' && selectedConnection.authType === 'oauth' && !selectedConnection.baseUrl
+                            && <CodexSubscriptionUsage key={selectedConnection.slug} connectionSlug={selectedConnection.slug} />}
 
                           <div className="border-t border-border/60">
                             <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4">

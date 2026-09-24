@@ -5,6 +5,7 @@ import { getPiProviderBaseUrl } from '../../../../config/models-pi.ts';
 import { fetchXaiApiModels, fetchXaiSubscriptionModels, XAI_SUBSCRIPTION_BASE } from './xai-models.ts';
 import { getValidXaiSubscriptionToken } from '../../../../auth/xai-subscription.ts';
 import { getValidChatGptOAuthToken } from '../../../../auth/state.ts';
+import { getChatGptAccountId } from '../../../../auth/chatgpt-oauth.ts';
 import { fetchOAuthToken } from '../../../../auth/oauth-token-fetch.ts';
 
 // Official endpoints establish account membership. Some add capability fields;
@@ -65,30 +66,6 @@ function jsonRecord(value: unknown): Record<string, unknown> | null {
 
 function positiveInteger(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
-}
-
-function extractCodexAccountId(...tokens: Array<string | undefined>): string | null {
-  for (const token of tokens) {
-    if (!token) continue;
-    const accountId = extractCodexAccountIdFromToken(token);
-    if (accountId) return accountId;
-  }
-  return null;
-}
-
-function extractCodexAccountIdFromToken(token: string): string | null {
-  try {
-    const part = token.split('.')[1];
-    if (!part) return null;
-    const normalized = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
-    const payload = JSON.parse(atob(normalized)) as Record<string, unknown>;
-    const auth = jsonRecord(payload['https://api.openai.com/auth']);
-    return typeof auth?.chatgpt_account_id === 'string' && auth.chatgpt_account_id.length > 0
-      ? auth.chatgpt_account_id
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Merge the authenticated Codex catalog with Pi's executable metadata. */
@@ -163,7 +140,7 @@ async function fetchCodexSubscriptionModels(
   // Codex derives the workspace header from the stored ID token. The access
   // token is retained as a fallback for older OAuth payloads that duplicated
   // the account claim there.
-  const accountId = extractCodexAccountId(idToken, accessToken);
+  const accountId = getChatGptAccountId(idToken, accessToken);
   if (!accountId) throw new Error('ChatGPT access token has no account identity for model discovery');
 
   const url = `${CODEX_SUBSCRIPTION_BASE}/models?client_version=${encodeURIComponent(CODEX_CLIENT_VERSION)}`;

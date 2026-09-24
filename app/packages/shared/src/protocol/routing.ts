@@ -313,6 +313,7 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.chatgpt.COMPLETE_OAUTH,
   RPC_CHANNELS.chatgpt.CANCEL_OAUTH,
   RPC_CHANNELS.chatgpt.GET_AUTH_STATUS,
+  RPC_CHANNELS.chatgpt.READ_USAGE,
   RPC_CHANNELS.chatgpt.LOGOUT,
 
   // copilot — OAuth via capability passthrough

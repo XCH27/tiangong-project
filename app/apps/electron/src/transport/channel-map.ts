@@ -150,6 +150,7 @@ export const CHANNEL_MAP = {
   startChatGptOAuth: invoke(RPC_CHANNELS.chatgpt.START_OAUTH),
   cancelChatGptOAuth: invoke(RPC_CHANNELS.chatgpt.CANCEL_OAUTH),
   getChatGptAuthStatus: invoke(RPC_CHANNELS.chatgpt.GET_AUTH_STATUS),
+  readCodexSubscriptionUsage: invoke(RPC_CHANNELS.chatgpt.READ_USAGE),
   chatGptLogout: invoke(RPC_CHANNELS.chatgpt.LOGOUT),
 
   // GitHub Copilot OAuth

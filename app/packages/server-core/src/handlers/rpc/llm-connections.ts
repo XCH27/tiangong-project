@@ -42,6 +42,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.chatgpt.COMPLETE_OAUTH,
   RPC_CHANNELS.chatgpt.CANCEL_OAUTH,
   RPC_CHANNELS.chatgpt.GET_AUTH_STATUS,
+  RPC_CHANNELS.chatgpt.READ_USAGE,
   RPC_CHANNELS.chatgpt.LOGOUT,
   RPC_CHANNELS.copilot.START_OAUTH,
   RPC_CHANNELS.copilot.CANCEL_OAUTH,
@@ -1124,5 +1125,15 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     }
     const { fetchXaiSubscriptionUsage } = await import('@craft-agent/shared/auth')
     return fetchXaiSubscriptionUsage(connectionSlug)
+  })
+
+  server.handle(RPC_CHANNELS.chatgpt.READ_USAGE, async (_ctx, connectionSlug: string) => {
+    const connection = getLlmConnection(connectionSlug)
+    if (!connection || connection.providerType !== 'pi' || connection.piAuthProvider !== 'openai-codex'
+      || connection.authType !== 'oauth' || connection.baseUrl) {
+      throw new Error('ChatGPT/Codex subscription connection not found')
+    }
+    const { readCodexSubscriptionUsage } = await import('@craft-agent/shared/auth')
+    return readCodexSubscriptionUsage(connectionSlug)
   })
 }

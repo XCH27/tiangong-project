@@ -209,6 +209,7 @@ export const RPC_CHANNELS = {
     COMPLETE_OAUTH: 'chatgpt:completeOAuth',
     CANCEL_OAUTH: 'chatgpt:cancelOAuth',
     GET_AUTH_STATUS: 'chatgpt:getAuthStatus',
+    READ_USAGE: 'chatgpt:readUsage',
     LOGOUT: 'chatgpt:logout',
   },
   copilot: {
