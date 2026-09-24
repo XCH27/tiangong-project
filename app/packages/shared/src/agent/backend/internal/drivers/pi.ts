@@ -1,4 +1,4 @@
-import type { ProviderDriver, DriverTestConnectionArgs } from '../driver-types.ts';
+import { toPiRuntimeModelEntries, type ProviderDriver, type DriverTestConnectionArgs } from '../driver-types.ts';
 import type { ModelDefinition } from '../../../../config/models.ts';
 import { getAllPiModels, getPiModelsForAuthProvider } from '../../../../config/models-pi.ts';
 import { getPiProviderBaseUrl } from '../../../../config/models-pi.ts';
@@ -520,24 +520,7 @@ export const piDriver: ProviderDriver = {
     piAuthProvider: providerOptions?.piAuthProvider || context.connection?.piAuthProvider,
     baseUrl: context.connection?.baseUrl,
     customEndpoint: context.connection?.customEndpoint,
-    customModels: context.connection?.models?.map(m => {
-      if (typeof m === 'string') return m;
-      const supportsImages = typeof m.supportsImages === 'boolean'
-        ? m.supportsImages
-        : undefined;
-      if (m.contextWindow || supportsImages !== undefined || m.reasoningEfforts || m.maxOutputTokens || m.runtimeApi || m.pricingPerMillion) {
-        return {
-          id: m.id,
-          ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
-          ...(supportsImages !== undefined ? { supportsImages } : {}),
-          ...(m.reasoningEfforts ? { reasoningEfforts: m.reasoningEfforts } : {}),
-          ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
-          ...(m.runtimeApi ? { runtimeApi: m.runtimeApi } : {}),
-          ...(m.pricingPerMillion ? { pricingPerMillion: m.pricingPerMillion } : {}),
-        };
-      }
-      return m.id;
-    }),
+    customModels: toPiRuntimeModelEntries(context.connection?.models),
   }),
   fetchModels: async ({ connection, credentials, timeoutMs }) => {
     // Copilot OAuth: fetch models directly from the Copilot API via HTTP.

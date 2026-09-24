@@ -16,6 +16,7 @@ import {
   createBackendFromResolvedContext,
   cleanupSourceRuntimeArtifacts,
   providerTypeToAgentProvider,
+  toPiRuntimeModelEntries,
   type AgentBackend,
   type BackendHostRuntimeContext,
   type PostInitResult,
@@ -3292,18 +3293,7 @@ export class SessionManager implements ISessionManager {
             baseUrl: connection.baseUrl,
             piAuthProvider: connection.piAuthProvider,
             customEndpoint: connection.customEndpoint,
-            customModels: connection.models?.map(model => {
-              if (typeof model === 'string') return model
-              const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined
-              if (model.contextWindow || supportsImages !== undefined) {
-                return {
-                  id: model.id,
-                  ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-                  ...(supportsImages !== undefined ? { supportsImages } : {}),
-                }
-              }
-              return model.id
-            }),
+            customModels: toPiRuntimeModelEntries(connection.models),
           } : undefined,
         })
       } catch (error) {

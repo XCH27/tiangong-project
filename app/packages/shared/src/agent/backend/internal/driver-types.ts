@@ -8,7 +8,7 @@ import type {
 } from '../types.ts';
 import type { LlmConnection } from '../../../config/storage.ts';
 import type { ModelFetchResult } from '../../../config/model-fetcher.ts';
-import type { ModelPricingPerMillion } from '../../../config/models.ts';
+import type { ModelDefinition, ModelPricingPerMillion } from '../../../config/models.ts';
 import type { CredentialManager } from '../../../credentials/manager.ts';
 import type { ResolvedBackendRuntimePaths } from './runtime-resolver.ts';
 
@@ -31,6 +31,27 @@ export type PiRuntimeModelEntry = string | {
   pricingPerMillion?: ModelPricingPerMillion;
 };
 
+/** One projection for startup, live refresh, and runtime drift detection. */
+export function toPiRuntimeModelEntries(
+  models: readonly (ModelDefinition | string)[] | undefined,
+): PiRuntimeModelEntry[] | undefined {
+  return models?.map(model => {
+    if (typeof model === 'string') return model;
+    const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined;
+    if (!model.contextWindow && supportsImages === undefined && !model.reasoningEfforts
+      && !model.maxOutputTokens && !model.runtimeApi && !model.pricingPerMillion) return model.id;
+    return {
+      id: model.id,
+      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+      ...(supportsImages !== undefined ? { supportsImages } : {}),
+      ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
+      ...(model.maxOutputTokens ? { maxOutputTokens: model.maxOutputTokens } : {}),
+      ...(model.runtimeApi ? { runtimeApi: model.runtimeApi } : {}),
+      ...(model.pricingPerMillion ? { pricingPerMillion: model.pricingPerMillion } : {}),
+    };
+  });
+}
+
 export interface BackendRuntimePayload extends Record<string, unknown> {
   paths?: BackendRuntimePaths;
   piAuthProvider?: string;
@@ -38,7 +59,7 @@ export interface BackendRuntimePayload extends Record<string, unknown> {
   baseUrl?: string;
   /** Custom endpoint protocol config (api type for routing). */
   customEndpoint?: { api: string; supportsImages?: boolean };
-  /** Models registered for a custom endpoint. Strings default to 128K context; objects allow overrides. */
+  /** Selected connection models; custom endpoints register routes, native providers refine known routes. */
   customModels?: PiRuntimeModelEntry[];
 }
 

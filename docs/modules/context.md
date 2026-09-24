@@ -121,6 +121,14 @@ the existing saved catalog remains. Custom endpoints keep their explicit
 model lists. The official APIs do not expose a complete per-model effort, context or media contract,
 so the UI must leave those fields unknown rather than copying another provider's values. This same
 boundary is why a live API list may be shorter than the provider's marketing catalog.
+The authenticated Groq and Mistral limits are also applied to Pi's existing native model routes at
+session creation and runtime refresh. The same applies to Codex context and image-input metadata.
+Each refresh starts from the installed Pi catalog, so removed overrides do not persist; an unknown
+model cannot gain a new runtime route, and custom endpoints cannot inject metadata into a native
+provider. Session drift detection includes native Pi model fields, and its in-place update uses the
+same field projection as initial runtime creation; changes to an idle session's account limits now
+reach the selected Pi model without requiring a model switch. This does not add missing
+provider-specific effort values or a media-generation executor.
 
 ChatGPT/Codex OAuth connections use the official account-scoped `GET /models?client_version=...`
 catalog on `chatgpt.com/backend-api/codex`. The request carries the account identity from the stored

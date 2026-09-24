@@ -48,6 +48,7 @@ export type {
 
 // Enums need to be exported as values, not just types
 export { AbortReason } from './types.ts';
+export { toPiRuntimeModelEntries } from './internal/driver-types.ts';
 
 // Factory
 export {

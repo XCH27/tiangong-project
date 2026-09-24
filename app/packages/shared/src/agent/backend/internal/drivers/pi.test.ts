@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { piDriver, matchCodexAccountModels, matchApiAccountModels, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
 import { setOAuthTokenFetcher } from '../../../../auth/oauth-token-fetch.ts';
+import { toPiRuntimeModelEntries } from '../driver-types.ts';
 
 describe('Copilot account model catalog', () => {
   it('reads the authenticated model list through the installed host transport', async () => {
@@ -73,6 +74,18 @@ describe('Copilot account model catalog', () => {
 });
 
 describe('piDriver.buildRuntime custom endpoint models', () => {
+  it('keeps the complete model metadata in the shared startup and refresh projection', () => {
+    expect(toPiRuntimeModelEntries([{
+      id: 'pi/account-model', name: 'Account', shortName: 'Account', description: '', provider: 'pi',
+      contextWindow: 300_000, maxOutputTokens: 60_000, supportsImages: false,
+      reasoningEfforts: ['low', 'high'], runtimeApi: 'openai-responses',
+      pricingPerMillion: { input: 1, output: 2 },
+    }])).toEqual([{
+      id: 'pi/account-model', contextWindow: 300_000, maxOutputTokens: 60_000,
+      supportsImages: false, reasoningEfforts: ['low', 'high'], runtimeApi: 'openai-responses',
+      pricingPerMillion: { input: 1, output: 2 },
+    }]);
+  });
   it('preserves explicit per-model supportsImages values', () => {
     const runtime = piDriver.buildRuntime({
       context: {

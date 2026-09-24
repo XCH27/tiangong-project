@@ -57,6 +57,23 @@ describe('buildBackendRuntimeSignature', () => {
   it('ignores non-runtime metadata such as lastUsedAt', () => {
     expect(sig({ ...baseCompat, lastUsedAt: 1 })).toBe(sig({ ...baseCompat, lastUsedAt: 2 }))
   })
+
+  it('detects refreshed native Pi model limits even when the selected model is unchanged', () => {
+    const account = {
+      ...baseCompat,
+      providerType: 'pi' as const,
+      slug: 'groq-account',
+      customEndpoint: undefined,
+      baseUrl: 'https://api.groq.com/openai/v1',
+      piAuthProvider: 'groq',
+      models: [{ id: 'pi/llama-3.1-8b-instant', contextWindow: 131_072,
+        maxOutputTokens: 16_384, reasoningEfforts: ['low', 'high'] }] as LlmConnection['models'],
+    }
+    expect(sig({ ...account, models: [{ ...account.models![0] as object,
+      maxOutputTokens: 32_768 }] as LlmConnection['models'] })).not.toBe(sig(account))
+    expect(sig({ ...account, models: [{ ...account.models![0] as object,
+      reasoningEfforts: ['low', 'medium', 'high'] }] as LlmConnection['models'] })).not.toBe(sig(account))
+  })
 })
 
 describe('filterAttachmentsForModelInput', () => {

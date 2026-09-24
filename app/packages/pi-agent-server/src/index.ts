@@ -103,6 +103,7 @@ import type { PiCompactResult, PiContextUsagePayload } from '../../shared/src/ag
 import { adaptCredentialForPiSdk, type PiCredential } from './adapt-credential.ts';
 import type { PiRuntimeModelEntry } from '../../shared/src/agent/backend/internal/driver-types.ts';
 import { registerXaiLiveModels } from './xai-live-models.ts';
+import { accountMetadataProvider, registerAccountModelMetadata } from './account-model-metadata.ts';
 
 // ============================================================
 // Types — JSONL Protocol
@@ -563,6 +564,16 @@ async function createAuthenticatedRuntime(): Promise<{
         const { registerCopilotLiveModels } = await import('./copilot-live-models.ts');
         const count = registerCopilotLiveModels(modelRegistry, initConfig.customModels);
         debugLog(`Registered ${count} account-discovered Copilot model(s) in native Pi runtime`);
+      }
+      const metadataProvider = accountMetadataProvider({
+        provider: initConfig?.piAuth?.provider,
+        authType: initConfig?.authType,
+        baseUrl: initConfig?.baseUrl,
+        customEndpoint: initConfig?.customEndpoint,
+      });
+      if (metadataProvider && initConfig?.customModels?.length) {
+        const count = registerAccountModelMetadata(modelRegistry, metadataProvider, initConfig.customModels);
+        debugLog(`Updated ${count} ${metadataProvider} native Pi model definition(s) from account metadata`);
       }
 
       // Register custom endpoint models dynamically via Pi SDK's registerProvider API.
@@ -1692,6 +1703,15 @@ async function handleUpdateRuntimeConfig(msg: RuntimeConfigUpdateMessage): Promi
     if (piModelRegistry && initConfig.piAuth?.provider === 'github-copilot' && !initConfig.customEndpoint && initConfig.customModels?.length) {
       const { registerCopilotLiveModels } = await import('./copilot-live-models.ts');
       registerCopilotLiveModels(piModelRegistry, initConfig.customModels);
+    }
+    const metadataProvider = accountMetadataProvider({
+      provider: initConfig.piAuth?.provider,
+      authType: initConfig.authType,
+      baseUrl: initConfig.baseUrl,
+      customEndpoint: initConfig.customEndpoint,
+    });
+    if (piModelRegistry && metadataProvider && initConfig.customModels?.length) {
+      registerAccountModelMetadata(piModelRegistry, metadataProvider, initConfig.customModels);
     }
 
     if (piSession && piModelRegistry) {
