@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { piDriver, matchCodexAccountModels, matchIdOnlyAccountModels, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
+import { piDriver, matchCodexAccountModels, matchApiAccountModels, parseCopilotAccountModels, toCopilotModelDefinitions } from './pi.ts';
 import { setOAuthTokenFetcher } from '../../../../auth/oauth-token-fetch.ts';
 
 describe('Copilot account model catalog', () => {
@@ -112,18 +112,18 @@ describe('piDriver.buildRuntime custom endpoint models', () => {
   });
 });
 
-describe('ID-only API account catalogs', () => {
+describe('Official API account catalogs', () => {
   it('intersects account membership with Pi-executable models without inventing capabilities', () => {
     const known = { id: 'pi/gpt-known', name: 'Known', shortName: 'Known', description: '', provider: 'pi' as const,
       contextWindow: 200_000, supportsImages: false, catalogSource: 'sdk' as const };
-    const models = matchIdOnlyAccountModels({ data: [
+    const models = matchApiAccountModels({ data: [
       { id: 'image-generator', object: 'model' },
       { id: 'gpt-known', object: 'model' },
       { id: 'gpt-known', object: 'model' },
       { id: 'other-object', object: 'fine_tune' },
     ] }, [known]);
     expect(models).toEqual([known]);
-    expect(() => matchIdOnlyAccountModels({ models: [] }, [known])).toThrow('invalid model list');
+    expect(() => matchApiAccountModels({ models: [] }, [known])).toThrow('invalid model list');
   });
 
   it('uses the host transport for a DeepSeek key and retains Pi metadata', async () => {
@@ -171,6 +171,60 @@ describe('ID-only API account catalogs', () => {
       expect(urls).toEqual(['https://api.openai.com/v1/models']);
       expect(result.source).toBe('provider');
       expect(result.models.map(model => model.id)).toEqual(['pi/gpt-5.6-sol']);
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('reads Groq account models and keeps only active Pi-executable chat routes', async () => {
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ data: [
+        { id: 'llama-3.1-8b-instant', object: 'model', active: true,
+          context_window: 131_072, max_completion_tokens: 32_768 },
+        { id: 'openai/gpt-oss-120b', object: 'model', active: false },
+        { id: 'whisper-large-v3', object: 'model', active: true },
+      ] }));
+    });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'groq-api', providerType: 'pi', piAuthProvider: 'groq', authType: 'api_key' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(urls).toEqual(['https://api.groq.com/openai/v1/models']);
+      expect(result.models).toEqual([expect.objectContaining({
+        id: 'pi/llama-3.1-8b-instant', contextWindow: 131_072,
+        maxOutputTokens: 32_768, catalogSource: 'provider',
+      })]);
+    } finally {
+      setOAuthTokenFetcher(null);
+    }
+  });
+
+  it('reads Mistral account models but excludes non-chat and archived rows', async () => {
+    const urls: string[] = [];
+    setOAuthTokenFetcher(async (url) => {
+      urls.push(url);
+      return new Response(JSON.stringify({ data: [
+        { id: 'mistral-medium-3.5', object: 'model', max_context_length: 262_144,
+          capabilities: { completion_chat: true, vision: true } },
+        { id: 'codestral-latest', object: 'model', capabilities: { completion_chat: false } },
+        { id: 'mistral-small-latest', object: 'model', archived: true },
+      ] }));
+    });
+    try {
+      const result = await piDriver.fetchModels!({
+        connection: { slug: 'mistral-api', providerType: 'pi', piAuthProvider: 'mistral', authType: 'api_key' } as any,
+        credentials: { apiKey: 'test-key' }, timeoutMs: 1_000,
+        hostRuntime: {} as any, resolvedPaths: {} as any,
+      });
+      expect(urls).toEqual(['https://api.mistral.ai/v1/models']);
+      expect(result.models).toEqual([expect.objectContaining({
+        id: 'pi/mistral-medium-3.5', contextWindow: 262_144,
+        supportsImages: true, catalogSource: 'provider',
+      })]);
     } finally {
       setOAuthTokenFetcher(null);
     }

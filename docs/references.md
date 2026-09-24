@@ -476,11 +476,15 @@ is the supported local integration candidate for a logged-in subscription; it is
 route from the xAI inference API key. Grok's [Settings → Usage](https://docs.x.ai/grok/faq)
 is the documented allowance view while no stable public personal meter contract is verified.
 
-For ID-only API catalogs, the [OpenAI Models API](https://developers.openai.com/api/reference/resources/models)
-and [DeepSeek List Models API](https://api-docs.deepseek.com/api/list-models/) expose account-visible
-model IDs but do not provide the complete effort/context/modality metadata needed by the chat picker.
-Fleet therefore treats those endpoints as entitlement evidence only and combines them with the
-installed Pi adapter metadata; it does not infer image, video or subscription allowance from an ID.
+The [OpenAI Models API](https://developers.openai.com/api/reference/resources/models) and
+[DeepSeek List Models API](https://api-docs.deepseek.com/api/list-models/) expose account-visible
+IDs without a complete effort/context/modality contract. The [Groq Models API](https://console.groq.com/docs/api-reference)
+adds active state, context and output limits; the [Mistral Models API](https://docs.mistral.ai/api/endpoint/models)
+adds chat/vision capability and context length. Fleet intersects all four with the
+installed Pi adapter, discards explicit inactive/archived/non-chat rows, and never infers image,
+video or subscription allowance from membership alone. Cindy's
+`apps/desktop/src/main/maker-host/provider-model-fetch.ts` supplies the comparison for same-origin
+endpoint selection, credential headers and bounded responses; Fleet keeps Craft's connection store.
 
 ### Subscription allowance comparison
 

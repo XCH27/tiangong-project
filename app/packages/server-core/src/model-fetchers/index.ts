@@ -38,11 +38,13 @@ function isCodexAccountCatalog(connection: { providerType: string; piAuthProvide
     && connection.authType === 'oauth' && !connection.customEndpoint
 }
 
-function isIdOnlyApiAccountCatalog(connection: { providerType: string; piAuthProvider?: string; authType?: string; baseUrl?: string; customEndpoint?: unknown }): boolean {
+function isApiAccountCatalog(connection: { providerType: string; piAuthProvider?: string; authType?: string; baseUrl?: string; customEndpoint?: unknown }): boolean {
   if (connection.providerType !== 'pi' || connection.authType !== 'api_key' || connection.customEndpoint) return false
   const baseUrl = connection.baseUrl?.trim().replace(/\/+$/, '')
   return (connection.piAuthProvider === 'openai' && (!baseUrl || baseUrl === 'https://api.openai.com/v1'))
     || (connection.piAuthProvider === 'deepseek' && (!baseUrl || baseUrl === 'https://api.deepseek.com'))
+    || (connection.piAuthProvider === 'groq' && (!baseUrl || baseUrl === 'https://api.groq.com/openai/v1'))
+    || (connection.piAuthProvider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai'))
 }
 
 // ============================================================
@@ -209,17 +211,17 @@ export class ModelRefreshService {
 
     // For Pi connections with explicit user-owned 3-tier selection,
     // never overwrite model lists from background refresh.
-    // Exceptions: account-scoped Copilot, xAI, Codex, OpenAI and DeepSeek
+    // Exceptions: account-scoped Copilot, xAI, Codex and official API catalogs
     // catalogs are account-managed. Keep
     // an existing selected default when it remains available, but refresh the
     // membership list so a legacy 3-tier setup cannot hide newly granted
     // models or retain a model the account can no longer use.
     const isCopilot = current.providerType === 'pi' && current.piAuthProvider === 'github-copilot'
     const isXaiAccount = isXaiAccountCatalog(current)
-    const isIdOnlyApiAccount = isIdOnlyApiAccountCatalog(current)
+    const isApiAccount = isApiAccountCatalog(current)
     const isCodexAccount = isCodexAccountCatalog(current)
     if (current.providerType === 'pi' && current.modelSelectionMode === 'userDefined3Tier'
-      && !isCopilot && !isXaiAccount && !isIdOnlyApiAccount && !isCodexAccount) {
+      && !isCopilot && !isXaiAccount && !isApiAccount && !isCodexAccount) {
       const modelCount = current.models?.length ?? 0
       handlerLog.info(`Model refresh [${slug}]: preserving user-defined Pi model list (${modelCount} models)`)
       if (modelCount > 10) {
@@ -276,7 +278,7 @@ export class ModelRefreshService {
       // (models are server-managed by GitHub policy), other providers use
       // the fetcher's generic interval (0 = no periodic refresh for static SDK models).
       const isCopilot = conn.providerType === 'pi' && conn.piAuthProvider === 'github-copilot'
-      const isAccountCatalog = isXaiAccountCatalog(conn) || isCodexAccountCatalog(conn) || isIdOnlyApiAccountCatalog(conn)
+      const isAccountCatalog = isXaiAccountCatalog(conn) || isCodexAccountCatalog(conn) || isApiAccountCatalog(conn)
       if (isCopilot) {
         this.startTimer(conn.slug, COPILOT_REFRESH_INTERVAL_MS)
       } else if (isAccountCatalog) {
@@ -313,7 +315,7 @@ export class ModelRefreshService {
     const providerType = connection.providerType as FetchableProvider
     const fetcher = this.fetchers[providerType]
     const isCopilot = connection.providerType === 'pi' && connection.piAuthProvider === 'github-copilot'
-    const isAccountCatalog = isXaiAccountCatalog(connection) || isCodexAccountCatalog(connection) || isIdOnlyApiAccountCatalog(connection)
+    const isAccountCatalog = isXaiAccountCatalog(connection) || isCodexAccountCatalog(connection) || isApiAccountCatalog(connection)
     if (isCopilot && !this.timers.has(slug)) {
       this.startTimer(slug, COPILOT_REFRESH_INTERVAL_MS)
     } else if (isAccountCatalog && !this.timers.has(slug)) {

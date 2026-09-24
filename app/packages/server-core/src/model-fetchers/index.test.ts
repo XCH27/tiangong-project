@@ -153,6 +153,38 @@ describe('model refresh provenance', () => {
     }
   })
 
+  for (const { provider, baseUrl } of [
+    { provider: 'groq', baseUrl: 'https://api.groq.com/openai/v1' },
+    { provider: 'mistral', baseUrl: 'https://api.mistral.ai' },
+  ]) {
+    it(`replaces a legacy ${provider} tier with its authenticated account list`, async () => {
+      let connection: LlmConnection = {
+        slug: provider, name: provider, providerType: 'pi', authType: 'api_key',
+        piAuthProvider: provider, baseUrl, modelSelectionMode: 'userDefined3Tier', createdAt: 1,
+        defaultModel: 'pi/old', models: [model('pi/old')],
+      }
+      const fetcher = { refreshIntervalMs: 0, fetchModels: async () => ({
+        models: [model('pi/account-model')], source: 'provider' as const,
+      }) }
+      const service = new ModelRefreshService(
+        { pi: fetcher, anthropic: fetcher } as ModelFetcherMap,
+        async () => ({ apiKey: 'test-key' }),
+        {
+          getConnection: () => connection,
+          getConnections: () => [connection],
+          updateConnection: (_slug, updates) => { connection = { ...connection, ...updates }; return true },
+          fallbackModels: () => [],
+        },
+      )
+      try {
+        expect((await service.refreshNow(provider)).source).toBe('provider')
+        expect(connection.models).toEqual([model('pi/account-model')])
+      } finally {
+        service.stopAll()
+      }
+    })
+  }
+
   it('refreshes a ChatGPT Codex catalog even for an older three-tier connection', async () => {
     let connection: LlmConnection = {
       slug: 'chatgpt', name: 'ChatGPT', providerType: 'pi', authType: 'oauth',

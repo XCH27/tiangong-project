@@ -110,10 +110,12 @@ backend checks cancellation before saving exchanged credentials. This correction
 automatic model routing, a new
 account store, or a second credential owner.
 
-OpenAI and DeepSeek API-key connections now use their official authenticated model-list endpoints
-when the endpoint is the provider default. Those responses are membership-only IDs: Fleet intersects
-them with the installed Pi model adapters and keeps Pi's native context, request protocol and
-thinking metadata. An ID that is not in the installed adapter catalog is treated as unavailable
+OpenAI, DeepSeek, Groq and Mistral API-key connections use their official authenticated model-list
+endpoints when the endpoint is the provider default. Fleet intersects returned IDs with the
+installed Pi model adapters. OpenAI and DeepSeek list membership only, so Pi supplies their context,
+request protocol and thinking metadata. Groq's active model rows can refine context/output limits;
+Mistral's unarchived chat rows can refine context and image-input support. An ID that is not in the
+installed adapter catalog is treated as unavailable
 and never surfaced as runnable; if every returned ID is unknown, the live refresh fails closed and
 the existing saved catalog remains. Custom endpoints keep their explicit
 model lists. The official APIs do not expose a complete per-model effort, context or media contract,

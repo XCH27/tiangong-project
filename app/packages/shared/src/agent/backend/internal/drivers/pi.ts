@@ -6,13 +6,15 @@ import { fetchXaiApiModels, fetchXaiSubscriptionModels, XAI_SUBSCRIPTION_BASE } 
 import { getValidXaiSubscriptionToken } from '../../../../auth/xai-subscription.ts';
 import { fetchOAuthToken } from '../../../../auth/oauth-token-fetch.ts';
 
-// These official endpoints return account-visible IDs, not per-model context,
-// effort or modality metadata. Pi remains the execution-capability source.
-const ID_ONLY_ACCOUNT_CATALOGS = {
+// Official endpoints establish account membership. Some add capability fields;
+// Pi remains the execution transport and fallback capability source.
+const API_ACCOUNT_CATALOGS = {
   openai: { baseUrl: 'https://api.openai.com/v1', modelsUrl: 'https://api.openai.com/v1/models' },
   deepseek: { baseUrl: 'https://api.deepseek.com', modelsUrl: 'https://api.deepseek.com/models' },
+  groq: { baseUrl: 'https://api.groq.com/openai/v1', modelsUrl: 'https://api.groq.com/openai/v1/models' },
+  mistral: { baseUrl: 'https://api.mistral.ai', modelsUrl: 'https://api.mistral.ai/v1/models' },
 } as const;
-type IdOnlyAccountProvider = keyof typeof ID_ONLY_ACCOUNT_CATALOGS;
+type ApiAccountProvider = keyof typeof API_ACCOUNT_CATALOGS;
 
 const CODEX_SUBSCRIPTION_BASE = 'https://chatgpt.com/backend-api/codex';
 const CODEX_CLIENT_VERSION = '0.13.4';
@@ -176,14 +178,14 @@ async function fetchCodexSubscriptionModels(
   return models;
 }
 
-function hasOfficialCatalogEndpoint(connection: { baseUrl?: string; customEndpoint?: unknown }, provider: IdOnlyAccountProvider): boolean {
+function hasOfficialCatalogEndpoint(connection: { baseUrl?: string; customEndpoint?: unknown }, provider: ApiAccountProvider): boolean {
   if (connection.customEndpoint) return false;
   const configured = connection.baseUrl?.trim().replace(/\/+$/, '');
-  return !configured || configured === ID_ONLY_ACCOUNT_CATALOGS[provider].baseUrl;
+  return !configured || configured === API_ACCOUNT_CATALOGS[provider].baseUrl;
 }
 
 /** Keep only account-visible models for which the installed Pi adapter can execute. */
-export function matchIdOnlyAccountModels(
+export function matchApiAccountModels(
   payload: unknown,
   sdkModels: readonly ModelDefinition[],
 ): ModelDefinition[] {
@@ -196,28 +198,45 @@ export function matchIdOnlyAccountModels(
   for (const row of payload.data) {
     if (!row || typeof row !== 'object') continue;
     const id = typeof row.id === 'string' ? row.id.trim() : '';
-    if (!id || seen.has(id) || (row.object !== undefined && row.object !== 'model')) continue;
+    if (!id || seen.has(id) || (row.object !== undefined && row.object !== 'model')
+      || row.active === false || row.archived === true) continue;
+    const capabilities = jsonRecord(row.capabilities);
+    if (capabilities?.completion_chat === false) continue;
     seen.add(id);
     const supported = native.get(id);
-    if (supported) models.push(supported);
+    if (supported) {
+      // Groq and Mistral additionally publish real limits/capabilities. OpenAI
+      // and DeepSeek return IDs only, so they retain Pi's installed metadata.
+      const contextWindow = positiveInteger(row.context_window) ?? positiveInteger(row.max_context_length);
+      const maxOutputTokens = positiveInteger(row.max_completion_tokens);
+      const hasProviderMetadata = contextWindow !== undefined || maxOutputTokens !== undefined
+        || typeof capabilities?.vision === 'boolean';
+      models.push(hasProviderMetadata ? {
+        ...supported,
+        ...(contextWindow ? { contextWindow } : {}),
+        ...(maxOutputTokens ? { maxOutputTokens } : {}),
+        ...(typeof capabilities?.vision === 'boolean' ? { supportsImages: capabilities.vision } : {}),
+        catalogSource: 'provider',
+      } : supported);
+    }
   }
   return models;
 }
 
 async function fetchIdOnlyAccountModels(
-  provider: IdOnlyAccountProvider,
+  provider: ApiAccountProvider,
   apiKey: string,
   timeoutMs: number,
 ): Promise<ModelDefinition[]> {
   if (!apiKey) throw new Error(`${provider} API key is required for model discovery`);
-  const response = await fetchOAuthToken(ID_ONLY_ACCOUNT_CATALOGS[provider].modelsUrl, {
+  const response = await fetchOAuthToken(API_ACCOUNT_CATALOGS[provider].modelsUrl, {
     method: 'GET',
     headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error(`${provider} model discovery failed (HTTP ${response.status})`);
   const payload = await readBoundedModelJson(response, provider);
-  const models = matchIdOnlyAccountModels(payload, getPiModelsForAuthProvider(provider));
+  const models = matchApiAccountModels(payload, getPiModelsForAuthProvider(provider));
   if (!models.length) throw new Error(`${provider} returned no models executable by the installed Pi adapter`);
   return models;
 }
@@ -553,11 +572,12 @@ export const piDriver: ProviderDriver = {
       return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
     }
 
-    // OpenAI and DeepSeek expose authenticated ID-only catalogs. Treat those
-    // IDs as membership, while keeping Pi's own metadata and wire adapters.
+    // Official API lists establish account membership. Groq and Mistral also
+    // return bounded capability metadata; Pi still owns the runnable adapter.
     // Custom endpoints retain their explicit user-configured model list.
     const accountProvider = connection.piAuthProvider;
-    if (connection.authType === 'api_key' && (accountProvider === 'openai' || accountProvider === 'deepseek')
+    if (connection.authType === 'api_key' && (accountProvider === 'openai' || accountProvider === 'deepseek'
+      || accountProvider === 'groq' || accountProvider === 'mistral')
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
       const models = await fetchIdOnlyAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
       return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };

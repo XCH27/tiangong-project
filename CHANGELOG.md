@@ -11,6 +11,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
   stale legacy model tiers with the account-visible intersection that the installed Pi adapters can
   actually execute. The existing provider → saved → SDK fallback remains in place; unknown API IDs
   do not receive invented context, effort or media metadata, and custom endpoints are unchanged.
+- Groq and Mistral API-key connections now use their authenticated provider model lists too. Only models
+  with installed Pi execution routes appear; explicit inactive, archived and non-chat rows are
+  excluded. Provider context, output and vision fields refine the model when present.
 - ChatGPT/Codex OAuth connections now query the official account-scoped Codex model catalog through
   the stored ID-token account identity, merge its context/modality/reasoning metadata with Pi's
   executable adapter, and keep subscription rows free of API token prices. Unknown slugs remain
