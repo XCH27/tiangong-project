@@ -1238,7 +1238,7 @@ export default function AiSettingsPage() {
 
             <div className="space-y-8">
               <div className="overflow-hidden rounded-[12px] border border-border/60 bg-background shadow-minimal">
-                  <div className="flex flex-col md:max-h-[min(65dvh,40rem)] md:flex-row">
+                  <div className="flex flex-col md:h-[65dvh] md:min-h-[20rem] md:max-h-[40rem] md:flex-row">
                     <aside className="flex w-full shrink-0 flex-col border-b border-border/60 bg-foreground/[0.02] md:min-h-0 md:w-56 md:border-b-0 md:border-r">
                       <div className="flex items-center justify-between px-3 py-3">
                         <span className="text-xs font-medium text-muted-foreground">{t('settings.ai.connections')}</span>

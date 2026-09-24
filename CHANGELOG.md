@@ -10,8 +10,8 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 - Model Settings now recognizes the documented Codex image route beside an authenticated ChatGPT
   subscription connection, separately from Pi's chat models and xAI's live API-key media catalog.
   It labels account entitlement and allowance as unverified; Fleet image generation remains unwired.
-- The model connection panel now fits short lists and caps at the viewport for long lists, so a
-  one-model account does not leave a large empty block above the other settings.
+- Restored the model connection panel's stable bounded height after the content-sized variant
+  caused the panel to shrink when switching connections.
 - Compared official Codex, Hermes, latest fetched Cindy and DeepSeek Harness provider adapters before
   settling the existing Pi/connection boundary. Also reviewed Grok Build and Kimi Code and added
   shallow MiMo Code, Gemini CLI and Qwen Code source checkouts for bounded model/adapter comparison.
