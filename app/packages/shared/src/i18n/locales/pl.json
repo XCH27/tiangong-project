@@ -214,6 +214,7 @@
   "chat.modelPicker.supportsImagesOn": "Obrazy włączone",
   "chat.modelPicker.thinkingSection": "Myślenie",
   "chat.modelPicker.toggleVisionFailed": "Nie udało się zaktualizować obsługi obrazów",
+  "chat.modelPicker.waitForTurn": "Poczekaj na zakończenie bieżącej tury, zanim zmienisz konto lub dostawcę.",
   "chat.modelUnavailableForConnection": "Ten model nie jest już dostępny dla wybranego połączenia. Odśwież listę modeli i wybierz ponownie.",
   "chat.moreSubmitActions": "Więcej akcji wysyłania",
   "chat.noFoldersFound": "Nie znaleziono folderów",

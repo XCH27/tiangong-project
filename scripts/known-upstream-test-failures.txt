@@ -25,11 +25,6 @@ apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneMana
 apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > retries toolbar load and recovers
 apps/electron/src/main/__tests__/browser-pane-manager.test.ts :: BrowserPaneManager > still destroys instance when cleanup throws
 
-# refresh-connection-runtime.test.ts — not hermetic: passes only against a real user profile that
-# already has a connection, fails every time under an empty CRAFT_CONFIG_DIR. Running the suite
-# without isolation therefore reads the owner's real configuration.
-packages/server-core/src/sessions/refresh-connection-runtime.test.ts :: refreshConnectionRuntime > records customModels with the per-model supportsImages flag in the IPC payload
-
 # session-branch-rollback.isolated.ts — the test replaces @craft-agent/shared/config with a fixed mock
 # that lacks defaultMidStreamBehavior, which v0.13.4 code now imports; the module fails to link.
 apps/electron/src/main/__tests__/session-branch-rollback.isolated.ts :: <unhandled error>

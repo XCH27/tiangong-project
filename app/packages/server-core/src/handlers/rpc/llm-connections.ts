@@ -701,9 +701,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
   server.handle(RPC_CHANNELS.llmConnections.SET_MODEL_VISIBILITY, async (_ctx, slug: string, model: string, visible: boolean): Promise<{ success: boolean; error?: string }> => {
     const connection = getLlmConnection(slug)
     if (!connection) return { success: false, error: 'Connection not found' }
-    const availableModels = connection.models?.length
-      ? connection.models
-      : getModelsForProviderType(connection.providerType, connection.piAuthProvider)
+    const availableModels = connection.models ?? []
     if (typeof visible !== 'boolean' || !model?.trim() || !availableModels.some(entry =>
       (typeof entry === 'string' ? entry : entry.id) === model
     )) return { success: false, error: 'MODEL_UNAVAILABLE_FOR_CONNECTION' }

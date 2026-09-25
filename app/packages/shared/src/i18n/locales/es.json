@@ -214,6 +214,7 @@
   "chat.modelPicker.supportsImagesOn": "Imágenes habilitadas",
   "chat.modelPicker.thinkingSection": "Razonamiento",
   "chat.modelPicker.toggleVisionFailed": "No se pudo actualizar el soporte de imágenes",
+  "chat.modelPicker.waitForTurn": "Espera a que termine el turno actual antes de cambiar de cuenta o proveedor.",
   "chat.modelUnavailableForConnection": "Este modelo ya no está disponible para la conexión seleccionada. Actualiza la lista de modelos y vuelve a elegir.",
   "chat.moreSubmitActions": "Más acciones de envío",
   "chat.noFoldersFound": "No se encontraron carpetas",

@@ -8,14 +8,13 @@
  * Session model and effort are chosen in the existing composer.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { X, MoreHorizontal, Pencil, Trash2, Star, AlertTriangle, RefreshCcw, MessageSquareMore, Zap, Clock, Check, Plus } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
@@ -35,6 +34,7 @@ import {
   StyledDropdownMenuSubContent,
 } from '@/components/ui/styled-dropdown'
 import { cn } from '@/lib/utils'
+import { getConnectionDisplayName, getConnectionProviderLabel } from '@/lib/connection-labels'
 import { ConnectionIcon } from '@/components/icons/ConnectionIcon'
 
 import {
@@ -53,7 +53,7 @@ import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
-import { getModelsForProviderType, getPiAuthProviderName, isCompatProvider, isModelVisibleInPicker, isOfficialApiModelCatalogConnection, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
+import { getModelsForProviderType, isCompatProvider, isModelVisibleInPicker, isOfficialApiModelCatalogConnection, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
 import { toast } from 'sonner'
 import type { CodexUsageReadResult, XaiSubscriptionUsage } from '@craft-agent/shared/auth'
 
@@ -169,10 +169,7 @@ function CodexSubscriptionUsage({ connectionSlug }: { connectionSlug: string }) 
   </div>
 }
 
-/**
- * Derive model dropdown options from a connection's models array,
- * falling back to registry models for the connection's provider type.
- */
+/** Show only models saved for this connection; a registry is not account proof. */
 function getModelOptionsForConnection(
   connection: LlmConnectionWithStatus | undefined,
 ): Array<{ value: string; label: string; description: string; descriptionKey?: string }> {
@@ -190,14 +187,7 @@ function getModelOptionsForConnection(
     })
   }
 
-  // Fall back to registry models for this provider type
-  const registryModels = getModelsForProviderType(connection.providerType, connection.piAuthProvider)
-  return registryModels.map((m) => ({
-    value: m.id,
-    label: m.name,
-    description: m.description,
-    descriptionKey: m.descriptionKey,
-  }))
+  return []
 }
 
 /** Prefer live connection metadata; use the exact provider registry ID for legacy string entries. */
@@ -403,36 +393,6 @@ function CredentialHealthBanner({ issues, onReauthenticate }: CredentialHealthBa
       </div>
     </div>
   )
-}
-
-// ============================================
-// Provider identity
-// ============================================
-
-function getConnectionProviderLabel(connection: LlmConnectionWithStatus): string {
-  if (connection.providerType === 'anthropic') return 'Anthropic'
-  if (connection.providerType === 'pi') {
-    return getPiAuthProviderName(connection.piAuthProvider) || connection.piAuthProvider || connection.name
-  }
-  return connection.name
-}
-
-/** Correct inherited plan/runtime labels; never rewrite a custom connection name. */
-function getConnectionDisplayName(connection: LlmConnectionWithStatus, connections: LlmConnectionWithStatus[]): string {
-  const subscriptionTemplate = /^(Claude Max|ChatGPT Plus|Grok \(Subscription\))(?: (\d+))?$/.exec(connection.name)
-  if (subscriptionTemplate) {
-    const label = subscriptionTemplate[1] === 'Claude Max' ? 'Claude'
-      : subscriptionTemplate[1] === 'ChatGPT Plus' ? 'ChatGPT' : 'Grok'
-    return subscriptionTemplate[2] ? `${label} ${subscriptionTemplate[2]}` : label
-  }
-  if (!/^Craft Agents Backend \([^)]+\)(?: \d+)?$/.test(connection.name)) return connection.name
-  const providerName = getConnectionProviderLabel(connection)
-  if (providerName === connection.name) return connection.name
-  const siblings = connections.filter(candidate => candidate.providerType === connection.providerType
-    && candidate.authType === connection.authType && candidate.piAuthProvider === connection.piAuthProvider)
-    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.slug.localeCompare(b.slug))
-  const number = siblings.findIndex(candidate => candidate.slug === connection.slug) + 1
-  return number > 1 ? `${providerName} ${number}` : providerName
 }
 
 // ============================================
@@ -688,10 +648,9 @@ export default function AiSettingsPage() {
   const { t } = useTranslation()
   const { llmConnections, refreshLlmConnections } = useAppShellContext()
   const [selectedConnectionSlug, setSelectedConnectionSlug] = useState<string | null>(null)
-  const [providerPickerOpen, setProviderPickerOpen] = useState(false)
-  const pendingCreatedSlugs = useRef<Set<string> | null>(null)
+  const [showProviderCatalog, setShowProviderCatalog] = useState(false)
 
-  // API Setup overlay state
+  // Setup in the provider detail panel
   const [showApiSetup, setShowApiSetup] = useState(false)
   const [editingConnectionSlug, setEditingConnectionSlug] = useState<string | null>(null)
   const [draftCatalog, setDraftCatalog] = useState<(ApiKeyCatalogPreview & { connectionSlug?: string }) | null>(null)
@@ -780,6 +739,7 @@ export default function AiSettingsPage() {
     setDraftCatalog(null)
     setCatalogRefreshRequestId(0)
     setEditingConnectionSlug(connectionSlug || null)
+    setShowProviderCatalog(false)
     setShowApiSetup(true)
   }, [])
 
@@ -799,10 +759,12 @@ export default function AiSettingsPage() {
   // OnboardingWizard hook for editing API connection
   const apiSetupOnboarding = useOnboarding({
     initialStep: 'provider-select',
-    onConfigSaved: refreshLlmConnections,
+    onConfigSaved: async (slug) => {
+      setSelectedConnectionSlug(slug)
+      await refreshLlmConnections()
+    },
     onComplete: () => {
       closeApiSetup()
-      refreshLlmConnections?.()
       apiSetupOnboarding.reset()
     },
     onDismiss: () => {
@@ -816,19 +778,17 @@ export default function AiSettingsPage() {
 
   const handleApiSetupFinish = useCallback(() => {
     closeApiSetup()
-    refreshLlmConnections?.()
     apiSetupOnboarding.reset()
     // Clear any credential health issues after successful re-authentication
     setCredentialHealthIssues([])
     setEditInitialValues(undefined)
-  }, [closeApiSetup, refreshLlmConnections, apiSetupOnboarding])
+  }, [closeApiSetup, apiSetupOnboarding])
 
-  // Handler for closing the modal via X button or Escape - resets state and cancels OAuth
+  // Leave setup and invalidate pending credential tests or authorization results.
   const handleCloseApiSetup = useCallback(() => {
     closeApiSetup()
     apiSetupOnboarding.reset()
     setEditInitialValues(undefined)
-    pendingCreatedSlugs.current = null
   }, [closeApiSetup, apiSetupOnboarding])
 
   // Settings has no onboarding completion page: return to the selected connection after save.
@@ -839,32 +799,18 @@ export default function AiSettingsPage() {
   }, [showApiSetup, apiSetupOnboarding.state.step, handleApiSetupFinish])
 
   const handleAddConnection = useCallback((choice: ProviderChoice, preset?: string) => {
-    pendingCreatedSlugs.current = new Set(existingSlugs)
-    setProviderPickerOpen(false)
+    setShowProviderCatalog(false)
     setEditInitialValues(preset ? { activePreset: preset } : undefined)
-    requestAnimationFrame(() => {
-      openApiSetup()
-      apiSetupOnboarding.handleSelectProvider(choice)
-    })
-  }, [apiSetupOnboarding, existingSlugs, openApiSetup])
+    openApiSetup()
+    apiSetupOnboarding.handleSelectProvider(choice)
+  }, [apiSetupOnboarding, openApiSetup])
 
   const handleOpenProviderCatalog = useCallback(() => {
     closeApiSetup()
     apiSetupOnboarding.reset()
     setEditInitialValues(undefined)
-    pendingCreatedSlugs.current = null
-    setProviderPickerOpen(true)
+    setShowProviderCatalog(true)
   }, [apiSetupOnboarding, closeApiSetup])
-
-  // After connection setup, show its model list in the same provider detail panel.
-  useEffect(() => {
-    if (!pendingCreatedSlugs.current) return
-    const created = llmConnections.find(connection => !pendingCreatedSlugs.current!.has(connection.slug))
-    if (created) {
-      setSelectedConnectionSlug(created.slug)
-      pendingCreatedSlugs.current = null
-    }
-  }, [llmConnections])
 
   // Handler for re-authenticate button in credential health banner
   const handleReauthenticate = useCallback(() => {
@@ -878,7 +824,7 @@ export default function AiSettingsPage() {
         requestAnimationFrame(() => document.getElementById('api-key')?.focus())
       }
     } else {
-      setProviderPickerOpen(true)
+      setShowProviderCatalog(true)
     }
   }, [llmConnections, openApiSetup])
 
@@ -1243,7 +1189,7 @@ export default function AiSettingsPage() {
             initialValues={editInitialValues}
           />
           <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={handleCloseApiSetup}>{t('common.cancel')}</Button>
+            <Button variant="outline" size="sm" onClick={handleOpenProviderCatalog}>{t('common.back')}</Button>
             <Button size="sm" type="submit" form="api-key-form" disabled={apiSetupOnboarding.state.credentialStatus === 'validating'}>
               {t(apiSetupOnboarding.state.credentialStatus === 'validating' ? 'common.validating' : 'settings.ai.saveAndTestConnection')}
             </Button>
@@ -1301,12 +1247,12 @@ export default function AiSettingsPage() {
                           <button
                             key={conn.slug}
                             type="button"
-                            onClick={() => { setProviderPickerOpen(false); setSelectedConnectionSlug(conn.slug); handleCloseApiSetup() }}
-                            aria-current={!showApiSetup && selectedConnection?.slug === conn.slug ? 'page' : undefined}
+                            onClick={() => { setShowProviderCatalog(false); setSelectedConnectionSlug(conn.slug); handleCloseApiSetup() }}
+                            aria-current={!showProviderCatalog && !showApiSetup && selectedConnection?.slug === conn.slug ? 'page' : undefined}
                             className={cn(
                               'flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-[13px] outline-none transition-colors',
                               'hover:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-ring',
-                              !showApiSetup && selectedConnection?.slug === conn.slug && 'bg-background shadow-minimal',
+                              !showProviderCatalog && !showApiSetup && selectedConnection?.slug === conn.slug && 'bg-background shadow-minimal',
                             )}
                           >
                             <ConnectionIcon connection={conn} size={18} />
@@ -1319,22 +1265,17 @@ export default function AiSettingsPage() {
                         ))}
                       </nav>
                       <div className="border-t border-border/60 p-2">
-                        <Popover open={providerPickerOpen} onOpenChange={setProviderPickerOpen}>
-                          <PopoverTrigger asChild>
-                            <Button size="sm" variant="outline" className="w-full justify-start gap-2" aria-label={t('settings.ai.addConnection')}>
-                              <Plus className="h-4 w-4" />
-                              {t('settings.ai.addConnection')}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent side="right" align="end" className="h-[min(70dvh,32rem)] w-[min(22rem,calc(100vw-2.5rem))] overflow-hidden p-0">
-                            <ProviderCatalog onSelect={handleAddConnection} />
-                          </PopoverContent>
-                        </Popover>
+                        <Button size="sm" variant="outline" className="w-full justify-start gap-2" aria-label={t('settings.ai.addConnection')} onClick={handleOpenProviderCatalog}>
+                          <Plus className="h-4 w-4" />
+                          {t('settings.ai.addConnection')}
+                        </Button>
                       </div>
                     </aside>
 
                     <section className="min-w-0 flex-1 md:min-h-0 md:overflow-y-auto">
-                      {showApiSetup && !editingConnectionSlug ? (
+                      {showProviderCatalog || (!selectedConnection && !showApiSetup) ? (
+                        <ProviderCatalog onSelect={handleAddConnection} />
+                      ) : showApiSetup && !editingConnectionSlug ? (
                         <div>
                           {apiSetupForm}
                           {editInitialValues?.activePreset !== 'custom' && draftCatalog?.source === 'provider' && !draftCatalog.error && (

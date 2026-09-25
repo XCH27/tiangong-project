@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { LlmConnection } from '@craft-agent/shared/config'
-import { assertSessionModelSelection, assertWorkspaceModelSelection, inheritedWorkspaceModelOverride, reconcileWorkspaceModelOverride } from './model-defaults'
+import { assertSessionConnectionSelection, assertSessionModelSelection, assertWorkspaceModelSelection, inheritedWorkspaceModelOverride, reconcileWorkspaceModelOverride } from './model-defaults'
 
 function connection(providerType: LlmConnection['providerType'], models: string[], defaultModel: string): LlmConnection {
   return {
@@ -70,5 +70,14 @@ describe('workspace model selection', () => {
     expect(() => assertWorkspaceModelSelection(
       'pi/new-model', connection('pi', ['pi/new-model'], 'pi/new-model'),
     )).not.toThrow()
+  })
+})
+
+describe('explicit Session source identity', () => {
+  it('rejects a missing account or an inherited different account', () => {
+    expect(() => assertSessionConnectionSelection('removed', null)).toThrow('CONNECTION_UNAVAILABLE')
+    expect(() => assertSessionConnectionSelection('removed', { slug: 'default' })).toThrow('CONNECTION_UNAVAILABLE')
+    expect(() => assertSessionConnectionSelection('selected', { slug: 'selected' })).not.toThrow()
+    expect(() => assertSessionConnectionSelection(undefined, { slug: 'default' })).not.toThrow()
   })
 })

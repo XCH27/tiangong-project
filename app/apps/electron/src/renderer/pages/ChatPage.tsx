@@ -291,7 +291,8 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
           const message = error instanceof Error ? error.message : String(error)
           toast.error(message.includes('MODEL_UNAVAILABLE_FOR_CONNECTION')
             ? t('chat.modelUnavailableForConnection')
-            : message)
+            : message.includes('CONNECTION_SWITCH_REQUIRES_IDLE') ? t('chat.modelPicker.waitForTurn')
+              : message.includes('CONNECTION_UNAVAILABLE') ? t('chat.connectionUnavailableDescription') : message)
         })
     }
   }, [sessionId, activeWorkspaceId, t])

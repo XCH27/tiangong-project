@@ -1,6 +1,7 @@
 import {
-  isLocalConnection,
-  type LlmConnection,
+  isModelVisibleInPicker,
+  canSwitchConnectionDuringSession,
+  type LlmConnectionWithStatus,
 } from '@config/llm-connections'
 
 /**
@@ -25,31 +26,19 @@ export function stripPiPrefixForDisplay(value: string): string {
   return value.startsWith('pi/') ? value.slice(3) : value
 }
 
-export type ConnectionGroup = [groupName: string, connections: LlmConnection[]]
-
-/**
- * Group connections by provider type for hierarchical picker rendering.
- * Each provider section can contain multiple connections (API Key, OAuth, …).
- * Order is significant for UI: Anthropic, Local, Craft Agents Backend.
- * Empty groups are dropped.
- */
-export function groupConnectionsByProvider<T extends LlmConnection>(
-  connections: readonly T[],
-): Array<[string, T[]]> {
-  const groups: Record<string, T[]> = {
-    'Anthropic': [],
-    'Local': [],
-    'Craft Agents Backend': [],
-  }
-  for (const conn of connections) {
-    const provider = conn.providerType || 'anthropic'
-    if (provider === 'anthropic') {
-      groups['Anthropic'].push(conn)
-    } else if (provider === 'pi_compat' && isLocalConnection(conn)) {
-      groups['Local'].push(conn)
-    } else if (provider === 'pi' || provider === 'pi_compat') {
-      groups['Craft Agents Backend'].push(conn)
-    }
-  }
-  return Object.entries(groups).filter(([, conns]) => conns.length > 0)
+/** Cindy groups by source identity, never by the underlying agent runtime. */
+export function getModelPickerGroups(
+  connections: readonly LlmConnectionWithStatus[],
+  currentConnection: string | undefined,
+  isEmptySession: boolean,
+) {
+  const current = connections.find(connection => connection.slug === currentConnection)
+  return connections
+    .filter(connection => isEmptySession || canSwitchConnectionDuringSession(current, connection))
+    .map(connection => ({
+      connection,
+      models: (connection.models ?? []).filter(model => isModelVisibleInPicker(
+        connection, typeof model === 'string' ? model : model.id,
+      )),
+    }))
 }

@@ -74,8 +74,9 @@ selected model, while explicit automation/session choices and the composer effor
 Legacy workspace model/connection and default-effort values stay on disk for existing Session
 compatibility but do not steer new Sessions. Refresh preserves
 visibility preferences for matching IDs and shows newly discovered IDs by default. A legacy
-connection without a saved list uses the same provider fallback in Settings and the visibility
-handler; custom endpoints without an explicit list cannot invent model membership.
+connection without a saved list shows an empty Settings and composer catalog until its
+connection-owned list is refreshed; custom endpoints without an explicit list cannot invent
+model membership.
 The selected provider's compact model list shows the full chat-routable catalog without a search
 or capability-filter toolbar. Its row opens per-model details for context, output, image input and
 reasoning, while an explicitly advertised non-text input remains distinct from a media executor.
@@ -160,9 +161,24 @@ uses its existing provider cancellation path; a late result cannot reopen the cl
 backend checks cancellation before saving exchanged credentials. This correction does not authorize
 automatic model routing, a new
 account store, or a second credential owner.
-The Settings provider picker opens from Add Connection while the selected connection stays in
-place. A saved API connection, including the last one, can be removed after confirmation; the
+Add Connection and the empty state mount the existing provider catalog in the right Settings
+panel. API setup has a Back action to that catalog; saving awaits the connection refresh and
+selects the exact saved slug in the same panel. Closing or leaving setup invalidates late API
+validation results before they can save or finish another form. A saved API connection, including the last one, can be removed after confirmation; the
 existing connection and credential owners clear its model default and stored key together.
+
+The composer uses one shared source/model list for desktop and narrow windows. Cindy's source
+rail and per-provider sections map to Craft connection slugs, so two accounts serving the same
+model remain distinct. Search spans eligible sources; hidden models are omitted, missing catalogs
+stay empty, and labels match Settings. Selection sends model and connection together through the
+existing Session command. An idle Pi session may change between Pi sources; the existing runtime
+refresh lock serializes selection and sends, retires the old credential-bound process, and saves
+source, model and reconciled effort in one Session snapshot. The same local Pi history survives the
+restart. Running turns reject source changes, and cross-engine history transfer is not implemented.
+A removed account model or deleted connection is reported unavailable instead of silently sending
+to a fallback. Deleted source identity survives Session reload; the legacy connection-only command
+uses the same selection transaction. Image capability corrections live in Model Settings; the
+composer's pre-flight image warning still offers its existing enable action.
 
 OpenAI, Google AI Studio, DeepSeek, Groq and Mistral API-key connections use their official authenticated model-list
 endpoints when the endpoint is the provider default. Fleet intersects returned IDs with the

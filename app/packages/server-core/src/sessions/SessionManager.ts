@@ -21,7 +21,7 @@ import {
   type BackendHostRuntimeContext,
   type PostInitResult,
 } from '@craft-agent/shared/agent/backend'
-import { getLlmConnection, getLlmConnections, getDefaultLlmConnection, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
+import { canSwitchConnectionDuringSession, getLlmConnection, getLlmConnections, getDefaultLlmConnection, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
 import type { LlmConnection, MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
@@ -106,7 +106,7 @@ import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
 import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAttachmentsForModelInput } from './runtime-config'
 import { validateArchiveTarget } from './archive-guards'
-import { assertSessionModelSelection, inheritedWorkspaceModelOverride } from './model-defaults'
+import { assertSessionConnectionSelection, assertSessionModelSelection, inheritedWorkspaceModelOverride } from './model-defaults'
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
@@ -1993,14 +1993,10 @@ export class SessionManager implements ISessionManager {
             workingDirectory: meta.workingDirectory ?? wsDefaultWorkingDir,
           })
 
-          // Migration: clear orphaned llmConnection references (e.g., after connection was deleted)
-          if (managed.llmConnection) {
-            const conn = resolveSessionConnection(managed.llmConnection, undefined)
-            if (!conn) {
-              sessionLog.warn(`Session ${meta.id} has orphaned llmConnection "${managed.llmConnection}", clearing`)
-              managed.llmConnection = undefined
-              managed.connectionLocked = false
-            }
+          // Keep an unavailable source's identity across restart. Clearing it
+          // would silently send this session through a different default account.
+          if (managed.llmConnection && !getLlmConnection(managed.llmConnection)) {
+            sessionLog.warn(`Session ${meta.id} retains unavailable connection "${managed.llmConnection}"`)
           }
 
           // Initialize mode-manager state for restored sessions even before agent creation.
@@ -3206,9 +3202,8 @@ export class SessionManager implements ISessionManager {
     // Serialize against any in-flight refresh on this session. The waiter
     // doesn't propagate the prior call's errors — those are logged at the
     // origin call site.
-    const inflight = this.agentRefreshLocks.get(managed.id)
-    if (inflight) {
-      await inflight.catch(() => undefined)
+    while (this.agentRefreshLocks.has(managed.id)) {
+      await this.agentRefreshLocks.get(managed.id)!.catch(() => undefined)
     }
 
     if (!managed.agent) return
@@ -3219,6 +3214,7 @@ export class SessionManager implements ISessionManager {
       workspaceDefaultConnectionSlug: workspaceConfig?.defaults?.defaultLlmConnection,
       managedModel: managed.model,
     })
+    assertSessionModelSelection(managed.model ?? null, backendContext.resolvedModel)
     const connection = backendContext.connection
     const sigInput = {
       connection,
@@ -3365,24 +3361,26 @@ export class SessionManager implements ISessionManager {
    * Creates the appropriate backend agent based on LLM connection.
    *
    * Provider resolution order:
-   * 1. session.llmConnection (locked after first message)
+   * 1. session.llmConnection (explicit selection; Pi sources can switch while idle)
    * 2. workspace.defaults.defaultLlmConnection
    * 3. global defaultLlmConnection
    * 4. fallback: no connection configured
    */
   private async getOrCreateAgent(managed: ManagedSession): Promise<AgentInstance> {
-    // Refresh runtime config in-place when the connection has drifted since
-    // the agent was created. May null out `managed.agent` if the in-place
-    // refresh fails, in which case the create branch below rebuilds it.
+    if (managed.llmConnection) {
+      assertSessionConnectionSelection(managed.llmConnection, getLlmConnection(managed.llmConnection))
+    }
     await this.tryRefreshAgentRuntime(managed, 'send-path refresh')
     this.reconcileManagedThinkingLevel(managed)
-
     const workspaceConfig = loadWorkspaceConfig(managed.workspace.rootPath)
     const backendContext = resolveBackendContext({
       sessionConnectionSlug: managed.llmConnection,
       workspaceDefaultConnectionSlug: workspaceConfig?.defaults?.defaultLlmConnection,
       managedModel: managed.model,
     })
+    assertSessionConnectionSelection(managed.llmConnection, backendContext.connection)
+    // A removed catalog entry must not silently run the connection fallback.
+    assertSessionModelSelection(managed.model ?? null, backendContext.resolvedModel)
     const connection = backendContext.connection
     const sigInput = {
       connection,
@@ -3396,8 +3394,8 @@ export class SessionManager implements ISessionManager {
     if (!managed.agent) {
       const end = perf.start('agent.create', { sessionId: managed.id })
 
-      // Lock the connection after first resolution
-      // This ensures the session always uses the same provider
+      // Pin the resolved source so later global default changes cannot reroute
+      // this session. An explicit idle Pi source selection may replace it.
       if (connection && !managed.connectionLocked) {
         managed.llmConnection = connection.slug
         managed.connectionLocked = true
@@ -4812,45 +4810,12 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Set the LLM connection for a session.
-   * Can only be changed before the first message is sent (connection is locked after).
-   * This determines which LLM provider/backend will be used for this session.
-   */
+  /** Legacy connection-only caller; use the same validated Session selection path. */
   async setSessionConnection(sessionId: string, connectionSlug: string): Promise<void> {
     const managed = this.sessions.get(sessionId)
-    if (!managed) {
-      sessionLog.warn(`setSessionConnection: session ${sessionId} not found`)
-      throw new Error(`Session ${sessionId} not found`)
-    }
-
-    // Only allow changing connection before first message (session hasn't started)
-    if (managed.messages && managed.messages.length > 0) {
-      sessionLog.warn(`setSessionConnection: cannot change connection after session has started (${sessionId})`)
-      throw new Error('Cannot change connection after session has started')
-    }
-
-    // Validate connection exists
-    const { getLlmConnection } = await import('@craft-agent/shared/config/storage')
-    const connection = getLlmConnection(connectionSlug)
-    if (!connection) {
-      sessionLog.warn(`setSessionConnection: connection "${connectionSlug}" not found`)
-      throw new Error(`LLM connection "${connectionSlug}" not found`)
-    }
-
-    managed.llmConnection = connectionSlug
-    // Persist in-memory state directly to avoid race with pending queue writes
-    this.persistSession(managed)
-    await this.flushSession(managed.id)
-    sessionLog.info(`Set LLM connection for session ${sessionId} to ${connectionSlug}`)
-
-    // Notify UI that connection changed (triggers capabilities refresh)
-    this.sendEvent({
-      type: 'connection_changed',
-      sessionId,
-      connectionSlug,
-      supportsBranching: resolveSupportsBranching(managed),
-    }, managed.workspace.id)
+    if (!managed) throw new Error(`Session ${sessionId} not found`)
+    await this.updateSessionModel(sessionId, managed.workspace.id,
+      connectionSlug === managed.llmConnection ? managed.model ?? null : null, connectionSlug)
   }
 
   // ============================================
@@ -5546,29 +5511,49 @@ export class SessionManager implements ISessionManager {
   /**
    * Update the model for a session
    * Pass null to clear the session-specific model (will use global config)
-   * @param connection - Optional LLM connection slug (only applied if not already locked)
+   * @param connection - Optional source; a started Pi session may switch to another Pi source while idle.
    */
   async updateSessionModel(sessionId: string, workspaceId: string, model: string | null, connection?: string): Promise<void> {
+    // Reuse the runtime refresh lock so selections and sends cannot interleave
+    // while the previous credential-bound process is being retired.
+    while (this.agentRefreshLocks.has(sessionId)) {
+      await this.agentRefreshLocks.get(sessionId)!.catch(() => undefined)
+    }
+    const work = this.applySessionModel(sessionId, model, connection)
+    const tracked = work.then(() => undefined, () => undefined)
+    this.agentRefreshLocks.set(sessionId, tracked)
+    try {
+      await work
+    } finally {
+      if (this.agentRefreshLocks.get(sessionId) === tracked) this.agentRefreshLocks.delete(sessionId)
+    }
+  }
+
+  private async applySessionModel(sessionId: string, model: string | null, connection?: string): Promise<void> {
     sessionLog.info(`[updateSessionModel] sessionId=${sessionId}, model=${model}, connection=${connection}`)
     const managed = this.sessions.get(sessionId)
     if (managed) {
       const wsConfig = loadWorkspaceConfig(managed.workspace.rootPath)
-      const currentConnection = resolveSessionConnection(managed.llmConnection, wsConfig?.defaults?.defaultLlmConnection)
+      const currentConnection = managed.llmConnection ? getLlmConnection(managed.llmConnection)
+        : resolveSessionConnection(undefined, wsConfig?.defaults?.defaultLlmConnection)
       // A deleted locked connection stays unavailable; never silently treat
       // the workspace fallback as permission to switch its provider.
       const currentConnectionSlug = managed.llmConnection ?? currentConnection?.slug
       if (connection) {
-        if (connection !== currentConnectionSlug && (managed.connectionLocked || managed.messages.length > 0)) {
+        const targetConnection = getLlmConnection(connection)
+        if (connection !== currentConnectionSlug && (managed.connectionLocked || managed.messages.length > 0)
+          && (!targetConnection || !canSwitchConnectionDuringSession(currentConnection, targetConnection))) {
           throw new Error('Cannot change connection after session has started')
         }
-        if (!getLlmConnection(connection)) {
-          throw new Error(`LLM connection "${connection}" not found`)
+        if (!targetConnection) throw new Error(`LLM connection "${connection}" not found`)
+        if (connection !== currentConnectionSlug && (managed.isProcessing || managed.agent?.isProcessing())) {
+          throw new Error('CONNECTION_SWITCH_REQUIRES_IDLE')
         }
       }
       const connectionChanged = !!connection && connection !== managed.llmConnection
-        && !managed.connectionLocked && managed.messages.length === 0
       const connectionSlug = connectionChanged ? connection : managed.llmConnection
       const sessionConn = resolveSessionConnection(connectionSlug, wsConfig?.defaults?.defaultLlmConnection)
+      assertSessionConnectionSelection(connectionSlug, sessionConn)
       const workspaceModel = inheritedWorkspaceModelOverride(
         wsConfig?.defaults?.model,
         sessionConn,
@@ -5586,20 +5571,20 @@ export class SessionManager implements ISessionManager {
       )
       const thinkingChanged = nextThinkingLevel !== managed.thinkingLevel
       managed.model = model ?? undefined
-      // Also update connection if provided and not already locked
+      // A validated Pi source change keeps the existing Session and local Pi history.
       if (connectionChanged) {
         managed.llmConnection = connection
       }
-      // Persist to disk (include connection if it was updated)
-      const updates: { model?: string; llmConnection?: string } = { model: model ?? undefined }
-      if (connectionChanged) {
-        updates.llmConnection = connection
+      managed.thinkingLevel = nextThinkingLevel
+      // Source identity binds credentials in the subprocess. Retire it even if
+      // a legacy live session has no recorded runtime signature.
+      if (connectionChanged && managed.agent) {
+        await this.disposeManagedAgentRuntime(managed, 'model connection selection')
       }
-      await updateSessionMetadata(managed.workspace.rootPath, sessionId, updates)
-      if (thinkingChanged) {
-        managed.thinkingLevel = nextThinkingLevel
-        this.persistSession(managed)
-      }
+      // One existing Session snapshot persists the route, model and reconciled
+      // effort together, including an explicit clear of the selected model.
+      this.persistSession(managed)
+      await this.flushSession(sessionId)
       // Update agent model if it already exists (takes effect on next query)
       if (managed.agent) {
         sessionLog.info(`[updateSessionModel] Calling agent.setModel(${effectiveModel}) [agent exists=${!!managed.agent}, connectionLocked=${managed.connectionLocked}]`)

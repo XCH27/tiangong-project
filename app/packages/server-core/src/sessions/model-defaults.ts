@@ -31,6 +31,14 @@ export function inheritedWorkspaceModelOverride(
   return workspaceConnection?.slug === sessionConnection?.slug ? model : undefined
 }
 
+/** An explicit Session source must never fall through to another account. */
+export function assertSessionConnectionSelection(
+  slug: string | undefined,
+  connection: Pick<LlmConnection, 'slug'> | null,
+): void {
+  if (slug && connection?.slug !== slug) throw new Error('CONNECTION_UNAVAILABLE')
+}
+
 /** Reject an explicit pick if the runtime would silently run another model. */
 export function assertSessionModelSelection(model: string | null, resolvedModel: string): void {
   if (model !== null && normalizeDeprecatedModelId(model) !== resolvedModel) {

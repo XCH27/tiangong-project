@@ -34,7 +34,7 @@ interface UseOnboardingOptions {
   onDismiss?: () => void
   /** Called immediately after config is saved to disk (before wizard closes).
    *  Use this to propagate billing/model changes to the UI without waiting for onComplete. */
-  onConfigSaved?: () => void
+  onConfigSaved?: (connectionSlug: string) => void | Promise<void>
   /** Slug of existing connection being edited (null = creating new) */
   editingSlug?: string | null
   /** Set of slugs already in use (for generating unique slugs when creating new) */
@@ -242,6 +242,9 @@ export function useOnboarding({
     checkGitBash()
   }, [])
 
+  const setupAttemptRef = useRef(0)
+  useEffect(() => () => { setupAttemptRef.current += 1 }, [])
+
   // Save configuration using the new unified LLM connection API
   // Returns true on success, false on failure (sets errorMessage on failure)
   // `methodOverride` lets callers pass the method explicitly to avoid stale-closure issues
@@ -297,8 +300,12 @@ export function useOnboarding({
       if (result.success) {
         setState(s => ({ ...s, completionStatus: 'complete' }))
         // Notify caller immediately so UI can reflect billing/model changes
-        onConfigSaved?.()
-        return true
+        try {
+          await onConfigSaved?.(setup.slug)
+        } catch (error) {
+          console.error('[Onboarding] Saved connection but could not refresh the view:', error)
+        }
+        return !isCurrent || isCurrent()
       } else {
         console.error('[Onboarding] Save failed:', result.error)
         setState(s => ({
@@ -390,6 +397,8 @@ export function useOnboarding({
   // Submit credential (API key + optional endpoint config)
   // Tests the connection first before saving to catch issues early
   const handleSubmitCredential = useCallback(async (data: ApiKeySubmitData) => {
+    const attempt = ++setupAttemptRef.current
+    const isCurrent = () => setupAttemptRef.current === attempt
     setState(s => ({ ...s, credentialStatus: 'validating', errorMessage: undefined }))
 
     const isPiApiKeyFlow = state.apiSetupMethod === 'pi_api_key'
@@ -406,7 +415,8 @@ export function useOnboarding({
           iamCredentials: data.iamCredentials,
           awsRegion: data.awsRegion,
           bedrockAuthMethod: data.bedrockAuthMethod,
-        })
+        }, undefined, undefined, undefined, isCurrent)
+        if (!isCurrent()) return
         if (saved) {
           setState(s => ({ ...s, credentialStatus: 'success', step: 'complete' }))
         } else {
@@ -444,6 +454,7 @@ export function useOnboarding({
         customEndpoint: data.customEndpoint,
       })
 
+      if (!isCurrent()) return
       if (!testResult.success) {
         setState(s => ({
           ...s,
@@ -460,8 +471,9 @@ export function useOnboarding({
         piAuthProvider: data.piAuthProvider,
         modelSelectionMode: data.modelSelectionMode,
         customEndpoint: data.customEndpoint,
-      })
+      }, undefined, undefined, undefined, isCurrent)
 
+      if (!isCurrent()) return
       if (saved) {
         setState(s => ({
           ...s,
@@ -473,6 +485,7 @@ export function useOnboarding({
         setState(s => ({ ...s, credentialStatus: 'error' }))
       }
     } catch (error) {
+      if (!isCurrent()) return
       setState(s => ({
         ...s,
         credentialStatus: 'error',
@@ -512,13 +525,12 @@ export function useOnboarding({
 
   // Copilot device code (displayed during device flow)
   const [copilotDeviceCode, setCopilotDeviceCode] = useState<{ userCode: string; verificationUri: string } | undefined>()
-  const oauthAttemptRef = useRef(0)
   const activeOAuthMethodRef = useRef<ApiSetupMethod | null>(null)
   const autoStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingOAuthCancelRef = useRef<Promise<void>>(Promise.resolve())
 
   const cancelPendingOAuth = useCallback(() => {
-    oauthAttemptRef.current += 1
+    setupAttemptRef.current += 1
     if (autoStartTimerRef.current) {
       clearTimeout(autoStartTimerRef.current)
       autoStartTimerRef.current = null
@@ -564,9 +576,9 @@ export function useOnboarding({
       return
     }
 
-    const attempt = ++oauthAttemptRef.current
+    const attempt = ++setupAttemptRef.current
     activeOAuthMethodRef.current = effectiveMethod
-    const isCurrent = () => oauthAttemptRef.current === attempt
+    const isCurrent = () => setupAttemptRef.current === attempt
 
     try {
       // A new login must not overtake cancellation of the prior provider flow.
@@ -756,6 +768,8 @@ export function useOnboarding({
 
   // Submit local model configuration (Ollama or any OpenAI-compatible local server)
   const handleSubmitLocalModel = useCallback(async (data: LocalModelSubmitData) => {
+    const attempt = ++setupAttemptRef.current
+    const isCurrent = () => setupAttemptRef.current === attempt
     setState(s => ({ ...s, credentialStatus: 'validating', errorMessage: undefined }))
 
     try {
@@ -765,14 +779,16 @@ export function useOnboarding({
         connectionDefaultModel: data.model,
         models: data.models,
         customEndpoint: { api: 'openai-completions' },
-      })
+      }, undefined, undefined, undefined, isCurrent)
 
+      if (!isCurrent()) return
       if (saved) {
         setState(s => ({ ...s, credentialStatus: 'success', step: 'complete' }))
       } else {
         setState(s => ({ ...s, credentialStatus: 'error' }))
       }
     } catch (error) {
+      if (!isCurrent()) return
       setState(s => ({
         ...s,
         credentialStatus: 'error',

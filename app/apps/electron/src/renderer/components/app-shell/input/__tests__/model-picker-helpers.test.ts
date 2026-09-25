@@ -5,11 +5,12 @@
  * the two surfaces.
  */
 
-import { describe, test, expect } from 'bun:test'
-import type { LlmConnection } from '@craft-agent/shared/config/llm-connections'
+import { describe, test, it, expect } from 'bun:test'
+import { getConnectionDisplayName } from '@/lib/connection-labels'
+import type { LlmConnectionWithStatus } from '@craft-agent/shared/config/llm-connections'
 import {
   formatTokenCount,
-  groupConnectionsByProvider,
+  getModelPickerGroups,
   stripPiPrefixForDisplay,
 } from '../model-picker-helpers'
 
@@ -74,82 +75,52 @@ describe('formatTokenCount', () => {
   })
 })
 
-// -----------------------------------------------------------------------------
-// groupConnectionsByProvider
-// -----------------------------------------------------------------------------
-
-function conn(
-  slug: string,
-  providerType: LlmConnection['providerType'],
-  extras: Partial<LlmConnection> = {},
-): LlmConnection {
-  return {
-    slug,
-    name: slug,
-    providerType,
-    authType: 'api_key',
-    createdAt: 0,
-    ...extras,
-  }
+// Sources are account identities, even when their models have the same wire ID.
+function conn(slug: string, extras: Partial<LlmConnectionWithStatus> = {}): LlmConnectionWithStatus {
+  return { slug, name: slug, providerType: 'pi', piAuthProvider: 'deepseek',
+    authType: 'api_key', createdAt: 0, isAuthenticated: true, models: ['pi/shared'], ...extras }
 }
 
-describe('groupConnectionsByProvider', () => {
-  test('returns empty array for empty input', () => {
-    expect(groupConnectionsByProvider([])).toEqual([])
+describe('getModelPickerGroups', () => {
+  it('preserves separate accounts and provider order, including identical model IDs', () => {
+    const sources = [conn('deepseek-1'), conn('openai', { piAuthProvider: 'openai' }), conn('deepseek-2')]
+    const groups = getModelPickerGroups(sources, 'deepseek-1', true)
+    expect(groups.map(group => group.connection.slug)).toEqual(['deepseek-1', 'openai', 'deepseek-2'])
+    expect(groups.map(group => group.models)).toEqual([['pi/shared'], ['pi/shared'], ['pi/shared']])
   })
-
-  test('groups anthropic providers into "Anthropic"', () => {
-    const a = conn('a', 'anthropic')
-    const b = conn('b', 'anthropic')
-    const result = groupConnectionsByProvider([a, b])
-    expect(result).toEqual([['Anthropic', [a, b]]])
+  it('respects hidden models for object and string catalog entries', () => {
+    const source = conn('a', { models: ['hidden', { id: 'also-hidden', name: 'Hidden', shortName: 'Hidden', description: '', provider: 'pi' }, 'visible'], hiddenModelIds: ['hidden', 'also-hidden'] })
+    expect(getModelPickerGroups([source], 'a', true)[0].models).toEqual(['visible'])
   })
-
-  test('preserves intra-group order', () => {
-    const a = conn('first', 'anthropic')
-    const b = conn('second', 'anthropic')
-    const c = conn('third', 'anthropic')
-    const result = groupConnectionsByProvider([a, b, c])
-    expect(result[0][1].map(c => c.slug)).toEqual(['first', 'second', 'third'])
+  it('never substitutes another provider catalog for an empty or missing list', () => {
+    expect(getModelPickerGroups([conn('a', { models: undefined })], 'a', true)[0].models).toEqual([])
   })
-
-  test('places "Anthropic" group before pi groups (display order)', () => {
-    const piConn = conn('pi-1', 'pi')
-    const anth = conn('anthropic-1', 'anthropic')
-    const result = groupConnectionsByProvider([piConn, anth])
-    expect(result.map(([k]) => k)).toEqual(['Anthropic', 'Craft Agents Backend'])
+  it('respects the server connection lock after a session starts', () => {
+    expect(getModelPickerGroups([conn('a'), conn('b', {providerType: 'anthropic'})], 'b', false).map(group => group.connection.slug)).toEqual(['b'])
+    expect(getModelPickerGroups([conn('a')], 'deleted', false)).toEqual([])
   })
-
-  test('"pi_compat" with localhost baseUrl goes to "Local"', () => {
-    const local = conn('ollama', 'pi_compat', { baseUrl: 'http://localhost:11434' })
-    const result = groupConnectionsByProvider([local])
-    expect(result).toEqual([['Local', [local]]])
+  it('allows started Pi sessions to select another Pi account or custom endpoint', () => {
+    const sources = [conn('a'), conn('b'), conn('custom', { providerType: 'pi_compat' }), conn('claude', { providerType: 'anthropic' })]
+    expect(getModelPickerGroups(sources, 'a', false).map(group => group.connection.slug)).toEqual(['a', 'b', 'custom'])
   })
-
-  test('"pi_compat" with remote baseUrl goes to "Craft Agents Backend"', () => {
-    const remote = conn('openrouter', 'pi_compat', { baseUrl: 'https://openrouter.ai/api/v1' })
-    const result = groupConnectionsByProvider([remote])
-    expect(result).toEqual([['Craft Agents Backend', [remote]]])
+  it('retains unauthenticated sources so the picker can explain why they cannot be selected', () => {
+    expect(getModelPickerGroups([conn('a', { isAuthenticated: false })], 'a', true)[0].connection.isAuthenticated).toBe(false)
   })
+})
 
-  test('drops empty groups from the output', () => {
-    const a = conn('a', 'anthropic')
-    const result = groupConnectionsByProvider([a])
-    // Only "Anthropic" appears; "Local" and "Craft Agents Backend" are dropped.
-    expect(result.length).toBe(1)
-    expect(result[0][0]).toBe('Anthropic')
+describe('shared connection labels', () => {
+  it('shows provider and stable account numbers for inherited runtime labels', () => {
+    const a = conn('a', { name: 'Craft Agents Backend (deepseek)', createdAt: 1 })
+    const b = conn('b', { name: 'Craft Agents Backend (deepseek) 2', createdAt: 2 })
+    expect(getConnectionDisplayName(a, [b, a])).toBe('DeepSeek')
+    expect(getConnectionDisplayName(b, [b, a])).toBe('DeepSeek 2')
   })
-
-  test('full mixed input — anthropic + local + remote pi_compat + pi', () => {
-    const anth = conn('a', 'anthropic')
-    const local = conn('ollama', 'pi_compat', { baseUrl: 'http://127.0.0.1:1234' })
-    const remote = conn('or', 'pi_compat', { baseUrl: 'https://openrouter.ai' })
-    const pi = conn('p', 'pi')
-    const result = groupConnectionsByProvider([anth, local, remote, pi])
-    expect(result.map(([k, conns]) => [k, conns.map(c => c.slug)])).toEqual([
-      ['Anthropic', ['a']],
-      ['Local', ['ollama']],
-      ['Craft Agents Backend', ['or', 'p']],
-    ])
+  it('keeps a user-defined alias unchanged', () => {
+    const custom = conn('a', { name: 'Research account' })
+    expect(getConnectionDisplayName(custom, [custom])).toBe('Research account')
+  })
+  it('keeps all sources reachable when the default custom connection has one model', () => {
+    const sources = [conn('local', { providerType: 'pi_compat' }), conn('cloud')]
+    expect(getModelPickerGroups(sources, 'local', true)).toHaveLength(2)
   })
 })

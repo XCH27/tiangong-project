@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { resolveBackendContext } from '@craft-agent/shared/agent/backend'
@@ -199,34 +199,39 @@ describe('refreshConnectionRuntime', () => {
     expect(agent.updateRuntimeConfig).toHaveBeenCalledTimes(1)
   })
 
-  it('records customModels with the per-model supportsImages flag in the IPC payload', async () => {
-    // End-to-end shape check: when the session's connection resolves to a
-    // pi_compat connection with explicit per-model `supportsImages`, the
-    // helper must forward that field on `customModels` so the Pi subprocess
-    // can re-register the model with `input: ['text', 'image']`.
-    const agent = createAgentStub()
-    injectSession(sm, 'shape-check', tmpRoot, 'slug-A', agent)
-
-    await sm.refreshConnectionRuntime('slug-A')
-
-    expect(agent.updateRuntimeConfig).toHaveBeenCalledTimes(1)
-    const payload = agent.updateRuntimeConfig.mock.calls[0]?.[0]
-    expect(payload).toBeDefined()
-    expect(payload).toMatchObject({
-      model: expect.any(String),
-      runtime: expect.any(Object),
+  it('records customModels with the per-model supportsImages flag in the IPC payload', () => {
+    // A real isolated configuration proves the IPC fields without depending on
+    // whichever connection happens to exist in the developer's own profile.
+    const model = { id: 'pi/fixture', name: 'Fixture', contextWindow: 8192, maxOutputTokens: 1024, supportsImages: true }
+    writeFileSync(join(tmpRoot, 'config.json'), JSON.stringify({
+      workspaces: [], activeWorkspaceId: null, defaultLlmConnection: 'slug-A',
+      llmConnections: [{ slug: 'slug-A', name: 'Fixture', providerType: 'pi_compat', authType: 'api_key',
+        createdAt: 1, baseUrl: 'http://127.0.0.1:1234/v1', customEndpoint: { api: 'openai-completions' },
+        defaultModel: model.id, models: [model] }],
+    }))
+    const script = `
+      const {SessionManager,createManagedSession} = await import(${JSON.stringify(new URL('./SessionManager.ts', import.meta.url).href)});
+      const {resolveBackendContext} = await import(${JSON.stringify(new URL('../../../shared/src/agent/backend/index.ts', import.meta.url).href)});
+      const {buildRestartRequiredSignature} = await import(${JSON.stringify(new URL('./runtime-config.ts', import.meta.url).href)});
+      const sm = new SessionManager();
+      const managed = createManagedSession({id:'shape-check',llmConnection:'slug-A',model:'pi/fixture'},
+        {id:'workspace',rootPath:process.env.CRAFT_CONFIG_DIR+'/workspace'},{messagesLoaded:true});
+      const ctx = resolveBackendContext({sessionConnectionSlug:'slug-A',managedModel:'pi/fixture'});
+      managed.backendRuntimeSignature = 'stale';
+      managed.backendRestartSignature = buildRestartRequiredSignature(ctx);
+      let payload;
+      managed.agent = {isProcessing:()=>false,setThinkingLevel:()=>{},updateRuntimeConfig:async(value)=>{payload=value;return true}};
+      sm.sessions.set(managed.id,managed); sm.persistSession=()=>{}; sm.sendEvent=()=>{};
+      await sm.refreshConnectionRuntime('slug-A');
+      if(payload?.model!=='pi/fixture'||payload.providerType!=='pi_compat'||payload.authType!=='api_key'
+        ||payload.runtime?.customModels?.length!==1||payload.runtime.customModels[0].id!=='pi/fixture'
+        ||payload.runtime.customModels[0].supportsImages!==true||payload.runtime.customModels[0].contextWindow!==8192
+        ||payload.runtime.customModels[0].maxOutputTokens!==1024) throw new Error(JSON.stringify(payload));
+    `
+    const result = Bun.spawnSync([process.execPath, '-e', script], {
+      cwd: join(import.meta.dir, '../../../..'), env: {...process.env, CRAFT_CONFIG_DIR: tmpRoot},
     })
-    // The runtime envelope mirrors what `pi-agent.ts:requestRuntimeConfigUpdate`
-    // unpacks — `customModels` shape preserves `supportsImages` when set.
-    if (payload.runtime?.customModels) {
-      for (const m of payload.runtime.customModels) {
-        if (typeof m === 'object') {
-          expect(typeof m.id).toBe('string')
-          if ('supportsImages' in m) {
-            expect(typeof m.supportsImages).toBe('boolean')
-          }
-        }
-      }
-    }
+    expect(new TextDecoder().decode(result.stderr)).toBe('')
+    expect(result.exitCode).toBe(0)
   })
 })

@@ -246,6 +246,18 @@ export function isModelVisibleInPicker(connection: LlmConnection, modelId: strin
   return !connection.hiddenModelIds?.includes(modelId);
 }
 
+/** Pi persists provider-neutral local history; other engines need an explicit history transfer. */
+export function canSwitchConnectionDuringSession(
+  current: Pick<LlmConnection, 'slug' | 'providerType'> | null | undefined,
+  target: Pick<LlmConnection, 'slug' | 'providerType'>,
+): boolean {
+  if (!current) return false;
+  if (current.slug === target.slug) return true;
+  const isPi = (connection: Pick<LlmConnection, 'providerType'>) =>
+    connection.providerType === 'pi' || connection.providerType === 'pi_compat';
+  return isPi(current) && isPi(target);
+}
+
 /** Merge user corrections after discovery without replacing the catalog's ownership. */
 export function applyManualModelSettings(
   connection: Pick<LlmConnection, 'models' | 'manualModelIds' | 'manualModelOverrides' | 'providerType' | 'piAuthProvider'>,

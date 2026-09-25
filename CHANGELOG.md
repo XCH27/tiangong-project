@@ -5,7 +5,12 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
-- Model Settings keeps the selected connection visible while Add opens its provider picker; even
+- Model/source selection now serializes with runtime refresh, retires old Pi credentials, and persists model, source and effort together while retaining the same Session history. Removed account models and deleted connections cannot silently run a fallback; empty catalogs no longer borrow Anthropic capabilities.
+- Model Settings opens the provider catalog and credential form inside its detail panel; saving
+  waits for catalog refresh and selects the saved connection directly. Canceled API validation
+  cannot save or finish another form. The composer shares one source/account picker between
+  desktop and narrow windows, with source filtering, cross-source search and consistent names;
+  hidden models stay hidden and missing catalogs no longer borrow Anthropic models. Even
   the final API connection can be deleted after confirmation, clearing its stored key and fallback.
   DeepSeek's authenticated model list now refines context, output, image-input and reasoning
   levels on the existing Pi route, and an unsupported composer effort resolves to the account

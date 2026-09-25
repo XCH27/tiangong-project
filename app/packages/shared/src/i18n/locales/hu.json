@@ -214,6 +214,7 @@
   "chat.modelPicker.supportsImagesOn": "Képbevitel bekapcsolva",
   "chat.modelPicker.thinkingSection": "Gondolkodás",
   "chat.modelPicker.toggleVisionFailed": "Nem sikerült frissíteni a képtámogatást",
+  "chat.modelPicker.waitForTurn": "A fiók vagy szolgáltató váltása előtt várd meg az aktuális kör befejezését.",
   "chat.modelUnavailableForConnection": "Ez a modell már nem érhető el a kiválasztott kapcsolathoz. Frissítsd a modelllistát, majd válassz újra.",
   "chat.moreSubmitActions": "További küldési lehetőségek",
   "chat.noFoldersFound": "Nem található mappa",
