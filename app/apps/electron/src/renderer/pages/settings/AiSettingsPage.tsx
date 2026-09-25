@@ -1067,6 +1067,10 @@ export default function AiSettingsPage() {
   const selectedConnection = llmConnections.find(c => c.slug === selectedConnectionSlug)
     ?? defaultConnection ?? sortedConnections[0]
   const deletingConnection = llmConnections.find(c => c.slug === deletingConnectionSlug)
+  useEffect(() => {
+    setHasPendingApiKey(false)
+    setDraftCatalog(null)
+  }, [selectedConnection?.slug])
   const handleSelectedCatalogChange = useCallback((catalog: ApiKeyCatalogPreview | null) => {
     setDraftCatalog(catalog ? { ...catalog, connectionSlug: selectedConnection?.slug } : null)
   }, [selectedConnection?.slug])

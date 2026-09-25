@@ -71,7 +71,7 @@ export interface ApiKeyInputProps {
   /** Disable the input (e.g. during validation) */
   disabled?: boolean
   /** Provider type determines which presets and placeholders to show */
-  providerType?: 'anthropic' | 'openai' | 'pi' | 'google' | 'pi_api_key'
+  providerType?: 'anthropic' | 'pi_api_key'
   /** Settings already chose the provider in its catalog; keep one selection owner. */
   providerLocked?: boolean
   /** Settings keeps the account catalog in the provider detail instead of a second model picker. */
@@ -150,35 +150,12 @@ const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest
 const ACCOUNT_CATALOG_PRESETS: ReadonlySet<string> = new Set(['xai', 'openai', 'google', 'deepseek', 'groq', 'mistral'])
 const DEFAULT_ENDPOINT_PROVIDERS: ReadonlySet<string> = new Set(['anthropic', 'openai', 'pi', 'google'])
 
-// OpenAI provider presets - for Codex backend
-// Only direct OpenAI is supported; 3PP providers (OpenRouter, Vercel, Ollama) should be
-// configured via the Anthropic/Claude connection which routes through the Claude Agent SDK.
-const OPENAI_PRESETS: ApiKeyProviderPreset[] = [
-  { key: 'openai', label: 'OpenAI', url: '' },
-]
-
-// Pi provider presets - unified API for 20+ LLM providers
-const PI_PRESETS: ApiKeyProviderPreset[] = [
-  { key: 'pi', label: 'Craft Agents Backend (Direct)', url: '' },
-  { key: 'openrouter', label: 'OpenRouter', url: 'https://openrouter.ai/api' },
-  { key: 'custom', label: 'Custom', url: '' },
-]
-
-// Google AI Studio preset - single endpoint, no custom URL needed
-const GOOGLE_PRESETS: ApiKeyProviderPreset[] = [
-  { key: 'google', label: 'Google AI Studio', url: '' },
-]
-
 const COMPAT_ANTHROPIC_DEFAULTS = 'claude-opus-4-8, claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5'
-const COMPAT_OPENAI_DEFAULTS = 'openai/gpt-5.2-codex, openai/gpt-5.1-codex-mini'
 const COMPAT_MINIMAX_DEFAULTS = 'MiniMax-M2.5, MiniMax-M2.5-highspeed'
 const COMPAT_KIMI_DEFAULTS = 'k3, kimi-for-coding, kimi-for-coding-highspeed'
 
-function getPresetsForProvider(providerType: 'anthropic' | 'openai' | 'pi' | 'google' | 'pi_api_key'): readonly ApiKeyProviderPreset[] {
+function getPresetsForProvider(providerType: 'anthropic' | 'pi_api_key'): readonly ApiKeyProviderPreset[] {
   if (providerType === 'pi_api_key') return API_KEY_PROVIDER_PRESETS
-  if (providerType === 'google') return GOOGLE_PRESETS
-  if (providerType === 'pi') return PI_PRESETS
-  if (providerType === 'openai') return OPENAI_PRESETS
   // Anthropic mode: exclude presets that only work via Pi SDK
   return API_KEY_PROVIDER_PRESETS.filter(p => !p.piOnly)
 }
@@ -267,11 +244,7 @@ export function ApiKeyInput({
   // Provider-specific placeholders from the active preset
   const activePresetObj = presets.find(p => p.key === activePreset)
   const hasEditedPresetEndpoint = !!initialValues?.baseUrl && initialValues.baseUrl.replace(/\/+$/, '') !== activePresetObj?.url.replace(/\/+$/, '')
-  const apiKeyPlaceholder = activePresetObj?.placeholder
-    ?? (providerType === 'google' ? 'AIza...'
-    : providerType === 'pi' ? 'pi-...'
-    : providerType === 'openai' ? 'sk-...'
-    : 'Paste your key here...')
+  const apiKeyPlaceholder = activePresetObj?.placeholder ?? 'Paste your key here...'
 
   // Query account-scoped models for an official API preset when credentials
   // are available; SDK entries remain setup hints before a key is entered.
@@ -376,7 +349,7 @@ export function ApiKeyInput({
     setModelError(null)
     // Default provider presets hide this field; other presets may provide IDs.
     if (preset.key === 'openrouter' || preset.key === 'vercel-ai-gateway') {
-      setConnectionDefaultModel(providerType === 'openai' ? COMPAT_OPENAI_DEFAULTS : COMPAT_ANTHROPIC_DEFAULTS)
+      setConnectionDefaultModel(COMPAT_ANTHROPIC_DEFAULTS)
     } else if (preset.key === 'minimax-global' || preset.key === 'minimax-cn') {
       setConnectionDefaultModel(COMPAT_MINIMAX_DEFAULTS)
     } else if (preset.key === 'kimi-coding') {
@@ -412,7 +385,7 @@ export function ApiKeyInput({
       } else if (presetKey === 'kimi-coding') {
         setConnectionDefaultModel(COMPAT_KIMI_DEFAULTS)
       } else if (presetKey === 'openrouter' || presetKey === 'vercel-ai-gateway') {
-        setConnectionDefaultModel(providerType === 'openai' ? COMPAT_OPENAI_DEFAULTS : COMPAT_ANTHROPIC_DEFAULTS)
+        setConnectionDefaultModel(COMPAT_ANTHROPIC_DEFAULTS)
       }
     }
   }
