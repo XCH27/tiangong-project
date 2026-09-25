@@ -133,6 +133,8 @@ export interface ModelDefinition {
   adaptiveThinkingSupported?: boolean;
   /** Explicit per-model image input capability hint, primarily for custom endpoints. */
   supportsImages?: boolean;
+  /** Explicit OCR classification; image input alone does not establish OCR support. */
+  supportsOcr?: boolean;
   /** Authenticated catalog input/output types; absent means the provider did not say. */
   modalities?: { input: string[]; output: string[] };
   /** Provider-advertised reasoning levels. Absent means the exact levels are unknown. */

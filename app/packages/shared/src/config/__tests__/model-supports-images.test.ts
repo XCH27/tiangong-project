@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { modelSupportsImages, type LlmConnection } from '../llm-connections.ts'
+import { applyManualModelSettings, modelSupportsImages, type LlmConnection } from '../llm-connections.ts'
 
 const BASE_COMPAT: LlmConnection = {
   slug: 'custom',
@@ -76,5 +76,23 @@ describe('modelSupportsImages — non-pi_compat fallthrough', () => {
       createdAt: 1,
     }
     expect(modelSupportsImages(conn, 'gpt-x')).toBe(true)
+  })
+})
+
+describe('manual capability correction', () => {
+  it('does not erase video and audio input when correcting image input', () => {
+    const model = {
+      id: 'pi/multimodal', name: 'Multimodal', shortName: 'Multimodal', description: '', provider: 'pi' as const,
+      modalities: { input: ['text', 'image', 'video', 'audio'], output: ['text'] },
+    }
+    const corrected = applyManualModelSettings({
+      ...BASE_COMPAT,
+      manualModelOverrides: { [model.id]: { supportsImages: false, supportsOcr: true } },
+    }, [model])
+    expect(corrected[0]).toMatchObject({
+      supportsImages: false,
+      supportsOcr: true,
+      modalities: { input: ['text', 'video', 'audio'], output: ['text'] },
+    })
   })
 })

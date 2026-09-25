@@ -49,7 +49,7 @@ import { ApiKeyInput } from '@/components/apisetup'
 import { API_KEY_PROVIDER_PRESETS } from '@/components/apisetup/ApiKeyInput'
 import type { ApiKeyCatalogPreview, ApiKeyInputProps } from '@/components/apisetup/ApiKeyInput'
 import { ProviderCatalog } from '@/components/apisetup/ProviderCatalog'
-import { ModelCapabilityBadges } from '@/components/apisetup/ModelCapabilityBadges'
+import { ModelCapabilityBadges, getMediaCapabilityLabelKey } from '@/components/apisetup/ModelCapabilityBadges'
 import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
@@ -223,6 +223,7 @@ function ModelDetailsDialog({ connection, modelId, model, accountContextWindow, 
   const [context, setContext] = useState('')
   const [output, setOutput] = useState('')
   const [images, setImages] = useState<'inherit' | 'yes' | 'no'>('inherit')
+  const [ocr, setOcr] = useState<'inherit' | 'yes' | 'no'>('inherit')
   const [reasoningMode, setReasoningMode] = useState<'inherit' | 'manual'>('inherit')
   const [efforts, setEfforts] = useState<string[]>([])
   const [reasoningOff, setReasoningOff] = useState(false)
@@ -234,6 +235,7 @@ function ModelDetailsDialog({ connection, modelId, model, accountContextWindow, 
     setContext(existingOverride?.contextWindow?.toString() ?? '')
     setOutput(existingOverride?.maxOutputTokens?.toString() ?? '')
     setImages(existingOverride?.supportsImages === undefined ? 'inherit' : existingOverride.supportsImages ? 'yes' : 'no')
+    setOcr(existingOverride?.supportsOcr === undefined ? 'inherit' : existingOverride.supportsOcr ? 'yes' : 'no')
     setReasoningMode(existingOverride?.reasoningEfforts === undefined ? 'inherit' : 'manual')
     setEfforts(existingOverride?.reasoningEfforts ?? [])
     setReasoningOff(existingOverride?.reasoningDisableSupported ?? false)
@@ -253,6 +255,7 @@ function ModelDetailsDialog({ connection, modelId, model, accountContextWindow, 
       ...(contextWindow ? { contextWindow } : {}),
       ...(maxOutputTokens ? { maxOutputTokens } : {}),
       ...(images !== 'inherit' ? { supportsImages: images === 'yes' } : {}),
+      ...(ocr !== 'inherit' ? { supportsOcr: ocr === 'yes' } : {}),
       ...(reasoningMode === 'manual' ? {
         reasoningEfforts: REASONING_LEVELS.filter(level => efforts.includes(level)),
         reasoningDisableSupported: reasoningOff,
@@ -301,14 +304,24 @@ function ModelDetailsDialog({ connection, modelId, model, accountContextWindow, 
             <Input inputMode="numeric" value={output} onChange={event => setOutput(event.target.value)} placeholder={formatExact(model?.maxOutputTokens)} />
           </label>
         </div>
-        <label className="block space-y-1.5">
-          <span className="font-medium">{t('settings.ai.imageInput')}</span>
-          <select className={selectClass} value={images} onChange={event => setImages(event.target.value as typeof images)}>
-            <option value="inherit">{t('settings.ai.inheritModelValue')} · {model?.supportsImages === undefined ? t('common.unknown') : t(model.supportsImages ? 'settings.ai.supported' : 'settings.ai.notSupported')}</option>
-            <option value="yes">{t('settings.ai.supported')}</option>
-            <option value="no">{t('settings.ai.notSupported')}</option>
-          </select>
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-1.5">
+            <span className="font-medium">{t('settings.ai.imageInput')}</span>
+            <select className={selectClass} value={images} onChange={event => setImages(event.target.value as typeof images)}>
+              <option value="inherit">{t('settings.ai.inheritModelValue')} · {model?.supportsImages === undefined ? t('common.unknown') : t(model.supportsImages ? 'settings.ai.supported' : 'settings.ai.notSupported')}</option>
+              <option value="yes">{t('settings.ai.supported')}</option>
+              <option value="no">{t('settings.ai.notSupported')}</option>
+            </select>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="font-medium">OCR</span>
+            <select className={selectClass} value={ocr} onChange={event => setOcr(event.target.value as typeof ocr)}>
+              <option value="inherit">{t('settings.ai.inheritModelValue')} · {model?.supportsOcr === undefined ? t('common.unknown') : t(model.supportsOcr ? 'settings.ai.supported' : 'settings.ai.notSupported')}</option>
+              <option value="yes">{t('settings.ai.supported')}</option>
+              <option value="no">{t('settings.ai.notSupported')}</option>
+            </select>
+          </label>
+        </div>
         <div className="space-y-2">
           <label className="block space-y-1.5">
             <span className="font-medium">{t('settings.ai.reasoningLevels')}</span>
@@ -1340,7 +1353,7 @@ export default function AiSettingsPage() {
                               </div>)}
                               {draftCatalog.mediaModels?.map(model => <div key={`${model.kind}:${model.id}`} title={model.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 px-5 py-3 last:border-b-0">
                                 <span className="min-w-0 truncate text-sm font-medium">{model.name}</span>
-                                <span className="rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground">{t(model.kind === 'image' ? 'settings.ai.mediaImageModels' : model.kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')}</span>
+                                {getMediaCapabilityLabelKey(model) && <span className="rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground">{t(getMediaCapabilityLabelKey(model)!)}</span>}
                               </div>)}
                             </div>}
                           </div>}
@@ -1452,10 +1465,11 @@ export default function AiSettingsPage() {
                                     return <div key={kind} className="mt-4">
                                       <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t(kind === 'image' ? 'settings.ai.mediaImageModels' : kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')}</h4>
                                       {rows.map(model => <div key={`${kind}:${model.id}`} className="border-b border-border/60 py-2 last:border-b-0">
-                                        <span className="block truncate text-sm font-medium">{model.name}</span>
-                                        {(model.name !== model.id || model.audioMode) && <span className="block truncate text-xs text-muted-foreground">
-                                          {model.name !== model.id ? model.id : ''}{model.audioMode ? `${model.name !== model.id ? ' · ' : ''}${t(`settings.ai.mediaAudio.${model.audioMode}`)}` : ''}
-                                        </span>}
+                                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                          <span className="min-w-0 truncate text-sm font-medium">{model.name}</span>
+                                          {getMediaCapabilityLabelKey(model) && <span className="rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground">{t(getMediaCapabilityLabelKey(model)!)}</span>}
+                                        </div>
+                                        {model.name !== model.id && <span className="block truncate text-xs text-muted-foreground">{model.id}</span>}
                                       </div>)}
                                     </div>
                                   })}

@@ -749,6 +749,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     if (settings.maxOutputTokens !== undefined && !validInteger(settings.maxOutputTokens)) return { success: false, error: 'Invalid output limit' }
     if (settings.contextWindow && settings.maxOutputTokens && settings.maxOutputTokens > settings.contextWindow) return { success: false, error: 'Output limit exceeds context window' }
     if (settings.supportsImages !== undefined && typeof settings.supportsImages !== 'boolean') return { success: false, error: 'Invalid image capability' }
+    if (settings.supportsOcr !== undefined && typeof settings.supportsOcr !== 'boolean') return { success: false, error: 'Invalid OCR capability' }
     const efforts = ['low', 'medium', 'high', 'xhigh', 'max']
     if (settings.reasoningEfforts !== undefined && (!Array.isArray(settings.reasoningEfforts)
       || settings.reasoningEfforts.some(value => !efforts.includes(value)))) return { success: false, error: 'Invalid reasoning levels' }
@@ -760,6 +761,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       ...(settings.contextWindow ? { contextWindow: settings.contextWindow } : {}),
       ...(settings.maxOutputTokens ? { maxOutputTokens: settings.maxOutputTokens } : {}),
       ...(settings.supportsImages !== undefined ? { supportsImages: settings.supportsImages } : {}),
+      ...(settings.supportsOcr !== undefined ? { supportsOcr: settings.supportsOcr } : {}),
       ...(settings.reasoningEfforts !== undefined ? { reasoningEfforts: [...new Set(settings.reasoningEfforts)] } : {}),
       ...(settings.reasoningDisableSupported !== undefined ? { reasoningDisableSupported: settings.reasoningDisableSupported } : {}),
     }

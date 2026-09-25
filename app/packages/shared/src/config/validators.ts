@@ -96,6 +96,7 @@ const LlmConnectionSchema = z.object({
     contextWindow: z.number().int().positive().optional(),
     maxOutputTokens: z.number().int().positive().optional(),
     supportsImages: z.boolean().optional(),
+    supportsOcr: z.boolean().optional(),
     reasoningEfforts: z.array(z.enum(['low', 'medium', 'high', 'xhigh', 'max'])).optional(),
     reasoningDisableSupported: z.boolean().optional(),
   })).optional(),

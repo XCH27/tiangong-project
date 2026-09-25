@@ -134,6 +134,7 @@ export interface ManualModelSettings {
   contextWindow?: number;
   maxOutputTokens?: number;
   supportsImages?: boolean;
+  supportsOcr?: boolean;
   reasoningEfforts?: ModelDefinition['reasoningEfforts'];
   reasoningDisableSupported?: boolean;
 }
@@ -287,8 +288,11 @@ export function applyManualModelSettings(
     const next: ModelDefinition = { ...base, ...settings };
     if (settings.name) next.shortName = settings.name;
     if (settings.supportsImages !== undefined) {
+      const input = new Set(base.modalities?.input ?? ['text']);
+      if (settings.supportsImages) input.add('image');
+      else input.delete('image');
       next.modalities = {
-        input: settings.supportsImages ? ['text', 'image'] : ['text'],
+        input: [...input],
         output: base.modalities?.output ?? ['text'],
       };
     }
