@@ -497,40 +497,8 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       }
     }
     const xaiOfficialEndpoint = !baseUrl || baseUrl.trim().replace(/\/+$/, '') === getPiProviderBaseUrl('xai')?.replace(/\/+$/, '')
-    if (provider === 'xai' && xaiOfficialEndpoint && !effectiveKey && connectionSlug) {
-      const connection = getLlmConnection(connectionSlug)
-      if (connection?.providerType === 'pi' && connection.piAuthProvider === 'xai'
-        && canReuseStoredApiKey(connection, { providerType: 'pi', piAuthProvider: 'xai', baseUrl })) {
-        effectiveKey = await getCredentialManager().getLlmApiKey(connectionSlug) ?? undefined
-      }
-    }
-    if (provider === 'xai' && xaiOfficialEndpoint && effectiveKey) {
-      try {
-        const discovered = await fetchXaiApiModels(effectiveKey, 15_000)
-        const mediaCatalog = await fetchXaiApiMediaModels(effectiveKey)
-        return {
-          models: discovered.map(model => ({
-            id: model.id,
-            name: model.name,
-            costInput: model.pricingPerMillion?.input,
-            costOutput: model.pricingPerMillion?.output,
-            contextWindow: model.contextWindow,
-            reasoning: model.supportsThinking ?? false,
-          })),
-          totalCount: discovered.length,
-          source: 'provider' as const,
-          mediaModels: mediaCatalog.models,
-          mediaCatalogStatus: mediaCatalog.status,
-        }
-      } catch (error) {
-        // A failed account query must stay visible. Bundled entries below are
-        // only setup hints, not proof that this key may run them.
-        const reason = error instanceof Error ? error.message : String(error)
-        deps.platform.logger?.warn(`xAI setup catalog unavailable: ${reason}`)
-        return { models: [], totalCount: 0, source: 'sdk' as const, error: reason }
-      }
-    }
-    if (provider === 'openai' || provider === 'google' || provider === 'deepseek' || provider === 'groq' || provider === 'mistral') {
+    if ((provider === 'xai' && xaiOfficialEndpoint)
+      || provider === 'openai' || provider === 'google' || provider === 'deepseek' || provider === 'groq' || provider === 'mistral') {
       const stored = connectionSlug && !effectiveKey ? getLlmConnection(connectionSlug) : null
       const matchingStored = stored?.providerType === 'pi' && stored.piAuthProvider === provider
         && canReuseStoredApiKey(stored, { providerType: 'pi', piAuthProvider: provider, baseUrl }) ? stored : null
@@ -553,6 +521,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
             timeoutMs: 15_000,
           })
           if (result.source === 'provider') {
+            const xaiMedia = provider === 'xai' ? await fetchXaiApiMediaModels(effectiveKey) : null
             return {
               models: result.models.map(model => ({
                 id: model.id,
@@ -564,7 +533,8 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
               })),
               totalCount: result.models.length,
               source: 'provider' as const,
-              ...(result.mediaModels ? { mediaModels: result.mediaModels, mediaCatalogStatus: 'available' as const } : {}),
+              ...(xaiMedia ? { mediaModels: xaiMedia.models, mediaCatalogStatus: xaiMedia.status }
+                : result.mediaModels ? { mediaModels: result.mediaModels, mediaCatalogStatus: 'available' as const } : {}),
             }
           }
         } catch (error) {

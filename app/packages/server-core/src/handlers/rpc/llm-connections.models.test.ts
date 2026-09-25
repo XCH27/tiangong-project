@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { getModels } from '@earendil-works/pi-ai/compat'
 import { setOAuthTokenFetcher } from '@craft-agent/shared/auth'
+import { setXaiCatalogFetcher } from '@craft-agent/shared/agent/backend'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import type { HandlerDeps } from '../handler-deps'
 import type { HandlerFn, RequestContext, RpcServer } from '@craft-agent/server-core/transport'
@@ -123,6 +124,36 @@ describe('pre-save account model discovery', () => {
       expect(result.models).toContainEqual(expect.objectContaining({ id: `pi/${model.id}`, contextWindow: 200_000 }))
     } finally {
       setOAuthTokenFetcher(null)
+    }
+  })
+
+  it('uses the runtime xAI catalog for chat and keeps media outside the chat list', async () => {
+    const model = getModels('xai')[0]!
+    const calls: string[] = []
+    setXaiCatalogFetcher(async (url, init) => {
+      calls.push(url)
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer test-key')
+      if (url.endsWith('/language-models')) return new Response(JSON.stringify({ models: [{
+        id: model.id, context_length: model.contextWindow,
+        input_modalities: ['text'], output_modalities: ['text'],
+      }] }))
+      if (url.endsWith('/models')) return new Response(JSON.stringify({ data: [{ id: model.id }] }))
+      if (url.endsWith('/image-generation-models')) return new Response(JSON.stringify({ models: [{ id: 'grok-image-test' }] }))
+      return new Response(JSON.stringify({ models: [] }))
+    })
+    try {
+      const result = await providerModelsHandler()(ctx, 'xai', 'test-key', undefined,
+        'https://api.x.ai/v1') as {
+          source: string; models: Array<{ id: string }>;
+          mediaModels: Array<{ id: string; name: string; kind: string }>; mediaCatalogStatus: string;
+        }
+      expect(result.source).toBe('provider')
+      expect(result.models.map(entry => entry.id)).toEqual([`pi/${model.id}`])
+      expect(result.mediaModels).toEqual([{ id: 'grok-image-test', name: 'grok-image-test', kind: 'image' }])
+      expect(result.mediaCatalogStatus).toBe('available')
+      expect(calls).toHaveLength(4)
+    } finally {
+      setXaiCatalogFetcher(null)
     }
   })
 
