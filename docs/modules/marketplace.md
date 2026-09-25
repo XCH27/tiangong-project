@@ -82,6 +82,10 @@ it never sends without the user's composer action. Its capture is pinned to the 
 Session so a switch cannot insert a late transcript into another conversation. Uninstall removes
 its UI registrations and microphone lease without deleting shared provider connections or drafts.
 
+Realtime voice conversation is a later capability of this optional Component, with a separate
+Session transport and tool bridge specified in [media](media.md#live-voice-conversation-boundary).
+Dictation alone does not enable live dialogue or autonomous work.
+
 Source evidence: Cindy `apps/desktop/src/renderer/components/new-chat/ChatInput.tsx` and
 `components/settings/VoiceInputSection.tsx` keep recording state, shortcut, permission and voice
 settings with the composer. OpenChamber `packages/ui/src/components/dictation/ComposerDictation.tsx`,

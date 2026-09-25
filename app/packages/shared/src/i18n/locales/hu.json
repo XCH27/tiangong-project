@@ -1040,7 +1040,7 @@
   "settings.ai.manualModelHint": "A kézi értékek felülírják a kapcsolat frissített metaadatait. A hozzáférés továbbra is a szolgáltatótól függ.",
   "settings.ai.maxOutputTokens": "Maximális kimenet",
   "settings.ai.mediaAudio.generation": "Hanggenerálás",
-  "settings.ai.mediaAudio.realtime": "Valós idejű hang",
+  "settings.ai.mediaAudio.realtime": "Valós idejű beszélgetés",
   "settings.ai.mediaAudio.speech": "Beszédgenerálás",
   "settings.ai.mediaAudio.transcription": "Beszédfelismerés",
   "settings.ai.mediaAudioModels": "Hangmodellek",

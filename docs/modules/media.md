@@ -55,6 +55,41 @@ projection is useful for presenting the capability, while its pinned chat-model 
 must not replace the native Codex route. The backend may return a different effective image model
 or quality than requested, so a future Job records both requested and reported values.
 
+## Live voice conversation boundary
+
+`realtime` is an **endpoint/session mode** for bidirectional conversation, not a thinking level or
+a generic chat-model tag. Keep four facts separate: account-visible model membership, input/output
+modalities, live transport availability, and tool-call capability. A streaming STT model remains
+`transcription` even when its name contains “realtime”; TTS remains `speech`. A realtime model
+without a wired tool-call bridge can converse but cannot complete a Fleet action. The current
+OpenAI API-key catalog is read-only; no live voice transport or voice Agent is implemented.
+Cindy's `packages/model-providers/src/classification.ts` treats declared non-chat modes as
+authoritative and tests live transcription before realtime-family fallback; Fleet retains that
+catalog/runtime split without importing Cindy's Session authority.
+
+There are two reference-backed execution paths. A native speech-to-speech route holds a provider
+session over WebRTC or WebSocket, supports turn-taking/interruption, and returns audio and text
+events. A cascaded STT → existing Pi/Claude Session → TTS route can pair different providers and
+reuse the mature text Agent tool path; it is not a realtime model. The first native adapter should
+prove one account/model/endpoint route before adding another vendor. OpenAI's
+[Realtime API](https://developers.openai.com/api/docs/guides/realtime) and
+[conversation/tool events](https://developers.openai.com/api/docs/guides/realtime-conversations),
+Google's [Live API](https://ai.google.dev/gemini-api/docs/live-api) and
+[tool responses](https://ai.google.dev/gemini-api/docs/live-api/tools), and xAI's
+[speech-to-speech API](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech)
+show distinct provider transports. [LiveKit's pipeline comparison](https://docs.livekit.io/agents/models/pipelines/)
+explains the latency, audit and tool-use tradeoff; it is reference evidence, not a new Fleet service.
+
+Execution must reuse the existing connection/credential owner and Session, permission, action and
+timeline paths. The host holds long-lived API keys; a browser/WebRTC route receives only a short-lived
+session credential. Pin audio, transcript, tool request and result to the originating Session;
+route each function call through its existing permission decision and return the result to the
+provider session. Closing or switching Sessions cancels capture, playback and pending calls. Prove
+interruption, reconnect/failure, tool denial, transcript provenance and per-route usage before
+advertising “can do work.” The optional voice Component owns microphone UI and permission (see
+[marketplace](marketplace.md#optional-voice-input-component-planned)); it does not create a second
+conversation store or silently install a realtime SDK.
+
 ## First proof
 
 Import real media, perform one shared trim/split operation, render a real output with cancellation,

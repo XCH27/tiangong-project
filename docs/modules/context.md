@@ -104,9 +104,9 @@ connection at the official endpoint, the same authenticated `/v1/models` respons
 membership and a separate read-only media projection. That API normally provides IDs rather than
 a modality schema, so only OpenAI-documented image, video and audio families are classified;
 explicit response modalities take precedence when supplied. Unknown IDs remain unclassified.
-Audio rows distinguish speech generation, transcription, generic audio and realtime modes. Media-only
-rows cannot become Pi chat choices; the account-visible list proves neither generation entitlement
-nor a Fleet executor. Custom OpenAI endpoints and ChatGPT/Codex OAuth do not borrow this catalog.
+Audio rows distinguish speech, live transcription, generic audio and realtime conversation. Live
+sessions cannot enter Pi chat; generic audio chat retains its proven route. Account visibility proves
+no executor or entitlement ([media](media.md#live-voice-conversation-boundary)); custom endpoints and Codex OAuth do not borrow this catalog.
 The composer renders model effort beside selection through the existing Session callback.
 Its model menu and compact drawer do not duplicate effort; an unknown capability remains
 unselectable, and a fixed single level has no menu. Compact layout hides its effort label.

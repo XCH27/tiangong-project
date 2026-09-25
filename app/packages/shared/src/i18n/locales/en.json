@@ -1040,7 +1040,7 @@
   "settings.ai.manualModelHint": "Manual values override refreshed metadata for this connection. Access and unsupported capabilities still depend on the provider.",
   "settings.ai.maxOutputTokens": "Max output",
   "settings.ai.mediaAudio.generation": "Audio generation",
-  "settings.ai.mediaAudio.realtime": "Realtime audio",
+  "settings.ai.mediaAudio.realtime": "Realtime conversation",
   "settings.ai.mediaAudio.speech": "Speech generation",
   "settings.ai.mediaAudio.transcription": "Speech recognition",
   "settings.ai.mediaAudioModels": "Audio models",

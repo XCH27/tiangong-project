@@ -272,6 +272,7 @@ describe('Official API account catalogs', () => {
         { id: 'gpt-5.6-sol', object: 'model' },
         { id: 'gpt-image-2', object: 'model' },
         { id: 'gpt-4o-mini-tts', object: 'model' },
+        { id: 'gpt-realtime-2.1', object: 'model' },
         { id: 'text-embedding-3-large', object: 'model' },
       ] }));
     });
@@ -288,6 +289,7 @@ describe('Official API account catalogs', () => {
       expect(result.mediaModels).toEqual([
         { id: 'gpt-image-2', name: 'gpt-image-2', kind: 'image' },
         { id: 'gpt-4o-mini-tts', name: 'gpt-4o-mini-tts', kind: 'audio', audioMode: 'speech' },
+        { id: 'gpt-realtime-2.1', name: 'gpt-realtime-2.1', kind: 'audio', audioMode: 'realtime' },
       ]);
     } finally {
       setOAuthTokenFetcher(null);

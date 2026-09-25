@@ -1040,7 +1040,7 @@
   "settings.ai.manualModelHint": "Ręczne wartości zastępują odświeżone metadane tego połączenia. Dostęp i możliwości nadal zależą od dostawcy.",
   "settings.ai.maxOutputTokens": "Maks. wyjście",
   "settings.ai.mediaAudio.generation": "Generowanie dźwięku",
-  "settings.ai.mediaAudio.realtime": "Dźwięk na żywo",
+  "settings.ai.mediaAudio.realtime": "Rozmowa w czasie rzeczywistym",
   "settings.ai.mediaAudio.speech": "Generowanie mowy",
   "settings.ai.mediaAudio.transcription": "Rozpoznawanie mowy",
   "settings.ai.mediaAudioModels": "Modele audio",

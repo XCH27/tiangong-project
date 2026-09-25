@@ -340,8 +340,11 @@ async function fetchApiAccountModels(
   if (!response.ok) throw new Error(`${provider} model discovery failed (HTTP ${response.status})`);
   const payload = await readBoundedModelJson(response, provider);
   const mediaModels = provider === 'openai' ? parseOpenAiMediaModels(payload) : undefined;
+  // Generic audio-capable chat models may use Pi, but speech synthesis,
+  // transcription and live speech sessions require their own wire routes.
   const mediaOnlyIds = new Set(mediaModels?.filter(model => model.kind !== 'audio'
-    || model.audioMode === 'speech' || model.audioMode === 'transcription').map(model => model.id));
+    || model.audioMode === 'speech' || model.audioMode === 'transcription'
+    || model.audioMode === 'realtime').map(model => model.id));
   const models = matchApiAccountModels(payload, getPiModelsForAuthProvider(provider), provider)
     .filter(model => !mediaOnlyIds.has(model.id.replace(/^pi\//, '')));
   if (!models.length) throw new Error(`${provider} returned no models executable by the installed Pi adapter`);

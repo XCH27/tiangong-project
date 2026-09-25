@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- OpenAI account discovery now keeps realtime conversation models out of the Pi text-chat picker
+  and distinguishes live transcription from speech-to-speech. Model Settings names the read-only
+  realtime category accordingly; live voice transport and tool execution remain unimplemented.
 - Model lists now retain official names and explicit capability fields when an account or custom
   endpoint publishes them. Compact rows show context, input modalities, reasoning levels and fast
   mode; an ID-only response remains unknown. Refresh keeps manual corrections and hides new custom

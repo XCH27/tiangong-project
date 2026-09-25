@@ -1040,7 +1040,7 @@
   "settings.ai.manualModelHint": "Los valores manuales prevalecen sobre los metadatos actualizados de esta conexión. El acceso depende del proveedor.",
   "settings.ai.maxOutputTokens": "Salida máxima",
   "settings.ai.mediaAudio.generation": "Generación de audio",
-  "settings.ai.mediaAudio.realtime": "Audio en tiempo real",
+  "settings.ai.mediaAudio.realtime": "Conversación en tiempo real",
   "settings.ai.mediaAudio.speech": "Generación de voz",
   "settings.ai.mediaAudio.transcription": "Reconocimiento de voz",
   "settings.ai.mediaAudioModels": "Modelos de audio",

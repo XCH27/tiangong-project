@@ -29,6 +29,22 @@ describe('OpenAI account media classification', () => {
     ]);
   });
 
+  it('keeps live transcription separate from bidirectional conversation', () => {
+    expect(parseOpenAiMediaModels({ data: [
+      { id: 'gpt-realtime-whisper', object: 'model', input_modalities: ['audio'], output_modalities: ['text'] },
+      { id: 'gpt-realtime-2.1', object: 'model', input_modalities: ['audio', 'text'], output_modalities: ['audio', 'text'] },
+      { id: 'gpt-4o-realtime-preview', object: 'model' },
+      { id: 'gpt-live-1', object: 'model' },
+      { id: 'gpt-4o-audio-preview', object: 'model' },
+    ] })).toEqual([
+      { id: 'gpt-realtime-whisper', name: 'gpt-realtime-whisper', kind: 'audio', audioMode: 'transcription', inputModalities: ['audio'], outputModalities: ['text'] },
+      { id: 'gpt-realtime-2.1', name: 'gpt-realtime-2.1', kind: 'audio', audioMode: 'realtime', inputModalities: ['audio', 'text'], outputModalities: ['audio', 'text'] },
+      { id: 'gpt-4o-realtime-preview', name: 'gpt-4o-realtime-preview', kind: 'audio', audioMode: 'realtime' },
+      { id: 'gpt-live-1', name: 'gpt-live-1', kind: 'audio', audioMode: 'realtime' },
+      { id: 'gpt-4o-audio-preview', name: 'gpt-4o-audio-preview', kind: 'audio', audioMode: 'generation' },
+    ]);
+  });
+
   it('rejects malformed lists and ignores malformed or inactive rows', () => {
     expect(() => parseOpenAiMediaModels({ data: 'invalid' })).toThrow('invalid model list');
     expect(parseOpenAiMediaModels({ data: [

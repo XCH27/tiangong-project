@@ -1040,7 +1040,7 @@
   "settings.ai.manualModelHint": "手動値はこの接続の更新後メタデータを上書きします。利用可否と能力はプロバイダーに依存します。",
   "settings.ai.maxOutputTokens": "最大出力",
   "settings.ai.mediaAudio.generation": "音声生成",
-  "settings.ai.mediaAudio.realtime": "リアルタイム音声",
+  "settings.ai.mediaAudio.realtime": "リアルタイム会話",
   "settings.ai.mediaAudio.speech": "音声生成",
   "settings.ai.mediaAudio.transcription": "音声認識",
   "settings.ai.mediaAudioModels": "音声モデル",

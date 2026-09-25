@@ -10,11 +10,12 @@ function documentedKind(id: string): Pick<MediaCatalogModel, 'kind' | 'audioMode
   if (/^(?:gpt-image-\d|dall-e-\d|chatgpt-image-latest(?:-|$))/.test(bare)) return { kind: 'image' };
   if (/^sora-\d/.test(bare)) return { kind: 'video' };
   if (/^(?:gpt-4o-mini-tts|tts-1(?:-hd)?)(?:-|$)/.test(bare)) return { kind: 'audio', audioMode: 'speech' };
-  if (/^(?:whisper-1|gpt-(?:4o(?:-mini)?-|live-|realtime-)?transcribe)(?:-|$)/.test(bare)) {
+  // A live transcription endpoint is still STT, not a speech-to-speech agent.
+  if (/^(?:whisper-1|gpt-realtime-whisper|gpt-(?:4o(?:-mini)?-|live-|realtime-)?transcribe)(?:-|$)/.test(bare)) {
     return { kind: 'audio', audioMode: 'transcription' };
   }
   if (/^(?:gpt-audio|gpt-4o-audio)(?:-|$)/.test(bare)) return { kind: 'audio', audioMode: 'generation' };
-  if (/^(?:gpt-realtime|gpt-live)(?:-|$)/.test(bare)) return { kind: 'audio', audioMode: 'realtime' };
+  if (/^(?:gpt-realtime|gpt-4o-realtime|gpt-live)(?:-|$)/.test(bare)) return { kind: 'audio', audioMode: 'realtime' };
   return null;
 }
 

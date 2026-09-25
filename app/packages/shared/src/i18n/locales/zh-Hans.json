@@ -1040,7 +1040,7 @@
   "settings.ai.manualModelHint": "手动值会覆盖此连接刷新后的元数据；实际权限和能力仍取决于服务商。",
   "settings.ai.maxOutputTokens": "最大输出",
   "settings.ai.mediaAudio.generation": "音频生成",
-  "settings.ai.mediaAudio.realtime": "实时音频",
+  "settings.ai.mediaAudio.realtime": "实时对话",
   "settings.ai.mediaAudio.speech": "语音生成",
   "settings.ai.mediaAudio.transcription": "语音识别",
   "settings.ai.mediaAudioModels": "音频模型",
