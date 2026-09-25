@@ -22,6 +22,7 @@ import { buildRestartRequiredSignature } from './runtime-config.ts'
 
 interface AgentStub {
   isProcessing: () => boolean
+  setThinkingLevel: jest.Mock
   updateRuntimeConfig: jest.Mock
   dispose: () => void
   disposeForRestart?: () => Promise<void>
@@ -36,6 +37,7 @@ function createAgentStub(opts: {
   const result = opts.refreshSucceeds ?? true
   return {
     isProcessing: () => opts.isProcessing ?? false,
+    setThinkingLevel: jest.fn(),
     updateRuntimeConfig: jest.fn().mockImplementation(async () => {
       if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay))
       return result
