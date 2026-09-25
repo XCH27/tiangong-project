@@ -46,6 +46,7 @@ import {
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { CredentialsStep, LocalModelStep, type ApiSetupMethod } from '@/components/onboarding'
 import { ApiKeyInput } from '@/components/apisetup'
+import { API_KEY_PROVIDER_PRESETS } from '@/components/apisetup/ApiKeyInput'
 import type { ApiKeyCatalogPreview, ApiKeyInputProps } from '@/components/apisetup/ApiKeyInput'
 import { ProviderCatalog } from '@/components/apisetup/ProviderCatalog'
 import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
@@ -1210,9 +1211,14 @@ export default function AiSettingsPage() {
 
   // The same setup form is used for a new connection and inline editing of an
   // existing one. In the latter case the saved model list remains below it.
+  const setupPreset = API_KEY_PROVIDER_PRESETS.find(preset => preset.key === editInitialValues?.activePreset)
   const apiSetupForm = showApiSetup ? (
     <div className="space-y-4 border-b border-border/60 p-5">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        {setupPreset && !editingConnectionSlug ? <div className="flex min-w-0 items-center gap-2">
+          <ConnectionIcon connection={{ name: setupPreset.label, providerType: 'pi', piAuthProvider: setupPreset.key, baseUrl: setupPreset.url }} size={18} />
+          <span className="truncate text-sm font-semibold">{setupPreset.key === 'custom' ? t('settings.ai.customEndpoint') : setupPreset.label}</span>
+        </div> : <span />}
         <button type="button" onClick={handleCloseApiSetup} aria-label={t('common.close')} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
           <X className="h-4 w-4" />
         </button>
