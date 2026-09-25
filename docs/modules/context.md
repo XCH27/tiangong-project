@@ -651,7 +651,7 @@ model calls themselves in this spec.
 TE1 is `not implemented` after the v0.13.4 rebuild. `cache-economy.ts`, its tests,
 `NormalizedCacheUsage`, and `SessionManager.getCacheEconomySummary` are absent. Their previous
 utility and adapter test results belong to `snapshot/pre-rebuild-2026-09-21`, not this tree.
-Craft's UsageTracker, provider events and context-window accounting remain the starting path.
+Craft's UsageTracker, provider events and context-window accounting remain the starting path. Pi's legacy context-count fallback now includes uncached input, cache reads and cache writes once; that fixes occupancy for providers which report cache-write tokens but does not implement TE1's economy summary.
 During R0, inspect existing evidence only. All new TE1 instrumentation, adapters and UI wait for
 the R0 baseline exit; the standing track does not bypass the owner's development order.
 Recheck their current semantics before selectively readmitting any accounting helper; retain one
@@ -680,10 +680,9 @@ usage ledger and prove single-counting with the actual adapter consumers.
 
 ### References consumed
 
-The relevant fixed checkouts are already under `源码参考/`. They are evidence only; this spec does
-not authorize cloning, importing a runtime, or changing admission status. Current license and
-admission facts come only from [`references.md`](../references.md)
-and `源码参考/meta/`; stale clone instructions do not live in an implementation spec.
+The fixed checkouts under `源码参考/` are mechanism evidence, not runtimes to import. DeepSeek Harness keeps requests append-only and verifies `prompt_cache_hit_tokens` against a real account; its API [caches identical prefixes automatically](https://api-docs.deepseek.com/zh-cn/guides/kv_cache/), while [DeepSeek Responses ignores `prompt_cache_key`](https://api-docs.deepseek.com/zh-cn/guides/responses_api/).
+Kimi Code passes a session cache key where its route supports one and marks Anthropic system/tool/tail blocks; Grok Build reuses the parent session key and tool list for auxiliary Responses calls. The installed Pi SDK already passes its Session ID to OpenAI-style adapters and applies Anthropic cache markers; Fleet must not duplicate them.
+Preserve a stable system/tool prefix, put volatile context at the latest user tail, and measure provider-reported cache reads per account, model and protocol. Kimi Code separates total context from a lower model input cap; admit that limit only with provider evidence. The token ring is context occupancy from the SDK snapshot, with estimate/stale and compaction-limit provenance; it is not subscription quota or billed uncached input. `references.md` and `源码参考/meta/` remain the license/admission authority.
 
 ### Non-goals
 

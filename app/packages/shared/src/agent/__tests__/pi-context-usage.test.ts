@@ -45,7 +45,7 @@ describe('Pi canonical context occupancy', () => {
       type: 'agent_end', messages: [], contextUsage: { tokens: null, contextWindow: 500_000 }, compactionSettings: settings,
     });
     expect(end[0].contextUsage).toMatchObject({ usedTokens: null, isStale: true });
-    expect(end[1].usage).toMatchObject({ inputTokens: 419_000, outputTokens: 200, costUsd: 2 });
+    expect(end[1].usage).toMatchObject({ inputTokens: 419_050, outputTokens: 200, costUsd: 2 });
   });
 
   it('invalidates old occupancy even when successful compaction has no SDK snapshot', () => {

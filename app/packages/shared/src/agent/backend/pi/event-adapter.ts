@@ -455,7 +455,9 @@ export class PiEventAdapter extends BaseEventAdapter {
           this.retryState = 'none';
         }
         if (this.lastUsage) {
-          const inputTokens = this.lastUsage.input + (this.lastUsage.cacheRead || 0);
+          // Pi reports uncached input, cache reads and cache writes separately.
+          // The context meter needs the full prompt sent to the model.
+          const inputTokens = this.lastUsage.input + (this.lastUsage.cacheRead || 0) + (this.lastUsage.cacheWrite || 0);
           yield {
             type: 'complete',
             usage: {
@@ -595,7 +597,7 @@ export class PiEventAdapter extends BaseEventAdapter {
         // Emit usage_update if the assistant message includes token usage
         if (msg.usage && typeof msg.usage.input === 'number') {
           this.lastUsage = msg.usage;
-          const inputTokens = msg.usage.input + (msg.usage.cacheRead || 0);
+          const inputTokens = msg.usage.input + (msg.usage.cacheRead || 0) + (msg.usage.cacheWrite || 0);
           yield {
             type: 'usage_update',
             usage: {

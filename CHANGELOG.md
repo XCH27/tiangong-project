@@ -5,6 +5,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Corrected Pi's legacy context-count fallback to include cache-write tokens alongside uncached
+  input and cache reads. The SDK context snapshot still takes precedence in the token ring;
+  provider billing and subscription allowance remain separate.
 - OpenAI account discovery now keeps realtime conversation models out of the Pi text-chat picker
   and distinguishes live transcription from speech-to-speech. Model Settings names the read-only
   realtime category accordingly; live voice transport and tool execution remain unimplemented.

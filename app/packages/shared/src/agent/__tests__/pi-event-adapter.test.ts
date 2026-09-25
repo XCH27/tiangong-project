@@ -48,6 +48,30 @@ describe('PiEventAdapter', () => {
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ type: 'complete' });
     });
+
+    it('counts uncached, cache-read and cache-write input once in the context meter', () => {
+      const usage = {
+        input: 800,
+        output: 10,
+        cacheRead: 400,
+        cacheWrite: 100,
+        totalTokens: 1310,
+        cost: { total: 0.01 },
+      };
+      const messageEvents = collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: { role: 'assistant', stopReason: 'stop', content: [], usage },
+      } as any));
+      expect(messageEvents.find(event => event.type === 'usage_update')).toMatchObject({
+        usage: { inputTokens: 1300 },
+      });
+
+      const endEvents = collect(adapter.adaptEvent({ type: 'agent_end' } as any));
+      expect(endEvents[0]).toMatchObject({
+        type: 'complete',
+        usage: { inputTokens: 1300, outputTokens: 10, cacheReadTokens: 400, cacheCreationTokens: 100 },
+      });
+    });
   });
 
   // ============================================================
