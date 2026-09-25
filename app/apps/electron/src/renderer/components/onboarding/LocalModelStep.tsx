@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 import { StepFormLayout, BackButton, ContinueButton } from "./primitives"
 
 export interface LocalModelSubmitData {
@@ -19,6 +20,7 @@ export interface LocalModelSubmitData {
 }
 
 interface LocalModelStepProps {
+  presentation?: 'onboarding' | 'settings'
   onSubmit: (data: LocalModelSubmitData) => void
   onBack: () => void
   status?: 'idle' | 'validating' | 'success' | 'error'
@@ -33,6 +35,7 @@ function parseModelList(value: string): string[] {
 }
 
 export function LocalModelStep({
+  presentation = 'onboarding',
   onSubmit,
   onBack,
   status = 'idle',
@@ -67,24 +70,8 @@ export function LocalModelStep({
     })
   }
 
-  return (
-    <StepFormLayout
-      title={t("onboarding.localModel.title")}
-      description={t("onboarding.localModel.description")}
-      actions={
-        <>
-          <BackButton onClick={onBack} disabled={isDisabled} />
-          <ContinueButton
-            type="submit"
-            form="local-model-form"
-            disabled={false}
-            loading={status === 'validating'}
-            loadingText="Connecting..."
-          />
-        </>
-      }
-    >
-      <form id="local-model-form" onSubmit={handleSubmit} className="space-y-6">
+  const fields = (
+    <form id="local-model-form" onSubmit={handleSubmit} className="space-y-6">
         {/* Endpoint URL */}
         <div className="space-y-2">
           <Label htmlFor="local-base-url">{t("onboarding.localModel.endpoint")}</Label>
@@ -144,7 +131,27 @@ export function LocalModelStep({
         {status === 'error' && errorMessage && (
           <p className="text-sm text-destructive">{errorMessage}</p>
         )}
-      </form>
-    </StepFormLayout>
+    </form>
   )
+
+  if (presentation === 'settings') {
+    return <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">{t('onboarding.localModel.description')}</p>
+      {fields}
+      <div className="flex justify-end">
+        <Button size="sm" type="submit" form="local-model-form" disabled={isDisabled}>
+          {t(isDisabled ? 'common.validating' : 'settings.ai.saveAndTestConnection')}
+        </Button>
+      </div>
+    </div>
+  }
+
+  return <StepFormLayout
+    title={t('onboarding.localModel.title')}
+    description={t('onboarding.localModel.description')}
+    actions={<>
+      <BackButton onClick={onBack} disabled={isDisabled} />
+      <ContinueButton type="submit" form="local-model-form" loading={isDisabled} loadingText="Connecting..." />
+    </>}
+  >{fields}</StepFormLayout>
 }

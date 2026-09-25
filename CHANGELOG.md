@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Model connection setup now keeps the provider header and model section in one Settings panel
+  before and after save. API, local and subscription forms share compact actions and spacing,
+  while onboarding keeps its original layout. Known providers link directly to their official
+  API key pages; a changed custom endpoint never inherits a provider's key link.
 - Fully described, account-listed DeepSeek text models can now use Pi's existing native DeepSeek
   adapter before the installed model registry adds their IDs. Incomplete or media-output rows stay
   out of chat; a later account refresh removes withdrawn routes. DeepSeek's Off effort follows Pi's

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { X, MoreHorizontal, Pencil, Trash2, Star, AlertTriangle, RefreshCcw, MessageSquareMore, Zap, Clock, Check, Plus } from 'lucide-react'
+import { X, MoreHorizontal, Pencil, Trash2, Star, AlertTriangle, RefreshCcw, MessageSquareMore, Zap, Clock, Check, Plus, Monitor } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import type { LlmConnectionWithStatus } from '../../../shared/types'
@@ -737,6 +737,7 @@ export default function AiSettingsPage() {
   // Add/edit remains in the selected provider panel; the connection hook still owns saving.
   const openApiSetup = useCallback((connectionSlug?: string) => {
     setDraftCatalog(null)
+    setHasPendingApiKey(false)
     setCatalogRefreshRequestId(0)
     setEditingConnectionSlug(connectionSlug || null)
     setShowProviderCatalog(false)
@@ -746,6 +747,7 @@ export default function AiSettingsPage() {
   const closeApiSetup = useCallback(() => {
     setShowApiSetup(false)
     setDraftCatalog(null)
+    setHasPendingApiKey(false)
     setCatalogRefreshRequestId(0)
     setEditingConnectionSlug(null)
   }, [])
@@ -1162,17 +1164,37 @@ export default function AiSettingsPage() {
   // The same setup form is used for a new connection and inline editing of an
   // existing one. In the latter case the saved model list remains below it.
   const setupPreset = API_KEY_PROVIDER_PRESETS.find(preset => preset.key === editInitialValues?.activePreset)
+  const setupMethod = apiSetupOnboarding.state.apiSetupMethod
+  const setupIsLocal = apiSetupOnboarding.state.step === 'local-model'
+  const setupIsSubscription = setupMethod === 'claude_oauth' || setupMethod === 'pi_chatgpt_oauth' || setupMethod === 'pi_copilot_oauth' || setupMethod === 'pi_xai_oauth'
+  const setupSubscription = setupMethod === 'claude_oauth'
+    ? { name: t('onboarding.providerSelect.claudeProMax'), providerType: 'anthropic' as const, piAuthProvider: 'anthropic' }
+    : setupMethod === 'pi_chatgpt_oauth'
+      ? { name: t('onboarding.providerSelect.codexChatGPT'), providerType: 'pi' as const, piAuthProvider: 'openai-codex' }
+      : setupMethod === 'pi_copilot_oauth'
+        ? { name: t('onboarding.providerSelect.githubCopilot'), providerType: 'pi' as const, piAuthProvider: 'github-copilot' }
+        : setupMethod === 'pi_xai_oauth'
+          ? { name: t('onboarding.providerSelect.grokSubscription'), providerType: 'pi' as const, piAuthProvider: 'xai' }
+          : null
   const apiSetupForm = showApiSetup ? (
-    <div className="space-y-4 border-b border-border/60 p-5">
-      <div className="flex items-center justify-between gap-3">
-        {setupPreset && !editingConnectionSlug ? <div className="flex min-w-0 items-center gap-2">
-          <ConnectionIcon connection={{ name: setupPreset.label, providerType: 'pi', piAuthProvider: setupPreset.key, baseUrl: setupPreset.url }} size={18} />
-          <span className="truncate text-sm font-semibold">{setupPreset.key === 'custom' ? t('settings.ai.customEndpoint') : setupPreset.label}</span>
-        </div> : <span />}
-        <button type="button" onClick={handleCloseApiSetup} aria-label={t('common.close')} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
+    <div>
+      {!editingConnectionSlug && (setupPreset || setupSubscription || setupIsLocal) && <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            {setupIsLocal ? <Monitor className="size-[18px]" /> : <ConnectionIcon connection={setupPreset
+              ? { name: setupPreset.label, providerType: 'pi', piAuthProvider: setupPreset.key, baseUrl: setupPreset.url }
+              : setupSubscription!} size={18} />}
+            <span className="truncate">{setupIsLocal ? t('onboarding.providerSelect.localModel') : setupPreset
+              ? setupPreset.key === 'custom' ? t('settings.ai.customEndpoint') : setupPreset.label
+              : setupSubscription?.name}</span>
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{t(setupIsLocal ? 'settings.ai.localConnection' : setupIsSubscription ? 'settings.ai.subscriptionConnection' : 'settings.ai.apiKeyConnection')} · {t('settings.ai.notAuthenticated')}</p>
+        </div>
+        <button type="button" onClick={handleOpenProviderCatalog} aria-label={t('common.close')} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
           <X className="h-4 w-4" />
         </button>
-      </div>
+      </div>}
+      <div className="border-b border-border/60 px-5 py-4">
       {apiSetupOnboarding.state.step === 'credentials' &&
         (apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' || apiSetupOnboarding.state.apiSetupMethod === 'anthropic_api_key') ? (
         <>
@@ -1186,10 +1208,10 @@ export default function AiSettingsPage() {
             hideModelSelection={apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' && editInitialValues?.activePreset !== 'custom'}
             refreshRequestId={catalogRefreshRequestId}
             onCatalogChange={setDraftCatalog}
+            onDraftKeyChange={setHasPendingApiKey}
             initialValues={editInitialValues}
           />
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={handleOpenProviderCatalog}>{t('common.back')}</Button>
+          <div className="mt-4 flex justify-end">
             <Button size="sm" type="submit" form="api-key-form" disabled={apiSetupOnboarding.state.credentialStatus === 'validating'}>
               {t(apiSetupOnboarding.state.credentialStatus === 'validating' ? 'common.validating' : 'settings.ai.saveAndTestConnection')}
             </Button>
@@ -1197,6 +1219,7 @@ export default function AiSettingsPage() {
         </>
       ) : apiSetupOnboarding.state.step === 'credentials' && apiSetupOnboarding.state.apiSetupMethod ? (
         <CredentialsStep
+          presentation="settings"
           apiSetupMethod={apiSetupOnboarding.state.apiSetupMethod}
           status={apiSetupOnboarding.state.credentialStatus}
           errorMessage={apiSetupOnboarding.state.errorMessage}
@@ -1210,12 +1233,14 @@ export default function AiSettingsPage() {
         />
       ) : apiSetupOnboarding.state.step === 'local-model' ? (
         <LocalModelStep
+          presentation="settings"
           onSubmit={apiSetupOnboarding.handleSubmitLocalModel}
           onBack={handleOpenProviderCatalog}
           status={apiSetupOnboarding.state.credentialStatus === 'validating' ? 'validating' : apiSetupOnboarding.state.credentialStatus === 'error' ? 'error' : 'idle'}
           errorMessage={apiSetupOnboarding.state.errorMessage}
         />
       ) : null}
+      </div>
     </div>
   ) : null
 
@@ -1278,22 +1303,33 @@ export default function AiSettingsPage() {
                       ) : showApiSetup && !editingConnectionSlug ? (
                         <div>
                           {apiSetupForm}
-                          {editInitialValues?.activePreset !== 'custom' && draftCatalog?.source === 'provider' && !draftCatalog.error && (
-                            <div className="border-t border-border/60 px-5 py-4">
-                              <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
-                              <p className="mt-0.5 text-xs text-muted-foreground">{t('apiSetup.accountCatalog')}</p>
-                              <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-border/60">
-                                {draftCatalog.models.map(model => <div key={model.id} className="border-b border-border/60 px-3 py-2 last:border-b-0">
-                                  <span className="block truncate text-sm font-medium">{model.name}</span>
-                                  {model.name !== model.id && <span className="block truncate text-xs text-muted-foreground">{model.id}</span>}
-                                </div>)}
-                                {draftCatalog.mediaModels?.map(model => <div key={`${model.kind}:${model.id}`} className="border-b border-border/60 px-3 py-2 last:border-b-0">
-                                  <span className="block truncate text-sm font-medium">{model.name}</span>
-                                  <span className="block truncate text-xs text-muted-foreground">{t(model.kind === 'image' ? 'settings.ai.mediaImageModels' : model.kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')} · {model.id}</span>
-                                </div>)}
+                          {!setupIsLocal && <div className="border-t border-border/60">
+                            <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4">
+                              <div>
+                                <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{t(
+                                  setupIsSubscription ? 'settings.ai.signInToLoadModels'
+                                    : draftCatalog?.error ? 'apiSetup.catalogUnavailable'
+                                    : draftCatalog?.source === 'provider' ? 'apiSetup.accountCatalog'
+                                      : hasPendingApiKey ? 'settings.ai.refreshingModels' : 'settings.ai.enterApiKeyToLoadModels',
+                                )}</p>
                               </div>
+                              {!setupIsSubscription && hasPendingApiKey && <Button size="sm" variant="outline" onClick={() => setCatalogRefreshRequestId(value => value + 1)} aria-label={t('settings.ai.refreshModels')}>
+                                <RefreshCcw className="size-3.5" />
+                                {t('settings.ai.refreshModels')}
+                              </Button>}
                             </div>
-                          )}
+                            {draftCatalog?.source === 'provider' && !draftCatalog.error && <div className="border-t border-border/60">
+                              {draftCatalog.models.map(model => <div key={model.id} className="border-b border-border/60 px-5 py-3.5 last:border-b-0">
+                                <span className="block truncate text-sm font-medium">{model.name}</span>
+                                {model.name !== model.id && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{model.id}</span>}
+                              </div>)}
+                              {draftCatalog.mediaModels?.map(model => <div key={`${model.kind}:${model.id}`} className="border-b border-border/60 px-5 py-3.5 last:border-b-0">
+                                <span className="block truncate text-sm font-medium">{model.name}</span>
+                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">{t(model.kind === 'image' ? 'settings.ai.mediaImageModels' : model.kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')} · {model.id}</span>
+                              </div>)}
+                            </div>}
+                          </div>}
                         </div>
                       ) : selectedConnection ? (
                         <div className="min-w-0">

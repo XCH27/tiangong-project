@@ -161,11 +161,13 @@ uses its existing provider cancellation path; a late result cannot reopen the cl
 backend checks cancellation before saving exchanged credentials. This correction does not authorize
 automatic model routing, a new
 account store, or a second credential owner.
-Add Connection and the empty state mount the existing provider catalog in the right Settings
-panel. API setup has a Back action to that catalog; saving awaits the connection refresh and
-selects the exact saved slug in the same panel. Closing or leaving setup invalidates late API
-validation results before they can save or finish another form. A saved API connection, including the last one, can be removed after confirmation; the
-existing connection and credential owners clear its model default and stored key together.
+Add Connection and the empty state mount the provider catalog in the right Settings panel. The
+selected provider keeps the same header and model section through setup and save. API, local and
+subscription credentials use compact Settings actions while onboarding retains its step layout. The
+API key field links to its curated official key page, never a URL derived from the inference host.
+Authenticated models appear below the unsaved key. Save awaits connection refresh and selects the
+saved slug in place; closing setup invalidates late validation results. The last saved API
+connection remains deletable after confirmation, clearing its model default and stored key.
 
 The composer uses one shared source/model list for desktop and narrow windows. Cindy's source
 rail and per-provider sections map to Craft connection slugs, so two accounts serving the same

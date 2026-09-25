@@ -23,7 +23,7 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-dropdown"
 import { cn } from "@/lib/utils"
-import { Check, ChevronDown, Eye, EyeOff, Loader2, RefreshCcw } from "lucide-react"
+import { Check, ChevronDown, ExternalLink, Eye, EyeOff, Loader2, RefreshCcw } from "lucide-react"
 import { baseUrlForPiPreset, initialBaseUrlForPreset, resolvePreferredModel, type PiModelInfo } from "./provider-models"
 import {
   resolveCustomEndpointPayload,
@@ -109,6 +109,8 @@ export interface ApiKeyProviderPreset {
   label: string
   url: string
   placeholder?: string
+  /** Official key-management destination, distinct from the inference endpoint. */
+  apiKeyUrl?: string
   /** Requires the Pi SDK for authentication (e.g. OpenAI-compatible-only endpoint) — hidden in Anthropic API Key mode. */
   piOnly?: boolean
 }
@@ -116,26 +118,26 @@ export interface ApiKeyProviderPreset {
 // Anthropic provider presets - for Claude Code backend
 // Also used by Pi API key flow (same providers, routed via Pi SDK)
 export const API_KEY_PROVIDER_PRESETS: readonly ApiKeyProviderPreset[] = [
-  { key: 'anthropic', label: 'Anthropic', url: 'https://api.anthropic.com', placeholder: 'sk-ant-...' },
-  { key: 'openai', label: 'OpenAI', url: 'https://api.openai.com/v1', placeholder: 'sk-...' },
-  { key: 'openai-eu', label: 'OpenAI EU', url: 'https://eu.api.openai.com/v1', placeholder: 'sk-...' },
-  { key: 'openai-us', label: 'OpenAI US', url: 'https://us.api.openai.com/v1', placeholder: 'sk-...' },
-  { key: 'google', label: 'Google AI Studio', url: 'https://generativelanguage.googleapis.com/v1beta', placeholder: 'AIza...' },
-  { key: 'openrouter', label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', placeholder: 'sk-or-...' },
+  { key: 'anthropic', label: 'Anthropic', url: 'https://api.anthropic.com', placeholder: 'sk-ant-...', apiKeyUrl: 'https://console.anthropic.com/settings/keys' },
+  { key: 'openai', label: 'OpenAI', url: 'https://api.openai.com/v1', placeholder: 'sk-...', apiKeyUrl: 'https://platform.openai.com/api-keys' },
+  { key: 'openai-eu', label: 'OpenAI EU', url: 'https://eu.api.openai.com/v1', placeholder: 'sk-...', apiKeyUrl: 'https://platform.openai.com/api-keys' },
+  { key: 'openai-us', label: 'OpenAI US', url: 'https://us.api.openai.com/v1', placeholder: 'sk-...', apiKeyUrl: 'https://platform.openai.com/api-keys' },
+  { key: 'google', label: 'Google AI Studio', url: 'https://generativelanguage.googleapis.com/v1beta', placeholder: 'AIza...', apiKeyUrl: 'https://aistudio.google.com/apikey' },
+  { key: 'openrouter', label: 'OpenRouter', url: 'https://openrouter.ai/api/v1', placeholder: 'sk-or-...', apiKeyUrl: 'https://openrouter.ai/settings/keys' },
   { key: 'azure-openai-responses', label: 'Azure OpenAI', url: '', placeholder: 'Paste your key here...' },
   { key: 'amazon-bedrock', label: 'Amazon Bedrock', url: 'https://bedrock-runtime.us-east-1.amazonaws.com', placeholder: 'AKIA...' },
-  { key: 'groq', label: 'Groq', url: 'https://api.groq.com/openai/v1', placeholder: 'gsk_...' },
-  { key: 'mistral', label: 'Mistral', url: 'https://api.mistral.ai/v1', placeholder: 'Paste your key here...' },
-  { key: 'deepseek', label: 'DeepSeek', url: 'https://api.deepseek.com', placeholder: 'sk-...' },
-  { key: 'xai', label: 'xAI (Grok)', url: 'https://api.x.ai/v1', placeholder: 'xai-...' },
+  { key: 'groq', label: 'Groq', url: 'https://api.groq.com/openai/v1', placeholder: 'gsk_...', apiKeyUrl: 'https://console.groq.com/keys' },
+  { key: 'mistral', label: 'Mistral', url: 'https://api.mistral.ai/v1', placeholder: 'Paste your key here...', apiKeyUrl: 'https://console.mistral.ai/api-keys' },
+  { key: 'deepseek', label: 'DeepSeek', url: 'https://api.deepseek.com', placeholder: 'sk-...', apiKeyUrl: 'https://platform.deepseek.com/api_keys' },
+  { key: 'xai', label: 'xAI (Grok)', url: 'https://api.x.ai/v1', placeholder: 'xai-...', apiKeyUrl: 'https://console.x.ai/team/default/api-keys' },
   { key: 'cerebras', label: 'Cerebras', url: 'https://api.cerebras.ai/v1', placeholder: 'csk-...' },
-  { key: 'zai', label: 'z.ai (GLM)', url: 'https://api.z.ai/api/coding/paas/v4', placeholder: 'Paste your key here...' },
-  { key: 'huggingface', label: 'Hugging Face', url: 'https://router.huggingface.co/v1', placeholder: 'hf_...' },
-  { key: 'minimax-global', label: 'Minimax Global', url: 'https://api.minimax.io/anthropic', placeholder: 'Paste your key here...', piOnly: true },
-  { key: 'minimax-cn', label: 'Minimax CN', url: 'https://api.minimaxi.com/anthropic', placeholder: 'Paste your key here...', piOnly: true },
+  { key: 'zai', label: 'z.ai (GLM)', url: 'https://api.z.ai/api/coding/paas/v4', placeholder: 'Paste your key here...', apiKeyUrl: 'https://z.ai/manage-apikey/apikey-list' },
+  { key: 'huggingface', label: 'Hugging Face', url: 'https://router.huggingface.co/v1', placeholder: 'hf_...', apiKeyUrl: 'https://huggingface.co/settings/tokens' },
+  { key: 'minimax-global', label: 'Minimax Global', url: 'https://api.minimax.io/anthropic', placeholder: 'Paste your key here...', piOnly: true, apiKeyUrl: 'https://platform.minimax.io/user-center/basic-information/interface-key' },
+  { key: 'minimax-cn', label: 'Minimax CN', url: 'https://api.minimaxi.com/anthropic', placeholder: 'Paste your key here...', piOnly: true, apiKeyUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key' },
   { key: 'kimi-coding', label: 'Kimi (Coding)', url: 'https://api.kimi.com/coding', placeholder: 'sk-kimi-...' },
-  { key: 'moonshotai', label: 'Moonshot AI', url: 'https://api.moonshot.ai/v1', placeholder: 'sk-...', piOnly: true },
-  { key: 'moonshotai-cn', label: 'Moonshot AI (CN)', url: 'https://api.moonshot.cn/v1', placeholder: 'sk-...', piOnly: true },
+  { key: 'moonshotai', label: 'Moonshot AI', url: 'https://api.moonshot.ai/v1', placeholder: 'sk-...', piOnly: true, apiKeyUrl: 'https://platform.kimi.ai/console/api-keys' },
+  { key: 'moonshotai-cn', label: 'Moonshot AI (CN)', url: 'https://api.moonshot.cn/v1', placeholder: 'sk-...', piOnly: true, apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys' },
   { key: 'vercel-ai-gateway', label: 'Vercel AI Gateway', url: 'https://ai-gateway.vercel.sh', placeholder: 'Paste your key here...' },
   { key: 'manifest', label: 'Manifest', url: 'https://app.manifest.build/v1', placeholder: 'mnfst_...' },
   { key: 'custom', label: 'Custom', url: '', placeholder: 'Paste your key here...' },
@@ -566,7 +568,17 @@ export function ApiKeyInput({
 
       {/* Credential stays in this provider detail, directly above its models. */}
       {!isBedrock && (<div className="space-y-2">
-        <Label htmlFor="api-key">{t('apiSetup.apiKey')}</Label>
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="api-key">{t('apiSetup.apiKey')}</Label>
+          {activePresetObj?.apiKeyUrl && !hasEditedPresetEndpoint && <button
+            type="button"
+            onClick={() => window.electronAPI?.openUrl(activePresetObj.apiKeyUrl!)}
+            className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {t('apiSetup.getApiKey')}
+            <ExternalLink className="size-3" />
+          </button>}
+        </div>
         <div className={cn(
           "relative rounded-md shadow-minimal transition-colors",
           "bg-foreground-2 focus-within:bg-background"
