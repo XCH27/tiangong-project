@@ -1,5 +1,5 @@
 import { RPC_CHANNELS, type LlmConnectionSetup } from '@craft-agent/shared/protocol'
-import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, getModelsForProviderType, applyManualModelSettings, type LlmConnection, type LlmConnectionWithStatus, type ManualModelSettings, type ModelDefinition, type CustomEndpointApi, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
+import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, getModelsForProviderType, getPiProviderBaseUrl, applyManualModelSettings, type LlmConnection, type LlmConnectionWithStatus, type ManualModelSettings, type ModelDefinition, type CustomEndpointApi, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { setSetupDeferred } from '@craft-agent/shared/config/storage'
 import {
@@ -496,13 +496,15 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
           error: error instanceof Error ? error.message : String(error) }
       }
     }
-    if (provider === 'xai' && !effectiveKey && connectionSlug) {
+    const xaiOfficialEndpoint = !baseUrl || baseUrl.trim().replace(/\/+$/, '') === getPiProviderBaseUrl('xai')?.replace(/\/+$/, '')
+    if (provider === 'xai' && xaiOfficialEndpoint && !effectiveKey && connectionSlug) {
       const connection = getLlmConnection(connectionSlug)
-      if (connection?.providerType === 'pi' && connection.piAuthProvider === 'xai' && connection.authType === 'api_key') {
+      if (connection?.providerType === 'pi' && connection.piAuthProvider === 'xai'
+        && canReuseStoredApiKey(connection, { providerType: 'pi', piAuthProvider: 'xai', baseUrl })) {
         effectiveKey = await getCredentialManager().getLlmApiKey(connectionSlug) ?? undefined
       }
     }
-    if (provider === 'xai' && effectiveKey) {
+    if (provider === 'xai' && xaiOfficialEndpoint && effectiveKey) {
       try {
         const discovered = await fetchXaiApiModels(effectiveKey, 15_000)
         const mediaCatalog = await fetchXaiApiMediaModels(effectiveKey)
@@ -531,7 +533,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     if (provider === 'openai' || provider === 'google' || provider === 'deepseek' || provider === 'groq' || provider === 'mistral') {
       const stored = connectionSlug && !effectiveKey ? getLlmConnection(connectionSlug) : null
       const matchingStored = stored?.providerType === 'pi' && stored.piAuthProvider === provider
-        && stored.authType === 'api_key' ? stored : null
+        && canReuseStoredApiKey(stored, { providerType: 'pi', piAuthProvider: provider, baseUrl }) ? stored : null
       if (!effectiveKey && matchingStored) {
         effectiveKey = await getCredentialManager().getLlmApiKey(matchingStored.slug) ?? undefined
       }

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { getModels } from '@earendil-works/pi-ai/compat'
 import { setOAuthTokenFetcher } from '@craft-agent/shared/auth'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
@@ -125,13 +129,66 @@ describe('pre-save account model discovery', () => {
   it('does not send the entered key to a provider catalog after the endpoint is edited', async () => {
     setOAuthTokenFetcher(async () => { throw new Error('account catalog must not be queried') })
     try {
-      const result = await providerModelsHandler()(
-        ctx, 'mistral', 'test-key', undefined, 'https://gateway.example/v1',
-      ) as { source: string; models: Array<{ id: string }> }
-      expect(result.source).toBe('sdk')
-      expect(result.models.length).toBeGreaterThan(0)
+      for (const provider of ['mistral', 'xai']) {
+        const result = await providerModelsHandler()(
+          ctx, provider, 'test-key', undefined, 'https://gateway.example/v1',
+        ) as { source: string; models: Array<{ id: string }> }
+        expect(result.source).toBe('sdk')
+        expect(result.models.length).toBeGreaterThan(0)
+      }
     } finally {
       setOAuthTokenFetcher(null)
+    }
+  })
+
+  it('does not reuse a saved key or show its old account models for an edited endpoint', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fleet-model-route-'))
+    const configDir = join(root, 'config')
+    const workspaceRoot = join(root, 'workspace')
+    mkdirSync(configDir)
+    mkdirSync(workspaceRoot)
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify({
+      workspaces: [{ id: 'test', name: 'Test', rootPath: workspaceRoot }],
+      activeWorkspaceId: 'test',
+      llmConnections: ['deepseek', 'xai'].map(provider => ({
+        slug: `${provider}-saved`, name: provider, providerType: 'pi', piAuthProvider: provider,
+        authType: 'api_key', createdAt: 1,
+      })),
+    }))
+    const handlerModule = pathToFileURL(join(import.meta.dir, 'llm-connections.ts')).href
+    const script = `
+      import { registerLlmConnectionsHandlers } from ${JSON.stringify(handlerModule)};
+      import { getCredentialManager } from '@craft-agent/shared/credentials';
+      import { setOAuthTokenFetcher } from '@craft-agent/shared/auth';
+      import { RPC_CHANNELS } from '@craft-agent/shared/protocol';
+      const manager = getCredentialManager();
+      await manager.setLlmApiKey('deepseek-saved', 'test-deepseek-key');
+      await manager.setLlmApiKey('xai-saved', 'test-xai-key');
+      setOAuthTokenFetcher(async () => { throw new Error('old account catalog queried'); });
+      const handlers = new Map();
+      registerLlmConnectionsHandlers({ handle: (channel, fn) => handlers.set(channel, fn) }, {
+        sessionManager: {}, oauthFlowStore: {}, platform: {
+          appRootPath: '/', resourcesPath: '/', isPackaged: false,
+          appVersion: '0-test', isDebugMode: true,
+          logger: { info() {}, warn() {}, error() {}, debug() {} },
+        },
+      });
+      const handler = handlers.get(RPC_CHANNELS.pi.GET_PROVIDER_MODELS);
+      for (const provider of ['deepseek', 'xai']) {
+        const result = await handler({ clientId: 'test', workspaceId: null, webContentsId: 0 },
+          provider, undefined, provider + '-saved', 'https://gateway.example/v1');
+        if (result.source !== 'sdk' || result.models.length === 0) throw new Error(provider + ': old catalog used');
+      }
+    `
+    try {
+      const run = Bun.spawnSync([process.execPath, '--eval', script], {
+        cwd: process.cwd(),
+        env: { ...process.env, HOME: root, CRAFT_CONFIG_DIR: configDir },
+        stdout: 'pipe', stderr: 'pipe',
+      })
+      expect(run.exitCode, run.stderr.toString()).toBe(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
     }
   })
 
