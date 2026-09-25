@@ -76,11 +76,29 @@ compatibility but do not steer new Sessions. Refresh preserves
 visibility preferences for matching IDs and shows newly discovered IDs by default. A legacy
 connection without a saved list uses the same provider fallback in Settings and the visibility
 handler; custom endpoints without an explicit list cannot invent model membership.
-The selected provider's model list filters by verified capability: all chat-routable models remain
-in Conversation, while an explicitly advertised non-text input also marks a chat model as
-Multimodal input. Account-discovered media-only image/video rows retain their separate endpoint
-provenance and cannot enter the chat picker. A documented but unverified route is labelled as such.
-Filters appear only for capability groups actually present. For an OpenAI Platform API-key
+The selected provider's compact model list shows the full chat-routable catalog without a search
+or capability-filter toolbar. Its row opens per-model details for context, output, image input and
+reasoning, while an explicitly advertised non-text input remains distinct from a media executor.
+An arbitrary custom API endpoint selects its actual Pi request format in the same credential form:
+OpenAI Chat Completions, OpenAI Responses, Anthropic Messages or Google Generative AI. The saved
+format selects the streaming adapter and authentication header; Anthropic and Google use their
+SDK key headers, not a fabricated Bearer token. Native provider presets keep their own SDK transport and
+account-scoped model discovery. CC Switch's additional upstream formats rely on its local proxy
+for conversion, so Fleet exposes only formats its installed Pi runtime can send directly.
+The custom form reads same-origin `/models` candidate IDs with that format's authentication header,
+bounded pagination and no redirects. The user selects chat IDs or enters missing ones manually;
+the list alone cannot establish modality, context, effort or execution rights. Unsupported listing
+leaves the manual input usable. A custom connection still owns its explicit model list; the
+background provider refresh does not replace it. Editing an API connection without retyping its
+key tests the proposed model using the stored key on the host before saving, only while the
+provider, endpoint and API format still match the saved route. Changing any of those requires
+re-entering the key; a saved secret is never forwarded to a new endpoint by a blank-key edit.
+Model corrections and manually added IDs are fields of the same connection, merged after each
+account/SDK refresh. Native providers accept manually added IDs only when the installed runtime
+has that route; a custom endpoint can register a new ID when the user supplies context and output
+limits. Manual metadata is marked as a correction, not as verified entitlement. Account-discovered
+media-only image/video rows retain separate endpoint provenance and cannot enter the chat picker.
+A documented but unverified route is labelled as such. For an OpenAI Platform API-key
 connection at the official endpoint, the same authenticated `/v1/models` response supplies chat
 membership and a separate read-only media projection. That API normally provides IDs rather than
 a modality schema, so only OpenAI-documented image, video and audio families are classified;
@@ -191,7 +209,9 @@ xAI checks. It reports expired/invalid credentials or a selected model absent fr
 account list rather than treating stored bytes as proof of access. When only the selected model is
 stale, Test also refreshes that connection's catalog even though it returns the selection error.
 Providers without an account-catalog validator retain Craft's credential-presence check; none of
-these read-only catalog calls proves a paid inference request or a subscription allowance.
+these read-only catalog calls proves a paid inference request or a subscription allowance. Saving
+an edited API key runs that stored-connection Test after persistence and reports its result in the
+connection header. The existing Test action remains available without changing credentials.
 
 ## First proof
 

@@ -14,10 +14,12 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { X, MoreHorizontal, Pencil, Trash2, Star, AlertTriangle, RefreshCcw, Settings2, MessageSquareMore, Zap, Clock, Check, Plus, Search, Gauge } from 'lucide-react'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { X, MoreHorizontal, Pencil, Trash2, Star, AlertTriangle, RefreshCcw, MessageSquareMore, Zap, Clock, Check, Plus } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import type { LlmConnectionWithStatus } from '../../../shared/types'
+import type { ManualModelSettings } from '../../../shared/types'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import {
   DropdownMenu,
@@ -43,15 +45,15 @@ import {
 import { useOnboarding } from '@/hooks/useOnboarding'
 import { CredentialsStep, LocalModelStep, type ApiSetupMethod } from '@/components/onboarding'
 import { ApiKeyInput } from '@/components/apisetup'
+import type { ApiKeyCatalogPreview, ApiKeyInputProps } from '@/components/apisetup/ApiKeyInput'
 import { ProviderCatalog } from '@/components/apisetup/ProviderCatalog'
 import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getModelShortName, type ModelDefinition } from '@config/models'
-import { getModelsForProviderType, isCompatProvider, isModelVisibleInPicker, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
+import { getModelsForProviderType, getPiAuthProviderName, isCompatProvider, isModelVisibleInPicker, isOfficialApiModelCatalogConnection, resolveMidStreamBehavior, type CustomEndpointApi, type MidStreamBehavior } from '@config/llm-connections'
 import { toast } from 'sonner'
 import type { CodexUsageReadResult, XaiSubscriptionUsage } from '@craft-agent/shared/auth'
-import { chatInputModalities, chatModelMatchesFilter, mediaModelMatchesFilter, type ModelCapabilityFilter } from './model-capability-filter'
 
 /**
  * Compact token count: 1234 → "1.2K", 1234567 → "1.2M". Used by the RTK
@@ -209,6 +211,141 @@ function getConnectionModelDefinition(
     .find(candidate => candidate.id === modelId)
 }
 
+const REASONING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+
+/** The connection owns corrections; blank fields inherit a refreshed catalog value. */
+function ModelDetailsDialog({ connection, modelId, model, accountContextWindow, onClose, onSaved }: {
+  connection: LlmConnectionWithStatus
+  modelId: string | null
+  model?: ModelDefinition
+  accountContextWindow?: number
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const { t, i18n } = useTranslation()
+  const adding = modelId === '__add__'
+  const existingOverride = modelId && !adding ? connection.manualModelOverrides?.[modelId] : undefined
+  const [id, setId] = useState('')
+  const [name, setName] = useState('')
+  const [context, setContext] = useState('')
+  const [output, setOutput] = useState('')
+  const [images, setImages] = useState<'inherit' | 'yes' | 'no'>('inherit')
+  const [reasoningMode, setReasoningMode] = useState<'inherit' | 'manual'>('inherit')
+  const [efforts, setEfforts] = useState<string[]>([])
+  const [reasoningOff, setReasoningOff] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setId('')
+    setName(existingOverride?.name ?? '')
+    setContext(existingOverride?.contextWindow?.toString() ?? '')
+    setOutput(existingOverride?.maxOutputTokens?.toString() ?? '')
+    setImages(existingOverride?.supportsImages === undefined ? 'inherit' : existingOverride.supportsImages ? 'yes' : 'no')
+    setReasoningMode(existingOverride?.reasoningEfforts === undefined ? 'inherit' : 'manual')
+    setEfforts(existingOverride?.reasoningEfforts ?? [])
+    setReasoningOff(existingOverride?.reasoningDisableSupported ?? false)
+  }, [modelId, connection.slug, existingOverride])
+
+  const save = async () => {
+    if (!modelId || saving) return
+    const parseTokens = (value: string): number | undefined => value.trim() ? Number(value.trim()) : undefined
+    const contextWindow = parseTokens(context)
+    const maxOutputTokens = parseTokens(output)
+    if ([contextWindow, maxOutputTokens].some(value => value !== undefined && (!Number.isSafeInteger(value) || value <= 0))) {
+      toast.error(t('settings.ai.invalidModelLimit'))
+      return
+    }
+    const settings: ManualModelSettings = {
+      ...(name.trim() ? { name: name.trim() } : {}),
+      ...(contextWindow ? { contextWindow } : {}),
+      ...(maxOutputTokens ? { maxOutputTokens } : {}),
+      ...(images !== 'inherit' ? { supportsImages: images === 'yes' } : {}),
+      ...(reasoningMode === 'manual' ? {
+        reasoningEfforts: REASONING_LEVELS.filter(level => efforts.includes(level)),
+        reasoningDisableSupported: reasoningOff,
+      } : {}),
+    }
+    setSaving(true)
+    try {
+      const result = await window.electronAPI.setLlmConnectionModelDetails(connection.slug, adding ? id : modelId, settings, adding)
+      if (!result.success) throw new Error(result.error || t('settings.ai.modelDetailsSaveFailed'))
+      await onSaved()
+      onClose()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('settings.ai.modelDetailsSaveFailed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const formatExact = (value?: number) => value ? new Intl.NumberFormat(i18n.language).format(value) : t('common.unknown')
+  const selectClass = 'h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring'
+  return <Dialog open={modelId !== null} onOpenChange={(open) => { if (!open) onClose() }}>
+    <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
+      <DialogHeader>
+        <DialogTitle>{adding ? t('settings.ai.addModel') : model?.name ?? modelId}</DialogTitle>
+        <DialogDescription>{adding ? t('settings.ai.addModelHint') : modelId}</DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 text-sm">
+        {adding && <label className="block space-y-1.5">
+          <span className="font-medium">{t('settings.ai.modelId')}</span>
+          <Input value={id} onChange={event => setId(event.target.value)} placeholder="provider-model-id" />
+        </label>}
+        <p className="text-xs text-muted-foreground">{t(modelId && connection.manualModelOverrides?.[modelId] ? 'settings.ai.manualCorrection'
+          : model?.catalogSource === 'provider' ? 'apiSetup.accountCatalog'
+            : model?.catalogSource === 'sdk' ? 'apiSetup.bundledCatalog' : 'settings.ai.capabilitySourceUnknown')}</p>
+        <label className="block space-y-1.5">
+          <span className="font-medium">{t('settings.ai.modelName')}</span>
+          <Input value={name} onChange={event => setName(event.target.value)} placeholder={model?.name || t('settings.ai.inheritModelValue')} />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block space-y-1.5">
+            <span className="font-medium">{t('chat.contextUsage.contextWindow')}</span>
+            <Input inputMode="numeric" value={context} onChange={event => setContext(event.target.value)} placeholder={formatExact(accountContextWindow ?? model?.contextWindow)} />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="font-medium">{t('settings.ai.maxOutputTokens')}</span>
+            <Input inputMode="numeric" value={output} onChange={event => setOutput(event.target.value)} placeholder={formatExact(model?.maxOutputTokens)} />
+          </label>
+        </div>
+        <label className="block space-y-1.5">
+          <span className="font-medium">{t('settings.ai.imageInput')}</span>
+          <select className={selectClass} value={images} onChange={event => setImages(event.target.value as typeof images)}>
+            <option value="inherit">{t('settings.ai.inheritModelValue')} · {model?.supportsImages === undefined ? t('common.unknown') : t(model.supportsImages ? 'settings.ai.supported' : 'settings.ai.notSupported')}</option>
+            <option value="yes">{t('settings.ai.supported')}</option>
+            <option value="no">{t('settings.ai.notSupported')}</option>
+          </select>
+        </label>
+        <div className="space-y-2">
+          <label className="block space-y-1.5">
+            <span className="font-medium">{t('settings.ai.reasoningLevels')}</span>
+            <select className={selectClass} value={reasoningMode} onChange={event => setReasoningMode(event.target.value as typeof reasoningMode)}>
+              <option value="inherit">{t('settings.ai.inheritModelValue')} · {model?.reasoningEfforts?.length ? model.reasoningEfforts.map(level => t(`thinking.${level}`)).join(', ') : t('common.unknown')}</option>
+              <option value="manual">{t('settings.ai.manualCorrection')}</option>
+            </select>
+          </label>
+          {reasoningMode === 'manual' && <div className="flex flex-wrap gap-1.5">
+            {REASONING_LEVELS.map(level => <Button key={level} type="button" size="sm" variant={efforts.includes(level) ? 'secondary' : 'outline'}
+              aria-pressed={efforts.includes(level)} onClick={() => setEfforts(current => current.includes(level) ? current.filter(value => value !== level) : [...current, level])}>
+              {t(`thinking.${level}`)}
+            </Button>)}
+            <Button type="button" size="sm" variant={reasoningOff ? 'secondary' : 'outline'} aria-pressed={reasoningOff} onClick={() => setReasoningOff(value => !value)}>{t('thinking.off')}</Button>
+          </div>}
+        </div>
+        {!adding && <div className="rounded-lg border border-border/60 px-3 py-2 text-xs text-muted-foreground">
+          {t('settings.ai.outputModalities')}: {model?.modalities?.output?.length ? model.modalities.output.join(', ') : t('common.unknown')}
+          {model?.supportsFastMode === true && ` · ${t('settings.ai.fastMode')}: ${t('settings.ai.supported')}`}
+        </div>}
+        <p className="text-xs text-muted-foreground">{t('settings.ai.manualModelHint')}</p>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+        <Button type="button" onClick={() => void save()} disabled={saving}>{t(saving ? 'common.saving' : 'common.save')}</Button>
+      </div>
+    </DialogContent>
+  </Dialog>
+}
+
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
   slug: 'ai',
@@ -267,39 +404,33 @@ function CredentialHealthBanner({ issues, onReauthenticate }: CredentialHealthBa
 }
 
 // ============================================
-// Pi Auth Provider Display Names
+// Provider identity
 // ============================================
-
-const PI_AUTH_PROVIDER_LABELS: Record<string, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI API',
-  'openai-codex': 'ChatGPT / Codex',
-  google: 'Google AI Studio',
-  openrouter: 'OpenRouter',
-  'azure-openai-responses': 'Azure OpenAI',
-  'amazon-bedrock': 'Amazon Bedrock',
-  groq: 'Groq',
-  mistral: 'Mistral',
-  deepseek: 'DeepSeek',
-  xai: 'xAI',
-  cerebras: 'Cerebras',
-  zai: 'z.ai',
-  huggingface: 'Hugging Face',
-  minimax: 'Minimax',
-  'minimax-cn': 'Minimax (CN)',
-  'kimi-coding': 'Kimi (Coding)',
-  moonshotai: 'Moonshot AI',
-  'moonshotai-cn': 'Moonshot AI (CN)',
-  'vercel-ai-gateway': 'Vercel AI Gateway',
-  'github-copilot': 'GitHub Copilot',
-}
 
 function getConnectionProviderLabel(connection: LlmConnectionWithStatus): string {
   if (connection.providerType === 'anthropic') return 'Anthropic'
   if (connection.providerType === 'pi') {
-    return PI_AUTH_PROVIDER_LABELS[connection.piAuthProvider ?? ''] || connection.piAuthProvider || connection.name
+    return getPiAuthProviderName(connection.piAuthProvider) || connection.piAuthProvider || connection.name
   }
   return connection.name
+}
+
+/** Correct inherited plan/runtime labels; never rewrite a custom connection name. */
+function getConnectionDisplayName(connection: LlmConnectionWithStatus, connections: LlmConnectionWithStatus[]): string {
+  const subscriptionTemplate = /^(Claude Max|ChatGPT Plus|Grok \(Subscription\))(?: (\d+))?$/.exec(connection.name)
+  if (subscriptionTemplate) {
+    const label = subscriptionTemplate[1] === 'Claude Max' ? 'Claude'
+      : subscriptionTemplate[1] === 'ChatGPT Plus' ? 'ChatGPT' : 'Grok'
+    return subscriptionTemplate[2] ? `${label} ${subscriptionTemplate[2]}` : label
+  }
+  if (!/^Craft Agents Backend \([^)]+\)(?: \d+)?$/.test(connection.name)) return connection.name
+  const providerName = getConnectionProviderLabel(connection)
+  if (providerName === connection.name) return connection.name
+  const siblings = connections.filter(candidate => candidate.providerType === connection.providerType
+    && candidate.authType === connection.authType && candidate.piAuthProvider === connection.piAuthProvider)
+    .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.slug.localeCompare(b.slug))
+  const number = siblings.findIndex(candidate => candidate.slug === connection.slug) + 1
+  return number > 1 ? `${providerName} ${number}` : providerName
 }
 
 // ============================================
@@ -310,13 +441,13 @@ type ValidationState = 'idle' | 'validating' | 'success' | 'error'
 
 interface ConnectionRowProps {
   connection: LlmConnectionWithStatus
+  connections: LlmConnectionWithStatus[]
   isLastConnection: boolean
   onRenameClick: () => void
   onDelete: () => void
   onSetDefault: () => void
   onValidate: () => void
   onReauthenticate: () => void
-  onEdit: () => void
   onSetMidStreamBehavior: (behavior: MidStreamBehavior) => void
   validationState: ValidationState
   validationError?: string
@@ -324,10 +455,9 @@ interface ConnectionRowProps {
   isDuplicateAccount?: boolean
 }
 
-function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, onSetDefault, onValidate, onReauthenticate, onEdit, onSetMidStreamBehavior, validationState, validationError, isDuplicateAccount }: ConnectionRowProps) {
+function ConnectionRow({ connection, connections, isLastConnection, onRenameClick, onDelete, onSetDefault, onValidate, onReauthenticate, onSetMidStreamBehavior, validationState, validationError, isDuplicateAccount }: ConnectionRowProps) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [piBaseUrl, setPiBaseUrl] = useState<string | undefined>(undefined)
 
   // Opening dialog/overlay flows directly from a dropdown item can race with
   // menu teardown and leave a transient interaction lock behind on some systems.
@@ -339,53 +469,17 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
     })
   }, [])
 
-  // Load Pi provider base URL via IPC (Pi SDK can't run in renderer)
-  useEffect(() => {
-    const provider = connection.providerType || connection.type
-    if (provider === 'pi' && connection.piAuthProvider && !connection.baseUrl) {
-      window.electronAPI.getPiProviderBaseUrl(connection.piAuthProvider).then(url => setPiBaseUrl(url))
-    }
-  }, [connection.providerType, connection.type, connection.piAuthProvider, connection.baseUrl])
-
-  // Build description with provider, default indicator, auth status, and validation state
+  // The header names the provider once; connection type and health are metadata.
   const getDescription = () => {
     // Show validation state if not idle
     if (validationState === 'validating') return t("settings.ai.validating")
     if (validationState === 'success') return t("settings.ai.connectionValid")
     if (validationState === 'error') return validationError || t("settings.ai.validationFailed")
 
-    const parts: string[] = []
-
-    // Provider type (fall back to legacy 'type' field if providerType missing)
-    // OAuth = subscription (Pro/Plus/Max), API key = API
-    const provider = connection.providerType || connection.type
-    parts.push(getConnectionProviderLabel(connection))
-
-    // Base URL for API key connections (show custom endpoint or default for provider)
-    if (connection.authType !== 'oauth') {
-      let endpoint = connection.baseUrl
-      // Use default endpoints for standard providers if no custom baseUrl
-      if (!endpoint) {
-        if (provider === 'anthropic') endpoint = 'https://api.anthropic.com'
-        else if (provider === 'pi' && connection.piAuthProvider) {
-          endpoint = piBaseUrl
-        }
-      }
-      if (endpoint) {
-        // Extract hostname from URL for cleaner display
-        try {
-          const url = new URL(endpoint)
-          parts.push(url.host)
-        } catch {
-          parts.push(endpoint)
-        }
-      }
-    }
-
-    // Keep connection state in the same summary row as its actions.
-    parts.push(t(connection.isAuthenticated ? "settings.ai.connected" : "settings.ai.notAuthenticated"))
-
-    return parts.join(' · ')
+    return [
+      t(connection.authType === 'oauth' ? 'settings.ai.subscriptionConnection' : 'settings.ai.apiKeyConnection'),
+      t(connection.isAuthenticated ? 'settings.ai.connected' : 'settings.ai.notAuthenticated'),
+    ].join(' · ')
   }
 
   // Resolved Anthropic identity (issue #838): render `email · org` independently of
@@ -396,12 +490,11 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
     : null
 
   return (
-    <SettingsRow
-      label={(
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-1">
-            <ConnectionIcon connection={connection} size={14} />
-            <span>{connection.name}</span>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-4">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+            <ConnectionIcon connection={connection} size={18} />
+            <span className="truncate">{getConnectionDisplayName(connection, connections)}</span>
             {connection.isDefault && (
               <span className="inline-flex h-5 items-center rounded-[4px] bg-foreground/[0.05] px-2 text-[11px] text-foreground/60">
                 {t('common.default')}
@@ -417,14 +510,11 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
                 <TooltipContent>{t("settings.ai.duplicateAccount")}</TooltipContent>
               </Tooltip>
             )}
-          </div>
-          {oauthIdentityLine && (
-            <span className="text-xs text-muted-foreground truncate">{oauthIdentityLine}</span>
-          )}
         </div>
-      )}
-      description={getDescription()}
-    >
+        <p className="mt-1 truncate text-xs text-muted-foreground">{getDescription()}</p>
+        {oauthIdentityLine && <p className="mt-0.5 truncate text-xs text-muted-foreground">{oauthIdentityLine}</p>}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
       <Button
         size="sm"
         variant="outline"
@@ -458,12 +548,7 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
               <RefreshCcw className="h-3.5 w-3.5" />
               <span>{t("settings.ai.reAuthenticate")}</span>
             </StyledDropdownMenuItem>
-          ) : (
-            <StyledDropdownMenuItem onClick={() => runAfterMenuClose(onEdit)}>
-              <Settings2 className="h-3.5 w-3.5" />
-              <span>{t("common.edit")}</span>
-            </StyledDropdownMenuItem>
-          )}
+          ) : null}
           {(() => {
             const currentBehavior = resolveMidStreamBehavior(connection)
             return (
@@ -498,7 +583,8 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu>
-    </SettingsRow>
+      </div>
+    </div>
   )
 }
 
@@ -511,6 +597,85 @@ function getApiKeyMethodForConnection(conn: LlmConnectionWithStatus): ApiSetupMe
   const provider = conn.providerType || conn.type
   if (provider === 'pi' || provider === 'pi_compat') return 'pi_api_key'
   return 'anthropic_api_key'
+}
+
+function getApiKeyInitialValues(connection: LlmConnectionWithStatus): ApiKeyInputProps['initialValues'] {
+  const modelIds = connection.models
+    ?.map(model => typeof model === 'string' ? model : model.id)
+    .filter(Boolean)
+  const customEndpoint = !!connection.customEndpoint && !!connection.baseUrl?.trim()
+  return {
+    connectionSlug: connection.slug,
+    baseUrl: connection.baseUrl,
+    connectionDefaultModel: customEndpoint ? modelIds?.join(', ') : connection.defaultModel,
+    activePreset: customEndpoint ? 'custom' : connection.piAuthProvider || undefined,
+    models: modelIds,
+    customApi: connection.customEndpoint?.api,
+  }
+}
+
+/** ZCode-style inline provider detail: one credential section above the same model list. */
+function ConnectionApiKeySection({ connection, existingSlugs, refreshRequestId, onCatalogChange, onDraftKeyChange, onSaved }: {
+  connection: LlmConnectionWithStatus
+  existingSlugs: Set<string>
+  refreshRequestId: number
+  onCatalogChange: (catalog: ApiKeyCatalogPreview | null) => void
+  onDraftKeyChange: (hasDraft: boolean) => void
+  onSaved: (slug: string) => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const [formVersion, setFormVersion] = useState(0)
+  const [dirty, setDirty] = useState(false)
+  const method = getApiKeyMethodForConnection(connection)
+  const onboarding = useOnboarding({
+    initialStep: 'credentials',
+    initialApiSetupMethod: method,
+    editingSlug: connection.slug,
+    existingSlugs,
+    onComplete: () => {},
+    autoStartOAuthOnSelect: false,
+  })
+  const step = onboarding.state.step
+  const jumpToCredentials = onboarding.jumpToCredentials
+
+  useEffect(() => {
+    if (step !== 'complete') return
+    let cancelled = false
+    void onSaved(connection.slug).finally(() => {
+      if (cancelled) return
+      // Remount the input only after the saved connection has been reloaded so
+      // the plaintext draft is cleared and account discovery uses stored credentials.
+      setFormVersion(version => version + 1)
+      setDirty(false)
+      onDraftKeyChange(false)
+      jumpToCredentials(method)
+    })
+    return () => { cancelled = true }
+  }, [step, jumpToCredentials, connection.slug, method, onSaved, onDraftKeyChange])
+
+  return <div className="border-b border-border/60 px-5 py-4">
+    <ApiKeyInput
+      key={`${connection.slug}:${formVersion}`}
+      status={onboarding.state.credentialStatus}
+      errorMessage={onboarding.state.errorMessage}
+      onSubmit={onboarding.handleSubmitCredential}
+      formId={`connection-api-key-${connection.slug}`}
+      providerType={method === 'pi_api_key' ? 'pi_api_key' : 'anthropic'}
+      providerLocked
+      hideModelSelection={method === 'pi_api_key' && !connection.customEndpoint}
+      refreshRequestId={refreshRequestId}
+      onCatalogChange={onCatalogChange}
+      onDraftKeyChange={onDraftKeyChange}
+      onDirtyChange={() => setDirty(true)}
+      hasStoredCredential={connection.isAuthenticated}
+      initialValues={getApiKeyInitialValues(connection)}
+    />
+    {dirty && <div className="mt-4 flex justify-end">
+      <Button size="sm" type="submit" form={`connection-api-key-${connection.slug}`} disabled={onboarding.state.credentialStatus === 'validating'}>
+        {t(onboarding.state.credentialStatus === 'validating' ? 'common.validating' : 'settings.ai.saveAndTestConnection')}
+      </Button>
+    </div>}
+  </div>
 }
 
 // ============================================
@@ -527,6 +692,9 @@ export default function AiSettingsPage() {
   // API Setup overlay state
   const [showApiSetup, setShowApiSetup] = useState(false)
   const [editingConnectionSlug, setEditingConnectionSlug] = useState<string | null>(null)
+  const [draftCatalog, setDraftCatalog] = useState<(ApiKeyCatalogPreview & { connectionSlug?: string }) | null>(null)
+  const [hasPendingApiKey, setHasPendingApiKey] = useState(false)
+  const [catalogRefreshRequestId, setCatalogRefreshRequestId] = useState(0)
   const [editInitialValues, setEditInitialValues] = useState<{
     connectionSlug?: string
     apiKey?: string
@@ -597,12 +765,16 @@ export default function AiSettingsPage() {
 
   // Add/edit remains in the selected provider panel; the connection hook still owns saving.
   const openApiSetup = useCallback((connectionSlug?: string) => {
+    setDraftCatalog(null)
+    setCatalogRefreshRequestId(0)
     setEditingConnectionSlug(connectionSlug || null)
     setShowApiSetup(true)
   }, [])
 
   const closeApiSetup = useCallback(() => {
     setShowApiSetup(false)
+    setDraftCatalog(null)
+    setCatalogRefreshRequestId(0)
     setEditingConnectionSlug(null)
   }, [])
 
@@ -687,9 +859,14 @@ export default function AiSettingsPage() {
     // Open API setup for the default connection (or first connection if available)
     const defaultConn = llmConnections.find(c => c.isDefault) || llmConnections[0]
     if (defaultConn) {
-      openApiSetup(defaultConn.slug)
+      setSelectedConnectionSlug(defaultConn.slug)
+      if (defaultConn.authType === 'oauth') {
+        openApiSetup(defaultConn.slug)
+      } else {
+        requestAnimationFrame(() => document.getElementById('api-key')?.focus())
+      }
     } else {
-      openApiSetup()
+      setShowProviderCatalog(true)
     }
   }, [llmConnections, openApiSetup])
 
@@ -731,44 +908,17 @@ export default function AiSettingsPage() {
 
   const handleReauthenticateConnection = useCallback((connection: LlmConnectionWithStatus) => {
     setSelectedConnectionSlug(connection.slug)
-    openApiSetup(connection.slug)
     if (connection.authType === 'oauth') {
+      openApiSetup(connection.slug)
       const method = connection.providerType === 'pi'
                    ? (connection.piAuthProvider === 'github-copilot' ? 'pi_copilot_oauth'
                      : connection.piAuthProvider === 'xai' ? 'pi_xai_oauth' : 'pi_chatgpt_oauth')
                    : 'claude_oauth'
       apiSetupOnboarding.jumpToCredentials(method)
       requestAnimationFrame(() => apiSetupOnboarding.handleStartOAuth(method, connection.slug))
+    } else {
+      requestAnimationFrame(() => document.getElementById('api-key')?.focus())
     }
-  }, [apiSetupOnboarding, openApiSetup])
-
-  const handleEditConnection = useCallback((connection: LlmConnectionWithStatus) => {
-    // Build model string from connection's models array
-    const modelStr = connection.models
-      ?.map((m: string | ModelDefinition) => typeof m === 'string' ? m : m.id)
-      .join(', ') || connection.defaultModel || ''
-
-    // Set initial values before opening overlay so ApiKeyInput mounts with them
-    const modelIds = connection.models
-      ?.map((m: string | ModelDefinition) => typeof m === 'string' ? m : m.id)
-      .filter(Boolean)
-
-    const isCustomEndpointConnection = !!connection.customEndpoint && !!connection.baseUrl?.trim()
-
-    setEditInitialValues({
-      connectionSlug: connection.slug,
-      baseUrl: connection.baseUrl,
-      connectionDefaultModel: isCustomEndpointConnection ? modelStr : connection.defaultModel,
-      activePreset: isCustomEndpointConnection ? 'custom' : (connection.piAuthProvider || undefined),
-      models: modelIds,
-      customApi: connection.customEndpoint?.api,
-    })
-
-    // Keep the edit form in this provider's detail panel.
-    setSelectedConnectionSlug(connection.slug)
-    openApiSetup(connection.slug)
-    const method = getApiKeyMethodForConnection(connection)
-    apiSetupOnboarding.jumpToCredentials(method)
   }, [apiSetupOnboarding, openApiSetup])
 
   const handleDeleteConnection = useCallback(async (slug: string) => {
@@ -820,6 +970,16 @@ export default function AiSettingsPage() {
       }, 5000)
     }
   }, [t])
+
+  const handleInlineApiSaved = useCallback(async (slug: string) => {
+    await refreshLlmConnections()
+    setCredentialHealthIssues([])
+    setDraftCatalog(null)
+    setValidationStates(previous => ({ ...previous, [slug]: { state: 'success' } }))
+    setTimeout(() => {
+      setValidationStates(previous => ({ ...previous, [slug]: { state: 'idle' } }))
+    }, 3000)
+  }, [refreshLlmConnections])
 
   const handleRefreshModels = useCallback(async (slug: string) => {
     if (refreshingModelSlug || !window.electronAPI) return
@@ -884,10 +1044,22 @@ export default function AiSettingsPage() {
   }, [llmConnections])
   const sortedConnections = useMemo(() => [...llmConnections].sort((a, b) => {
     if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
-    return a.name.localeCompare(b.name)
+    return getConnectionDisplayName(a, llmConnections).localeCompare(getConnectionDisplayName(b, llmConnections))
   }), [llmConnections])
   const selectedConnection = llmConnections.find(c => c.slug === selectedConnectionSlug)
     ?? defaultConnection ?? sortedConnections[0]
+  const handleSelectedCatalogChange = useCallback((catalog: ApiKeyCatalogPreview | null) => {
+    setDraftCatalog(catalog ? { ...catalog, connectionSlug: selectedConnection?.slug } : null)
+  }, [selectedConnection?.slug])
+  const selectedIsApiKey = !!selectedConnection && selectedConnection.authType !== 'oauth'
+    && (selectedConnection.providerType === 'pi' || selectedConnection.providerType === 'pi_compat' || selectedConnection.providerType === 'anthropic')
+  const selectedHasLiveAccountCatalog = !!selectedConnection && (isOfficialApiModelCatalogConnection(selectedConnection)
+    || (selectedConnection.providerType === 'pi' && selectedConnection.piAuthProvider === 'xai'
+      && selectedConnection.authType === 'api_key' && !selectedConnection.customEndpoint))
+  const accountPreview = hasPendingApiKey && selectedHasLiveAccountCatalog && draftCatalog?.source === 'provider'
+    && draftCatalog.connectionSlug === selectedConnection?.slug
+    && draftCatalog.provider === selectedConnection?.piAuthProvider && !draftCatalog.error
+    ? draftCatalog : null
   const selectedHasXaiApiCatalog = selectedConnection?.providerType === 'pi'
     && selectedConnection.piAuthProvider === 'xai'
     && selectedConnection.authType === 'api_key'
@@ -903,13 +1075,14 @@ export default function AiSettingsPage() {
     && selectedConnection.authType === 'oauth'
     && selectedConnection.isAuthenticated
   const selectedHasMediaCatalog = selectedHasXaiApiCatalog || selectedHasOpenAiApiCatalog || selectedHasCodexSubscriptionCatalog
+  const mediaConnectionSlug = selectedConnection?.slug
   useEffect(() => {
-    if (!selectedHasMediaCatalog || !selectedConnection) {
+    if (!selectedHasMediaCatalog || !mediaConnectionSlug) {
       setMediaCatalog(null)
       return
     }
     let cancelled = false
-    const slug = selectedConnection.slug
+    const slug = mediaConnectionSlug
     const provider = selectedHasCodexSubscriptionCatalog ? 'openai-codex' : selectedHasOpenAiApiCatalog ? 'openai' : 'xai'
     void window.electronAPI.getPiProviderModels(provider, undefined, slug).then(result => {
       if (cancelled) return
@@ -922,40 +1095,27 @@ export default function AiSettingsPage() {
       if (!cancelled) setMediaCatalog({ slug, models: [], status: 'unavailable' })
     })
     return () => { cancelled = true }
-  }, [selectedConnection?.slug, selectedHasMediaCatalog, selectedHasCodexSubscriptionCatalog, selectedHasOpenAiApiCatalog, mediaRefreshVersion])
-  const allSelectedModelOptions = useMemo(
-    () => getModelOptionsForConnection(selectedConnection),
-    [selectedConnection],
+  }, [mediaConnectionSlug, selectedHasMediaCatalog, selectedHasCodexSubscriptionCatalog, selectedHasOpenAiApiCatalog, mediaRefreshVersion])
+  const allSelectedModelOptions = useMemo<Array<{ value: string; label: string; description: string; descriptionKey?: string }>>(
+    () => accountPreview
+      ? accountPreview.models.map(model => ({ value: model.id, label: model.name, description: '' }))
+      : getModelOptionsForConnection(selectedConnection),
+    [selectedConnection, accountPreview],
   )
-  const [modelQuery, setModelQuery] = useState('')
-  const [modelKindFilter, setModelKindFilter] = useState<ModelCapabilityFilter>('all')
+  const displayedMediaCatalog = useMemo(() => accountPreview && mediaConnectionSlug
+    ? { slug: mediaConnectionSlug, models: accountPreview.mediaModels ?? [], status: accountPreview.mediaCatalogStatus ?? 'unavailable' }
+    : mediaCatalog, [accountPreview, mediaCatalog, mediaConnectionSlug])
+  const [detailModelId, setDetailModelId] = useState<string | null>(null)
   const [pendingVisibilityModel, setPendingVisibilityModel] = useState<string | null>(null)
-  const modelKindFilters = useMemo(() => {
-    const kinds: ModelCapabilityFilter[] = []
-    if (allSelectedModelOptions.length) kinds.push('chat')
-    if (allSelectedModelOptions.some(option => chatInputModalities(
-      getConnectionModelDefinition(selectedConnection, option.value),
-    ).length > 0)) kinds.push('multimodal')
-    if (mediaCatalog?.slug === selectedConnection?.slug) {
-      if (mediaCatalog.models.some(model => model.kind === 'image')) kinds.push('image')
-      if (mediaCatalog.models.some(model => model.kind === 'video')) kinds.push('video')
-      if (mediaCatalog.models.some(model => model.kind === 'audio')) kinds.push('audio')
-    }
-    return kinds
-  }, [allSelectedModelOptions, mediaCatalog, selectedConnection])
-  const selectedModelOptions = useMemo(() => {
-    const query = modelQuery.trim().toLowerCase()
-    return allSelectedModelOptions.filter(option =>
-      chatModelMatchesFilter(getConnectionModelDefinition(selectedConnection, option.value), modelKindFilter)
-      && (!query || `${option.label} ${option.value} ${option.description}`.toLowerCase().includes(query)),
-    )
-  }, [allSelectedModelOptions, modelQuery, modelKindFilter, selectedConnection])
   useEffect(() => {
-    setModelQuery('')
-    setModelKindFilter('all')
+    setDetailModelId(null)
   }, [selectedConnection?.slug])
+  const detailModel = detailModelId && detailModelId !== '__add__' ? getConnectionModelDefinition(selectedConnection, detailModelId) : undefined
+  const detailPreview = detailModelId ? accountPreview?.models.find(model => model.id === detailModelId) : undefined
+  const detailContextWindow = detailPreview?.contextWindow || detailModel?.contextWindow
   const selectedCanRefreshModels = !!selectedConnection && !isCompatProvider(selectedConnection.providerType)
-    && (selectedConnection.modelSelectionMode !== 'userDefined3Tier'
+    && (isOfficialApiModelCatalogConnection(selectedConnection)
+      || selectedConnection.modelSelectionMode !== 'userDefined3Tier'
       || selectedConnection.piAuthProvider === 'github-copilot'
       || selectedConnection.piAuthProvider === 'xai')
 
@@ -1030,6 +1190,61 @@ export default function AiSettingsPage() {
     }
   }, [rtkStatus?.installed, rtkEnabled, refreshRtkGain])
 
+  // The same setup form is used for a new connection and inline editing of an
+  // existing one. In the latter case the saved model list remains below it.
+  const apiSetupForm = showApiSetup ? (
+    <div className="space-y-4 border-b border-border/60 p-5">
+      <div className="flex justify-end">
+        <button type="button" onClick={handleCloseApiSetup} aria-label={t('common.close')} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {apiSetupOnboarding.state.step === 'credentials' &&
+        (apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' || apiSetupOnboarding.state.apiSetupMethod === 'anthropic_api_key') ? (
+        <>
+          <ApiKeyInput
+            key={[editingConnectionSlug, editInitialValues?.activePreset, editInitialValues?.baseUrl].join(':')}
+            status={apiSetupOnboarding.state.credentialStatus}
+            errorMessage={apiSetupOnboarding.state.errorMessage}
+            onSubmit={apiSetupOnboarding.handleSubmitCredential}
+            providerType={apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' ? 'pi_api_key' : 'anthropic'}
+            providerLocked
+            hideModelSelection={apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' && editInitialValues?.activePreset !== 'custom'}
+            refreshRequestId={catalogRefreshRequestId}
+            onCatalogChange={setDraftCatalog}
+            initialValues={editInitialValues}
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={handleCloseApiSetup}>{t('common.cancel')}</Button>
+            <Button size="sm" type="submit" form="api-key-form" disabled={apiSetupOnboarding.state.credentialStatus === 'validating'}>
+              {t(apiSetupOnboarding.state.credentialStatus === 'validating' ? 'common.validating' : 'settings.ai.saveAndTestConnection')}
+            </Button>
+          </div>
+        </>
+      ) : apiSetupOnboarding.state.step === 'credentials' && apiSetupOnboarding.state.apiSetupMethod ? (
+        <CredentialsStep
+          apiSetupMethod={apiSetupOnboarding.state.apiSetupMethod}
+          status={apiSetupOnboarding.state.credentialStatus}
+          errorMessage={apiSetupOnboarding.state.errorMessage}
+          onSubmit={apiSetupOnboarding.handleSubmitCredential}
+          onStartOAuth={apiSetupOnboarding.handleStartOAuth}
+          onBack={editingConnectionSlug ? handleCloseApiSetup : handleOpenProviderCatalog}
+          isWaitingForCode={apiSetupOnboarding.isWaitingForCode}
+          onSubmitAuthCode={apiSetupOnboarding.handleSubmitAuthCode}
+          onCancelOAuth={apiSetupOnboarding.handleCancelOAuth}
+          copilotDeviceCode={apiSetupOnboarding.copilotDeviceCode}
+        />
+      ) : apiSetupOnboarding.state.step === 'local-model' ? (
+        <LocalModelStep
+          onSubmit={apiSetupOnboarding.handleSubmitLocalModel}
+          onBack={handleOpenProviderCatalog}
+          status={apiSetupOnboarding.state.credentialStatus === 'validating' ? 'validating' : apiSetupOnboarding.state.credentialStatus === 'error' ? 'error' : 'idle'}
+          errorMessage={apiSetupOnboarding.state.errorMessage}
+        />
+      ) : null}
+    </div>
+  ) : null
+
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 mask-fade-y">
@@ -1047,7 +1262,7 @@ export default function AiSettingsPage() {
 
             <div className="space-y-8">
               <div className="overflow-hidden rounded-[12px] border border-border/60 bg-background shadow-minimal">
-                  <div className="flex flex-col md:h-[65dvh] md:min-h-[20rem] md:max-h-[40rem] md:flex-row">
+                  <div className="flex flex-col md:min-h-[20rem] md:max-h-[40rem] md:flex-row">
                     <aside className="flex w-full shrink-0 flex-col border-b border-border/60 bg-foreground/[0.02] md:min-h-0 md:w-56 md:border-b-0 md:border-r">
                       <div className="flex items-center justify-between px-3 py-3">
                         <span className="text-xs font-medium text-muted-foreground">{t('settings.ai.connections')}</span>
@@ -1067,7 +1282,7 @@ export default function AiSettingsPage() {
                             )}
                           >
                             <ConnectionIcon connection={conn} size={18} />
-                            <span className="min-w-0 flex-1 truncate font-medium">{conn.name}</span>
+                            <span className="min-w-0 flex-1 truncate font-medium">{getConnectionDisplayName(conn, llmConnections)}</span>
                             <span
                               className={cn('size-1.5 shrink-0 rounded-full', conn.isAuthenticated ? 'bg-success' : 'bg-foreground/20')}
                               aria-label={conn.isAuthenticated ? t('settings.ai.connected') : t('settings.ai.notAuthenticated')}
@@ -1089,70 +1304,52 @@ export default function AiSettingsPage() {
                     <section className="min-w-0 flex-1 md:min-h-0 md:overflow-y-auto">
                       {showProviderCatalog || (!showApiSetup && !selectedConnection) ? (
                         <ProviderCatalog onSelect={handleAddConnection} />
-                      ) : showApiSetup ? (
-                        <div className="max-w-2xl space-y-4 p-5">
-                          <div className="flex justify-end">
-                            <button type="button" onClick={handleCloseApiSetup} aria-label={t('common.close')} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring">
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                          {apiSetupOnboarding.state.step === 'credentials' &&
-                            (apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' || apiSetupOnboarding.state.apiSetupMethod === 'anthropic_api_key') ? (
-                            <>
-                              <ApiKeyInput
-                                key={[editingConnectionSlug, editInitialValues?.activePreset, editInitialValues?.baseUrl].join(':')}
-                                status={apiSetupOnboarding.state.credentialStatus}
-                                errorMessage={apiSetupOnboarding.state.errorMessage}
-                                onSubmit={apiSetupOnboarding.handleSubmitCredential}
-                                providerType={apiSetupOnboarding.state.apiSetupMethod === 'pi_api_key' ? 'pi_api_key' : 'anthropic'}
-                                providerLocked
-                                initialValues={editInitialValues}
-                              />
-                              <div className="flex justify-end gap-2">
-                                <Button variant="outline" size="sm" onClick={handleCloseApiSetup}>{t('common.cancel')}</Button>
-                                <Button size="sm" type="submit" form="api-key-form" disabled={apiSetupOnboarding.state.credentialStatus === 'validating'}>
-                                  {t(apiSetupOnboarding.state.credentialStatus === 'validating' ? 'common.validating' : 'common.save')}
-                                </Button>
+                      ) : showApiSetup && !editingConnectionSlug ? (
+                        <div>
+                          {apiSetupForm}
+                          {draftCatalog?.source === 'provider' && !draftCatalog.error && (
+                            <div className="border-t border-border/60 px-5 py-4">
+                              <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{t('apiSetup.accountCatalog')}</p>
+                              <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-border/60">
+                                {draftCatalog.models.map(model => <div key={model.id} className="border-b border-border/60 px-3 py-2 last:border-b-0">
+                                  <span className="block truncate text-sm font-medium">{model.name}</span>
+                                  {model.name !== model.id && <span className="block truncate text-xs text-muted-foreground">{model.id}</span>}
+                                </div>)}
+                                {draftCatalog.mediaModels?.map(model => <div key={`${model.kind}:${model.id}`} className="border-b border-border/60 px-3 py-2 last:border-b-0">
+                                  <span className="block truncate text-sm font-medium">{model.name}</span>
+                                  <span className="block truncate text-xs text-muted-foreground">{t(model.kind === 'image' ? 'settings.ai.mediaImageModels' : model.kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')} · {model.id}</span>
+                                </div>)}
                               </div>
-                            </>
-                          ) : apiSetupOnboarding.state.step === 'credentials' && apiSetupOnboarding.state.apiSetupMethod ? (
-                            <CredentialsStep
-                              apiSetupMethod={apiSetupOnboarding.state.apiSetupMethod}
-                              status={apiSetupOnboarding.state.credentialStatus}
-                              errorMessage={apiSetupOnboarding.state.errorMessage}
-                              onSubmit={apiSetupOnboarding.handleSubmitCredential}
-                              onStartOAuth={apiSetupOnboarding.handleStartOAuth}
-                              onBack={editingConnectionSlug ? handleCloseApiSetup : handleOpenProviderCatalog}
-                              isWaitingForCode={apiSetupOnboarding.isWaitingForCode}
-                              onSubmitAuthCode={apiSetupOnboarding.handleSubmitAuthCode}
-                              onCancelOAuth={apiSetupOnboarding.handleCancelOAuth}
-                              copilotDeviceCode={apiSetupOnboarding.copilotDeviceCode}
-                            />
-                          ) : apiSetupOnboarding.state.step === 'local-model' ? (
-                            <LocalModelStep
-                              onSubmit={apiSetupOnboarding.handleSubmitLocalModel}
-                              onBack={handleOpenProviderCatalog}
-                              status={apiSetupOnboarding.state.credentialStatus === 'validating' ? 'validating' : apiSetupOnboarding.state.credentialStatus === 'error' ? 'error' : 'idle'}
-                              errorMessage={apiSetupOnboarding.state.errorMessage}
-                            />
-                          ) : null}
+                            </div>
+                          )}
                         </div>
                       ) : selectedConnection ? (
                         <div className="min-w-0">
                           <ConnectionRow
                             connection={selectedConnection}
+                            connections={llmConnections}
                             isLastConnection={llmConnections.length <= 1}
                             onRenameClick={() => handleRenameClick(selectedConnection)}
                             onDelete={() => handleDeleteConnection(selectedConnection.slug)}
                             onSetDefault={() => handleSetDefaultConnection(selectedConnection.slug)}
                             onValidate={() => handleValidateConnection(selectedConnection.slug)}
                             onReauthenticate={() => handleReauthenticateConnection(selectedConnection)}
-                            onEdit={() => handleEditConnection(selectedConnection)}
                             onSetMidStreamBehavior={(behavior) => handleSetMidStreamBehavior(selectedConnection, behavior)}
                             validationState={validationStates[selectedConnection.slug]?.state || 'idle'}
                             validationError={validationStates[selectedConnection.slug]?.error}
                             isDuplicateAccount={!!selectedConnection.oauthAccountUuid && duplicateAccountUuids.has(selectedConnection.oauthAccountUuid)}
                           />
+
+                          {selectedIsApiKey ? <ConnectionApiKeySection
+                            key={selectedConnection.slug}
+                            connection={selectedConnection}
+                            existingSlugs={existingSlugs}
+                            refreshRequestId={catalogRefreshRequestId}
+                            onCatalogChange={handleSelectedCatalogChange}
+                            onDraftKeyChange={setHasPendingApiKey}
+                            onSaved={handleInlineApiSaved}
+                          /> : showApiSetup && editingConnectionSlug === selectedConnection.slug ? apiSetupForm : null}
 
                           {selectedConnection.providerType === 'pi' && selectedConnection.piAuthProvider === 'xai' && selectedConnection.authType === 'oauth'
                             && <GrokSubscriptionUsage key={selectedConnection.slug} connectionSlug={selectedConnection.slug} />}
@@ -1164,107 +1361,69 @@ export default function AiSettingsPage() {
                             <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4">
                               <div>
                                 <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
-                                <p className="mt-0.5 text-xs text-muted-foreground">{t('settings.ai.modelListDesc')}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{t(accountPreview ? 'apiSetup.accountCatalog' : 'settings.ai.modelListDesc')}</p>
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="relative w-44">
-                                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                                  <Input
-                                    value={modelQuery}
-                                    onChange={(event) => setModelQuery(event.target.value)}
-                                    placeholder={t('common.search')}
-                                    aria-label={t('common.search')}
-                                    className="h-8 rounded-lg pl-8 pr-2 text-xs"
-                                  />
-                                </div>
+                                <Button size="sm" variant="outline" onClick={() => setDetailModelId('__add__')}>
+                                  <Plus className="size-3.5" />{t('settings.ai.addModel')}
+                                </Button>
                                 {selectedCanRefreshModels && <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleRefreshModels(selectedConnection.slug)}
+                                  onClick={() => selectedHasLiveAccountCatalog && hasPendingApiKey
+                                    ? setCatalogRefreshRequestId(value => value + 1)
+                                    : void handleRefreshModels(selectedConnection.slug)}
                                   disabled={refreshingModelSlug !== null}
                                   aria-label={t('settings.ai.refreshModels')}
                                 >
                                   <RefreshCcw className={cn('size-3.5', refreshingModelSlug === selectedConnection.slug && 'animate-spin')} />
-                                  <span className="hidden sm:inline">{t(refreshingModelSlug === selectedConnection.slug ? 'settings.ai.refreshingModels' : 'settings.ai.refreshModels')}</span>
+                                  <span>{t(refreshingModelSlug === selectedConnection.slug ? 'settings.ai.refreshingModels' : 'settings.ai.refreshModels')}</span>
                                 </Button>}
                               </div>
                             </div>
-                            {modelKindFilters.length > 1 && <div
-                              role="group"
-                              aria-label={t('settings.ai.modelCapabilityFilter')}
-                              className="flex flex-wrap gap-1 border-t border-border/60 px-5 py-2"
-                            >
-                              {(['all', ...modelKindFilters] as ModelCapabilityFilter[]).map(kind => (
-                                <button
-                                  key={kind}
-                                  type="button"
-                                  aria-pressed={modelKindFilter === kind}
-                                  onClick={() => setModelKindFilter(kind)}
-                                  className={cn(
-                                    'rounded-[6px] px-2.5 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                                    modelKindFilter === kind ? 'bg-foreground/10 text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.05]',
-                                  )}
-                                >
-                                  {t(kind === 'image' ? 'settings.ai.mediaImageModels'
-                                    : kind === 'video' ? 'settings.ai.mediaVideoModels'
-                                      : kind === 'audio' ? 'settings.ai.mediaAudioModels'
-                                      : `settings.ai.modelFilter.${kind}`)}
-                                </button>
-                              ))}
-                            </div>}
-                            {selectedModelOptions.length > 0 ? (
+                            {allSelectedModelOptions.length > 0 ? (
                               <div className="border-t border-border/60">
-                                {selectedModelOptions.map(option => {
-                                  const definition = getConnectionModelDefinition(selectedConnection, option.value)
-                                  const inputModalities = chatInputModalities(definition)
+                                {allSelectedModelOptions.map(option => {
                                   const visible = isModelVisibleInPicker(selectedConnection, option.value)
                                   return (
                                     <div
                                       key={option.value}
                                       className="flex w-full items-center gap-3 border-b border-border/60 px-5 py-3.5 text-left last:border-b-0"
                                     >
-                                      <span className="min-w-0 flex-1">
+                                      <button type="button" onClick={() => setDetailModelId(option.value)}
+                                        aria-label={`${option.label}: ${t('settings.ai.modelCapabilities')}`}
+                                        className="min-w-0 flex-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring">
                                         <span className="block truncate text-sm font-medium">{option.label}</span>
                                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">{option.label !== option.value ? option.value : (option.descriptionKey ? t(option.descriptionKey) : option.description)}</span>
-                                      </span>
-                                      <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                                        {inputModalities.length > 0 && <span
-                                          className="hidden rounded-md bg-foreground/[0.05] px-1.5 py-1 sm:inline-flex"
-                                          title={inputModalities.map(kind => t(`settings.ai.modelInput.${kind}`)).join(', ')}
-                                        >{t('settings.ai.modelFilter.multimodal')}</span>}
-                                        {definition?.contextWindow ? <span className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.05] px-1.5 py-1" title={t('chat.contextUsage.contextWindow')}><Gauge className="size-3" />{formatTokenCount(definition.contextWindow)}</span> : null}
-                                      </span>
-                                      <Switch
+                                      </button>
+                                      {!accountPreview && <Switch
                                         checked={visible}
                                         disabled={pendingVisibilityModel !== null}
                                         onCheckedChange={(checked) => void handleModelVisibilityChange(selectedConnection, option.value, checked)}
                                         aria-label={`${option.label}: ${t('settings.ai.showInModelPicker')}`}
-                                      />
+                                      />}
                                     </div>
                                   )
                                 })}
                               </div>
-                            ) : (modelKindFilter === 'chat' || modelKindFilter === 'multimodal'
-                              || (modelKindFilter === 'all' && !selectedHasMediaCatalog)) && (
+                            ) : !selectedHasMediaCatalog && (
                               <p className="border-t border-border/60 px-5 py-4 text-sm text-muted-foreground">
-                                {t(allSelectedModelOptions.length ? 'settings.ai.noMatchingModels' : 'settings.ai.noModels')}
+                                {t('settings.ai.noModels')}
                               </p>
                             )}
                           </div>
-                          {selectedHasMediaCatalog && (modelKindFilter === 'all' || modelKindFilter === 'image' || modelKindFilter === 'video' || modelKindFilter === 'audio') && (
+                          {selectedHasMediaCatalog && (
                             <div className="border-t border-border/60 px-5 py-4">
                               <h3 className="text-sm font-semibold">{t('settings.ai.mediaModels')}</h3>
                               <p className="mt-0.5 text-xs text-muted-foreground">{t(selectedHasCodexSubscriptionCatalog ? 'settings.ai.mediaModelsCodexDesc' : 'settings.ai.mediaModelsDesc')}</p>
-                              {mediaCatalog?.slug === selectedConnection.slug ? (
+                              {displayedMediaCatalog?.slug === selectedConnection.slug ? (
                                 <>
-                                  {mediaCatalog.status !== 'available' && <p className="mt-3 text-xs text-muted-foreground">
-                                    {t(mediaCatalog.status === 'documented' ? 'settings.ai.mediaModelsCodexUnverified' :
-                                      mediaCatalog.status === 'partial' ? 'settings.ai.mediaModelsPartial' : 'settings.ai.mediaModelsUnavailable')}
+                                  {displayedMediaCatalog.status !== 'available' && <p className="mt-3 text-xs text-muted-foreground">
+                                    {t(displayedMediaCatalog.status === 'documented' ? 'settings.ai.mediaModelsCodexUnverified' :
+                                      displayedMediaCatalog.status === 'partial' ? 'settings.ai.mediaModelsPartial' : 'settings.ai.mediaModelsUnavailable')}
                                   </p>}
                                   {(['image', 'video', 'audio'] as const).map(kind => {
-                                    const rows = mediaCatalog.models.filter(model => model.kind === kind
-                                      && mediaModelMatchesFilter(model.kind, modelKindFilter)
-                                      && `${model.name} ${model.id}`.toLowerCase().includes(modelQuery.trim().toLowerCase()))
+                                    const rows = displayedMediaCatalog.models.filter(model => model.kind === kind)
                                     if (!rows.length) return null
                                     return <div key={kind} className="mt-4">
                                       <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t(kind === 'image' ? 'settings.ai.mediaImageModels' : kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')}</h4>
@@ -1276,11 +1435,7 @@ export default function AiSettingsPage() {
                                       </div>)}
                                     </div>
                                   })}
-                                  {mediaCatalog.status === 'available' && !mediaCatalog.models.length && <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.mediaModelsEmpty')}</p>}
-                                  {modelKindFilter !== 'all' && mediaCatalog.models.length > 0 && !mediaCatalog.models.some(model =>
-                                    mediaModelMatchesFilter(model.kind, modelKindFilter)
-                                    && `${model.name} ${model.id}`.toLowerCase().includes(modelQuery.trim().toLowerCase())
-                                  ) && <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.noMatchingModels')}</p>}
+                                  {displayedMediaCatalog.status === 'available' && !displayedMediaCatalog.models.length && <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.mediaModelsEmpty')}</p>}
                                 </>
                               ) : <p className="mt-3 text-xs text-muted-foreground">{t('settings.ai.refreshingModels')}</p>}
                             </div>
@@ -1369,7 +1524,14 @@ export default function AiSettingsPage() {
                 </SettingsCard>
               </SettingsSection>}
 
-              {/* Rename Connection Dialog */}
+              {selectedConnection && <ModelDetailsDialog
+                connection={selectedConnection}
+                modelId={detailModelId}
+                model={detailModel}
+                accountContextWindow={detailContextWindow}
+                onClose={() => setDetailModelId(null)}
+                onSaved={refreshLlmConnections}
+              />}
               <RenameDialog
                 open={renameDialogOpen}
                 onOpenChange={setRenameDialogOpen}

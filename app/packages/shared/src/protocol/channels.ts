@@ -197,6 +197,7 @@ export const RPC_CHANNELS = {
     SAVE: 'LLM_Connection:save',
     SET_MODEL: 'LLM_Connection:setModel',
     SET_MODEL_VISIBILITY: 'LLM_Connection:setModelVisibility',
+    SET_MODEL_DETAILS: 'LLM_Connection:setModelDetails',
     DELETE: 'LLM_Connection:delete',
     TEST: 'LLM_Connection:test',
     SET_DEFAULT: 'LLM_Connection:setDefault',

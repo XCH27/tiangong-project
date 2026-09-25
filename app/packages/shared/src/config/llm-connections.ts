@@ -100,7 +100,7 @@ export type ModelSelectionMode = 'automaticallySyncedFromProvider' | 'userDefine
  * Protocol for custom API endpoints.
  * Determines which streaming adapter the Pi SDK uses for requests.
  */
-export type CustomEndpointApi = 'openai-completions' | 'anthropic-messages';
+export type CustomEndpointApi = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai';
 
 /**
  * Custom endpoint protocol config.
@@ -127,6 +127,16 @@ export interface CustomEndpointConfig {
  * created before this field existed still pick up the right default.
  */
 export type MidStreamBehavior = 'steer' | 'queue';
+
+/** User corrections live on the connection, separately from the replaceable account catalog. */
+export interface ManualModelSettings {
+  name?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  supportsImages?: boolean;
+  reasoningEfforts?: ModelDefinition['reasoningEfforts'];
+  reasoningDisableSupported?: boolean;
+}
 
 /**
  * LLM Connection configuration.
@@ -159,6 +169,11 @@ export interface LlmConnection {
 
   /** Explicit picker visibility overrides; absence means the discovered model is shown. */
   hiddenModelIds?: string[];
+
+  /** Explicitly added runnable model IDs; refreshed account lists do not silently erase them. */
+  manualModelIds?: string[];
+  /** Per-model user corrections, merged after each account/SDK refresh. */
+  manualModelOverrides?: Record<string, ManualModelSettings>;
 
   /** Default model for this connection */
   defaultModel?: string;
@@ -229,6 +244,45 @@ export interface LlmConnectionWithStatus extends LlmConnection {
 /** Display preference only: a hidden model remains available to an existing session. */
 export function isModelVisibleInPicker(connection: LlmConnection, modelId: string): boolean {
   return !connection.hiddenModelIds?.includes(modelId);
+}
+
+/** Merge user corrections after discovery without replacing the catalog's ownership. */
+export function applyManualModelSettings(
+  connection: Pick<LlmConnection, 'models' | 'manualModelIds' | 'manualModelOverrides' | 'providerType' | 'piAuthProvider'>,
+  catalog: readonly (ModelDefinition | string)[],
+  bundled: readonly ModelDefinition[] = getModelsForProviderType(connection.providerType, connection.piAuthProvider),
+): Array<ModelDefinition | string> {
+  const result = [...catalog];
+  const present = new Set(result.map(model => typeof model === 'string' ? model : model.id));
+  for (const id of connection.manualModelIds ?? []) {
+    if (present.has(id)) continue;
+    const saved = connection.models?.find(model => (typeof model === 'string' ? model : model.id) === id);
+    const native = bundled.find(model => model.id === id);
+    if (!saved && !native) continue;
+    result.push(saved ?? native!);
+    present.add(id);
+  }
+  return result.map(model => {
+    const id = typeof model === 'string' ? model : model.id;
+    const settings = connection.manualModelOverrides?.[id];
+    if (!settings) return model;
+    const base: ModelDefinition = typeof model === 'string'
+      ? bundled.find(candidate => candidate.id === id) ?? {
+        id, name: id, shortName: id, description: '',
+        provider: connection.providerType === 'anthropic' ? 'anthropic' : 'pi',
+      }
+      : model;
+    const next: ModelDefinition = { ...base, ...settings };
+    if (settings.name) next.shortName = settings.name;
+    if (settings.supportsImages !== undefined) {
+      next.modalities = {
+        input: settings.supportsImages ? ['text', 'image'] : ['text'],
+        output: base.modalities?.output ?? ['text'],
+      };
+    }
+    if (settings.reasoningEfforts !== undefined) next.supportsThinking = settings.reasoningEfforts.length > 0;
+    return next;
+  });
 }
 
 // ============================================================
@@ -434,6 +488,47 @@ export function authTypeRequiresEndpoint(authType: LlmAuthType): boolean {
  */
 export function isCompatProvider(providerType: LlmProviderType): boolean {
   return providerType === 'pi_compat';
+}
+
+/** Provider brand shown in connection settings. The agent runtime is not the provider. */
+const PI_AUTH_PROVIDER_NAMES: Readonly<Record<string, string>> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  'openai-codex': 'ChatGPT / Codex',
+  google: 'Google AI Studio',
+  openrouter: 'OpenRouter',
+  'azure-openai-responses': 'Azure OpenAI',
+  'amazon-bedrock': 'Amazon Bedrock',
+  groq: 'Groq',
+  mistral: 'Mistral',
+  deepseek: 'DeepSeek',
+  xai: 'xAI',
+  cerebras: 'Cerebras',
+  zai: 'z.ai',
+  huggingface: 'Hugging Face',
+  minimax: 'MiniMax',
+  'minimax-cn': 'MiniMax (CN)',
+  'kimi-coding': 'Kimi Coding',
+  moonshotai: 'Moonshot AI',
+  'moonshotai-cn': 'Moonshot AI (CN)',
+  'vercel-ai-gateway': 'Vercel AI Gateway',
+};
+
+export function getPiAuthProviderName(provider: string | undefined): string | null {
+  return provider ? PI_AUTH_PROVIDER_NAMES[provider] ?? null : null;
+}
+
+/** Official API endpoints whose authenticated model catalogs can replace a saved list. */
+export function isOfficialApiModelCatalogConnection(
+  connection: Pick<LlmConnection, 'providerType' | 'piAuthProvider' | 'authType' | 'baseUrl' | 'customEndpoint'>,
+): boolean {
+  if (connection.providerType !== 'pi' || connection.authType !== 'api_key' || connection.customEndpoint) return false;
+  const baseUrl = connection.baseUrl?.trim().replace(/\/+$/, '');
+  return (connection.piAuthProvider === 'openai' && (!baseUrl || baseUrl === 'https://api.openai.com/v1'))
+    || (connection.piAuthProvider === 'google' && (!baseUrl || baseUrl === 'https://generativelanguage.googleapis.com/v1beta'))
+    || (connection.piAuthProvider === 'deepseek' && (!baseUrl || baseUrl === 'https://api.deepseek.com'))
+    || (connection.piAuthProvider === 'groq' && (!baseUrl || baseUrl === 'https://api.groq.com/openai/v1'))
+    || (connection.piAuthProvider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai' || baseUrl === 'https://api.mistral.ai/v1'));
 }
 
 /**

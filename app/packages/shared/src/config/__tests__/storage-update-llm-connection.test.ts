@@ -134,6 +134,17 @@ describe('updateLlmConnection – model picker visibility', () => {
   })
 })
 
+describe('updateLlmConnection – manual model settings', () => {
+  it('retains per-model corrections across unrelated connection updates', () => {
+    const { runUpdate, readConnection } = setup([makeConnection({ models: ['pi/model-a'] })])
+    const manualModelIds = ['pi/model-b']
+    const manualModelOverrides = { 'pi/model-b': { contextWindow: 262_144, maxOutputTokens: 8_192 } }
+    expect(runUpdate('custom-compat', { manualModelIds, manualModelOverrides })).toBe(true)
+    expect(runUpdate('custom-compat', { name: 'Renamed' })).toBe(true)
+    expect(readConnection('custom-compat')).toMatchObject({ manualModelIds, manualModelOverrides, name: 'Renamed' })
+  })
+})
+
 describe('updateLlmConnection – Anthropic OAuth identity (issue #838)', () => {
   const identity = {
     oauthAccountUuid: 'acct-uuid-123',

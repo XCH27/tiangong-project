@@ -68,8 +68,8 @@ import type { ExportResourcesOptions, ExportResult, ResourceImportMode, Resource
 export type { ExportResourcesOptions, ExportResult, ResourceImportMode, ResourceBundle, ResourceImportResult };
 
 // LLM connection types
-import type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, NetworkProxySettings } from '@craft-agent/shared/config';
-export type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, NetworkProxySettings };
+import type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, ManualModelSettings, NetworkProxySettings } from '@craft-agent/shared/config';
+export type { LlmConnection, LlmConnectionWithStatus, LlmAuthType, LlmProviderType, ManualModelSettings, NetworkProxySettings };
 
 // =============================================================================
 // GUI-only types (not used by server/handler code)
@@ -449,7 +449,7 @@ export interface ElectronAPI {
   // Pi provider discovery (main process only — Pi SDK can't run in renderer)
   getPiApiKeyProviders(): Promise<Array<{ key: string; label: string; placeholder: string }>>
   getPiProviderBaseUrl(provider: string): Promise<string | undefined>
-  getPiProviderModels(provider: string, apiKey?: string, connectionSlug?: string, baseUrl?: string): Promise<{ models: Array<{ id: string; name: string; costInput?: number; costOutput?: number; contextWindow: number; reasoning: boolean }>; totalCount: number; source?: 'provider' | 'sdk'; error?: string; mediaModels?: Array<{ id: string; name: string; kind: 'image' | 'video' | 'audio'; audioMode?: 'speech' | 'transcription' | 'generation' | 'realtime'; inputModalities?: string[]; outputModalities?: string[] }>; mediaCatalogStatus?: 'available' | 'partial' | 'unavailable' | 'documented' }>
+  getPiProviderModels(provider: string, apiKey?: string, connectionSlug?: string, baseUrl?: string, customApi?: import('@craft-agent/shared/config').CustomEndpointApi): Promise<{ models: Array<{ id: string; name: string; costInput?: number; costOutput?: number; contextWindow: number; reasoning: boolean }>; totalCount: number; source?: 'provider' | 'sdk'; error?: string; mediaModels?: Array<{ id: string; name: string; kind: 'image' | 'video' | 'audio'; audioMode?: 'speech' | 'transcription' | 'generation' | 'realtime'; inputModalities?: string[]; outputModalities?: string[] }>; mediaCatalogStatus?: 'available' | 'partial' | 'unavailable' | 'documented' }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
@@ -661,6 +661,7 @@ export interface ElectronAPI {
   saveLlmConnection(connection: LlmConnection): Promise<{ success: boolean; error?: string }>
   setLlmConnectionModel(slug: string, model: string): Promise<{ success: boolean; error?: string }>
   setLlmConnectionModelVisibility(slug: string, model: string, visible: boolean): Promise<{ success: boolean; error?: string }>
+  setLlmConnectionModelDetails(slug: string, modelId: string, settings: ManualModelSettings, add: boolean): Promise<{ success: boolean; error?: string }>
   deleteLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   testLlmConnection(slug: string): Promise<{ success: boolean; error?: string }>
   refreshLlmConnectionModels(slug: string): Promise<{ success: boolean; source?: 'provider' | 'sdk' | 'saved' | 'registry' | 'manual' | 'unavailable' | 'superseded'; error?: string }>

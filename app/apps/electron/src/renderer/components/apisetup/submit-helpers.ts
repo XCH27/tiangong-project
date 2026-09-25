@@ -83,7 +83,7 @@ export function resolveCustomEndpointPayload(params: {
   return {
     customEndpoint: isCustomEndpoint ? { api: effectiveApi } : undefined,
     piAuthProvider: isCustomEndpoint
-      ? (effectiveApi === 'anthropic-messages' ? 'anthropic' : 'openai')
+      ? (effectiveApi === 'anthropic-messages' ? 'anthropic' : effectiveApi === 'google-generative-ai' ? 'google' : 'openai')
       : fallbackPiAuthProvider,
   }
 }

@@ -5,6 +5,19 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Custom API connections now choose their actual request format in the same credential form:
+  OpenAI Chat Completions, OpenAI Responses, Anthropic Messages or Google Generative AI. The
+  selected format persists with the connection and uses Pi's matching direct adapter; native
+  provider connections keep their provider-owned discovery and transport. Custom addresses read
+  bounded model-ID candidates with matching auth headers and allow explicit import or manual entry;
+  IDs alone do not become capability claims. Editing an unchanged provider route tests the model
+  before saving; changing provider, endpoint or API format requires re-entering the key.
+- Simplified the bounded Model Settings provider panel: the selected connection keeps its key,
+  direct model list, refresh and test in one place, without the extra search/filter toolbar or
+  speculative row capability badges. Model details now allow per-connection corrections to name,
+  context, output limit, image input and reasoning levels; supported missing IDs can be added
+  manually. Corrections survive catalog refresh. Edited API keys are tested once before saving using
+  the existing connection validator. Multiple accounts of one provider retain separate credentials.
 - Moved the existing release-notes reader from desktop and compact Craft menus beside the version in Settings → App → About, labelled Release Notes in all supported UI languages. Its unread indicator follows the action; the next row has a stable Software Updates label while its button reflects the update state. Update checking and document contents are unchanged.
 - Model Settings no longer shows a workspace model override, a repeated connection-model picker,
   or a global thinking default. New conversations use the selected connection's model fallback
@@ -14,10 +27,9 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ### 2026-09-24 — account-scoped API model discovery
 
-- Model Settings now groups the selected connection's models by verified conversation, multimodal
-  input, image-generation, video-generation and audio capability. Multimodal chat models stay
-  available for conversation; media-only rows remain read-only. The filter shows only groups with
-  catalog evidence and does not infer capability for unknown models.
+- Model Settings distinguishes conversation models from authenticated or documented media-only
+  image, video and audio rows. The latter remain read-only until a media executor and entitlement
+  check exist; unknown capability is not guessed.
 - OpenAI Platform API-key connections now classify account-visible image, video and audio model
   families from the same authenticated models response. Audio rows distinguish speech generation,
   transcription and realtime modes. Media rows remain read-only; account listing alone does not

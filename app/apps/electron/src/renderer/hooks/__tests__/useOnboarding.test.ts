@@ -34,11 +34,20 @@ describe('resolveSlugForMethod', () => {
   it('works for all setup methods', () => {
     const methods: ApiSetupMethod[] = [
       'anthropic_api_key', 'claude_oauth',
-      'pi_chatgpt_oauth', 'pi_copilot_oauth', 'pi_api_key',
+      'pi_chatgpt_oauth', 'pi_copilot_oauth', 'pi_xai_oauth', 'pi_api_key',
     ]
     for (const method of methods) {
       const slug = resolveSlugForMethod(method, null, new Set())
       expect(slug).toBe(BASE_SLUG_FOR_METHOD[method])
+    }
+  })
+
+  it('keeps same-method API keys and subscription logins as separate connections', () => {
+    for (const method of ['pi_api_key', 'claude_oauth', 'pi_chatgpt_oauth', 'pi_copilot_oauth', 'pi_xai_oauth'] as ApiSetupMethod[]) {
+      const base = BASE_SLUG_FOR_METHOD[method]
+      const existing = new Set([base, `${base}-2`])
+      expect(resolveSlugForMethod(method, null, existing)).toBe(`${base}-3`)
+      expect(resolveSlugForMethod(method, `${base}-2`, existing)).toBe(`${base}-2`)
     }
   })
 })

@@ -28,6 +28,27 @@ function providerModelsHandler(): HandlerFn {
 }
 
 describe('pre-save account model discovery', () => {
+  it('returns custom endpoint IDs as candidate rows without inferred capability metadata', async () => {
+    const calls: Array<{ url: string; authorization: string | null }> = []
+    setOAuthTokenFetcher(async (url, init) => {
+      calls.push({ url, authorization: new Headers(init.headers).get('authorization') })
+      return new Response(JSON.stringify({ data: [{ id: 'model-a' }, { id: 'model-b' }] }))
+    })
+    try {
+      const result = await providerModelsHandler()(
+        ctx, 'custom', 'test-key', undefined, 'https://gateway.example/v1', 'openai-responses',
+      ) as { source: string; models: Array<{ id: string; name: string; contextWindow: number; reasoning: boolean }> }
+      expect(calls).toEqual([{ url: 'https://gateway.example/v1/models', authorization: 'Bearer test-key' }])
+      expect(result.source).toBe('provider')
+      expect(result.models).toEqual([
+        { id: 'pi/model-a', name: 'model-a', contextWindow: 0, reasoning: false },
+        { id: 'pi/model-b', name: 'model-b', contextWindow: 0, reasoning: false },
+      ])
+    } finally {
+      setOAuthTokenFetcher(null)
+    }
+  })
+
   it('returns OpenAI API media membership beside, but outside, Pi chat models', async () => {
     const chat = getModels('openai').find(model => model.id === 'gpt-5.6-sol')!
     const calls: string[] = []

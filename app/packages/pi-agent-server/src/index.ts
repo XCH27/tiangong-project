@@ -479,10 +479,12 @@ function registerCustomEndpointModels(
 ): void {
   for (const m of models) {
     customEndpointModelIds.add(m.id);
-    if (m.contextWindow || m.supportsImages !== undefined) {
+    if (m.contextWindow || m.maxOutputTokens || m.supportsImages !== undefined || m.reasoningEfforts !== undefined) {
       customModelOverrides.set(m.id, {
         ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+        ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
         ...(m.supportsImages !== undefined ? { supportsImages: m.supportsImages } : {}),
+        ...(m.reasoningEfforts !== undefined ? { reasoningEfforts: m.reasoningEfforts } : {}),
       });
     }
   }
@@ -491,7 +493,9 @@ function registerCustomEndpointModels(
     baseUrl,
     apiKey: resolveCustomEndpointApiKey(),
     api,
-    authHeader: true,
+    // OpenAI-compatible routes use Bearer. The Anthropic and Google adapters
+    // send x-api-key and x-goog-api-key respectively from the same credential.
+    authHeader: api === 'openai-completions' || api === 'openai-responses',
     models: allIds.map(id => buildCustomEndpointModelDef(
       id,
       { supportsImages: initConfig?.customEndpoint?.supportsImages === true },

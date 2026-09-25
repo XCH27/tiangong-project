@@ -2767,6 +2767,8 @@ export function updateLlmConnection(slug: string, updates: Partial<Omit<LlmConne
     baseUrl: updates.baseUrl !== undefined ? updates.baseUrl : existing.baseUrl,
     models: updates.models !== undefined ? updates.models : existing.models,
     hiddenModelIds: updates.hiddenModelIds !== undefined ? updates.hiddenModelIds : existing.hiddenModelIds,
+    manualModelIds: updates.manualModelIds !== undefined ? updates.manualModelIds : existing.manualModelIds,
+    manualModelOverrides: updates.manualModelOverrides !== undefined ? updates.manualModelOverrides : existing.manualModelOverrides,
     defaultModel: updates.defaultModel !== undefined ? updates.defaultModel : existing.defaultModel,
     modelSelectionMode: updates.modelSelectionMode !== undefined ? updates.modelSelectionMode : existing.modelSelectionMode,
     // Pi auth provider

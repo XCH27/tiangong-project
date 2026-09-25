@@ -14,6 +14,31 @@ function model(id: string): ModelDefinition {
 }
 
 describe('model refresh account isolation', () => {
+  it('keeps manual model corrections and explicitly added models after catalog refresh', async () => {
+    let connection: LlmConnection = {
+      slug: 'account', name: 'Account', providerType: 'pi', authType: 'api_key',
+      piAuthProvider: 'openai', modelSelectionMode: 'automaticallySyncedFromProvider', createdAt: 1,
+      models: [model('pi/current'), model('pi/manual')], manualModelIds: ['pi/manual'],
+      manualModelOverrides: { 'pi/current': { contextWindow: 256_000, supportsImages: true } },
+    }
+    const fetcher = { refreshIntervalMs: 0, fetchModels: async () => ({
+      models: [model('pi/current'), model('pi/new')], source: 'provider' as const,
+    }) }
+    const service = new ModelRefreshService(
+      { pi: fetcher, anthropic: fetcher } as ModelFetcherMap,
+      async () => ({ apiKey: 'test' }),
+      {
+        getConnection: () => connection,
+        getConnections: () => [connection],
+        updateConnection: (_slug, updates) => { connection = { ...connection, ...updates }; return true },
+        fallbackModels: () => [],
+      },
+    )
+    expect((await service.refreshConnection('account')).source).toBe('provider')
+    expect(connection.models?.map(entry => typeof entry === 'string' ? entry : entry.id)).toEqual(['pi/current', 'pi/new', 'pi/manual'])
+    expect(connection.models?.[0]).toMatchObject({ contextWindow: 256_000, supportsImages: true })
+  })
+
   it('drops a response when the OAuth account changes under the same connection slug', async () => {
     let connection: LlmConnection = {
       slug: 'claude', name: 'Claude', providerType: 'anthropic', authType: 'oauth',

@@ -1,5 +1,5 @@
 import { RPC_CHANNELS, type LlmConnectionSetup } from '@craft-agent/shared/protocol'
-import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, getModelsForProviderType, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
+import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, getModelsForProviderType, applyManualModelSettings, type LlmConnection, type LlmConnectionWithStatus, type ManualModelSettings, type ModelDefinition, type CustomEndpointApi, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { setSetupDeferred } from '@craft-agent/shared/config/storage'
 import {
@@ -7,13 +7,14 @@ import {
   testBackendConnection,
   validateStoredBackendConnection,
   fetchBackendModels,
+  fetchCustomEndpointModelIds,
   fetchXaiApiModels,
   fetchXaiApiMediaModels,
   fetchXaiSubscriptionModels,
   XAI_SUBSCRIPTION_BASE,
 } from '@craft-agent/shared/agent/backend'
 import { getModelRefreshService } from '@craft-agent/server-core/model-fetchers'
-import { parseTestConnectionError, createBuiltInConnection, validateModelList, piAuthProviderDisplayName, validateSetupTestInput, setupTestRequiresApiKey, resolveCustomEndpointSetup } from '@craft-agent/server-core/domain'
+import { parseTestConnectionError, createBuiltInConnection, validateModelList, piAuthProviderDisplayName, validateSetupTestInput, setupTestRequiresApiKey, resolveCustomEndpointSetup, canReuseStoredApiKey } from '@craft-agent/server-core/domain'
 import { getWorkspaceOrThrow, buildBackendHostRuntimeContext } from '@craft-agent/server-core/handlers'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -33,6 +34,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.llmConnections.SAVE,
   RPC_CHANNELS.llmConnections.SET_MODEL,
   RPC_CHANNELS.llmConnections.SET_MODEL_VISIBILITY,
+  RPC_CHANNELS.llmConnections.SET_MODEL_DETAILS,
   RPC_CHANNELS.llmConnections.DELETE,
   RPC_CHANNELS.llmConnections.TEST,
   RPC_CHANNELS.llmConnections.SET_DEFAULT,
@@ -106,6 +108,16 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         && setup.baseUrl?.trim().replace(/\/+$/, '') === 'https://api.x.ai/v1'
       const configuredBaseUrl = isNativeXaiEndpoint ? undefined : setup.baseUrl?.trim() || undefined
       const hasConfiguredBaseUrl = !!configuredBaseUrl
+      const replacingCredential = !!setup.credential?.trim() && !setup.credential.includes('••')
+      if (!isNewConnection && (connection.authType === 'api_key' || connection.authType === 'api_key_with_endpoint')
+        && !replacingCredential && !canReuseStoredApiKey(connection, {
+          providerType: setup.customEndpoint ? 'pi_compat' : connection.providerType,
+          baseUrl: configuredBaseUrl,
+          piAuthProvider: setup.piAuthProvider ?? connection.piAuthProvider,
+          customEndpoint: setup.customEndpoint,
+        })) {
+        return { success: false, error: 'Re-enter the API key after changing the provider, endpoint or API format' }
+      }
       if (setup.baseUrl !== undefined) {
         updates.baseUrl = configuredBaseUrl
 
@@ -148,7 +160,9 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
           credential: setup.credential ?? undefined,
           customEndpointApi: customEndpoint.api,
         })
-        updates.authType = branch.authType
+        // A blank edit keeps the already keyed local endpoint keyed.
+        updates.authType = !replacingCredential && connection.authType === 'api_key_with_endpoint'
+          ? connection.authType : branch.authType
         if (branch.name !== undefined) updates.name = branch.name
         if (branch.piAuthProvider !== undefined) updates.piAuthProvider = branch.piAuthProvider
 
@@ -176,8 +190,12 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
           // API-key presets use the provider name; a subscription keeps its
           // built-in account name and discovers its own account-scoped models.
           const providerName = piAuthProviderDisplayName(setup.piAuthProvider)
-          if (providerName) {
-            updates.name = `Craft Agents Backend (${providerName})`
+          if (providerName && (isNewConnection || /^Craft Agents Backend \([^)]+\)(?: \d+)?$/.test(connection.name))) {
+            // Pi API-key slugs are numbered across every vendor. Number the
+            // visible connection only among accounts of this provider.
+            const sameProviderCount = getLlmConnections().filter(candidate => candidate.slug !== setup.slug
+              && candidate.authType === 'api_key' && candidate.piAuthProvider === setup.piAuthProvider).length
+            updates.name = sameProviderCount ? `${providerName} ${sameProviderCount + 1}` : providerName
           }
           // Only seed models for a standard Pi API-key provider when none were selected.
           if (!hasConfiguredBaseUrl && !setup.models?.length) {
@@ -233,7 +251,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       }
 
       const effectiveProviderType = updates.providerType ?? connection.providerType
-      if (effectiveProviderType === 'pi') {
+      if (effectiveProviderType === 'pi' || effectiveProviderType === 'pi_compat') {
         const isBedrockPi = (updates.piAuthProvider ?? connection.piAuthProvider) === 'amazon-bedrock'
         // For Pi+Bedrock, normalize bare Anthropic IDs to Bedrock-native before adding pi/ prefix
         // so that resolvePiModel() can find them in the amazon-bedrock registry.
@@ -374,8 +392,25 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
   // Unified connection test — uses the agent factory to spawn a real agent subprocess
   // and validate credentials via runMiniCompletion(). Same code path as actual chat.
   server.handle(RPC_CHANNELS.settings.TEST_LLM_CONNECTION_SETUP, async (_ctx, params: import('@craft-agent/shared/protocol').TestLlmConnectionParams): Promise<import('@craft-agent/shared/protocol').TestLlmConnectionResult> => {
-    const { provider, apiKey, baseUrl, model, piAuthProvider, customEndpoint } = params
-    const trimmedKey = apiKey?.trim() ?? ''
+    const { provider, apiKey, baseUrl, model, piAuthProvider, customEndpoint, existingConnectionSlug } = params
+    let trimmedKey = apiKey?.trim() ?? ''
+    if (!trimmedKey && existingConnectionSlug) {
+      const existing = getLlmConnection(existingConnectionSlug)
+      if (!existing) {
+        return { success: false, error: 'Existing API connection was not found' }
+      }
+      if (existing.authType !== 'none') {
+        if (!canReuseStoredApiKey(existing, {
+          providerType: customEndpoint ? 'pi_compat' : provider,
+          baseUrl,
+          piAuthProvider,
+          customEndpoint,
+        })) {
+          return { success: false, error: 'Re-enter the API key after changing the provider, endpoint or API format' }
+        }
+        trimmedKey = await getCredentialManager().getLlmApiKey(existingConnectionSlug) ?? ''
+      }
+    }
     const allowEmptyApiKey = !setupTestRequiresApiKey(baseUrl)
 
     if (!trimmedKey && !allowEmptyApiKey) {
@@ -435,8 +470,32 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     return getPiProviderBaseUrl(provider)
   })
 
-  server.handle(RPC_CHANNELS.pi.GET_PROVIDER_MODELS, async (_ctx, provider: string, apiKey?: string, connectionSlug?: string, baseUrl?: string) => {
+  server.handle(RPC_CHANNELS.pi.GET_PROVIDER_MODELS, async (_ctx, provider: string, apiKey?: string, connectionSlug?: string, baseUrl?: string, customApi?: CustomEndpointApi) => {
     let effectiveKey = apiKey?.trim()
+    if (provider === 'custom') {
+      const stored = connectionSlug ? getLlmConnection(connectionSlug) : null
+      const matchingStored = stored?.providerType === 'pi_compat'
+        && stored.baseUrl === baseUrl && stored.customEndpoint?.api === customApi
+      if (!effectiveKey && matchingStored) {
+        effectiveKey = await getCredentialManager().getLlmApiKey(connectionSlug!) ?? undefined
+      }
+      if (!baseUrl || !customApi) {
+        return { models: [], totalCount: 0, source: 'sdk' as const, error: 'API base URL and format are required' }
+      }
+      try {
+        const ids = await fetchCustomEndpointModelIds(baseUrl, effectiveKey ?? '', customApi)
+        return {
+          // IDs are candidates only. This response does not confer chat,
+          // context, effort or multimodal capability on a custom endpoint.
+          models: ids.map(id => ({ id: `pi/${id}`, name: id, contextWindow: 0, reasoning: false })),
+          totalCount: ids.length,
+          source: 'provider' as const,
+        }
+      } catch (error) {
+        return { models: [], totalCount: 0, source: 'sdk' as const,
+          error: error instanceof Error ? error.message : String(error) }
+      }
+    }
     if (provider === 'xai' && !effectiveKey && connectionSlug) {
       const connection = getLlmConnection(connectionSlug)
       if (connection?.providerType === 'pi' && connection.piAuthProvider === 'xai' && connection.authType === 'api_key') {
@@ -683,6 +742,60 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     if (!updateLlmConnection(slug, { hiddenModelIds: [...hidden] })) {
       return { success: false, error: 'Failed to update connection' }
     }
+    return { success: true }
+  })
+
+  // Write only this model's user correction. A full renderer snapshot would
+  // overwrite a catalog refreshed while the details dialog was open.
+  server.handle(RPC_CHANNELS.llmConnections.SET_MODEL_DETAILS, async (_ctx, slug: string, rawId: string, settings: ManualModelSettings, add: boolean): Promise<{ success: boolean; error?: string }> => {
+    const connection = getLlmConnection(slug)
+    if (!connection) return { success: false, error: 'Connection not found' }
+    const bareId = rawId?.trim().replace(/^pi\//, '')
+    if (!bareId || bareId.length > 160 || /\s/.test(bareId)) return { success: false, error: 'Enter a valid model ID' }
+    const id = connection.providerType === 'pi' || connection.providerType === 'pi_compat' ? `pi/${bareId}` : bareId
+    const bundled = getModelsForProviderType(connection.providerType, connection.piAuthProvider)
+    const current = connection.models?.find(entry => (typeof entry === 'string' ? entry : entry.id) === id)
+    const native = bundled.find(entry => entry.id === id)
+    if (add && current) return { success: false, error: 'Model is already in this connection' }
+    if (!add && !current) return { success: false, error: 'Model is no longer in this connection' }
+    // Pi can register arbitrary IDs only for an explicitly configured custom
+    // endpoint. Native providers must have an installed executable route.
+    if (add && !connection.customEndpoint && !native) return { success: false, error: 'Model has no installed runtime route for this provider' }
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return { success: false, error: 'Invalid model settings' }
+    const validInteger = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 10_000_000
+    if (settings.name !== undefined && (typeof settings.name !== 'string' || !settings.name.trim() || settings.name.length > 160)) return { success: false, error: 'Invalid model name' }
+    if (settings.contextWindow !== undefined && !validInteger(settings.contextWindow)) return { success: false, error: 'Invalid context window' }
+    if (settings.maxOutputTokens !== undefined && !validInteger(settings.maxOutputTokens)) return { success: false, error: 'Invalid output limit' }
+    if (settings.contextWindow && settings.maxOutputTokens && settings.maxOutputTokens > settings.contextWindow) return { success: false, error: 'Output limit exceeds context window' }
+    if (settings.supportsImages !== undefined && typeof settings.supportsImages !== 'boolean') return { success: false, error: 'Invalid image capability' }
+    const efforts = ['low', 'medium', 'high', 'xhigh', 'max']
+    if (settings.reasoningEfforts !== undefined && (!Array.isArray(settings.reasoningEfforts)
+      || settings.reasoningEfforts.some(value => !efforts.includes(value)))) return { success: false, error: 'Invalid reasoning levels' }
+    if (settings.reasoningDisableSupported !== undefined && typeof settings.reasoningDisableSupported !== 'boolean') return { success: false, error: 'Invalid reasoning off setting' }
+    if (add && connection.customEndpoint && (!settings.contextWindow || !settings.maxOutputTokens)) return { success: false, error: 'Custom models require context and output limits' }
+
+    const sanitized: ManualModelSettings = {
+      ...(settings.name ? { name: settings.name.trim() } : {}),
+      ...(settings.contextWindow ? { contextWindow: settings.contextWindow } : {}),
+      ...(settings.maxOutputTokens ? { maxOutputTokens: settings.maxOutputTokens } : {}),
+      ...(settings.supportsImages !== undefined ? { supportsImages: settings.supportsImages } : {}),
+      ...(settings.reasoningEfforts !== undefined ? { reasoningEfforts: [...new Set(settings.reasoningEfforts)] } : {}),
+      ...(settings.reasoningDisableSupported !== undefined ? { reasoningDisableSupported: settings.reasoningDisableSupported } : {}),
+    }
+    const manualModelIds = add ? [...new Set([...(connection.manualModelIds ?? []), id])] : connection.manualModelIds
+    const manualModelOverrides = { ...connection.manualModelOverrides, [id]: sanitized }
+    const base: ModelDefinition | string = native ?? {
+      id, name: settings.name?.trim() || bareId, shortName: settings.name?.trim() || bareId,
+      description: '', provider: connection.providerType === 'anthropic' ? 'anthropic' : 'pi',
+    }
+    const seed = add ? [...(connection.models ?? []), base] : connection.models ?? []
+    const models = applyManualModelSettings({ ...connection, models: seed, manualModelIds, manualModelOverrides }, seed, bundled)
+    if (!updateLlmConnection(slug, { models, manualModelIds, manualModelOverrides })) {
+      return { success: false, error: 'Failed to save model settings' }
+    }
+    sessionManager.refreshConnectionRuntime(slug).catch(error => {
+      deps.platform.logger?.warn(`Detached model runtime push failed for ${slug}: ${error instanceof Error ? error.message : error}`)
+    })
     return { success: true }
   })
 

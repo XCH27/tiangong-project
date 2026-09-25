@@ -289,6 +289,10 @@ describe('phase4 backend abstraction APIs', () => {
       baseUrl: 'https://my-anthropic-proxy.internal/v1',
       customEndpoint: { api: 'anthropic-messages' },
     })).toEqual({ providerType: 'pi_compat', piAuthProvider: 'anthropic', customEndpoint: { api: 'anthropic-messages' } });
+    expect(resolveSetupTestConnectionHint({
+      provider: 'pi', baseUrl: 'https://gateway.example/v1beta',
+      customEndpoint: { api: 'google-generative-ai' },
+    })).toEqual({ providerType: 'pi_compat', piAuthProvider: 'google', customEndpoint: { api: 'google-generative-ai' } });
   });
 
   it('fetchBackendModels dispatches for pi provider', async () => {

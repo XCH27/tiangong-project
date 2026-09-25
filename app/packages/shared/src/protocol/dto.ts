@@ -609,6 +609,8 @@ export interface LlmConnectionSetup {
 export interface TestLlmConnectionParams {
   provider: 'anthropic' | 'pi'
   apiKey: string
+  /** Reuse this connection's stored key for a pre-save edit test; never send it to the renderer. */
+  existingConnectionSlug?: string
   baseUrl?: string
   model?: string
   piAuthProvider?: string

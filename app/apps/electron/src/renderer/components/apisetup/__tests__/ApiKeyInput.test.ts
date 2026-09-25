@@ -117,6 +117,21 @@ describe('resolveCustomEndpointPayload', () => {
     })
   })
 
+  it('routes Responses and Google custom endpoints to their matching Pi adapters', () => {
+    for (const [customApi, piAuthProvider] of [
+      ['openai-responses', 'openai'],
+      ['google-generative-ai', 'google'],
+    ] as const) {
+      expect(resolveCustomEndpointPayload({
+        activePreset: 'custom',
+        baseUrl: 'https://gateway.example/v1',
+        customApi,
+        brandedOpenAiCompatPresets: BRANDED,
+        fallbackPiAuthProvider: 'anthropic',
+      })).toEqual({ customEndpoint: { api: customApi }, piAuthProvider })
+    }
+  })
+
   it('returns no customEndpoint for a standard preset, passing through the fallback piAuth', () => {
     expect(resolveCustomEndpointPayload({
       activePreset: 'openrouter',

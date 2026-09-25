@@ -415,30 +415,12 @@ export function useOnboarding({
         return
       }
 
-      // When editing an existing connection, API key is optional (empty = keep existing credential)
-      if (!data.apiKey.trim() && editingSlug) {
-        const saved = await handleSaveConfig(undefined, {
-          baseUrl: data.baseUrl,
-          connectionDefaultModel: data.connectionDefaultModel,
-          models: data.models,
-          piAuthProvider: data.piAuthProvider,
-          modelSelectionMode: data.modelSelectionMode,
-          customEndpoint: data.customEndpoint,
-        })
-        if (saved) {
-          setState(s => ({ ...s, credentialStatus: 'success', step: 'complete' }))
-        } else {
-          setState(s => ({ ...s, credentialStatus: 'error' }))
-        }
-        return
-      }
-
       // API key validation differs by endpoint locality:
       // - Local/loopback custom endpoints may be keyless (e.g. Ollama)
       // - Non-local endpoints require an API key
       const isLoopbackCustomEndpoint = isLoopbackEndpoint(data.baseUrl)
       if (isPiApiKeyFlow) {
-        if (!data.apiKey.trim() && !isLoopbackCustomEndpoint) {
+        if (!data.apiKey.trim() && !editingSlug && !isLoopbackCustomEndpoint) {
           setState(s => ({
             ...s,
             credentialStatus: 'error',
@@ -447,7 +429,7 @@ export function useOnboarding({
           return
         }
       } else {
-        if (!data.apiKey.trim() && !isLoopbackCustomEndpoint) {
+        if (!data.apiKey.trim() && !editingSlug && !isLoopbackCustomEndpoint) {
           setState(s => ({
             ...s,
             credentialStatus: 'error',
@@ -463,6 +445,7 @@ export function useOnboarding({
       const testResult = await window.electronAPI.testLlmConnectionSetup({
         provider: setupTestProvider,
         apiKey: data.apiKey,
+        existingConnectionSlug: !data.apiKey.trim() ? editingSlug ?? undefined : undefined,
         baseUrl: data.baseUrl,
         // A provider-managed catalog can submit an optional default without
         // sending a custom models array. Test that choice, not a stale bundled
@@ -507,7 +490,7 @@ export function useOnboarding({
         errorMessage: error instanceof Error ? error.message : 'Validation failed',
       }))
     }
-  }, [handleSaveConfig, state.apiSetupMethod])
+  }, [handleSaveConfig, state.apiSetupMethod, editingSlug])
 
   // Save config, validate the connection, and update state accordingly.
   // Shared by all OAuth flows after tokens are captured.

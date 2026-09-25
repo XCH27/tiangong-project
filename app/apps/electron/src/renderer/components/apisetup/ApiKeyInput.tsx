@@ -23,7 +23,7 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-dropdown"
 import { cn } from "@/lib/utils"
-import { Check, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react"
+import { Check, ChevronDown, Eye, EyeOff, Loader2, RefreshCcw } from "lucide-react"
 import { baseUrlForPiPreset, initialBaseUrlForPreset, resolvePreferredModel, type PiModelInfo } from "./provider-models"
 import {
   resolveCustomEndpointPayload,
@@ -74,6 +74,14 @@ export interface ApiKeyInputProps {
   providerType?: 'anthropic' | 'openai' | 'pi' | 'google' | 'pi_api_key'
   /** Settings already chose the provider in its catalog; keep one selection owner. */
   providerLocked?: boolean
+  /** Settings keeps the account catalog in the provider detail instead of a second model picker. */
+  hideModelSelection?: boolean
+  /** Re-query with the current, possibly unsaved, key when the detail's refresh button is pressed. */
+  refreshRequestId?: number
+  onCatalogChange?: (catalog: ApiKeyCatalogPreview | null) => void
+  onDraftKeyChange?: (hasDraft: boolean) => void
+  onDirtyChange?: () => void
+  hasStoredCredential?: boolean
   /** Pre-fill values when editing an existing connection */
   initialValues?: {
     connectionSlug?: string
@@ -85,6 +93,15 @@ export interface ApiKeyInputProps {
     /** Pre-fill the protocol toggle for custom endpoints */
     customApi?: CustomEndpointApi
   }
+}
+
+export interface ApiKeyCatalogPreview {
+  provider: string
+  models: PiModelInfo[]
+  source: 'provider' | 'sdk'
+  error?: string
+  mediaModels?: Array<{ id: string; name: string; kind: 'image' | 'video' | 'audio'; audioMode?: 'speech' | 'transcription' | 'generation' | 'realtime' }>
+  mediaCatalogStatus?: 'available' | 'partial' | 'unavailable' | 'documented'
 }
 
 export interface ApiKeyProviderPreset {
@@ -131,6 +148,7 @@ export const API_KEY_PROVIDER_PRESETS: readonly ApiKeyProviderPreset[] = [
  */
 const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest'])
 const ACCOUNT_CATALOG_PRESETS: ReadonlySet<string> = new Set(['xai', 'openai', 'google', 'deepseek', 'groq', 'mistral'])
+const DEFAULT_ENDPOINT_PROVIDERS: ReadonlySet<string> = new Set(['anthropic', 'openai', 'pi', 'google'])
 
 // OpenAI provider presets - for Codex backend
 // Only direct OpenAI is supported; 3PP providers (OpenRouter, Vercel, Ollama) should be
@@ -189,6 +207,12 @@ export function ApiKeyInput({
   disabled,
   providerType = 'anthropic',
   providerLocked = false,
+  hideModelSelection = false,
+  refreshRequestId = 0,
+  onCatalogChange,
+  onDraftKeyChange,
+  onDirtyChange,
+  hasStoredCredential = false,
   initialValues,
 }: ApiKeyInputProps) {
   // Get presets based on provider type
@@ -229,18 +253,20 @@ export function ApiKeyInput({
   const modelFilterInputRef = useRef<HTMLInputElement>(null)
   const hydratedModelProviderRef = useRef<string | null>(null)
   const modelRequestIdRef = useRef(0)
+  const lastRefreshRequestIdRef = useRef(0)
 
   const isDisabled = disabled || status === 'validating'
 
   const isPiApiKeyFlow = providerType === 'pi_api_key'
   const isBedrock = activePreset === 'amazon-bedrock'
   // Hide endpoint/model fields for providers with well-known endpoints handled by the SDK
-  const DEFAULT_ENDPOINT_PROVIDERS = new Set(['anthropic', 'openai', 'pi', 'google'])
   const isDefaultProviderPreset = DEFAULT_ENDPOINT_PROVIDERS.has(activePreset)
   const showsPiModelPicker = !isDefaultProviderPreset || ACCOUNT_CATALOG_PRESETS.has(activePreset)
+  const shouldHideModelSelection = hideModelSelection && activePreset !== 'custom'
 
   // Provider-specific placeholders from the active preset
   const activePresetObj = presets.find(p => p.key === activePreset)
+  const hasEditedPresetEndpoint = !!initialValues?.baseUrl && initialValues.baseUrl.replace(/\/+$/, '') !== activePresetObj?.url.replace(/\/+$/, '')
   const apiKeyPlaceholder = activePresetObj?.placeholder
     ?? (providerType === 'google' ? 'AIza...'
     : providerType === 'pi' ? 'pi-...'
@@ -251,25 +277,38 @@ export function ApiKeyInput({
   // are available; SDK entries remain setup hints before a key is entered.
   const loadPiModels = useCallback(async (provider: string) => {
     const requestId = ++modelRequestIdRef.current
-    if (!isPiApiKeyFlow || !provider || provider === 'custom' || (DEFAULT_ENDPOINT_PROVIDERS.has(provider) && !ACCOUNT_CATALOG_PRESETS.has(provider)) || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
+    onCatalogChange?.(null)
+    const isCustom = provider === 'custom'
+    if (!isPiApiKeyFlow || !provider || (isCustom && (!baseUrl.trim() || (!apiKey.trim() && !hasStoredCredential)))
+      || (DEFAULT_ENDPOINT_PROVIDERS.has(provider) && !ACCOUNT_CATALOG_PRESETS.has(provider)) || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(provider)) {
       setPiModels([])
       setPiCatalogError(null)
+      setPiModelsLoading(false)
       return
     }
     setPiModelsLoading(true)
     try {
-      const liveKey = ACCOUNT_CATALOG_PRESETS.has(provider) && apiKey.trim() && !apiKey.includes('••')
+      const liveKey = (ACCOUNT_CATALOG_PRESETS.has(provider) || isCustom) && apiKey.trim() && !apiKey.includes('••')
         ? apiKey.trim()
         : undefined
-      const storedConnectionSlug = ACCOUNT_CATALOG_PRESETS.has(provider) && !liveKey && provider === initialPreset
+      const storedConnectionSlug = (ACCOUNT_CATALOG_PRESETS.has(provider) || isCustom) && !liveKey && provider === initialPreset
         ? initialValues?.connectionSlug
         : undefined
-      const result = await window.electronAPI.getPiProviderModels(provider, liveKey, storedConnectionSlug, baseUrl)
+      const result = await window.electronAPI.getPiProviderModels(provider, liveKey, storedConnectionSlug, baseUrl, isCustom ? customApi : undefined)
       if (requestId !== modelRequestIdRef.current) return
       setPiModels(result.models)
       setPiCatalogSource(result.source ?? 'sdk')
       setPiCatalogError(result.error ?? null)
+      if (!isCustom) onCatalogChange?.({
+        provider,
+        models: result.models,
+        source: result.source ?? 'sdk',
+        error: result.error,
+        mediaModels: result.mediaModels,
+        mediaCatalogStatus: result.mediaCatalogStatus,
+      })
 
+      if (isCustom) return
       if (hydratedModelProviderRef.current !== provider) {
         const savedDefault = provider === initialPreset ? initialValues?.connectionDefaultModel : undefined
         setSelectedModel(resolvePreferredModel(
@@ -290,19 +329,28 @@ export function ApiKeyInput({
       if (requestId !== modelRequestIdRef.current) return
       console.error('[ApiKeyInput] Failed to load models for', provider, err)
       setPiModels([])
-      setPiCatalogError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setPiCatalogError(message)
+      if (!isCustom) onCatalogChange?.({ provider, models: [], source: 'sdk', error: message })
     } finally {
       if (requestId === modelRequestIdRef.current) setPiModelsLoading(false)
     }
-  }, [isPiApiKeyFlow, apiKey, baseUrl, initialPreset, initialValues?.connectionDefaultModel, initialValues?.connectionSlug])
+  }, [isPiApiKeyFlow, apiKey, baseUrl, customApi, hasStoredCredential, initialPreset, initialValues?.connectionDefaultModel, initialValues?.connectionSlug, onCatalogChange])
 
   useEffect(() => {
-    if (isPiApiKeyFlow && activePreset !== 'custom' && showsPiModelPicker && !isBedrock) {
+    if (isPiApiKeyFlow && showsPiModelPicker && !isBedrock) {
       setPiModelsLoading(true)
     }
-    const timer = setTimeout(() => { void loadPiModels(activePreset) }, ACCOUNT_CATALOG_PRESETS.has(activePreset) ? 350 : 0)
-    return () => { clearTimeout(timer); modelRequestIdRef.current++ }
+    const requestCounter = modelRequestIdRef
+    const timer = setTimeout(() => { void loadPiModels(activePreset) }, ACCOUNT_CATALOG_PRESETS.has(activePreset) || activePreset === 'custom' ? 350 : 0)
+    return () => { clearTimeout(timer); requestCounter.current++ }
   }, [activePreset, isBedrock, isPiApiKeyFlow, loadPiModels, showsPiModelPicker])
+
+  useEffect(() => {
+    if (!refreshRequestId || lastRefreshRequestIdRef.current === refreshRequestId) return
+    lastRefreshRequestIdRef.current = refreshRequestId
+    void loadPiModels(activePreset)
+  }, [refreshRequestId, activePreset, loadPiModels])
 
   // Whether to show the provider-model picker instead of a custom ID field.
   const hasPiModels = isPiApiKeyFlow && piModels.length > 0 && showsPiModelPicker && activePreset !== 'custom' && !isBedrock
@@ -338,7 +386,9 @@ export function ApiKeyInput({
       setConnectionDefaultModel(COMPAT_KIMI_DEFAULTS)
     } else if (preset.key === 'manifest') {
       setConnectionDefaultModel('auto')
-    } else if (preset.key === 'custom' || OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(preset.key)) {
+    } else if (preset.key === 'custom') {
+      setConnectionDefaultModel('')
+    } else if (OPENAI_COMPAT_CUSTOM_URL_PRESETS.has(preset.key)) {
       setConnectionDefaultModel(providerType === 'openai' ? COMPAT_OPENAI_DEFAULTS : COMPAT_ANTHROPIC_DEFAULTS)
     } else {
       setConnectionDefaultModel('')
@@ -346,6 +396,7 @@ export function ApiKeyInput({
   }
 
   const handleBaseUrlChange = (value: string) => {
+    onDirtyChange?.()
     setBaseUrl(value)
     const presetKey = getPresetForUrl(value, presets)
     const currentPresetObj = presets.find(p => p.key === activePreset)
@@ -367,7 +418,7 @@ export function ApiKeyInput({
         setConnectionDefaultModel(COMPAT_MINIMAX_DEFAULTS)
       } else if (presetKey === 'kimi-coding') {
         setConnectionDefaultModel(COMPAT_KIMI_DEFAULTS)
-      } else if (presetKey === 'openrouter' || presetKey === 'vercel-ai-gateway' || presetKey === 'custom') {
+      } else if (presetKey === 'openrouter' || presetKey === 'vercel-ai-gateway') {
         setConnectionDefaultModel(providerType === 'openai' ? COMPAT_OPENAI_DEFAULTS : COMPAT_ANTHROPIC_DEFAULTS)
       }
     }
@@ -481,7 +532,7 @@ export function ApiKeyInput({
               {presets.map((preset) => (
                 <StyledDropdownMenuItem
                   key={preset.key}
-                  onClick={() => handlePresetSelect(preset)}
+                  onClick={() => { onDirtyChange?.(); handlePresetSelect(preset) }}
                   className="justify-between"
                 >
                   {preset.label}
@@ -493,43 +544,8 @@ export function ApiKeyInput({
         </div>
       )}
 
-      {/* API Key — hidden for Bedrock (uses IAM/Environment auth) */}
-      {!isBedrock && (<div className="space-y-2">
-        <Label htmlFor="api-key">{t('apiSetup.apiKey')}</Label>
-        <div className={cn(
-          "relative rounded-md shadow-minimal transition-colors",
-          "bg-foreground-2 focus-within:bg-background"
-        )}>
-          <Input
-            id="api-key"
-            type={showValue ? 'text' : 'password'}
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={apiKeyPlaceholder}
-            className={cn(
-              "pr-10 border-0 bg-transparent shadow-none",
-              status === 'error' && "focus-visible:ring-destructive"
-            )}
-            disabled={isDisabled}
-            autoFocus={!isPiApiKeyFlow || providerLocked}
-          />
-          <button
-            type="button"
-            onClick={() => setShowValue(!showValue)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            tabIndex={-1}
-          >
-            {showValue ? (
-              <EyeOff className="size-4" />
-            ) : (
-              <Eye className="size-4" />
-            )}
-          </button>
-        </div>
-      </div>)}
-
-      {/* A provider-managed endpoint stays hidden; editable addresses have their own field. */}
-      {presets.length > 1 && !isDefaultProviderPreset && !isBedrock && (!providerLocked || activePreset === 'custom' || activePreset === 'azure-openai-responses' || Boolean(initialValues?.baseUrl && initialValues.baseUrl !== activePresetObj?.url)) && (
+      {/* Native provider endpoints are owned by their adapter; custom addresses remain editable. */}
+      {presets.length > 1 && !isDefaultProviderPreset && !isBedrock && (!providerLocked || activePreset === 'custom' || activePreset === 'azure-openai-responses' || hasEditedPresetEndpoint) && (
         <div className="space-y-2">
           <Label htmlFor="base-url">{t('apiSetup.endpoint')}</Label>
           <div className={cn(
@@ -549,40 +565,70 @@ export function ApiKeyInput({
         </div>
       )}
 
-      {/* Protocol Toggle — visible as soon as Custom preset is selected */}
+      {/* Custom endpoints use Pi's selected wire adapter directly. */}
       {activePreset === 'custom' && !isDefaultProviderPreset && (
-        <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
           <Label>{t('apiSetup.protocol')}</Label>
-          <div className={cn(
-            "flex rounded-md shadow-minimal overflow-hidden",
-            "bg-foreground-2",
-            isDisabled && "opacity-50 pointer-events-none"
-          )}>
-            {([
-              { value: 'openai-completions' as const, label: t('apiSetup.format.openaiCompatible') },
-              { value: 'anthropic-messages' as const, label: t('apiSetup.format.anthropicCompatible') },
-            ]).map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                disabled={isDisabled}
-                onClick={() => setCustomApi(value)}
-                className={cn(
-                  "flex-1 py-1.5 text-[12px] font-medium transition-colors",
-                  customApi === value
-                    ? "bg-background text-foreground shadow-minimal"
-                    : "text-foreground/50 hover:text-foreground/70"
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-foreground/30">
-            {t('apiSetup.customProtocolHint')}
-          </p>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={t('apiSetup.protocol')}
+              disabled={isDisabled}
+              className="flex h-7 max-w-[70%] items-center gap-1 rounded-[6px] bg-background shadow-minimal pl-2.5 pr-2 text-[12px] font-medium text-foreground hover:bg-foreground/5 focus:outline-none"
+            >
+              <span className="truncate">{t(customApi === 'openai-completions' ? 'apiSetup.format.openaiChat'
+                : customApi === 'openai-responses' ? 'apiSetup.format.openaiResponses'
+                : customApi === 'anthropic-messages' ? 'apiSetup.format.anthropicMessages'
+                : 'apiSetup.format.googleGenerative')}</span>
+              <ChevronDown className="size-2.5 shrink-0 opacity-50" />
+            </DropdownMenuTrigger>
+            <StyledDropdownMenuContent align="end" className="z-floating-menu">
+              {([
+                { value: 'openai-completions', label: 'apiSetup.format.openaiChat' },
+                { value: 'openai-responses', label: 'apiSetup.format.openaiResponses' },
+                { value: 'anthropic-messages', label: 'apiSetup.format.anthropicMessages' },
+                { value: 'google-generative-ai', label: 'apiSetup.format.googleGenerative' },
+              ] as const).map(({ value, label }) => (
+                <StyledDropdownMenuItem key={value} onClick={() => { onDirtyChange?.(); setCustomApi(value) }} className="justify-between">
+                  {t(label)}
+                  <Check className={cn('size-3', customApi === value ? 'opacity-100' : 'opacity-0')} />
+                </StyledDropdownMenuItem>
+              ))}
+            </StyledDropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
+
+      {/* Credential stays in this provider detail, directly above its models. */}
+      {!isBedrock && (<div className="space-y-2">
+        <Label htmlFor="api-key">{t('apiSetup.apiKey')}</Label>
+        <div className={cn(
+          "relative rounded-md shadow-minimal transition-colors",
+          "bg-foreground-2 focus-within:bg-background"
+        )}>
+          <Input
+            id="api-key"
+            type={showValue ? 'text' : 'password'}
+            value={apiKey}
+            onChange={(e) => { setApiKey(e.target.value); onDraftKeyChange?.(!!e.target.value.trim()); onDirtyChange?.() }}
+            placeholder={hasStoredCredential ? t('apiSetup.storedApiKeyPlaceholder') : activePreset === 'custom' ? t('apiSetup.apiKey') : apiKeyPlaceholder}
+            className={cn(
+              "pr-10 border-0 bg-transparent shadow-none",
+              status === 'error' && "focus-visible:ring-destructive"
+            )}
+            disabled={isDisabled}
+            autoFocus={!providerLocked && !isPiApiKeyFlow}
+          />
+          <button
+            type="button"
+            onClick={() => setShowValue(!showValue)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            tabIndex={-1}
+            aria-label={t(showValue ? 'apiSetup.hideApiKey' : 'apiSetup.showApiKey')}
+          >
+            {showValue ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </div>
+      </div>)}
 
       {/* Bedrock Auth Section */}
       {isBedrock && (
@@ -603,7 +649,7 @@ export function ApiKeyInput({
                   key={value}
                   type="button"
                   disabled={isDisabled}
-                  onClick={() => setBedrockAuthMethod(value)}
+                  onClick={() => { onDirtyChange?.(); setBedrockAuthMethod(value) }}
                   className={cn(
                     "flex-1 py-1.5 text-[12px] font-medium transition-colors",
                     bedrockAuthMethod === value
@@ -629,7 +675,7 @@ export function ApiKeyInput({
                     id="aws-access-key-id"
                     type="text"
                     value={awsAccessKeyId}
-                    onChange={(e) => setAwsAccessKeyId(e.target.value)}
+                    onChange={(e) => { onDirtyChange?.(); setAwsAccessKeyId(e.target.value) }}
                     placeholder="AKIA..."
                     className="border-0 bg-transparent shadow-none"
                     disabled={isDisabled}
@@ -646,7 +692,7 @@ export function ApiKeyInput({
                     id="aws-secret-key"
                     type={showValue ? 'text' : 'password'}
                     value={awsSecretAccessKey}
-                    onChange={(e) => setAwsSecretAccessKey(e.target.value)}
+                    onChange={(e) => { onDirtyChange?.(); setAwsSecretAccessKey(e.target.value) }}
                     placeholder={t("apiSetup.secretAccessKey")}
                     className="pr-10 border-0 bg-transparent shadow-none"
                     disabled={isDisabled}
@@ -670,7 +716,7 @@ export function ApiKeyInput({
                     id="aws-session-token"
                     type="text"
                     value={awsSessionToken}
-                    onChange={(e) => setAwsSessionToken(e.target.value)}
+                    onChange={(e) => { onDirtyChange?.(); setAwsSessionToken(e.target.value) }}
                     placeholder={t("apiSetup.temporaryCredentials")}
                     className="border-0 bg-transparent shadow-none"
                     disabled={isDisabled}
@@ -699,7 +745,7 @@ export function ApiKeyInput({
                 id="aws-region"
                 type="text"
                 value={awsRegion}
-                onChange={(e) => setAwsRegion(e.target.value)}
+                onChange={(e) => { onDirtyChange?.(); setAwsRegion(e.target.value) }}
                 placeholder="us-east-1"
                 className="border-0 bg-transparent shadow-none"
                 disabled={isDisabled}
@@ -710,7 +756,10 @@ export function ApiKeyInput({
       )}
 
       {/* Model Selection — one optional default; account catalog syncs after save */}
-      {showPiCatalog ? (
+      {shouldHideModelSelection && piCatalogError && (
+        <p role="alert" className="text-xs text-destructive">{t('apiSetup.catalogUnavailable')}: {piCatalogError}</p>
+      )}
+      {!shouldHideModelSelection && (showPiCatalog ? (
         <div className="space-y-3">
           {piModelsLoading ? (
             <div className="flex items-center gap-2 py-3 text-muted-foreground">
@@ -812,12 +861,23 @@ export function ApiKeyInput({
         </div>
       ) : !isDefaultProviderPreset && (
         <div className="space-y-2">
-          <Label htmlFor="connection-default-model" className="text-muted-foreground font-normal">
-            {t('apiSetup.defaultModel')}{' '}
-            <span className="text-foreground/30">
-              · {t(!isBedrock && baseUrl.trim() ? 'apiSetup.required' : 'apiSetup.optional')}
-            </span>
-          </Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="connection-default-model" className="text-muted-foreground font-normal">
+              {t('apiSetup.customModelIds')}{' '}
+              <span className="text-foreground/30">
+                · {t(!isBedrock && (activePreset === 'custom' || baseUrl.trim()) ? 'apiSetup.required' : 'apiSetup.optional')}
+              </span>
+            </Label>
+            {activePreset === 'custom' && <button
+              type="button"
+              onClick={() => { void loadPiModels('custom') }}
+              disabled={isDisabled || !baseUrl.trim() || (!apiKey.trim() && !hasStoredCredential) || piModelsLoading}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
+            >
+              <RefreshCcw className={cn('size-3.5', piModelsLoading && 'animate-spin')} />
+              {t('settings.ai.refreshModels')}
+            </button>}
+          </div>
           <div className={cn(
             "rounded-md shadow-minimal transition-colors",
             "bg-foreground-2 focus-within:bg-background",
@@ -828,10 +888,11 @@ export function ApiKeyInput({
               type="text"
               value={connectionDefaultModel}
               onChange={(e) => {
+                onDirtyChange?.()
                 setConnectionDefaultModel(e.target.value)
                 setModelError(null)
               }}
-              placeholder="e.g. claude-opus-4-8, claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5"
+              placeholder="model-id-1, model-id-2"
               className="border-0 bg-transparent shadow-none"
               disabled={isDisabled}
             />
@@ -840,15 +901,36 @@ export function ApiKeyInput({
             <p className="text-xs text-destructive">{modelError}</p>
           )}
           <p className="text-xs text-foreground/30">
-            {t('apiSetup.customModelListHint')}
+            {t('apiSetup.customModelIdsHint')}
           </p>
-          {(activePreset === 'custom' || !activePreset) && (
-            <p className="text-xs text-foreground/30">
-              {t('apiSetup.customModelRequiredHint')}
-            </p>
-          )}
+          {activePreset === 'custom' && piCatalogError && <p role="alert" className="text-xs text-muted-foreground">
+            {t('apiSetup.catalogUnavailable')}: {piCatalogError}
+          </p>}
+          {activePreset === 'custom' && piModels.length > 0 && <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">{t('apiSetup.customCatalogCandidates')}</p>
+            <div className="max-h-40 overflow-y-auto rounded-md border border-border/60 p-1">
+              {piModels.map(model => {
+                const selected = parseModelList(connectionDefaultModel).some(id => id.replace(/^pi\//, '') === model.id.replace(/^pi\//, ''))
+                return <button key={model.id} type="button" disabled={isDisabled}
+                  onClick={() => {
+                    const ids = parseModelList(connectionDefaultModel)
+                    setConnectionDefaultModel((selected
+                      ? ids.filter(id => id.replace(/^pi\//, '') !== model.id.replace(/^pi\//, ''))
+                      : [...ids, model.id]).join(', '))
+                    setModelError(null)
+                    onDirtyChange?.()
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-[6px] px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.05]"
+                  aria-pressed={selected}
+                >
+                  <span className="truncate">{model.name}</span>
+                  <Check className={cn('size-3 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
+                </button>
+              })}
+            </div>
+          </div>}
         </div>
-      )}
+      ))}
 
       {/* Error message */}
       {status === 'error' && errorMessage && (

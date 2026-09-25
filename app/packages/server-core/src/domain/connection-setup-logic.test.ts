@@ -3,6 +3,7 @@ import {
   validateSetupTestInput,
   isLoopbackBaseUrl,
   setupTestRequiresApiKey,
+  canReuseStoredApiKey,
   resolveCustomEndpointSetup,
   createBuiltInConnection,
 } from './connection-setup-logic'
@@ -48,6 +49,48 @@ describe('setup test API key requirements', () => {
   })
 })
 
+describe('stored API key reuse', () => {
+  const existing = {
+    authType: 'api_key_with_endpoint' as const,
+    providerType: 'pi_compat' as const,
+    baseUrl: 'https://gateway.example/v1',
+    piAuthProvider: 'openai',
+    customEndpoint: { api: 'openai-responses' as const },
+  }
+
+  it('allows a model edit on the same provider route', () => {
+    expect(canReuseStoredApiKey(existing, {
+      providerType: 'pi_compat', baseUrl: 'https://gateway.example/v1/',
+      piAuthProvider: 'openai', customEndpoint: { api: 'openai-responses' },
+    })).toBe(true)
+  })
+
+  it('requires the key again for a different host, format or provider', () => {
+    expect(canReuseStoredApiKey(existing, {
+      providerType: 'pi_compat', baseUrl: 'https://other.example/v1',
+      piAuthProvider: 'openai', customEndpoint: { api: 'openai-responses' },
+    })).toBe(false)
+    expect(canReuseStoredApiKey(existing, {
+      providerType: 'pi_compat', baseUrl: existing.baseUrl,
+      piAuthProvider: 'openai', customEndpoint: { api: 'openai-completions' },
+    })).toBe(false)
+    expect(canReuseStoredApiKey(existing, {
+      providerType: 'pi', baseUrl: existing.baseUrl,
+      piAuthProvider: 'openai', customEndpoint: { api: 'openai-responses' },
+    })).toBe(false)
+  })
+
+  it('treats a native provider default URL and its implicit SDK URL as the same route', () => {
+    expect(canReuseStoredApiKey({
+      authType: 'api_key', providerType: 'pi', piAuthProvider: 'deepseek',
+      baseUrl: undefined, customEndpoint: undefined,
+    }, {
+      providerType: 'pi', piAuthProvider: 'deepseek',
+      baseUrl: 'https://api.deepseek.com/', customEndpoint: undefined,
+    })).toBe(true)
+  })
+})
+
 describe('resolveCustomEndpointSetup', () => {
   it('treats loopback URL with no credential as keyless local model', () => {
     const result = resolveCustomEndpointSetup({
@@ -81,6 +124,14 @@ describe('resolveCustomEndpointSetup', () => {
     })
 
     expect(result).toEqual({ authType: 'api_key_with_endpoint', piAuthProvider: 'anthropic' })
+  })
+
+  it('uses the Google provider hint for a keyed Google-compatible custom endpoint', () => {
+    expect(resolveCustomEndpointSetup({
+      baseUrl: 'https://gateway.example/v1beta',
+      credential: 'google-test-key',
+      customEndpointApi: 'google-generative-ai',
+    })).toEqual({ authType: 'api_key_with_endpoint', piAuthProvider: 'google' })
   })
 
   it('treats remote endpoints with a credential as keyed custom endpoints', () => {

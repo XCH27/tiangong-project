@@ -1,7 +1,7 @@
 export type CustomEndpointInput = 'text' | 'image'
 
 /** Custom endpoint protocol — determines which streaming adapter Pi SDK uses. */
-export type CustomEndpointApi = 'openai-completions' | 'anthropic-messages'
+export type CustomEndpointApi = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai'
 
 export interface CustomEndpointModelDefaults {
   supportsImages?: boolean
@@ -9,7 +9,9 @@ export interface CustomEndpointModelDefaults {
 
 export interface CustomEndpointModelOverrides {
   contextWindow?: number
+  maxOutputTokens?: number
   supportsImages?: boolean
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>
 }
 
 export interface CustomEndpointModelEntry extends CustomEndpointModelOverrides {
@@ -19,7 +21,9 @@ export interface CustomEndpointModelEntry extends CustomEndpointModelOverrides {
 export type CustomEndpointModelConfig = string | {
   id: string
   contextWindow?: number
+  maxOutputTokens?: number
   supportsImages?: boolean
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>
 }
 
 /** Strip bare model IDs (remove pi/ prefix if present). */
@@ -42,7 +46,9 @@ export function normalizeCustomEndpointModelEntry(model: CustomEndpointModelConf
   return {
     id: stripPiPrefix(model.id),
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+    ...(model.maxOutputTokens !== undefined ? { maxOutputTokens: model.maxOutputTokens } : {}),
     ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),
+    ...(model.reasoningEfforts !== undefined ? { reasoningEfforts: model.reasoningEfforts } : {}),
   }
 }
 
@@ -69,11 +75,11 @@ export function buildCustomEndpointModelDef(
   return {
     id,
     name: id,
-    reasoning: false,
+    reasoning: (overrides?.reasoningEfforts?.length ?? 0) > 0,
     input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: overrides?.contextWindow ?? 131_072,
-    maxTokens: 8_192,
+    maxTokens: Math.min(overrides?.maxOutputTokens ?? 8_192, overrides?.contextWindow ?? 131_072),
     ...(api === 'openai-completions' ? { compat: { supportsStore: false } } : {}),
   }
 }

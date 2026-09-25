@@ -9,9 +9,12 @@ import type { ModelDefinition } from '@craft-agent/shared/config/models'
 import {
   type LlmConnection,
   type CustomEndpointApi,
+  type CustomEndpointConfig,
   getDefaultModelsForConnection,
   getDefaultModelForConnection,
   defaultMidStreamBehavior,
+  getPiAuthProviderName,
+  getPiProviderBaseUrl,
 } from '@craft-agent/shared/config'
 
 // ============================================================
@@ -93,6 +96,26 @@ export function setupTestRequiresApiKey(baseUrl?: string): boolean {
   return !isLoopbackBaseUrl(baseUrl)
 }
 
+/** A saved key may only be reused with the same provider route and endpoint. */
+export function canReuseStoredApiKey(
+  existing: Pick<LlmConnection, 'authType' | 'providerType' | 'baseUrl' | 'piAuthProvider' | 'customEndpoint'>,
+  proposed: {
+    providerType: LlmConnection['providerType']
+    baseUrl?: string | null
+    piAuthProvider?: string
+    customEndpoint?: CustomEndpointConfig
+  },
+): boolean {
+  const normalizeUrl = (value?: string | null) => value?.trim().replace(/\/+$/, '') || undefined
+  const officialBaseUrl = existing.providerType === 'pi' && existing.piAuthProvider
+    ? normalizeUrl(getPiProviderBaseUrl(existing.piAuthProvider)) : undefined
+  return (existing.authType === 'api_key' || existing.authType === 'api_key_with_endpoint')
+    && existing.providerType === proposed.providerType
+    && (normalizeUrl(existing.baseUrl) ?? officialBaseUrl) === (normalizeUrl(proposed.baseUrl) ?? officialBaseUrl)
+    && existing.piAuthProvider === proposed.piAuthProvider
+    && existing.customEndpoint?.api === proposed.customEndpoint?.api
+}
+
 /**
  * Decide how a custom OpenAI/Anthropic-compatible endpoint should be persisted.
  *
@@ -111,7 +134,7 @@ export function resolveCustomEndpointSetup(input: {
 }): {
   authType: Extract<LlmConnection['authType'], 'none' | 'api_key_with_endpoint'>
   name?: 'Local Model'
-  piAuthProvider?: 'openai' | 'anthropic'
+  piAuthProvider?: 'openai' | 'anthropic' | 'google'
 } {
   const isKeylessLoopback = isLoopbackBaseUrl(input.baseUrl) && !input.credential
   if (isKeylessLoopback) {
@@ -119,7 +142,8 @@ export function resolveCustomEndpointSetup(input: {
   }
   return {
     authType: 'api_key_with_endpoint',
-    piAuthProvider: input.customEndpointApi === 'anthropic-messages' ? 'anthropic' : 'openai',
+    piAuthProvider: input.customEndpointApi === 'anthropic-messages'
+      ? 'anthropic' : input.customEndpointApi === 'google-generative-ai' ? 'google' : 'openai',
   }
 }
 
@@ -143,12 +167,12 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
     authType: (h) => h ? 'api_key_with_endpoint' : 'api_key',
   },
   'claude-max': {
-    name: 'Claude Max',
+    name: 'Claude',
     providerType: 'anthropic',
     authType: 'oauth',
   },
   'chatgpt-plus': {
-    name: 'ChatGPT Plus',
+    name: 'ChatGPT',
     providerType: 'pi',
     authType: 'oauth',
     piAuthProvider: 'openai-codex',
@@ -160,7 +184,7 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
     piAuthProvider: 'github-copilot',
   },
   'grok-subscription': {
-    name: 'Grok (Subscription)',
+    name: 'Grok',
     providerType: 'pi',
     authType: 'oauth',
     piAuthProvider: 'xai',
@@ -177,29 +201,9 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
 // Pi Auth Provider Display Names
 // ============================================================
 
-const PI_AUTH_PROVIDER_DISPLAY_NAMES: Record<string, string> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  'openai-codex': 'OpenAI',
-  google: 'Google AI Studio',
-  openrouter: 'OpenRouter',
-  'azure-openai-responses': 'Azure OpenAI',
-  'amazon-bedrock': 'Amazon Bedrock',
-  groq: 'Groq',
-  mistral: 'Mistral',
-  xai: 'xAI',
-  cerebras: 'Cerebras',
-  zai: 'z.ai',
-  huggingface: 'Hugging Face',
-  minimax: 'Minimax',
-  'minimax-cn': 'Minimax CN',
-  'kimi-coding': 'Kimi (Coding)',
-  'vercel-ai-gateway': 'Vercel AI Gateway',
-}
-
 /** Get a human-readable display name for a Pi auth provider key */
 export function piAuthProviderDisplayName(piAuthProvider: string): string | null {
-  return PI_AUTH_PROVIDER_DISPLAY_NAMES[piAuthProvider] ?? null
+  return getPiAuthProviderName(piAuthProvider)
 }
 
 // ============================================================

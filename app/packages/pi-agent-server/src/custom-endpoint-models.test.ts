@@ -42,6 +42,15 @@ describe('normalizeCustomEndpointModelEntry', () => {
       supportsImages: true,
     })
   })
+
+  it('passes a manually confirmed reasoning range into the custom runtime model', () => {
+    const entry = normalizeCustomEndpointModelEntry({
+      id: 'pi/reasoning-model', contextWindow: 128_000,
+      maxOutputTokens: 16_000, reasoningEfforts: ['low', 'high'],
+    })
+    expect(entry.reasoningEfforts).toEqual(['low', 'high'])
+    expect(buildCustomEndpointModelDef(entry.id, undefined, entry, 'openai-responses').reasoning).toBe(true)
+  })
 })
 
 describe('buildCustomEndpointModelDef', () => {
@@ -61,9 +70,10 @@ describe('buildCustomEndpointModelDef', () => {
   })
 
   it('lets per-model overrides enable image input and custom context window', () => {
-    const model = buildCustomEndpointModelDef('vision-model', undefined, { supportsImages: true, contextWindow: 262_144 })
+    const model = buildCustomEndpointModelDef('vision-model', undefined, { supportsImages: true, contextWindow: 262_144, maxOutputTokens: 16_384 })
     expect(model.input).toEqual(['text', 'image'])
     expect(model.contextWindow).toBe(262_144)
+    expect(model.maxTokens).toBe(16_384)
   })
 
   // Regression: craft-agents-oss#1022 — strict OpenAI-compatible gateways 400 on the
@@ -76,6 +86,13 @@ describe('buildCustomEndpointModelDef', () => {
   it('does not set store compat for anthropic-messages endpoints', () => {
     const model = buildCustomEndpointModelDef('claude-model', undefined, undefined, 'anthropic-messages')
     expect((model as { compat?: unknown }).compat).toBeUndefined()
+  })
+
+  it('does not apply Chat-only compatibility settings to Responses or Google', () => {
+    for (const api of ['openai-responses', 'google-generative-ai'] as const) {
+      const model = buildCustomEndpointModelDef('gateway-model', undefined, undefined, api)
+      expect((model as { compat?: unknown }).compat).toBeUndefined()
+    }
   })
 
   it('does not set store compat when the api is unspecified', () => {

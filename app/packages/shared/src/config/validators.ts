@@ -78,7 +78,7 @@ const LlmAuthTypeSchema = z.enum([
 ]);
 
 const CustomEndpointSchema = z.object({
-  api: z.enum(['openai-completions', 'anthropic-messages']),
+  api: z.enum(['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai']),
   supportsImages: z.boolean().optional(),
 });
 
@@ -90,6 +90,15 @@ const LlmConnectionSchema = z.object({
   baseUrl: z.string().optional(),
   models: z.array(z.union([z.string(), z.object({ id: z.string() }).passthrough()])).optional(),
   hiddenModelIds: z.array(z.string()).optional(),
+  manualModelIds: z.array(z.string()).optional(),
+  manualModelOverrides: z.record(z.string(), z.object({
+    name: z.string().optional(),
+    contextWindow: z.number().int().positive().optional(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    supportsImages: z.boolean().optional(),
+    reasoningEfforts: z.array(z.enum(['low', 'medium', 'high', 'xhigh', 'max'])).optional(),
+    reasoningDisableSupported: z.boolean().optional(),
+  })).optional(),
   defaultModel: z.string().optional(),
   modelSelectionMode: z.enum(['automaticallySyncedFromProvider', 'userDefined3Tier']).optional(),
   customEndpoint: CustomEndpointSchema.optional(),

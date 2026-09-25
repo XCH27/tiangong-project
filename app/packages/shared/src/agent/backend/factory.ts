@@ -393,7 +393,8 @@ export function resolveSetupTestConnectionHint(args: {
     if (args.customEndpoint && args.baseUrl?.trim()) {
       return {
         providerType: 'pi_compat',
-        piAuthProvider: args.customEndpoint.api === 'anthropic-messages' ? 'anthropic' : 'openai',
+        piAuthProvider: args.customEndpoint.api === 'anthropic-messages'
+          ? 'anthropic' : args.customEndpoint.api === 'google-generative-ai' ? 'google' : 'openai',
         customEndpoint: args.customEndpoint,
       };
     }

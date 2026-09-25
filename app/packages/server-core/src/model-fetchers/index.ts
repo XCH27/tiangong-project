@@ -17,7 +17,9 @@ import {
   getLlmConnection,
   updateLlmConnection,
   isCompatProvider,
+  isOfficialApiModelCatalogConnection,
   getModelsForProviderType,
+  applyManualModelSettings,
 } from '@craft-agent/shared/config'
 import { MODEL_FETCHERS } from './registry'
 import { mergeClaudeSdkCapabilities } from './anthropic'
@@ -36,16 +38,6 @@ function isXaiAccountCatalog(connection: { providerType: string; piAuthProvider?
 function isCodexAccountCatalog(connection: { providerType: string; piAuthProvider?: string; authType?: string; customEndpoint?: unknown }): boolean {
   return connection.providerType === 'pi' && connection.piAuthProvider === 'openai-codex'
     && connection.authType === 'oauth' && !connection.customEndpoint
-}
-
-function isApiAccountCatalog(connection: { providerType: string; piAuthProvider?: string; authType?: string; baseUrl?: string; customEndpoint?: unknown }): boolean {
-  if (connection.providerType !== 'pi' || connection.authType !== 'api_key' || connection.customEndpoint) return false
-  const baseUrl = connection.baseUrl?.trim().replace(/\/+$/, '')
-  return (connection.piAuthProvider === 'openai' && (!baseUrl || baseUrl === 'https://api.openai.com/v1'))
-    || (connection.piAuthProvider === 'google' && (!baseUrl || baseUrl === 'https://generativelanguage.googleapis.com/v1beta'))
-    || (connection.piAuthProvider === 'deepseek' && (!baseUrl || baseUrl === 'https://api.deepseek.com'))
-    || (connection.piAuthProvider === 'groq' && (!baseUrl || baseUrl === 'https://api.groq.com/openai/v1'))
-    || (connection.piAuthProvider === 'mistral' && (!baseUrl || baseUrl === 'https://api.mistral.ai' || baseUrl === 'https://api.mistral.ai/v1'))
 }
 
 // ============================================================
@@ -219,7 +211,7 @@ export class ModelRefreshService {
     // models or retain a model the account can no longer use.
     const isCopilot = current.providerType === 'pi' && current.piAuthProvider === 'github-copilot'
     const isXaiAccount = isXaiAccountCatalog(current)
-    const isApiAccount = isApiAccountCatalog(current)
+    const isApiAccount = isOfficialApiModelCatalogConnection(current)
     const isCodexAccount = isCodexAccountCatalog(current)
     if (current.providerType === 'pi' && current.modelSelectionMode === 'userDefined3Tier'
       && !isCopilot && !isXaiAccount && !isApiAccount && !isCodexAccount) {
@@ -248,7 +240,7 @@ export class ModelRefreshService {
       : serverDefault ?? newModels[0]?.id
 
     const saved = this.store.updateConnection(slug, {
-      models: modelsToSave,
+      models: applyManualModelSettings(current, modelsToSave, this.store.fallbackModels(providerType, current.piAuthProvider)),
       ...(newDefault && newDefault !== currentDefault ? { defaultModel: newDefault } : {}),
     })
     if (!saved) return { source: 'unavailable', error: 'Could not save the model list' }
@@ -279,7 +271,7 @@ export class ModelRefreshService {
       // (models are server-managed by GitHub policy), other providers use
       // the fetcher's generic interval (0 = no periodic refresh for static SDK models).
       const isCopilot = conn.providerType === 'pi' && conn.piAuthProvider === 'github-copilot'
-      const isAccountCatalog = isXaiAccountCatalog(conn) || isCodexAccountCatalog(conn) || isApiAccountCatalog(conn)
+      const isAccountCatalog = isXaiAccountCatalog(conn) || isCodexAccountCatalog(conn) || isOfficialApiModelCatalogConnection(conn)
       if (isCopilot) {
         this.startTimer(conn.slug, COPILOT_REFRESH_INTERVAL_MS)
       } else if (isAccountCatalog) {
@@ -316,7 +308,7 @@ export class ModelRefreshService {
     const providerType = connection.providerType as FetchableProvider
     const fetcher = this.fetchers[providerType]
     const isCopilot = connection.providerType === 'pi' && connection.piAuthProvider === 'github-copilot'
-    const isAccountCatalog = isXaiAccountCatalog(connection) || isCodexAccountCatalog(connection) || isApiAccountCatalog(connection)
+    const isAccountCatalog = isXaiAccountCatalog(connection) || isCodexAccountCatalog(connection) || isOfficialApiModelCatalogConnection(connection)
     if (isCopilot && !this.timers.has(slug)) {
       this.startTimer(slug, COPILOT_REFRESH_INTERVAL_MS)
     } else if (isAccountCatalog && !this.timers.has(slug)) {
