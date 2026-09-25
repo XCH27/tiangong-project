@@ -737,7 +737,7 @@ export default function AiSettingsPage() {
   const [deletingConnectionSlug, setDeletingConnectionSlug] = useState<string | null>(null)
   const [deletingConnectionBusy, setDeletingConnectionBusy] = useState(false)
 
-  // Load performance settings and credential health.
+  // Load performance settings.
   useEffect(() => {
     const load = async () => {
       if (!window.electronAPI) return
@@ -754,17 +754,25 @@ export default function AiSettingsPage() {
         const status = await window.electronAPI.getRtkStatus()
         setRtkStatus(status)
 
-        // Check credential health for potential issues (corruption, machine migration)
-        const health = await window.electronAPI.getCredentialHealth()
-        if (!health.healthy) {
-          setCredentialHealthIssues(health.issues)
-        }
       } catch (error) {
         console.error('Failed to load settings:', error)
       }
     }
     load()
   }, [])
+
+  // Connection changes can resolve a missing-default-credential warning. Read
+  // the current credential owner again, and ignore an older in-flight result.
+  useEffect(() => {
+    if (!window.electronAPI) return
+    let cancelled = false
+    void window.electronAPI.getCredentialHealth().then(health => {
+      if (!cancelled) setCredentialHealthIssues(health.issues)
+    }).catch(error => {
+      if (!cancelled) console.error('Failed to check credential health:', error)
+    })
+    return () => { cancelled = true }
+  }, [llmConnections])
 
   // Add/edit remains in the selected provider panel; the connection hook still owns saving.
   const openApiSetup = useCallback((connectionSlug?: string) => {
