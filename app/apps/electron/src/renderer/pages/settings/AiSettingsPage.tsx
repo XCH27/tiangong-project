@@ -1272,8 +1272,8 @@ export default function AiSettingsPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0 mask-fade-y">
-        <ScrollArea className="h-full">
-          <div className="px-5 py-7 max-w-3xl mx-auto">
+        <ScrollArea className="h-full md:[&_[data-radix-scroll-area-viewport]>div]:h-full">
+          <div className="px-5 py-7 max-w-3xl mx-auto md:flex md:min-h-full md:w-full md:flex-col">
             <header className="mb-3 px-1">
               <h1 className="text-base font-semibold">{t('settings.ai.title')}</h1>
               <p className="mt-1 text-sm text-muted-foreground">{t('settings.ai.description')}</p>
@@ -1284,9 +1284,9 @@ export default function AiSettingsPage() {
               onReauthenticate={handleReauthenticate}
             />
 
-            <div className="space-y-8">
-              <div className="overflow-hidden rounded-[12px] border border-border/60 bg-background shadow-minimal">
-                  <div className="flex flex-col md:min-h-[20rem] md:max-h-[40rem] md:flex-row">
+            <div className="space-y-8 md:flex md:min-h-0 md:flex-1 md:flex-col md:gap-8 md:space-y-0">
+              <div className="overflow-hidden rounded-[12px] border border-border/60 bg-background shadow-minimal md:flex md:min-h-[20rem] md:max-h-[40rem] md:flex-1 md:flex-col">
+                  <div className="flex flex-col md:min-h-0 md:flex-1 md:flex-row">
                     <aside className="flex w-full shrink-0 flex-col border-b border-border/60 bg-foreground/[0.02] md:min-h-0 md:w-56 md:border-b-0 md:border-r">
                       <div className="flex items-center justify-between px-3 py-3">
                         <span className="text-xs font-medium text-muted-foreground">{t('settings.ai.connections')}</span>
