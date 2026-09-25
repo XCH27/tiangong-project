@@ -170,7 +170,9 @@ installed Pi model adapters. OpenAI returns account membership, so Pi supplies i
 request protocol and thinking metadata. DeepSeek's native list also supplies name, context,
 maximum output, input/output modalities and supported/default effort levels; those authenticated
 fields refine its installed Pi route without creating a new route. An incompatible Session effort
-falls back to the model's advertised default before another supported level. Google's paged native list identifies `generateContent`
+falls back to the model's advertised default before another supported level. The existing Session
+persists and publishes that correction after an idle catalog refresh or before its next send;
+Pi's own nearest-level clamp no longer silently disagrees with the composer. Google's paged native list identifies `generateContent`
 models and can refine input/output token limits; its `thinking` flag does not supply effort levels,
 so Pi's explicit effort mappings remain in control. Groq's active model rows can refine context/output limits;
 Mistral's unarchived chat rows can refine context and image-input support. An ID that is not in the

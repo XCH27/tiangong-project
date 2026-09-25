@@ -3325,10 +3325,39 @@ export class SessionManager implements ISessionManager {
       if (managed.llmConnection !== connectionSlug) continue
       try {
         await this.tryRefreshAgentRuntime(managed, 'connection update')
+        this.reconcileManagedThinkingLevel(managed)
       } catch (error) {
         sessionLog.warn(`refreshConnectionRuntime failed for ${managed.id}: ${error instanceof Error ? error.message : error}`)
       }
     }
+  }
+
+  /** Keep the persisted Session choice aligned with its account's current model catalog. */
+  private reconcileManagedThinkingLevel(managed: ManagedSession): void {
+    // An in-flight turn keeps the capability snapshot with which it started.
+    // The send path will reconcile after that turn finishes.
+    if (managed.agent?.isProcessing()) return
+    const workspaceConfig = loadWorkspaceConfig(managed.workspace.rootPath)
+    const backendContext = resolveBackendContext({
+      sessionConnectionSlug: managed.llmConnection,
+      workspaceDefaultConnectionSlug: workspaceConfig?.defaults?.defaultLlmConnection,
+      managedModel: managed.model,
+    })
+    const next = reconcileThinkingLevelForModel(
+      managed.thinkingLevel ?? DEFAULT_THINKING_LEVEL,
+      modelDefinitionForSession(backendContext.resolvedModel, backendContext.connection),
+    )
+    if (next === managed.thinkingLevel) return
+    managed.agent?.setThinkingLevel(next)
+    managed.thinkingLevel = next
+    this.persistSession(managed)
+    this.sendEvent({
+      type: 'session_model_changed',
+      sessionId: managed.id,
+      model: managed.model ?? backendContext.resolvedModel ?? null,
+      thinkingLevel: next,
+      llmConnection: managed.llmConnection,
+    }, managed.workspace.id)
   }
 
   /**
@@ -3346,6 +3375,7 @@ export class SessionManager implements ISessionManager {
     // the agent was created. May null out `managed.agent` if the in-place
     // refresh fails, in which case the create branch below rebuilds it.
     await this.tryRefreshAgentRuntime(managed, 'send-path refresh')
+    this.reconcileManagedThinkingLevel(managed)
 
     const workspaceConfig = loadWorkspaceConfig(managed.workspace.rootPath)
     const backendContext = resolveBackendContext({
