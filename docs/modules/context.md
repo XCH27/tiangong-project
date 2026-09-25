@@ -180,24 +180,22 @@ to a fallback. Deleted source identity survives Session reload; the legacy conne
 uses the same selection transaction. Image capability corrections live in Model Settings; the
 composer's pre-flight image warning still offers its existing enable action.
 
-OpenAI, Google AI Studio, DeepSeek, Groq and Mistral API-key connections use their official authenticated model-list
-endpoints when the endpoint is the provider default. Fleet intersects returned IDs with the
-installed Pi model adapters. OpenAI returns account membership, so Pi supplies its context,
-request protocol and thinking metadata. DeepSeek's native list also supplies name, context,
-maximum output, input/output modalities and supported/default effort levels; those authenticated
-fields refine its installed Pi route without creating a new route. An incompatible Session effort
-falls back to the model's advertised default before another supported level. The existing Session
-persists and publishes that correction after an idle catalog refresh or before its next send;
-Pi's own nearest-level clamp no longer silently disagrees with the composer. Google's paged native list identifies `generateContent`
-models and can refine input/output token limits; its `thinking` flag does not supply effort levels,
-so Pi's explicit effort mappings remain in control. Groq's active model rows can refine context/output limits;
-Mistral's unarchived chat rows can refine context and image-input support. An ID that is not in the
-installed adapter catalog is treated as unavailable
-and never surfaced as runnable; if every returned ID is unknown, the live refresh fails closed and
-the existing saved catalog remains. Custom endpoints keep their explicit
-model lists. The other official APIs do not expose a complete per-model effort, context or media contract,
-so the UI must leave those fields unknown rather than copying another provider's values. This same
-boundary is why a live API list may be shorter than the provider's marketing catalog.
+OpenAI, Google AI Studio, DeepSeek, Groq and Mistral API-key connections use official authenticated
+model lists on their default endpoints. Fleet intersects IDs with installed Pi routes. OpenAI's list
+proves membership only; Pi supplies protocol and capabilities. DeepSeek also advertises name,
+context, output, modalities and thinking levels, which refine Pi routes. A new DeepSeek text ID can
+use Pi's DeepSeek Chat Completions adapter only when the authenticated list provides its owner,
+name, positive limits, supported text/image input, text output and explicit thinking levels.
+ID-only, media-output and foreign-owner rows cannot enter chat. Catalog provenance reaches Pi;
+each refresh rebuilds from bundled models and removes withdrawn IDs. DeepSeek's documented `none`
+effort and Pi's `thinking: { type: 'disabled' }` wire path enable Off; `supported_levels` alone does not.
+An incompatible Session effort falls back to the advertised default before another supported level;
+Session persists the correction after idle refresh or before send. Google's paged `generateContent`
+list refines input/output limits but its `thinking` flag does not specify effort levels. Groq refines
+context/output; Mistral refines context/image input. Other unknown IDs stay unavailable. If no ID
+has a valid route, refresh fails closed and retains the saved catalog. Custom endpoints keep their
+explicit lists. Other official APIs lack a complete per-model effort, context or media contract;
+unknown fields stay unknown instead of borrowing another provider's values.
 During API-key setup, the existing provider-model RPC uses the transient key to query the same
 authenticated Pi driver for OpenAI, Google AI Studio, DeepSeek, Groq and Mistral; it falls back to visibly labelled bundled
 entries before a key is entered. A failed authenticated query reports the error rather than

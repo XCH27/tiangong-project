@@ -28,6 +28,8 @@ export type PiRuntimeModelEntry = string | {
   reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
   maxOutputTokens?: number;
   runtimeApi?: 'anthropic-messages' | 'openai-completions' | 'openai-responses';
+  /** Only an authenticated provider catalog may introduce an official native route. */
+  catalogSource?: 'provider' | 'sdk';
   pricingPerMillion?: ModelPricingPerMillion;
 };
 
@@ -39,7 +41,8 @@ export function toPiRuntimeModelEntries(
     if (typeof model === 'string') return model;
     const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined;
     if (!model.contextWindow && supportsImages === undefined && !model.reasoningEfforts
-      && !model.maxOutputTokens && !model.runtimeApi && !model.pricingPerMillion) return model.id;
+      && !model.maxOutputTokens && !model.runtimeApi && !model.pricingPerMillion
+      && model.catalogSource !== 'provider') return model.id;
     return {
       id: model.id,
       ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
@@ -47,6 +50,7 @@ export function toPiRuntimeModelEntries(
       ...(model.reasoningEfforts ? { reasoningEfforts: model.reasoningEfforts } : {}),
       ...(model.maxOutputTokens ? { maxOutputTokens: model.maxOutputTokens } : {}),
       ...(model.runtimeApi ? { runtimeApi: model.runtimeApi } : {}),
+      ...(model.catalogSource === 'provider' ? { catalogSource: 'provider' as const } : {}),
       ...(model.pricingPerMillion ? { pricingPerMillion: model.pricingPerMillion } : {}),
     };
   });
@@ -59,7 +63,7 @@ export interface BackendRuntimePayload extends Record<string, unknown> {
   baseUrl?: string;
   /** Custom endpoint protocol config (api type for routing). */
   customEndpoint?: { api: string; supportsImages?: boolean };
-  /** Selected connection models; custom endpoints register routes, native providers refine known routes. */
+  /** Selected connection models; custom endpoints register routes, official native catalogs may refine or add proven routes. */
   customModels?: PiRuntimeModelEntry[];
 }
 

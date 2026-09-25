@@ -33,6 +33,8 @@ describe('models-pi filtering', () => {
     const ids = models.map(m => m.id);
     expect(ids).toContain('pi/deepseek-flash');
     expect(ids).toContain('pi/deepseek-v4-pro');
+    // Pi's DeepSeek adapter sends thinking: { type: 'disabled' } for off.
+    expect(models.find(model => model.id === 'pi/deepseek-v4-pro')?.reasoningDisableSupported).toBe(true);
   });
 
   it('includes Moonshot AI in the Pi API key provider list with human-readable labels', () => {

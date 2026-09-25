@@ -89,4 +89,40 @@ describe('authenticated account metadata in Pi runtime', () => {
     ]);
     expect(registry.find('deepseek', native.id)?.thinkingLevelMap?.low).toBeNull();
   });
+
+  it('registers and later removes a complete account-only DeepSeek model on its native route', async () => {
+    const registry = await makeRegistry();
+    const live = { id: 'pi/deepseek-next', catalogSource: 'provider' as const,
+      runtimeApi: 'openai-completions' as const, contextWindow: 500_000,
+      maxOutputTokens: 50_000, supportsImages: true,
+      reasoningEfforts: ['low', 'high'] as Array<'low' | 'high'> };
+    expect(registerAccountModelMetadata(registry, 'deepseek', [live])).toBe(1);
+    expect(registry.find('deepseek', 'deepseek-next')).toMatchObject({
+      provider: 'deepseek', id: 'deepseek-next', api: 'openai-completions',
+      baseUrl: 'https://api.deepseek.com', contextWindow: 500_000,
+      maxTokens: 50_000, input: ['text', 'image'],
+      compat: { thinkingFormat: 'deepseek' },
+      thinkingLevelMap: { off: 'none', low: 'low', medium: null, high: 'high', max: null },
+    });
+    expect(registry.find('deepseek', 'deepseek-next')?.cost).toEqual({
+      input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
+    });
+
+    registerAccountModelMetadata(registry, 'deepseek', [
+      { id: 'pi/deepseek-v4-pro', contextWindow: 1_048_576 },
+    ]);
+    expect(registry.find('deepseek', 'deepseek-next')).toBeUndefined();
+  });
+
+  it('rejects user-hinted or incomplete unknown models on an official native route', async () => {
+    const registry = await makeRegistry();
+    const complete = { id: 'pi/deepseek-unproven', runtimeApi: 'openai-completions' as const,
+      contextWindow: 500_000, maxOutputTokens: 50_000,
+      supportsImages: false, reasoningEfforts: ['high'] as Array<'high'> };
+    expect(registerAccountModelMetadata(registry, 'deepseek', [complete])).toBe(0);
+    expect(registerAccountModelMetadata(registry, 'deepseek', [
+      { ...complete, catalogSource: 'provider', maxOutputTokens: undefined },
+    ])).toBe(0);
+    expect(registry.find('deepseek', 'deepseek-unproven')).toBeUndefined();
+  });
 });

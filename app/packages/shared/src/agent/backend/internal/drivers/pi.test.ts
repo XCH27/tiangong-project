@@ -78,11 +78,12 @@ describe('piDriver.buildRuntime custom endpoint models', () => {
     expect(toPiRuntimeModelEntries([{
       id: 'pi/account-model', name: 'Account', shortName: 'Account', description: '', provider: 'pi',
       contextWindow: 300_000, maxOutputTokens: 60_000, supportsImages: false,
-      reasoningEfforts: ['low', 'high'], runtimeApi: 'openai-responses',
+      reasoningEfforts: ['low', 'high'], runtimeApi: 'openai-responses', catalogSource: 'provider',
       pricingPerMillion: { input: 1, output: 2 },
     }])).toEqual([{
       id: 'pi/account-model', contextWindow: 300_000, maxOutputTokens: 60_000,
       supportsImages: false, reasoningEfforts: ['low', 'high'], runtimeApi: 'openai-responses',
+      catalogSource: 'provider',
       pricingPerMillion: { input: 1, output: 2 },
     }]);
   });
@@ -186,6 +187,7 @@ describe('Official API account catalogs', () => {
     const bundled = { id: 'pi/deepseek-v4-pro', name: 'Bundled Pro', shortName: 'Pro', description: '',
       provider: 'pi' as const, contextWindow: 1_000_000, maxOutputTokens: 384_000,
       supportsImages: true, reasoningEfforts: ['high', 'max'] as Array<'high' | 'max'>,
+      reasoningDisableSupported: true,
       catalogSource: 'sdk' as const };
     expect(matchApiAccountModels({ data: [{ id: 'deepseek-v4-pro', object: 'model',
       name: 'DeepSeek-V4-Pro', context_window: 1_048_576, max_output_tokens: 393_216,
@@ -195,6 +197,33 @@ describe('Official API account catalogs', () => {
       id: 'pi/deepseek-v4-pro', name: 'DeepSeek-V4-Pro', contextWindow: 1_048_576,
       maxOutputTokens: 393_216, supportsImages: false, reasoningEfforts: ['low', 'high', 'max'],
       defaultReasoningEffort: 'high', reasoningDisableSupported: true, catalogSource: 'provider',
+    })]);
+  });
+
+  it('admits only fully described, authenticated DeepSeek text routes absent from Pi', () => {
+    const models = matchApiAccountModels({ data: [
+      { id: 'deepseek-next', object: 'model', owned_by: 'deepseek', name: 'DeepSeek Next',
+        context_window: 500_000, max_output_tokens: 50_000,
+        input_modalities: ['text', 'image'], output_modalities: ['text'],
+        effort: { supported_levels: ['low', 'high'], default_level: 'high' } },
+      { id: 'deepseek-id-only', object: 'model', owned_by: 'deepseek' },
+      { id: 'deepseek-image-output', object: 'model', owned_by: 'deepseek', name: 'Image',
+        context_window: 500_000, max_output_tokens: 50_000,
+        input_modalities: ['text'], output_modalities: ['image'],
+        effort: { supported_levels: ['high'] } },
+      { id: 'other-vendor', object: 'model', owned_by: 'other', name: 'Other',
+        context_window: 500_000, max_output_tokens: 50_000,
+        input_modalities: ['text'], output_modalities: ['text'],
+        effort: { supported_levels: ['high'] } },
+      { id: 'invalid-effort', object: 'model', owned_by: 'deepseek', name: 'Invalid',
+        context_window: 500_000, max_output_tokens: 50_000,
+        input_modalities: ['text'], output_modalities: ['text'],
+        effort: { supported_levels: ['high', 'turbo'] } },
+    ] }, [], 'deepseek');
+    expect(models).toEqual([expect.objectContaining({
+      id: 'pi/deepseek-next', name: 'DeepSeek Next', contextWindow: 500_000,
+      maxOutputTokens: 50_000, supportsImages: true, reasoningEfforts: ['low', 'high'],
+      reasoningDisableSupported: true, runtimeApi: 'openai-completions', catalogSource: 'provider',
     })]);
   });
 

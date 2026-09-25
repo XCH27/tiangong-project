@@ -5,6 +5,10 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Fully described, account-listed DeepSeek text models can now use Pi's existing native DeepSeek
+  adapter before the installed model registry adds their IDs. Incomplete or media-output rows stay
+  out of chat; a later account refresh removes withdrawn routes. DeepSeek's Off effort follows Pi's
+  actual `thinking: disabled` request behavior, including the bundled models before a live refresh.
 - Model/source selection now serializes with runtime refresh, retires old Pi credentials, and persists model, source and effort together while retaining the same Session history. Removed account models and deleted connections cannot silently run a fallback; empty catalogs no longer borrow Anthropic capabilities.
 - Model Settings opens the provider catalog and credential form inside its detail panel; saving
   waits for catalog refresh and selects the saved connection directly. Canceled API validation

@@ -1,4 +1,4 @@
-/** Apply authenticated catalog limits to Pi's existing, executable model routes. */
+/** Apply authenticated catalog limits to Pi's existing provider routes. */
 import { getModels } from '@earendil-works/pi-ai/compat';
 import type { ModelRegistry } from '@earendil-works/pi-coding-agent';
 import type { PiRuntimeModelEntry } from '../../shared/src/agent/backend/internal/driver-types.ts';
@@ -32,8 +32,9 @@ function positiveInteger(value: unknown): value is number {
 /**
  * Pi owns the request protocol, provider URL, auth, and compatibility flags.
  * A live account list may refine limits, image input and DeepSeek's exact
- * effort map for a model that this installed Pi catalog can already execute. Rebuild from the bundled
- * catalog on each update so a removed override cannot linger in the runtime.
+ * effort map. A fully described, account-advertised DeepSeek text model can
+ * also use Pi's existing native DeepSeek wire adapter. Rebuild from the bundled
+ * catalog on each update so a removed account model cannot linger.
  */
 export function registerAccountModelMetadata(
   registry: ModelRegistry,
@@ -43,12 +44,22 @@ export function registerAccountModelMetadata(
   const native = getModels(provider);
   const knownIds = new Set(native.map(model => model.id));
   const overrides = new Map<string, Extract<PiRuntimeModelEntry, { id: string }>>();
+  const discovered: Extract<PiRuntimeModelEntry, { id: string }>[] = [];
   for (const entry of entries) {
     if (typeof entry === 'string') continue;
     const id = entry.id.startsWith('pi/') ? entry.id.slice(3) : entry.id;
     if (knownIds.has(id)) overrides.set(id, entry);
+    else if (provider === 'deepseek' && entry.catalogSource === 'provider'
+      && entry.runtimeApi === 'openai-completions'
+      && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)
+      && positiveInteger(entry.contextWindow) && positiveInteger(entry.maxOutputTokens)
+      && entry.maxOutputTokens <= entry.contextWindow
+      && typeof entry.supportsImages === 'boolean'
+      && entry.reasoningEfforts?.length
+      && entry.reasoningEfforts.every(level =>
+        level === 'low' || level === 'medium' || level === 'high' || level === 'xhigh' || level === 'max')) discovered.push(entry);
   }
-  if (!overrides.size) return 0;
+  if (!overrides.size && !discovered.length) return 0;
 
   let changed = 0;
   const models = native.map(model => {
@@ -79,6 +90,35 @@ export function registerAccountModelMetadata(
     changed++;
     return { ...model, contextWindow, maxTokens, input: [...input], thinkingLevelMap };
   });
+  if (provider === 'deepseek') {
+    const template = native.find(model => model.id === 'deepseek-flash' && model.api === 'openai-completions');
+    if (template && (template.compat as { thinkingFormat?: string } | undefined)?.thinkingFormat === 'deepseek') {
+      const seen = new Set<string>();
+      for (const entry of discovered) {
+        const id = entry.id.startsWith('pi/') ? entry.id.slice(3) : entry.id;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const efforts = new Set(entry.reasoningEfforts);
+        models.push({
+          ...template,
+          id, name: id, contextWindow: entry.contextWindow!, maxTokens: entry.maxOutputTokens!,
+          input: entry.supportsImages ? ['text', 'image'] : ['text'],
+          thinkingLevelMap: {
+            off: 'none', minimal: null,
+            low: efforts.has('low') ? 'low' : null,
+            medium: efforts.has('medium') ? 'medium' : null,
+            high: efforts.has('high') ? 'high' : null,
+            xhigh: efforts.has('xhigh') ? 'xhigh' : null,
+            max: efforts.has('max') ? 'max' : null,
+          },
+          // The account catalog does not publish prices. Pi requires a cost
+          // object for accounting; the UI never treats this as a free tier.
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        });
+        changed++;
+      }
+    }
+  }
   // Re-register even when the new snapshot equals the bundled values: the
   // previous account snapshot may have supplied an override that must go away.
   registry.registerProvider(provider, { models });

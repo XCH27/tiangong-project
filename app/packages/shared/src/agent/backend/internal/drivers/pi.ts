@@ -169,7 +169,7 @@ function hasOfficialCatalogEndpoint(connection: { baseUrl?: string; customEndpoi
     || (provider === 'mistral' && configured === 'https://api.mistral.ai/v1');
 }
 
-/** Keep only account-visible models for which the installed Pi adapter can execute. */
+/** Keep account-visible models with an installed route or a fully described native DeepSeek route. */
 export function matchApiAccountModels(
   payload: unknown,
   sdkModels: readonly ModelDefinition[],
@@ -188,9 +188,9 @@ export function matchApiAccountModels(
       || row.active === false || row.archived === true) continue;
     const capabilities = jsonRecord(row.capabilities);
     if (capabilities?.completion_chat === false) continue;
-    seen.add(id);
     const supported = native.get(id);
     if (supported) {
+      seen.add(id);
       // Provider fields refine the installed Pi route; an ID alone establishes
       // membership and leaves the route's existing capabilities unchanged.
       const contextWindow = positiveInteger(row.context_window) ?? positiveInteger(row.max_context_length);
@@ -221,10 +221,39 @@ export function matchApiAccountModels(
         ...(typeof capabilities?.vision === 'boolean' ? { supportsImages: capabilities.vision } : {}),
         ...(inputModalities ? { supportsImages: inputModalities.includes('image') } : {}),
         ...(inputModalities && outputModalities ? { modalities: { input: inputModalities, output: outputModalities } } : {}),
-        ...(reasoningEfforts ? { reasoningEfforts, supportsThinking: true, reasoningDisableSupported: true } : {}),
+        ...(reasoningEfforts ? { reasoningEfforts, supportsThinking: true } : {}),
         ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
         catalogSource: 'provider',
       } : supported);
+    } else if (provider === 'deepseek') {
+      // DeepSeek's authenticated catalog publishes enough fields to register
+      // a new text model on Pi's existing DeepSeek Chat Completions adapter.
+      // An ID-only row or a media-output row cannot establish a request route.
+      const contextWindow = positiveInteger(row.context_window);
+      const maxOutputTokens = positiveInteger(row.max_output_tokens);
+      const input = Array.isArray(row.input_modalities) ? row.input_modalities : [];
+      const output = Array.isArray(row.output_modalities) ? row.output_modalities : [];
+      const effort = jsonRecord(row.effort);
+      const levels = Array.isArray(effort?.supported_levels) ? effort.supported_levels : [];
+      const reasoningEfforts = [...new Set(levels.filter((level: unknown): level is NonNullable<ModelDefinition['reasoningEfforts']>[number] =>
+        level === 'low' || level === 'medium' || level === 'high' || level === 'xhigh' || level === 'max'))];
+      const name = typeof row.name === 'string' ? row.name.trim() : '';
+      if (row.owned_by !== 'deepseek' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)
+        || !name || name.length > 200 || !contextWindow || !maxOutputTokens || maxOutputTokens > contextWindow
+        || !input.includes('text') || !input.every((value: unknown) => value === 'text' || value === 'image')
+        || output.length !== 1 || output[0] !== 'text' || !reasoningEfforts.length
+        || levels.length !== reasoningEfforts.length
+        || (effort?.default_level !== undefined && !reasoningEfforts.includes(effort.default_level as typeof reasoningEfforts[number]))) continue;
+      seen.add(id);
+      const defaultReasoningEffort = reasoningEfforts.find(level => level === effort?.default_level);
+      models.push({
+        id: `pi/${id}`, name, shortName: name, description: 'DeepSeek account model', provider: 'pi',
+        contextWindow, maxOutputTokens, supportsImages: input.includes('image'),
+        modalities: { input: [...input], output: ['text'] },
+        supportsThinking: true, reasoningEfforts, reasoningDisableSupported: true,
+        ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
+        runtimeApi: 'openai-completions', catalogSource: 'provider',
+      });
     }
   }
   return models;

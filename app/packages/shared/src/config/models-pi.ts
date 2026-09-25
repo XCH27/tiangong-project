@@ -33,8 +33,9 @@ function piModelToDefinition(m: Model<Api>): ModelDefinition {
         ? 'openai-responses' : undefined;
   // Pi uses its provider defaults for omitted low/medium/high entries. Only
   // xhigh/max require an explicit opt-in; null explicitly disables a level.
-  // Off is exposed only when the model declares a real off mapping, because
-  // some providers translate Pi's off to a non-off request internally.
+  // Pi's DeepSeek transport sends thinking: { type: 'disabled' } when effort
+  // is off unless the route explicitly forbids it. Other providers need an
+  // explicit off mapping: omitting effort can still turn thinking on.
   const nativeEfforts = m.reasoning
     ? (['low', 'medium', 'high', 'xhigh', 'max'] as const)
         .filter(level => m.thinkingLevelMap?.[level] !== null
@@ -51,7 +52,10 @@ function piModelToDefinition(m: Model<Api>): ModelDefinition {
     supportsThinking: m.reasoning,
     supportsImages: m.input.includes('image'),
     reasoningEfforts: [...nativeEfforts],
-    reasoningDisableSupported: m.thinkingLevelMap?.off != null,
+    reasoningDisableSupported: m.thinkingLevelMap?.off != null
+      || (m.provider === 'deepseek' && m.api === 'openai-completions'
+        && m.compat && 'thinkingFormat' in m.compat
+        && m.compat.thinkingFormat === 'deepseek' && m.thinkingLevelMap?.off !== null),
     maxOutputTokens: m.maxTokens,
     ...(m.provider === 'github-copilot' && runtimeApi ? { runtimeApi } : {}),
     pricingPerMillion: { input: m.cost.input, output: m.cost.output, cacheRead: m.cost.cacheRead },
