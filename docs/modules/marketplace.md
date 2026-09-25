@@ -67,6 +67,29 @@ package flow. Catalog adapters may be local, curated or remote, but cannot activ
 is download → verify → inspect → approve → stage → health check → atomic activation. Update is a new
 transaction; uninstall revokes the package's runtime grants and package-owned credentials before removing staged files; shared connections are retained while referenced.
 
+### Optional voice-input Component (planned)
+
+Voice dictation is an installable Component after the local host and Component marketplace are usable;
+it is `not implemented`. Installation contributes a microphone action to the **existing** composer
+footer and a voice subsection to the **existing** Settings home. With the Component disabled or
+absent, neither control is mounted. Activation requests microphone permission and the chosen speech
+recognition adapter separately; choosing a local adapter requires an explicit model download with
+size, progress, failure, retry and removal. An account-visible transcription model ID alone does
+not prove that its API accepts audio, that the account may use it, or that Fleet has a working STT
+adapter. The API adapter reuses the existing connection/credential owner and tests the actual route.
+The plugin owns recording → transcription → editable draft, plus cancel, failure recovery and retry;
+it never sends without the user's composer action. Its capture is pinned to the originating draft/
+Session so a switch cannot insert a late transcript into another conversation. Uninstall removes
+its UI registrations and microphone lease without deleting shared provider connections or drafts.
+
+Source evidence: Cindy `apps/desktop/src/renderer/components/new-chat/ChatInput.tsx` and
+`components/settings/VoiceInputSection.tsx` keep recording state, shortcut, permission and voice
+settings with the composer. OpenChamber `packages/ui/src/components/dictation/ComposerDictation.tsx`,
+`hooks/useDictation.ts` and `components/sections/openchamber/VoiceSettings.tsx` show a composer-owned
+overlay, idle/recording/uploading/failed recovery and explicit local STT model downloads. These paths
+are relative to their retained `源码参考/software/<project>/` checkouts. Fleet ports the lifecycle and
+ownership into Craft's controls; it does not import a second voice-settings or Session store.
+
 Local authoring does not require a Fleet signing service: verify the selected local origin/digest
 and record explicit trust. Remote signatures, when required by the distribution contract, bind
 the approved bytes; a valid signature alone never grants tool permission.
