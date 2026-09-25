@@ -173,6 +173,7 @@ function hasOfficialCatalogEndpoint(connection: { baseUrl?: string; customEndpoi
 export function matchApiAccountModels(
   payload: unknown,
   sdkModels: readonly ModelDefinition[],
+  provider?: ApiAccountProvider,
 ): ModelDefinition[] {
   if (!payload || typeof payload !== 'object' || !('data' in payload) || !Array.isArray(payload.data)) {
     throw new Error('Provider returned an invalid model list');
@@ -190,17 +191,38 @@ export function matchApiAccountModels(
     seen.add(id);
     const supported = native.get(id);
     if (supported) {
-      // Groq and Mistral additionally publish real limits/capabilities. OpenAI
-      // and DeepSeek return IDs only, so they retain Pi's installed metadata.
+      // Provider fields refine the installed Pi route; an ID alone establishes
+      // membership and leaves the route's existing capabilities unchanged.
       const contextWindow = positiveInteger(row.context_window) ?? positiveInteger(row.max_context_length);
-      const maxOutputTokens = positiveInteger(row.max_completion_tokens);
+      const maxOutputTokens = positiveInteger(row.max_output_tokens) ?? positiveInteger(row.max_completion_tokens);
+      const inputModalities = provider === 'deepseek' && Array.isArray(row.input_modalities)
+        && row.input_modalities.every((value: unknown) => typeof value === 'string')
+        ? row.input_modalities as string[] : undefined;
+      const outputModalities = provider === 'deepseek' && Array.isArray(row.output_modalities)
+        && row.output_modalities.every((value: unknown) => typeof value === 'string')
+        ? row.output_modalities as string[] : undefined;
+      const effort = provider === 'deepseek' ? jsonRecord(row.effort) : null;
+      const effortLevels = Array.isArray(effort?.supported_levels)
+        ? [...new Set(effort.supported_levels.filter((value: unknown): value is NonNullable<ModelDefinition['reasoningEfforts']>[number] =>
+          value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max'))]
+        : undefined;
+      const reasoningEfforts = effortLevels?.length ? effortLevels : undefined;
+      const defaultReasoningEffort = reasoningEfforts?.find(level => level === effort?.default_level);
+      const name = provider === 'deepseek' && typeof row.name === 'string' && row.name.trim()
+        ? row.name.trim() : undefined;
       const hasProviderMetadata = contextWindow !== undefined || maxOutputTokens !== undefined
-        || typeof capabilities?.vision === 'boolean';
+        || typeof capabilities?.vision === 'boolean' || inputModalities !== undefined
+        || outputModalities !== undefined || reasoningEfforts !== undefined || name !== undefined;
       models.push(hasProviderMetadata ? {
         ...supported,
+        ...(name ? { name, shortName: name } : {}),
         ...(contextWindow ? { contextWindow } : {}),
         ...(maxOutputTokens ? { maxOutputTokens } : {}),
         ...(typeof capabilities?.vision === 'boolean' ? { supportsImages: capabilities.vision } : {}),
+        ...(inputModalities ? { supportsImages: inputModalities.includes('image') } : {}),
+        ...(inputModalities && outputModalities ? { modalities: { input: inputModalities, output: outputModalities } } : {}),
+        ...(reasoningEfforts ? { reasoningEfforts, supportsThinking: true, reasoningDisableSupported: true } : {}),
+        ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
         catalogSource: 'provider',
       } : supported);
     }
@@ -273,7 +295,7 @@ async function fetchGoogleAccountModels(apiKey: string, timeoutMs: number): Prom
   throw new Error('Google model catalog exceeded the page limit');
 }
 
-async function fetchIdOnlyAccountModels(
+async function fetchApiAccountModels(
   provider: ApiAccountProvider,
   apiKey: string,
   timeoutMs: number,
@@ -290,7 +312,7 @@ async function fetchIdOnlyAccountModels(
   const mediaModels = provider === 'openai' ? parseOpenAiMediaModels(payload) : undefined;
   const mediaOnlyIds = new Set(mediaModels?.filter(model => model.kind !== 'audio'
     || model.audioMode === 'speech' || model.audioMode === 'transcription').map(model => model.id));
-  const models = matchApiAccountModels(payload, getPiModelsForAuthProvider(provider))
+  const models = matchApiAccountModels(payload, getPiModelsForAuthProvider(provider), provider)
     .filter(model => !mediaOnlyIds.has(model.id.replace(/^pi\//, '')));
   if (!models.length) throw new Error(`${provider} returned no models executable by the installed Pi adapter`);
   return {
@@ -615,13 +637,13 @@ export const piDriver: ProviderDriver = {
       return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id };
     }
 
-    // Official API lists establish account membership. Groq and Mistral also
-    // return bounded capability metadata; Pi still owns the runnable adapter.
+    // Official API lists establish account membership; returned capability
+    // metadata refines Pi's runnable route when the provider supplies it.
     // Custom endpoints retain their explicit user-configured model list.
     const accountProvider = connection.piAuthProvider;
     if (connection.authType === 'api_key' && isApiAccountProvider(accountProvider)
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
-      const { models, mediaModels } = await fetchIdOnlyAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
+      const { models, mediaModels } = await fetchApiAccountModels(accountProvider, credentials.apiKey ?? '', timeoutMs);
       return { models, source: 'provider', serverDefault: models.find(m => m.id === connection.defaultModel)?.id ?? models[0]?.id,
         ...(mediaModels ? { mediaModels } : {}) };
     }
@@ -749,7 +771,7 @@ export const piDriver: ProviderDriver = {
       && hasOfficialCatalogEndpoint(connection, accountProvider)) {
       const apiKey = await credentialManager.getLlmApiKey(slug);
       if (!apiKey) return { success: false, error: `${accountProvider} API key is missing` };
-      const { models } = await fetchIdOnlyAccountModels(accountProvider, apiKey, 15_000);
+      const { models } = await fetchApiAccountModels(accountProvider, apiKey, 15_000);
       const unavailable = selectedUnavailable(models, accountProvider);
       if (unavailable) return unavailable;
       return { success: true, shouldRefreshModels: true };

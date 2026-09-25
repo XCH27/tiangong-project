@@ -5,6 +5,11 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Model Settings keeps the selected connection visible while Add opens its provider picker; even
+  the final API connection can be deleted after confirmation, clearing its stored key and fallback.
+  DeepSeek's authenticated model list now refines context, output, image-input and reasoning
+  levels on the existing Pi route, and an unsupported composer effort resolves to the account
+  model's advertised default.
 - Custom API connections now choose their actual request format in the same credential form:
   OpenAI Chat Completions, OpenAI Responses, Anthropic Messages or Google Generative AI. The
   selected format persists with the connection and uses Pi's matching direct adapter; native

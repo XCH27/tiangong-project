@@ -182,6 +182,22 @@ describe('Official API account catalogs', () => {
     expect(() => matchApiAccountModels({ models: [] }, [known])).toThrow('invalid model list');
   });
 
+  it('uses DeepSeek model-list capability fields instead of stale bundled effort and limits', () => {
+    const bundled = { id: 'pi/deepseek-v4-pro', name: 'Bundled Pro', shortName: 'Pro', description: '',
+      provider: 'pi' as const, contextWindow: 1_000_000, maxOutputTokens: 384_000,
+      supportsImages: true, reasoningEfforts: ['high', 'max'] as Array<'high' | 'max'>,
+      catalogSource: 'sdk' as const };
+    expect(matchApiAccountModels({ data: [{ id: 'deepseek-v4-pro', object: 'model',
+      name: 'DeepSeek-V4-Pro', context_window: 1_048_576, max_output_tokens: 393_216,
+      input_modalities: ['text'], output_modalities: ['text'],
+      effort: { supported_levels: ['low', 'high', 'max'], default_level: 'high' },
+    }] }, [bundled], 'deepseek')).toEqual([expect.objectContaining({
+      id: 'pi/deepseek-v4-pro', name: 'DeepSeek-V4-Pro', contextWindow: 1_048_576,
+      maxOutputTokens: 393_216, supportsImages: false, reasoningEfforts: ['low', 'high', 'max'],
+      defaultReasoningEffort: 'high', reasoningDisableSupported: true, catalogSource: 'provider',
+    })]);
+  });
+
   it('uses the host transport for a DeepSeek key and retains Pi metadata', async () => {
     const urls: string[] = [];
     setOAuthTokenFetcher(async (url, init) => {

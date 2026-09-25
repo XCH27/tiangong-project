@@ -76,7 +76,7 @@ import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import { type ThinkingLevel, getThinkingLevelsForModel } from '@craft-agent/shared/agent/thinking-levels'
+import { type ThinkingLevel, getThinkingLevelsForModel, reconcileThinkingLevelForModel } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
@@ -2308,7 +2308,7 @@ export function FreeFormInput({
           )}
 
           {pickerMode !== 'unavailable' && <ThinkingLevelControl
-            level={thinkingLevel}
+            level={reconcileThinkingLevelForModel(thinkingLevel, selectedModelDefinition)}
             levels={availableThinkingLevels}
             capabilityUnknown={thinkingCapabilityUnknown}
             compact={compactMode}

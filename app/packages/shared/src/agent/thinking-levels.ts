@@ -64,6 +64,7 @@ export function getThinkingLevelsForModel(model?: {
   supportsThinking?: boolean;
   reasoningEfforts?: readonly ('low' | 'medium' | 'high' | 'xhigh' | 'max')[];
   reasoningDisableSupported?: boolean;
+  defaultReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }): readonly ThinkingLevelDefinition[] {
   if (!model) return [];
   // API effort and visible thinking are distinct capabilities (notably for
@@ -86,7 +87,10 @@ export function reconcileThinkingLevelForModel(
   const available = getThinkingLevelsForModel(model);
   if (available.some(level => level.id === current)) return current;
   if (available.length > 0) {
-    return available.find(level => level.id === DEFAULT_THINKING_LEVEL)?.id ?? available[0]!.id;
+    return available.find(level => level.id === model.defaultReasoningEffort)?.id
+      ?? available.find(level => level.id === DEFAULT_THINKING_LEVEL)?.id
+      ?? available.find(level => level.id !== 'off')?.id
+      ?? available[0]!.id;
   }
   return model.supportsThinking === false ? 'off' : current;
 }

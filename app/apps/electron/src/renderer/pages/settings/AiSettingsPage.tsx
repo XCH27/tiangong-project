@@ -14,7 +14,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { X, MoreHorizontal, Pencil, Trash2, Star, AlertTriangle, RefreshCcw, MessageSquareMore, Zap, Clock, Check, Plus } from 'lucide-react'
 import type { CredentialHealthStatus, CredentialHealthIssue } from '../../../shared/types'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
@@ -442,7 +443,6 @@ type ValidationState = 'idle' | 'validating' | 'success' | 'error'
 interface ConnectionRowProps {
   connection: LlmConnectionWithStatus
   connections: LlmConnectionWithStatus[]
-  isLastConnection: boolean
   onRenameClick: () => void
   onDelete: () => void
   onSetDefault: () => void
@@ -455,7 +455,7 @@ interface ConnectionRowProps {
   isDuplicateAccount?: boolean
 }
 
-function ConnectionRow({ connection, connections, isLastConnection, onRenameClick, onDelete, onSetDefault, onValidate, onReauthenticate, onSetMidStreamBehavior, validationState, validationError, isDuplicateAccount }: ConnectionRowProps) {
+function ConnectionRow({ connection, connections, onRenameClick, onDelete, onSetDefault, onValidate, onReauthenticate, onSetMidStreamBehavior, validationState, validationError, isDuplicateAccount }: ConnectionRowProps) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -526,6 +526,8 @@ function ConnectionRow({ connection, connections, isLastConnection, onRenameClic
       <DropdownMenu modal={false} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
+            type="button"
+            aria-label={t('settings.ai.connectionActions')}
             className="p-1.5 rounded-md hover:bg-foreground/[0.05] data-[state=open]:bg-foreground/[0.05] transition-colors"
             data-state={menuOpen ? 'open' : 'closed'}
           >
@@ -574,12 +576,11 @@ function ConnectionRow({ connection, connections, isLastConnection, onRenameClic
           })()}
           <StyledDropdownMenuSeparator />
           <StyledDropdownMenuItem
-            onClick={onDelete}
+            onClick={() => runAfterMenuClose(onDelete)}
             variant="destructive"
-            disabled={isLastConnection}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            <span>{t("common.delete")}</span>
+            <span>{t('settings.ai.deleteConnection')}</span>
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu>
@@ -686,7 +687,7 @@ export default function AiSettingsPage() {
   const { t } = useTranslation()
   const { llmConnections, refreshLlmConnections } = useAppShellContext()
   const [selectedConnectionSlug, setSelectedConnectionSlug] = useState<string | null>(null)
-  const [showProviderCatalog, setShowProviderCatalog] = useState(false)
+  const [providerPickerOpen, setProviderPickerOpen] = useState(false)
   const pendingCreatedSlugs = useRef<Set<string> | null>(null)
 
   // API Setup overlay state
@@ -733,6 +734,8 @@ export default function AiSettingsPage() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false)
   const [renamingConnection, setRenamingConnection] = useState<{ slug: string; name: string } | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [deletingConnectionSlug, setDeletingConnectionSlug] = useState<string | null>(null)
+  const [deletingConnectionBusy, setDeletingConnectionBusy] = useState(false)
 
   // Load performance settings and credential health.
   useEffect(() => {
@@ -828,7 +831,7 @@ export default function AiSettingsPage() {
 
   const handleAddConnection = useCallback((choice: ProviderChoice, preset?: string) => {
     pendingCreatedSlugs.current = new Set(existingSlugs)
-    setShowProviderCatalog(false)
+    setProviderPickerOpen(false)
     setEditInitialValues(preset ? { activePreset: preset } : undefined)
     requestAnimationFrame(() => {
       openApiSetup()
@@ -841,7 +844,7 @@ export default function AiSettingsPage() {
     apiSetupOnboarding.reset()
     setEditInitialValues(undefined)
     pendingCreatedSlugs.current = null
-    setShowProviderCatalog(true)
+    setProviderPickerOpen(true)
   }, [apiSetupOnboarding, closeApiSetup])
 
   // After connection setup, show its model list in the same provider detail panel.
@@ -866,19 +869,20 @@ export default function AiSettingsPage() {
         requestAnimationFrame(() => document.getElementById('api-key')?.focus())
       }
     } else {
-      setShowProviderCatalog(true)
+      setProviderPickerOpen(true)
     }
   }, [llmConnections, openApiSetup])
 
   // Connection action handlers
   const handleRenameClick = useCallback((connection: LlmConnectionWithStatus) => {
-    setRenamingConnection({ slug: connection.slug, name: connection.name })
-    setRenameValue(connection.name)
+    const displayName = getConnectionDisplayName(connection, llmConnections)
+    setRenamingConnection({ slug: connection.slug, name: displayName })
+    setRenameValue(displayName)
     // Defer dialog open to next frame to let dropdown fully unmount first
     requestAnimationFrame(() => {
       setRenameDialogOpen(true)
     })
-  }, [])
+  }, [llmConnections])
 
   const handleRenameSubmit = useCallback(async () => {
     if (!renamingConnection || !window.electronAPI) return
@@ -921,19 +925,24 @@ export default function AiSettingsPage() {
     }
   }, [apiSetupOnboarding, openApiSetup])
 
-  const handleDeleteConnection = useCallback(async (slug: string) => {
-    if (!window.electronAPI) return
+  const handleDeleteConnection = useCallback(async () => {
+    if (!window.electronAPI || !deletingConnectionSlug) return
+    setDeletingConnectionBusy(true)
     try {
-      const result = await window.electronAPI.deleteLlmConnection(slug)
+      const result = await window.electronAPI.deleteLlmConnection(deletingConnectionSlug)
       if (result.success) {
-        refreshLlmConnections?.()
+        if (selectedConnectionSlug === deletingConnectionSlug) setSelectedConnectionSlug(null)
+        setDeletingConnectionSlug(null)
+        await refreshLlmConnections?.()
       } else {
-        console.error('Failed to delete connection:', result.error)
+        toast.error(result.error || t('settings.ai.deleteConnectionFailed'))
       }
     } catch (error) {
-      console.error('Failed to delete connection:', error)
+      toast.error(error instanceof Error ? error.message : t('settings.ai.deleteConnectionFailed'))
+    } finally {
+      setDeletingConnectionBusy(false)
     }
-  }, [refreshLlmConnections])
+  }, [deletingConnectionSlug, refreshLlmConnections, selectedConnectionSlug, t])
 
   const handleValidateConnection = useCallback(async (slug: string) => {
     if (!window.electronAPI) return
@@ -1048,6 +1057,7 @@ export default function AiSettingsPage() {
   }), [llmConnections])
   const selectedConnection = llmConnections.find(c => c.slug === selectedConnectionSlug)
     ?? defaultConnection ?? sortedConnections[0]
+  const deletingConnection = llmConnections.find(c => c.slug === deletingConnectionSlug)
   const handleSelectedCatalogChange = useCallback((catalog: ApiKeyCatalogPreview | null) => {
     setDraftCatalog(catalog ? { ...catalog, connectionSlug: selectedConnection?.slug } : null)
   }, [selectedConnection?.slug])
@@ -1273,12 +1283,12 @@ export default function AiSettingsPage() {
                           <button
                             key={conn.slug}
                             type="button"
-                            onClick={() => { setShowProviderCatalog(false); setSelectedConnectionSlug(conn.slug); handleCloseApiSetup() }}
-                            aria-current={!showApiSetup && !showProviderCatalog && selectedConnection?.slug === conn.slug ? 'page' : undefined}
+                            onClick={() => { setProviderPickerOpen(false); setSelectedConnectionSlug(conn.slug); handleCloseApiSetup() }}
+                            aria-current={!showApiSetup && selectedConnection?.slug === conn.slug ? 'page' : undefined}
                             className={cn(
                               'flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2.5 text-left text-[13px] outline-none transition-colors',
                               'hover:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-ring',
-                              !showApiSetup && !showProviderCatalog && selectedConnection?.slug === conn.slug && 'bg-background shadow-minimal',
+                              !showApiSetup && selectedConnection?.slug === conn.slug && 'bg-background shadow-minimal',
                             )}
                           >
                             <ConnectionIcon connection={conn} size={18} />
@@ -1289,25 +1299,27 @@ export default function AiSettingsPage() {
                             />
                           </button>
                         ))}
-                        {sortedConnections.length === 0 && (
-                          <p className="px-2 py-3 text-xs leading-5 text-muted-foreground">{t('settings.ai.noConnections')}</p>
-                        )}
                       </nav>
                       <div className="border-t border-border/60 p-2">
-                        <Button size="sm" variant="outline" onClick={handleOpenProviderCatalog} className="w-full justify-start gap-2" aria-label={t('settings.ai.addConnection')}>
-                          <Plus className="h-4 w-4" />
-                          {t('settings.ai.addConnection')}
-                        </Button>
+                        <Popover open={providerPickerOpen} onOpenChange={setProviderPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button size="sm" variant="outline" className="w-full justify-start gap-2" aria-label={t('settings.ai.addConnection')}>
+                              <Plus className="h-4 w-4" />
+                              {t('settings.ai.addConnection')}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent side="right" align="end" className="h-[min(70dvh,32rem)] w-[min(22rem,calc(100vw-2.5rem))] overflow-hidden p-0">
+                            <ProviderCatalog onSelect={handleAddConnection} />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </aside>
 
                     <section className="min-w-0 flex-1 md:min-h-0 md:overflow-y-auto">
-                      {showProviderCatalog || (!showApiSetup && !selectedConnection) ? (
-                        <ProviderCatalog onSelect={handleAddConnection} />
-                      ) : showApiSetup && !editingConnectionSlug ? (
+                      {showApiSetup && !editingConnectionSlug ? (
                         <div>
                           {apiSetupForm}
-                          {draftCatalog?.source === 'provider' && !draftCatalog.error && (
+                          {editInitialValues?.activePreset !== 'custom' && draftCatalog?.source === 'provider' && !draftCatalog.error && (
                             <div className="border-t border-border/60 px-5 py-4">
                               <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
                               <p className="mt-0.5 text-xs text-muted-foreground">{t('apiSetup.accountCatalog')}</p>
@@ -1329,9 +1341,8 @@ export default function AiSettingsPage() {
                           <ConnectionRow
                             connection={selectedConnection}
                             connections={llmConnections}
-                            isLastConnection={llmConnections.length <= 1}
                             onRenameClick={() => handleRenameClick(selectedConnection)}
-                            onDelete={() => handleDeleteConnection(selectedConnection.slug)}
+                            onDelete={() => setDeletingConnectionSlug(selectedConnection.slug)}
                             onSetDefault={() => handleSetDefaultConnection(selectedConnection.slug)}
                             onValidate={() => handleValidateConnection(selectedConnection.slug)}
                             onReauthenticate={() => handleReauthenticateConnection(selectedConnection)}
@@ -1541,6 +1552,22 @@ export default function AiSettingsPage() {
                 onSubmit={handleRenameSubmit}
                 placeholder={t("settings.ai.enterConnectionName")}
               />
+              <Dialog open={deletingConnectionSlug !== null} onOpenChange={open => { if (!open && !deletingConnectionBusy) setDeletingConnectionSlug(null) }}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{t('settings.ai.deleteConnection')}</DialogTitle>
+                    <DialogDescription>
+                      {t('settings.ai.deleteConnectionConfirm', {
+                        name: deletingConnection ? getConnectionDisplayName(deletingConnection, llmConnections) : '',
+                      })}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeletingConnectionSlug(null)} disabled={deletingConnectionBusy}>{t('common.cancel')}</Button>
+                    <Button variant="destructive" onClick={handleDeleteConnection} disabled={deletingConnectionBusy}>{t('common.delete')}</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </ScrollArea>

@@ -137,6 +137,8 @@ export interface ModelDefinition {
   modalities?: { input: string[]; output: string[] };
   /** Provider-advertised reasoning levels. Absent means the exact levels are unknown. */
   reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+  /** Provider-advertised effort used when the request leaves effort unspecified. */
+  defaultReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** Explicit evidence that reasoning can be turned off for this model. */
   reasoningDisableSupported?: boolean;
   /** Provider-advertised output limit; absent means unknown. */

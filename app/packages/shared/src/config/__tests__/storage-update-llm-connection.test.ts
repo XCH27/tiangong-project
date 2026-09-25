@@ -57,12 +57,28 @@ function setup(llmConnections: any[]) {
     return run.exitCode === 0
   }
 
+  function runDelete(slug: string): boolean {
+    const run = Bun.spawnSync([
+      process.execPath,
+      '--eval',
+      `import { deleteLlmConnection } from '${STORAGE_MODULE_PATH}'; const ok = deleteLlmConnection(${JSON.stringify(slug)}); process.exit(ok ? 0 : 1);`,
+    ], {
+      env: { ...process.env, CRAFT_CONFIG_DIR: configDir },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    if (run.exitCode !== 0 && run.stderr.toString().trim()) {
+      throw new Error(`delete subprocess failed:\n${run.stderr.toString()}`)
+    }
+    return run.exitCode === 0
+  }
+
   function readConnection(slug: string): any {
     const config = JSON.parse(readFileSync(configPath, 'utf-8'))
     return config.llmConnections.find((c: any) => c.slug === slug)
   }
 
-  return { configDir, configPath, runUpdate, readConnection }
+  return { configDir, configPath, runUpdate, runDelete, readConnection }
 }
 
 function makeConnection(overrides: Record<string, unknown> = {}) {
@@ -77,6 +93,17 @@ function makeConnection(overrides: Record<string, unknown> = {}) {
     ...overrides,
   }
 }
+
+describe('deleteLlmConnection – final API connection', () => {
+  it('allows returning to zero connections and clears the default', () => {
+    const { configPath, runDelete } = setup([makeConnection()])
+
+    expect(runDelete('custom-compat')).toBe(true)
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    expect(config.llmConnections).toEqual([])
+    expect(config.defaultLlmConnection).toBeUndefined()
+  })
+})
 
 describe('updateLlmConnection – customEndpoint', () => {
   it('preserves customEndpoint when provided in updates', () => {

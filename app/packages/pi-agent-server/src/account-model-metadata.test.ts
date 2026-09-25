@@ -72,4 +72,21 @@ describe('authenticated account metadata in Pi runtime', () => {
       contextWindow: native.contextWindow, maxTokens: native.maxTokens,
     });
   });
+
+  it('updates DeepSeek effort mapping from the authenticated catalog', async () => {
+    const registry = await makeRegistry();
+    const native = getModels('deepseek').find(model => model.id === 'deepseek-v4-pro')!;
+    expect(native.thinkingLevelMap?.low).toBeNull();
+
+    registerAccountModelMetadata(registry, 'deepseek', [
+      { id: `pi/${native.id}`, reasoningEfforts: ['low', 'high', 'max'] },
+    ]);
+    expect(registry.find('deepseek', native.id)?.thinkingLevelMap).toMatchObject({
+      low: 'low', medium: null, high: 'high', max: 'max',
+    });
+    registerAccountModelMetadata(registry, 'deepseek', [
+      { id: `pi/${native.id}`, reasoningEfforts: ['high', 'max'] },
+    ]);
+    expect(registry.find('deepseek', native.id)?.thinkingLevelMap?.low).toBeNull();
+  });
 });

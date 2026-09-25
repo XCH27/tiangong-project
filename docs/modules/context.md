@@ -160,18 +160,24 @@ uses its existing provider cancellation path; a late result cannot reopen the cl
 backend checks cancellation before saving exchanged credentials. This correction does not authorize
 automatic model routing, a new
 account store, or a second credential owner.
+The Settings provider picker opens from Add Connection while the selected connection stays in
+place. A saved API connection, including the last one, can be removed after confirmation; the
+existing connection and credential owners clear its model default and stored key together.
 
 OpenAI, Google AI Studio, DeepSeek, Groq and Mistral API-key connections use their official authenticated model-list
 endpoints when the endpoint is the provider default. Fleet intersects returned IDs with the
-installed Pi model adapters. OpenAI and DeepSeek list membership only, so Pi supplies their context,
-request protocol and thinking metadata. Google's paged native list identifies `generateContent`
+installed Pi model adapters. OpenAI returns account membership, so Pi supplies its context,
+request protocol and thinking metadata. DeepSeek's native list also supplies name, context,
+maximum output, input/output modalities and supported/default effort levels; those authenticated
+fields refine its installed Pi route without creating a new route. An incompatible Session effort
+falls back to the model's advertised default before another supported level. Google's paged native list identifies `generateContent`
 models and can refine input/output token limits; its `thinking` flag does not supply effort levels,
 so Pi's explicit effort mappings remain in control. Groq's active model rows can refine context/output limits;
 Mistral's unarchived chat rows can refine context and image-input support. An ID that is not in the
 installed adapter catalog is treated as unavailable
 and never surfaced as runnable; if every returned ID is unknown, the live refresh fails closed and
 the existing saved catalog remains. Custom endpoints keep their explicit
-model lists. The official APIs do not expose a complete per-model effort, context or media contract,
+model lists. The other official APIs do not expose a complete per-model effort, context or media contract,
 so the UI must leave those fields unknown rather than copying another provider's values. This same
 boundary is why a live API list may be shorter than the provider's marketing catalog.
 During API-key setup, the existing provider-model RPC uses the transient key to query the same

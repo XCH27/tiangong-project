@@ -799,14 +799,13 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     return { success: true }
   })
 
-  // Delete an LLM connection (at least one connection must remain)
+  // Delete a connection and its credentials; the last connection may also be removed.
   server.handle(RPC_CHANNELS.llmConnections.DELETE, async (_ctx, slug: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const connection = getLlmConnection(slug)
       if (!connection) {
         return { success: false, error: 'Connection not found' }
       }
-      // deleteLlmConnection handles the "at least one must remain" check
       const success = deleteLlmConnection(slug)
       if (success) {
         // Stop any periodic model refresh timer for this connection

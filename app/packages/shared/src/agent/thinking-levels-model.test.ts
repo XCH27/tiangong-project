@@ -50,5 +50,14 @@ describe('model-advertised reasoning choices', () => {
     })).toBe('high');
     expect(reconcileThinkingLevelForModel('medium', { supportsThinking: false })).toBe('off');
     expect(reconcileThinkingLevelForModel('max', { supportsThinking: true })).toBe('max');
+    expect(reconcileThinkingLevelForModel('medium', {
+      supportsThinking: true, reasoningEfforts: ['low', 'high', 'max'],
+      defaultReasoningEffort: 'high',
+    })).toBe('high');
+    expect(reconcileThinkingLevelForModel('medium', {
+      supportsThinking: true, reasoningEfforts: ['low'],
+      reasoningDisableSupported: true,
+      defaultReasoningEffort: 'high',
+    })).toBe('low');
   });
 });

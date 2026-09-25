@@ -31,8 +31,8 @@ function positiveInteger(value: unknown): value is number {
 
 /**
  * Pi owns the request protocol, provider URL, auth, and compatibility flags.
- * A live account list may only refine limits and image input for a model that
- * this installed Pi catalog can already execute. Rebuild from the bundled
+ * A live account list may refine limits, image input and DeepSeek's exact
+ * effort map for a model that this installed Pi catalog can already execute. Rebuild from the bundled
  * catalog on each update so a removed override cannot linger in the runtime.
  */
 export function registerAccountModelMetadata(
@@ -62,10 +62,22 @@ export function registerAccountModelMetadata(
     const input = typeof override.supportsImages === 'boolean'
       ? (override.supportsImages ? ['text', 'image'] as const : ['text'] as const)
       : model.input;
+    const thinkingLevelMap = provider === 'deepseek' && override.reasoningEfforts?.length
+      ? {
+          ...model.thinkingLevelMap,
+          low: override.reasoningEfforts.includes('low') ? 'low' as const : null,
+          medium: override.reasoningEfforts.includes('medium') ? 'medium' as const : null,
+          high: override.reasoningEfforts.includes('high') ? 'high' as const : null,
+          xhigh: override.reasoningEfforts.includes('xhigh') ? 'xhigh' as const : null,
+          max: override.reasoningEfforts.includes('max') ? 'max' as const : null,
+        }
+      : model.thinkingLevelMap;
     if (contextWindow === model.contextWindow && maxTokens === model.maxTokens
-      && input.join(',') === model.input.join(',')) return model;
+      && input.join(',') === model.input.join(',')
+      && (['low', 'medium', 'high', 'xhigh', 'max'] as const).every(level =>
+        thinkingLevelMap?.[level] === model.thinkingLevelMap?.[level])) return model;
     changed++;
-    return { ...model, contextWindow, maxTokens, input: [...input] };
+    return { ...model, contextWindow, maxTokens, input: [...input], thinkingLevelMap };
   });
   // Re-register even when the new snapshot equals the bundled values: the
   // previous account snapshot may have supplied an override that must go away.
