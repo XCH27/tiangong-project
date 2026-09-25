@@ -5,6 +5,10 @@ export interface PiModelInfo {
   costOutput?: number
   contextWindow: number
   reasoning: boolean
+  supportsImages?: boolean
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>
+  supportsFastMode?: boolean
+  modalities?: { input: string[]; output: string[] }
 }
 
 /** Keep an existing choice even when the bundled SDK predates that model. */

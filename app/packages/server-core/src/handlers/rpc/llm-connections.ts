@@ -7,7 +7,7 @@ import {
   testBackendConnection,
   validateStoredBackendConnection,
   fetchBackendModels,
-  fetchCustomEndpointModelIds,
+  fetchCustomEndpointModels,
   fetchXaiApiModels,
   fetchXaiApiMediaModels,
   fetchXaiSubscriptionModels,
@@ -163,7 +163,11 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         // A blank edit keeps the already keyed local endpoint keyed.
         updates.authType = !replacingCredential && connection.authType === 'api_key_with_endpoint'
           ? connection.authType : branch.authType
-        if (branch.name !== undefined) updates.name = branch.name
+        // Preserve a user alias on edit. Correct the old generic template name
+        // only when this connection has never been renamed.
+        const inheritedName = /^Craft Agents Backend \(API Key\)(?: \d+)?$/.test(connection.name)
+        if (branch.name !== undefined && (isNewConnection || inheritedName)) updates.name = branch.name
+        else if (inheritedName) updates.name = connection.name.replace('Craft Agents Backend (API Key)', 'Custom Endpoint')
         if (branch.piAuthProvider !== undefined) updates.piAuthProvider = branch.piAuthProvider
 
         // Brand-name override on first setup only (user-renamed connections aren't clobbered on re-save).
@@ -365,7 +369,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       // Awaited so the model selector shows real available models immediately.
       const pendingModels = Array.isArray(pendingConnection.models) ? pendingConnection.models : []
       const isAutoSynced = pendingConnection.modelSelectionMode === 'automaticallySyncedFromProvider'
-      if (!pendingModels.length || isAutoSynced) {
+      if (!pendingModels.length || isAutoSynced || isCompatProvider(pendingConnection.providerType)) {
         try {
           await getModelRefreshService().refreshNow(setup.slug)
         } catch (err) {
@@ -483,12 +487,15 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         return { models: [], totalCount: 0, source: 'sdk' as const, error: 'API base URL and format are required' }
       }
       try {
-        const ids = await fetchCustomEndpointModelIds(baseUrl, effectiveKey ?? '', customApi)
+        const discovered = await fetchCustomEndpointModels(baseUrl, effectiveKey ?? '', customApi)
         return {
-          // IDs are candidates only. This response does not confer chat,
-          // context, effort or multimodal capability on a custom endpoint.
-          models: ids.map(id => ({ id: `pi/${id}`, name: id, contextWindow: 0, reasoning: false })),
-          totalCount: ids.length,
+          // The account response supplies display metadata, but discovery
+          // alone does not grant chat execution or subscription entitlement.
+          models: discovered.map(model => ({
+            ...model, id: `pi/${model.id}`, contextWindow: model.contextWindow ?? 0,
+            reasoning: model.supportsThinking ?? false,
+          })),
+          totalCount: discovered.length,
           source: 'provider' as const,
         }
       } catch (error) {
@@ -530,6 +537,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
                 costOutput: model.pricingPerMillion?.output,
                 contextWindow: model.contextWindow ?? 0,
                 reasoning: model.supportsThinking ?? false,
+                supportsImages: model.supportsImages,
+                reasoningEfforts: model.reasoningEfforts,
+                supportsFastMode: model.supportsFastMode,
+                modalities: model.modalities,
               })),
               totalCount: result.models.length,
               source: 'provider' as const,

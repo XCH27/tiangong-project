@@ -33,20 +33,23 @@ function providerModelsHandler(): HandlerFn {
 }
 
 describe('pre-save account model discovery', () => {
-  it('returns custom endpoint IDs as candidate rows without inferred capability metadata', async () => {
+  it('returns custom endpoint names and explicit capability fields without inferring ID-only metadata', async () => {
     const calls: Array<{ url: string; authorization: string | null }> = []
     setOAuthTokenFetcher(async (url, init) => {
       calls.push({ url, authorization: new Headers(init.headers).get('authorization') })
-      return new Response(JSON.stringify({ data: [{ id: 'model-a' }, { id: 'model-b' }] }))
+      return new Response(JSON.stringify({ data: [
+        { id: 'model-a', display_name: 'Provider Model A', context_window: 128_000, input_modalities: ['text', 'image'] },
+        { id: 'model-b' },
+      ] }))
     })
     try {
       const result = await providerModelsHandler()(
         ctx, 'custom', 'test-key', undefined, 'https://gateway.example/v1', 'openai-responses',
-      ) as { source: string; models: Array<{ id: string; name: string; contextWindow: number; reasoning: boolean }> }
+      ) as { source: string; models: Array<{ id: string; name: string; contextWindow: number; reasoning: boolean; supportsImages?: boolean }> }
       expect(calls).toEqual([{ url: 'https://gateway.example/v1/models', authorization: 'Bearer test-key' }])
       expect(result.source).toBe('provider')
       expect(result.models).toEqual([
-        { id: 'pi/model-a', name: 'model-a', contextWindow: 0, reasoning: false },
+        { id: 'pi/model-a', name: 'Provider Model A', contextWindow: 128_000, reasoning: false, supportsImages: true },
         { id: 'pi/model-b', name: 'model-b', contextWindow: 0, reasoning: false },
       ])
     } finally {

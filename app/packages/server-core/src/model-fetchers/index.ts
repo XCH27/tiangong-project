@@ -21,6 +21,7 @@ import {
   getModelsForProviderType,
   applyManualModelSettings,
 } from '@craft-agent/shared/config'
+import { fetchCustomEndpointModels } from '@craft-agent/shared/agent/backend'
 import { MODEL_FETCHERS } from './registry'
 import { mergeClaudeSdkCapabilities } from './anthropic'
 import { handlerLog } from './runtime'
@@ -77,6 +78,7 @@ export class ModelRefreshService {
     private fetchers: ModelFetcherMap,
     private getCredentials: CredentialResolver,
     private store: ModelRefreshStore = defaultStore,
+    private fetchCustomModels: typeof fetchCustomEndpointModels = fetchCustomEndpointModels,
   ) {}
 
   /** Refine an OAuth account's existing catalog from its active Claude SDK query. */
@@ -121,7 +123,8 @@ export class ModelRefreshService {
 
   /**
    * Internal: actual refresh logic with fallback chain.
-   * Skips compat providers (not in fetcher map).
+   * Custom endpoints use their configured URL and wire format for an explicit
+   * candidate refresh; other providers use the driver catalog.
    * Preserves user's defaultModel if still valid.
    * Updates connection.models in storage on success.
    */
@@ -132,9 +135,52 @@ export class ModelRefreshService {
       return { source: 'unavailable', error: 'Connection not found' }
     }
 
-    // Skip compat providers — users configure models manually
+    // A custom /models result does not prove a runnable route or entitlement.
+    // Preserve manual corrections and keep new IDs out of the picker.
     if (isCompatProvider(connection.providerType)) {
-      return { source: 'manual' }
+      if (!connection.baseUrl || !connection.customEndpoint) return { source: 'manual' }
+      let discovered: Awaited<ReturnType<typeof fetchCustomEndpointModels>>
+      try {
+        const credentials = await this.getCredentials(slug)
+        discovered = await this.fetchCustomModels(
+          connection.baseUrl, credentials.apiKey ?? '', connection.customEndpoint.api,
+        )
+      } catch (error) {
+        return { source: connection.models?.length ? 'saved' : 'unavailable',
+          error: error instanceof Error ? error.message : String(error) }
+      }
+      const current = this.store.getConnection(slug)
+      if (this.generations.get(slug) !== generation || !current
+        || current.providerType !== connection.providerType
+        || current.baseUrl !== connection.baseUrl
+        || current.customEndpoint?.api !== connection.customEndpoint.api
+        || current.createdAt !== connection.createdAt) return { source: 'superseded' }
+      const existing = current.models ?? []
+      const known = new Map(existing.map(model => [typeof model === 'string' ? model : model.id, model]))
+      const added: string[] = []
+      const refreshed: ModelDefinition[] = []
+      const seen = new Set<string>()
+      for (const item of discovered) {
+        const id = item.id.startsWith('pi/') ? item.id : `pi/${item.id}`
+        if (id.length > 163 || /\s/.test(id) || seen.has(id)) continue
+        seen.add(id)
+        const previous = known.get(id)
+        if (!previous) added.push(id)
+        const base = previous && typeof previous !== 'string' ? previous : undefined
+        refreshed.push({
+          ...item, id,
+          name: item.name === item.id ? base?.name ?? item.name : item.name,
+          shortName: item.name === item.id ? base?.shortName ?? item.name : item.name,
+          description: base?.description ?? '', provider: 'pi', catalogSource: 'provider',
+        })
+        known.delete(id)
+      }
+      const next = applyManualModelSettings(current, [...refreshed, ...known.values()])
+      const hiddenModelIds = [...new Set([...(current.hiddenModelIds ?? []), ...added])]
+      if (!this.store.updateConnection(slug, { models: next, hiddenModelIds })) {
+        return { source: 'unavailable', error: 'Could not save the model list' }
+      }
+      return { source: 'provider' }
     }
 
     const providerType = connection.providerType as FetchableProvider

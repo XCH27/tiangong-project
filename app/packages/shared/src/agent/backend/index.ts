@@ -89,7 +89,7 @@ export { EventQueue } from './event-queue.ts';
 export { ClaudeEventAdapter } from './claude/event-adapter.ts';
 export { PiEventAdapter } from './pi/event-adapter.ts';
 export { fetchXaiApiModels, fetchXaiApiMediaModels, fetchXaiSubscriptionModels, setXaiCatalogFetcher, XAI_SUBSCRIPTION_BASE } from './internal/drivers/xai-models.ts';
-export { fetchCustomEndpointModelIds } from './internal/drivers/custom-endpoint-models.ts';
+export { fetchCustomEndpointModelIds, fetchCustomEndpointModels } from './internal/drivers/custom-endpoint-models.ts';
 export type { XaiMediaModel, XaiMediaCatalog } from './internal/drivers/xai-models.ts';
 
 // Agent implementations are imported directly by factory.ts

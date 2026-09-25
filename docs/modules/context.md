@@ -73,24 +73,24 @@ default-effort controls are retired: a new Session uses the built-in level recon
 selected model, while explicit automation/session choices and the composer effort control remain.
 Legacy workspace model/connection and default-effort values stay on disk for existing Session
 compatibility but do not steer new Sessions. Refresh preserves
-visibility preferences for matching IDs and shows newly discovered IDs by default. A legacy
+visibility preferences for matching IDs; new custom endpoint IDs remain hidden until reviewed. A legacy
 connection without a saved list shows an empty Settings and composer catalog until its
 connection-owned list is refreshed; custom endpoints without an explicit list cannot invent
 model membership.
 The selected provider's compact model list shows the full chat-routable catalog without a search
-or capability-filter toolbar. Its row opens per-model details for context, output, image input and
-reasoning, while an explicitly advertised non-text input remains distinct from a media executor.
+or capability-filter toolbar. Each row shows known context, input modalities, reasoning levels and
+fast mode; an ID-only row keeps its unknown label. Its details edit context, output, image input and reasoning, while an explicitly advertised non-text input remains distinct from a media executor.
 An arbitrary custom API endpoint selects its actual Pi request format in the same credential form:
 OpenAI Chat Completions, OpenAI Responses, Anthropic Messages or Google Generative AI. The saved
 format selects the streaming adapter and authentication header; Anthropic and Google use their
-SDK key headers, not a fabricated Bearer token. Native provider presets keep their own SDK transport and
-account-scoped model discovery. CC Switch's additional upstream formats rely on its local proxy
+SDK key headers, not a fabricated Bearer token. Native presets show their endpoint and model-dependent
+SDK format read-only in the same panel; they retain account discovery. CC Switch's extra formats use a proxy
 for conversion, so Fleet exposes only formats its installed Pi runtime can send directly.
-The custom form reads same-origin `/models` candidate IDs with that format's authentication header,
-bounded pagination and no redirects. The user selects chat IDs or enters missing ones manually;
-the list alone cannot establish modality, context, effort or execution rights. Unsupported listing
-leaves the manual input usable. A custom connection still owns its explicit model list; the
-background provider refresh does not replace it. Editing an API connection without retyping its
+The custom form reads same-origin `/models` candidates with that format's authentication header,
+bounded pagination and no redirects. One list combines selectable candidates and missing IDs entered manually;
+explicit names and capability fields are retained, but ID-only rows cannot establish modality, context, effort or execution rights. Later ID-only refreshes keep the last official display name while clearing capability claims no longer advertised; manual corrections remain. Generic legacy custom-connection labels are replaced without overwriting user aliases. Unsupported listing
+leaves the manual input usable. Refresh appends new IDs hidden by default, preserving explicit models
+and corrections; it never assumes a discovered ID is chat-routable. Editing an API connection without retyping its
 key tests the proposed model using the stored key on the host before saving, only while the
 provider, endpoint and API format still match the saved route. Changing any of those requires
 re-entering the key; a saved secret is never forwarded to a new endpoint by a blank-key edit.
@@ -107,11 +107,11 @@ explicit response modalities take precedence when supplied. Unknown IDs remain u
 Audio rows distinguish speech generation, transcription, generic audio and realtime modes. Media-only
 rows cannot become Pi chat choices; the account-visible list proves neither generation entitlement
 nor a Fleet executor. Custom OpenAI endpoints and ChatGPT/Codex OAuth do not borrow this catalog.
-The existing composer renders effort directly beside model selection, using that model's
-advertised levels and the existing Session effort callback. The model menu and compact drawer no
-longer duplicate the control; an unknown capability is visible but cannot be selected, and a
-fixed single level is shown without a pointless menu. Compact layout keeps the direct control's
-label visually hidden to protect the send button.
+The composer renders model effort beside selection through the existing Session callback.
+Its model menu and compact drawer do not duplicate effort; an unknown capability remains
+unselectable, and a fixed single level has no menu. Compact layout hides its effort label.
+The same toolbar shows a context-occupancy ring from the Session snapshot: stale or unknown
+usage has no ring, over-limit text stays truthful, and `/compact` requires `canCompact`.
 The connection is an account and credential owner, not a claim that every model uses the chat
 runtime. Its chat list contains only text-output language models; authenticated input/output
 modalities are retained when advertised. Media-only models require the separate media executor
@@ -148,7 +148,7 @@ limits. Copilot device authorization, token exchange and account-model policy ca
 proxy-aware host transport as the other subscription OAuth flows; a direct Node fetch failed on a
 machine whose authorization browser used the OS proxy. The Settings
 connection menu exposes the existing backend model-list refresh for provider-managed catalogs,
-never for custom endpoints or preserved user-defined tiers. Refresh may retain a cached catalog
+and for custom endpoints, never for preserved user-defined tiers. Refresh may retain a cached catalog
 when a provider is unavailable, so completion does not claim a live update. Grok subscription
 login now uses Pi 0.87.1's xAI device-code grant through Craft's proxy-aware transport and the
 existing connection-scoped credential manager; its authenticated model catalog is routed through

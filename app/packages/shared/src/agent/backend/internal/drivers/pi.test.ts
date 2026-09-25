@@ -183,6 +183,17 @@ describe('Official API account catalogs', () => {
     expect(() => matchApiAccountModels({ models: [] }, [known])).toThrow('invalid model list');
   });
 
+  it('uses an official display name when supplied, while ID-only rows retain the installed name', () => {
+    const known = { id: 'pi/gpt-known', name: 'Bundled Name', shortName: 'Bundled',
+      description: '', provider: 'pi' as const, contextWindow: 200_000 };
+    expect(matchApiAccountModels({ data: [{ id: 'gpt-known', object: 'model', display_name: 'Official Name' }] }, [known], 'openai'))
+      .toEqual([expect.objectContaining({ name: 'Official Name', shortName: 'Official Name', catalogSource: 'provider' })]);
+    expect(matchApiAccountModels({ data: [{ id: 'gpt-known', object: 'model', name: 'gpt-known' }] }, [known], 'openai'))
+      .toEqual([known]);
+    expect(matchApiAccountModels({ data: [{ id: 'gpt-known', object: 'model' }] }, [known], 'openai'))
+      .toEqual([known]);
+  });
+
   it('uses DeepSeek model-list capability fields instead of stale bundled effort and limits', () => {
     const bundled = { id: 'pi/deepseek-v4-pro', name: 'Bundled Pro', shortName: 'Pro', description: '',
       provider: 'pi' as const, contextWindow: 1_000_000, maxOutputTokens: 384_000,

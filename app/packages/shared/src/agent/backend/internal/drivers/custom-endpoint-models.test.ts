@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { setOAuthTokenFetcher } from '../../../../auth/oauth-token-fetch.ts';
-import { fetchCustomEndpointModelIds } from './custom-endpoint-models.ts';
+import { fetchCustomEndpointModelIds, fetchCustomEndpointModels } from './custom-endpoint-models.ts';
 
 afterEach(() => setOAuthTokenFetcher(null));
 
@@ -33,21 +33,38 @@ describe('custom endpoint model candidates', () => {
     expect(urls).toEqual(['https://gateway.example/api/models', 'https://gateway.example/api/v1/models']);
   });
 
-  it('reads Google pages without treating model-list fields as capabilities', async () => {
+  it('reads Google pages and preserves official display names and limits', async () => {
     const urls: string[] = [];
     setOAuthTokenFetcher(async (url, init) => {
       urls.push(url);
       expect(new Headers(init.headers).get('x-goog-api-key')).toBe('secret');
       return new Response(JSON.stringify(urls.length === 1
-        ? { models: [{ name: 'models/gemini-one', inputTokenLimit: 100000 }], nextPageToken: 'next' }
+        ? { models: [{ name: 'models/gemini-one', displayName: 'Gemini One', inputTokenLimit: 100000 }], nextPageToken: 'next' }
         : { models: [{ name: 'models/gemini-two' }] }));
     });
-    expect(await fetchCustomEndpointModelIds('https://gateway.example/v1beta', 'secret', 'google-generative-ai'))
-      .toEqual(['gemini-one', 'gemini-two']);
+    expect(await fetchCustomEndpointModels('https://gateway.example/v1beta', 'secret', 'google-generative-ai'))
+      .toEqual([{ id: 'gemini-one', name: 'Gemini One', contextWindow: 100000 },
+        { id: 'gemini-two', name: 'gemini-two' }]);
     expect(urls).toEqual([
       'https://gateway.example/v1beta/models',
       'https://gateway.example/v1beta/models?pageToken=next',
     ]);
+  });
+
+  it('retains explicit official names and capability fields, leaving ID-only metadata unknown', async () => {
+    setOAuthTokenFetcher(async () => new Response(JSON.stringify({ data: [
+      { id: 'rich', display_name: 'Official Rich', context_window: 256_000, max_output_tokens: 16_000,
+        input_modalities: ['text', 'image'], output_modalities: ['text'],
+        effort: { supported_levels: ['low', 'high'] }, supports_fast_mode: true },
+      { id: 'id-only' },
+    ] })));
+    expect(await fetchCustomEndpointModels('https://gateway.example/v1', 'secret', 'openai-completions'))
+      .toEqual([
+        { id: 'rich', name: 'Official Rich', contextWindow: 256_000, maxOutputTokens: 16_000,
+          supportsImages: true, modalities: { input: ['text', 'image'], output: ['text'] },
+          reasoningEfforts: ['low', 'high'], supportsThinking: true, supportsFastMode: true },
+        { id: 'id-only', name: 'id-only' },
+      ]);
   });
 
   it('rejects redirects and malformed destinations instead of sending a key elsewhere', async () => {

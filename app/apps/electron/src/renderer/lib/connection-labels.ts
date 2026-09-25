@@ -16,6 +16,11 @@ export function getConnectionDisplayName(connection: LlmConnection, connections:
       : subscriptionTemplate[1] === 'ChatGPT Plus' ? 'ChatGPT' : 'Grok'
     return subscriptionTemplate[2] ? `${label} ${subscriptionTemplate[2]}` : label
   }
+  // Existing custom connections may still carry the pre-correction Pi template
+  // name until edited; keep the Settings list and composer source label aligned.
+  if (connection.customEndpoint && /^Craft Agents Backend \(API Key\)(?: \d+)?$/.test(connection.name)) {
+    return connection.name.replace('Craft Agents Backend (API Key)', 'Custom Endpoint')
+  }
   if (!/^Craft Agents Backend \([^)]+\)(?: \d+)?$/.test(connection.name)) return connection.name
   const providerName = getConnectionProviderLabel(connection)
   if (providerName === connection.name) return connection.name

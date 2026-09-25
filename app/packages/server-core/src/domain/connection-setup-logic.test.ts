@@ -190,6 +190,11 @@ describe('createBuiltInConnection seeds midStreamBehavior', () => {
     expect(conn.midStreamBehavior).toBe('steer')
   })
 
+  it('names custom Pi endpoints without inheriting the generic backend label', () => {
+    expect(createBuiltInConnection('pi-api-key', 'https://gateway.example/v1').name).toBe('Custom Endpoint')
+    expect(createBuiltInConnection('pi-api-key-2', 'https://gateway.example/v1').name).toBe('Custom Endpoint 2')
+  })
+
   it("anthropic-api with custom endpoint becomes pi_compat → 'steer'", () => {
     const conn = createBuiltInConnection('anthropic-api', 'http://localhost:11434/v1')
     expect(conn.providerType).toBe('pi_compat')

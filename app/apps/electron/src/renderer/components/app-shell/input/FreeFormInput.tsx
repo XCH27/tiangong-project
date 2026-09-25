@@ -35,6 +35,7 @@ import { RichTextInput, type RichTextInputHandle } from '@/components/ui/rich-te
 import { useInputAvailableHeight } from '@/hooks/useInputAvailableHeight'
 import { getComposerMaxHeight } from './composer-height'
 import { getContextDisplay, getContextDisplayLabels, type ContextStatus } from './context-display'
+import { ContextUsageRing } from './ContextUsageRing'
 import { createPendingPlanDispatcher } from './pending-plan-dispatch'
 import { scrollFocusedCaretIntoView } from '@/lib/scroll-focused-caret'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
@@ -1977,36 +1978,12 @@ export function FreeFormInput({
             onRequestFocus={() => richInputRef.current?.focus()}
           />}
 
-          {/* Context usage warning/action. Percent text is truthful and may exceed 100%; action requires explicit canCompact. */}
-          {contextDisplay.showWarning && contextDisplay.percent !== null && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!isProcessing && contextDisplay.canCompact) onSubmit('/compact', [])
-                  }}
-                  disabled={isProcessing || !contextDisplay.canCompact}
-                  className="inline-flex items-center h-6 px-2 text-[12px] font-medium bg-info/10 rounded-[6px] shadow-tinted select-none cursor-pointer hover:bg-info/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    '--shadow-color': 'var(--info-rgb)',
-                    color: 'color-mix(in oklab, var(--info) 30%, var(--foreground))',
-                  } as React.CSSProperties}
-                >
-                  {contextDisplay.percent}%
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="max-w-[260px]">
-                <div className="space-y-0.5">
-                  <div>{contextLabels.window}: {contextLabels.usage}</div>
-                  {contextLabels.qualifier && <div className="text-foreground/60">{contextLabels.qualifier}</div>}
-                  {contextDisplay.canCompact && (
-                    <div>{isProcessing ? t('chat.contextUsage.waitToCompact') : t('chat.contextUsage.compact')}</div>
-                  )}
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <ContextUsageRing
+            display={contextDisplay}
+            labels={contextLabels}
+            compactHint={contextDisplay.canCompact ? t(isProcessing ? 'chat.contextUsage.waitToCompact' : 'chat.contextUsage.compact') : undefined}
+            onCompact={contextDisplay.canCompact && !isProcessing ? () => onSubmit('/compact', []) : undefined}
+          />
 
           {/* 6. Send/Stop Button - Always show stop when processing */}
           {isProcessing ? (

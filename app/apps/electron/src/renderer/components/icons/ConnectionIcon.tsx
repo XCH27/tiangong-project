@@ -20,7 +20,7 @@ import type { LlmConnectionWithStatus } from '../../../shared/types'
 
 interface ConnectionIconProps {
   /** The connection to display an icon for */
-  connection: Pick<LlmConnectionWithStatus, 'name' | 'providerType' | 'baseUrl' | 'piAuthProvider'> & { type?: string; defaultModel?: string }
+  connection: Pick<LlmConnectionWithStatus, 'name' | 'providerType' | 'baseUrl' | 'piAuthProvider' | 'customEndpoint'> & { type?: string; defaultModel?: string }
   /** Size in pixels (default: 16) */
   size?: number
   /** Additional CSS classes */
@@ -30,15 +30,18 @@ interface ConnectionIconProps {
 }
 
 export function ConnectionIcon({ connection, size = 16, className = '', showTooltip = false }: ConnectionIconProps) {
+  // On a custom endpoint piAuthProvider selects the wire credential format,
+  // not the vendor. A recognized host can still supply its actual brand.
+  const brandProvider = connection.customEndpoint ? undefined : connection.piAuthProvider
   const providerIconKey = getProviderIconKey(
     connection.providerType || connection.type || '',
     connection.baseUrl,
-    connection.piAuthProvider
+    brandProvider
   )
   const providerIcon = getProviderIcon(
     connection.providerType || connection.type || '',
     connection.baseUrl,
-    connection.piAuthProvider
+    brandProvider
   )
 
   const iconElement = hasProviderBrandIcon(providerIconKey) ? (

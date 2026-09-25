@@ -119,10 +119,10 @@ describe('anthropicDriver.fetchModels', () => {
       'claude-sonnet-4-6',
     ]);
     const opus48 = result.models.find(m => m.id === 'claude-opus-4-8')!;
-    expect(opus48.name).toBe('Opus 4.8');
+    expect(opus48.name).toBe('Claude Opus 4.8');
     expect(opus48.contextWindow).toBe(1_000_000);
     const opus46 = result.models.find(m => m.id === 'claude-opus-4-6')!;
-    expect(opus46.name).toBe('Opus 4.6');
+    expect(opus46.name).toBe('Claude Opus 4.6');
     expect(opus46.contextWindow).toBe(200_000);
   });
 });

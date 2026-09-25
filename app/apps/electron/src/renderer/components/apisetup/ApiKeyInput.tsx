@@ -15,6 +15,8 @@ import { useTranslation } from "react-i18next"
 import { Command as CommandPrimitive } from "cmdk"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   DropdownMenu,
@@ -23,8 +25,9 @@ import {
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-dropdown"
 import { cn } from "@/lib/utils"
-import { Check, ChevronDown, ExternalLink, Eye, EyeOff, Loader2, RefreshCcw } from "lucide-react"
+import { Check, ChevronDown, ExternalLink, Eye, EyeOff, Loader2, Plus, RefreshCcw } from "lucide-react"
 import { baseUrlForPiPreset, initialBaseUrlForPreset, resolvePreferredModel, type PiModelInfo } from "./provider-models"
+import { ModelCapabilityBadges } from './ModelCapabilityBadges'
 import {
   resolveCustomEndpointPayload,
   resolvePiAuthProviderForSubmit,
@@ -211,6 +214,7 @@ export function ApiKeyInput({
     initialPreset !== 'custom' ? initialPreset : defaultPreset.key
   )
   const [connectionDefaultModel, setConnectionDefaultModel] = useState(initialValues?.connectionDefaultModel ?? '')
+  const [modelIdDraft, setModelIdDraft] = useState('')
   const [customApi, setCustomApi] = useState<CustomEndpointApi>(initialValues?.customApi ?? 'openai-completions')
   const [modelError, setModelError] = useState<string | null>(null)
 
@@ -241,11 +245,36 @@ export function ApiKeyInput({
   // Hide endpoint/model fields for providers with well-known endpoints handled by the SDK
   const isDefaultProviderPreset = DEFAULT_ENDPOINT_PROVIDERS.has(activePreset)
   const showsPiModelPicker = !isDefaultProviderPreset || ACCOUNT_CATALOG_PRESETS.has(activePreset)
-  const shouldHideModelSelection = hideModelSelection && activePreset !== 'custom'
+  const shouldHideModelSelection = hideModelSelection
+  const selectedCustomModelIds = activePreset === 'custom' ? parseModelList(connectionDefaultModel) : []
+  const customModelIds = activePreset === 'custom'
+    ? [...selectedCustomModelIds, ...piModels.map(model => model.id.replace(/^pi\//, '')).filter(id =>
+      !selectedCustomModelIds.some(selected => selected.replace(/^pi\//, '') === id))]
+    : []
+
+  const addCustomModelId = () => {
+    const id = modelIdDraft.trim().replace(/^pi\//, '')
+    if (!id || id.length > 160 || /\s|,/.test(id)) {
+      setModelError(t('apiSetup.errors.invalidModelId'))
+      return
+    }
+    if (!selectedCustomModelIds.some(existing => existing.replace(/^pi\//, '') === id)) {
+      setConnectionDefaultModel([...selectedCustomModelIds, id].join(', '))
+      onDirtyChange?.()
+    }
+    setModelIdDraft('')
+    setModelError(null)
+  }
 
   // Provider-specific placeholders from the active preset
   const activePresetObj = presets.find(p => p.key === activePreset)
   const hasEditedPresetEndpoint = !!initialValues?.baseUrl && initialValues.baseUrl.replace(/\/+$/, '') !== activePresetObj?.url.replace(/\/+$/, '')
+  const endpointEditable = !providerLocked
+    ? !isDefaultProviderPreset
+    : activePreset === 'custom' || activePreset === 'azure-openai-responses' || hasEditedPresetEndpoint
+  const fixedApiFormat = activePreset === 'manifest' ? t('apiSetup.format.openaiChat')
+    : activePreset === 'azure-openai-responses' ? t('apiSetup.format.openaiResponses')
+    : t('apiSetup.format.providerManaged')
   const apiKeyPlaceholder = activePresetObj?.placeholder ?? 'Paste your key here...'
 
   // Query account-scoped models for an official API preset when credentials
@@ -447,6 +476,14 @@ export function ApiKeyInput({
     const effectiveBaseUrl = baseUrl.trim()
 
     const parsedModels = parseModelList(connectionDefaultModel)
+    if (activePreset === 'custom' && modelIdDraft.trim()) {
+      const draftId = modelIdDraft.trim().replace(/^pi\//, '')
+      if (draftId.length > 160 || /\s|,/.test(draftId)) {
+        setModelError(t('apiSetup.errors.invalidModelId'))
+        return
+      }
+      if (!parsedModels.some(id => id.replace(/^pi\//, '') === draftId)) parsedModels.push(draftId)
+    }
 
     const isUsingDefaultEndpoint = isDefaultProviderPreset || !effectiveBaseUrl
     const requiresModel = !isDefaultProviderPreset && !!effectiveBaseUrl
@@ -512,8 +549,9 @@ export function ApiKeyInput({
         </div>
       )}
 
-      {/* Native provider endpoints are owned by their adapter; custom addresses remain editable. */}
-      {presets.length > 1 && !isDefaultProviderPreset && !isBedrock && (!providerLocked || activePreset === 'custom' || activePreset === 'azure-openai-responses' || hasEditedPresetEndpoint) && (
+      {/* ZCode keeps connection fields together. Native routes remain visible but
+          read-only because changing them would silently change the Pi adapter. */}
+      {!isBedrock && (providerLocked || (presets.length > 1 && !isDefaultProviderPreset)) && (
         <div className="space-y-2">
           <Label htmlFor="base-url">{t('apiSetup.endpoint')}</Label>
           <div className={cn(
@@ -528,41 +566,30 @@ export function ApiKeyInput({
               placeholder={t('apiSetup.endpointPlaceholder')}
               className="border-0 bg-transparent shadow-none"
               disabled={isDisabled}
+              readOnly={!endpointEditable}
             />
           </div>
         </div>
       )}
 
-      {/* Custom endpoints use Pi's selected wire adapter directly. */}
-      {activePreset === 'custom' && !isDefaultProviderPreset && (
-        <div className="flex items-center justify-between gap-3">
-          <Label>{t('apiSetup.protocol')}</Label>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label={t('apiSetup.protocol')}
-              disabled={isDisabled}
-              className="flex h-7 max-w-[70%] items-center gap-1 rounded-[6px] bg-background shadow-minimal pl-2.5 pr-2 text-[12px] font-medium text-foreground hover:bg-foreground/5 focus:outline-none"
-            >
-              <span className="truncate">{t(customApi === 'openai-completions' ? 'apiSetup.format.openaiChat'
-                : customApi === 'openai-responses' ? 'apiSetup.format.openaiResponses'
-                : customApi === 'anthropic-messages' ? 'apiSetup.format.anthropicMessages'
-                : 'apiSetup.format.googleGenerative')}</span>
-              <ChevronDown className="size-2.5 shrink-0 opacity-50" />
-            </DropdownMenuTrigger>
-            <StyledDropdownMenuContent align="end" className="z-floating-menu">
-              {([
-                { value: 'openai-completions', label: 'apiSetup.format.openaiChat' },
-                { value: 'openai-responses', label: 'apiSetup.format.openaiResponses' },
-                { value: 'anthropic-messages', label: 'apiSetup.format.anthropicMessages' },
-                { value: 'google-generative-ai', label: 'apiSetup.format.googleGenerative' },
-              ] as const).map(({ value, label }) => (
-                <StyledDropdownMenuItem key={value} onClick={() => { onDirtyChange?.(); setCustomApi(value) }} className="justify-between">
-                  {t(label)}
-                  <Check className={cn('size-3', customApi === value ? 'opacity-100' : 'opacity-0')} />
-                </StyledDropdownMenuItem>
-              ))}
-            </StyledDropdownMenuContent>
-          </DropdownMenu>
+      {/* Only a custom route has a user-selectable wire format. Official
+          presets keep the SDK's model-specific transport, shown below. */}
+      {!isBedrock && (providerLocked || activePreset === 'custom') && (
+        <div className="space-y-2">
+          <Label htmlFor="api-format">{t('apiSetup.protocol')}</Label>
+          <div className="rounded-md bg-foreground-2 shadow-minimal">
+            {activePreset === 'custom' ? <Select value={customApi} onValueChange={(value) => { onDirtyChange?.(); setCustomApi(value as CustomEndpointApi) }} disabled={isDisabled}>
+              <SelectTrigger id="api-format" aria-label={t('apiSetup.protocol')} className="border-0 bg-transparent shadow-none">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai-completions">{t('apiSetup.format.openaiChat')}</SelectItem>
+                <SelectItem value="openai-responses">{t('apiSetup.format.openaiResponses')}</SelectItem>
+                <SelectItem value="anthropic-messages">{t('apiSetup.format.anthropicMessages')}</SelectItem>
+                <SelectItem value="google-generative-ai">{t('apiSetup.format.googleGenerative')}</SelectItem>
+              </SelectContent>
+            </Select> : <Input id="api-format" value={fixedApiFormat} readOnly className="border-0 bg-transparent shadow-none" />}
+          </div>
         </div>
       )}
 
@@ -841,7 +868,7 @@ export function ApiKeyInput({
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label htmlFor="connection-default-model" className="text-muted-foreground font-normal">
-              {t('apiSetup.customModelIds')}{' '}
+              {t(activePreset === 'custom' ? 'settings.ai.modelList' : 'apiSetup.customModelIds')}{' '}
               <span className="text-foreground/30">
                 · {t(!isBedrock && (activePreset === 'custom' || baseUrl.trim()) ? 'apiSetup.required' : 'apiSetup.optional')}
               </span>
@@ -856,57 +883,56 @@ export function ApiKeyInput({
               {t('settings.ai.refreshModels')}
             </button>}
           </div>
-          <div className={cn(
+          {activePreset === 'custom' ? <>
+            {customModelIds.length > 0 && <div className="max-h-40 overflow-y-auto rounded-md border border-border/60">
+              {customModelIds.map(id => {
+                const selected = selectedCustomModelIds.some(modelId => modelId.replace(/^pi\//, '') === id.replace(/^pi\//, ''))
+                const catalogModel = piModels.find(model => model.id.replace(/^pi\//, '') === id.replace(/^pi\//, ''))
+                return <button key={id} type="button" disabled={isDisabled}
+                  onClick={() => {
+                    setConnectionDefaultModel((selected
+                      ? selectedCustomModelIds.filter(modelId => modelId.replace(/^pi\//, '') !== id.replace(/^pi\//, ''))
+                      : [...selectedCustomModelIds, id]).join(', '))
+                    setModelError(null)
+                    onDirtyChange?.()
+                  }}
+                  aria-pressed={selected}
+                  title={id}
+                  className="flex min-h-9 w-full items-center justify-between gap-2 border-b border-border/60 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-foreground/[0.05]"
+                >
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="min-w-0 truncate">{catalogModel?.name ?? id}</span>
+                    <ModelCapabilityBadges model={catalogModel} />
+                  </span>
+                  <Check className={cn('size-3.5 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
+                </button>
+              })}
+            </div>}
+            <div className="flex gap-2">
+              <Input id="connection-default-model" type="text" value={modelIdDraft}
+                onChange={e => { setModelIdDraft(e.target.value); setModelError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomModelId() } }}
+                placeholder={t('apiSetup.customModelIds')} disabled={isDisabled} />
+              <Button type="button" size="sm" variant="outline" onClick={addCustomModelId} disabled={isDisabled}>
+                <Plus className="size-3.5" />{t('settings.ai.addModel')}
+              </Button>
+            </div>
+          </> : <div className={cn(
             "rounded-md shadow-minimal transition-colors",
             "bg-foreground-2 focus-within:bg-background",
             modelError && "ring-1 ring-destructive/40"
           )}>
-            <Input
-              id="connection-default-model"
-              type="text"
-              value={connectionDefaultModel}
-              onChange={(e) => {
-                onDirtyChange?.()
-                setConnectionDefaultModel(e.target.value)
-                setModelError(null)
-              }}
-              placeholder="model-id-1, model-id-2"
-              className="border-0 bg-transparent shadow-none"
-              disabled={isDisabled}
-            />
-          </div>
+            <Input id="connection-default-model" type="text" value={connectionDefaultModel}
+              onChange={(e) => { onDirtyChange?.(); setConnectionDefaultModel(e.target.value); setModelError(null) }}
+              placeholder="model-id-1, model-id-2" className="border-0 bg-transparent shadow-none" disabled={isDisabled} />
+          </div>}
           {modelError && (
             <p className="text-xs text-destructive">{modelError}</p>
           )}
-          <p className="text-xs text-foreground/30">
-            {t('apiSetup.customModelIdsHint')}
-          </p>
+          {activePreset !== 'custom' && <p className="text-xs text-foreground/30">{t('apiSetup.customModelIdsHint')}</p>}
           {activePreset === 'custom' && piCatalogError && <p role="alert" className="text-xs text-muted-foreground">
             {t('apiSetup.catalogUnavailable')}: {piCatalogError}
           </p>}
-          {activePreset === 'custom' && piModels.length > 0 && <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">{t('apiSetup.customCatalogCandidates')}</p>
-            <div className="max-h-40 overflow-y-auto rounded-md border border-border/60 p-1">
-              {piModels.map(model => {
-                const selected = parseModelList(connectionDefaultModel).some(id => id.replace(/^pi\//, '') === model.id.replace(/^pi\//, ''))
-                return <button key={model.id} type="button" disabled={isDisabled}
-                  onClick={() => {
-                    const ids = parseModelList(connectionDefaultModel)
-                    setConnectionDefaultModel((selected
-                      ? ids.filter(id => id.replace(/^pi\//, '') !== model.id.replace(/^pi\//, ''))
-                      : [...ids, model.id]).join(', '))
-                    setModelError(null)
-                    onDirtyChange?.()
-                  }}
-                  className="flex w-full items-center justify-between gap-2 rounded-[6px] px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.05]"
-                  aria-pressed={selected}
-                >
-                  <span className="truncate">{model.name}</span>
-                  <Check className={cn('size-3 shrink-0', selected ? 'opacity-100' : 'opacity-0')} />
-                </button>
-              })}
-            </div>
-          </div>}
         </div>
       ))}
 

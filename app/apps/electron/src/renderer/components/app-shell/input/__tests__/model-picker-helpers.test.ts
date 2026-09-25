@@ -119,6 +119,11 @@ describe('shared connection labels', () => {
     const custom = conn('a', { name: 'Research account' })
     expect(getConnectionDisplayName(custom, [custom])).toBe('Research account')
   })
+  it('labels older custom endpoint connections without showing the generic Pi template name', () => {
+    const old = conn('pi-api-key', { name: 'Craft Agents Backend (API Key)', providerType: 'pi_compat',
+      authType: 'api_key_with_endpoint', customEndpoint: { api: 'openai-responses' } })
+    expect(getConnectionDisplayName(old, [old])).toBe('Custom Endpoint')
+  })
   it('keeps all sources reachable when the default custom connection has one model', () => {
     const sources = [conn('local', { providerType: 'pi_compat' }), conn('cloud')]
     expect(getModelPickerGroups(sources, 'local', true)).toHaveLength(2)

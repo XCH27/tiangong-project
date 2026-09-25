@@ -14,6 +14,60 @@ function model(id: string): ModelDefinition {
 }
 
 describe('model refresh account isolation', () => {
+  it('adds custom endpoint discoveries as hidden candidates without replacing manual models', async () => {
+    let connection: LlmConnection = {
+      slug: 'custom', name: 'Custom', providerType: 'pi_compat', authType: 'api_key_with_endpoint',
+      baseUrl: 'https://example.test/v1', customEndpoint: { api: 'openai-completions' },
+      createdAt: 1, defaultModel: 'pi/manual',
+      models: [model('pi/manual')], manualModelIds: ['pi/manual'],
+      manualModelOverrides: { 'pi/manual': { contextWindow: 256_000 } },
+    }
+    let discovery = [
+      { id: 'manual', name: 'Official Manual', contextWindow: 128_000 },
+      { id: 'new', name: 'Official New', contextWindow: 200_000, supportsImages: true },
+      { id: 'new', name: 'Official New' },
+    ]
+    const service = new ModelRefreshService({} as ModelFetcherMap, async () => ({ apiKey: 'test' }), {
+      getConnection: () => connection,
+      getConnections: () => [connection],
+      updateConnection: (_slug, updates) => { connection = { ...connection, ...updates }; return true },
+      fallbackModels: () => [],
+    }, async () => discovery)
+
+    expect((await service.refreshNow('custom')).source).toBe('provider')
+    expect(connection.models?.map(entry => typeof entry === 'string' ? entry : entry.id)).toEqual(['pi/manual', 'pi/new'])
+    expect(connection.models?.[0]).toMatchObject({ name: 'Official Manual', contextWindow: 256_000 })
+    expect(connection.models?.[1]).toMatchObject({ name: 'Official New', contextWindow: 200_000, supportsImages: true })
+    expect(connection.hiddenModelIds).toEqual(['pi/new'])
+    expect(connection.defaultModel).toBe('pi/manual')
+    discovery = [{ id: 'manual', name: 'manual' }, { id: 'new', name: 'new' }]
+    expect((await service.refreshNow('custom')).source).toBe('provider')
+    expect(connection.models?.[0]).toMatchObject({ name: 'Official Manual', contextWindow: 256_000 })
+    expect(connection.models?.[1]).toMatchObject({ name: 'Official New' })
+    expect(connection.models?.[1]).not.toHaveProperty('contextWindow')
+    expect(connection.models?.[1]).not.toHaveProperty('supportsImages')
+  })
+
+  it('does not publish custom candidates after the endpoint or format changes', async () => {
+    let connection: LlmConnection = {
+      slug: 'custom', name: 'Custom', providerType: 'pi_compat', authType: 'api_key_with_endpoint',
+      baseUrl: 'https://first.test/v1', customEndpoint: { api: 'openai-completions' },
+      createdAt: 1, defaultModel: 'pi/current', models: [model('pi/current')],
+    }
+    const pending = deferred<Array<{ id: string; name: string }>>()
+    const service = new ModelRefreshService({} as ModelFetcherMap, async () => ({ apiKey: 'test' }), {
+      getConnection: () => connection,
+      getConnections: () => [connection],
+      updateConnection: (_slug, updates) => { connection = { ...connection, ...updates }; return true },
+      fallbackModels: () => [],
+    }, async () => pending.promise)
+    const refresh = service.refreshNow('custom')
+    connection = { ...connection, baseUrl: 'https://second.test/v1' }
+    pending.resolve([{ id: 'stale', name: 'Stale' }])
+    expect((await refresh).source).toBe('superseded')
+    expect(connection.models).toEqual([model('pi/current')])
+  })
+
   it('keeps manual model corrections and explicitly added models after catalog refresh', async () => {
     let connection: LlmConnection = {
       slug: 'account', name: 'Account', providerType: 'pi', authType: 'api_key',

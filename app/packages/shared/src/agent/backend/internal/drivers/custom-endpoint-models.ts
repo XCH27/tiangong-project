@@ -10,7 +10,28 @@ function record(value: unknown): Record<string, unknown> | null {
     ? value as Record<string, unknown> : null;
 }
 
-function modelIds(payload: unknown): string[] {
+export interface DiscoveredCustomEndpointModel {
+  id: string;
+  name: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  supportsImages?: boolean;
+  supportsThinking?: boolean;
+  reasoningEfforts?: Array<'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
+  supportsFastMode?: boolean;
+  modalities?: { input: string[]; output: string[] };
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+    ? value as string[] : undefined;
+}
+
+function modelRows(payload: unknown): DiscoveredCustomEndpointModel[] {
   const body = record(payload);
   const rows = Array.isArray(body?.data) ? body.data : body?.models;
   if (!Array.isArray(rows)) throw new Error('The endpoint returned an invalid model list');
@@ -19,7 +40,36 @@ function modelIds(payload: unknown): string[] {
     const raw = row?.id ?? row?.slug ?? row?.name;
     if (typeof raw !== 'string') return [];
     const id = raw.replace(/^models\//, '').trim();
-    return id && id.length <= 512 ? [id] : [];
+    if (!id || id.length > 512) return [];
+    const officialName = [row?.display_name, row?.displayName, row?.name]
+      .find(candidate => typeof candidate === 'string' && candidate.trim() && !candidate.startsWith('models/'));
+    const name = typeof officialName === 'string' && officialName.length <= 200 ? officialName.trim() : id;
+    const capabilities = record(row?.capabilities);
+    const effort = record(row?.effort);
+    const levels = stringList(effort?.supported_levels ?? row?.reasoning_efforts)?.filter(
+      (level): level is NonNullable<DiscoveredCustomEndpointModel['reasoningEfforts']>[number] =>
+        level === 'low' || level === 'medium' || level === 'high' || level === 'xhigh' || level === 'max',
+    );
+    const input = stringList(row?.input_modalities);
+    const output = stringList(row?.output_modalities);
+    const explicitImages = typeof capabilities?.vision === 'boolean' ? capabilities.vision
+      : typeof row?.supports_images === 'boolean' ? row.supports_images : undefined;
+    const explicitThinking = typeof row?.supports_reasoning === 'boolean' ? row.supports_reasoning
+      : typeof row?.reasoning === 'boolean' ? row.reasoning : undefined;
+    const contextWindow = positiveInteger(row?.context_window) ?? positiveInteger(row?.max_context_length)
+      ?? positiveInteger(row?.inputTokenLimit);
+    const maxOutputTokens = positiveInteger(row?.max_output_tokens) ?? positiveInteger(row?.max_completion_tokens)
+      ?? positiveInteger(row?.outputTokenLimit);
+    return [{
+      id, name,
+      ...(contextWindow ? { contextWindow } : {}),
+      ...(maxOutputTokens ? { maxOutputTokens } : {}),
+      ...(input ? { supportsImages: input.includes('image') } : explicitImages !== undefined ? { supportsImages: explicitImages } : {}),
+      ...(input && output ? { modalities: { input, output } } : {}),
+      ...(levels?.length ? { reasoningEfforts: [...new Set(levels)], supportsThinking: true }
+        : explicitThinking !== undefined ? { supportsThinking: explicitThinking } : {}),
+      ...(typeof row?.supports_fast_mode === 'boolean' ? { supportsFastMode: row.supports_fast_mode } : {}),
+    }];
   });
 }
 
@@ -68,23 +118,24 @@ async function readModelList(response: Response): Promise<unknown> {
 }
 
 /**
- * Read IDs from the exact user-configured origin. An ID is only a candidate;
- * /models does not establish chat capability, context, effort or entitlement.
- * Unsupported model-list routes leave the connection's manual IDs intact.
+ * Read model candidates from the exact user-configured origin. Preserve only
+ * explicit metadata in the response; /models does not establish executable
+ * chat capability or account entitlement. Unsupported routes leave manual
+ * model IDs intact.
  */
-export async function fetchCustomEndpointModelIds(
+export async function fetchCustomEndpointModels(
   baseUrl: string,
   apiKey: string,
   api: CustomEndpointApi,
   timeoutMs = 15_000,
-): Promise<string[]> {
+): Promise<DiscoveredCustomEndpointModel[]> {
   const headers: Record<string, string> = !apiKey ? {}
     : api === 'anthropic-messages'
       ? { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
       : api === 'google-generative-ai'
         ? { 'x-goog-api-key': apiKey }
         : { Authorization: `Bearer ${apiKey}` };
-  const ids = new Set<string>();
+  const models = new Map<string, DiscoveredCustomEndpointModel>();
   let lastError = 'Model listing is unavailable at this endpoint';
   for (const candidate of modelListUrls(baseUrl)) {
     let cursor = '';
@@ -101,23 +152,30 @@ export async function fetchCustomEndpointModelIds(
       }
       if (!response.ok) throw new Error(`Model listing returned HTTP ${response.status}`);
       const payload = await readModelList(response);
-      for (const id of modelIds(payload)) {
-        ids.add(id);
-        if (ids.size > MAX_MODELS) throw new Error('The model list exceeds the model count limit');
+      for (const model of modelRows(payload)) {
+        models.set(model.id, model);
+        if (models.size > MAX_MODELS) throw new Error('The model list exceeds the model count limit');
       }
       const body = record(payload);
       const next = api === 'google-generative-ai'
         ? body?.nextPageToken
         : body?.has_more === true ? body?.last_id : undefined;
       if (typeof next !== 'string' || !next || seenCursors.has(next)) {
-        if (!ids.size) throw new Error('The endpoint returned no model IDs');
-        return [...ids];
+        if (!models.size) throw new Error('The endpoint returned no model IDs');
+        return [...models.values()];
       }
       seenCursors.add(next);
       cursor = next;
       if (page === MAX_PAGES - 1) throw new Error('The model list exceeds the page limit');
     }
   }
-  if (ids.size) return [...ids];
+  if (models.size) return [...models.values()];
   throw new Error(lastError);
+}
+
+/** Compatibility for ID-only consumers. */
+export async function fetchCustomEndpointModelIds(
+  baseUrl: string, apiKey: string, api: CustomEndpointApi, timeoutMs = 15_000,
+): Promise<string[]> {
+  return (await fetchCustomEndpointModels(baseUrl, apiKey, api, timeoutMs)).map(model => model.id);
 }

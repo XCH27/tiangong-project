@@ -208,8 +208,9 @@ export function matchApiAccountModels(
         : undefined;
       const reasoningEfforts = effortLevels?.length ? effortLevels : undefined;
       const defaultReasoningEffort = reasoningEfforts?.find(level => level === effort?.default_level);
-      const name = provider === 'deepseek' && typeof row.name === 'string' && row.name.trim()
-        ? row.name.trim() : undefined;
+      const officialName = [row.display_name, row.displayName, row.name]
+        .find(value => typeof value === 'string' && value.trim() && value.trim() !== id && value.trim().length <= 200);
+      const name = typeof officialName === 'string' ? officialName.trim() : undefined;
       const hasProviderMetadata = contextWindow !== undefined || maxOutputTokens !== undefined
         || typeof capabilities?.vision === 'boolean' || inputModalities !== undefined
         || outputModalities !== undefined || reasoningEfforts !== undefined || name !== undefined;

@@ -49,6 +49,7 @@ import { ApiKeyInput } from '@/components/apisetup'
 import { API_KEY_PROVIDER_PRESETS } from '@/components/apisetup/ApiKeyInput'
 import type { ApiKeyCatalogPreview, ApiKeyInputProps } from '@/components/apisetup/ApiKeyInput'
 import { ProviderCatalog } from '@/components/apisetup/ProviderCatalog'
+import { ModelCapabilityBadges } from '@/components/apisetup/ModelCapabilityBadges'
 import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
 import { RenameDialog } from '@/components/ui/rename-dialog'
 import { useAppShellContext } from '@/context/AppShellContext'
@@ -577,12 +578,13 @@ function getApiKeyInitialValues(connection: LlmConnectionWithStatus): ApiKeyInpu
 }
 
 /** ZCode-style inline provider detail: one credential section above the same model list. */
-function ConnectionApiKeySection({ connection, existingSlugs, refreshRequestId, onCatalogChange, onDraftKeyChange, onSaved }: {
+function ConnectionApiKeySection({ connection, existingSlugs, refreshRequestId, onCatalogChange, onDraftKeyChange, onDraftStateChange, onSaved }: {
   connection: LlmConnectionWithStatus
   existingSlugs: Set<string>
   refreshRequestId: number
   onCatalogChange: (catalog: ApiKeyCatalogPreview | null) => void
   onDraftKeyChange: (hasDraft: boolean) => void
+  onDraftStateChange: (hasDraft: boolean) => void
   onSaved: (slug: string) => Promise<void>
 }) {
   const { t } = useTranslation()
@@ -610,10 +612,11 @@ function ConnectionApiKeySection({ connection, existingSlugs, refreshRequestId, 
       setFormVersion(version => version + 1)
       setDirty(false)
       onDraftKeyChange(false)
+      onDraftStateChange(false)
       jumpToCredentials(method)
     })
     return () => { cancelled = true }
-  }, [step, jumpToCredentials, connection.slug, method, onSaved, onDraftKeyChange])
+  }, [step, jumpToCredentials, connection.slug, method, onSaved, onDraftKeyChange, onDraftStateChange])
 
   return <div className="border-b border-border/60 px-5 py-4">
     <ApiKeyInput
@@ -624,11 +627,11 @@ function ConnectionApiKeySection({ connection, existingSlugs, refreshRequestId, 
       formId={`connection-api-key-${connection.slug}`}
       providerType={method === 'pi_api_key' ? 'pi_api_key' : 'anthropic'}
       providerLocked
-      hideModelSelection={method === 'pi_api_key' && !connection.customEndpoint}
+      hideModelSelection={method === 'pi_api_key'}
       refreshRequestId={refreshRequestId}
       onCatalogChange={onCatalogChange}
       onDraftKeyChange={onDraftKeyChange}
-      onDirtyChange={() => setDirty(true)}
+      onDirtyChange={() => { setDirty(true); onDraftStateChange(true) }}
       hasStoredCredential={connection.isAuthenticated}
       initialValues={getApiKeyInitialValues(connection)}
     />
@@ -655,6 +658,7 @@ export default function AiSettingsPage() {
   const [editingConnectionSlug, setEditingConnectionSlug] = useState<string | null>(null)
   const [draftCatalog, setDraftCatalog] = useState<(ApiKeyCatalogPreview & { connectionSlug?: string }) | null>(null)
   const [hasPendingApiKey, setHasPendingApiKey] = useState(false)
+  const [hasUnsavedConnectionDraft, setHasUnsavedConnectionDraft] = useState(false)
   const [catalogRefreshRequestId, setCatalogRefreshRequestId] = useState(0)
   const [editInitialValues, setEditInitialValues] = useState<{
     connectionSlug?: string
@@ -955,6 +959,13 @@ export default function AiSettingsPage() {
       if (!result.success) throw new Error(result.error || 'Model refresh failed')
       await refreshLlmConnections()
       setMediaRefreshVersion(version => version + 1)
+      // The inline credential form owns its own account preview and failure
+      // state; refresh it after the saved catalog so an old error cannot linger.
+      setCatalogRefreshRequestId(value => value + 1)
+      if (result.error) {
+        toast.error(t('settings.ai.modelRefreshFailed'))
+        return
+      }
       toast.info(t(result.source === 'provider' ? 'settings.ai.modelsCheckedProvider'
         : result.source === 'sdk' ? 'settings.ai.modelsCheckedSdk'
         : 'settings.ai.modelsCheckedCached'))
@@ -1017,6 +1028,7 @@ export default function AiSettingsPage() {
   const deletingConnection = llmConnections.find(c => c.slug === deletingConnectionSlug)
   useEffect(() => {
     setHasPendingApiKey(false)
+    setHasUnsavedConnectionDraft(false)
     setDraftCatalog(null)
   }, [selectedConnection?.slug])
   const handleSelectedCatalogChange = useCallback((catalog: ApiKeyCatalogPreview | null) => {
@@ -1084,11 +1096,13 @@ export default function AiSettingsPage() {
   const detailModel = detailModelId && detailModelId !== '__add__' ? getConnectionModelDefinition(selectedConnection, detailModelId) : undefined
   const detailPreview = detailModelId ? accountPreview?.models.find(model => model.id === detailModelId) : undefined
   const detailContextWindow = detailPreview?.contextWindow || detailModel?.contextWindow
-  const selectedCanRefreshModels = !!selectedConnection && !isCompatProvider(selectedConnection.providerType)
-    && (isOfficialApiModelCatalogConnection(selectedConnection)
+  const selectedCanRefreshModels = !!selectedConnection && (
+    (isCompatProvider(selectedConnection.providerType)
+      && !!selectedConnection.baseUrl && !!selectedConnection.customEndpoint)
+    || (!isCompatProvider(selectedConnection.providerType) && (isOfficialApiModelCatalogConnection(selectedConnection)
       || selectedConnection.modelSelectionMode !== 'userDefined3Tier'
       || selectedConnection.piAuthProvider === 'github-copilot'
-      || selectedConnection.piAuthProvider === 'xai')
+      || selectedConnection.piAuthProvider === 'xai')))
 
   // Anthropic account UUIDs that resolve from 2+ connections (issue #838).
   // Surfaces a warning when several Claude connections share one account/quota.
@@ -1303,7 +1317,7 @@ export default function AiSettingsPage() {
                       ) : showApiSetup && !editingConnectionSlug ? (
                         <div>
                           {apiSetupForm}
-                          {!setupIsLocal && <div className="border-t border-border/60">
+                          {!setupIsLocal && setupPreset?.key !== 'custom' && <div className="border-t border-border/60">
                             <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-4">
                               <div>
                                 <h3 className="text-sm font-semibold">{t('settings.ai.modelList')}</h3>
@@ -1320,13 +1334,13 @@ export default function AiSettingsPage() {
                               </Button>}
                             </div>
                             {draftCatalog?.source === 'provider' && !draftCatalog.error && <div className="border-t border-border/60">
-                              {draftCatalog.models.map(model => <div key={model.id} className="border-b border-border/60 px-5 py-3.5 last:border-b-0">
-                                <span className="block truncate text-sm font-medium">{model.name}</span>
-                                {model.name !== model.id && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{model.id}</span>}
+                              {draftCatalog.models.map(model => <div key={model.id} title={model.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 px-5 py-3 last:border-b-0">
+                                <span className="min-w-0 truncate text-sm font-medium">{model.name}</span>
+                                <ModelCapabilityBadges model={model} />
                               </div>)}
-                              {draftCatalog.mediaModels?.map(model => <div key={`${model.kind}:${model.id}`} className="border-b border-border/60 px-5 py-3.5 last:border-b-0">
-                                <span className="block truncate text-sm font-medium">{model.name}</span>
-                                <span className="mt-0.5 block truncate text-xs text-muted-foreground">{t(model.kind === 'image' ? 'settings.ai.mediaImageModels' : model.kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')} · {model.id}</span>
+                              {draftCatalog.mediaModels?.map(model => <div key={`${model.kind}:${model.id}`} title={model.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border/60 px-5 py-3 last:border-b-0">
+                                <span className="min-w-0 truncate text-sm font-medium">{model.name}</span>
+                                <span className="rounded-full border border-border/60 px-1.5 text-xs text-muted-foreground">{t(model.kind === 'image' ? 'settings.ai.mediaImageModels' : model.kind === 'video' ? 'settings.ai.mediaVideoModels' : 'settings.ai.mediaAudioModels')}</span>
                               </div>)}
                             </div>}
                           </div>}
@@ -1354,6 +1368,7 @@ export default function AiSettingsPage() {
                             refreshRequestId={catalogRefreshRequestId}
                             onCatalogChange={handleSelectedCatalogChange}
                             onDraftKeyChange={setHasPendingApiKey}
+                            onDraftStateChange={setHasUnsavedConnectionDraft}
                             onSaved={handleInlineApiSaved}
                           /> : showApiSetup && editingConnectionSlug === selectedConnection.slug ? apiSetupForm : null}
 
@@ -1376,7 +1391,7 @@ export default function AiSettingsPage() {
                                 {selectedCanRefreshModels && <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => selectedHasLiveAccountCatalog && hasPendingApiKey
+                                  onClick={() => hasUnsavedConnectionDraft
                                     ? setCatalogRefreshRequestId(value => value + 1)
                                     : void handleRefreshModels(selectedConnection.slug)}
                                   disabled={refreshingModelSlug !== null}
@@ -1391,16 +1406,19 @@ export default function AiSettingsPage() {
                               <div className="border-t border-border/60">
                                 {allSelectedModelOptions.map(option => {
                                   const visible = isModelVisibleInPicker(selectedConnection, option.value)
+                                  const model = accountPreview?.models.find(candidate => candidate.id === option.value)
+                                    ?? getConnectionModelDefinition(selectedConnection, option.value)
                                   return (
                                     <div
                                       key={option.value}
                                       className="flex w-full items-center gap-3 border-b border-border/60 px-5 py-3.5 text-left last:border-b-0"
                                     >
-                                      <button type="button" onClick={() => setDetailModelId(option.value)}
+                                      <button type="button" onClick={() => setDetailModelId(option.value)} title={option.value}
                                         aria-label={`${option.label}: ${t('settings.ai.modelCapabilities')}`}
-                                        className="min-w-0 flex-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring">
-                                        <span className="block truncate text-sm font-medium">{option.label}</span>
-                                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{option.label !== option.value ? option.value : (option.descriptionKey ? t(option.descriptionKey) : option.description)}</span>
+                                        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                                        <span className="min-w-0 truncate text-sm font-medium">{option.label}</span>
+                                        <ModelCapabilityBadges model={model} />
+                                        <Pencil className="ml-auto size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                                       </button>
                                       {!accountPreview && <Switch
                                         checked={visible}

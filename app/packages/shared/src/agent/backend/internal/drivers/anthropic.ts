@@ -134,7 +134,7 @@ export const anthropicDriver: ProviderDriver = {
         const contextWindow = positiveInteger(m.max_input_tokens) ?? getModelContextWindow(m.id);
         return {
           id: m.id,
-          name: registryModel?.name ?? m.display_name,
+          name: m.display_name?.trim() || registryModel?.name || m.id,
           shortName: registryModel?.shortName ?? (() => {
             const stripped = m.id
               .replace('claude-', '')

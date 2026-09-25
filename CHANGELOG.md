@@ -5,6 +5,22 @@ it became true lives here and in Git, not in "corrected on…" notes scattered t
 
 ## Unreleased
 
+- Model lists now retain official names and explicit capability fields when an account or custom
+  endpoint publishes them. Compact rows show context, input modalities, reasoning levels and fast
+  mode; an ID-only response remains unknown. Refresh keeps manual corrections and hides new custom
+  candidates until reviewed. New custom connections use their own label, and older generic labels
+  are corrected without overwriting user aliases. An unrecognized custom host uses the generic icon
+  rather than the brand of its API wire format.
+- The composer now shows a compact ring for the active Session's known context occupancy. Unknown
+  or stale usage stays hidden; manual compaction appears only when the current runtime supports it.
+  Refreshing a saved model connection also clears a stale inline catalog error, while an unsaved
+  credential or endpoint edit refreshes its draft instead of the previous saved route.
+- Model connection details now show the API address and format beside the key. Official provider
+  routes display their SDK-owned values without offering a format switch the runtime cannot honor;
+  custom endpoints use Craft's shared Select control for the four supported wire formats.
+- Custom endpoint setup shows discovered and manually entered IDs in one list. Saving or refreshing
+  appends newly discovered IDs to the same connection with picker visibility off until reviewed;
+  a failed refresh retains the existing list and reports the failure.
 - Model connection setup now keeps the provider header and model section in one Settings panel
   before and after save. API, local and subscription forms share compact actions and spacing,
   while onboarding keeps its original layout. Known providers link directly to their official
