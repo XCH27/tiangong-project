@@ -147,6 +147,10 @@ export type {
   PageDataToolPatch,
   PageDataWriteSummary,
   DeletePageToolResult,
+  // Projects types
+  ProjectsToolCallbacks,
+  ProjectToolSummary,
+  UpdateProjectToolPatch,
 } from './context.ts';
 
 export { createNodeFileSystem } from './context.ts';

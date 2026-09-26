@@ -1,8 +1,10 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Command as CommandPrimitive } from 'cmdk'
-import { Check, X } from 'lucide-react'
+import { useAtomValue } from 'jotai'
+import { Check, FolderPlus, MessageCircle, X } from 'lucide-react'
 import { Icon_Folder } from '@craft-agent/ui'
+import { projectsAtom } from '@/atoms/projects'
 
 import { ServerDirectoryBrowser } from '@/components/ServerDirectoryBrowser'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -92,8 +94,6 @@ export function WorkingDirectorySelector({
     sortedRecent: filteredRecent,
     hasFolder,
     folderName,
-    showReset,
-    showFilter,
     handleSelectRecent,
     handleReset,
     handleRemoveRecent,
@@ -113,16 +113,33 @@ export function WorkingDirectorySelector({
     onClose: closePopover,
   })
 
+  // A Project is one folder (ZCode's project picker): list the workspace's projects
+  // first, then legacy recent folders that have not become a project yet. Choosing
+  // either sets the session folder; the server binds the folder's project.
+  const projects = useAtomValue(projectsAtom)
+  const projectEntries = React.useMemo(() => projects
+    .filter(project => project.config.workingDirectory && !project.config.archivedAt)
+    .sort((a, b) => (b.config.updatedAt ?? 0) - (a.config.updatedAt ?? 0))
+    .map(project => ({ path: project.config.workingDirectory!, name: project.config.name })), [projects])
+  const projectFolders = React.useMemo(() => new Set(projectEntries.map(entry => entry.path)), [projectEntries])
+  const entries = React.useMemo(() => [
+    ...projectEntries,
+    ...filteredRecent
+      .filter(path => !projectFolders.has(path))
+      .map(path => ({ path, name: getPathBasename(path) || 'Folder' })),
+  ], [projectEntries, projectFolders, filteredRecent])
+  const currentName = projectEntries.find(entry => entry.path === workingDirectory)?.name ?? folderName
+
   // Autofocus the filter input on popover open. Lives in the consumer (not
   // the hook) because the compact drawer surface has no autofocus.
   React.useEffect(() => {
-    if (popoverOpen && showFilter) {
+    if (popoverOpen) {
       const timer = setTimeout(() => {
         inputRef.current?.focus()
       }, 0)
       return () => clearTimeout(timer)
     }
-  }, [popoverOpen, showFilter])
+  }, [popoverOpen])
 
   // Styles matching todo-filter-menu.tsx for consistency
   const MENU_CONTAINER_STYLE = 'min-w-[200px] max-w-[400px] overflow-hidden rounded-[8px] bg-background text-foreground shadow-modal-small p-0'
@@ -133,78 +150,55 @@ export function WorkingDirectorySelector({
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
-          {renderTrigger({ open: popoverOpen, hasFolder, folderName, workingDirectory, homeDir, gitBranch })}
+          {renderTrigger({ open: popoverOpen, hasFolder, folderName: currentName, workingDirectory, homeDir, gitBranch })}
         </PopoverTrigger>
         <PopoverContent side={side} align={align} sideOffset={sideOffset} className={MENU_CONTAINER_STYLE}>
-          <CommandPrimitive shouldFilter={showFilter}>
-            {/* Filter input - only shown when more than 5 recent folders */}
-            {showFilter && (
-              <div className="border-b border-border/50 px-3 py-2">
-                <CommandPrimitive.Input
-                  ref={inputRef}
-                  value={filter}
-                  onValueChange={setFilter}
-                  placeholder={t('chat.filterFolders')}
-                  className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 placeholder:select-none"
-                />
-              </div>
-            )}
+          <CommandPrimitive>
+            <div className="border-b border-border/50 px-3 py-2">
+              <CommandPrimitive.Input
+                ref={inputRef}
+                value={filter}
+                onValueChange={setFilter}
+                placeholder={t('chat.searchProjects')}
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 placeholder:select-none"
+              />
+            </div>
 
             <CommandPrimitive.List className={MENU_LIST_STYLE}>
-              {/* Current Folder Display - shown at top with checkmark */}
-              {hasFolder && (
-                <CommandPrimitive.Item
-                  value={`current-${workingDirectory}`}
-                  className={cn(MENU_ITEM_STYLE, 'pointer-events-none bg-foreground/5')}
-                  disabled
-                >
-                  <Icon_Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="flex-1 min-w-0 truncate">
-                    <span>{folderName}</span>
-                    <span className="text-muted-foreground ml-1.5">{formatPathForDisplay(workingDirectory, homeDir)}</span>
-                  </span>
-                  <Check className="h-4 w-4 shrink-0" />
-                </CommandPrimitive.Item>
-              )}
-
-              {/* Separator after current folder */}
-              {hasFolder && filteredRecent.length > 0 && (
-                <div className="h-px bg-border my-1 mx-1" />
-              )}
-
-              {/* Recent Directories - filterable (current directory already filtered out via filteredRecent) */}
-              {filteredRecent.map((path) => {
-                const recentFolderName = getPathBasename(path) || 'Folder'
+              {entries.map(({ path, name }) => {
+                const selected = hasFolder && path === workingDirectory
+                const isProject = projectFolders.has(path)
                 return (
                   <CommandPrimitive.Item
                     key={path}
-                    value={`${recentFolderName} ${path}`}
-                    onSelect={() => handleSelectRecent(path)}
+                    value={`${name} ${path}`}
+                    onSelect={() => { if (selected) closePopover(); else handleSelectRecent(path) }}
                     className={cn(MENU_ITEM_STYLE, 'group/item data-[selected=true]:bg-foreground/5')}
                   >
                     <Icon_Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="flex-1 min-w-0 truncate">
-                      <span>{recentFolderName}</span>
+                      <span>{name}</span>
                       <span className="text-muted-foreground ml-1.5">{formatPathForDisplay(path, homeDir)}</span>
                     </span>
-                    <button
-                      type="button"
-                      onClick={(e) => handleRemoveRecent(e, path)}
-                      data-touch-reveal="true"
-                      className="shrink-0 h-3 w-3 rounded-[3px] flex items-center justify-center opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    {selected ? (
+                      <Check className="h-4 w-4 shrink-0" />
+                    ) : !isProject && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveRecent(e, path)}
+                        data-touch-reveal="true"
+                        className="shrink-0 h-3 w-3 rounded-[3px] flex items-center justify-center opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
                   </CommandPrimitive.Item>
                 )
               })}
 
-              {/* Empty state when filtering */}
-              {showFilter && (
-                <CommandPrimitive.Empty className="py-3 text-center text-sm text-muted-foreground">
-                  {t('chat.noFoldersFound')}
-                </CommandPrimitive.Empty>
-              )}
+              <CommandPrimitive.Empty className="py-3 text-center text-sm text-muted-foreground">
+                {t('chat.noProjectsFound')}
+              </CommandPrimitive.Empty>
             </CommandPrimitive.List>
 
             {/* Bottom actions - always visible, outside scrollable area */}
@@ -214,15 +208,18 @@ export function WorkingDirectorySelector({
                 onClick={handleChooseFolder}
                 className={cn(MENU_ITEM_STYLE, 'w-full hover:bg-foreground/5')}
               >
-                {t('chat.chooseFolder')}
+                <FolderPlus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="flex-1 text-left">{t('chat.openFolder')}</span>
               </button>
-              {showReset && (
+              {sessionFolderPath && (
                 <button
                   type="button"
-                  onClick={handleReset}
+                  onClick={() => { if (hasFolder) handleReset(); else closePopover() }}
                   className={cn(MENU_ITEM_STYLE, 'w-full hover:bg-foreground/5')}
                 >
-                  {t('common.reset')}
+                  <MessageCircle className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 text-left">{t('chat.workOutsideProject')}</span>
+                  {!hasFolder && <Check className="h-4 w-4 shrink-0" />}
                 </button>
               )}
             </div>

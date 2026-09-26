@@ -24,6 +24,7 @@ import {
 import { canSwitchConnectionDuringSession, getLlmConnection, getLlmConnections, getDefaultLlmConnection, resetManagedAnthropicAuthEnvVars, resolveMidStreamBehavior, getPersistedUiLanguage, resolveTitleLanguageName } from '@craft-agent/shared/config'
 import type { LlmConnection, MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
+import { ensureProjectForFolder, loadProjectById, loadWorkspaceProjects, updateProject as updateProjectConfig, type LoadedProject } from '@craft-agent/shared/projects'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
 import { i18n } from '@craft-agent/shared/i18n'
@@ -123,6 +124,18 @@ let sessionLog: Logger = createScopedLogger(CONSOLE_LOGGER, 'session')
 export function setSessionPlatform(platform: PlatformServices): void {
   _platform = platform
   sessionLog = createScopedLogger(platform.logger, 'session')
+}
+
+function toProjectToolSummary(project: LoadedProject) {
+  return {
+    id: project.config.id,
+    name: project.config.name,
+    folder: project.config.workingDirectory,
+    description: project.config.description,
+    color: project.config.color,
+    archived: !!project.config.archivedAt,
+    updatedAt: project.config.updatedAt,
+  }
 }
 
 function modelDefinitionForSession(modelId: string | undefined, connection?: LlmConnection | null) {
@@ -1826,6 +1839,11 @@ export class SessionManager implements ISessionManager {
     this.eventSink(RPC_CHANNELS.skills.CHANGED, { to: 'workspace', workspaceId }, workspaceId, skills)
   }
 
+  private broadcastProjectsChanged(workspaceId: string, workspaceRootPath: string): void {
+    if (!this.eventSink) return
+    this.eventSink(RPC_CHANNELS.projects.CHANGED, { to: 'workspace', workspaceId }, workspaceId, loadWorkspaceProjects(workspaceRootPath))
+  }
+
   private broadcastPagesChanged(workspaceId: string, pages: import('@craft-agent/shared/pages').LoadedPage[]): void {
     if (!this.eventSink) return
     sessionLog.info(`Broadcasting pages changed (${pages.length} pages)`)
@@ -2709,6 +2727,20 @@ export class SessionManager implements ISessionManager {
           resolvedWorkingDir = project.config.workingDirectory
         }
       }
+    }
+
+    // A Project is one folder: an explicitly chosen folder IS the project. Bind (or
+    // create) the folder's project so every session in that folder shares it, instead
+    // of asking the user to create and pick a separate Project record.
+    if (
+      !resolvedProjectId &&
+      resolvedWorkingDir &&
+      options?.workingDirectory !== undefined &&
+      options.workingDirectory !== 'user_default' &&
+      options.workingDirectory !== 'none'
+    ) {
+      resolvedProjectId = ensureProjectForFolder(workspaceRootPath, resolvedWorkingDir).id
+      this.broadcastProjectsChanged(workspaceId, workspaceRootPath)
     }
 
     // Validate branch request up-front so branch metadata is only set for valid branches.
@@ -4437,6 +4469,43 @@ export class SessionManager implements ISessionManager {
             this.enqueuePageThumbnail(managed.workspace.id, managed.workspace.rootPath, pageSlug)
           },
         }),
+        // Project tools: the same folder-is-project storage and session binding the
+        // UI's project picker uses, so an Agent operates projects through one path.
+        projects: {
+          listProjects: () => loadWorkspaceProjects(managed.workspace.rootPath).map(toProjectToolSummary),
+          openProjectFolder: (folder: string) => {
+            const config = ensureProjectForFolder(managed.workspace.rootPath, folder)
+            this.broadcastProjectsChanged(managed.workspace.id, managed.workspace.rootPath)
+            const loaded = loadProjectById(managed.workspace.rootPath, config.id)
+            if (!loaded) throw new Error(`Project for ${folder} could not be loaded`)
+            return toProjectToolSummary(loaded)
+          },
+          updateProject: (projectId: string, patch: { name?: string; description?: string | null; color?: string | null }) => {
+            const loaded = loadProjectById(managed.workspace.rootPath, projectId)
+            if (!loaded) throw new Error(`Project ${projectId} not found. Use list_projects to see available projects.`)
+            updateProjectConfig(managed.workspace.rootPath, loaded.config.slug, {
+              ...(patch.name !== undefined ? { name: patch.name } : {}),
+              ...(patch.description !== undefined ? { description: patch.description ?? undefined } : {}),
+              ...(patch.color !== undefined ? { color: patch.color ?? undefined } : {}),
+            })
+            this.broadcastProjectsChanged(managed.workspace.id, managed.workspace.rootPath)
+            return toProjectToolSummary(loadProjectById(managed.workspace.rootPath, projectId)!)
+          },
+          setSessionProject: async (sessionId: string | undefined, projectId: string | null) => {
+            const targetId = sessionId ?? managed.id
+            const target = this.sessions.get(targetId)
+            if (!target || target.workspace.id !== managed.workspace.id) throw new Error(`Session ${targetId} not found in this workspace`)
+            if (projectId && !loadProjectById(managed.workspace.rootPath, projectId)) {
+              throw new Error(`Project ${projectId} not found. Use list_projects to see available projects.`)
+            }
+            if (projectId) {
+              await this.setSessionProjectId(targetId, projectId)
+            } else {
+              // Out of any project = back to the session's own folder.
+              this.updateWorkingDirectory(targetId, getSessionStoragePath(target.workspace.rootPath, targetId))
+            }
+          },
+        },
         getSessionInfoFn: (sessionId?: string) => {
           const targetId = sessionId ?? managed.id
           const session = this.sessions.get(targetId)
@@ -5475,6 +5544,7 @@ export class SessionManager implements ISessionManager {
       }
 
       managed.workingDirectory = path
+      this.bindProjectToWorkingDirectory(managed, path)
 
       // Invalidate filesystem caches that depend on working directory
       invalidateContextFileCache(path)
@@ -7435,9 +7505,47 @@ export class SessionManager implements ISessionManager {
    * Pass `null` to unbind. The session's working directory is NOT changed retroactively —
    * the project binding is only used as a default for newly created sessions.
    */
+  /**
+   * Keep "the project folder is the workspace" true when a session's folder changes:
+   * a folder inside the session's own storage means "not in a project"; any other
+   * folder binds (creating on first use) that folder's Project.
+   */
+  private bindProjectToWorkingDirectory(managed: ManagedSession, path: string): void {
+    const sessionFolder = getSessionStoragePath(managed.workspace.rootPath, managed.id)
+    const outsideProject = path === sessionFolder || path.startsWith(sessionFolder + '/') || path.startsWith(sessionFolder + '\\')
+    let nextProjectId: string | undefined
+    if (!outsideProject) {
+      try {
+        nextProjectId = ensureProjectForFolder(managed.workspace.rootPath, path).id
+      } catch (error) {
+        sessionLog.warn(`Session ${managed.id}: could not bind project for "${path}"`, error)
+        return
+      }
+    }
+    if (nextProjectId === managed.projectId) return
+    managed.projectId = nextProjectId
+    // The folder may have just become a project: refresh every project list.
+    if (nextProjectId) this.broadcastProjectsChanged(managed.workspace.id, managed.workspace.rootPath)
+    this.setMetadataWriteGuard(managed)
+    this.sendEvent({
+      type: 'project_id_changed',
+      sessionId: managed.id,
+      projectId: managed.projectId ?? null,
+    }, managed.workspace.id)
+  }
+
   async setSessionProjectId(sessionId: string, projectId: string | null): Promise<void> {
     const managed = this.sessions.get(sessionId)
     if (managed) {
+      // Choosing a project moves the session into that project's folder, so the
+      // project picker and the folder picker can never disagree.
+      if (projectId) {
+        const project = loadProjectById(managed.workspace.rootPath, projectId)
+        const folder = project?.config.workingDirectory
+        if (folder && folder !== managed.workingDirectory) {
+          this.updateWorkingDirectory(sessionId, folder)
+        }
+      }
       managed.projectId = projectId ?? undefined
       this.setMetadataWriteGuard(managed)
 

@@ -363,6 +363,20 @@ export interface SessionToolContext {
   pages?: PagesToolCallbacks;
 
   // ============================================================
+  // Projects (list_projects / open_project_folder / update_project /
+  //           set_session_project)
+  // ============================================================
+
+  /**
+   * Project tool callbacks. A Project is one folder: opening a folder creates or
+   * reuses its project, and a session in that folder belongs to it. The same
+   * storage and binding the UI uses sit behind these callbacks, so an Agent and a
+   * person operate projects through one path. Injected by the backend
+   * (SessionManager); undefined elsewhere — handlers degrade gracefully.
+   */
+  projects?: ProjectsToolCallbacks;
+
+  // ============================================================
   // Inter-Session Messaging
   // ============================================================
 
@@ -644,6 +658,36 @@ export interface PagesToolCallbacks {
   updatePage(slug: string, patch: UpdatePageToolPatch): Promise<PageToolDetails>;
   writePageData(slug: string, patch: PageDataToolPatch): Promise<PageDataWriteSummary>;
   deletePage(slug: string): Promise<DeletePageToolResult>;
+}
+
+export interface ProjectToolSummary {
+  id: string;
+  name: string;
+  /** The project folder — the project's identity. */
+  folder?: string;
+  description?: string;
+  color?: string;
+  archived: boolean;
+  updatedAt: number;
+}
+
+export interface UpdateProjectToolPatch {
+  name?: string;
+  description?: string | null;
+  color?: string | null;
+}
+
+/**
+ * Project tool callbacks, injected by the backend (SessionManager). All storage
+ * and session binding lives behind these — this package never touches projects/.
+ */
+export interface ProjectsToolCallbacks {
+  listProjects(): ProjectToolSummary[] | Promise<ProjectToolSummary[]>;
+  /** Return the folder's project, creating it on first use. */
+  openProjectFolder(folder: string): ProjectToolSummary | Promise<ProjectToolSummary>;
+  updateProject(projectId: string, patch: UpdateProjectToolPatch): ProjectToolSummary | Promise<ProjectToolSummary>;
+  /** Move a session (default: the invoking one) into a project, or out of any project with null. */
+  setSessionProject(sessionId: string | undefined, projectId: string | null): Promise<void>;
 }
 
 export interface SessionInfo {

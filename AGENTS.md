@@ -27,7 +27,8 @@ to. Do not preload the whole `docs/` tree.
   settings width correction and a source-backed review of additional IM channels. A channel is
   not surfaced as connectable until receive, scope, permission, send and reconnect are real.
   This does not authorize the old 11-item R1 plan,
-  Conversation/Project data changes, Workspace removal, unrelated composer or right-panel work. See
+  Workspace removal, unrelated composer or right-panel work. Project unification (a project is a
+  folder; OV-024) and Agent operability of every feature are authorized. See
   [`docs/modules/shell.md`](docs/modules/shell.md#active-entry-slice) and [`TODO.md`](TODO.md).
 - Later owner instructions separately authorize a model-connection correction across setup,
   discovery, model/effort selection and runtime credentials. Keep it bounded to existing

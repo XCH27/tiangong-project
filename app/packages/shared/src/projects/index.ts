@@ -30,6 +30,10 @@ export {
   loadProject,
   loadProjectById,
   loadWorkspaceProjects,
+  // Folder identity (a Project is one folder)
+  normalizeProjectFolder,
+  findProjectByFolder,
+  ensureProjectForFolder,
   // Create/update/delete
   generateProjectSlug,
   createProject,

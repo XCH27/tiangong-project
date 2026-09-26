@@ -1617,6 +1617,42 @@ adapters before adding a platform, so an icon or Connect row never overstates ca
 **Now carried by:** [`modules/shell.md`](modules/shell.md#active-entry-slice) and
 [`modules/remote.md`](modules/remote.md#messaging-boundary-r14--exec-11).
 
+### OV-023 — General Agent foundation; restructure boldly, not in place (2026-09-25)
+
+> 「我想做的是一个通用的agent软件底座，然后把不同的工作内置到我们软件里做成一个个套件，每个项目都能按需加载使用不同的套件和右侧工具栏」
+>
+> 「这次的修改几乎是让你删除掉Craft Agents的前后端进行重做，你不要总是小范围修改」
+>
+> 「我希望你能把每个大的能力和模块都拆分出来，把几个开源项目的前后端设计都放一起做对比，谁好就用谁的」
+
+**English gloss:** Fleet is a general Agent foundation; work kinds are built in as suites, and each
+Project loads the suites and right-side tools it needs. Compare reference projects module by
+module and take the better frontend and backend; do not keep patching Craft's structure in place.
+
+**Now carried by:** [`product.md`](product.md#conversation-project-and-workspace-boundary).
+
+### OV-024 — Keep Craft's look and its Agent-operable pages; one thing called a project (2026-09-26)
+
+> 「我想你在维持Craft Agents的前端设计和一些功能的情况下吸收其他项目的优点，对我们的项目进行深度的整改，Craft Agents的很多页面或者功能，都是能让agent和人类都能调整修改，这点是别的软件不具备的」
+>
+> 「这是要实现任何agent的工作台非常必要的，要让agent自己就能操控我们软件的各种功能等」
+>
+> 「Craft Agents差的地方是新建会话，新建工作区，新建项目，把这几个东西进行了分层，但是这几个东西其实都是一个东西」；「而且现状主流软件也不是这样设计的」
+>
+> 「项目文件夹本身就是工作区，然后对话会放里面，没有选工作区那就是正常的对话或任务」
+>
+> 「应该按照几个参考项目对相关功能进行全面的整改，不要总是跟我做无意义的汇报」
+
+**English gloss:** Craft stays the base: its visual design, chat page, document preview and the
+pages both people and Agents can change. Every feature must also be operable by the Agent itself.
+Conversation, Workspace and Project are one thing: a project is a folder, conversations live in
+it, and a conversation without a folder is an ordinary conversation. Rectify each area fully
+against the references. This supersedes the 2026-09-25 proposal to switch the base to ZCode
+(withdrawn the same day; the Craft-era state is preserved at `craft-base-final`).
+
+**Now carried by:** [`product.md`](product.md#conversation-project-and-workspace-boundary),
+[`modules/shell.md`](modules/shell.md).
+
 ### Rules for this file
 
 Add a signal here only when the owner actually said it (with date) and it is not already carried

@@ -93,6 +93,11 @@ export interface SessionScopedToolCallbacks {
    * SessionManager to the invoking session's workspace.
    */
   pages?: import('@craft-agent/session-tools-core').PagesToolCallbacks;
+  /**
+   * Project tools (list/open folder/update/move session). A Project is one folder;
+   * wired by SessionManager to the same storage and binding the UI uses.
+   */
+  projects?: import('@craft-agent/session-tools-core').ProjectsToolCallbacks;
 }
 
 // Registry of callbacks keyed by sessionId

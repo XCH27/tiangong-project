@@ -33,33 +33,30 @@ check is neither current implementation nor permission to resume those patches.
 
 ## Conversation, Project and Workspace boundary
 
-**Current base:** Craft v0.13.4 has visible Workspaces. Workspace storage owns scoped Projects,
-Sessions, Sources and Skills; a Session records its Workspace path and may reference a Project.
-The Board is a Sessions view mode. Restoring the official source did not migrate or remove any of
-these records.
+**Owner decision (OV-024, 2026-09-26): they are one thing.** A **Project is a folder** — local, or
+on a user-owned remote host. The project folder is the workspace; its conversations live in it. A
+conversation with no folder is an ordinary conversation. There is one creation entry, New
+Conversation, whose project picker offers recent projects, Open folder (the folder becomes its
+project on first use), remote connection and Work outside a project. There is no separate New
+Project form and no New Workspace wizard; mainstream agent desktops (ZCode, Codex, Claude Code,
+Cursor) and Cindy/OpenChamber all bind work to a folder the same way.
 
-**Latest owner direction, pending review:** the owner now prefers to remove the *visible* Workspace
-layer and select capability suites per Conversation. This supersedes the earlier instruction to
-retain the Workspace switcher. The owner subsequently approved only a small navigation/entry move:
-separate All Conversations and Board, move the Craft logo menu to the lower-left footer, and put
-Release Notes under Settings → App → About. Duplicate update/menu actions are retired; Settings → App
-retains stateful update controls. Help stays at the upper right.
-No suite, Project, remote-host, composer or
-right-panel behavior is approved by that slice.
+**Implemented so far:** choosing a folder binds (or creates) its project; changing the folder
+rebinds; choosing a project moves the conversation into its folder; the composer's picker follows
+ZCode's layout on Craft's styles; the Agent has `list_projects`, `open_project_folder`,
+`update_project` and `set_session_project`. **Not yet:** hiding the Workspace switcher and wizard,
+the project-grouped sidebar, and Project-scoped suites. Craft still stores everything under one
+default Workspace, which becomes an internal container for the installed catalog (Sources,
+Skills, labels, statuses, automations, Pages); existing records stay readable.
 
-The leading design candidate is a separate execution Host (local or user-owned remote), an optional
-Project bound to a folder on that Host, and a Conversation with its own effective capability loadout.
-Installed Components/Skills/MCPs remain in their existing catalog/settings authorities; Project
-defaults may seed a Conversation, but the Conversation's accepted choices are snapshotted at a turn
-boundary. Permission remains a separate grant path. Craft Workspace records remain readable as a
-compatibility layer until all existing Sessions, Projects, Sources, remote routes and permissions
-have a verified destination. Sharing a folder never merges transcripts or grants. This candidate
-requires a source-based data and remote-routing review before it can replace the current model.
+**Suites (OV-023):** Fleet is a general Agent foundation. Each Project chooses the suites it needs —
+Skills, Sources/MCP and right-side tools — from the installed catalog, stored in the project's own
+files so a person or an Agent can change them.
 
-The previously requested single work list, contextual right panel and ZCode/Cindy-informed
-composer remain **design inputs**, not running Fleet features or a standing instruction to
-implement the old R1 order. [R1](modules/shell.md) records the bounded entry slice, current paths,
-reference evidence and remaining review criteria.
+**Agent-operable by construction (OV-024):** every feature's operations are defined once and
+reached by buttons, the Agent's built-in tools and config-as-files alike, under the one
+permission path; every page keeps Craft's "describe the change" entry for handing edits to the
+Agent.
 
 ## The four sources, and what each one is for
 

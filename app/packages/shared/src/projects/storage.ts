@@ -17,8 +17,9 @@ import {
   writeFileSync,
   unlinkSync,
   readFileSync,
+  realpathSync,
 } from 'fs';
-import { basename, extname, join } from 'path';
+import { basename, extname, join, resolve, sep } from 'path';
 import { randomUUID } from 'crypto';
 import { atomicWriteFileSync, readJsonFileSync, getMimeType } from '../utils/files.ts';
 import { generateUniqueSlug } from '../utils/slug.ts';
@@ -244,6 +245,59 @@ export function loadWorkspaceProjects(workspaceRootPath: string): LoadedProject[
   }
 
   return projects;
+}
+
+/**
+ * Canonical identity of a project folder: the real, absolute path without a trailing
+ * separator. A Project is one folder (Fleet: "the project folder is the workspace"), so
+ * two spellings of the same folder must resolve to the same Project.
+ */
+export function normalizeProjectFolder(folderPath: string): string {
+  const absolute = resolve(expandPath(folderPath));
+  let real = absolute;
+  try {
+    real = realpathSync(absolute);
+  } catch {
+    // A folder that no longer exists keeps its last absolute spelling.
+  }
+  return real.length > 1 && real.endsWith(sep) ? real.slice(0, -1) : real;
+}
+
+/**
+ * Find the Project bound to a folder, if any. Archived projects still match so that
+ * reopening a folder restores its project instead of minting a duplicate.
+ */
+export function findProjectByFolder(
+  workspaceRootPath: string,
+  folderPath: string,
+): LoadedProject | null {
+  const target = normalizeProjectFolder(folderPath);
+  for (const project of loadWorkspaceProjects(workspaceRootPath)) {
+    const dir = project.config.workingDirectory;
+    if (dir && normalizeProjectFolder(dir) === target) return project;
+  }
+  return null;
+}
+
+/**
+ * Opening a folder is how a Project comes into being: return the folder's Project,
+ * creating it (named after the folder) on first use and un-archiving it when reopened.
+ */
+export function ensureProjectForFolder(workspaceRootPath: string, folderPath: string): ProjectConfig {
+  const folder = normalizeProjectFolder(folderPath);
+  const existing = findProjectByFolder(workspaceRootPath, folder);
+  if (existing) {
+    if (existing.config.archivedAt) {
+      const { archivedAt: _archived, ...rest } = existing.config;
+      saveProjectConfig(workspaceRootPath, rest);
+      return rest;
+    }
+    return existing.config;
+  }
+  return createProject(workspaceRootPath, {
+    name: basename(folder) || folder,
+    workingDirectory: folder,
+  });
 }
 
 // ============================================================

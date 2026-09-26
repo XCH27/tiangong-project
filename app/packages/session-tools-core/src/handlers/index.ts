@@ -79,6 +79,20 @@ export type { CreateTaskArgs } from './create-task.ts';
 export { handleArchiveSession } from './archive-session.ts';
 export type { ArchiveSessionArgs } from './archive-session.ts';
 
+// Projects
+export {
+  handleListProjects,
+  handleOpenProjectFolder,
+  handleUpdateProject,
+  handleSetSessionProject,
+} from './projects.ts';
+export type {
+  ListProjectsArgs,
+  OpenProjectFolderArgs,
+  UpdateProjectArgs,
+  SetSessionProjectArgs,
+} from './projects.ts';
+
 // Pages
 export {
   handleListPages,

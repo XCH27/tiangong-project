@@ -38,6 +38,7 @@ import { handleSetSessionLabels } from './handlers/set-session-labels.ts';
 import { handleSetSessionStatus } from './handlers/set-session-status.ts';
 import { handleGetSessionInfo } from './handlers/get-session-info.ts';
 import { handleListSessions } from './handlers/list-sessions.ts';
+import { handleListProjects, handleOpenProjectFolder, handleUpdateProject, handleSetSessionProject } from './handlers/projects.ts';
 import { handleListBackgroundTasks } from './handlers/list-background-tasks.ts';
 import { handleCreateTask } from './handlers/create-task.ts';
 import {
@@ -229,6 +230,27 @@ const PageRefreshSpecInputSchema = z.object({
   timezone: z.string().optional().describe('IANA timezone for cron evaluation (system local when omitted)'),
   timeoutMs: z.number().optional().describe('Per-run timeout in ms (default 60000, clamped to 1s–15min)'),
   enabled: z.boolean().optional().describe('Set false to pause scheduling without deleting the spec'),
+});
+
+export const ListProjectsSchema = z.object({
+  includeArchived: z.boolean().optional().describe('Also return archived projects. Default false.'),
+});
+
+export const OpenProjectFolderSchema = z.object({
+  folder: z.string().describe('Absolute path of the project folder. The folder is the project: an existing project is reused, otherwise one is created and named after the folder.'),
+  moveCurrentSession: z.boolean().optional().describe('Also move the current session into this project (its working directory becomes the folder). Default false.'),
+});
+
+export const UpdateProjectSchema = z.object({
+  projectId: z.string().describe('Project ID (from list_projects or open_project_folder)'),
+  name: z.string().optional().describe('New display name'),
+  description: z.string().nullable().optional().describe('New description; null clears it'),
+  color: z.string().nullable().optional().describe('New color; null clears it'),
+});
+
+export const SetSessionProjectSchema = z.object({
+  sessionId: z.string().optional().describe('Target session ID. Omit for the current session.'),
+  projectId: z.string().nullable().describe('Project ID to move the session into, or null to take it out of any project'),
 });
 
 export const ListPagesSchema = z.object({
@@ -560,6 +582,14 @@ Provide title + description (the description becomes the task goal and the initi
 
 Returns { slug, orchestratorSessionId, taskLabelId, warnings } — unknown source/skill slugs are reported as warnings, not errors. Use it when the user asks to capture or queue work as a task; to execute work right now, use the current session or spawn_session instead.`,
 
+  list_projects: `List the user's projects. In this app a project IS a folder: each project has one folder, and every conversation in that folder belongs to the project. Returns id, name, folder, description, color and archived state.`,
+
+  open_project_folder: `Open a folder as a project — the same action as "Open folder" in the app's project picker. Reuses the folder's existing project (restoring it if archived) or creates one named after the folder. Pass moveCurrentSession: true to also move the current conversation into it. Returns the project.`,
+
+  update_project: `Rename a project or change its description or color. The folder (the project's identity) cannot be changed — open a different folder instead.`,
+
+  set_session_project: `Move a conversation into a project (its working directory becomes the project folder) or, with projectId: null, take it out of any project so it becomes an ordinary conversation. Omit sessionId for the current conversation.`,
+
   list_pages: `List the workspace's Pages — persistent, agent-authored HTML mini dashboards/documents rendered in the app's Pages section (sidebar) and optionally shared via password-protected public links.
 
 Returns compact summaries: slug, name, kind (static/interactive/live), project, refresh schedule, last refresh outcome, share state, and folder path. Optionally filter by projectId. Use get_page for full details on one page.`,
@@ -691,6 +721,11 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
   { name: 'archive_session', description: TOOL_DESCRIPTIONS.archive_session, inputSchema: ArchiveSessionSchema, executionMode: 'registry', safeMode: 'block', handler: handleArchiveSession },
   { name: 'create_task', description: TOOL_DESCRIPTIONS.create_task, inputSchema: CreateTaskSchema, executionMode: 'registry', safeMode: 'block', handler: handleCreateTask },
+  // Project tools (registry — grouped ctx.projects callbacks from SessionManager)
+  { name: 'list_projects', description: TOOL_DESCRIPTIONS.list_projects, inputSchema: ListProjectsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListProjects },
+  { name: 'open_project_folder', description: TOOL_DESCRIPTIONS.open_project_folder, inputSchema: OpenProjectFolderSchema, executionMode: 'registry', safeMode: 'block', handler: handleOpenProjectFolder },
+  { name: 'update_project', description: TOOL_DESCRIPTIONS.update_project, inputSchema: UpdateProjectSchema, executionMode: 'registry', safeMode: 'block', handler: handleUpdateProject },
+  { name: 'set_session_project', description: TOOL_DESCRIPTIONS.set_session_project, inputSchema: SetSessionProjectSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionProject },
   // Pages tools (registry — use the grouped ctx.pages callbacks from SessionManager)
   { name: 'list_pages', description: TOOL_DESCRIPTIONS.list_pages, inputSchema: ListPagesSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListPages },
   { name: 'get_page', description: TOOL_DESCRIPTIONS.get_page, inputSchema: GetPageSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetPage },

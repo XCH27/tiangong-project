@@ -4,12 +4,16 @@
  * Uses real temp directories to exercise actual filesystem operations.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, mkdirSync, symlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { estimateTokensDensityAware } from '../../utils/large-response.ts';
 import {
   createProject,
+  ensureProjectForFolder,
+  findProjectByFolder,
+  loadWorkspaceProjects,
+  updateProject,
   getProjectMemoryPath,
   loadProjectMemory,
   sanitizeAssetFilename,
@@ -85,5 +89,37 @@ describe('loadProjectMemory', () => {
     // Marker present and budget respected (marker included).
     expect(text).toContain(`truncated at ${maxTokens}-token cap`);
     expect(estimateTokensDensityAware(text)).toBeLessThanOrEqual(maxTokens);
+  });
+});
+
+describe('ensureProjectForFolder (a Project is one folder)', () => {
+  it('creates the folder\'s project once, named after the folder', () => {
+    const folder = join(tempDir, 'My App');
+    mkdirSync(folder);
+    const first = ensureProjectForFolder(workspaceRoot, folder);
+    const second = ensureProjectForFolder(workspaceRoot, folder + '/');
+    expect(first.name).toBe('My App');
+    expect(second.id).toBe(first.id);
+    expect(loadWorkspaceProjects(workspaceRoot)).toHaveLength(1);
+  });
+
+  it('treats a symlinked spelling of the same folder as the same project', () => {
+    const folder = join(tempDir, 'real');
+    mkdirSync(folder);
+    const link = join(tempDir, 'link');
+    symlinkSync(folder, link);
+    const project = ensureProjectForFolder(workspaceRoot, folder);
+    expect(findProjectByFolder(workspaceRoot, link)?.config.id).toBe(project.id);
+  });
+
+  it('reopening an archived folder restores its project instead of duplicating it', () => {
+    const folder = join(tempDir, 'old');
+    mkdirSync(folder);
+    const project = ensureProjectForFolder(workspaceRoot, folder);
+    updateProject(workspaceRoot, project.slug, { archivedAt: Date.now() });
+    const reopened = ensureProjectForFolder(workspaceRoot, folder);
+    expect(reopened.id).toBe(project.id);
+    expect(reopened.archivedAt).toBeUndefined();
+    expect(loadWorkspaceProjects(workspaceRoot)).toHaveLength(1);
   });
 });
